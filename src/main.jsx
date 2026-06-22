@@ -87,24 +87,25 @@ function App() {
   const isPublicCatalog = window.location.pathname.startsWith("/catalogo");
   const isPublicBooking = window.location.pathname.startsWith("/agendar");
   const isPublicCheckout = window.location.pathname.startsWith("/comprar");
+  const normalizedSession = session?.user ? session : session ? { user: session } : null;
 
   useEffect(() => {
-    if (session && !canAccessPage(session.user.role, page)) {
-      setPage(defaultPageForRole(session.user.role));
+    if (normalizedSession && !canAccessPage(normalizedSession.user?.role, page)) {
+      setPage(defaultPageForRole(normalizedSession.user?.role));
     }
-  }, [session, page]);
+  }, [normalizedSession, page]);
 
   if (isPublicCatalog) return <PublicCatalog />;
   if (isPublicBooking) return <PublicBooking />;
   if (isPublicCheckout) return <PublicCheckout />;
-  if (!session) return <Login onLogin={setSession} />;
-  const activePage = canAccessPage(session.user.role, page) ? page : defaultPageForRole(session.user.role);
+  if (!normalizedSession) return <Login onLogin={setSession} />;
+  const activePage = canAccessPage(normalizedSession.user?.role, page) ? page : defaultPageForRole(normalizedSession.user?.role);
 
   return (
     <div className="app-shell">
       <Sidebar
         page={activePage}
-        role={session.user.role}
+        role={normalizedSession.user?.role}
         setPage={(next) => {
           setPage(next);
           setSidebarOpen(false);
@@ -122,7 +123,7 @@ function App() {
           </button>
           <div className="topbar-title">
             <span className="eyebrow">Aura Clinic Piercing</span>
-            <h1>{activePage === "dashboard" ? `Olá, ${firstName(session.user.name)}!` : pageTitle(activePage)}</h1>
+            <h1>{activePage === "dashboard" ? `Olá, ${firstName(normalizedSession.user?.name || "Usuário")}!` : pageTitle(activePage)}</h1>
             {activePage === "dashboard" && <p>Bem-vinda ao painel administrativo da Aura Clinic.</p>}
           </div>
           <div className="topbar-actions">
@@ -139,11 +140,11 @@ function App() {
             </div>
           <div className="user-chip">
             <UserRound size={16} />
-            {session.user.name} · {roleLabel(session.user.role)}
+            {normalizedSession.user?.name || "Usuário"} · {roleLabel(normalizedSession.user?.role)}
           </div>
           </div>
         </header>
-        {activePage === "dashboard" && <Dashboard user={session.user} setPage={setPage} alertsOpen={alertsOpen} setAlertsOpen={setAlertsOpen} />}
+        {activePage === "dashboard" && <Dashboard user={normalizedSession.user} setPage={setPage} alertsOpen={alertsOpen} setAlertsOpen={setAlertsOpen} />}
         {activePage === "erp" && <AuraERP setPage={setPage} />}
         {activePage === "agenda" && <AgendaWorkspace />}
         {activePage === "catalog" && <CatalogWorkspace />}
@@ -183,7 +184,7 @@ function Login({ onLogin }) {
     };
 
     localStorage.setItem("aura-session", JSON.stringify({ user }));
-    onLogin(user);
+    onLogin({ user });
     return;
   }
 
@@ -1255,30 +1256,55 @@ function Sidebar({ page, role, setPage, open, onLogout }) {
 function Dashboard({ user, setPage, alertsOpen, setAlertsOpen }) {
   const { data } = useFetch("/dashboard");
 
-  if (!data) return <Loading />;
+  if (data == null) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
   return <PremiumDashboard data={data} user={user} setPage={setPage} alertsOpen={alertsOpen} setAlertsOpen={setAlertsOpen} />;
 }
 
 function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpen }) {
   const [revenueMode, setRevenueMode] = useState("mensal");
+  const safeStats = {
+    todayCount: 0,
+    pendingCount: 0,
+    completedCount: 0,
+    revenue: 0,
+    criticalStock: 0,
+    lowStockCount: 0,
+    depositReceived: 0,
+    monthForecast: 0,
+    ...(data?.stats || {})
+  };
+  const adminDashboard = data?.adminDashboard || {};
+  const alertsData = data?.alerts || {};
+  const upcomingAppointments = Array.isArray(adminDashboard.upcomingAppointments) ? adminDashboard.upcomingAppointments : [];
+  const criticalStockItems = Array.isArray(adminDashboard.criticalStock) ? adminDashboard.criticalStock : [];
+  const birthdaysItems = Array.isArray(adminDashboard.birthdaysMonth) ? adminDashboard.birthdaysMonth : [];
+  const procedureRanking = Array.isArray(adminDashboard.procedureRanking) ? adminDashboard.procedureRanking : [];
+  const jewelryRanking = Array.isArray(adminDashboard.jewelryRanking) ? adminDashboard.jewelryRanking : [];
+  const categoryRanking = Array.isArray(adminDashboard.categoryRanking) ? adminDashboard.categoryRanking : [];
+  const returnClients = Array.isArray(adminDashboard.returnClients) ? adminDashboard.returnClients : [];
+
   const cards = [
-    { label: "Agendamentos hoje", value: String(data.stats.todayCount), icon: Calendar, action: "Ver agenda", page: "agenda", tone: "gold" },
-    { label: "Clientes novos", value: String(data.adminDashboard?.upcomingAppointments?.length || data.todaysAppointments?.length || 0), icon: UsersRound, action: "Ver clientes", page: "client-center", tone: "nude" },
-    { label: "Joias em estoque crítico", value: String(data.stats.lowStockCount), icon: Gem, action: "Ver estoque", page: "catalog", tone: "green", critical: true },
-    { label: "Faturamento hoje", value: currency.format(data.stats.depositReceived), icon: CircleDollarSign, action: "Ver Financeiro", page: "finance", tone: "brown" },
-    { label: "Aniversariantes do mês", value: String(data.adminDashboard?.birthdaysMonth?.length || 0), icon: Cake, action: "Ver todos", page: "client-center", tone: "gold" }
+    { label: "Agendamentos hoje", value: String(safeStats.todayCount ?? 0), icon: Calendar, action: "Ver agenda", page: "agenda", tone: "gold" },
+    { label: "Clientes novos", value: String(upcomingAppointments.length || data?.todaysAppointments?.length || 0), icon: Users, action: "Ver clientes", page: "clients", tone: "nude" },
+    { label: "Joias em estoque crítico", value: String(safeStats.lowStockCount ?? safeStats.criticalStock ?? 0), icon: Gem, action: "Ver estoque", page: "catalog", tone: "green" },
+    { label: "Faturamento hoje", value: currency.format(Number(safeStats.depositReceived ?? 0)), icon: CircleDollarSign, action: "Ver Financeiro", page: "finance", tone: "brown" },
+    { label: "Aniversariantes do mês", value: String(birthdaysItems.length), icon: Cake, action: "Ver todos", page: "clients", tone: "gold" }
   ];
-  const pendingValue = Math.max(Number(data.stats.monthForecast || 0) - Number(data.stats.depositReceived || 0), 0);
+
+  const pendingValue = Math.max(
+    Number(safeStats.monthForecast ?? 0) - Number(safeStats.depositReceived ?? 0),
+    0
+  );
   const revenueData = {
-    diario: data.adminDashboard?.dailyRevenue || [],
-    semanal: data.adminDashboard?.weeklyRevenue || [],
-    mensal: data.adminDashboard?.monthlyRevenue || []
+    diario: Array.isArray(adminDashboard.dailyRevenue) ? adminDashboard.dailyRevenue : [],
+    semanal: Array.isArray(adminDashboard.weeklyRevenue) ? adminDashboard.weeklyRevenue : [],
+    mensal: Array.isArray(adminDashboard.monthlyRevenue) ? adminDashboard.monthlyRevenue : []
   }[revenueMode] || [];
 
   return (
     <section className="premium-dashboard">
-      {alertsOpen && <AlertsPopup alerts={data.alerts} onClose={() => setAlertsOpen(false)} />}
+      {alertsOpen && <AlertsPopup alerts={alertsData} onClose={() => setAlertsOpen(false)} />}
 
       <div className="premium-metric-grid">
         {cards.map(({ label, value, icon: Icon, action, page, tone, critical }) => (
@@ -1313,19 +1339,19 @@ function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpen }) {
             <button className="ghost-button" type="button" onClick={() => setPage("agenda")}>Ver todos</button>
           </div>
           <div className="premium-appointment-list">
-            {(data.adminDashboard?.upcomingAppointments || []).slice(0, 4).map((item) => (
+            {upcomingAppointments.slice(0, 4).map((item) => (
               <button type="button" className="premium-appointment-row" key={item.id} onClick={() => setPage("agenda")}>
                 <span className="dot-time"><i />{item.appointment_time}</span>
                 <div className="avatar-circle">{initials(item.full_name)}</div>
                 <div>
-                  <strong>{item.full_name}</strong>
-                  <small>{item.procedure}<br />Prof. {item.professional_name}</small>
+                  <strong>{item.full_name || "Cliente"}</strong>
+                  <small>{item.procedure || "Procedimento"}<br />Prof. {item.professional_name || "—"}</small>
                 </div>
-                <em className={statusClass[item.status]}>{item.status}</em>
+                <em className={statusClass[item.status] || ""}>{item.status || "—"}</em>
                 <ChevronRight size={18} />
               </button>
             ))}
-            {!(data.adminDashboard?.upcomingAppointments || []).length && <p className="empty-state">Nenhum próximo agendamento.</p>}
+            {!upcomingAppointments.length && <p className="empty-state">Nenhum próximo agendamento.</p>}
           </div>
         </article>
       </div>
@@ -1337,14 +1363,14 @@ function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpen }) {
             <button className="ghost-button" type="button" onClick={() => setPage("catalog")}>Ver estoque</button>
           </div>
           <div className="clean-list">
-            {(data.adminDashboard?.criticalStock || []).slice(0, 3).map((item) => (
-              <div key={item.id}>
+            {criticalStockItems.slice(0, 3).map((item) => (
+              <div key={item.id || `${item.name}-${item.quantity}`}>
                 <div className="jewel-thumb"><Gem size={21} /></div>
-                <span><strong>{item.name}</strong><small>{item.color || item.category}</small></span>
-                <em>{item.quantity} unidade{item.quantity === 1 ? "" : "s"}</em>
+                <span><strong>{item.name || "Joia"}</strong><small>{item.color || item.category || "Sem categoria"}</small></span>
+                <em>{Number(item.quantity || 0)} unidade{Number(item.quantity || 0) === 1 ? "" : "s"}</em>
               </div>
             ))}
-            {!(data.adminDashboard?.criticalStock || []).length && <p className="empty-state">Estoque sem alerta crítico.</p>}
+            {!criticalStockItems.length && <p className="empty-state">Estoque sem alerta crítico.</p>}
           </div>
         </article>
 
@@ -1354,14 +1380,14 @@ function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpen }) {
             <button className="ghost-button" type="button" onClick={() => setPage("client-center")}>Ver todos</button>
           </div>
           <div className="clean-list birthday-list">
-            {(data.adminDashboard?.birthdaysMonth || []).slice(0, 3).map((item) => (
-              <div key={item.id}>
+            {birthdaysItems.slice(0, 3).map((item) => (
+              <div key={item.id || `${item.full_name}-${item.birth_date}`}>
                 <div className="avatar-circle">{initials(item.full_name)}</div>
-                <span><strong>{item.full_name}</strong><small>{formatLongDate(item.birth_date)}</small></span>
+                <span><strong>{item.full_name || "Cliente"}</strong><small>{formatLongDate(item.birth_date)}</small></span>
                 <Cake size={18} />
               </div>
             ))}
-            {!(data.adminDashboard?.birthdaysMonth || []).length && <p className="empty-state">Nenhum aniversário neste mês.</p>}
+            {!birthdaysItems.length && <p className="empty-state">Nenhum aniversário neste mês.</p>}
           </div>
         </article>
 
@@ -1371,14 +1397,14 @@ function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpen }) {
             <span>{new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</span>
           </div>
           <div className="finance-summary-list">
-            <div className="ok"><span>Faturamento</span><strong>{currency.format(data.stats.monthForecast)}</strong></div>
-            <div className="ok"><span>Sinais recebidos</span><strong>{currency.format(data.stats.depositReceived)}</strong></div>
-            <div className="warn"><span>Pendentes</span><strong>{currency.format(pendingValue)}</strong></div>
+            <div className="ok"><span>Faturamento</span><strong>{currency.format(Number(safeStats.revenue ?? safeStats.monthForecast ?? 0))}</strong></div>
+            <div className="ok"><span>Sinais recebidos</span><strong>{currency.format(Number(safeStats.depositReceived ?? 0))}</strong></div>
+            <div className="warn"><span>Pendentes</span><strong>{currency.format(Number(pendingValue || 0))}</strong></div>
             <div className="danger"><span>Despesas</span><strong>{currency.format(0)}</strong></div>
           </div>
           <div className="profit-box">
             <span>Lucro estimado</span>
-            <strong>{currency.format(data.stats.monthForecast)}</strong>
+            <strong>{currency.format(Number(safeStats.revenue ?? safeStats.monthForecast ?? 0))}</strong>
           </div>
         </article>
       </div>
@@ -1386,17 +1412,17 @@ function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpen }) {
       <div className="premium-ranking-grid">
         <div className="panel">
           <div className="panel-heading"><h2>Procedimentos mais feitos</h2><span>Ranking</span></div>
-          <MiniBarChart data={data.adminDashboard?.procedureRanking || []} valueKey="total" labelKey="label" />
+          <MiniBarChart data={procedureRanking} valueKey="total" labelKey="label" />
         </div>
         <div className="panel">
           <div className="panel-heading"><h2>Joias mais vendidas</h2><span>Peças vinculadas</span></div>
-          <MiniBarChart data={data.adminDashboard?.jewelryRanking || []} valueKey="total" labelKey="label" />
+          <MiniBarChart data={jewelryRanking} valueKey="total" labelKey="label" />
         </div>
         <div className="panel">
           <div className="panel-heading"><h2>Ranking por categoria</h2><span>Joalherias</span></div>
-          <MiniBarChart data={data.adminDashboard?.categoryRanking || []} valueKey="total" labelKey="label" />
+          <MiniBarChart data={categoryRanking} valueKey="total" labelKey="label" />
         </div>
-        <DashboardList title="Clientes em retorno" items={data.adminDashboard?.returnClients || []} render={(item) => `${formatDate(item.due_date)} · ${item.full_name} · ${item.reminder_day} dias`} />
+        <DashboardList title="Clientes em retorno" items={returnClients} render={(item) => `${formatDate(item.due_date)} · ${item.full_name || "Cliente"} · ${item.reminder_day || 0} dias`} />
       </div>
     </section>
   );
