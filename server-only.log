@@ -1,0 +1,5 @@
+
+> aura-clinic-piercing@1.0.0 server
+> node server/index.js
+
+Aura Clinic API em http://localhost:4000

@@ -1,0 +1,42 @@
+
+> aura-clinic-piercing@1.0.0 dev
+> concurrently "npm run server" "npm run client"
+
+[0] 
+[0] > aura-clinic-piercing@1.0.0 server
+[0] > node server/index.js
+[0] 
+[1] 
+[1] > aura-clinic-piercing@1.0.0 client
+[1] > vite --host 0.0.0.0
+[1] 
+[1] Port 5173 is in use, trying another one...
+[1] 
+[1]   [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m453[22m[2m[0m ms[22m
+[1] 
+[1]   [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5174[22m/[39m
+[1]   [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.100.2:[1m5174[22m/[39m
+[0] Aura Clinic API em http://localhost:4000
+[1] [2m22:44:21[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[1] [2m22:46:10[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/main.jsx[22m
+[1] [2m22:46:12[22m [36m[1m[vite][22m[39m [33mhmr invalidate [39m[2m/src/main.jsx[22m Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[1] [2m22:46:12[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.jsx[22m
+[0] npm run server exited with code 4294967295
+[1] [2m22:46:59[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/main.jsx[22m
+[1] [2m22:47:00[22m [36m[1m[vite][22m[39m [33mhmr invalidate [39m[2m/src/main.jsx[22m Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[1] [2m22:47:00[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.jsx[22m
+[1] [2m22:47:44[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/main.jsx[22m
+[1] [2m22:47:45[22m [36m[1m[vite][22m[39m [33mhmr invalidate [39m[2m/src/main.jsx[22m Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[1] [2m22:47:45[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.jsx[22m
+[1] [2m22:49:10[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/main.jsx[22m
+[1] [2m22:49:11[22m [36m[1m[vite][22m[39m [33mhmr invalidate [39m[2m/src/main.jsx[22m Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[1] [2m22:49:11[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.jsx[22m
+[1] [2m22:50:15[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/main.jsx[22m
+[1] [2m22:50:16[22m [36m[1m[vite][22m[39m [33mhmr invalidate [39m[2m/src/main.jsx[22m Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[1] [2m22:50:16[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.jsx[22m
+[1] [2m22:51:15[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/main.jsx[22m
+[1] [2m22:51:16[22m [36m[1m[vite][22m[39m [33mhmr invalidate [39m[2m/src/main.jsx[22m Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[1] [2m22:51:16[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.jsx[22m
+[1] [2m22:52:09[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/main.jsx[22m
+[1] [2m22:52:10[22m [36m[1m[vite][22m[39m [33mhmr invalidate [39m[2m/src/main.jsx[22m Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[1] [2m22:52:10[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.jsx[22m

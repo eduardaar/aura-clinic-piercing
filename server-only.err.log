@@ -1,0 +1,8 @@
+[Error: SQLITE_ERROR: 23 values for 18 columns] {
+  errno: 1,
+  code: 'SQLITE_ERROR'
+}
+[Error: SQLITE_ERROR: 23 values for 18 columns] {
+  errno: 1,
+  code: 'SQLITE_ERROR'
+}
