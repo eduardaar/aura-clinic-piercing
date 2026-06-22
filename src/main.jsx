@@ -139,10 +139,14 @@ function App() {
   // Verificação de autenticação administrativa
   const isAdminAuthenticated = session?.user?.id ? true : false;
   
-  const isPublicCatalog = window.location.pathname.startsWith("/catalogo");
-  const isPublicBooking = window.location.pathname.startsWith("/agendar");
-  const isPublicCheckout = window.location.pathname.startsWith("/comprar");
-  const isAdminPath = window.location.pathname.startsWith("/admin");
+  // Verificar pathname atual (para renderizar apenas login em /login)
+  const currentPathname = window.location.pathname;
+  const isLoginPath = currentPathname === "/login" || currentPathname.startsWith("/login?");
+  
+  const isPublicCatalog = currentPathname.startsWith("/catalogo");
+  const isPublicBooking = currentPathname.startsWith("/agendar");
+  const isPublicCheckout = currentPathname.startsWith("/comprar");
+  
   const normalizedSession = session?.user ? session : session ? { user: session } : null;
 
   useEffect(() => {
@@ -151,24 +155,34 @@ function App() {
     }
   }, [normalizedSession, page]);
 
-  // Proteção de rotas /admin
-  if (isAdminPath && !normalizedSession) {
-    window.location.href = "/login";
-    return null;
+  // Se está em /login mas já autenticado, redirecionar para home
+  useEffect(() => {
+    if (isLoginPath && isAdminAuthenticated) {
+      window.location.href = "/";
+    }
+  }, [isLoginPath, isAdminAuthenticated]);
+
+  // Se não tem sessão e não está em rota pública, redirecionar para login
+  useEffect(() => {
+    if (!normalizedSession && !isPublicCatalog && !isPublicBooking && !isPublicCheckout && !isLoginPath) {
+      window.location.href = "/login";
+    }
+  }, [normalizedSession, isPublicCatalog, isPublicBooking, isPublicCheckout, isLoginPath]);
+
+  // Se está em /login, renderizar APENAS login (sem app shell)
+  if (isLoginPath) {
+    return <Login onLogin={setSession} />;
   }
 
-  // Se não autenticado e tenta acessar página administrativa via estado
-  if (!isAdminAuthenticated && ADMIN_PAGES.includes(page)) {
-    window.location.href = "/login";
-    return null;
-  }
-
+  // Rotas públicas: sempre acessíveis
   if (isPublicCatalog) return <PublicCatalog />;
   if (isPublicBooking) return <PublicBooking />;
   if (isPublicCheckout) return <PublicCheckout />;
   
-  // Se não tem sessão, mostra apenas login (sem sidebar, sem menu)
-  if (!normalizedSession) return <Login onLogin={setSession} />;
+  // Se não tem sessão, renderizar nada (useEffect acima vai redirecionar)
+  if (!normalizedSession) {
+    return null;
+  }
   
   const activePage = canAccessPage(normalizedSession.user?.role, page) ? page : defaultPageForRole(normalizedSession.user?.role);
 
@@ -180,11 +194,6 @@ function App() {
           page={activePage}
           role={normalizedSession.user?.role}
           setPage={(next) => {
-            // Validar se a página para a qual está tentando ir é acessível
-            if (ADMIN_PAGES.includes(next) && !isAdminAuthenticated) {
-              window.location.href = "/login";
-              return;
-            }
             setPage(next);
             setSidebarOpen(false);
           }}
