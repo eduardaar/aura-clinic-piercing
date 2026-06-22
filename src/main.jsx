@@ -4695,7 +4695,7 @@ function DigitalTerms() {
         <SignaturePad onChange={(signature) => updateField("signature_data_url", signature)} clearKey={form.appointment_id || "empty"} />
         {error && <span className="form-error">{error}</span>}
         <div className="modal-actions">
-          {savedTerm?.pdf_url && <a className="secondary-button" href={`http://localhost:4000${savedTerm.pdf_url}`} target="_blank" rel="noreferrer"><Download size={16} /> Abrir PDF Salvo</a>}
+          {savedTerm?.pdf_url && <a className="secondary-button" href={`${API_ORIGIN}${savedTerm.pdf_url}`} target="_blank" rel="noreferrer"><Download size={16} /> Abrir PDF Salvo</a>}
           <button className="primary-button">Salvar Termo Em PDF</button>
         </div>
       </form>
@@ -4716,7 +4716,7 @@ function DigitalTerms() {
                 <span>{formatDate(term.appointment_date)}  {term.appointment_time}  {term.procedure}</span>
                 <small>{term.professional_name}  assinado em {new Date(term.signed_at).toLocaleDateString("pt-BR")}</small>
               </div>
-              {term.pdf_url && <a className="secondary-button" href={`http://localhost:4000${term.pdf_url}`} target="_blank" rel="noreferrer">PDF</a>}
+              {term.pdf_url && <a className="secondary-button" href={`${API_ORIGIN}${term.pdf_url}`} target="_blank" rel="noreferrer">PDF</a>}
             </article>
           ))}
         </div>
@@ -4930,7 +4930,7 @@ function PostCareCard({ item, onChanged }) {
         <div><dt>Joia</dt><dd>{item.jewelry_name || "sem joia"}</dd></div>
         <div><dt>Profissional</dt><dd>{item.professional_name}</dd></div>
       </dl>
-      {item.client_photo_url && <img className="post-care-photo" src={`http://localhost:4000${item.client_photo_url}`} alt="Foto enviada pelo cliente" />}
+      {item.client_photo_url && <img className="post-care-photo" src={`${API_ORIGIN}${item.client_photo_url}`} alt="Foto enviada pelo cliente" />}
       <form onSubmit={save} className="post-care-form">
         <label>Mensagem personalizada de cuidados
           <textarea value={form.care_message} onChange={(event) => setForm({ ...form, care_message: event.target.value })} />
@@ -5108,8 +5108,8 @@ function MedicalRecordTimeline({ client, onChanged }) {
               <button onClick={() => remove(record.id)}>Apagar</button>
             </header>
             <div className="record-photos">
-              {record.before_photo_url && <figure><img src={`http://localhost:4000${record.before_photo_url}`} alt="Antes" /><figcaption>Antes</figcaption></figure>}
-              {record.after_photo_url && <figure><img src={`http://localhost:4000${record.after_photo_url}`} alt="Depois" /><figcaption>Depois</figcaption></figure>}
+              {record.before_photo_url && <figure><imgsrc={`${API_ORIGIN}${record.before_photo_url}`} alt="Antes" /><figcaption>Antes</figcaption></figure>}
+              {record.after_photo_url && <figure><img src={`${API_ORIGIN}${record.after_photo_url}`} alt="Depois" /><figcaption>Depois</figcaption></figure>}
             </div>
             <dl className="record-details">
               <div><dt>Joias usadas</dt><dd>{record.jewelry_used || record.appointment_jewelry || "Não informado"}</dd></div>
