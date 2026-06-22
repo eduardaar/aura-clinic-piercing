@@ -2232,6 +2232,8 @@ function Inventory2() {
   };
 const optionJewelry = asArray(safeOptions.jewelry);
 const safeOptionJewelry = asArray(optionJewelry);
+const inventoryJewelry = asArray(safeOptions.inventoryJewelry || []);
+const catalogJewelry = asArray(safeOptions.catalogJewelry || []);
 const safeInventoryJewelry = asArray(inventoryJewelry);
 const safeCatalogJewelry = asArray(catalogJewelry);
 
