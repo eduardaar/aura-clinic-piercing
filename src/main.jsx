@@ -2126,7 +2126,7 @@ function Inventory2() {
   const items = data || [];
   const inventoryOptions = options?.inventoryOptions || { category: [], size: [], thickness: [] };
   const allJewelry = options?.jewelry || items;
-  const allVariants = allJewelry.flatMap((item) => item.variants || []);
+  const allVariants = (Array.isArray(allJewelry) ? allJewelry : []).flatMap(...)((item) => item.variants || []);
   const variantOptions = (field) => [...new Set(allVariants.map((variant) => variant[field]).filter(Boolean))].sort();
   const filteredItems = items.filter((item) => {
     if (inventoryMode === "virtual") {
@@ -5761,13 +5761,13 @@ function catalogStockText(item, theme = {}, settings = {}) {
 }
 
 function catalogFilterOptions(items) {
-  const variants = items.flatMap((item) => item.variants || []);
+  const variants =(Array.isArray(items) ? items : []).flatMap(...)((item) => item.variants || []);
   const unique = (key, source = items) => [...new Set(source.map((item) => cleanDisplayText(item[key])).filter(Boolean))].sort();
   return {
     categories: unique("category"),
     subcategories: unique("subcategory"),
     materials: unique("material", variants),
-    colors: [...new Set(variants.flatMap((variant) => splitColorOptions(variant.color)))].sort(),
+    colors: [...new Set((Array.isArray(variants) ? variants : []).flatMap(...)((variant) => splitColorOptions(variant.color)))].sort(),
     stones: unique("stone"),
     sizes: unique("size", variants),
     thicknesses: unique("thickness", variants),
