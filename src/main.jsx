@@ -5108,8 +5108,19 @@ function MedicalRecordTimeline({ client, onChanged }) {
               <button onClick={() => remove(record.id)}>Apagar</button>
             </header>
             <div className="record-photos">
-              {record.before_photo_url && <figure><imgsrc={`${API_ORIGIN}${record.before_photo_url}`} alt="Antes" /><figcaption>Antes</figcaption></figure>}
-              {record.after_photo_url && <figure><img src={`${API_ORIGIN}${record.after_photo_url}`} alt="Depois" /><figcaption>Depois</figcaption></figure>}
+              {record.before_photo_url && (
+  <figure>
+    <img src={`${API_ORIGIN}${record.before_photo_url}`} alt="Antes" />
+    <figcaption>Antes</figcaption>
+  </figure>
+)}
+
+{record.after_photo_url && (
+  <figure>
+    <img src={`${API_ORIGIN}${record.after_photo_url}`} alt="Depois" />
+    <figcaption>Depois</figcaption>
+  </figure>
+)}
             </div>
             <dl className="record-details">
               <div><dt>Joias usadas</dt><dd>{record.jewelry_used || record.appointment_jewelry || "Não informado"}</dd></div>
