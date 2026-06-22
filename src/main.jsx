@@ -252,7 +252,7 @@ function App() {
 }
 
 function Login({ onLogin }) {
-  const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD || "admin@auraclinic.com";
+  const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD || "aura123"; "admin@auraclinic.com";
   const [form, setForm] = useState({ password: "" });
   const [rememberAccess, setRememberAccess] = useState(Boolean(localStorage.getItem("aura-admin-authenticated")));
   const [error, setError] = useState("");
