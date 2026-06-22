@@ -1286,7 +1286,7 @@ function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpen }) {
 
   const cards = [
     { label: "Agendamentos hoje", value: String(safeStats.todayCount ?? 0), icon: Calendar, action: "Ver agenda", page: "agenda", tone: "gold" },
-    { label: "Clientes novos", value: String(upcomingAppointments.length || data?.todaysAppointments?.length || 0), icon: Users, action: "Ver clientes", page: "clients", tone: "nude" },
+    { label: "Clientes novos", value: String(upcomingAppointments.length || data?.todaysAppointments?.length || 0), icon: UsersRound, action: "Ver clientes", page: "clients", tone: "nude" },
     { label: "Joias em estoque crítico", value: String(safeStats.lowStockCount ?? safeStats.criticalStock ?? 0), icon: Gem, action: "Ver estoque", page: "catalog", tone: "green" },
     { label: "Faturamento hoje", value: currency.format(Number(safeStats.depositReceived ?? 0)), icon: CircleDollarSign, action: "Ver Financeiro", page: "finance", tone: "brown" },
     { label: "Aniversariantes do mês", value: String(birthdaysItems.length), icon: Cake, action: "Ver todos", page: "clients", tone: "gold" }
