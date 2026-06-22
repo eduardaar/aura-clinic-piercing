@@ -46,7 +46,9 @@ import {
 } from "lucide-react";
 import "./styles.css";
 
-const API = "http://localhost:4000/api";
+const API =
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.PROD ? "" : "http://localhost:4000/api");
 const API_ORIGIN = API.replace(/\/api$/, "");
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const ANODIZATION_COLOR_OPTIONS = [
