@@ -98,11 +98,46 @@ app.get("/api/catalog", withDb(async (_req, res, db) => {
       fp.sort_order AS featured_order
     FROM jewelry_inventory j
     LEFT JOIN catalog_featured_products fp ON fp.product_id = j.id AND fp.is_active = 1
-    WHERE j.is_catalog_active = 1 AND j.status != 'arquivado'
+    WHERE j.is_catalog_active = 1 AND j.is_published = 1 AND j.status != 'arquivado'
     ORDER BY COALESCE(fp.sort_order, 9999), j.category, j.name
   `);
   const items = (await attachVariants(db, productRows))
-    .filter((item) => showOutOfStock || item.quantity > 0);
+    .filter((item) => showOutOfStock || item.quantity > 0)
+    .map((item) => ({
+      // Dados públicos
+      id: item.id,
+      name: item.name,
+      photo_url: item.photo_url || item.image_url,
+      gallery_urls: item.gallery_urls,
+      category: item.category,
+      subcategory: item.subcategory,
+      material: item.material,
+      color: item.color,
+      stone: item.stone,
+      size: item.size,
+      thickness: item.thickness,
+      sale_value: item.sale_value,
+      quantity: item.quantity,
+      variants: asArray(item.variants).map((v) => ({
+        id: v.id,
+        variation_name: v.variation_name,
+        diameter: v.diameter,
+        length: v.length,
+        size: v.size,
+        thickness: v.thickness,
+        material: v.material,
+        color: v.color,
+        thread_type: v.thread_type,
+        sale_value: v.sale_value || item.sale_value,
+        quantity: v.quantity || item.quantity
+      })),
+      badge: item.badge,
+      is_featured: item.is_featured,
+      is_new: item.is_new,
+      is_promotion: item.is_promotion,
+      is_last_units: item.is_last_units
+      // Dados privados OCULTOS: cost_value, supplier, physical_location, notes, description, etc.
+    }));
   res.json({
     ...customization.settings,
     theme: customization.theme,
@@ -431,12 +466,12 @@ app.get("/api/dashboard", withDb(async (_req, res, db) => {
   `);
   res.json({
     stats: {
-      todayCount: stats.today_count || 0,
-      pendingCount: stats.pending_count || 0,
-      confirmedCount: stats.confirmed_count || 0,
-      lowStockCount: lowStock.count || 0,
-      depositReceived: deposit.total || 0,
-      monthForecast: stats.month_forecast || 0
+      todayCount: stats?.todayCount ?? 0,
+      pendingCount: stats?.pendingCount || 0,
+      confirmedCount: stats?.confirmedCount || 0,
+      lowStockCount: stats?.lowStockCount || 0,
+      depositReceived: stats?.depositReceived || 0,
+      monthForecast: stats?.monthForecast || 0
     },
     todaysAppointments,
     alerts: { lowStockJewelry, birthdays, topClients },
@@ -1000,13 +1035,13 @@ app.patch("/api/jewelry/:id", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   const jewelry = await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [req.params.id]);
   if (!jewelry) return res.status(404).json({ error: "Joia não encontrada." });
-  const fields = ["name", "description", "photo_url", "gallery_urls", "category", "subcategory", "variant_group", "variation_label", "material", "color", "stone", "size", "thickness", "stem_length", "thread_type", "piercing_type", "weight_grams", "package_length_cm", "package_width_cm", "package_height_cm", "package_type", "virtual_store_active", "preparation_days", "shipping_info", "seo_title", "seo_description", "freight_notes", "quantity", "cost_value", "sale_value", "supplier", "physical_location", "sku", "is_catalog_active", "is_featured", "is_new", "is_most_wanted", "is_promotion", "is_last_units", "notes", "status", "low_stock_threshold", "critical_stock_threshold"];
+  const fields = ["name", "description", "photo_url", "image_url", "gallery_urls", "category", "subcategory", "variant_group", "variation_label", "material", "color", "stone", "size", "thickness", "stem_length", "thread_type", "piercing_type", "weight_grams", "package_length_cm", "package_width_cm", "package_height_cm", "package_type", "virtual_store_active", "preparation_days", "shipping_info", "seo_title", "seo_description", "freight_notes", "quantity", "cost_value", "sale_value", "supplier", "physical_location", "sku", "is_catalog_active", "is_featured", "is_new", "is_most_wanted", "is_promotion", "is_last_units", "is_published", "notes", "status", "low_stock_threshold", "critical_stock_threshold"];
   const updates = fields.filter((field) => req.body[field] !== undefined);
   if (updates.length) {
     await db.run(
       `UPDATE jewelry_inventory SET ${updates.map((field) => `${field} = ?`).join(", ")} WHERE id = ?`,
       [...updates.map((field) => {
-        if (["quantity", "cost_value", "sale_value", "low_stock_threshold", "critical_stock_threshold", "weight_grams", "package_length_cm", "package_width_cm", "package_height_cm", "preparation_days", "is_catalog_active", "is_featured", "is_new", "is_most_wanted", "is_promotion", "is_last_units", "virtual_store_active"].includes(field)) return Number(req.body[field] || 0);
+        if (["quantity", "cost_value", "sale_value", "low_stock_threshold", "critical_stock_threshold", "weight_grams", "package_length_cm", "package_width_cm", "package_height_cm", "preparation_days", "is_catalog_active", "is_featured", "is_new", "is_most_wanted", "is_promotion", "is_last_units", "virtual_store_active", "is_published"].includes(field)) return Number(req.body[field] || 0);
         if (field === "gallery_urls") return typeof req.body.gallery_urls === "string" ? req.body.gallery_urls : JSON.stringify(req.body.gallery_urls || []);
         return field === "name" ? elegantProductName(req.body[field]) : req.body[field];
       }), req.params.id]

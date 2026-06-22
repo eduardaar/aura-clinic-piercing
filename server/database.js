@@ -492,6 +492,8 @@ export async function initDb() {
   await enrichJewelryVariantLabels(db);
   await normalizeVariantSkuSequences(db);
   await syncCatalogJewelryCategories(db);
+  await ensurePublishedColumn(db);
+  await ensureImageUrlColumn(db);
 
   await db.close();
 }
@@ -1011,5 +1013,21 @@ async function normalizeVariantSkuSequences(db) {
         );
       }
     }
+  }
+}
+
+async function ensurePublishedColumn(db) {
+  try {
+    await db.run("ALTER TABLE jewelry_inventory ADD COLUMN is_published INTEGER NOT NULL DEFAULT 0");
+  } catch (error) {
+    // Coluna já existe
+  }
+}
+
+async function ensureImageUrlColumn(db) {
+  try {
+    await db.run("ALTER TABLE jewelry_inventory ADD COLUMN image_url TEXT");
+  } catch (error) {
+    // Coluna já existe ou já foi adicionada
   }
 }

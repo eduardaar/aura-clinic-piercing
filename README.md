@@ -38,8 +38,7 @@ Depois acesse:
 
 ## Login de teste
 
-- E-mail: `admin@auraclinic.com`
-- Senha: `aura123`
+- Senha: `aura123` (defina `VITE_ADMIN_PASSWORD` em `.env.local`)
 
 Se a sessao antiga ficar invalida depois de atualizacoes de autenticacao, saia do sistema ou limpe o armazenamento do navegador e entre novamente.
 
@@ -63,6 +62,7 @@ public/
 - Menu lateral e layout principal responsivo
 - Permissoes por perfil no frontend
 - Protecao de rotas sensiveis no backend
+- **Separação entre site público e painel administrativo (novo)**
 - Dashboard premium com indicadores, alertas e graficos
 - Agendamento manual em modal e agenda pública com horários por profissional
 - Agenda visual mensal, semanal e diária
@@ -75,6 +75,52 @@ public/
 - Pos-atendimento com lembretes de 7, 15 e 30 dias
 - Fidelidade com pontos, niveis e resgates
 - Acessos administrativos por papel
+
+## Segurança e Acesso
+
+### Rotas públicas (sem autenticação)
+- `/` - Página inicial
+- `/catalogo` - Catálogo de produtos publicados
+- `/agendar` - Agendamento público
+- `/comprar` - Checkout público
+
+### Rotas administrativas (autenticação obrigatória)
+- `/admin` - Dashboard administrativo
+- `/admin/estoque` - Gestão de estoque e produtos
+- `/admin/agenda` - Agenda interna
+- `/admin/clientes` - Base de clientes
+- `/admin/financeiro` - Relatórios financeiros
+- `/admin/configuracoes` - Configurações do sistema
+
+### Proteção de dados
+
+O catálogo público mostra apenas:
+- Nome, foto, categoria, material, tamanho, cor
+- Preço final (sale_value)
+- Variações disponíveis
+- Estoque disponível (somente se quantidade > 0)
+
+**Dados ocultos do público:**
+- Custo de produção (cost_value)
+- Lucro estimado
+- Fornecedor
+- Observações internas
+- Endereço físico do estoque
+- Dados de clientes
+- Financeiro interno
+- Relatórios
+
+### Autenticação
+
+1. Copie `.env.example` para `.env.local`
+2. Defina `VITE_ADMIN_PASSWORD` com uma senha forte
+3. Acesse `/login` e digite a senha
+4. Sessão salva em `localStorage` (aura-admin-authenticated)
+
+**Em produção:**
+- Use HTTPS obrigatoriamente
+- Altere `AUTH_SECRET` e `VITE_ADMIN_PASSWORD` com valores únicos
+- Configure variáveis de ambiente no servidor
 
 ## Banco de dados
 

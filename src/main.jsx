@@ -51,6 +51,23 @@ const API =
   (import.meta.env.PROD ? "" : "http://localhost:4000/api");
 const API_ORIGIN = API.replace(/\/api$/, "");
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
+// Páginas que requerem autenticação administrativa
+const ADMIN_PAGES = [
+  "dashboard",
+  "erp",
+  "agenda",
+  "catalog",
+  "catalog-customization",
+  "sales",
+  "finance",
+  "client-center",
+  "clients",
+  "terms",
+  "postcare",
+  "admin"
+];
+
 const ANODIZATION_COLOR_OPTIONS = [
   { name: "Natural", color: "#B8B8B3" },
   { name: "Bronze", color: "#9A6A3A" },
@@ -118,9 +135,14 @@ function App() {
   const [page, setPage] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
+  
+  // Verificação de autenticação administrativa
+  const isAdminAuthenticated = session?.user?.id ? true : false;
+  
   const isPublicCatalog = window.location.pathname.startsWith("/catalogo");
   const isPublicBooking = window.location.pathname.startsWith("/agendar");
   const isPublicCheckout = window.location.pathname.startsWith("/comprar");
+  const isAdminPath = window.location.pathname.startsWith("/admin");
   const normalizedSession = session?.user ? session : session ? { user: session } : null;
 
   useEffect(() => {
@@ -129,27 +151,52 @@ function App() {
     }
   }, [normalizedSession, page]);
 
+  // Proteção de rotas /admin
+  if (isAdminPath && !normalizedSession) {
+    window.location.href = "/login";
+    return null;
+  }
+
+  // Se não autenticado e tenta acessar página administrativa via estado
+  if (!isAdminAuthenticated && ADMIN_PAGES.includes(page)) {
+    window.location.href = "/login";
+    return null;
+  }
+
   if (isPublicCatalog) return <PublicCatalog />;
   if (isPublicBooking) return <PublicBooking />;
   if (isPublicCheckout) return <PublicCheckout />;
+  
+  // Se não tem sessão, mostra apenas login (sem sidebar, sem menu)
   if (!normalizedSession) return <Login onLogin={setSession} />;
+  
   const activePage = canAccessPage(normalizedSession.user?.role, page) ? page : defaultPageForRole(normalizedSession.user?.role);
 
   return (
     <div className="app-shell">
-      <Sidebar
-        page={activePage}
-        role={normalizedSession.user?.role}
-        setPage={(next) => {
-          setPage(next);
-          setSidebarOpen(false);
-        }}
-        open={sidebarOpen}
-        onLogout={() => {
-          localStorage.removeItem("aura-session");
-          setSession(null);
-        }}
-      />
+      {/* Sidebar apenas renderizado se autenticado */}
+      {isAdminAuthenticated && (
+        <Sidebar
+          page={activePage}
+          role={normalizedSession.user?.role}
+          setPage={(next) => {
+            // Validar se a página para a qual está tentando ir é acessível
+            if (ADMIN_PAGES.includes(next) && !isAdminAuthenticated) {
+              window.location.href = "/login";
+              return;
+            }
+            setPage(next);
+            setSidebarOpen(false);
+          }}
+          open={sidebarOpen}
+          onLogout={() => {
+            localStorage.removeItem("aura-session");
+            localStorage.removeItem("aura-admin-authenticated");
+            setSession(null);
+          }}
+        />
+      )}
+      
       <main className="main-content">
         <header className="topbar">
           <button className="icon-button mobile-only" onClick={() => setSidebarOpen(true)} aria-label="Abrir menu">
@@ -196,34 +243,35 @@ function App() {
 }
 
 function Login({ onLogin }) {
-  const rememberedEmail = localStorage.getItem("aura-remembered-email") || "admin@auraclinic.com";
-  const [form, setForm] = useState({ email: rememberedEmail, password: "aura123" });
-  const [rememberAccess, setRememberAccess] = useState(Boolean(localStorage.getItem("aura-remembered-email")));
+  const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD || "admin@auraclinic.com";
+  const [form, setForm] = useState({ password: "" });
+  const [rememberAccess, setRememberAccess] = useState(Boolean(localStorage.getItem("aura-admin-authenticated")));
   const [error, setError] = useState("");
 
- async function submit(event) {
-  event.preventDefault();
-  setError("");
+  async function submit(event) {
+    event.preventDefault();
+    setError("");
 
-  const isDemoLogin =
-    form.email === "admin@auraclinic.com" &&
-    form.password === "aura123";
+    // Verificação de senha simples
+    const isValidPassword = form.password === adminPassword;
 
-  if (isDemoLogin) {
-    const user = {
-      id: 1,
-      name: "Administrador Aura",
-      email: "admin@auraclinic.com",
-      role: "admin",
-    };
+    if (isValidPassword) {
+      const user = {
+        id: 1,
+        name: "Administrador Aura",
+        email: "admin@auraclinic.com",
+        role: "admin",
+      };
 
-    localStorage.setItem("aura-session", JSON.stringify({ user }));
-    onLogin({ user });
-    return;
+      // Salvar autenticação no localStorage
+      localStorage.setItem("aura-admin-authenticated", rememberAccess ? "true" : "");
+      localStorage.setItem("aura-session", JSON.stringify({ user }));
+      onLogin({ user });
+      return;
+    }
+
+    setError("Senha incorreta. Por favor, tente novamente.");
   }
-
-  setError("E-mail ou senha incorretos.");
-}
 
   return (
     <main className="login-screen">
@@ -243,15 +291,12 @@ function Login({ onLogin }) {
         </div>
 
         <form className="login-form" onSubmit={submit}>
-          <label>E-mail
-            <input type="email" autoComplete="username" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-          </label>
-          <label>Senha
-            <input type="password" autoComplete="current-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+          <label>Senha da Central Administrativa
+            <input type="password" autoComplete="current-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Digite a senha" />
           </label>
           <label className="remember-access">
             <input type="checkbox" checked={rememberAccess} onChange={(event) => setRememberAccess(event.target.checked)} />
-            <span>Lembrar acesso</span>
+            <span>Manter conectado</span>
           </label>
           {error && <span className="form-error">{error}</span>}
           <button className="login-submit">Entrar no sistema <ChevronRight size={18} /></button>
@@ -338,8 +383,10 @@ function PublicCatalog() {
   const activeBanner = banners[bannerIndex % banners.length] || fallbackBanner;
   const categories = asArray(catalogCategoriesFromCatalog(safeData));
   const catalogItems = asArray(safeData.items);
-  const selectedProduct = catalogItems.find((item) => asNumber(item?.id) === selectedProductId) || null;
-  const filteredItems = catalogItems.filter((item) => {
+  // Filtrar apenas produtos publicados para o catálogo público
+  const publishedItems = catalogItems.filter((item) => Boolean(Number(item.is_published || 0)));
+  const selectedProduct = publishedItems.find((item) => asNumber(item?.id) === selectedProductId) || null;
+  const filteredItems = publishedItems.filter((item) => {
     const haystack = `${item.name} ${item.category} ${item.material} ${item.color} ${item.stone} ${item.size} ${item.thickness} ${item.notes}`.toLowerCase();
     const activeCategoryConfig = categories.find((category) => category.name === activeCategory);
     const categoryMatch = activeCategory === "Todos" || catalogCategoryTerms(activeCategoryConfig?.match || activeCategory).some((term) => haystack.includes(term));
@@ -351,14 +398,14 @@ function PublicCatalog() {
     return categoryMatch && searchMatch && materialMatch && colorMatch && stoneMatch && sizeMatch;
   });
     const items = [...filteredItems].sort((a, b) => sort === "menor-preco" ? a.sale_value - b.sale_value : sort === "maior-preco" ? b.sale_value - a.sale_value : b.id - a.id);
-  const options = catalogFilterOptions(catalogItems);
-  const latestItems = catalogItems.filter((item) => Number(item.quantity || 0) > 0).sort((a, b) => b.id - a.id).slice(0, 8);
-  const bestSellerItems = catalogItems.filter((item) => Number(item.quantity || 0) > 0).sort((a, b) => Number(b.sale_value || 0) - Number(a.sale_value || 0)).slice(0, 8);
-  const lastUnitsItems = catalogItems.filter((item) => Number(item.quantity || 0) > 0 && Number(item.quantity || 0) <= 2).slice(0, 8);
-  const promoItems = catalogItems.filter((item) => catalogPromotionForItem(item, asArray(safeData.promotions))).slice(0, 8);
+  const options = catalogFilterOptions(publishedItems);
+  const latestItems = publishedItems.filter((item) => Number(item.quantity || 0) > 0).sort((a, b) => b.id - a.id).slice(0, 8);
+  const bestSellerItems = publishedItems.filter((item) => Number(item.quantity || 0) > 0).sort((a, b) => Number(b.sale_value || 0) - Number(a.sale_value || 0)).slice(0, 8);
+  const lastUnitsItems = publishedItems.filter((item) => Number(item.quantity || 0) > 0 && Number(item.quantity || 0) <= 2).slice(0, 8);
+  const promoItems = publishedItems.filter((item) => catalogPromotionForItem(item, asArray(safeData.promotions))).slice(0, 8);
   const safeFavoriteIds = asArray(favoriteIds);
   const safeOrderItems = asArray(orderItems);
-  const favoriteItems = catalogItems.filter((item) => safeFavoriteIds.includes(item.id));
+  const favoriteItems = publishedItems.filter((item) => safeFavoriteIds.includes(item.id));
   const orderTotal = safeOrderItems.reduce((sum, item) => sum + asNumber(item?.sale_value) * asNumber(item?.qty, 1), 0);
   const catalogStyle = {
     "--catalog-primary": theme.primary_color || "#C8A96A",
@@ -2640,11 +2687,13 @@ function JewelryEditor({ options, editing, onSaved, onCancel, onMovementOpen }) 
       sale_value: Math.min(...form.variants.map((variant) => Number(variant.sale_value || 0))),
       virtual_store_active: Boolean(form.virtual_store_active),
       is_catalog_active: Boolean(form.is_catalog_active),
+      is_published: Boolean(form.is_published),
       is_featured: Boolean(form.is_featured),
       is_new: Boolean(form.is_new),
       is_most_wanted: Boolean(form.is_most_wanted),
       is_promotion: Boolean(form.is_promotion),
-      is_last_units: Boolean(form.is_last_units)
+      is_last_units: Boolean(form.is_last_units),
+      image_url: form.image_url
     };
     const response = await apiFetch(`/jewelry${editing ? `/${editing.id}` : ""}`, {
       method: editing ? "PATCH" : "POST",
@@ -2847,10 +2896,14 @@ function JewelryEditor({ options, editing, onSaved, onCancel, onMovementOpen }) 
 
       {editorTab === "virtual" && (
         <div className="editor-section">
-          <Toggle label="Loja virtual ativa" checked={form.virtual_store_active} onChange={(value) => setForm({ ...form, virtual_store_active: value })} />
+          <div className="form-grid">
+            <Toggle label="Loja virtual ativa" checked={form.virtual_store_active} onChange={(value) => setForm({ ...form, virtual_store_active: value })} />
+            <Toggle label="Publicar no catálogo público" checked={form.is_published} onChange={(value) => setForm({ ...form, is_published: value })} />
+          </div>
           {Boolean(form.virtual_store_active) && (
             <>
               <div className="form-grid">
+                <Input label="URL da imagem (para catálogo)" value={form.image_url} onChange={(value) => setForm({ ...form, image_url: value })} placeholder="https://..." />
                 <Input type="number" label="Peso para envio (g)" value={form.weight_grams} onChange={(value) => setForm({ ...form, weight_grams: value })} />
                 <Input type="number" label="Comprimento da embalagem (cm)" value={form.package_length_cm} onChange={(value) => setForm({ ...form, package_length_cm: value })} />
                 <Input type="number" label="Largura da embalagem (cm)" value={form.package_width_cm} onChange={(value) => setForm({ ...form, package_width_cm: value })} />
@@ -5591,6 +5644,7 @@ function defaultJewelry() {
     name: "",
     description: "",
     photo_url: "https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=900&q=80",
+    image_url: "",
     gallery_urls: "",
     category: "",
     subcategory: "",
@@ -5629,6 +5683,7 @@ function defaultJewelry() {
     is_most_wanted: false,
     is_promotion: false,
     is_last_units: false,
+    is_published: false,
     notes: "",
     status: "disponível",
     variants: [defaultJewelryVariant()]
