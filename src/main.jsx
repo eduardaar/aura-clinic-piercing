@@ -71,6 +71,9 @@ const ANODIZATION_COLOR_OPTIONS = [
 const JEWELRY_LENGTH_OPTIONS = Array.from({ length: 11 }, (_, index) => `${index + 4}mm`);
 const JEWELRY_THICKNESS_OPTIONS = ["0.8mm", "1.0mm", "1.2mm", "1.6mm", "2.0mm", "2.5mm"];
 const JEWELRY_THREAD_OPTIONS = ["Interna", "Externa", "Push Pin"];
+const asArray = (value) => Array.isArray(value) ? value : [];
+const asNumber = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+const asObject = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
 const statusClass = {
   pendente: "status-pendente",
   confirmado: "status-confirmado",
@@ -78,6 +81,37 @@ const statusClass = {
   cancelado: "status-cancelado",
   remarcado: "status-remarcado"
 };
+
+class AppErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, info) {
+    console.error("Aura Clinic runtime error:", error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <main className="runtime-error-page">
+          <section className="panel">
+            <span className="eyebrow">Aura Clinic</span>
+            <h1>Erro ao carregar esta área</h1>
+            <p>Os dados ainda podem estar sendo preparados. Volte ao início e tente novamente.</p>
+            <button type="button" className="primary-button" onClick={() => { window.location.href = "/"; }}>Voltar ao início</button>
+          </section>
+        </main>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function App() {
   const [session, setSession] = useState(readStoredSession);
@@ -276,7 +310,7 @@ function PublicCatalog() {
   }, [orderItems]);
 
   useEffect(() => {
-    const activeCount = (data?.banners || []).filter((banner) => Boolean(Number(banner.is_active))).length;
+    const activeCount = asArray(data?.banners).filter((banner) => Boolean(asNumber(banner?.is_active))).length;
     if (activeCount <= 1) return undefined;
     const timer = window.setInterval(() => setBannerIndex((index) => (index + 1) % activeCount), 4500);
     return () => window.clearInterval(timer);
@@ -285,10 +319,11 @@ function PublicCatalog() {
   if (!data) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
 
-  const theme = data.theme || {};
-  const settings = data || {};
+  const safeData = asObject(data);
+  const theme = asObject(safeData.theme);
+  const settings = safeData;
   const contentSections = catalogContentSections(settings.content_sections);
-  const activeBanners = (data.banners || []).filter((banner) => Boolean(Number(banner.is_active))).sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
+  const activeBanners = asArray(safeData.banners).filter((banner) => Boolean(asNumber(banner?.is_active))).sort((a, b) => asNumber(a?.sort_order) - asNumber(b?.sort_order));
   const fallbackBanner = {
     title: data.title || "Escolha a joia perfeita para você",
     subtitle: data.subtitle || "",
@@ -301,9 +336,10 @@ function PublicCatalog() {
   };
     const banners = activeBanners.length ? activeBanners : [fallbackBanner];
   const activeBanner = banners[bannerIndex % banners.length] || fallbackBanner;
-  const categories = catalogCategoriesFromCatalog(data);
-  const selectedProduct = (data.items || []).find((item) => Number(item.id) === selectedProductId) || null;
-  const filteredItems = (data.items || []).filter((item) => {
+  const categories = asArray(catalogCategoriesFromCatalog(safeData));
+  const catalogItems = asArray(safeData.items);
+  const selectedProduct = catalogItems.find((item) => asNumber(item?.id) === selectedProductId) || null;
+  const filteredItems = catalogItems.filter((item) => {
     const haystack = `${item.name} ${item.category} ${item.material} ${item.color} ${item.stone} ${item.size} ${item.thickness} ${item.notes}`.toLowerCase();
     const activeCategoryConfig = categories.find((category) => category.name === activeCategory);
     const categoryMatch = activeCategory === "Todos" || catalogCategoryTerms(activeCategoryConfig?.match || activeCategory).some((term) => haystack.includes(term));
@@ -315,14 +351,15 @@ function PublicCatalog() {
     return categoryMatch && searchMatch && materialMatch && colorMatch && stoneMatch && sizeMatch;
   });
     const items = [...filteredItems].sort((a, b) => sort === "menor-preco" ? a.sale_value - b.sale_value : sort === "maior-preco" ? b.sale_value - a.sale_value : b.id - a.id);
-  const options = catalogFilterOptions(data.items || []);
-  const catalogItems = data.items || [];
+  const options = catalogFilterOptions(catalogItems);
   const latestItems = catalogItems.filter((item) => Number(item.quantity || 0) > 0).sort((a, b) => b.id - a.id).slice(0, 8);
   const bestSellerItems = catalogItems.filter((item) => Number(item.quantity || 0) > 0).sort((a, b) => Number(b.sale_value || 0) - Number(a.sale_value || 0)).slice(0, 8);
   const lastUnitsItems = catalogItems.filter((item) => Number(item.quantity || 0) > 0 && Number(item.quantity || 0) <= 2).slice(0, 8);
-  const promoItems = catalogItems.filter((item) => catalogPromotionForItem(item, data.promotions || [])).slice(0, 8);
-  const favoriteItems = (data.items || []).filter((item) => favoriteIds.includes(item.id));
-  const orderTotal = orderItems.reduce((sum, item) => sum + Number(item.sale_value || 0) * Number(item.qty || 1), 0);
+  const promoItems = catalogItems.filter((item) => catalogPromotionForItem(item, asArray(safeData.promotions))).slice(0, 8);
+  const safeFavoriteIds = asArray(favoriteIds);
+  const safeOrderItems = asArray(orderItems);
+  const favoriteItems = catalogItems.filter((item) => safeFavoriteIds.includes(item.id));
+  const orderTotal = safeOrderItems.reduce((sum, item) => sum + asNumber(item?.sale_value) * asNumber(item?.qty, 1), 0);
   const catalogStyle = {
     "--catalog-primary": theme.primary_color || "#C8A96A",
     "--catalog-secondary": theme.secondary_color || "#D8C3A5",
@@ -332,11 +369,15 @@ function PublicCatalog() {
   };
 
   function toggleFavorite(item) {
-    setFavoriteIds((current) => current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id]);
+    setFavoriteIds((current) => {
+      const safeCurrent = asArray(current);
+      return safeCurrent.includes(item.id) ? safeCurrent.filter((id) => id !== item.id) : [...safeCurrent, item.id];
+    });
   }
 
 function addToOrder(item) {
-    setOrderItems((current) => {
+    setOrderItems((currentValue) => {
+      const current = asArray(currentValue);
       const orderKey = `${item.id}-${item.selected_variant_id || "produto"}-${item.selected_color || "sem-cor"}`;
       const existing = current.find((orderItem) => orderItem.order_key === orderKey);
       if (existing) return current.map((orderItem) => orderItem.order_key === orderKey ? { ...orderItem, qty: Number(orderItem.qty || 1) + 1 } : orderItem);
@@ -345,11 +386,11 @@ function addToOrder(item) {
   }
 
   function removeFromOrder(id) {
-    setOrderItems((current) => current.filter((item) => (item.order_key || item.id) !== id));
+    setOrderItems((current) => asArray(current).filter((item) => (item.order_key || item.id) !== id));
   }
 
   function updateOrderItemNotes(id, notes) {
-    setOrderItems((current) => current.map((item) => ((item.order_key || item.id) === id ? { ...item, customer_notes: notes } : item)));
+    setOrderItems((current) => asArray(current).map((item) => ((item.order_key || item.id) === id ? { ...item, customer_notes: notes } : item)));
   }
 
   if (selectedProduct) {
@@ -566,11 +607,12 @@ function addToOrder(item) {
 }
 
 function CatalogSelect({ label, value, options, onChange }) {
+  const safeOptions = asArray(options);
   return (
     <label className="catalog-filter-select">
       <select value={value} onChange={(event) => onChange(event.target.value)}>
         <option value="">{label}</option>
-        {options.map((option) => <option key={option} value={option}>{elegantProductName(option)}</option>)}
+        {safeOptions.map((option) => <option key={option} value={option}>{elegantProductName(option)}</option>)}
       </select>
     </label>
   );
@@ -583,8 +625,9 @@ function CatalogBookingWidget() {
     return { service_id: "", professional_id: "", appointment_date: today, appointment_time: "" };
   });
   const [slots, setSlots] = useState([]);
-  const services = data?.services || [];
-  const professionals = data?.professionals || [];
+  const safeData = asObject(data);
+  const services = asArray(safeData.services);
+  const professionals = asArray(safeData.professionals);
   const bookingDates = nextBookingDates(10);
 
   useEffect(() => {
@@ -602,7 +645,7 @@ function CatalogBookingWidget() {
       if (!form.service_id || !form.professional_id || !form.appointment_date) return setSlots([]);
       const response = await fetch(API + "/booking/slots?service_id=" + form.service_id + "&professional_id=" + form.professional_id + "&date=" + form.appointment_date);
       const json = await response.json().catch(() => ({}));
-      setSlots(response.ok ? json.slots || [] : []);
+      setSlots(response.ok ? asArray(json.slots) : []);
     }
     loadSlots();
   }, [form.service_id, form.professional_id, form.appointment_date]);
@@ -636,7 +679,7 @@ function CatalogBookingWidget() {
 }
 
 function CatalogContentSections({ sections }) {
-  const active = sections.filter((section) => Boolean(section.active));
+  const active = asArray(sections).filter((section) => Boolean(section?.active));
   if (!active.length) return null;
   return (
     <section className="catalog-content-sections">
@@ -660,7 +703,9 @@ function CatalogContentSections({ sections }) {
 }
 
 function CatalogProductRail({ title, subtitle, items, data, theme, settings, favoriteIds, onToggleFavorite, onAdd }) {
-  if (!items.length) return null;
+  const safeItems = asArray(items);
+  const safeFavoriteIds = asArray(favoriteIds);
+  if (!safeItems.length) return null;
   return (
     <section className="catalog-product-rail">
       <header>
@@ -671,10 +716,10 @@ function CatalogProductRail({ title, subtitle, items, data, theme, settings, fav
         <a href="#catalog-products">Ver todos</a>
       </header>
       <div>
-        {items.map((item) => (
+        {safeItems.map((item) => (
           <CatalogProductCard
             item={item}
-            favorite={favoriteIds.includes(item.id)}
+            favorite={safeFavoriteIds.includes(item.id)}
             onToggleFavorite={() => onToggleFavorite(item)}
             theme={theme}
             settings={settings}
@@ -736,7 +781,7 @@ function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, th
 
 function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite, onToggleFavorite, onAddToOrder }) {
   const productName = elegantProductName(item.name);
-  const availableVariants = (item.variants || []).filter((variant) => Boolean(Number(variant.is_active ?? 1)));
+  const availableVariants = asArray(item?.variants).filter((variant) => Boolean(asNumber(variant?.is_active, 1)));
   const [selectedVariantId, setSelectedVariantId] = useState(availableVariants.find((variant) => Number(variant.quantity || 0) > 0)?.id || availableVariants[0]?.id || "");
   const selectedVariant = availableVariants.find((variant) => Number(variant.id) === Number(selectedVariantId)) || availableVariants[0] || {};
   const colorOptions = splitColorOptions(selectedVariant.color);
@@ -764,7 +809,7 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
   const stockText = catalogStockText(item, theme, settings);
   const saleValue = Number(selectedVariant.sale_value || item.sale_value || 0);
   const available = Number(selectedVariant.quantity ?? item.quantity ?? 0) > 0 && selectedVariant.status !== "esgotado";
-  const related = (data.items || [])
+  const related = asArray(data?.items)
     .filter((candidate) => candidate.id !== item.id && (candidate.category === item.category || candidate.subcategory === item.subcategory))
     .slice(0, 4);
 
@@ -870,12 +915,14 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
 
 function CatalogDrawer({ type, favorites, orderItems, orderTotal, whatsappPhone, onClose, onRemoveFavorite, onRemoveOrder, onUpdateOrderNotes, onClearOrder }) {
   const isFavorites = type === "favorites";
-  const items = isFavorites ? favorites : orderItems;
-  const favoriteMessage = favorites.length
-    ? `Olá! Quero ajuda com estas joias favoritas: ${favorites.map((item) => item.name).join(", ")}.`
+  const safeFavorites = asArray(favorites);
+  const safeOrderItems = asArray(orderItems);
+  const items = isFavorites ? safeFavorites : safeOrderItems;
+  const favoriteMessage = safeFavorites.length
+    ? `Olá! Quero ajuda com estas joias favoritas: ${safeFavorites.map((item) => item.name).join(", ")}.`
     : "Olá! Quero ajuda para escolher minhas joias favoritas no catálogo da Aura Clinic.";
-  const message = orderItems.length
-    ? `Olá! Quero agendar com estas joias: ${orderItems.map((item) => `${item.qty || 1}x ${item.name}${item.customer_notes ? ` (${item.customer_notes})` : ""}`).join(", ")}. Total aproximado: ${currency.format(orderTotal)}.`
+  const message = safeOrderItems.length
+    ? `Olá! Quero agendar com estas joias: ${safeOrderItems.map((item) => `${item.qty || 1}x ${item.name}${item.customer_notes ? ` (${item.customer_notes})` : ""}`).join(", ")}. Total aproximado: ${currency.format(asNumber(orderTotal))}.`
     : "Olá! Quero ajuda para montar meu pedido no catálogo da Aura Clinic.";
 
   return (
@@ -907,7 +954,7 @@ function CatalogDrawer({ type, favorites, orderItems, orderTotal, whatsappPhone,
             <div><span>Total aproximado</span><strong>{currency.format(orderTotal)}</strong></div>
             <a className="secondary-button" href="/comprar">Finalizar no site</a>
             <a className="primary-button whatsapp-checkout" href={whatsappCatalogUrl(message, whatsappPhone)} target="_blank" rel="noreferrer"><MessageCircle size={17} /> Finalizar pelo WhatsApp</a>
-            {orderItems.length > 0 && <button className="secondary-button" onClick={onClearOrder}>Limpar pedido</button>}
+            {safeOrderItems.length > 0 && <button className="secondary-button" onClick={onClearOrder}>Limpar pedido</button>}
           </footer>
         )}
         {isFavorites && (
@@ -926,12 +973,13 @@ function PublicCheckout() {
   const [orderItems, setOrderItems] = useState(() => readCatalogStorage("aura-catalog-order", []));
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(null);
+  const safeOrderItems = asArray(orderItems);
 
   useEffect(() => {
     setOrderItems(readCatalogStorage("aura-catalog-order", []));
   }, []);
 
-  const total = orderItems.reduce((sum, item) => sum + Number(item.sale_value || 0) * Number(item.qty || 1), 0);
+  const total = safeOrderItems.reduce((sum, item) => sum + asNumber(item?.sale_value) * asNumber(item?.qty, 1), 0);
 
   async function submit(event) {
     event.preventDefault();
@@ -940,7 +988,7 @@ function PublicCheckout() {
       setError("Informe nome e WhatsApp para concluir a compra.");
       return;
     }
-    if (!orderItems.length) {
+    if (!safeOrderItems.length) {
       setError("Seu pedido está vazio.");
       return;
     }
@@ -956,7 +1004,7 @@ function PublicCheckout() {
         source: "site",
         order_type: "produto",
         notes: form.notes,
-        items: orderItems.map((item) => ({
+        items: safeOrderItems.map((item) => ({
           item_type: "produto",
           product_id: item.id,
           item_name: item.name,
@@ -1029,10 +1077,10 @@ function PublicCheckout() {
           <div className="panel">
             <div className="panel-heading">
               <h2>Resumo do pedido</h2>
-              <span>{orderItems.length} item(ns)</span>
+              <span>{safeOrderItems.length} item(ns)</span>
             </div>
             <div className="sales-checkout-items">
-              {orderItems.length ? orderItems.map((item) => (
+              {safeOrderItems.length ? safeOrderItems.map((item) => (
                 <article key={item.id} className="sales-checkout-item">
                   <img src={catalogImageUrl(item.photo_url)} alt={item.name} />
                   <div>
@@ -1065,8 +1113,9 @@ function PublicBooking() {
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [error, setError] = useState("");
   const [confirmed, setConfirmed] = useState(null);
-  const services = data?.services || [];
-  const professionals = data?.professionals || [];
+  const safeData = asObject(data);
+  const services = asArray(safeData.services);
+  const professionals = asArray(safeData.professionals);
   const bookingDates = nextBookingDates(10);
   const selectedService = services.find((item) => String(item.id) === String(form.service_id));
   const selectedProfessional = professionals.find((item) => String(item.id) === String(form.professional_id));
@@ -1078,7 +1127,7 @@ function PublicBooking() {
       const response = await fetch(API + "/booking/slots?service_id=" + form.service_id + "&professional_id=" + form.professional_id + "&date=" + form.appointment_date);
       const json = await response.json().catch(() => ({}));
       setLoadingSlots(false);
-      setSlots(response.ok ? json.slots || [] : []);
+      setSlots(response.ok ? asArray(json.slots) : []);
       if (!response.ok) setError(json.error || "Não foi possível carregar os horários.");
     }
     loadSlots();
@@ -1263,6 +1312,7 @@ function Dashboard({ user, setPage, alertsOpen, setAlertsOpen }) {
 
 function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpen }) {
   const [revenueMode, setRevenueMode] = useState("mensal");
+  const safeData = asObject(data);
   const safeStats = {
     todayCount: 0,
     pendingCount: 0,
@@ -1272,21 +1322,22 @@ function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpen }) {
     lowStockCount: 0,
     depositReceived: 0,
     monthForecast: 0,
-    ...(data?.stats || {})
+    ...asObject(safeData.stats)
   };
-  const adminDashboard = data?.adminDashboard || {};
-  const alertsData = data?.alerts || {};
-  const upcomingAppointments = Array.isArray(adminDashboard.upcomingAppointments) ? adminDashboard.upcomingAppointments : [];
-  const criticalStockItems = Array.isArray(adminDashboard.criticalStock) ? adminDashboard.criticalStock : [];
-  const birthdaysItems = Array.isArray(adminDashboard.birthdaysMonth) ? adminDashboard.birthdaysMonth : [];
-  const procedureRanking = Array.isArray(adminDashboard.procedureRanking) ? adminDashboard.procedureRanking : [];
-  const jewelryRanking = Array.isArray(adminDashboard.jewelryRanking) ? adminDashboard.jewelryRanking : [];
-  const categoryRanking = Array.isArray(adminDashboard.categoryRanking) ? adminDashboard.categoryRanking : [];
-  const returnClients = Array.isArray(adminDashboard.returnClients) ? adminDashboard.returnClients : [];
+  const adminDashboard = asObject(safeData.adminDashboard);
+  const alertsData = asObject(safeData.alerts);
+  const upcomingAppointments = asArray(adminDashboard.upcomingAppointments);
+  const criticalStockItems = asArray(adminDashboard.criticalStock);
+  const birthdaysItems = asArray(adminDashboard.birthdaysMonth);
+  const procedureRanking = asArray(adminDashboard.procedureRanking);
+  const jewelryRanking = asArray(adminDashboard.jewelryRanking);
+  const categoryRanking = asArray(adminDashboard.categoryRanking);
+  const returnClients = asArray(adminDashboard.returnClients);
+  const todaysAppointments = asArray(safeData.todaysAppointments);
 
   const cards = [
     { label: "Agendamentos hoje", value: String(safeStats.todayCount ?? 0), icon: Calendar, action: "Ver agenda", page: "agenda", tone: "gold" },
-    { label: "Clientes novos", value: String(upcomingAppointments.length || data?.todaysAppointments?.length || 0), icon: UsersRound, action: "Ver clientes", page: "clients", tone: "nude" },
+    { label: "Clientes novos", value: String(upcomingAppointments.length || todaysAppointments.length), icon: UsersRound, action: "Ver clientes", page: "clients", tone: "nude" },
     { label: "Joias em estoque crítico", value: String(safeStats.lowStockCount ?? safeStats.criticalStock ?? 0), icon: Gem, action: "Ver estoque", page: "catalog", tone: "green" },
     { label: "Faturamento hoje", value: currency.format(Number(safeStats.depositReceived ?? 0)), icon: CircleDollarSign, action: "Ver Financeiro", page: "finance", tone: "brown" },
     { label: "Aniversariantes do mês", value: String(birthdaysItems.length), icon: Cake, action: "Ver todos", page: "clients", tone: "gold" }
@@ -1297,9 +1348,9 @@ function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpen }) {
     0
   );
   const revenueData = {
-    diario: Array.isArray(adminDashboard.dailyRevenue) ? adminDashboard.dailyRevenue : [],
-    semanal: Array.isArray(adminDashboard.weeklyRevenue) ? adminDashboard.weeklyRevenue : [],
-    mensal: Array.isArray(adminDashboard.monthlyRevenue) ? adminDashboard.monthlyRevenue : []
+    diario: asArray(adminDashboard.dailyRevenue),
+    semanal: asArray(adminDashboard.weeklyRevenue),
+    mensal: asArray(adminDashboard.monthlyRevenue)
   }[revenueMode] || [];
 
   return (
@@ -1429,11 +1480,12 @@ function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpen }) {
 }
 
 function RevenueLineChart({ data = [], mode = "mensal" }) {
-  const normalized = data.length ? data : [{ month: new Date().toISOString().slice(0, 7), total: 0 }];
-  const max = Math.max(...normalized.map((item) => Number(item.total || 0)), 1);
+  const safeData = asArray(data);
+  const normalized = safeData.length ? safeData : [{ month: new Date().toISOString().slice(0, 7), total: 0 }];
+  const max = Math.max(...normalized.map((item) => asNumber(item?.total)), 1);
   const points = normalized.map((item, index) => {
     const x = normalized.length === 1 ? 50 : (index / (normalized.length - 1)) * 100;
-    const y = 88 - (Number(item.total || 0) / max) * 66;
+    const y = 88 - (asNumber(item?.total) / max) * 66;
     return `${x},${y}`;
   }).join(" ");
   const last = normalized[normalized.length - 1];
@@ -1451,7 +1503,7 @@ function RevenueLineChart({ data = [], mode = "mensal" }) {
       </svg>
       <div className="chart-tooltip">
         <span>{formatRevenueLabel(last, mode)}</span>
-        <strong>{currency.format(last.total || 0)}</strong>
+        <strong>{currency.format(asNumber(last?.total))}</strong>
       </div>
       <div className="chart-months">
         {normalized.map((item, index) => <span key={`${item.month || item.label || index}`}>{formatRevenueAxisLabel(item, mode)}</span>)}
@@ -1461,12 +1513,13 @@ function RevenueLineChart({ data = [], mode = "mensal" }) {
 }
 
 function MiniBarChart({ data = [], valueKey, labelKey, currencyValue }) {
-  const max = Math.max(...data.map((item) => Number(item[valueKey] || 0)), 1);
-  if (!data.length) return <p className="empty-state">Sem dados para exibir.</p>;
+  const safeData = asArray(data);
+  const max = Math.max(...safeData.map((item) => asNumber(item?.[valueKey])), 1);
+  if (!safeData.length) return <p className="empty-state">Sem dados para exibir.</p>;
   return (
     <div className="mini-chart">
-      {data.map((item) => {
-        const value = Number(item[valueKey] || 0);
+      {safeData.map((item) => {
+        const value = asNumber(item?.[valueKey]);
         return (
           <div className="mini-chart-row" key={`${item[labelKey]}-${value}`}>
             <span>{item[labelKey]}</span>
@@ -1480,17 +1533,19 @@ function MiniBarChart({ data = [], valueKey, labelKey, currencyValue }) {
 }
 
 function DashboardList({ title, items = [], render }) {
+  const safeItems = asArray(items);
   return (
     <div className="panel dashboard-list-panel">
       <h2>{title}</h2>
       <div className="dashboard-list">
-        {items.length ? items.map((item, index) => <p key={item.id || index}>{render(item)}</p>) : <small>Sem registros.</small>}
+        {safeItems.length ? safeItems.map((item, index) => <p key={item?.id || index}>{render(item)}</p>) : <small>Sem registros.</small>}
       </div>
     </div>
   );
 }
 
 function AlertsPopup({ alerts, onClose }) {
+  const safeAlerts = asObject(alerts);
   return (
     <div className="popup-backdrop" role="presentation">
       <section className="alerts-popup" role="dialog" aria-modal="true" aria-label="Alertas da Aura Clinic">
@@ -1503,7 +1558,7 @@ function AlertsPopup({ alerts, onClose }) {
         </header>
         <div className="alerts-grid">
           <AlertBlock icon={AlertTriangle} title="Joias acabando" empty="Nenhuma joia em alerta.">
-            {alerts?.lowStockJewelry?.map((item) => (
+            {asArray(safeAlerts.lowStockJewelry).map((item) => (
               <article className="alert-item critical" key={item.id}>
                 <strong>{item.name}</strong>
                 <span>{item.category} · Observação de cor: {item.color || "sem observação"} · {item.size || "sem tamanho"}</span>
@@ -1512,7 +1567,7 @@ function AlertsPopup({ alerts, onClose }) {
             ))}
           </AlertBlock>
           <AlertBlock icon={Cake} title="Aniversários próximos" empty="Nenhum aniversário nos próximos 30 dias.">
-            {alerts?.birthdays?.map((client) => (
+            {asArray(safeAlerts.birthdays).map((client) => (
               <article className="alert-item birthday" key={client.id}>
                 <strong>{client.full_name}</strong>
                 <span>{client.days_until === 0 ? "Aniversário hoje" : `Em ${client.days_until} dia(s)`}</span>
@@ -1521,7 +1576,7 @@ function AlertsPopup({ alerts, onClose }) {
             ))}
           </AlertBlock>
           <AlertBlock icon={Trophy} title="Clientes mais frequentes" empty="Sem histórico suficiente ainda.">
-            {alerts?.topClients?.map((client) => (
+            {asArray(safeAlerts.topClients).map((client) => (
               <article className="alert-item vip" key={client.id}>
                 <strong>{client.full_name}</strong>
                 <span>{client.appointment_count} atendimento(s) · {client.return_count || 0} retorno(s)</span>
@@ -1561,24 +1616,35 @@ function AuraERP({ setPage }) {
       </section>
     );
   }
-  const modules = data.modules.filter((item) => moduleFilter === "todos" || item.status === moduleFilter);
+  const safeData = asObject(data);
+  const product = asObject(safeData.product);
+  const metrics = asObject(safeData.metrics);
+  const modules = asArray(safeData.modules).filter((item) => moduleFilter === "todos" || item?.status === moduleFilter);
+  const crm = asArray(safeData.crm);
+  const catalogItems = asArray(safeData.catalogItems);
+  const coupons = asArray(safeData.coupons);
+  const influencers = asArray(safeData.influencers);
+  const consultancies = asArray(safeData.consultancies);
+  const academy = asArray(safeData.academy);
+  const contentPlanner = asArray(safeData.contentPlanner);
+  const bodyMap = asArray(safeData.bodyMap);
 
   return (
     <section className="erp-page">
       <div className="erp-hero panel">
         <div>
           <span className="eyebrow">SaaS multiempresa</span>
-          <h2>{data.product.name}</h2>
-          <p>{data.product.positioning}</p>
+          <h2>{product.name || "Aura ERP"}</h2>
+          <p>{product.positioning || "Gestão integrada para a Aura Clinic."}</p>
           <div className="erp-stack">
-            {data.product.stackTarget.map((item) => <span key={item}>{item}</span>)}
+            {asArray(product.stackTarget).map((item) => <span key={item}>{item}</span>)}
           </div>
         </div>
         <div className="erp-metrics">
-          <Metric label="Estudios" value={data.metrics.studios} />
-          <Metric label="Clientes" value={data.metrics.clients} />
-          <Metric label="Agendamentos" value={data.metrics.appointments} />
-          <Metric label="Receita" value={currency.format(data.metrics.revenue)} />
+          <Metric label="Estúdios" value={asNumber(metrics.studios)} />
+          <Metric label="Clientes" value={asNumber(metrics.clients)} />
+          <Metric label="Agendamentos" value={asNumber(metrics.appointments)} />
+          <Metric label="Receita" value={currency.format(asNumber(metrics.revenue))} />
         </div>
       </div>
 
@@ -1614,12 +1680,12 @@ function AuraERP({ setPage }) {
       <div className="erp-sections-grid">
         <ERPPanel title="CRM e funil" subtitle="Classificacao automatica por historico">
           <div className="erp-bars">
-            {data.crm.map((item) => <div key={item.stage}><span>{item.stage}</span><strong>{item.total}</strong></div>)}
+            {crm.map((item) => <div key={item.stage}><span>{item.stage}</span><strong>{asNumber(item.total)}</strong></div>)}
           </div>
         </ERPPanel>
         <ERPPanel title="Catalogo online" subtitle="Vitrine publica de joalherias">
           <div className="erp-catalog-preview">
-            {data.catalogItems.slice(0, 4).map((item) => (
+            {catalogItems.slice(0, 4).map((item) => (
               <article key={item.id}>
                 <img src={item.photo_url} alt={item.name} />
                 <strong>{item.name}</strong>
@@ -1630,24 +1696,24 @@ function AuraERP({ setPage }) {
         </ERPPanel>
         <ERPPanel title="Cupons e influenciadores" subtitle="Rastreamento comercial">
           <div className="erp-list">
-            {data.coupons.map((coupon) => <p key={coupon.code}><strong>{coupon.code}</strong><span>{coupon.value}% · {coupon.status}</span></p>)}
-            {data.influencers.map((item) => <p key={item.instagram}><strong>{item.name}</strong><span>{item.coupon} · {item.conversions} conversoes</span></p>)}
+            {coupons.map((coupon) => <p key={coupon.code}><strong>{coupon.code}</strong><span>{asNumber(coupon.value)}% · {coupon.status}</span></p>)}
+            {influencers.map((item) => <p key={item.instagram}><strong>{item.name}</strong><span>{item.coupon} · {asNumber(item.conversions)} conversões</span></p>)}
           </div>
         </ERPPanel>
         <ERPPanel title="Consultorias e Aura Academy" subtitle="Produtos digitais">
           <div className="erp-list">
-            {data.consultancies.map((item) => <p key={item.name}><strong>{item.name}</strong><span>{currency.format(item.price)} · {item.format}</span></p>)}
-            {data.academy.map((item) => <p key={item.name}><strong>{item.name}</strong><span>{item.lessons} aulas · {item.students} alunos</span></p>)}
+            {consultancies.map((item) => <p key={item.name}><strong>{item.name}</strong><span>{currency.format(asNumber(item.price))} · {item.format}</span></p>)}
+            {academy.map((item) => <p key={item.name}><strong>{item.name}</strong><span>{asNumber(item.lessons)} aulas · {asNumber(item.students)} alunos</span></p>)}
           </div>
         </ERPPanel>
         <ERPPanel title="Calendario editorial" subtitle="Planejamento de conteudo Aura">
           <div className="content-planner">
-            {data.contentPlanner.map((item) => <div key={item.day}><strong>{item.day}</strong><span>{item.theme}</span></div>)}
+            {contentPlanner.map((item) => <div key={item.day}><strong>{item.day}</strong><span>{item.theme}</span></div>)}
           </div>
         </ERPPanel>
         <ERPPanel title="Mapa corporal" subtitle="Regioes mais realizadas">
           <div className="erp-list">
-            {data.bodyMap.map((item) => <p key={item.region}><strong>{item.region}</strong><span>{item.total} procedimento(s)</span></p>)}
+            {bodyMap.map((item) => <p key={item.region}><strong>{item.region}</strong><span>{asNumber(item.total)} procedimento(s)</span></p>)}
           </div>
         </ERPPanel>
       </div>
@@ -1809,6 +1875,12 @@ function Appointments() {
   const [showForm, setShowForm] = useState(false);
   const [slots, setSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const safeOptions = asObject(options);
+  const safeClients = asArray(clients);
+  const safeAppointments = asArray(appointments);
+  const safeServices = asArray(services);
+  const safeJewelry = asArray(safeOptions.jewelry);
+  const safeProfessionals = asArray(safeOptions.professionals);
 
   useEffect(() => {
     async function loadSlots() {
@@ -1817,7 +1889,7 @@ function Appointments() {
       const response = await apiFetch(`/booking/slots?service_id=${form.service_id}&professional_id=${form.professional_id}&date=${form.appointment_date}`);
       const json = await response.json().catch(() => ({}));
       setLoadingSlots(false);
-      setSlots(response.ok ? json.slots || [] : []);
+      setSlots(response.ok ? asArray(json.slots) : []);
       if (!response.ok) setError(json.error || "Não foi possível carregar os horários.");
     }
     loadSlots();
@@ -1828,7 +1900,7 @@ function Appointments() {
       setForm({ ...form, client_id: "", full_name: "", whatsapp: "", instagram: "", birth_date: "" });
       return;
     }
-    const client = clients?.find((item) => String(item.id) === String(clientId));
+    const client = safeClients.find((item) => String(item.id) === String(clientId));
     if (!client) return;
     setForm({
       ...form,
@@ -1881,7 +1953,7 @@ function Appointments() {
           <div className="form-grid">
             <Select label="Cliente cadastrado" value={form.client_id} onChange={selectClient}>
               <option value="">Novo cliente</option>
-              {clients?.map((client) => (
+              {safeClients.map((client) => (
                 <option key={client.id} value={client.id}>
                   {client.full_name} - {client.whatsapp}
                 </option>
@@ -1897,7 +1969,7 @@ function Appointments() {
           <h3>Procedimento</h3>
           <div className="form-grid">
             <Select label="Tipo de Atendimento" value={form.service_id} onChange={(value) => {
-              const service = services?.find((item) => String(item.id) === String(value));
+              const service = safeServices.find((item) => String(item.id) === String(value));
               setForm(calcRemaining({
                 ...form,
                 service_id: value,
@@ -1908,23 +1980,23 @@ function Appointments() {
               }));
             }} required>
               <option value="">Selecione</option>
-              {services?.map((service) => <option key={service.id} value={service.id}>{service.name} ({service.duration_minutes} min)</option>)}
+              {safeServices.map((service) => <option key={service.id} value={service.id}>{service.name} ({service.duration_minutes} min)</option>)}
             </Select>
             <Input label="Procedimento" value={form.procedure} onChange={(v) => setForm({ ...form, procedure: v })} required />
             <Input label="Região da perfuração" value={form.piercing_region} onChange={(v) => setForm({ ...form, piercing_region: v })} required />
             <Select label="Joalheria escolhida" value={form.jewelry_id} onChange={(v) => setForm({ ...form, jewelry_id: v })}>
               <option value="">Sem joia vinculada</option>
-              {options?.jewelry.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              {safeJewelry.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </Select>
             <Select label="Variação da Joia" value={form.jewelry_variant_id} onChange={(v) => setForm({ ...form, jewelry_variant_id: v })}>
               <option value="">Selecione</option>
-              {options?.jewelry.find((item) => String(item.id) === String(form.jewelry_id))?.variants?.filter((variant) => Number(variant.quantity || 0) > 0).map((variant) => (
+              {asArray(safeJewelry.find((item) => String(item.id) === String(form.jewelry_id))?.variants).filter((variant) => asNumber(variant?.quantity) > 0).map((variant) => (
                 <option key={variant.id} value={variant.id}>{variant.variation_name || variant.sku} · {variant.quantity} un</option>
               ))}
             </Select>
             <Select label="Profissional" value={form.professional_id} onChange={(v) => setForm({ ...form, professional_id: v })} required>
               <option value="">Selecione</option>
-              {options?.professionals.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              {safeProfessionals.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </Select>
             <Input type="date" label="Data" value={form.appointment_date} onChange={(v) => setForm({ ...form, appointment_date: v, appointment_time: "" })} required />
           </div>
@@ -1932,8 +2004,8 @@ function Appointments() {
             <span>Horários Disponíveis</span>
             <div className="manual-slot-grid">
               {loadingSlots && <small>Carregando horários...</small>}
-              {slots.map((slot) => <button key={slot.time} type="button" className={form.appointment_time === slot.time ? "active" : ""} onClick={() => setForm({ ...form, appointment_time: slot.time })}>{slot.time}</button>)}
-              {!loadingSlots && form.appointment_date && form.service_id && form.professional_id && !slots.length && <small>Nenhum horário livre neste dia.</small>}
+              {asArray(slots).map((slot) => <button key={slot.time} type="button" className={form.appointment_time === slot.time ? "active" : ""} onClick={() => setForm({ ...form, appointment_time: slot.time })}>{slot.time}</button>)}
+              {!loadingSlots && form.appointment_date && form.service_id && form.professional_id && !asArray(slots).length && <small>Nenhum horário livre neste dia.</small>}
             </div>
           </div>
           <label>Descrição do atendimento
@@ -1970,7 +2042,7 @@ function Appointments() {
           <h2>Próximos Atendimentos</h2>
           <span>Com Ações Rápidas</span>
         </div>
-        <AppointmentList appointments={appointments || []} onChanged={refresh} />
+        <AppointmentList appointments={safeAppointments} onChanged={refresh} />
       </div>
     </section>
   );
@@ -1981,7 +2053,8 @@ function VisualCalendar() {
   const [filters, setFilters] = useState({ mode: "mensal", professional_id: "", status: "" });
   const [currentDate, setCurrentDate] = useState(new Date());
   const { data, refresh } = useFetch(`/appointments?${new URLSearchParams(Object.fromEntries(Object.entries(filters).filter(([, v]) => v && !["mensal", "semanal", "diario"].includes(v))))}`);
-  const calendar = useMemo(() => buildCalendar(data || [], filters.mode, currentDate), [data, filters.mode, currentDate]);
+  const safeOptions = asObject(options);
+  const calendar = useMemo(() => buildCalendar(asArray(data), filters.mode, currentDate), [data, filters.mode, currentDate]);
 
   return (
     <section className="stack">
@@ -1991,7 +2064,7 @@ function VisualCalendar() {
         </div>
         <Select label="Profissional" value={filters.professional_id} onChange={(v) => setFilters({ ...filters, professional_id: v })}>
           <option value="">Todos</option>
-          {options?.professionals.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          {asArray(safeOptions.professionals).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
         </Select>
         <Select label="Status" value={filters.status} onChange={(v) => setFilters({ ...filters, status: v })}>
           <option value="">Todos</option>
@@ -2149,12 +2222,17 @@ function Inventory2() {
   const { status: _statusFilter, ...queryFilters } = filters;
   const query = new URLSearchParams(Object.fromEntries(Object.entries(queryFilters).filter(([, value]) => value))).toString();
   const { data, refresh: refreshJewelry } = useFetch(`/jewelry?${query}`);
-  const items = data || [];
-  const inventoryOptions = options?.inventoryOptions || { category: [], size: [], thickness: [] };
-  const allJewelry = options?.jewelry || items;
-const allVariants = (Array.isArray(allJewelry) ? allJewelry : []).flatMap(
-  (item) => item.variants || []
-);
+  const items = asArray(data);
+  const safeOptions = asObject(options);
+  const rawInventoryOptions = asObject(safeOptions.inventoryOptions);
+  const inventoryOptions = {
+    category: asArray(rawInventoryOptions.category),
+    size: asArray(rawInventoryOptions.size),
+    thickness: asArray(rawInventoryOptions.thickness)
+  };
+  const optionJewelry = asArray(safeOptions.jewelry);
+  const allJewelry = optionJewelry.length ? optionJewelry : items;
+  const allVariants = allJewelry.flatMap((item) => asArray(item?.variants));
   const variantOptions = (field) => [...new Set(allVariants.map((variant) => variant[field]).filter(Boolean))].sort();
   const filteredItems = items.filter((item) => {
     if (inventoryMode === "virtual") {
@@ -2438,9 +2516,9 @@ const allVariants = (Array.isArray(allJewelry) ? allJewelry : []).flatMap(
                 <Metric label="Categorias" value={String(inventoryOptions.category?.length || 0)} />
                 <Metric label="Tamanhos" value={String(inventoryOptions.size?.length || 0)} />
                 <Metric label="Espessuras" value={String(inventoryOptions.thickness?.length || 0)} />
-                <Metric label="Profissionais" value={String(options?.professionals?.length || 0)} />
+                <Metric label="Profissionais" value={String(asArray(safeOptions.professionals).length)} />
               </div>
-              {showManagement && <InventoryManagement options={inventoryOptions} professionals={options?.professionals || []} onChanged={refreshOptions} />}
+              {showManagement && <InventoryManagement options={inventoryOptions} professionals={asArray(safeOptions.professionals)} onChanged={refreshOptions} />}
             </div>
           )}
 
@@ -3706,15 +3784,20 @@ function JewelryTable({ items, onOpen, onEdit, onMovement, onArchive }) {
 function Finance() {
   const { data } = useFetch("/finance");
   if (!data) return <Loading />;
+  if (data.error) return <ApiError message={data.error} />;
+  const safeData = asObject(data);
+  const totals = asObject(safeData.totals);
+  const forecast = asObject(safeData.forecast);
+  const methods = asArray(safeData.methods);
   return (
     <section className="stack">
       <div className="metric-grid">
-        <Metric label="Recebido hoje" value={currency.format(data.totals.day_total || 0)} />
-        <Metric label="Recebido na semana" value={currency.format(data.totals.week_total || 0)} />
-        <Metric label="Recebido no mês" value={currency.format(data.totals.month_total || 0)} />
-        <Metric label="Total previsto" value={currency.format(data.forecast.total || 0)} />
-        <Metric label="Total pendente" value={currency.format(data.forecast.pending || 0)} />
-        <Metric label="Pagamento mais usado" value={data.mostUsedMethod} />
+        <Metric label="Recebido hoje" value={currency.format(asNumber(totals.day_total))} />
+        <Metric label="Recebido na semana" value={currency.format(asNumber(totals.week_total))} />
+        <Metric label="Recebido no mês" value={currency.format(asNumber(totals.month_total))} />
+        <Metric label="Total previsto" value={currency.format(asNumber(forecast.total))} />
+        <Metric label="Total pendente" value={currency.format(asNumber(forecast.pending))} />
+        <Metric label="Pagamento mais usado" value={safeData.mostUsedMethod || "Sem registros"} />
       </div>
       <div className="panel">
         <div className="panel-heading">
@@ -3722,7 +3805,7 @@ function Finance() {
           <button className="secondary-button" type="button" onClick={() => downloadApiFile("/finance/export.csv", "relatorio-aura-clinic.csv")}><Download size={16} /> Exportar CSV</button>
         </div>
         <div className="payment-bars">
-          {data.methods.map((item) => <div key={item.method}><span>{item.method}</span><strong>{item.total}</strong></div>)}
+          {methods.map((item) => <div key={item.method || item.name}><span>{item.method || "Não informado"}</span><strong>{asNumber(item.total)}</strong></div>)}
         </div>
       </div>
     </section>
@@ -3732,16 +3815,18 @@ function Finance() {
 function Clients() {
   const { data } = useFetch("/clients");
   if (!data) return <Loading />;
+  if (data.error) return <ApiError message={data.error} />;
+  const clients = asArray(data);
   return (
     <section className="client-grid">
-      {data.map((client) => (
+      {clients.map((client) => (
         <article className="panel client-card" key={client.id}>
           <h2>{client.full_name}</h2>
           <p>{client.whatsapp} · {client.instagram}</p>
           {client.birth_date && <small>Aniversário: {formatLongDate(client.birth_date)}</small>}
           <span>{client.notes}</span>
           <h3>Histórico</h3>
-          {client.history.map((item) => <div className="history-item" key={item.id}><strong>{formatDate(item.appointment_date)}</strong><span>{item.procedure} · {item.jewelry_name || "sem joia"}</span><small>{item.status} · {currency.format(item.total_value)}</small></div>)}
+          {asArray(client.history).map((item) => <div className="history-item" key={item.id}><strong>{formatDate(item.appointment_date)}</strong><span>{item.procedure} · {item.jewelry_name || "sem joia"}</span><small>{item.status} · {currency.format(asNumber(item.total_value))}</small></div>)}
         </article>
       ))}
     </section>
@@ -3753,6 +3838,16 @@ function FinanceAdmin() {
   const [expense, setExpense] = useState(defaultExpense());
   const [error, setError] = useState("");
   if (!data) return <Loading />;
+  if (data.error) return <ApiError message={data.error} />;
+  const safeData = asObject(data);
+  const totals = asObject(safeData.totals);
+  const deposits = asObject(safeData.deposits);
+  const forecast = asObject(safeData.forecast);
+  const profit = asObject(safeData.profit);
+  const expensesSummary = asObject(safeData.expensesSummary);
+  const methods = asArray(safeData.methods);
+  const expenses = asArray(safeData.expenses);
+  const monthlyRevenue = asArray(safeData.monthlyRevenue);
 
   async function saveExpense(event) {
     event.preventDefault();
@@ -3775,15 +3870,15 @@ function FinanceAdmin() {
   return (
     <section className="stack">
       <div className="metric-grid">
-        <Metric label="Faturamento diário" value={currency.format(data.totals.day_total || 0)} />
-        <Metric label="Faturamento semanal" value={currency.format(data.totals.week_total || 0)} />
-        <Metric label="Faturamento mensal" value={currency.format(data.totals.month_total || 0)} />
-        <Metric label="Sinais recebidos" value={currency.format(data.deposits.monthTotal || 0)} />
-        <Metric label="Valores pendentes" value={currency.format(data.forecast.pending || 0)} />
-        <Metric label="Lucro estimado" value={currency.format(data.profit.estimated || 0)} />
-        <Metric label="Despesas fixas" value={currency.format(data.expensesSummary.fixed_total || 0)} />
-        <Metric label="Despesas variáveis" value={currency.format(data.expensesSummary.variable_total || 0)} />
-        <Metric label="Pagamento mais usado" value={data.mostUsedMethod} />
+        <Metric label="Faturamento diário" value={currency.format(asNumber(totals.day_total))} />
+        <Metric label="Faturamento semanal" value={currency.format(asNumber(totals.week_total))} />
+        <Metric label="Faturamento mensal" value={currency.format(asNumber(totals.month_total))} />
+        <Metric label="Sinais recebidos" value={currency.format(asNumber(deposits.monthTotal))} />
+        <Metric label="Valores pendentes" value={currency.format(asNumber(forecast.pending))} />
+        <Metric label="Lucro estimado" value={currency.format(asNumber(profit.estimated))} />
+        <Metric label="Despesas fixas" value={currency.format(asNumber(expensesSummary.fixed_total))} />
+        <Metric label="Despesas variáveis" value={currency.format(asNumber(expensesSummary.variable_total))} />
+        <Metric label="Pagamento mais usado" value={safeData.mostUsedMethod || "Sem registros"} />
       </div>
 
       <div className="finance-grid">
@@ -3792,7 +3887,7 @@ function FinanceAdmin() {
             <h2>Gráfico de faturamento mensal</h2>
             <span>Últimos meses registrados</span>
           </div>
-          <MonthlyChart data={data.monthlyRevenue} />
+          <MonthlyChart data={monthlyRevenue} />
         </div>
         <div className="panel">
           <div className="panel-heading">
@@ -3800,7 +3895,7 @@ function FinanceAdmin() {
             <span>Mais usadas</span>
           </div>
           <div className="payment-bars">
-            {data.methods.map((item) => <div key={item.method}><span>{item.method}</span><strong>{item.total} · {currency.format(item.amount || 0)}</strong></div>)}
+            {methods.map((item) => <div key={item.method || item.name}><span>{item.method || "Não informado"}</span><strong>{asNumber(item.total)} · {currency.format(asNumber(item.amount))}</strong></div>)}
           </div>
         </div>
       </div>
@@ -3847,10 +3942,10 @@ function FinanceAdmin() {
         <div className="panel">
           <div className="panel-heading">
             <h2>Despesas lançadas</h2>
-            <span>{currency.format(data.expensesSummary.total || 0)} no mês</span>
+            <span>{currency.format(asNumber(expensesSummary.total))} no mês</span>
           </div>
           <div className="expense-list">
-            {data.expenses.map((item) => (
+            {expenses.map((item) => (
               <article key={item.id} className="expense-row">
                 <div>
                   <strong>{item.description}</strong>
@@ -3878,27 +3973,31 @@ function SalesWorkspace() {
   const [line, setLine] = useState(defaultSalesLine());
   const [items, setItems] = useState([]);
   const [error, setError] = useState("");
+  const safeOrders = asArray(orders);
+  const safeServices = asArray(services);
+  const safeJewelry = asArray(jewelry);
+  const safeAppointments = asArray(appointments);
 
   useEffect(() => {
     setLine((current) => ({ ...current, item_type: tab === "servico" ? "servico" : "produto" }));
   }, [tab]);
 
   useEffect(() => {
-    if (jewelry?.length && tab !== "servico" && !line.product_id) {
-      setLine((current) => ({ ...current, product_id: String(jewelry[0].id), item_name: jewelry[0].name, unit_price: jewelry[0].sale_value || 0 }));
+    if (safeJewelry.length && tab !== "servico" && !line.product_id) {
+      setLine((current) => ({ ...current, product_id: String(safeJewelry[0].id), item_name: safeJewelry[0].name, unit_price: safeJewelry[0].sale_value || 0 }));
     }
-  }, [jewelry?.length]);
+  }, [safeJewelry.length]);
 
   useEffect(() => {
-    if (services?.length && (tab === "servico" || tab === "ordem")) {
-      setLine((current) => ({ ...current, service_id: String(services[0].id), item_name: services[0].name, unit_price: services[0].price || 0 }));
+    if (safeServices.length && (tab === "servico" || tab === "ordem")) {
+      setLine((current) => ({ ...current, service_id: String(safeServices[0].id), item_name: safeServices[0].name, unit_price: safeServices[0].price || 0 }));
     }
-  }, [services?.length, tab]);
+  }, [safeServices.length, tab]);
 
   if (!orders || !services || !jewelry || !appointments) return <Loading />;
 
   const currentMonth = new Date().toISOString().slice(0, 7);
-  const monthOrders = orders.filter((order) => String(order.created_at || "").startsWith(currentMonth) && order.status !== "cancelada");
+  const monthOrders = safeOrders.filter((order) => String(order?.created_at || "").startsWith(currentMonth) && order?.status !== "cancelada");
   const summary = {
     total: monthOrders.reduce((sum, order) => sum + Number(order.total_value || 0), 0),
     products: monthOrders.filter((order) => order.order_type === "produto").reduce((sum, order) => sum + Number(order.total_value || 0), 0),
@@ -3909,8 +4008,8 @@ function SalesWorkspace() {
   function addLineItem() {
     const quantity = Math.max(1, Number(line.quantity || 1));
     const entry = line.item_type === "servico" ?
-       services.find((item) => String(item.id) === String(line.service_id))
-      : jewelry.find((item) => String(item.id) === String(line.product_id));
+       safeServices.find((item) => String(item.id) === String(line.service_id))
+      : safeJewelry.find((item) => String(item.id) === String(line.product_id));
     if (!entry) return;
     setItems((current) => [...current, {
       item_type: line.item_type,
@@ -3998,7 +4097,7 @@ function SalesWorkspace() {
               <Input label="Instagram" value={form.instagram} onChange={(value) => setForm({ ...form, instagram: value })} />
               <Select label="Agendamento vinculado" value={form.appointment_id} onChange={(value) => setForm({ ...form, appointment_id: value })}>
                 <option value="">Sem vínculo</option>
-                {appointments.map((appointment) => (
+                {safeAppointments.map((appointment) => (
                   <option key={appointment.id} value={appointment.id}>
                     {appointment.full_name} · {formatDate(appointment.appointment_date)} · {appointment.appointment_time}
                   </option>
@@ -4029,7 +4128,7 @@ function SalesWorkspace() {
                 </Select>
                 {line.item_type === "servico" ? (
                   <Select label="Serviço" value={line.service_id} onChange={(value) => {
-                    const selected = services.find((item) => String(item.id) === String(value));
+                    const selected = safeServices.find((item) => String(item.id) === String(value));
                     setLine({
                       ...line,
                       service_id: value,
@@ -4037,11 +4136,11 @@ function SalesWorkspace() {
                       unit_price: selected?.price || 0
                     });
                   }}>
-                    {services.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
+                    {safeServices.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
                   </Select>
                 ) : (
                   <Select label="Joia" value={line.product_id} onChange={(value) => {
-                    const selected = jewelry.find((item) => String(item.id) === String(value));
+                    const selected = safeJewelry.find((item) => String(item.id) === String(value));
                     setLine({
                       ...line,
                       product_id: value,
@@ -4049,7 +4148,7 @@ function SalesWorkspace() {
                       unit_price: selected?.sale_value || 0
                     });
                   }}>
-                    {jewelry.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                    {safeJewelry.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                   </Select>
                 )}
                 <Input type="number" label="Quantidade" value={line.quantity} onChange={(value) => setLine({ ...line, quantity: value })} />
@@ -4111,7 +4210,7 @@ function SalesWorkspace() {
             <span>Pedidos do mês com status e valor</span>
           </div>
           <div className="sales-history-list">
-            {orders.map((order) => (
+            {safeOrders.map((order) => (
               <article key={order.id} className="sales-history-row">
                 <div>
                   <strong>{order.full_name}</strong>
@@ -4129,7 +4228,7 @@ function SalesWorkspace() {
                 </div>
               </article>
             ))}
-            {!orders.length && <p className="empty-state">Nenhuma venda registrada ainda.</p>}
+            {!safeOrders.length && <p className="empty-state">Nenhuma venda registrada ainda.</p>}
           </div>
         </div>
       )}
@@ -4146,6 +4245,8 @@ function AccessAdmin() {
   const [resetMessage, setResetMessage] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
   if (!data) return <Loading />;
+  if (data.error) return <ApiError message={data.error} />;
+  const users = asArray(data);
 
   async function save(event) {
     event.preventDefault();
@@ -4212,7 +4313,7 @@ function AccessAdmin() {
             <button className="secondary-button" type="button" onClick={() => downloadApiFile("/backup.sqlite", `backup-aura-clinic.sqlite`)}>Backup SQLite</button>
           </div>
           <div className="access-list">
-            {data.map((user) => (
+            {users.map((user) => (
               <article className="access-row" key={user.id}>
                 <div>
                   <strong>{user.name}</strong>
@@ -4258,9 +4359,13 @@ function BookingAdmin() {
   const [tab, setTab] = useState("servicos");
   const [serviceForm, setServiceForm] = useState(defaultServiceForm());
   const [blockForm, setBlockForm] = useState(defaultScheduleBlock());
-  const professionals = options?.professionals || [];
+  const professionals = asArray(asObject(options).professionals);
+  const safeServices = asArray(services);
+  const safeAvailability = asArray(availability);
+  const safeBlocks = asArray(blocks);
+  const safeAppointments = asArray(appointments);
 
-  if (!services || !availability || !blocks || !appointments) return <Loading />;
+  if (services == null || availability == null || blocks == null || appointments == null) return <Loading />;
 
   async function saveService(event) {
     event.preventDefault();
@@ -4334,7 +4439,7 @@ function BookingAdmin() {
           <div className="panel">
             <div className="panel-heading"><h2>Serviços cadastrados</h2></div>
             <div className="service-list">
-              {services.map((service) => (
+              {safeServices.map((service) => (
                 <article key={service.id}>
                   <strong>{service.name}</strong>
                   <span>{service.duration_minutes} min · {currency.format(service.price || 0)} · sinal {currency.format(service.deposit_value || 0)}</span>
@@ -4348,7 +4453,7 @@ function BookingAdmin() {
 
       {tab === "horarios" && (
         <div className="availability-grid">
-          {availability.map((item) => (
+          {safeAvailability.map((item) => (
             <article className="panel availability-card" key={item.id}>
               <div className="panel-heading"><h2>{weekdayLabel(item.weekday)}</h2><span>{item.professional_name}</span></div>
               <Toggle label="Atende neste dia" checked={item.is_active} onChange={(value) => updateAvailability(item, { is_active: value })} />
@@ -4386,7 +4491,7 @@ function BookingAdmin() {
           <div className="panel">
             <div className="panel-heading"><h2>Bloqueios cadastrados</h2></div>
             <div className="service-list">
-              {blocks.map((block) => (
+              {safeBlocks.map((block) => (
                 <article key={block.id}>
                   <strong>{block.reason}</strong>
                   <span>{block.professional_name} · {new Date(block.start_datetime).toLocaleString("pt-BR")} até {new Date(block.end_datetime).toLocaleString("pt-BR")}</span>
@@ -4402,7 +4507,7 @@ function BookingAdmin() {
         <div className="panel">
           <div className="panel-heading"><h2>Solicitações pendentes</h2><span>Confirme ou recuse manualmente</span></div>
           <div className="appointment-list">
-            {appointments.map((item) => (
+            {safeAppointments.map((item) => (
               <article className="appointment-row" key={item.id}>
                 <div className="time-box"><strong>{item.appointment_time}</strong><span>{formatDate(item.appointment_date)}</span></div>
                 <div><h3>{item.full_name}</h3><p>{item.procedure} · {currency.format(item.deposit_value || 0)} de sinal</p><small>{item.professional_name} · {item.whatsapp}</small></div>
@@ -4412,7 +4517,7 @@ function BookingAdmin() {
                 </div>
               </article>
             ))}
-            {!appointments.length && <p className="empty-state">Nenhuma solicitação pendente.</p>}
+            {!safeAppointments.length && <p className="empty-state">Nenhuma solicitação pendente.</p>}
           </div>
         </div>
       )}
@@ -4425,7 +4530,9 @@ function ClientsMedical() {
   const [search, setSearch] = useState("");
   const [editingClientId, setEditingClientId] = useState(null);
   if (!data) return <Loading />;
-  const filteredClients = data.filter((client) => matchesClientSearch(client, search));
+  if (data.error) return <ApiError message={data.error} />;
+  const clients = asArray(data);
+  const filteredClients = clients.filter((client) => matchesClientSearch(client, search));
   return (
     <section className="medical-client-list simplified-client-list">
       <label className="client-search">
@@ -4440,7 +4547,7 @@ function ClientsMedical() {
               <p>{client.whatsapp} · {client.instagram || "sem Instagram"}</p>
             </div>
             <div className="header-actions">
-              <span className="status-badge status-atendido">{client.history.length} atendimento(s)</span>
+              <span className="status-badge status-atendido">{asArray(client.history).length} atendimento(s)</span>
               <a className="secondary-button" href={whatsappUrl(client.whatsapp, `Ola ${client.full_name}, tudo bem Aqui e da Aura Clinic.`)} target="_blank" rel="noreferrer">WhatsApp</a>
               <button type="button" className="secondary-button" onClick={() => setEditingClientId(editingClientId === client.id ? null : client.id)}>Editar</button>
             </div>
@@ -4457,8 +4564,8 @@ function ClientsMedical() {
             />
           )}
           <div className="medical-summary-line">
-            <span>Último atendimento: {client.history[0] ? formatDate(client.history[0].appointment_date) : "Sem registro"}</span>
-            <span>Joia: {client.history[0]?.jewelry_name || "Sem joia vinculada"}</span>
+            <span>Último atendimento: {asArray(client.history)[0] ? formatDate(asArray(client.history)[0].appointment_date) : "Sem registro"}</span>
+            <span>Joia: {asArray(client.history)[0]?.jewelry_name || "Sem joia vinculada"}</span>
             <span>Fidelidade: {client.loyalty?.level || "Cliente Aura"}</span>
           </div>
           <details className="medical-details">
@@ -4467,7 +4574,7 @@ function ClientsMedical() {
               <div className="medical-section">
                 <h3>Histórico De Perfurações</h3>
                 <div className="history-stack">
-                  {client.history.length ? client.history.map((item) => (
+                  {asArray(client.history).length ? asArray(client.history).map((item) => (
                     <div className="history-item" key={item.id}>
                       <strong>{formatDate(item.appointment_date)}  {item.procedure}</strong>
                       <span>{item.piercing_region}  {item.professional_name}</span>
@@ -4537,7 +4644,9 @@ function DigitalTerms() {
   const [error, setError] = useState("");
   const [savedTerm, setSavedTerm] = useState(null);
 
-  const selectedAppointment = (appointments || []).find((item) => String(item.id) === String(form.appointment_id));
+  const safeAppointments = asArray(appointments);
+  const safeTerms = asArray(terms);
+  const selectedAppointment = safeAppointments.find((item) => String(item.id) === String(form.appointment_id));
 
   useEffect(() => {
     if (!selectedAppointment) return;
@@ -4599,7 +4708,7 @@ function DigitalTerms() {
             <span className="eyebrow">Termos Digitais</span>
             <h2>Ficha De Anamnese</h2>
           </div>
-          <span>{appointments?.length || 0} agendamento(s)</span>
+          <span>{safeAppointments.length} agendamento(s)</span>
         </div>
 
         <div className="term-intro">
@@ -4619,7 +4728,7 @@ function DigitalTerms() {
           <h3>Agendamento Vinculado</h3>
           <Select label="Agendamento" value={form.appointment_id} onChange={(value) => updateField("appointment_id", value)} required>
             <option value="">Selecione</option>
-            {(appointments || []).map((item) => <option key={item.id} value={item.id}>{formatDate(item.appointment_date)}  {item.appointment_time}  {item.full_name}  {item.procedure}</option>)}
+            {safeAppointments.map((item) => <option key={item.id} value={item.id}>{formatDate(item.appointment_date)}  {item.appointment_time}  {item.full_name}  {item.procedure}</option>)}
           </Select>
         </section>
 
@@ -4742,10 +4851,10 @@ function DigitalTerms() {
             <span className="eyebrow">Registro</span>
             <h2>Termos Salvos</h2>
           </div>
-          <span>{terms?.length || 0} registro(s)</span>
+          <span>{safeTerms.length} registro(s)</span>
         </div>
         <div className="terms-list">
-          {(terms || []).map((term) => (
+          {safeTerms.map((term) => (
             <article className="term-row" key={term.id}>
               <div>
                 <strong>{term.full_name}</strong>
@@ -4896,18 +5005,20 @@ function PostCare() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   if (!data) return <Loading />;
-  const items = data.filter((item) => {
+  if (data.error) return <ApiError message={data.error} />;
+  const followups = asArray(data);
+  const items = followups.filter((item) => {
     const text = `${item.full_name} ${item.whatsapp} ${item.procedure} ${item.piercing_region} ${item.jewelry_name} ${item.healing_status}`.toLowerCase();
     return (!search.trim() || text.includes(search.toLowerCase())) && (!status || item.status === status);
   });
-  const dueCount = data.filter((item) => item.status !== "concluido" && item.due_date <= new Date().toISOString().slice(0, 10)).length;
+  const dueCount = followups.filter((item) => item.status !== "concluido" && item.due_date <= new Date().toISOString().slice(0, 10)).length;
 
   return (
     <section className="stack">
       <div className="metric-grid">
-        <Metric label="Lembretes totais" value={data.length} />
+        <Metric label="Lembretes totais" value={followups.length} />
         <Metric label="Pendentes ou vencidos" value={dueCount} />
-        <Metric label="Fotos recebidas" value={data.filter((item) => item.client_photo_url).length} />
+        <Metric label="Fotos recebidas" value={followups.filter((item) => item.client_photo_url).length} />
       </div>
       <div className="toolbar">
         <label className="search-field">
@@ -5174,15 +5285,16 @@ function MedicalRecordTimeline({ client, onChanged }) {
 }
 
 function MonthlyChart({ data = [] }) {
-  const max = Math.max(...data.map((item) => item.total), 1);
-  if (!data.length) return <p className="empty-state">Sem faturamento registrado para montar o gráfico.</p>;
+  const safeData = asArray(data);
+  const max = Math.max(...safeData.map((item) => asNumber(item?.total)), 1);
+  if (!safeData.length) return <p className="empty-state">Sem faturamento registrado para montar o gráfico.</p>;
   return (
     <div className="monthly-chart">
-      {data.map((item) => (
-        <div className="chart-column" key={item.month}>
-          <div style={{ height: `${Math.max((item.total / max) * 100, 6)}%` }} />
-          <span>{item.month.slice(5)}/{item.month.slice(2, 4)}</span>
-          <small>{currency.format(item.total)}</small>
+      {safeData.map((item, index) => (
+        <div className="chart-column" key={item?.month || index}>
+          <div style={{ height: `${Math.max((asNumber(item?.total) / max) * 100, 6)}%` }} />
+          <span>{String(item?.month || "").slice(5)}/{String(item?.month || "").slice(2, 4)}</span>
+          <small>{currency.format(asNumber(item?.total))}</small>
         </div>
       ))}
     </div>
@@ -5190,10 +5302,11 @@ function MonthlyChart({ data = [] }) {
 }
 
 function AppointmentList({ appointments = [], onChanged, compact }) {
-  if (!appointments.length) return <p className="empty-state">Nenhum atendimento encontrado.</p>;
+  const safeAppointments = asArray(appointments);
+  if (!safeAppointments.length) return <p className="empty-state">Nenhum atendimento encontrado.</p>;
   return (
     <div className="appointment-list">
-      {appointments.map((item) => (
+      {safeAppointments.map((item) => (
         <article className="appointment-row" key={item.id}>
           <div className="time-box"><strong>{item.appointment_time}</strong><span>{formatDate(item.appointment_date)}</span></div>
           <div>
@@ -5679,11 +5792,12 @@ function initials(name = "") {
 }
 
 function matchesClientSearch(client, search) {
-  const term = search.trim().toLowerCase();
+  const safeClient = asObject(client);
+  const term = String(search || "").trim().toLowerCase();
   if (!term) return true;
-  const historyText = (client.history || []).map((item) => `${item.procedure} ${item.piercing_region} ${item.jewelry_name} ${item.professional_name}`).join(" ");
-  const recordText = (client.medicalRecords || []).map((record) => `${record.piercing_history} ${record.jewelry_used} ${record.occurrences} ${record.guidance} ${record.allergies_notes} ${record.healing_evolution} ${record.returns_done}`).join(" ");
-  return `${client.full_name} ${client.whatsapp} ${client.instagram} ${client.notes} ${historyText} ${recordText}`.toLowerCase().includes(term);
+  const historyText = asArray(safeClient.history).map((item) => `${item?.procedure || ""} ${item?.piercing_region || ""} ${item?.jewelry_name || ""} ${item?.professional_name || ""}`).join(" ");
+  const recordText = asArray(safeClient.medicalRecords).map((record) => `${record?.piercing_history || ""} ${record?.jewelry_used || ""} ${record?.occurrences || ""} ${record?.guidance || ""} ${record?.allergies_notes || ""} ${record?.healing_evolution || ""} ${record?.returns_done || ""}`).join(" ");
+  return `${safeClient.full_name || ""} ${safeClient.whatsapp || ""} ${safeClient.instagram || ""} ${safeClient.notes || ""} ${historyText} ${recordText}`.toLowerCase().includes(term);
 }
 
 function whatsappUrl(phone, message) {
@@ -5694,6 +5808,11 @@ function whatsappUrl(phone, message) {
 
 function whatsappShareUrl(message) {
   return `https://wa.me/?text=${encodeURIComponent(message)}`;
+}
+
+function instagramCatalogUrl(handle = "") {
+  const username = String(handle).trim().replace(/^@/, "");
+  return username ? `https://www.instagram.com/${encodeURIComponent(username)}/` : "https://www.instagram.com/";
 }
 
 function whatsappCatalogUrl(message, phone) {
@@ -5994,7 +6113,10 @@ function normalizeJewelryThread(value = "") {
 
 function readCatalogStorage(key, fallback) {
   try {
-    return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
+    const parsed = JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
+    if (Array.isArray(fallback)) return asArray(parsed);
+    if (fallback && typeof fallback === "object") return asObject(parsed);
+    return parsed ?? fallback;
   } catch {
     return fallback;
   }
@@ -6079,6 +6201,7 @@ function pageTitle(page) {
 }
 
 function buildCalendar(items, mode, currentDate) {
+  const safeItems = asArray(items);
   const base = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
   const days = mode === "mensal" ? buildMonthDays(base) : mode === "semanal" ? buildWeekDays(base) : [base];
   const mappedDays = days.map((date) => {
@@ -6088,9 +6211,9 @@ function buildCalendar(items, mode, currentDate) {
       key,
       isOutside: mode === "mensal" && date.getMonth() !== base.getMonth(),
       isToday: key === dateKey(new Date()),
-      items: items
-        .filter((item) => item.appointment_date === key)
-        .sort((a, b) => a.appointment_time.localeCompare(b.appointment_time))
+      items: safeItems
+        .filter((item) => item?.appointment_date === key)
+        .sort((a, b) => String(a?.appointment_time || "").localeCompare(String(b?.appointment_time || "")))
     };
   });
   return { title: calendarTitle(base, mode), days: mappedDays };
@@ -6108,11 +6231,12 @@ function buildWeekDays(date) {
 }
 
 function buildTimeSlots(items) {
+  const safeItems = asArray(items);
   const baseHours = Array.from({ length: 11 }, (_, index) => `${String(index + 8).padStart(2, "0")}:00`);
-  const eventHours = items.map((item) => `${item.appointment_time.slice(0, 2)}:00`);
+  const eventHours = safeItems.map((item) => `${String(item?.appointment_time || "00").slice(0, 2)}:00`);
   return [...new Set([...baseHours, ...eventHours])].sort().map((hour) => ({
     hour,
-    items: items.filter((item) => item.appointment_time.slice(0, 2) === hour.slice(0, 2))
+    items: safeItems.filter((item) => String(item?.appointment_time || "").slice(0, 2) === hour.slice(0, 2))
   }));
 }
 
@@ -6146,4 +6270,4 @@ function dateKey(date) {
 
 const auraRoot = window.__auraReactRoot || createRoot(document.getElementById("root"));
 window.__auraReactRoot = auraRoot;
-auraRoot.render(<App />);
+auraRoot.render(<AppErrorBoundary><App /></AppErrorBoundary>);
