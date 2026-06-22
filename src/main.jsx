@@ -2230,9 +2230,18 @@ function Inventory2() {
     size: asArray(rawInventoryOptions.size),
     thickness: asArray(rawInventoryOptions.thickness)
   };
-  const optionJewelry = asArray(safeOptions.jewelry);
-  const allJewelry = optionJewelry.length ? optionJewelry : items;
-  const allVariants = allJewelry.flatMap((item) => asArray(item?.variants));
+const optionJewelry = asArray(safeOptions.jewelry);
+const safeOptionJewelry = asArray(optionJewelry);
+const safeInventoryJewelry = asArray(inventoryJewelry);
+const safeCatalogJewelry = asArray(catalogJewelry);
+
+const allJewelry = safeOptionJewelry.length
+  ? safeOptionJewelry
+  : [...safeInventoryJewelry, ...safeCatalogJewelry];
+
+const allVariants = asArray(allJewelry).flatMap((item) =>
+  asArray(item?.variants)
+);
   const variantOptions = (field) => [...new Set(allVariants.map((variant) => variant[field]).filter(Boolean))].sort();
   const filteredItems = items.filter((item) => {
     if (inventoryMode === "virtual") {
@@ -5908,21 +5917,26 @@ function catalogStockText(item, theme = {}, settings = {}) {
 }
 
 function catalogFilterOptions(items) {
-  const allVariants = (Array.isArray(allJewelry) ? allJewelry : []).flatMap(
-  (item) => item.variants || []
-);
-  const unique = (key, source = items) => [...new Set(source.map((item) => cleanDisplayText(item[key])).filter(Boolean))].sort();
+  const safeItems = asArray(items);
+
+  const variants = safeItems.flatMap((item) =>
+    asArray(item?.variants)
+  );
+
+  const unique = (key, source = safeItems) =>
+    [...new Set(asArray(source).map((item) => cleanDisplayText(item?.[key])).filter(Boolean))].sort();
+
   return {
     categories: unique("category"),
     subcategories: unique("subcategory"),
     materials: unique("material", variants),
     colors: [
-  ...new Set(
-    (Array.isArray(variants) ? variants : []).flatMap((variant) =>
-      splitColorOptions(variant.color)
-    )
-  ),
-].sort(),
+      ...new Set(
+        asArray(variants).flatMap((variant) =>
+          splitColorOptions(variant?.color)
+        )
+      ),
+    ].sort(),
     stones: unique("stone"),
     sizes: unique("size", variants),
     thicknesses: unique("thickness", variants),
@@ -6030,7 +6044,7 @@ function generateLocalSku(item = {}) {
     "titanio astm f136": "TIT",
     "ouro 14k": "G14",
     "ouro 18k": "G18",
-    aço: "ACO",
+    aco: "ACO",
     outro: "OUT"
   }[removeAccents(String(item.material || "").toLowerCase())] || "JWL";
   const categoryCode = {
