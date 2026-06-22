@@ -3683,19 +3683,37 @@ function ImageUploadField({ label, value, onChange }) {
   const [error, setError] = useState("");
 
   async function uploadImage(event) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    setError("");
-    const body = new FormData();
-    body.append("file", file);
-    const response = await apiFetch("/uploads", { method: "POST", body });
-    const json = await response.json().catch(() => ({}));
-    setUploading(false);
-    if (!response.ok) return setError(json.error || "Não foi possível enviar a imagem.");
-    onChange(json.url);
-  }
+  const file = event.target.files?.[0];
+  if (!file) return;
 
+  setUploading(true);
+  setError("");
+
+  try {
+    const { supabase } = await import("./supabaseClient.js");
+
+    const safeFileName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "-");
+    const filePath = `${Date.now()}-${safeFileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("jewelry-images")
+      .upload(filePath, file);
+
+    if (uploadError) throw uploadError;
+
+    const { data } = supabase.storage
+      .from("jewelry-images")
+      .getPublicUrl(filePath);
+
+    onChange(data.publicUrl);
+  } catch (err) {
+    console.error(err);
+    setError("Não foi possível enviar a imagem.");
+  } finally {
+    setUploading(false);
+    event.target.value = "";
+  }
+}
   return (
     <label className="image-upload-field">{label}
       <div className="image-upload-preview">
