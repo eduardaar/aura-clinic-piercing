@@ -166,21 +166,29 @@ function Login({ onLogin }) {
   const [rememberAccess, setRememberAccess] = useState(Boolean(localStorage.getItem("aura-remembered-email")));
   const [error, setError] = useState("");
 
-  async function submit(event) {
-    event.preventDefault();
-    setError("");
-    const response = await apiFetch(`/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form)
-    });
-    const data = await response.json();
-    if (!response.ok) return setError(data.error || "Não foi possível entrar.");
-    if (rememberAccess) localStorage.setItem("aura-remembered-email", form.email);
-    else localStorage.removeItem("aura-remembered-email");
-    localStorage.setItem("aura-session", JSON.stringify(data));
-    onLogin(data);
+ async function submit(event) {
+  event.preventDefault();
+  setError("");
+
+  const isDemoLogin =
+    form.email === "admin@auraclinic.com" &&
+    form.password === "aura123";
+
+  if (isDemoLogin) {
+    const user = {
+      id: 1,
+      name: "Administrador Aura",
+      email: "admin@auraclinic.com",
+      role: "admin",
+    };
+
+    localStorage.setItem("aura-session", JSON.stringify({ user }));
+    onLogin(user);
+    return;
   }
+
+  setError("E-mail ou senha incorretos.");
+}
 
   return (
     <main className="login-screen">
