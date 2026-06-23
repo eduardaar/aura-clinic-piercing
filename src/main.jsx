@@ -135,6 +135,8 @@ function App() {
   const [page, setPage] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
+  const [alertsData, setAlertsData] = useState({ count: 0, items: [] });
+  const [alertsLoading, setAlertsLoading] = useState(false);
   
   // Verificação de autenticação administrativa
   const isAdminAuthenticated = session?.user?.id ? true : false;
@@ -148,6 +150,24 @@ function App() {
   const isPublicCheckout = currentPathname.startsWith("/comprar");
   
   const normalizedSession = session?.user ? session : session ? { user: session } : null;
+
+  async function openAlerts() {
+    setAlertsOpen(true);
+    setAlertsLoading(true);
+    try {
+      const response = await apiFetch("/alerts");
+      const payload = await response.json().catch(() => ({}));
+      setAlertsData(response.ok ? {
+        count: asNumber(payload?.count),
+        items: asArray(payload?.items)
+      } : { count: 0, items: [] });
+    } catch (error) {
+      console.error("Não foi possível carregar os alertas:", error);
+      setAlertsData({ count: 0, items: [] });
+    } finally {
+      setAlertsLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (normalizedSession && !canAccessPage(normalizedSession.user?.role, page)) {
@@ -217,9 +237,9 @@ function App() {
             {activePage === "dashboard" && <p>Bem-vinda ao painel administrativo da Aura Clinic.</p>}
           </div>
           <div className="topbar-actions">
-            <button className="notification-button" aria-label="Notificações" onClick={() => setAlertsOpen(true)}>
+            <button className="notification-button" aria-label="Notificações" onClick={openAlerts}>
               <Bell size={19} />
-              <span>3</span>
+              {asNumber(alertsData.count) > 0 && <span>{asNumber(alertsData.count)}</span>}
             </button>
             <div className="date-card">
               <Calendar size={21} />
@@ -234,7 +254,8 @@ function App() {
           </div>
           </div>
         </header>
-        {activePage === "dashboard" && <Dashboard user={normalizedSession.user} setPage={setPage} alertsOpen={alertsOpen} setAlertsOpen={setAlertsOpen} />}
+        {activePage === "dashboard" && <Dashboard user={normalizedSession.user} setPage={setPage} alertsOpen={alertsOpen} setAlertsOpen={setAlertsOpen} alertsData={alertsData} alertsLoading={alertsLoading} />}
+        {activePage !== "dashboard" && alertsOpen && <AlertsPopup alerts={alertsData} loading={alertsLoading} onClose={() => setAlertsOpen(false)} onAction={(nextPage) => { setAlertsOpen(false); setPage(nextPage); }} />}
         {activePage === "erp" && <AuraERP setPage={setPage} />}
         {activePage === "agenda" && <AgendaWorkspace />}
         {activePage === "catalog" && <CatalogWorkspace />}
@@ -344,6 +365,7 @@ function Login({ onLogin }) {
 
 function PublicCatalog() {
   const { data } = usePublicFetch("/catalog");
+  const supabaseProducts = useSupabaseProducts({ publicOnly: true });
   const [activeCategory, setActiveCategory] = useState("Todos");
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState({ material: "", color: "", stone: "", size: "" });
@@ -391,7 +413,9 @@ function PublicCatalog() {
     const banners = activeBanners.length ? activeBanners : [fallbackBanner];
   const activeBanner = banners[bannerIndex % banners.length] || fallbackBanner;
   const categories = asArray(catalogCategoriesFromCatalog(safeData));
-  const catalogItems = asArray(safeData.items);
+  const catalogItems = supabaseProducts.enabled && Array.isArray(supabaseProducts.data)
+    ? supabaseProducts.data
+    : asArray(safeData.items);
   // Filtrar apenas produtos publicados para o catálogo público
   const publishedItems = catalogItems.filter((item) => Boolean(Number(item.is_published || 0)));
   const selectedProduct = publishedItems.find((item) => asNumber(item?.id) === selectedProductId) || null;
@@ -580,7 +604,7 @@ function addToOrder(item) {
             />
           ))}
         </section>
-        {!items.length && <p className="empty-state catalog-empty">Nenhuma joia encontrada nessa seleção.</p>}
+        {!items.length && <p className="empty-state catalog-empty">{supabaseProducts.error || "Nenhuma joia disponível no catálogo no momento."}</p>}
 
         <section className="catalog-guide-section">
           <article>
@@ -1310,11 +1334,12 @@ function PublicBooking() {
 }
 
 function BookingChoiceGrid({ title, items, value, onSelect, render }) {
+  const safeItems = asArray(items);
   return (
     <section className="booking-panel">
       <h2>{title}</h2>
       <div className="booking-choice-grid">
-        {items.map((item) => (
+        {safeItems.map((item) => (
           <button key={item.id} className={String(value) === String(item.id) ? "active" : ""} onClick={() => onSelect(item.id)}>
             {render(item)}
           </button>
@@ -1358,15 +1383,15 @@ function Sidebar({ page, role, setPage, open, onLogout }) {
   );
 }
 
-function Dashboard({ user, setPage, alertsOpen, setAlertsOpen }) {
+function Dashboard({ user, setPage, alertsOpen, setAlertsOpen, alertsData, alertsLoading }) {
   const { data } = useFetch("/dashboard");
 
   if (data == null) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
-  return <PremiumDashboard data={data} user={user} setPage={setPage} alertsOpen={alertsOpen} setAlertsOpen={setAlertsOpen} />;
+  return <PremiumDashboard data={data} user={user} setPage={setPage} alertsOpen={alertsOpen} setAlertsOpen={setAlertsOpen} alertsData={alertsData} alertsLoading={alertsLoading} />;
 }
 
-function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpen }) {
+function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpen, alertsData, alertsLoading }) {
   const [revenueMode, setRevenueMode] = useState("mensal");
   const safeData = asObject(data);
   const safeStats = {
@@ -1381,7 +1406,6 @@ function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpen }) {
     ...asObject(safeData.stats)
   };
   const adminDashboard = asObject(safeData.adminDashboard);
-  const alertsData = asObject(safeData.alerts);
   const upcomingAppointments = asArray(adminDashboard.upcomingAppointments);
   const criticalStockItems = asArray(adminDashboard.criticalStock);
   const birthdaysItems = asArray(adminDashboard.birthdaysMonth);
@@ -1411,7 +1435,7 @@ function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpen }) {
 
   return (
     <section className="premium-dashboard">
-      {alertsOpen && <AlertsPopup alerts={alertsData} onClose={() => setAlertsOpen(false)} />}
+      {alertsOpen && <AlertsPopup alerts={alertsData} loading={alertsLoading} onClose={() => setAlertsOpen(false)} onAction={(nextPage) => { setAlertsOpen(false); setPage(nextPage); }} />}
 
       <div className="premium-metric-grid">
         {cards.map(({ label, value, icon: Icon, action, page, tone, critical }) => (
@@ -1600,47 +1624,45 @@ function DashboardList({ title, items = [], render }) {
   );
 }
 
-function AlertsPopup({ alerts, onClose }) {
+function AlertsPopup({ alerts, loading, onClose, onAction }) {
   const safeAlerts = asObject(alerts);
+  const items = asArray(safeAlerts.items);
+  const iconByCategory = {
+    Estoque: Gem,
+    Clientes: Cake,
+    Relacionamento: Trophy
+  };
   return (
-    <div className="popup-backdrop" role="presentation">
-      <section className="alerts-popup" role="dialog" aria-modal="true" aria-label="Alertas da Aura Clinic">
+    <div className="popup-backdrop" role="presentation" onClick={onClose}>
+      <section className="alerts-popup" role="dialog" aria-modal="true" aria-label="Alertas da Aura Clinic" onClick={(event) => event.stopPropagation()}>
         <header>
           <div>
             <span className="eyebrow">Central de alertas</span>
-            <h2>O que precisa de atenção</h2>
+            <h2>O que precisa de atenção hoje</h2>
           </div>
           <button className="icon-button" onClick={onClose} aria-label="Fechar alertas">X</button>
         </header>
-        <div className="alerts-grid">
-          <AlertBlock icon={AlertTriangle} title="Joias acabando" empty="Nenhuma joia em alerta.">
-            {asArray(safeAlerts.lowStockJewelry).map((item) => (
-              <article className="alert-item critical" key={item.id}>
-                <strong>{item.name}</strong>
-                <span>{item.category} · Observação de cor: {item.color || "sem observação"} · {item.size || "sem tamanho"}</span>
-                <small>{item.quantity} unidade(s) · {item.status} · SKU {item.sku}</small>
-              </article>
-            ))}
-          </AlertBlock>
-          <AlertBlock icon={Cake} title="Aniversários próximos" empty="Nenhum aniversário nos próximos 30 dias.">
-            {asArray(safeAlerts.birthdays).map((client) => (
-              <article className="alert-item birthday" key={client.id}>
-                <strong>{client.full_name}</strong>
-                <span>{client.days_until === 0 ? "Aniversário hoje" : `Em ${client.days_until} dia(s)`}</span>
-                <small>{formatLongDate(client.next_birthday)} · {client.whatsapp}</small>
-              </article>
-            ))}
-          </AlertBlock>
-          <AlertBlock icon={Trophy} title="Clientes mais frequentes" empty="Sem histórico suficiente ainda.">
-            {asArray(safeAlerts.topClients).map((client) => (
-              <article className="alert-item vip" key={client.id}>
-                <strong>{client.full_name}</strong>
-                <span>{client.appointment_count} atendimento(s) · {client.return_count || 0} retorno(s)</span>
-                <small>Última visita: {formatDate(client.last_visit)} · {client.instagram || client.whatsapp}</small>
-              </article>
-            ))}
-          </AlertBlock>
-        </div>
+        {loading ? <Loading /> : items.length ? (
+          <div className="alerts-grid real-alerts-grid">
+            {items.map((item) => {
+              const Icon = iconByCategory[item.category] || Bell;
+              return (
+                <article className={`alert-card priority-${item.priority || "low"}`} key={item.id}>
+                  <div className="alert-card-icon"><Icon size={20} /></div>
+                  <div className="alert-card-heading">
+                    <span>{item.category || "Aura Clinic"}</span>
+                    <em>{item.priority === "high" ? "Alta" : item.priority === "medium" ? "Média" : "Baixa"}</em>
+                  </div>
+                  <h3>{item.title || "Alerta"}</h3>
+                  <strong>{item.subject || ""}</strong>
+                  <p>{item.description || "Verifique esta informação no sistema."}</p>
+                  {item.related_date && <small>{formatLongDate(item.related_date)}</small>}
+                  {item.action_page && <button type="button" onClick={() => onAction?.(item.action_page)}>{item.action_label || "Ver detalhes"} <ChevronRight size={15} /></button>}
+                </article>
+              );
+            })}
+          </div>
+        ) : <div className="alerts-empty-state"><Bell size={28} /><strong>Nenhum alerta importante no momento.</strong><span>Está tudo em ordem por aqui.</span></div>}
       </section>
     </div>
   );
@@ -2153,7 +2175,7 @@ function GoogleLikeCalendar({ days, mode, refresh }) {
             {day.isToday && <strong>Hoje</strong>}
           </header>
           <div className="calendar-events">
-            {day.items.map((item) => <CalendarEvent item={item} key={item.id} refresh={refresh} />)}
+            {asArray(day.items).map((item) => <CalendarEvent item={item} key={item.id} refresh={refresh} />)}
           </div>
         </article>
       ))}
@@ -2172,7 +2194,7 @@ function DailyAgenda({ day, refresh }) {
       {slots.map((slot) => (
         <div className="time-slot" key={slot.hour}>
           <span>{slot.hour}</span>
-          <div>{slot.items.map((item) => <CalendarEvent item={item} key={item.id} refresh={refresh} />)}</div>
+          <div>{asArray(slot.items).map((item) => <CalendarEvent item={item} key={item.id} refresh={refresh} />)}</div>
         </div>
       ))}
     </div>
@@ -2226,9 +2248,10 @@ function Inventory() {
 }
 
 function JewelryCards({ items, onOpen, onEdit, onMovement, onArchive }) {
+  const safeItems = asArray(items);
   return (
     <div className="inventory-product-list">
-      {items.map((item) => (
+      {safeItems.map((item) => (
         <article
           className="inventory-product-row clickable"
           key={item.id}
@@ -2263,6 +2286,7 @@ function JewelryCards({ items, onOpen, onEdit, onMovement, onArchive }) {
 }
 
 function Inventory2() {
+  const supabaseProducts = useSupabaseProducts();
   const [view, setView] = useState("table");
   const [sectionTab, setSectionTab] = useState("produtos");
   const [inventoryMode, setInventoryMode] = useState("internal");
@@ -2278,7 +2302,10 @@ function Inventory2() {
   const { status: _statusFilter, ...queryFilters } = filters;
   const query = new URLSearchParams(Object.fromEntries(Object.entries(queryFilters).filter(([, value]) => value))).toString();
   const { data, refresh: refreshJewelry } = useFetch(`/jewelry?${query}`);
-  const items = asArray(data);
+  const apiItems = asArray(data);
+  const items = supabaseProducts.enabled && Array.isArray(supabaseProducts.data)
+    ? supabaseProducts.data
+    : apiItems;
   const safeOptions = asObject(options);
   const rawInventoryOptions = asObject(safeOptions.inventoryOptions);
   const inventoryOptions = {
@@ -2293,9 +2320,14 @@ const catalogJewelry = asArray(safeOptions.catalogJewelry || []);
 const safeInventoryJewelry = asArray(inventoryJewelry);
 const safeCatalogJewelry = asArray(catalogJewelry);
 
-const allJewelry = safeOptionJewelry.length
-  ? safeOptionJewelry
-  : [...safeInventoryJewelry, ...safeCatalogJewelry];
+const fallbackJewelry = [...safeInventoryJewelry, ...safeCatalogJewelry];
+const allJewelry = supabaseProducts.enabled
+  ? items
+  : safeOptionJewelry.length
+    ? safeOptionJewelry
+    : fallbackJewelry.length
+      ? fallbackJewelry
+      : items;
 
 const allVariants = asArray(allJewelry).flatMap((item) =>
   asArray(item?.variants)
@@ -2344,6 +2376,15 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
   }, [inventoryMode]);
 
   async function archiveJewelry(item) {
+    if (item?.supabase_source) {
+      try {
+        await removeSupabaseProduct(item.supabase_id || item.id);
+        supabaseProducts.refresh();
+      } catch (error) {
+        console.error(error);
+      }
+      return;
+    }
     const response = await apiFetch(`/jewelry/${item.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -2434,6 +2475,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
               closeProduct({ keepCategory: Boolean(productCategory) });
               refreshJewelry();
               refreshOptions();
+              supabaseProducts.refresh();
             }}
           />
         </div>
@@ -2557,8 +2599,8 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
               {!displayItems.length ? (
                 <div className="inventory-empty-state">
                   <Gem size={28} />
-                  <strong>Nenhuma joia encontrada neste filtro.</strong>
-                  <span>Ajuste os filtros ou escolha outra categoria para continuar.</span>
+                  <strong>{supabaseProducts.error || "Nenhuma joia cadastrada ainda."}</strong>
+                  <span>Cadastre uma nova joia ou ajuste os filtros para continuar.</span>
                 </div>
               ) : view === "cards" ? (
                 <JewelryCards items={displayItems} onOpen={openProduct} onEdit={openProduct} onMovement={openMovement} onArchive={archiveJewelry} />
@@ -2704,6 +2746,17 @@ function JewelryEditor({ options, editing, onSaved, onCancel, onMovementOpen }) 
       is_last_units: Boolean(form.is_last_units),
       image_url: form.image_url
     };
+    if (editing?.supabase_source) {
+      try {
+        const savedProduct = await saveSupabaseProduct(payload, editing.supabase_id || editing.id);
+        setForm(defaultJewelry());
+        onSaved(savedProduct);
+      } catch (saveError) {
+        console.error(saveError);
+        setError("Não foi possível salvar a joia no Supabase.");
+      }
+      return;
+    }
     const response = await apiFetch(`/jewelry${editing ? `/${editing.id}` : ""}`, {
       method: editing ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
@@ -2711,8 +2764,9 @@ function JewelryEditor({ options, editing, onSaved, onCancel, onMovementOpen }) 
     });
     const json = await response.json().catch(() => ({}));
     if (!response.ok) return setError(json.error || "Não foi possível salvar a joia.");
+    await syncProductToSupabase(json);
     setForm(defaultJewelry());
-    onSaved();
+    onSaved(json);
   }
 
   const potentialProfit = form.variants.reduce(
@@ -3138,9 +3192,11 @@ function CatalogCustomization() {
   if (!data) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
 
-  const products = data.products || [];
+  const safeData = asObject(data);
+  const products = asArray(safeData.products);
+  const customizationOptions = asObject(safeData.inventoryOptions);
   const categoryOptions = [
-    ...(data.inventoryOptions?.category || []).map((item) => item.name),
+    ...asArray(customizationOptions.category).map((item) => item.name),
     ...new Set(products.map((item) => item.category).filter(Boolean))
   ].filter((value, index, arr) => value && arr.indexOf(value) === index);
 
@@ -3459,9 +3515,10 @@ function Toggle({ label, checked, onChange }) {
 }
 
 function CatalogCustomizationPreview({ form, products }) {
-  const theme = form.theme;
-  const activeBanner = [...form.banners].sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0)).find((banner) => Boolean(Number(banner.is_active))) || defaultCatalogBanner(1);
-  const previewProducts = products.slice(0, 4);
+  const safeForm = asObject(form);
+  const theme = { ...defaultCatalogCustomization().theme, ...asObject(safeForm.theme) };
+  const activeBanner = [...asArray(safeForm.banners)].sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0)).find((banner) => Boolean(Number(banner.is_active))) || defaultCatalogBanner(1);
+  const previewProducts = asArray(products).slice(0, 4);
   const style = {
     "--preview-primary": theme.primary_color,
     "--preview-secondary": theme.secondary_color,
@@ -3690,7 +3747,10 @@ function ImageUploadField({ label, value, onChange }) {
   setError("");
 
   try {
-    const { supabase } = await import("./supabaseClient.js");
+    const { supabase, isSupabaseConfigured } = await import("./supabaseClient.js");
+    if (!isSupabaseConfigured || !supabase) {
+      throw new Error("Configure VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY para enviar imagens.");
+    }
 
     const safeFileName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "-");
     const filePath = `${Date.now()}-${safeFileName}`;
@@ -3780,7 +3840,7 @@ function OptionManager({ title, type, items = [], onChanged, placeholder }) {
       </form>
       {error && <span className="form-error">{error}</span>}
       <div className="manager-list">
-        {items.map((item) => (
+        {asArray(items).map((item) => (
           <div key={item.id}>
             <span>{item.name}</span>
             <button onClick={() => { setEditing(item); setName(item.name); }}>Editar</button>
@@ -3828,7 +3888,7 @@ function ProfessionalManager({ professionals = [], onChanged }) {
       </form>
       {error && <span className="form-error">{error}</span>}
       <div className="manager-list">
-        {professionals.map((professional) => (
+        {asArray(professionals).map((professional) => (
           <div key={professional.id}>
             <span>{professional.name}<small>{professional.specialty}</small></span>
             <button onClick={() => { setEditing(professional); setForm({ name: professional.name, specialty: professional.specialty || "" }); }}>Editar</button>
@@ -3841,11 +3901,12 @@ function ProfessionalManager({ professionals = [], onChanged }) {
 }
 
 function JewelryTable({ items, onOpen, onEdit, onMovement, onArchive }) {
+  const safeItems = asArray(items);
   return (
     <div className="table-wrap inventory-admin-table compact-inventory-table">
       <table>
         <thead><tr><th>Produto</th><th>Variações</th><th>Estoque Total</th><th>Status</th><th>Venda</th><th>Ações</th></tr></thead>
-        <tbody>{items.map((item) => (
+        <tbody>{safeItems.map((item) => (
           <tr className="clickable-product-row" key={item.id} onClick={() => onOpen?.(item)}>
             <td>
               <div className="inventory-product-cell">
@@ -4306,7 +4367,7 @@ function SalesWorkspace() {
                 <div>
                   <strong>{order.full_name}</strong>
                   <span>{saleOrderTypeLabel(order.order_type)} · {order.source} · {formatDate(order.created_at.slice(0, 10))}</span>
-                  <small>{order.items.map((item) => `${item.quantity}x ${item.item_name}`).join(" · ")}</small>
+                  <small>{asArray(order.items).map((item) => `${item.quantity}x ${item.item_name}`).join(" · ")}</small>
                 </div>
                 <div className="sales-history-money">
                   <strong>{currency.format(order.total_value || 0)}</strong>
@@ -4993,7 +5054,7 @@ function LoyaltyPanel({ client, onChanged }) {
         <div>
           <h4>Benefícios por nível</h4>
           <ul className="benefit-list">
-            {loyalty.benefits.map((benefit) => <li key={benefit}>{benefit}</li>)}
+            {asArray(loyalty.benefits).map((benefit) => <li key={benefit}>{benefit}</li>)}
           </ul>
         </div>
         <form onSubmit={submit} className="redeem-form">
@@ -5288,7 +5349,7 @@ function MedicalRecordForm({ client, onSaved }) {
         <Input type="date" label="Data do registro" value={record.record_date} onChange={(value) => setRecord({ ...record, record_date: value })} />
         <Select label="Atendimento vinculado" value={record.appointment_id} onChange={(value) => setRecord({ ...record, appointment_id: value })}>
           <option value="">Sem vínculo</option>
-          {client.history.map((item) => <option key={item.id} value={item.id}>{formatDate(item.appointment_date)} · {item.procedure}</option>)}
+          {asArray(client.history).map((item) => <option key={item.id} value={item.id}>{formatDate(item.appointment_date)} · {item.procedure}</option>)}
         </Select>
       </div>
       <label>Histórico de perfurações
@@ -5532,6 +5593,73 @@ function usePublicFetch(path) {
     return () => { active = false; };
   }, [path]);
   return { data };
+}
+
+function useSupabaseProducts({ publicOnly = false } = {}) {
+  const [state, setState] = useState({ enabled: false, data: null, error: "" });
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    async function load() {
+      try {
+        const { supabase, isSupabaseConfigured, productFromSupabase } = await import("./supabaseClient.js");
+        if (!isSupabaseConfigured || !supabase) {
+          if (active) setState({ enabled: false, data: null, error: "" });
+          return;
+        }
+        let query = supabase.from("products").select("*").order("created_at", { ascending: false });
+        if (publicOnly) query = query.eq("is_active", true);
+        const { data, error } = await query;
+        if (error) throw error;
+        const products = asArray(data).map(productFromSupabase);
+        products.sort((a, b) => asNumber(b.is_featured) - asNumber(a.is_featured));
+        if (active) setState({ enabled: true, data: products, error: "" });
+      } catch (error) {
+        console.error("Supabase products:", error);
+        if (active) setState({ enabled: true, data: null, error: "Não foi possível carregar as joias do Supabase." });
+      }
+    }
+    load();
+    return () => { active = false; };
+  }, [publicOnly, tick]);
+
+  return { ...state, refresh: () => setTick((value) => value + 1) };
+}
+
+async function syncProductToSupabase(product) {
+  try {
+    const { supabase, isSupabaseConfigured, productToSupabase } = await import("./supabaseClient.js");
+    if (!isSupabaseConfigured || !supabase) return;
+    const payload = productToSupabase(product);
+    const existingId = product?.supabase_id || (product?.supabase_source ? product.id : null);
+    const query = existingId
+      ? supabase.from("products").update(payload).eq("id", existingId)
+      : supabase.from("products").insert(payload);
+    const { error } = await query;
+    if (error) throw error;
+  } catch (error) {
+    console.error("Não foi possível sincronizar o produto com o Supabase:", error);
+  }
+}
+
+async function saveSupabaseProduct(product, existingId = null) {
+  const { supabase, isSupabaseConfigured, productToSupabase, productFromSupabase } = await import("./supabaseClient.js");
+  if (!isSupabaseConfigured || !supabase) throw new Error("Supabase não configurado.");
+  const payload = productToSupabase(product);
+  const query = existingId
+    ? supabase.from("products").update(payload).eq("id", existingId).select("*").single()
+    : supabase.from("products").insert(payload).select("*").single();
+  const { data, error } = await query;
+  if (error) throw error;
+  return productFromSupabase(data);
+}
+
+async function removeSupabaseProduct(id) {
+  const { supabase, isSupabaseConfigured } = await import("./supabaseClient.js");
+  if (!isSupabaseConfigured || !supabase) return;
+  const { error } = await supabase.from("products").delete().eq("id", id);
+  if (error) throw error;
 }
 
 async function updateAppointment(id, body, refresh) {
@@ -5938,15 +6066,17 @@ function catalogCategories(names = []) {
     Lançamentos: Star,
     Lancamentos: Star
   };
-  const categoryNames = names.length ? names : ["Todos", ...JEWELRY_CATEGORY_OPTIONS];
+  const safeNames = asArray(names);
+  const categoryNames = safeNames.length ? safeNames : ["Todos", ...JEWELRY_CATEGORY_OPTIONS];
   return categoryNames.map((name) => ({ name, icon: iconByCategory[name] || Gem }));
 }
 
 function catalogCategoriesFromCatalog(data) {
-  const active = (data.featuredCategories || [])
+  const safeData = asObject(data);
+  const active = asArray(safeData.featuredCategories)
     .filter((category) => Boolean(Number(category.is_active)))
     .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
-  if (!active.length) return catalogCategories(data.categories);
+  if (!active.length) return catalogCategories(asArray(safeData.categories));
   return [
     { name: "Todos", icon: LayoutGrid, match: "Todos" },
     ...active.map((category) => ({
@@ -5970,7 +6100,7 @@ function catalogIcon(icon) {
 
 function catalogPromotionForItem(item, promotions = []) {
   const today = new Date().toISOString().slice(0, 10);
-  return promotions.find((promotion) => {
+  return asArray(promotions).find((promotion) => {
     if (!Boolean(Number(promotion.is_active))) return false;
     if (promotion.start_date && promotion.start_date > today) return false;
     if (promotion.end_date && promotion.end_date < today) return false;
