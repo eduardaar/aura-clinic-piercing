@@ -1,0 +1,392 @@
+import { localDateValue } from "./utils";
+import { normalizeJewelryMaterial, normalizeJewelryThread, splitColorOptions } from "../features/catalog/catalogUtils";
+
+export const ANODIZATION_COLOR_OPTIONS = [
+  { name: "Natural", color: "#B8B8B3" },
+  { name: "Bronze", color: "#9A6A3A" },
+  { name: "Dourado", color: "#D6AE4B" },
+  { name: "Champagne", color: "#D7B98E" },
+  { name: "Rosé", color: "#C98F88" },
+  { name: "Rosa", color: "#D97AA8" },
+  { name: "Fúcsia", color: "#B62A83" },
+  { name: "Roxo", color: "#7650A8" },
+  { name: "Azul Escuro", color: "#244F93" },
+  { name: "Azul", color: "#3D78C5" },
+  { name: "Azul Claro", color: "#65A9D8" },
+  { name: "Turquesa", color: "#3AA9A0" },
+  { name: "Verde", color: "#5A9A63" },
+  { name: "Verde Petróleo", color: "#397A75" },
+  { name: "Preto", color: "#252525" }
+];
+export const JEWELRY_LENGTH_OPTIONS = Array.from({ length: 11 }, (_, index) => `${index + 4}mm`);
+export const JEWELRY_THICKNESS_OPTIONS = ["0.8mm", "1.0mm", "1.2mm", "1.6mm", "2.0mm", "2.5mm"];
+export const JEWELRY_THREAD_OPTIONS = ["Interna", "Externa", "Push Pin"];
+
+export const DIGITAL_TERM_HEALTH_ITEMS = [
+  { key: "epilepsia", label: "Epilepsia" },
+  { key: "hemofilia", label: "Hemofilia" },
+  { key: "diabetes", label: "Diabetes" },
+  { key: "alteracoes_hormonais", label: "AlteraÃ§Ãµes Hormonais" },
+  { key: "doencas_cardiacas", label: "DoenÃ§as CardÃ­acas" },
+  { key: "queloide", label: "Queloide" },
+  { key: "ists", label: "IST's" },
+  { key: "hepatite", label: "Hepatite" },
+  { key: "dermatite", label: "Dermatite" },
+  { key: "anemia", label: "Anemia" }
+];
+
+export const DIGITAL_TERM_LIFESTYLE_ITEMS = [
+  { key: "eats_well", label: "Alimenta-Se Bem?" },
+  { key: "sleep_regular", label: "Tem Sono Regular?" },
+  { key: "physical_activity", label: "Pratica Atividade FÃ­sica?" },
+  { key: "alcohol", label: "Bebe Ãlcool?" },
+  { key: "smokes", label: "Fuma?" },
+  { key: "health_problem", label: "Algum Problema De SaÃºde?" },
+  { key: "medication", label: "Usa Algum Medicamento?" },
+  { key: "treatment", label: "Faz Algum Tratamento?" },
+  { key: "phobia", label: "Tem Alguma Fobia?" },
+  { key: "blood_pressure", label: "PressÃ£o SanguÃ­nea" }
+];
+
+export function defaultDigitalTerm() {
+  return {
+    appointment_id: "",
+    client_id: "",
+    full_name: "",
+    social_name: "",
+    document_number: "",
+    birth_date: "",
+    whatsapp: "",
+    instagram: "",
+    address: "",
+    procedure: "",
+    piercing_region: "",
+    health_declaration: "",
+    orientations_confirmed: false,
+    form_data: {
+      health_history: Object.fromEntries(DIGITAL_TERM_HEALTH_ITEMS.map((item) => [item.key, false])),
+      lifestyle: Object.fromEntries(DIGITAL_TERM_LIFESTYLE_ITEMS.map((item) => [item.key, ""])),
+      information: {
+        application_location: "",
+        jewelry: "",
+        observation: "",
+        value: ""
+      },
+      minor: {
+        is_minor: false,
+        responsible_name: "",
+        responsible_document: "",
+        minor_name: ""
+      }
+    },
+    signature_data_url: ""
+  };
+}
+
+export function defaultAppointment() {
+  const today = localDateValue(new Date());
+  return {
+    client_id: "",
+    full_name: "",
+    whatsapp: "",
+    instagram: "",
+    birth_date: "",
+    procedure: "",
+    description: "",
+    piercing_region: "",
+    service_id: "",
+    jewelry_id: "",
+    jewelry_variant_id: "",
+    appointment_kind: "Atendimento",
+    reference_photo: null,
+    appointment_date: today,
+    appointment_time: "",
+    professional_id: "",
+    total_value: 0,
+    deposit_value: 0,
+    remaining_value: 0,
+    deposit_payment_method: "Pix",
+    remaining_payment_method: "Pix",
+    status: "pendente",
+    notes: ""
+  };
+}
+
+export function defaultPublicBooking() {
+  const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  return {
+    service_id: params.get("service_id") || "",
+    professional_id: params.get("professional_id") || "",
+    appointment_date: params.get("appointment_date") || "",
+    appointment_time: params.get("appointment_time") || "",
+    full_name: "",
+    whatsapp: "",
+    instagram: "",
+    notes: "",
+    reference_photo: null,
+    payment_proof: null
+  };
+}
+
+export function nextBookingDates(total = 10) {
+  return Array.from({ length: total }, (_, index) => {
+    const date = new Date();
+    date.setDate(date.getDate() + index);
+    return {
+      value: localDateValue(date),
+      day: String(date.getDate()).padStart(2, "0"),
+      weekday: date.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "").toUpperCase(),
+      month: date.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "")
+    };
+  });
+}
+
+export function legacyLocalDateValue(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+export function defaultServiceForm() {
+  return {
+    name: "",
+    description: "",
+    base_price: 0,
+    duration_minutes: 40,
+    is_active: true
+  };
+}
+
+export function defaultProcedureForm() {
+  return {
+    service_id: "",
+    name: "",
+    body_area: "",
+    description: "",
+    price: 0,
+    duration_minutes: 40,
+    aftercare_instructions: "",
+    is_active: true
+  };
+}
+
+export function defaultSalesOrderForm() {
+  return {
+    full_name: "",
+    whatsapp: "",
+    instagram: "",
+    appointment_id: "",
+    payment_method: "Pix",
+    status: "concluida",
+    notes: ""
+  };
+}
+
+export function defaultSalesLine() {
+  return {
+    item_type: "produto",
+    product_id: "",
+    service_id: "",
+    quantity: 1,
+    unit_price: 0,
+    notes: ""
+  };
+}
+
+export function defaultScheduleBlock() {
+  const today = new Date().toISOString().slice(0, 10);
+  return {
+    professional_id: "",
+    start_datetime: `${today}T09:00`,
+    end_datetime: `${today}T18:00`,
+    reason: "Bloqueio",
+    notes: "",
+    is_full_day: false,
+    is_recurring: false
+  };
+}
+
+export const JEWELRY_CATEGORY_OPTIONS = [
+  "Labret",
+  "Argolas",
+  "Barbell Reto",
+  "Barbell Curvo",
+  "Nostril",
+  "Topos",
+  "Microdermal",
+  "Surface",
+  "Ouro 14k",
+  "Ouro 18k"
+];
+
+export function defaultJewelry() {
+  return {
+    name: "",
+    description: "",
+    photo_url: "https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=900&q=80",
+    image_url: "",
+    gallery_urls: "",
+    category: "",
+    subcategory: "",
+    variant_group: "",
+    variation_label: "",
+    material: "",
+    color: "",
+    stone: "",
+    size: "",
+    thickness: "",
+    stem_length: "",
+    thread_type: "",
+    piercing_type: "",
+    weight_grams: 50,
+    package_length_cm: 15,
+    package_width_cm: 10,
+    package_height_cm: 3,
+    package_type: "Envelope / caixa pequena",
+    virtual_store_active: true,
+    preparation_days: 1,
+    shipping_info: "",
+    seo_title: "",
+    seo_description: "",
+    freight_notes: "",
+    quantity: 0,
+    low_stock_threshold: 5,
+    critical_stock_threshold: 3,
+    cost_value: 0,
+    sale_value: 0,
+    supplier: "",
+    physical_location: "",
+    sku: "",
+    is_catalog_active: true,
+    is_featured: false,
+    is_new: false,
+    is_most_wanted: false,
+    is_promotion: false,
+    is_last_units: false,
+    is_published: false,
+    notes: "",
+    status: "disponÃ­vel",
+    variants: [defaultJewelryVariant()]
+  };
+}
+
+export function defaultJewelryVariant(index = 1) {
+  return {
+    id: null,
+    sku: "",
+    variation_name: `VariaÃ§Ã£o ${index}`,
+    material: "TitÃ¢nio ASTM F136",
+    color: "Natural",
+    stone_color: "",
+    side: "",
+    size: "",
+    thickness: "1.2mm",
+    length: "",
+    diameter: "",
+    thread_type: "Interna",
+    supplier: "",
+    cost_value: 0,
+    sale_value: 0,
+    quantity: 0,
+    low_stock_threshold: 5,
+    status: "disponÃ­vel",
+    is_active: true
+  };
+}
+
+export function normalizeJewelryForm(item = {}) {
+  let galleryUrls = item.gallery_urls || "";
+  if (Array.isArray(galleryUrls)) {
+    galleryUrls = galleryUrls.join("\n");
+  } else if (typeof galleryUrls === "string") {
+    try {
+      const parsed = JSON.parse(galleryUrls);
+      galleryUrls = Array.isArray(parsed) ? parsed.join("\n") : galleryUrls;
+    } catch {
+      galleryUrls = galleryUrls;
+    }
+  }
+  return {
+    ...defaultJewelry(),
+    ...item,
+    gallery_urls: galleryUrls,
+    virtual_store_active: Boolean(Number(item.virtual_store_active ?? 1)),
+    is_catalog_active: Boolean(Number(item.is_catalog_active ?? 1)),
+    is_featured: Boolean(Number(item.is_featured)),
+    is_new: Boolean(Number(item.is_new)),
+    is_most_wanted: Boolean(Number(item.is_most_wanted)),
+    is_promotion: Boolean(Number(item.is_promotion)),
+    is_last_units: Boolean(Number(item.is_last_units)),
+    weight_grams: Number(item.weight_grams || 50),
+    package_length_cm: Number(item.package_length_cm || 15),
+    package_width_cm: Number(item.package_width_cm || 10),
+    package_height_cm: Number(item.package_height_cm || 3),
+    preparation_days: Number(item.preparation_days || 1),
+    low_stock_threshold: Number(item.low_stock_threshold || 5),
+    critical_stock_threshold: Number(item.critical_stock_threshold || 3),
+    variants: Array.isArray(item.variants) && item.variants.length
+      ? item.variants.map((variant, index) => ({
+          ...defaultJewelryVariant(index + 1),
+          ...variant,
+          material: normalizeJewelryMaterial(variant.material),
+          color: splitColorOptions(variant.color).join(", "),
+          thread_type: normalizeJewelryThread(variant.thread_type),
+          is_active: Boolean(Number(variant.is_active ?? 1))
+        }))
+      : [defaultJewelryVariant()]
+  };
+}
+
+export function parseGalleryUrls(value = "") {
+  return String(value)
+    .split(/\n+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+export function defaultCatalogSettings() {
+  return {
+    title: "Escolha a joia perfeita para vocÃª",
+    subtitle: "Curadoria premium da Aura Clinic Piercing",
+    hero_title: "Joias de alta qualidade",
+    hero_subtitle: "para realÃ§ar sua essÃªncia",
+    hero_image_url: "https://images.unsplash.com/photo-1602751584552-8ba73aad10e1?auto=format&fit=crop&w=1200&q=85",
+    categories: `Todos, ${JEWELRY_CATEGORY_OPTIONS.join(", ")}`,
+    whatsapp_phone: "",
+    whatsapp_message: "OlÃ¡! Vim pelo catÃ¡logo online da Aura Clinic e quero ajuda para escolher uma joia.",
+    company_instagram: "",
+    company_email: "",
+    company_address: "",
+    company_hours: "",
+    layout_style: "premium"
+  };
+}
+
+export function defaultExpense() {
+  return {
+    description: "",
+    expense_type: "fixa",
+    category: "",
+    amount: 0,
+    due_date: new Date().toISOString().slice(0, 10),
+    status: "paga",
+    payment_method: "Pix",
+    notes: ""
+  };
+}
+
+export function defaultAccessUser() {
+  return { name: "", email: "", password: "", role: "reception" };
+}
+
+export function defaultMedicalRecord() {
+  return {
+    appointment_id: "",
+    record_date: new Date().toISOString().slice(0, 10),
+    piercing_history: "",
+    jewelry_used: "",
+    occurrences: "",
+    guidance: "",
+    allergies_notes: "",
+    healing_evolution: "",
+    returns_done: ""
+  };
+}
