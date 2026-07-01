@@ -1,4 +1,4 @@
-import "dotenv/config";
+﻿import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import multer from "multer";
@@ -9,7 +9,7 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import PDFDocument from "pdfkit";
 import ExcelJS from "exceljs";
-import { getDb, initDb } from "./database.js";
+import { getDb } from "./database.js";
 import { normalizeDbValue } from "./text-normalizer.js";
 import { query as pgQuery, runCoreMigrations, testConnection } from "./database/connection.js";
 
@@ -71,7 +71,7 @@ const withDb = (handler) => async (req, res) => {
   try {
     if (requiresAuth(req)) {
       const user = await authenticateRequest(req, db);
-      if (!user) return res.status(401).json({ error: "SessÃ£o invÃ¡lida ou expirada." });
+      if (!user) return res.status(401).json({ error: "SessÃƒÂ£o invÃƒÂ¡lida ou expirada." });
       req.user = user;
     }
     await handler(req, res, db);
@@ -127,7 +127,7 @@ function productPayload(body = {}) {
     min_stock: Number(body.min_stock || body.low_stock_threshold || 1),
     supplier: body.supplier || firstVariant.supplier || "",
     notes: body.notes || "",
-    status: body.status || "disponÃ­vel",
+    status: body.status || "disponÃƒÂ­vel",
     is_catalog_active: bool(body.is_catalog_active, true),
     is_published: bool(body.is_published, true),
     is_featured: bool(body.is_featured, false),
@@ -226,7 +226,7 @@ app.get("/api/clients", pg(async (_req, res) => {
 
 app.get("/api/clients/:id", pg(async (req, res) => {
   const client = await one(`${clientSelect()} WHERE id = $1`, [req.params.id]);
-  if (!client) return res.status(404).json({ error: "Cliente não encontrado." });
+  if (!client) return res.status(404).json({ error: "Cliente nÃ£o encontrado." });
   res.json(client);
 }));
 
@@ -255,13 +255,13 @@ app.put("/api/clients/:id", pg(async (req, res) => {
      WHERE id = $9 RETURNING id, name, phone, whatsapp, instagram, email, birth_date, cpf, notes, created_at, updated_at`,
     [...clientValues(body), req.params.id]
   );
-  if (!client) return res.status(404).json({ error: "Cliente não encontrado." });
+  if (!client) return res.status(404).json({ error: "Cliente nÃ£o encontrado." });
   res.json(client);
 }));
 
 app.patch("/api/clients/:id", pg(async (req, res) => {
   const current = await one(`${clientSelect()} WHERE id = $1`, [req.params.id]);
-  if (!current) return res.status(404).json({ error: "Cliente não encontrado." });
+  if (!current) return res.status(404).json({ error: "Cliente nÃ£o encontrado." });
   const body = { ...current, ...(req.body || {}) };
   const client = await one(
     `UPDATE clients SET name = $1, phone = $2, whatsapp = $3, instagram = $4, email = $5,
@@ -277,29 +277,78 @@ app.delete("/api/clients/:id", pg(async (req, res) => {
   res.json({ ok: true });
 }));
 
+function validateService(body = {}) {
+  if (!body.name?.trim()) return "Informe o nome do serviço.";
+  if (Number(body.base_price ?? 0) < 0) return "Preço não pode ser negativo.";
+  if (Number(body.duration_minutes ?? 0) <= 0) return "Duração deve ser um número positivo.";
+  return "";
+}
+
+function serviceValues(body = {}) {
+  return [
+    body.name || "",
+    body.description || "",
+    money(body.base_price ?? body.price),
+    Number(body.duration_minutes || 40),
+    bool(body.is_active ?? body.active, true)
+  ];
+}
+
+function validateProcedure(body = {}) {
+  if (!body.name?.trim()) return "Informe o nome do procedimento.";
+  if (!body.service_id) return "Procedimento precisa ter um serviço vinculado.";
+  if (Number(body.price ?? 0) < 0) return "Preço não pode ser negativo.";
+  if (Number(body.duration_minutes ?? 0) <= 0) return "Duração deve ser um número positivo.";
+  return "";
+}
+
+function procedureValues(body = {}) {
+  return [
+    Number(body.service_id),
+    body.name || "",
+    body.body_area || "",
+    body.description || "",
+    money(body.price),
+    Number(body.duration_minutes || 40),
+    body.aftercare_instructions || "",
+    bool(body.is_active ?? body.active, true)
+  ];
+}
+
 app.get("/api/services", pg(async (_req, res) => {
-  res.json(await rows("SELECT * FROM services ORDER BY name"));
+  res.json(await rows("SELECT id, name, description, base_price, duration_minutes, is_active, created_at, updated_at FROM services ORDER BY name"));
+}));
+
+app.get("/api/services/:id", pg(async (req, res) => {
+  const service = await one("SELECT id, name, description, base_price, duration_minutes, is_active, created_at, updated_at FROM services WHERE id = $1", [req.params.id]);
+  if (!service) return res.status(404).json({ error: "Serviço não encontrado." });
+  res.json(service);
 }));
 
 app.post("/api/services", pg(async (req, res) => {
   const body = req.body || {};
+  const error = validateService(body);
+  if (error) return res.status(400).json({ error });
   const service = await one(
-    "INSERT INTO services (name, description, duration_minutes, price, active) VALUES ($1, $2, $3, $4, $5) RETURNING *",
-    [body.name, body.description || "", Number(body.duration_minutes || 40), money(body.price), bool(body.active, true)]
+    `INSERT INTO services (name, description, base_price, duration_minutes, is_active)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, name, description, base_price, duration_minutes, is_active, created_at, updated_at`,
+    serviceValues(body)
   );
   res.status(201).json(service);
 }));
 
-app.patch("/api/services/:id", pg(async (req, res) => {
+app.put("/api/services/:id", pg(async (req, res) => {
   const body = req.body || {};
+  const error = validateService(body);
+  if (error) return res.status(400).json({ error });
   const service = await one(
-    `UPDATE services SET name = COALESCE($1, name), description = COALESCE($2, description),
-      duration_minutes = COALESCE($3, duration_minutes), price = COALESCE($4, price),
-      active = COALESCE($5, active), updated_at = NOW()
-     WHERE id = $6 RETURNING *`,
-    [body.name ?? null, body.description ?? null, body.duration_minutes ?? null, body.price ?? null, body.active ?? null, req.params.id]
+    `UPDATE services SET name = $1, description = $2, base_price = $3, duration_minutes = $4, is_active = $5, updated_at = NOW()
+     WHERE id = $6
+     RETURNING id, name, description, base_price, duration_minutes, is_active, created_at, updated_at`,
+    [...serviceValues(body), req.params.id]
   );
-  if (!service) return res.status(404).json({ error: "ServiÃ§o nÃ£o encontrado." });
+  if (!service) return res.status(404).json({ error: "Serviço não encontrado." });
   res.json(service);
 }));
 
@@ -309,28 +358,52 @@ app.delete("/api/services/:id", pg(async (req, res) => {
 }));
 
 app.get("/api/procedures", pg(async (_req, res) => {
-  res.json(await rows("SELECT * FROM procedures ORDER BY name"));
+  res.json(await rows(`
+    SELECT p.id, p.service_id, p.name, p.body_area, p.description, p.price, p.duration_minutes, p.aftercare_instructions, p.is_active, p.created_at, p.updated_at,
+      s.name AS service_name
+    FROM procedures p
+    LEFT JOIN services s ON s.id = p.service_id
+    ORDER BY s.name, p.name
+  `));
+}));
+
+app.get("/api/procedures/:id", pg(async (req, res) => {
+  const procedure = await one(`
+    SELECT p.id, p.service_id, p.name, p.body_area, p.description, p.price, p.duration_minutes, p.aftercare_instructions, p.is_active, p.created_at, p.updated_at,
+      s.name AS service_name
+    FROM procedures p
+    LEFT JOIN services s ON s.id = p.service_id
+    WHERE p.id = $1
+  `, [req.params.id]);
+  if (!procedure) return res.status(404).json({ error: "Procedimento não encontrado." });
+  res.json(procedure);
 }));
 
 app.post("/api/procedures", pg(async (req, res) => {
   const body = req.body || {};
+  const error = validateProcedure(body);
+  if (error) return res.status(400).json({ error });
   const procedure = await one(
-    "INSERT INTO procedures (name, description, region, service_id, base_price, active) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
-    [body.name, body.description || "", body.region || "", body.service_id || null, money(body.base_price || body.price), bool(body.active, true)]
+    `INSERT INTO procedures (service_id, name, body_area, description, price, duration_minutes, aftercare_instructions, is_active)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING id, service_id, name, body_area, description, price, duration_minutes, aftercare_instructions, is_active, created_at, updated_at`,
+    procedureValues(body)
   );
   res.status(201).json(procedure);
 }));
 
-app.patch("/api/procedures/:id", pg(async (req, res) => {
+app.put("/api/procedures/:id", pg(async (req, res) => {
   const body = req.body || {};
+  const error = validateProcedure(body);
+  if (error) return res.status(400).json({ error });
   const procedure = await one(
-    `UPDATE procedures SET name = COALESCE($1, name), description = COALESCE($2, description),
-      region = COALESCE($3, region), service_id = COALESCE($4, service_id),
-      base_price = COALESCE($5, base_price), active = COALESCE($6, active), updated_at = NOW()
-     WHERE id = $7 RETURNING *`,
-    [body.name ?? null, body.description ?? null, body.region ?? null, body.service_id ?? null, body.base_price ?? body.price ?? null, body.active ?? null, req.params.id]
+    `UPDATE procedures SET service_id = $1, name = $2, body_area = $3, description = $4, price = $5,
+      duration_minutes = $6, aftercare_instructions = $7, is_active = $8, updated_at = NOW()
+     WHERE id = $9
+     RETURNING id, service_id, name, body_area, description, price, duration_minutes, aftercare_instructions, is_active, created_at, updated_at`,
+    [...procedureValues(body), req.params.id]
   );
-  if (!procedure) return res.status(404).json({ error: "Procedimento nÃ£o encontrado." });
+  if (!procedure) return res.status(404).json({ error: "Procedimento não encontrado." });
   res.json(procedure);
 }));
 
@@ -375,7 +448,7 @@ app.post(["/api/products", "/api/jewelry"], pg(async (req, res) => {
 
 app.patch(["/api/products/:id", "/api/jewelry/:id"], pg(async (req, res) => {
   const current = await one("SELECT * FROM products WHERE id = $1", [req.params.id]);
-  if (!current) return res.status(404).json({ error: "Produto nÃ£o encontrado." });
+  if (!current) return res.status(404).json({ error: "Produto nÃƒÂ£o encontrado." });
   const item = productPayload({ ...current, ...req.body });
   const product = await one(
     `UPDATE products SET name=$1, description=$2, category=$3, subcategory=$4, material=$5, color=$6, size=$7, thickness=$8,
@@ -398,8 +471,8 @@ app.delete(["/api/products/:id", "/api/jewelry/:id"], pg(async (req, res) => {
 app.get("/api/catalog", pg(async (_req, res) => {
   const items = await rows(`${productSelect()} WHERE is_catalog_active = TRUE AND is_published = TRUE ORDER BY category, name`);
   res.json({
-    title: "Escolha a joia perfeita para vocÃª",
-    subtitle: "Joias selecionadas com cuidado, seguranÃ§a e estÃ©tica premium.",
+    title: "Escolha a joia perfeita para vocÃƒÂª",
+    subtitle: "Joias selecionadas com cuidado, seguranÃƒÂ§a e estÃƒÂ©tica premium.",
     items: items.map((item) => ({ ...item, status: item.computed_status || item.status, variants: Array.isArray(item.variants) ? item.variants : [] })),
     categories: [...new Set(items.map((item) => item.category).filter(Boolean))],
     banners: [],
@@ -409,7 +482,7 @@ app.get("/api/catalog", pg(async (_req, res) => {
 
 app.get("/api/options", pg(async (_req, res) => {
   const products = await rows("SELECT * FROM products ORDER BY name");
-  const services = await rows("SELECT * FROM services WHERE active = TRUE ORDER BY name");
+  const services = await rows("SELECT id, name, description, base_price, duration_minutes, is_active, created_at, updated_at FROM services WHERE is_active = TRUE ORDER BY name");
   res.json({
     jewelry: products,
     inventoryJewelry: products,
@@ -468,7 +541,7 @@ app.post("/api/appointments", pg(async (req, res) => {
 app.patch("/api/appointments/:id", pg(async (req, res) => {
   const body = req.body || {};
   const current = await one("SELECT * FROM appointments WHERE id = $1", [req.params.id]);
-  if (!current) return res.status(404).json({ error: "Agendamento nÃ£o encontrado." });
+  if (!current) return res.status(404).json({ error: "Agendamento nÃƒÂ£o encontrado." });
   const appointment = await one(
     `UPDATE appointments SET status=COALESCE($1,status), appointment_date=COALESCE($2,appointment_date), appointment_time=COALESCE($3,appointment_time),
       notes=COALESCE($4,notes), total_value=COALESCE($5,total_value), deposit_value=COALESCE($6,deposit_value),
@@ -516,7 +589,7 @@ app.post(["/api/financial-transactions", "/api/expenses"], pg(async (req, res) =
     `INSERT INTO financial_transactions (client_id, appointment_id, type, category, description, amount, payment_method, status, transaction_date, notes)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
     [body.client_id || null, body.appointment_id || null, isExpense ? "despesa" : "receita", body.category || body.expense_type || "",
-      body.description || "LanÃ§amento financeiro", money(body.amount), body.payment_method || "", body.status || "pago", body.transaction_date || body.due_date || new Date().toISOString().slice(0, 10), body.notes || ""]
+      body.description || "LanÃƒÂ§amento financeiro", money(body.amount), body.payment_method || "", body.status || "pago", body.transaction_date || body.due_date || new Date().toISOString().slice(0, 10), body.notes || ""]
   );
   res.status(201).json(transaction);
 }));
@@ -536,11 +609,600 @@ app.get("/api/alerts", pg(async (_req, res) => {
   res.json({ count: items.length, items });
 }));
 
+app.get("/api/erp", pg(async (_req, res) => {
+  const [clientsCount, appointmentsCount, revenue] = await Promise.all([
+    one("SELECT COUNT(*)::int AS total FROM clients"),
+    one("SELECT COUNT(*)::int AS total FROM appointments"),
+    one("SELECT COALESCE(SUM(amount),0) AS total FROM financial_transactions WHERE type = 'receita'")
+  ]);
+  res.json({
+    product: {
+      name: "Aura ERP",
+      positioning: "Gestão local integrada para clínica de piercing.",
+      stackTarget: ["PostgreSQL local", "React", "Express", "SQLite legado preservado"]
+    },
+    metrics: {
+      studios: 1,
+      clients: Number(clientsCount?.total || 0),
+      appointments: Number(appointmentsCount?.total || 0),
+      revenue: Number(revenue?.total || 0)
+    },
+    modules: [
+      ["Agendamentos", "ativo", "Agenda, clientes, serviços e procedimentos"],
+      ["Clientes e prontuários", "ativo", "Cadastro real de clientes em PostgreSQL"],
+      ["Catálogo online", "ativo", "Produtos publicados e venda pública"],
+      ["Financeiro", "ativo", "Receitas, despesas e exportações"],
+      ["CRM", "planejado", "Funil, retornos e reativação"],
+      ["Cursos", "planejado", "Cursos e consultorias"],
+      ["Multiempresa", "planejado", "Base preparada para SaaS"]
+    ].map(([name, status, description]) => ({ name, status, description })),
+    crm: await rows("SELECT status AS name, COUNT(*)::int AS total FROM crm_interactions GROUP BY status"),
+    catalogItems: await rows("SELECT id, name, category, quantity FROM products ORDER BY id DESC LIMIT 6"),
+    coupons: [],
+    influencers: [],
+    consultancies: await rows("SELECT name, price, format FROM consultancies WHERE is_active = TRUE ORDER BY name LIMIT 6"),
+    academy: await rows("SELECT name, price, format FROM courses WHERE is_active = TRUE ORDER BY name LIMIT 6"),
+    contentPlanner: [],
+    bodyMap: []
+  });
+}));
+
+app.get("/api/professionals", pg(async (_req, res) => {
+  res.json(await rows("SELECT * FROM professionals ORDER BY active DESC, name"));
+}));
+
+app.post("/api/professionals", pg(async (req, res) => {
+  const body = req.body || {};
+  if (!body.name?.trim()) return res.status(400).json({ error: "Informe o nome do profissional." });
+  const professional = await one(
+    "INSERT INTO professionals (name, specialty, active) VALUES ($1, $2, $3) RETURNING *",
+    [body.name.trim(), body.specialty || "", bool(body.active, true)]
+  );
+  res.status(201).json(professional);
+}));
+
+app.patch("/api/professionals/:id", pg(async (req, res) => {
+  const body = req.body || {};
+  const professional = await one(
+    "UPDATE professionals SET name = COALESCE($1, name), specialty = COALESCE($2, specialty), active = COALESCE($3, active), updated_at = NOW() WHERE id = $4 RETURNING *",
+    [body.name ?? null, body.specialty ?? null, body.active ?? null, req.params.id]
+  );
+  if (!professional) return res.status(404).json({ error: "Profissional não encontrado." });
+  res.json(professional);
+}));
+
+app.delete("/api/professionals/:id", pg(async (req, res) => {
+  await pgQuery("DELETE FROM professionals WHERE id = $1", [req.params.id]);
+  res.json({ ok: true });
+}));
+
+app.get("/api/availability", pg(async (_req, res) => {
+  const professionals = await rows("SELECT * FROM professionals WHERE active = TRUE ORDER BY name");
+  for (const professional of professionals) {
+    for (let weekday = 1; weekday <= 6; weekday += 1) {
+      await pgQuery(
+        `INSERT INTO professional_availability (professional_id, weekday)
+         VALUES ($1, $2)
+         ON CONFLICT DO NOTHING`,
+        [professional.id, weekday]
+      );
+    }
+  }
+  res.json(await rows(`
+    SELECT pa.*, p.name AS professional_name
+    FROM professional_availability pa
+    LEFT JOIN professionals p ON p.id = pa.professional_id
+    ORDER BY p.name, pa.weekday
+  `));
+}));
+
+app.patch("/api/availability/:id", pg(async (req, res) => {
+  const body = req.body || {};
+  const item = await one(
+    `UPDATE professional_availability SET is_active = $1, start_time = $2, end_time = $3, lunch_start = $4,
+      lunch_end = $5, duration_minutes = $6, buffer_minutes = $7, updated_at = NOW()
+     WHERE id = $8 RETURNING *`,
+    [bool(body.is_active, true), body.start_time || "08:30", body.end_time || "18:00", body.lunch_start || "", body.lunch_end || "", Number(body.duration_minutes || 40), Number(body.buffer_minutes || 0), req.params.id]
+  );
+  if (!item) return res.status(404).json({ error: "Disponibilidade não encontrada." });
+  res.json(item);
+}));
+
+app.get("/api/schedule-blocks", pg(async (_req, res) => {
+  res.json(await rows(`
+    SELECT sb.*, p.name AS professional_name
+    FROM schedule_blocks sb
+    LEFT JOIN professionals p ON p.id = sb.professional_id
+    ORDER BY sb.start_datetime DESC
+  `));
+}));
+
+app.post("/api/schedule-blocks", pg(async (req, res) => {
+  const body = req.body || {};
+  const block = await one(
+    `INSERT INTO schedule_blocks (professional_id, reason, start_datetime, end_datetime, is_full_day, is_recurring, notes)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+    [body.professional_id || null, body.reason || "", body.start_datetime, body.end_datetime, bool(body.is_full_day, false), bool(body.is_recurring, false), body.notes || ""]
+  );
+  res.status(201).json(block);
+}));
+
+app.delete("/api/schedule-blocks/:id", pg(async (req, res) => {
+  await pgQuery("DELETE FROM schedule_blocks WHERE id = $1", [req.params.id]);
+  res.json({ ok: true });
+}));
+
+app.get("/api/inventory-options", pg(async (_req, res) => {
+  res.json(await rows("SELECT * FROM inventory_options ORDER BY type, name"));
+}));
+
+app.post("/api/inventory-options", pg(async (req, res) => {
+  const body = req.body || {};
+  const item = await one(
+    "INSERT INTO inventory_options (type, name) VALUES ($1, $2) ON CONFLICT (type, name) DO UPDATE SET name = EXCLUDED.name RETURNING *",
+    [body.type, body.name]
+  );
+  res.status(201).json(item);
+}));
+
+app.patch("/api/inventory-options/:id", pg(async (req, res) => {
+  const item = await one("UPDATE inventory_options SET name = COALESCE($1, name) WHERE id = $2 RETURNING *", [req.body?.name ?? null, req.params.id]);
+  if (!item) return res.status(404).json({ error: "Opção não encontrada." });
+  res.json(item);
+}));
+
+app.delete("/api/inventory-options/:id", pg(async (req, res) => {
+  await pgQuery("DELETE FROM inventory_options WHERE id = $1", [req.params.id]);
+  res.json({ ok: true });
+}));
+
+app.get("/api/sales-orders", pg(async (_req, res) => {
+  const orders = await rows("SELECT * FROM sales_orders ORDER BY created_at DESC");
+  for (const order of orders) {
+    order.items = await rows("SELECT * FROM sales_order_items WHERE sales_order_id = $1 ORDER BY id", [order.id]);
+  }
+  res.json(orders);
+}));
+
+app.post("/api/sales-orders", pg(async (req, res) => {
+  const body = req.body || {};
+  const items = Array.isArray(body.items) ? body.items : [];
+  if (!items.length) return res.status(400).json({ error: "Adicione ao menos um item." });
+  const total = items.reduce((sum, item) => sum + Number(item.unit_price || 0) * Number(item.quantity || 1), 0);
+  const order = await one(
+    `INSERT INTO sales_orders (appointment_id, full_name, whatsapp, instagram, order_type, source, payment_method, status, total_value, notes)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+    [body.appointment_id || null, body.full_name || "", body.whatsapp || "", body.instagram || "", body.order_type || "produto", body.source || "interno", body.payment_method || "", body.status || "concluida", total, body.notes || ""]
+  );
+  for (const item of items) {
+    await pgQuery(
+      `INSERT INTO sales_order_items (sales_order_id, item_type, product_id, service_id, item_name, quantity, unit_price, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [order.id, item.item_type || "produto", item.product_id || null, item.service_id || null, item.item_name || "Item", Number(item.quantity || 1), money(item.unit_price), item.notes || ""]
+    );
+  }
+  if (order.status !== "cancelada") {
+    await pgQuery(
+      `INSERT INTO financial_transactions (type, category, description, amount, payment_method, status, transaction_date, notes)
+       VALUES ('receita', 'venda', $1, $2, $3, 'pago', CURRENT_DATE, $4)`,
+      [`Venda #${order.id}`, total, body.payment_method || "", body.notes || ""]
+    );
+  }
+  order.items = await rows("SELECT * FROM sales_order_items WHERE sales_order_id = $1 ORDER BY id", [order.id]);
+  res.status(201).json(order);
+}));
+
+app.patch("/api/sales-orders/:id", pg(async (req, res) => {
+  const order = await one("UPDATE sales_orders SET status = COALESCE($1, status), updated_at = NOW() WHERE id = $2 RETURNING *", [req.body?.status ?? null, req.params.id]);
+  if (!order) return res.status(404).json({ error: "Venda não encontrada." });
+  res.json(order);
+}));
+
+app.get("/api/post-care", pg(async (_req, res) => {
+  res.json(await rows("SELECT * FROM post_care ORDER BY due_date DESC NULLS LAST, id DESC"));
+}));
+
+app.patch("/api/post-care/:id", upload.single("client_photo"), pg(async (req, res) => {
+  const body = req.body || {};
+  const photo = req.file ? `/uploads/${req.file.filename}` : body.client_photo_url || null;
+  const item = await one(
+    `UPDATE post_care SET healing_status = COALESCE($1, healing_status), care_message = COALESCE($2, care_message),
+      client_photo_url = COALESCE($3, client_photo_url), notes = COALESCE($4, notes), status = COALESCE($5, status), updated_at = NOW()
+     WHERE id = $6 RETURNING *`,
+    [body.healing_status ?? null, body.care_message ?? null, photo, body.notes ?? null, body.status ?? null, req.params.id]
+  );
+  if (!item) return res.status(404).json({ error: "Acompanhamento não encontrado." });
+  res.json(item);
+}));
+
+app.get("/api/digital-terms", pg(async (_req, res) => {
+  res.json(await rows("SELECT * FROM digital_terms ORDER BY signed_at DESC"));
+}));
+
+app.post("/api/digital-terms", pg(async (req, res) => {
+  const body = req.body || {};
+  if (!body.full_name?.trim()) return res.status(400).json({ error: "Informe o nome do cliente." });
+  const term = await one(
+    `INSERT INTO digital_terms (appointment_id, client_id, full_name, whatsapp, instagram, procedure, piercing_region, orientations_confirmed, health_declaration, form_data, signature_data_url, pdf_url)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+    [body.appointment_id || null, body.client_id || null, body.full_name, body.whatsapp || "", body.instagram || "", body.procedure || "", body.piercing_region || "", bool(body.orientations_confirmed, false), body.health_declaration || "", JSON.stringify(body.form_data || {}), body.signature_data_url || "", ""]
+  );
+  res.status(201).json(term);
+}));
+
+app.get("/api/users", pg(async (_req, res) => {
+  res.json(await rows("SELECT id, name, email, role, created_at, updated_at FROM users ORDER BY name"));
+}));
+
+app.post("/api/users", pg(async (req, res) => {
+  const body = req.body || {};
+  const passwordHash = body.password ? await bcrypt.hash(body.password, 10) : null;
+  const user = await one(
+    "INSERT INTO users (name, email, role, password_hash) VALUES ($1,$2,$3,$4) RETURNING id, name, email, role, created_at, updated_at",
+    [body.name, body.email, body.role || "reception", passwordHash]
+  );
+  res.status(201).json(user);
+}));
+
+app.patch("/api/users/:id", pg(async (req, res) => {
+  const body = req.body || {};
+  const current = await one("SELECT * FROM users WHERE id = $1", [req.params.id]);
+  if (!current) return res.status(404).json({ error: "Usuário não encontrado." });
+  const passwordHash = body.password ? await bcrypt.hash(body.password, 10) : current.password_hash;
+  const user = await one(
+    "UPDATE users SET name = COALESCE($1, name), email = COALESCE($2, email), role = COALESCE($3, role), password_hash = $4, updated_at = NOW() WHERE id = $5 RETURNING id, name, email, role, created_at, updated_at",
+    [body.name ?? null, body.email ?? null, body.role ?? null, passwordHash, req.params.id]
+  );
+  res.json(user);
+}));
+
+app.delete("/api/users/:id", pg(async (req, res) => {
+  await pgQuery("DELETE FROM users WHERE id = $1", [req.params.id]);
+  res.json({ ok: true });
+}));
+
+const defaultCatalogCustomization = {
+  settings: {
+    brand_name: "Aura Clinic Piercing",
+    slogan: "Joias selecionadas com cuidado, segurança e estética premium.",
+    logo_url: "",
+    primary_color: "#C8A96A",
+    secondary_color: "#D8C3A5",
+    background_color: "#F8F5F0",
+    button_color: "#C8A96A",
+    title_font: "Playfair Display",
+    body_font: "Inter",
+    page_title: "Catálogo Online",
+    page_subtitle: "Escolha a joia perfeita para você",
+    footer_text: "Aura Clinic Piercing. Curadoria de joias, cuidado e atendimento especializado.",
+    whatsapp: "",
+    instagram: "",
+    email: "",
+    address: "",
+    share_text: "Olá! Quero saber mais sobre esta joia da Aura Clinic."
+  },
+  theme: {
+    theme_name: "premium",
+    show_out_of_stock: false,
+    show_stock_quantity: false,
+    show_whatsapp_button: true,
+    show_schedule_button: true,
+    show_buy_button: true,
+    show_favorites: true
+  },
+  banners: [],
+  featuredCategories: [],
+  featuredProducts: [],
+  promotions: []
+};
+
+const mergeCatalogCustomization = (value = {}) => ({
+  ...defaultCatalogCustomization,
+  ...value,
+  settings: { ...defaultCatalogCustomization.settings, ...(value.settings || {}) },
+  theme: { ...defaultCatalogCustomization.theme, ...(value.theme || {}) },
+  banners: Array.isArray(value.banners) ? value.banners : [],
+  featuredCategories: Array.isArray(value.featuredCategories) ? value.featuredCategories : [],
+  featuredProducts: Array.isArray(value.featuredProducts) ? value.featuredProducts : [],
+  promotions: Array.isArray(value.promotions) ? value.promotions : []
+});
+
+app.get("/api/catalog-customization", pg(async (_req, res) => {
+  const saved = await one("SELECT data FROM catalog_customization WHERE id = 1");
+  res.json(mergeCatalogCustomization(saved?.data || {}));
+}));
+
+app.patch("/api/catalog-customization", pg(async (req, res) => {
+  const data = mergeCatalogCustomization(req.body || {});
+  await pgQuery(
+    `INSERT INTO catalog_customization (id, data, updated_at)
+     VALUES (1, $1::jsonb, NOW())
+     ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
+    [JSON.stringify(data)]
+  );
+  res.json(data);
+}));
+
+app.post("/api/catalog-customization/publish", pg(async (req, res) => {
+  const data = mergeCatalogCustomization(req.body || {});
+  await pgQuery(
+    `INSERT INTO catalog_customization (id, data, updated_at)
+     VALUES (1, $1::jsonb, NOW())
+     ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
+    [JSON.stringify(data)]
+  );
+  res.json({ ok: true, ...data });
+}));
+
+app.post("/api/catalog-customization/reset", pg(async (_req, res) => {
+  await pgQuery(
+    `INSERT INTO catalog_customization (id, data, updated_at)
+     VALUES (1, $1::jsonb, NOW())
+     ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
+    [JSON.stringify(defaultCatalogCustomization)]
+  );
+  res.json(defaultCatalogCustomization);
+}));
+
+app.get("/api/booking/config", pg(async (_req, res) => {
+  const [services, procedures, professionals, products] = await Promise.all([
+    rows("SELECT * FROM services WHERE is_active = TRUE ORDER BY name"),
+    rows("SELECT p.*, s.name AS service_name FROM procedures p LEFT JOIN services s ON s.id = p.service_id WHERE p.is_active = TRUE ORDER BY p.name"),
+    rows("SELECT * FROM professionals WHERE active = TRUE ORDER BY name"),
+    rows("SELECT id, name, category, material, color, sale_value, quantity, image_url, photo_url FROM products WHERE is_catalog_active = TRUE AND is_published = TRUE ORDER BY name")
+  ]);
+  res.json({
+    services,
+    procedures,
+    professionals,
+    jewelry: products,
+    settings: {
+      min_notice_hours: 2,
+      slot_interval_minutes: 15,
+      default_duration_minutes: 40,
+      business_hours: { start: "08:30", end: "18:00" }
+    }
+  });
+}));
+
+function buildSlots(start = "08:30", end = "18:00", step = 15) {
+  const [startHour, startMinute] = start.split(":").map(Number);
+  const [endHour, endMinute] = end.split(":").map(Number);
+  const slots = [];
+  const current = new Date(2000, 0, 1, startHour, startMinute);
+  const limit = new Date(2000, 0, 1, endHour, endMinute);
+  while (current <= limit) {
+    slots.push(current.toTimeString().slice(0, 5));
+    current.setMinutes(current.getMinutes() + step);
+  }
+  return slots;
+}
+
+app.get("/api/booking/slots", pg(async (req, res) => {
+  const date = req.query.date;
+  if (!date) return res.status(400).json({ error: "Informe a data." });
+  const professionalId = req.query.professional_id || null;
+  const weekday = new Date(`${date}T12:00:00`).getDay() || 7;
+  const availability = professionalId
+    ? await one("SELECT * FROM professional_availability WHERE professional_id = $1 AND weekday = $2 AND is_active = TRUE LIMIT 1", [professionalId, weekday])
+    : null;
+  const takenRows = await rows(
+    `SELECT appointment_time::text AS appointment_time
+     FROM appointments
+     WHERE appointment_date = $1
+       AND status NOT IN ('cancelado')
+       AND ($2::int IS NULL OR professional_id = $2)`,
+    [date, professionalId]
+  );
+  const taken = new Set(takenRows.map((item) => String(item.appointment_time || "").slice(0, 5)));
+  const slots = buildSlots(availability?.start_time || "08:30", availability?.end_time || "18:00", 15).map((time) => ({
+    time,
+    available: !taken.has(time)
+  }));
+  res.json({ date, slots });
+}));
+
+app.post("/api/booking/requests", pg(async (req, res) => {
+  const body = req.body || {};
+  if (!body.full_name?.trim()) return res.status(400).json({ error: "Informe o nome." });
+  if (!body.appointment_date || !body.appointment_time) return res.status(400).json({ error: "Escolha data e horário." });
+  const client = await one(
+    `INSERT INTO clients (name, phone, whatsapp, instagram, email, notes)
+     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+    [body.full_name.trim(), body.phone || "", body.whatsapp || "", body.instagram || "", body.email || "", body.notes || ""]
+  );
+  const appointment = await one(
+    `INSERT INTO appointments (client_id, service_id, procedure_id, product_id, professional_id, client_name, whatsapp, procedure,
+      appointment_date, appointment_time, total_value, deposit_value, remaining_value, status, notes)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pendente',$14) RETURNING *`,
+    [client.id, body.service_id || null, body.procedure_id || null, body.product_id || body.jewelry_id || null, body.professional_id || null,
+      client.name, body.whatsapp || "", body.procedure || "", body.appointment_date, body.appointment_time,
+      money(body.total_value), money(body.deposit_value), money(body.remaining_value), body.notes || ""]
+  );
+  res.status(201).json({ client, appointment });
+}));
+
+app.post("/api/sales-orders/public", pg(async (req, res) => {
+  const body = req.body || {};
+  const product = body.product_id ? await one("SELECT * FROM products WHERE id = $1", [body.product_id]) : null;
+  const total = money(body.total_value ?? product?.sale_value ?? 0);
+  const order = await one(
+    `INSERT INTO sales_orders (full_name, whatsapp, instagram, order_type, source, payment_method, status, total_value, notes)
+     VALUES ($1,$2,$3,'produto','catalogo',$4,'pendente',$5,$6) RETURNING *`,
+    [body.full_name || "Cliente catálogo", body.whatsapp || "", body.instagram || "", body.payment_method || "", total, body.notes || ""]
+  );
+  if (product) {
+    await pgQuery(
+      `INSERT INTO sales_order_items (sales_order_id, item_type, product_id, item_name, quantity, unit_price, notes)
+       VALUES ($1,'produto',$2,$3,$4,$5,$6)`,
+      [order.id, product.id, product.name, Number(body.quantity || 1), total, body.notes || ""]
+    );
+  }
+  res.status(201).json(order);
+}));
+
+app.get("/api/finance/export.csv", pg(async (_req, res) => {
+  const data = await rows("SELECT transaction_date, type, category, description, amount, payment_method, status FROM financial_transactions ORDER BY transaction_date DESC");
+  const header = "data,tipo,categoria,descricao,valor,forma_pagamento,status";
+  const lines = data.map((item) => [
+    item.transaction_date,
+    item.type,
+    item.category,
+    `"${String(item.description || "").replaceAll('"', '""')}"`,
+    item.amount,
+    item.payment_method,
+    item.status
+  ].join(","));
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", "attachment; filename=relatorio-aura-clinic.csv");
+  res.send([header, ...lines].join("\n"));
+}));
+
+app.get("/api/finance/export.pdf", pg(async (_req, res) => {
+  const data = await rows("SELECT transaction_date, type, description, amount FROM financial_transactions ORDER BY transaction_date DESC LIMIT 80");
+  const doc = new PDFDocument({ margin: 40 });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", "attachment; filename=relatorio-aura-clinic.pdf");
+  doc.pipe(res);
+  doc.fontSize(18).text("Relatório Financeiro Aura Clinic");
+  doc.moveDown();
+  data.forEach((item) => doc.fontSize(10).text(`${item.transaction_date} | ${item.type} | ${item.description} | R$ ${Number(item.amount || 0).toFixed(2)}`));
+  doc.end();
+}));
+
+app.get("/api/finance/export.xlsx", pg(async (_req, res) => {
+  const data = await rows("SELECT transaction_date, type, category, description, amount, payment_method, status FROM financial_transactions ORDER BY transaction_date DESC");
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Financeiro");
+  sheet.columns = [
+    { header: "Data", key: "transaction_date", width: 16 },
+    { header: "Tipo", key: "type", width: 14 },
+    { header: "Categoria", key: "category", width: 18 },
+    { header: "Descrição", key: "description", width: 36 },
+    { header: "Valor", key: "amount", width: 14 },
+    { header: "Pagamento", key: "payment_method", width: 18 },
+    { header: "Status", key: "status", width: 14 }
+  ];
+  data.forEach((item) => sheet.addRow(item));
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", "attachment; filename=relatorio-aura-clinic.xlsx");
+  await workbook.xlsx.write(res);
+  res.end();
+}));
+
+app.get("/api/backup.sqlite", pg(async (_req, res) => {
+  const backup = {
+    exported_at: new Date().toISOString(),
+    database: "aura_clinic",
+    clients: await rows("SELECT * FROM clients ORDER BY id"),
+    services: await rows("SELECT * FROM services ORDER BY id"),
+    procedures: await rows("SELECT * FROM procedures ORDER BY id"),
+    products: await rows("SELECT * FROM products ORDER BY id"),
+    appointments: await rows("SELECT * FROM appointments ORDER BY id"),
+    financial_transactions: await rows("SELECT * FROM financial_transactions ORDER BY id"),
+    sales_orders: await rows("SELECT * FROM sales_orders ORDER BY id")
+  };
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Content-Disposition", "attachment; filename=backup-aura-clinic.json");
+  res.json(backup);
+}));
+
+app.post("/api/admin/reset-demo-data", pg(async (_req, res) => {
+  await pgQuery(`
+    TRUNCATE digital_terms, post_care, sales_order_items, sales_orders, financial_transactions,
+      appointments, notifications, crm_interactions, products, procedures, services, clients
+    RESTART IDENTITY CASCADE
+  `);
+  res.json({ ok: true });
+}));
+
+app.get("/api/settings", pg(async (_req, res) => {
+  const items = await rows("SELECT key, value FROM app_settings ORDER BY key");
+  res.json(Object.fromEntries(items.map((item) => [item.key, item.value])));
+}));
+
+app.patch("/api/settings", pg(async (req, res) => {
+  const entries = Object.entries(req.body || {});
+  for (const [key, value] of entries) {
+    await pgQuery(
+      `INSERT INTO app_settings (key, value, updated_at)
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+      [key, JSON.stringify(value)]
+    );
+  }
+  res.json({ ok: true });
+}));
+
+app.get("/api/crm", pg(async (_req, res) => {
+  res.json(await rows("SELECT ci.*, c.name AS client_name FROM crm_interactions ci LEFT JOIN clients c ON c.id = ci.client_id ORDER BY ci.created_at DESC"));
+}));
+
+app.post("/api/crm", pg(async (req, res) => {
+  const body = req.body || {};
+  const item = await one(
+    "INSERT INTO crm_interactions (client_id, title, description, status, due_date) VALUES ($1,$2,$3,$4,$5) RETURNING *",
+    [body.client_id || null, body.title || "Contato", body.description || "", body.status || "aberto", body.due_date || null]
+  );
+  res.status(201).json(item);
+}));
+
+app.get("/api/courses", pg(async (_req, res) => {
+  res.json(await rows("SELECT * FROM courses ORDER BY is_active DESC, name"));
+}));
+
+app.post("/api/courses", pg(async (req, res) => {
+  const body = req.body || {};
+  const item = await one("INSERT INTO courses (name, description, price, format, is_active) VALUES ($1,$2,$3,$4,$5) RETURNING *", [body.name, body.description || "", money(body.price), body.format || "", bool(body.is_active, true)]);
+  res.status(201).json(item);
+}));
+
+app.get("/api/consultancies", pg(async (_req, res) => {
+  res.json(await rows("SELECT * FROM consultancies ORDER BY is_active DESC, name"));
+}));
+
+app.post("/api/consultancies", pg(async (req, res) => {
+  const body = req.body || {};
+  const item = await one("INSERT INTO consultancies (name, description, price, format, is_active) VALUES ($1,$2,$3,$4,$5) RETURNING *", [body.name, body.description || "", money(body.price), body.format || "", bool(body.is_active, true)]);
+  res.status(201).json(item);
+}));
+
+app.get("/api/audit-logs", pg(async (_req, res) => {
+  res.json(await rows("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 200"));
+}));
+
+app.get("/api/integrations", pg(async (_req, res) => {
+  res.json(await rows("SELECT * FROM integrations ORDER BY name"));
+}));
+
+app.patch("/api/integrations/:id", pg(async (req, res) => {
+  const body = req.body || {};
+  const item = await one(
+    "UPDATE integrations SET status = COALESCE($1,status), settings = COALESCE($2::jsonb,settings), updated_at = NOW() WHERE id = $3 RETURNING *",
+    [body.status ?? null, body.settings ? JSON.stringify(body.settings) : null, req.params.id]
+  );
+  if (!item) return res.status(404).json({ error: "Integração não encontrada." });
+  res.json(item);
+}));
+
+app.post("/api/login", pg(async (req, res) => {
+  const { email = "admin@auraclinic.com", password = "" } = req.body || {};
+  const user = await one("SELECT * FROM users WHERE email = $1 ORDER BY id LIMIT 1", [email]);
+  if (!user) return res.status(401).json({ error: "Usuário não encontrado." });
+  const localWithoutPassword = isLocalDevRequest(req) && !password;
+  const validPassword = user.password_hash ? await bcrypt.compare(password, user.password_hash) : isLocalDevRequest(req);
+  if (!localWithoutPassword && !validPassword) return res.status(401).json({ error: "Credenciais inválidas." });
+  res.json({
+    token: createToken(user),
+    user: { id: user.id, name: user.name, email: user.email, role: user.role }
+  });
+}));
+
 app.post("/api/login", withDb(async (req, res, db) => {
   const { email, password } = req.body;
   const user = await db.get("SELECT * FROM users WHERE email = ?", [email]);
   if (!user || !(await bcrypt.compare(password, user.password_hash))) {
-    return res.status(401).json({ error: "Credenciais invÃ¡lidas." });
+    return res.status(401).json({ error: "Credenciais invÃƒÂ¡lidas." });
   }
   res.json({
     token: createToken(user),
@@ -557,10 +1219,10 @@ app.get("/api/catalog", withDb(async (_req, res, db) => {
       COALESCE(
         fp.badge,
         CASE
-          WHEN j.is_promotion = 1 THEN 'PromoÃ§Ã£o'
-          WHEN j.is_last_units = 1 THEN 'Ãšltimas unidades'
+          WHEN j.is_promotion = 1 THEN 'PromoÃƒÂ§ÃƒÂ£o'
+          WHEN j.is_last_units = 1 THEN 'ÃƒÅ¡ltimas unidades'
           WHEN j.is_most_wanted = 1 THEN 'Mais desejado'
-          WHEN j.is_new = 1 THEN 'LanÃ§amento'
+          WHEN j.is_new = 1 THEN 'LanÃƒÂ§amento'
           WHEN j.is_featured = 1 THEN 'Destaque'
           ELSE ''
         END
@@ -574,7 +1236,7 @@ app.get("/api/catalog", withDb(async (_req, res, db) => {
   const items = (await attachVariants(db, productRows))
     .filter((item) => showOutOfStock || item.quantity > 0)
     .map((item) => ({
-      // Dados pÃºblicos
+      // Dados pÃƒÂºblicos
       id: item.id,
       name: item.name,
       photo_url: item.photo_url || item.image_url,
@@ -687,8 +1349,8 @@ app.get("/api/booking/config", withDb(async (_req, res, db) => {
     services,
     professionals,
     rules: {
-      cancellation: "RemarcaÃ§Ãµes e cancelamentos devem ser solicitados com antecedÃªncia.",
-      payment: "O sinal reserva o horÃ¡rio; a confirmaÃ§Ã£o Ã© feita manualmente pela Aura Clinic."
+      cancellation: "RemarcaÃƒÂ§ÃƒÂµes e cancelamentos devem ser solicitados com antecedÃƒÂªncia.",
+      payment: "O sinal reserva o horÃƒÂ¡rio; a confirmaÃƒÂ§ÃƒÂ£o ÃƒÂ© feita manualmente pela Aura Clinic."
     }
   });
 }));
@@ -698,12 +1360,12 @@ app.get("/api/booking/slots", withDb(async (req, res, db) => {
   const professionalId = Number(req.query.professional_id || 0);
   const date = String(req.query.date || "");
   if (!serviceId || !professionalId || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return res.status(400).json({ error: "ServiÃ§o, profissional e data sÃ£o obrigatÃ³rios." });
+    return res.status(400).json({ error: "ServiÃƒÂ§o, profissional e data sÃƒÂ£o obrigatÃƒÂ³rios." });
   }
   const service = await db.get("SELECT * FROM services WHERE id = ? AND active_online_booking = 1", [serviceId]);
-  if (!service) return res.status(404).json({ error: "ServiÃ§o nÃ£o encontrado." });
+  if (!service) return res.status(404).json({ error: "ServiÃƒÂ§o nÃƒÂ£o encontrado." });
   const linked = await db.get("SELECT id FROM professional_services WHERE professional_id = ? AND service_id = ?", [professionalId, serviceId]);
-  if (!linked) return res.status(409).json({ error: "Este profissional nÃ£o realiza o serviÃ§o selecionado." });
+  if (!linked) return res.status(409).json({ error: "Este profissional nÃƒÂ£o realiza o serviÃƒÂ§o selecionado." });
   const slots = await availableBookingSlots(db, { service, professionalId, date });
   res.json({ date, slots });
 }));
@@ -711,13 +1373,13 @@ app.get("/api/booking/slots", withDb(async (req, res, db) => {
 app.post("/api/booking/requests", upload.fields([{ name: "reference_photo", maxCount: 1 }, { name: "payment_proof", maxCount: 1 }]), withDb(async (req, res, db) => {
   const body = req.body;
   const service = await db.get("SELECT * FROM services WHERE id = ? AND active_online_booking = 1", [body.service_id]);
-  if (!service) return res.status(404).json({ error: "ServiÃ§o nÃ£o encontrado." });
+  if (!service) return res.status(404).json({ error: "ServiÃƒÂ§o nÃƒÂ£o encontrado." });
   const professionalId = Number(body.professional_id || 0);
   const date = String(body.appointment_date || "");
   const time = String(body.appointment_time || "");
   const slots = await availableBookingSlots(db, { service, professionalId, date });
-  if (!slots.some((slot) => slot.time === time)) return res.status(409).json({ error: "Este horÃ¡rio nÃ£o estÃ¡ mais disponÃ­vel." });
-  if (!body.full_name?.trim() || !body.whatsapp?.trim()) return res.status(400).json({ error: "Nome e WhatsApp sÃ£o obrigatÃ³rios." });
+  if (!slots.some((slot) => slot.time === time)) return res.status(409).json({ error: "Este horÃƒÂ¡rio nÃƒÂ£o estÃƒÂ¡ mais disponÃƒÂ­vel." });
+  if (!body.full_name?.trim() || !body.whatsapp?.trim()) return res.status(400).json({ error: "Nome e WhatsApp sÃƒÂ£o obrigatÃƒÂ³rios." });
   const client = await upsertClient(db, {
     full_name: body.full_name,
     whatsapp: body.whatsapp,
@@ -773,7 +1435,7 @@ app.post("/api/services", withDb(async (req, res, db) => {
 app.patch("/api/services/:id", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   const service = await db.get("SELECT * FROM services WHERE id = ?", [req.params.id]);
-  if (!service) return res.status(404).json({ error: "ServiÃ§o nÃ£o encontrado." });
+  if (!service) return res.status(404).json({ error: "ServiÃƒÂ§o nÃƒÂ£o encontrado." });
   await db.run(
     `UPDATE services SET name = ?, description = ?, duration_minutes = ?, price = ?, deposit_value = ?, active_online_booking = ?, pre_service_notes = ? WHERE id = ?`,
     [
@@ -809,7 +1471,7 @@ app.get("/api/availability", withDb(async (_req, res, db) => {
 app.patch("/api/availability/:id", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   const current = await db.get("SELECT * FROM professional_availability WHERE id = ?", [req.params.id]);
-  if (!current) return res.status(404).json({ error: "Disponibilidade nÃ£o encontrada." });
+  if (!current) return res.status(404).json({ error: "Disponibilidade nÃƒÂ£o encontrada." });
   await db.run(
     `UPDATE professional_availability
      SET is_active = ?, start_time = ?, end_time = ?, lunch_start = ?, lunch_end = ?, duration_minutes = ?, buffer_minutes = ?
@@ -882,7 +1544,7 @@ app.get("/api/alerts", withDb(async (_req, res, db) => {
       title: item.quantity <= 0 ? "Joia esgotada" : "Joia acabando",
       category: "Estoque",
       subject: item.name,
-      description: `${item.name} possui ${Number(item.quantity || 0)} unidade(s) disponÃ­vel(is).`,
+      description: `${item.name} possui ${Number(item.quantity || 0)} unidade(s) disponÃƒÂ­vel(is).`,
       priority: item.quantity <= 0 ? "high" : item.quantity <= 2 ? "high" : "medium",
       related_date: today,
       action_label: "Ver estoque",
@@ -891,10 +1553,10 @@ app.get("/api/alerts", withDb(async (_req, res, db) => {
     })),
     ...birthdays.map((item) => ({
       id: `birthday-${item.id}`,
-      title: item.days_until === 0 ? "AniversÃ¡rio hoje" : "AniversÃ¡rio prÃ³ximo",
+      title: item.days_until === 0 ? "AniversÃƒÂ¡rio hoje" : "AniversÃƒÂ¡rio prÃƒÂ³ximo",
       category: "Clientes",
       subject: item.full_name,
-      description: item.days_until === 0 ? `${item.full_name} faz aniversÃ¡rio hoje.` : `${item.full_name} faz aniversÃ¡rio em ${item.days_until} dia(s).`,
+      description: item.days_until === 0 ? `${item.full_name} faz aniversÃƒÂ¡rio hoje.` : `${item.full_name} faz aniversÃƒÂ¡rio em ${item.days_until} dia(s).`,
       priority: item.days_until <= 7 ? "medium" : "low",
       related_date: item.next_birthday,
       action_label: "Ver cliente",
@@ -1083,22 +1745,22 @@ app.get("/api/erp", withDb(async (_req, res, db) => {
     modules: [
       ["Dashboard", "ativo", "Indicadores, alertas, graficos e agenda do dia"],
       ["Agendamentos", "ativo", "Calendario, status, sinais, profissionais e joias"],
-      ["Clientes e prontuÃ¡rios", "ativo", "HistÃ³rico, fotos, intercorrÃªncias, fidelidade e retornos"],
-      ["Termo digital", "ativo", "Assinatura, aceite e PDF automÃ¡tico"],
-      ["Estoque de joalherias", "ativo", "Cadastro, filtros, baixa automÃ¡tica e alertas"],
+      ["Clientes e prontuÃƒÂ¡rios", "ativo", "HistÃƒÂ³rico, fotos, intercorrÃƒÂªncias, fidelidade e retornos"],
+      ["Termo digital", "ativo", "Assinatura, aceite e PDF automÃƒÂ¡tico"],
+      ["Estoque de joalherias", "ativo", "Cadastro, filtros, baixa automÃƒÂ¡tica e alertas"],
       ["Catalogo online", "planejado", "Vitrine publica com reserva, compra e agendamento"],
-      ["Financeiro", "ativo", "Entradas, saidas, lucro e exportaÃ§Ãµes"],
-      ["CRM", "planejado", "Funil, automaÃ§Ãµes, reativaÃ§Ã£o e aniversÃ¡rios"],
+      ["Financeiro", "ativo", "Entradas, saidas, lucro e exportaÃƒÂ§ÃƒÂµes"],
+      ["CRM", "planejado", "Funil, automaÃƒÂ§ÃƒÂµes, reativaÃƒÂ§ÃƒÂ£o e aniversÃƒÂ¡rios"],
       ["Aura Rewards", "ativo", "Pontos, niveis e resgates"],
       ["Indique e Ganhe", "planejado", "Indicacoes, beneficios e acompanhamento"],
       ["Cupons", "planejado", "Cupons fixos, percentuais, validade e limite"],
       ["Influenciadores", "planejado", "Cupons, cliques, vendas, conversoes e comissoes"],
       ["Consultorias", "planejado", "Agenda, pagamento e Google Meet"],
       ["Aura Academy", "planejado", "Cursos, videos, PDFs e certificados"],
-      ["ConteÃºdo", "planejado", "CalendÃ¡rio editorial, ideias, hashtags e legendas IA"],
-      ["Mapa corporal", "planejado", "Modelo anatÃ´mico com histÃ³rico de perfuraÃ§Ãµes"],
-      ["Administrativo", "ativo", "PermissÃµes por perfil e usuÃ¡rios"],
-      ["Relatorios", "ativo", "Financeiro, clientes, estoque e exportaÃ§Ãµes"],
+      ["ConteÃƒÂºdo", "planejado", "CalendÃƒÂ¡rio editorial, ideias, hashtags e legendas IA"],
+      ["Mapa corporal", "planejado", "Modelo anatÃƒÂ´mico com histÃƒÂ³rico de perfuraÃƒÂ§ÃƒÂµes"],
+      ["Administrativo", "ativo", "PermissÃƒÂµes por perfil e usuÃƒÂ¡rios"],
+      ["Relatorios", "ativo", "Financeiro, clientes, estoque e exportaÃƒÂ§ÃƒÂµes"],
       ["Configuracoes", "planejado", "Logo, cores, horarios, profissionais e mensagens"]
     ].map(([name, status, description]) => ({ name, status, description })),
     crm,
@@ -1142,7 +1804,7 @@ app.post("/api/users", withDb(async (req, res, db) => {
   const { name, email, password, role } = req.body;
   const validRoles = ["admin", "piercer", "reception", "finance"];
   if (!name?.trim() || !email?.trim() || !password || !validRoles.includes(role)) {
-    return res.status(400).json({ error: "Dados de usuÃ¡rio invÃ¡lidos." });
+    return res.status(400).json({ error: "Dados de usuÃƒÂ¡rio invÃƒÂ¡lidos." });
   }
   const passwordHash = await bcrypt.hash(password, 10);
   const result = await db.run(
@@ -1155,9 +1817,9 @@ app.post("/api/users", withDb(async (req, res, db) => {
 app.patch("/api/users/:id", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   const user = await db.get("SELECT * FROM users WHERE id = ?", [req.params.id]);
-  if (!user) return res.status(404).json({ error: "UsuÃ¡rio nÃ£o encontrado." });
+  if (!user) return res.status(404).json({ error: "UsuÃƒÂ¡rio nÃƒÂ£o encontrado." });
   const role = req.body.role || user.role;
-  if (!["admin", "piercer", "reception", "finance"].includes(role)) return res.status(400).json({ error: "NÃ­vel de acesso invÃ¡lido." });
+  if (!["admin", "piercer", "reception", "finance"].includes(role)) return res.status(400).json({ error: "NÃƒÂ­vel de acesso invÃƒÂ¡lido." });
   const passwordHash = req.body.password ? await bcrypt.hash(req.body.password, 10) : user.password_hash;
   await db.run(
     "UPDATE users SET name = ?, email = ?, role = ?, password_hash = ? WHERE id = ?",
@@ -1169,10 +1831,10 @@ app.patch("/api/users/:id", withDb(async (req, res, db) => {
 app.delete("/api/users/:id", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   if (Number(req.params.id) === Number(req.user.id)) {
-    return res.status(409).json({ error: "VocÃª nÃ£o pode apagar o prÃ³prio acesso." });
+    return res.status(409).json({ error: "VocÃƒÂª nÃƒÂ£o pode apagar o prÃƒÂ³prio acesso." });
   }
   const target = await db.get("SELECT id, role FROM users WHERE id = ?", [req.params.id]);
-  if (!target) return res.status(404).json({ error: "UsuÃ¡rio nÃ£o encontrado." });
+  if (!target) return res.status(404).json({ error: "UsuÃƒÂ¡rio nÃƒÂ£o encontrado." });
   if (target.role === "admin") {
     const admins = await db.get("SELECT COUNT(*) AS count FROM users WHERE role = 'admin'");
     if ((admins.count || 0) <= 1) return res.status(409).json({ error: "Mantenha ao menos um administrador ativo." });
@@ -1227,7 +1889,7 @@ app.post("/api/admin/reset-demo-data", withDb(async (req, res, db) => {
 
   res.json({
     ok: true,
-    message: "Dados de demonstraÃ§Ã£o removidos. UsuÃ¡rios, categorias e configuraÃ§Ãµes foram preservados.",
+    message: "Dados de demonstraÃƒÂ§ÃƒÂ£o removidos. UsuÃƒÂ¡rios, categorias e configuraÃƒÂ§ÃƒÂµes foram preservados.",
     removed
   });
 }));
@@ -1249,7 +1911,7 @@ app.post("/api/inventory-options", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   const { type, name } = req.body;
   if (!["category", "size", "thickness"].includes(type) || !name?.trim()) {
-    return res.status(400).json({ error: "OpÃ§Ã£o invÃ¡lida." });
+    return res.status(400).json({ error: "OpÃƒÂ§ÃƒÂ£o invÃƒÂ¡lida." });
   }
   const cleanName = name.trim();
   const existing = await db.get("SELECT * FROM inventory_options WHERE type = ? AND name = ?", [type, cleanName]);
@@ -1261,14 +1923,14 @@ app.post("/api/inventory-options", withDb(async (req, res, db) => {
 app.patch("/api/inventory-options/:id", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   const option = await db.get("SELECT * FROM inventory_options WHERE id = ?", [req.params.id]);
-  if (!option) return res.status(404).json({ error: "OpÃ§Ã£o nÃ£o encontrada." });
+  if (!option) return res.status(404).json({ error: "OpÃƒÂ§ÃƒÂ£o nÃƒÂ£o encontrada." });
   const name = req.body.name?.trim();
-  if (!name) return res.status(400).json({ error: "Nome obrigatÃ³rio." });
+  if (!name) return res.status(400).json({ error: "Nome obrigatÃƒÂ³rio." });
   const duplicate = await db.get("SELECT id FROM inventory_options WHERE type = ? AND name = ? AND id != ?", [option.type, name, req.params.id]);
-  if (duplicate) return res.status(409).json({ error: "JÃ¡ existe uma opÃ§Ã£o com esse nome." });
+  if (duplicate) return res.status(409).json({ error: "JÃƒÂ¡ existe uma opÃƒÂ§ÃƒÂ£o com esse nome." });
   const fieldByType = { category: "category", size: "size", thickness: "thickness" };
   const field = fieldByType[option.type];
-  if (!field) return res.status(400).json({ error: "ObservaÃ§Ã£o de cor agora Ã© texto livre." });
+  if (!field) return res.status(400).json({ error: "ObservaÃƒÂ§ÃƒÂ£o de cor agora ÃƒÂ© texto livre." });
   await db.run("UPDATE inventory_options SET name = ? WHERE id = ?", [name, req.params.id]);
   await db.run(`UPDATE jewelry_inventory SET ${field} = ? WHERE ${field} = ?`, [name, option.name]);
   res.json(await db.get("SELECT * FROM inventory_options WHERE id = ?", [req.params.id]));
@@ -1277,9 +1939,9 @@ app.patch("/api/inventory-options/:id", withDb(async (req, res, db) => {
 app.delete("/api/inventory-options/:id", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   const option = await db.get("SELECT * FROM inventory_options WHERE id = ?", [req.params.id]);
-  if (!option) return res.status(404).json({ error: "OpÃ§Ã£o nÃ£o encontrada." });
+  if (!option) return res.status(404).json({ error: "OpÃƒÂ§ÃƒÂ£o nÃƒÂ£o encontrada." });
   const usage = await countOptionUsage(db, option);
-  if (usage > 0) return res.status(409).json({ error: "Esta opÃ§Ã£o estÃ¡ em uso no estoque e nÃ£o pode ser apagada." });
+  if (usage > 0) return res.status(409).json({ error: "Esta opÃƒÂ§ÃƒÂ£o estÃƒÂ¡ em uso no estoque e nÃƒÂ£o pode ser apagada." });
   await db.run("DELETE FROM inventory_options WHERE id = ?", [req.params.id]);
   res.json({ ok: true });
 }));
@@ -1287,7 +1949,7 @@ app.delete("/api/inventory-options/:id", withDb(async (req, res, db) => {
 app.post("/api/professionals", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   const { name, specialty } = req.body;
-  if (!name?.trim()) return res.status(400).json({ error: "Nome do profissional Ã© obrigatÃ³rio." });
+  if (!name?.trim()) return res.status(400).json({ error: "Nome do profissional ÃƒÂ© obrigatÃƒÂ³rio." });
   const result = await db.run("INSERT INTO professionals (name, specialty, active) VALUES (?, ?, 1)", [name.trim(), specialty || ""]);
   res.status(201).json(await db.get("SELECT * FROM professionals WHERE id = ?", [result.lastID]));
 }));
@@ -1295,7 +1957,7 @@ app.post("/api/professionals", withDb(async (req, res, db) => {
 app.patch("/api/professionals/:id", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   const professional = await db.get("SELECT * FROM professionals WHERE id = ?", [req.params.id]);
-  if (!professional) return res.status(404).json({ error: "Profissional nÃ£o encontrado." });
+  if (!professional) return res.status(404).json({ error: "Profissional nÃƒÂ£o encontrado." });
   await db.run("UPDATE professionals SET name = ?, specialty = ? WHERE id = ?", [req.body.name?.trim() || professional.name, req.body.specialty || professional.specialty, req.params.id]);
   res.json(await db.get("SELECT * FROM professionals WHERE id = ?", [req.params.id]));
 }));
@@ -1328,7 +1990,7 @@ app.get("/api/appointments", withDb(async (req, res, db) => {
 
 app.post("/api/appointments", upload.single("reference_photo"), withDb(async (req, res, db) => {
   const body = normalizeAppointment(req.body);
-  // Bloqueia horÃ¡rios jÃ¡ ocupados para o mesmo profissional.
+  // Bloqueia horÃƒÂ¡rios jÃƒÂ¡ ocupados para o mesmo profissional.
   const conflict = await db.get(
     `SELECT id FROM appointments
      WHERE professional_id = ? AND appointment_date = ? AND appointment_time = ?
@@ -1336,7 +1998,7 @@ app.post("/api/appointments", upload.single("reference_photo"), withDb(async (re
     [body.professional_id, body.appointment_date, body.appointment_time]
   );
   if (conflict) {
-    return res.status(409).json({ error: "HorÃ¡rio ocupado para este profissional." });
+    return res.status(409).json({ error: "HorÃƒÂ¡rio ocupado para este profissional." });
   }
   const photoUrl = req.file ? `/uploads/${req.file.filename}` : body.reference_photo_url || "";
   const client = await upsertClient(db, body);
@@ -1359,7 +2021,7 @@ app.post("/api/appointments", upload.single("reference_photo"), withDb(async (re
 
 app.patch("/api/appointments/:id", withDb(async (req, res, db) => {
   const appointment = await db.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
-  if (!appointment) return res.status(404).json({ error: "Agendamento nÃ£o encontrado." });
+  if (!appointment) return res.status(404).json({ error: "Agendamento nÃƒÂ£o encontrado." });
 
   const fields = ["status", "appointment_date", "appointment_time", "end_time", "professional_id", "service_id", "jewelry_id", "jewelry_variant_id", "procedure", "description", "piercing_region", "total_value", "deposit_value", "remaining_value", "deposit_payment_method", "remaining_payment_method", "notes"];
   const updates = fields.filter((field) => req.body[field] !== undefined);
@@ -1387,20 +2049,20 @@ app.get("/api/sales-orders", withDb(async (req, res, db) => {
 app.post("/api/sales-orders", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "finance", "reception", "piercer"])) return;
   const order = await createSalesOrder(db, req.body || {}, req.user);
-  if (!order) return res.status(400).json({ error: "NÃ£o foi possÃ­vel criar a venda." });
+  if (!order) return res.status(400).json({ error: "NÃƒÂ£o foi possÃƒÂ­vel criar a venda." });
   res.status(201).json(order);
 }));
 
 app.post("/api/sales-orders/public", withDb(async (req, res, db) => {
   const order = await createSalesOrder(db, req.body || {}, null);
-  if (!order) return res.status(400).json({ error: "NÃ£o foi possÃ­vel criar a venda." });
+  if (!order) return res.status(400).json({ error: "NÃƒÂ£o foi possÃƒÂ­vel criar a venda." });
   res.status(201).json(order);
 }));
 
 app.patch("/api/sales-orders/:id", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "finance", "reception"])) return;
   const current = await db.get("SELECT * FROM sales_orders WHERE id = ?", [req.params.id]);
-  if (!current) return res.status(404).json({ error: "Venda nÃ£o encontrada." });
+  if (!current) return res.status(404).json({ error: "Venda nÃƒÂ£o encontrada." });
   await db.run(
     "UPDATE sales_orders SET status = ?, payment_method = ?, notes = ? WHERE id = ?",
     [req.body.status || current.status, req.body.payment_method || current.payment_method, req.body.notes || current.notes, req.params.id]
@@ -1415,13 +2077,13 @@ app.get("/api/digital-terms", withDb(async (_req, res, db) => {
 app.post("/api/digital-terms", withDb(async (req, res, db) => {
   const body = req.body;
   if (!body.appointment_id || !body.client_id || !body.full_name?.trim() || !body.signature_data_url) {
-    return res.status(400).json({ error: "Dados obrigatÃ³rios do termo nÃ£o foram preenchidos." });
+    return res.status(400).json({ error: "Dados obrigatÃƒÂ³rios do termo nÃƒÂ£o foram preenchidos." });
   }
   if (!body.orientations_confirmed) {
-    return res.status(400).json({ error: "O cliente precisa confirmar que recebeu as orientaÃ§Ãµes." });
+    return res.status(400).json({ error: "O cliente precisa confirmar que recebeu as orientaÃƒÂ§ÃƒÂµes." });
   }
   const appointment = await listAppointments(db, "WHERE a.id = ?", [body.appointment_id]).then((rows) => rows[0]);
-  if (!appointment) return res.status(404).json({ error: "Agendamento nÃ£o encontrado." });
+  if (!appointment) return res.status(404).json({ error: "Agendamento nÃƒÂ£o encontrado." });
 
   const result = await db.run(
     `INSERT INTO digital_terms
@@ -1458,7 +2120,7 @@ app.get("/api/post-care", withDb(async (_req, res, db) => {
 
 app.patch("/api/post-care/:id", upload.single("client_photo"), withDb(async (req, res, db) => {
   const existing = await db.get("SELECT * FROM post_care_followups WHERE id = ?", [req.params.id]);
-  if (!existing) return res.status(404).json({ error: "Acompanhamento nÃ£o encontrado." });
+  if (!existing) return res.status(404).json({ error: "Acompanhamento nÃƒÂ£o encontrado." });
   const photoUrl = req.file ? `/uploads/${req.file.filename}` : existing.client_photo_url;
   await db.run(
     `UPDATE post_care_followups
@@ -1510,7 +2172,7 @@ app.get("/api/jewelry", withDb(async (req, res, db) => {
 app.post("/api/jewelry", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   if (!JEWELRY_CATEGORIES.includes(req.body.category)) {
-    return res.status(400).json({ error: "Selecione uma categoria principal vÃ¡lida." });
+    return res.status(400).json({ error: "Selecione uma categoria principal vÃƒÂ¡lida." });
   }
   if (!req.body.name?.trim()) return res.status(400).json({ error: "Informe o nome do produto." });
   const result = await db.run(
@@ -1558,7 +2220,7 @@ app.post("/api/jewelry", withDb(async (req, res, db) => {
       boolNumber(req.body.is_promotion),
       boolNumber(req.body.is_last_units),
       req.body.notes,
-      req.body.status || "disponÃ­vel",
+      req.body.status || "disponÃƒÂ­vel",
       Number(req.body.low_stock_threshold || 5),
       Number(req.body.critical_stock_threshold || 3)
     ]
@@ -1570,7 +2232,7 @@ app.post("/api/jewelry", withDb(async (req, res, db) => {
 app.patch("/api/jewelry/:id", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   const jewelry = await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [req.params.id]);
-  if (!jewelry) return res.status(404).json({ error: "Joia nÃ£o encontrada." });
+  if (!jewelry) return res.status(404).json({ error: "Joia nÃƒÂ£o encontrada." });
   const fields = ["name", "description", "photo_url", "image_url", "gallery_urls", "category", "subcategory", "variant_group", "variation_label", "material", "color", "stone", "size", "thickness", "stem_length", "thread_type", "piercing_type", "weight_grams", "package_length_cm", "package_width_cm", "package_height_cm", "package_type", "virtual_store_active", "preparation_days", "shipping_info", "seo_title", "seo_description", "freight_notes", "quantity", "cost_value", "sale_value", "supplier", "physical_location", "sku", "is_catalog_active", "is_featured", "is_new", "is_most_wanted", "is_promotion", "is_last_units", "is_published", "notes", "status", "low_stock_threshold", "critical_stock_threshold"];
   const updates = fields.filter((field) => req.body[field] !== undefined);
   if (updates.length) {
@@ -1593,7 +2255,7 @@ app.post("/api/jewelry/:id/variants/:variantId/movements", withDb(async (req, re
     "SELECT * FROM jewelry_variants WHERE id = ? AND jewelry_id = ?",
     [req.params.variantId, req.params.id]
   );
-  if (!variant) return res.status(404).json({ error: "VariaÃ§Ã£o nÃ£o encontrada." });
+  if (!variant) return res.status(404).json({ error: "VariaÃƒÂ§ÃƒÂ£o nÃƒÂ£o encontrada." });
   const quantity = Math.max(0, Number(req.body.quantity || 0));
   const movementType = req.body.movement_type || "Ajuste";
   const normalizedMovement = String(movementType).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -1622,16 +2284,16 @@ app.get("/api/jewelry/:id/movements", withDb(async (req, res, db) => {
 app.post("/api/jewelry/:id/movements", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   const jewelry = await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [req.params.id]);
-  if (!jewelry) return res.status(404).json({ error: "Joia nÃ£o encontrada." });
+  if (!jewelry) return res.status(404).json({ error: "Joia nÃƒÂ£o encontrada." });
   const quantity = Math.max(0, Number(req.body.quantity || 0));
   const movementType = req.body.movement_type || "Ajuste";
   const notes = req.body.notes || "";
-  const decreaseTypes = new Set(["SaÃ­da", "Venda", "Perda"]);
+  const decreaseTypes = new Set(["SaÃƒÂ­da", "Venda", "Perda"]);
   const delta = decreaseTypes.has(movementType) ? -quantity : quantity;
   const nextQuantity = Math.max(0, Number(jewelry.quantity || 0) + delta);
   const criticalThreshold = Number(jewelry.critical_stock_threshold || 3);
   const lowThreshold = Number(jewelry.low_stock_threshold || 5);
-  const status = nextQuantity <= 0 ? "esgotado" : nextQuantity <= criticalThreshold ? "crÃ­tico" : nextQuantity <= lowThreshold ? "baixo estoque" : "disponÃ­vel";
+  const status = nextQuantity <= 0 ? "esgotado" : nextQuantity <= criticalThreshold ? "crÃƒÂ­tico" : nextQuantity <= lowThreshold ? "baixo estoque" : "disponÃƒÂ­vel";
   await db.run("INSERT INTO stock_movements (jewelry_id, movement_type, quantity, notes, movement_date) VALUES (?, ?, ?, ?, ?)", [
     jewelry.id,
     movementType,
@@ -1676,7 +2338,7 @@ app.get("/api/clients", withDb(async (_req, res, db) => {
 
 app.patch("/api/clients/:id", withDb(async (req, res, db) => {
   const client = await db.get("SELECT * FROM clients WHERE id = ?", [req.params.id]);
-  if (!client) return res.status(404).json({ error: "Cliente nÃ£o encontrado." });
+  if (!client) return res.status(404).json({ error: "Cliente nÃƒÂ£o encontrado." });
   await db.run(
     "UPDATE clients SET full_name = ?, whatsapp = ?, instagram = ?, birth_date = ?, notes = ? WHERE id = ?",
     [
@@ -1699,7 +2361,7 @@ app.get("/api/backup.sqlite", withDb(async (req, res) => {
 
 app.post("/api/clients/:id/loyalty-redemptions", withDb(async (req, res, db) => {
   const client = await db.get("SELECT id FROM clients WHERE id = ?", [req.params.id]);
-  if (!client) return res.status(404).json({ error: "Cliente nÃ£o encontrado." });
+  if (!client) return res.status(404).json({ error: "Cliente nÃƒÂ£o encontrado." });
   const points = Number(req.body.points_used || 0);
   const discount = Number(req.body.discount_value || 0);
   const loyalty = await getClientLoyalty(db, req.params.id);
@@ -1715,7 +2377,7 @@ app.post("/api/clients/:id/loyalty-redemptions", withDb(async (req, res, db) => 
 
 app.post("/api/clients/:id/medical-records", upload.fields([{ name: "before_photo", maxCount: 1 }, { name: "after_photo", maxCount: 1 }]), withDb(async (req, res, db) => {
   const client = await db.get("SELECT id FROM clients WHERE id = ?", [req.params.id]);
-  if (!client) return res.status(404).json({ error: "Cliente nÃ£o encontrado." });
+  if (!client) return res.status(404).json({ error: "Cliente nÃƒÂ£o encontrado." });
   const body = req.body;
   const beforePhoto = req.files?.before_photo?.[0] ? `/uploads/${req.files.before_photo[0].filename}` : "";
   const afterPhoto = req.files?.after_photo?.[0] ? `/uploads/${req.files.after_photo[0].filename}` : "";
@@ -1758,7 +2420,7 @@ app.post("/api/expenses", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "finance"])) return;
   const { description, expense_type, category, amount, due_date, status, payment_method, notes } = req.body;
   if (!description?.trim() || !["fixa", "variavel"].includes(expense_type) || !due_date) {
-    return res.status(400).json({ error: "Dados da despesa invÃ¡lidos." });
+    return res.status(400).json({ error: "Dados da despesa invÃƒÂ¡lidos." });
   }
   const result = await db.run(
     `INSERT INTO expenses (description, expense_type, category, amount, due_date, status, payment_method, notes)
@@ -2172,9 +2834,9 @@ function loyaltyLevel(points) {
 }
 
 function loyaltyBenefits(level) {
-  if (level === "Aura Premium") return ["15% de desconto em joias selecionadas", "prioridade em encaixes", "check-up de cicatrizaÃ§Ã£o cortesia"];
+  if (level === "Aura Premium") return ["15% de desconto em joias selecionadas", "prioridade em encaixes", "check-up de cicatrizaÃƒÂ§ÃƒÂ£o cortesia"];
   if (level === "Aura Gold") return ["10% de desconto em joias selecionadas", "acesso antecipado a curadorias", "lembrete personalizado de retorno"];
-  return ["5% de desconto em joias selecionadas", "histÃ³rico de pontos ativo", "comunicaÃ§Ã£o de cuidados pÃ³s-atendimento"];
+  return ["5% de desconto em joias selecionadas", "histÃƒÂ³rico de pontos ativo", "comunicaÃƒÂ§ÃƒÂ£o de cuidados pÃƒÂ³s-atendimento"];
 }
 
 function dateAfter(date, days) {
@@ -2184,9 +2846,9 @@ function dateAfter(date, days) {
 }
 
 function defaultCareMessage(day) {
-  if (day === 7) return "OlÃ¡! Passando para acompanhar sua cicatrizaÃ§Ã£o. Evite atrito, nÃ£o toque sem higienizar as mÃ£os e mantenha os cuidados combinados. Pode nos enviar uma foto do piercing?";
-  if (day === 15) return "OlÃ¡! JÃ¡ se passaram 15 dias do procedimento. Observe vermelhidÃ£o, dor, secreÃ§Ã£o ou inchaÃ§o persistente e envie uma foto para avaliarmos a evoluÃ§Ã£o.";
-  return "OlÃ¡! Hoje completamos 30 dias de acompanhamento. Envie uma foto atual e conte como estÃ¡ a cicatrizaÃ§Ã£o para orientarmos os prÃ³ximos cuidados.";
+  if (day === 7) return "OlÃƒÂ¡! Passando para acompanhar sua cicatrizaÃƒÂ§ÃƒÂ£o. Evite atrito, nÃƒÂ£o toque sem higienizar as mÃƒÂ£os e mantenha os cuidados combinados. Pode nos enviar uma foto do piercing?";
+  if (day === 15) return "OlÃƒÂ¡! JÃƒÂ¡ se passaram 15 dias do procedimento. Observe vermelhidÃƒÂ£o, dor, secreÃƒÂ§ÃƒÂ£o ou inchaÃƒÂ§o persistente e envie uma foto para avaliarmos a evoluÃƒÂ§ÃƒÂ£o.";
+  return "OlÃƒÂ¡! Hoje completamos 30 dias de acompanhamento. Envie uma foto atual e conte como estÃƒÂ¡ a cicatrizaÃƒÂ§ÃƒÂ£o para orientarmos os prÃƒÂ³ximos cuidados.";
 }
 
 async function createTermPdf(term, appointment) {
@@ -2210,14 +2872,14 @@ async function createTermPdf(term, appointment) {
 
     writeTermSection(doc, "Dados Pessoais");
     writeTermLine(doc, "Nome Completo", term.full_name);
-    writeTermLine(doc, "Nome Social", term.social_name || formData.personal?.social_name || "NÃ£o informado");
-    writeTermLine(doc, "Data De Nascimento", term.birth_date || "NÃ£o informado");
-    writeTermLine(doc, "Documento", term.document_number || "NÃ£o informado");
-    writeTermLine(doc, "WhatsApp", term.whatsapp || appointment.whatsapp || "NÃ£o informado");
-    writeTermLine(doc, "Instagram", term.instagram || appointment.instagram || "NÃ£o informado");
-    writeTermLine(doc, "EndereÃ§o", term.address || "NÃ£o informado");
+    writeTermLine(doc, "Nome Social", term.social_name || formData.personal?.social_name || "NÃƒÂ£o informado");
+    writeTermLine(doc, "Data De Nascimento", term.birth_date || "NÃƒÂ£o informado");
+    writeTermLine(doc, "Documento", term.document_number || "NÃƒÂ£o informado");
+    writeTermLine(doc, "WhatsApp", term.whatsapp || appointment.whatsapp || "NÃƒÂ£o informado");
+    writeTermLine(doc, "Instagram", term.instagram || appointment.instagram || "NÃƒÂ£o informado");
+    writeTermLine(doc, "EndereÃƒÂ§o", term.address || "NÃƒÂ£o informado");
 
-    writeTermSection(doc, "HistÃ³rico De SaÃºde");
+    writeTermSection(doc, "HistÃƒÂ³rico De SaÃƒÂºde");
     writeTermChecklistColumns(doc, HEALTH_HISTORY_FIELDS.map(({ label, key }) => ({ label, checked: Boolean(formData.health_history?.[key]) })));
 
     writeTermSection(doc, "Estilo De Vida");
@@ -2225,27 +2887,27 @@ async function createTermPdf(term, appointment) {
 
     writeTermSection(doc, "Informa?es Do Atendimento");
     writeTermLine(doc, "Procedimento", term.procedure || appointment.procedure);
-    writeTermLine(doc, "RegiÃ£o da PerfuraÃ§Ã£o", term.piercing_region || appointment.piercing_region);
-    writeTermLine(doc, "Local Da AplicaÃ§Ã£o", formData.information?.application_location || "NÃ£o informado");
-    writeTermLine(doc, "Joia", formData.information?.jewelry || "NÃ£o informada");
-    writeTermLine(doc, "ObservaÃ§Ã£o", formData.information?.observation || term.health_declaration || "Sem observa?es adicionais.");
-    writeTermLine(doc, "Valor", formData.information?.value || "NÃ£o informado");
+    writeTermLine(doc, "RegiÃƒÂ£o da PerfuraÃƒÂ§ÃƒÂ£o", term.piercing_region || appointment.piercing_region);
+    writeTermLine(doc, "Local Da AplicaÃƒÂ§ÃƒÂ£o", formData.information?.application_location || "NÃƒÂ£o informado");
+    writeTermLine(doc, "Joia", formData.information?.jewelry || "NÃƒÂ£o informada");
+    writeTermLine(doc, "ObservaÃƒÂ§ÃƒÂ£o", formData.information?.observation || term.health_declaration || "Sem observa?es adicionais.");
+    writeTermLine(doc, "Valor", formData.information?.value || "NÃƒÂ£o informado");
 
     writeTermSection(doc, "Termo De Consentimento");
-    doc.text("Declaro que recebi orientaÃ§Ãµes sobre o procedimento, cuidados, higienizaÃ§Ã£o, riscos, intercorrÃªncias, cicatrizaÃ§Ã£o e retornos. Tamb?m confirmo que os materiais utilizados sÃ£o esterilizados, lacrados e descartados apÃ³s o procedimento.", {
+    doc.text("Declaro que recebi orientaÃƒÂ§ÃƒÂµes sobre o procedimento, cuidados, higienizaÃƒÂ§ÃƒÂ£o, riscos, intercorrÃƒÂªncias, cicatrizaÃƒÂ§ÃƒÂ£o e retornos. Tamb?m confirmo que os materiais utilizados sÃƒÂ£o esterilizados, lacrados e descartados apÃƒÂ³s o procedimento.", {
       lineGap: 2
     });
 
     if (formData.minor?.is_minor) {
-      writeTermSection(doc, "AutorizaÃ§Ã£o Para Menores");
-      writeTermLine(doc, "ResponsÃ¡vel Legal", formData.minor?.responsible_name || "NÃ£o informado");
-      writeTermLine(doc, "Documento Do ResponsÃ¡vel", formData.minor?.responsible_document || "NÃ£o informado");
-      writeTermLine(doc, "Nome Do Menor", formData.minor?.minor_name || "NÃ£o informado");
+      writeTermSection(doc, "AutorizaÃƒÂ§ÃƒÂ£o Para Menores");
+      writeTermLine(doc, "ResponsÃƒÂ¡vel Legal", formData.minor?.responsible_name || "NÃƒÂ£o informado");
+      writeTermLine(doc, "Documento Do ResponsÃƒÂ¡vel", formData.minor?.responsible_document || "NÃƒÂ£o informado");
+      writeTermLine(doc, "Nome Do Menor", formData.minor?.minor_name || "NÃƒÂ£o informado");
     }
 
     writeTermSection(doc, "Assinaturas");
     writeTermLine(doc, "Assinatura Da Cliente", "Assinatura digital anexada");
-    writeTermLine(doc, "Assinatura Da Profissional", appointment.professional_name || "Profissional responsÃ¡vel");
+    writeTermLine(doc, "Assinatura Da Profissional", appointment.professional_name || "Profissional responsÃƒÂ¡vel");
     doc.text(`Assinado digitalmente em: ${new Date(term.signed_at).toLocaleString("pt-BR")}`);
     if (signatureBuffer) {
       doc.moveDown(0.4);
@@ -2276,7 +2938,7 @@ function writeTermSection(doc, title) {
 }
 
 function writeTermLine(doc, label, value) {
-  doc.text(`${label}: ${value || "NÃ£o informado"}`);
+  doc.text(`${label}: ${value || "NÃƒÂ£o informado"}`);
 }
 
 function writeTermCheck(doc, label, checked) {
@@ -2313,7 +2975,7 @@ function writeTermValueColumns(doc, items) {
     const column = index % 2;
     const x = startX + column * (columnWidth + gap);
     const y = column === 0 ? leftY : rightY;
-    const text = `${item.label}: ${item.value || "NÃ£o informado"}`;
+    const text = `${item.label}: ${item.value || "NÃƒÂ£o informado"}`;
     doc.text(text, x, y, { width: columnWidth });
     const height = doc.heightOfString(text, { width: columnWidth }) + 4;
     if (column === 0) leftY = y + height;
@@ -2324,8 +2986,8 @@ function writeTermValueColumns(doc, items) {
 
 function formatTermAnswer(value) {
   if (value === true) return "Sim";
-  if (value === false) return "NÃ£o";
-  if (value === null || value === undefined || value === "") return "NÃ£o informado";
+  if (value === false) return "NÃƒÂ£o";
+  if (value === null || value === undefined || value === "") return "NÃƒÂ£o informado";
   return String(value);
 }
 
@@ -2333,8 +2995,8 @@ const HEALTH_HISTORY_FIELDS = [
   { key: "epilepsia", label: "Epilepsia" },
   { key: "hemofilia", label: "Hemofilia" },
   { key: "diabetes", label: "Diabetes" },
-  { key: "alteracoes_hormonais", label: "AlteraÃ§Ãµes Hormonais" },
-  { key: "doencas_cardiacas", label: "DoenÃ§as CardÃ­acas" },
+  { key: "alteracoes_hormonais", label: "AlteraÃƒÂ§ÃƒÂµes Hormonais" },
+  { key: "doencas_cardiacas", label: "DoenÃƒÂ§as CardÃƒÂ­acas" },
   { key: "queloide", label: "Queloide" },
   { key: "ists", label: "IST's" },
   { key: "hepatite", label: "Hepatite" },
@@ -2345,14 +3007,14 @@ const HEALTH_HISTORY_FIELDS = [
 const STYLE_QUESTIONS = [
   { key: "eats_well", label: "Alimenta-Se Bem?" },
   { key: "sleep_regular", label: "Tem Sono Regular?" },
-  { key: "physical_activity", label: "Pratica Atividade FÃ­sica?" },
-  { key: "alcohol", label: "Bebe Ãlcool?" },
+  { key: "physical_activity", label: "Pratica Atividade FÃƒÂ­sica?" },
+  { key: "alcohol", label: "Bebe ÃƒÂlcool?" },
   { key: "smokes", label: "Fuma?" },
-  { key: "health_problem", label: "Algum Problema De SaÃºde?" },
+  { key: "health_problem", label: "Algum Problema De SaÃƒÂºde?" },
   { key: "medication", label: "Usa Algum Medicamento?" },
   { key: "treatment", label: "Faz Algum Tratamento?" },
   { key: "phobia", label: "Tem Alguma Fobia?" },
-  { key: "blood_pressure", label: "PressÃ£o SanguÃ­nea" }
+  { key: "blood_pressure", label: "PressÃƒÂ£o SanguÃƒÂ­nea" }
 ];
 
 function signatureBufferFromDataUrl(dataUrl) {
@@ -2400,8 +3062,8 @@ async function deductJewelryStock(db, appointmentId) {
       [nextQuantity, variantStatus(nextQuantity, variant.low_stock_threshold), variantId]
     );
     await db.run(
-      "INSERT INTO stock_movements (jewelry_id, variant_id, movement_type, quantity, notes) VALUES (?, ?, 'SaÃ­da', 1, ?)",
-      [appointment.jewelry_id, variantId, `Baixa automÃ¡tica do atendimento #${appointmentId}`]
+      "INSERT INTO stock_movements (jewelry_id, variant_id, movement_type, quantity, notes) VALUES (?, ?, 'SaÃƒÂ­da', 1, ?)",
+      [appointment.jewelry_id, variantId, `Baixa automÃƒÂ¡tica do atendimento #${appointmentId}`]
     );
     await db.run("UPDATE appointments SET jewelry_variant_id = ? WHERE id = ?", [variantId, appointmentId]);
     await syncProductInventory(db, appointment.jewelry_id);
@@ -2577,32 +3239,32 @@ async function getCatalogSettings(db) {
     brand_name: "Aura Clinic",
     slogan: "Piercing premium e joalherias selecionadas",
     logo_url: "",
-    title: "Escolha a joia perfeita para vocÃª",
+    title: "Escolha a joia perfeita para vocÃƒÂª",
     subtitle: "Curadoria premium da Aura Clinic Piercing",
     hero_title: "Joias de alta qualidade",
-    hero_subtitle: "para realÃ§ar sua essÃªncia",
+    hero_subtitle: "para realÃƒÂ§ar sua essÃƒÂªncia",
     hero_image_url: "https://images.unsplash.com/photo-1602751584552-8ba73aad10e1?auto=format&fit=crop&w=1200&q=85",
     categories: `Todos,${JEWELRY_CATEGORIES.join(",")}`,
     whatsapp_phone: "",
-    whatsapp_message: "OlÃ¡! Vim pelo catÃ¡logo online da Aura Clinic e quero ajuda para escolher uma joia.",
+    whatsapp_message: "OlÃƒÂ¡! Vim pelo catÃƒÂ¡logo online da Aura Clinic e quero ajuda para escolher uma joia.",
     company_instagram: "",
     company_email: "",
     company_address: "",
     company_hours: "",
     layout_style: "premium",
-    page_title: "CatÃ¡logo Online",
-    unavailable_message: "Produto indisponÃ­vel no momento.",
+    page_title: "CatÃƒÂ¡logo Online",
+    unavailable_message: "Produto indisponÃƒÂ­vel no momento.",
     low_stock_message: "Poucas unidades",
-    institutional_text: "Joias selecionadas com cuidado, seguranÃ§a e estÃ©tica premium.",
+    institutional_text: "Joias selecionadas com cuidado, seguranÃƒÂ§a e estÃƒÂ©tica premium.",
     footer_text: "Aura Clinic Piercing. Curadoria de joias, cuidado e atendimento especializado.",
-    seo_title: "Aura Clinic Piercing | CatÃ¡logo Online",
+    seo_title: "Aura Clinic Piercing | CatÃƒÂ¡logo Online",
     seo_description: "Escolha joias premium para piercing na Aura Clinic.",
     share_image_url: "",
     product_share_text: "Olha essa joia da Aura Clinic:",
     content_sections: JSON.stringify([{
       kicker: "Guia Aura",
-      title: "Escolha sua joia com orientaÃ§Ã£o profissional",
-      text: "Veja materiais, medidas, anodizaÃ§Ã£o e cuidados antes de reservar sua joia.",
+      title: "Escolha sua joia com orientaÃƒÂ§ÃƒÂ£o profissional",
+      text: "Veja materiais, medidas, anodizaÃƒÂ§ÃƒÂ£o e cuidados antes de reservar sua joia.",
       media_type: "image",
       media_url: "https://images.unsplash.com/photo-1602751584552-8ba73aad10e1?auto=format&fit=crop&w=1200&q=85",
       button_text: "Agendar atendimento",
@@ -2759,7 +3421,7 @@ async function saveCatalogCustomization(db, body) {
         `INSERT INTO catalog_promotions (name, discount_type, discount_value, start_date, end_date, applies_to, product_ids, category_ids, is_active)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          promotion.name || "PromoÃ§Ã£o",
+          promotion.name || "PromoÃƒÂ§ÃƒÂ£o",
           promotion.discount_type || "percent",
           Number(promotion.discount_value || 0),
           promotion.start_date || "",
@@ -2789,8 +3451,8 @@ async function resetCatalogCustomization(db) {
   await saveCatalogCustomization(db, {
     settings: await getCatalogSettings(db),
     banners: [{
-      title: "Escolha a joia perfeita para vocÃª",
-      subtitle: "Joias de alta qualidade para realÃ§ar sua essÃªncia.",
+      title: "Escolha a joia perfeita para vocÃƒÂª",
+      subtitle: "Joias de alta qualidade para realÃƒÂ§ar sua essÃƒÂªncia.",
       image_url: "https://images.unsplash.com/photo-1602751584552-8ba73aad10e1?auto=format&fit=crop&w=1200&q=85",
       button_text: "Ver todas as joias",
       button_link: "#catalog-products",
@@ -2976,20 +3638,20 @@ async function attachVariants(db, products = []) {
 function aggregateVariantStatus(variants = []) {
   if (!variants.length || variants.every((variant) => Number(variant.quantity || 0) <= 0)) return "esgotado";
   if (variants.some((variant) => variantStatus(variant.quantity, variant.low_stock_threshold) === "baixo estoque")) return "baixo estoque";
-  return "disponÃ­vel";
+  return "disponÃƒÂ­vel";
 }
 
 function variantStatus(quantity, lowStockThreshold = 5) {
   const stock = Number(quantity || 0);
   if (stock <= 0) return "esgotado";
   if (stock <= Number(lowStockThreshold || 5)) return "baixo estoque";
-  return "disponÃ­vel";
+  return "disponÃƒÂ­vel";
 }
 
 function variantFromLegacy(body = {}) {
   return {
     sku: body.sku,
-    variation_name: body.variation_label || "VariaÃ§Ã£o principal",
+    variation_name: body.variation_label || "VariaÃƒÂ§ÃƒÂ£o principal",
     material: body.material,
     color: body.color,
     stone_color: body.stone_color,
@@ -3010,7 +3672,7 @@ function variantFromLegacy(body = {}) {
 
 async function replaceJewelryVariants(db, jewelryId, variants = []) {
   if (!Array.isArray(variants) || variants.length === 0) {
-    throw new Error("Cadastre ao menos uma variaÃ§Ã£o para o produto.");
+    throw new Error("Cadastre ao menos uma variaÃƒÂ§ÃƒÂ£o para o produto.");
   }
   const current = await db.all("SELECT * FROM jewelry_variants WHERE jewelry_id = ?", [jewelryId]);
   const product = await db.get("SELECT sku, material, category, subcategory, name FROM jewelry_inventory WHERE id = ?", [jewelryId]);
@@ -3093,7 +3755,7 @@ function buildVariationName(variant = {}) {
     variant.material,
     variant.color,
     variant.thread_type
-  ].filter(Boolean).join(" Â· ") || "VariaÃ§Ã£o";
+  ].filter(Boolean).join(" Ã‚Â· ") || "VariaÃƒÂ§ÃƒÂ£o";
 }
 
 async function syncProductInventory(db, jewelryId) {
@@ -3128,12 +3790,12 @@ async function syncProductInventory(db, jewelryId) {
 function elegantProductName(value = "") {
   const smallWords = new Set(["de", "da", "do", "das", "dos", "e", "com", "para"]);
   const normalized = String(value || "")
-    .replace(/tit\?nio/gi, "titÃ¢nio")
-    .replace(/titï¿½nio/gi, "titÃ¢nio")
-    .replace(/zirc\?nia/gi, "zircÃ´nia")
+    .replace(/tit\?nio/gi, "titÃƒÂ¢nio")
+    .replace(/titÃ¯Â¿Â½nio/gi, "titÃƒÂ¢nio")
+    .replace(/zirc\?nia/gi, "zircÃƒÂ´nia")
     .replace(/^Joias Premium\b/i, "Joia Premium")
-    .replace(/\bTitanio\b/gi, "TitÃ¢nio")
-    .replace(/\bZirconia\b/gi, "ZircÃ´nia")
+    .replace(/\bTitanio\b/gi, "TitÃƒÂ¢nio")
+    .replace(/\bZirconia\b/gi, "ZircÃƒÂ´nia")
     .replace(/\s+/g, " ")
     .trim();
   return normalized
@@ -3194,14 +3856,13 @@ async function authenticateRequest(req, db) {
 
 function requireRole(req, res, roles) {
   if (!roles.includes(req.user?.role)) {
-    res.status(403).json({ error: "VocÃª nÃ£o tem permissÃ£o para esta aÃ§Ã£o." });
+    res.status(403).json({ error: "VocÃƒÂª nÃƒÂ£o tem permissÃƒÂ£o para esta aÃƒÂ§ÃƒÂ£o." });
     return false;
   }
   return true;
 }
 
 await runCoreMigrations();
-await initDb();
 app.listen(PORT, () => {
   console.log(`Aura Clinic API em http://localhost:${PORT}`);
 });

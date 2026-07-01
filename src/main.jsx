@@ -1233,7 +1233,7 @@ function PublicBooking() {
           ))}
         </div>
 
-        {step === 1 && <BookingChoiceGrid title="Escolha O ServiÃ§o" items={services} value={form.service_id} onSelect={(id) => { setForm({ ...form, service_id: id, appointment_time: "" }); setStep(2); }} render={(item) => <><strong>{item.name}</strong><p>{item.description}</p><span>{item.duration_minutes} min  {currency.format(item.price || 0)}</span></>} />}
+        {step === 1 && <BookingChoiceGrid title="Escolha O ServiÃ§o" items={services} value={form.service_id} onSelect={(id) => { setForm({ ...form, service_id: id, appointment_time: "" }); setStep(2); }} render={(item) => <><strong>{item.name}</strong><p>{item.description}</p><span>{item.duration_minutes} min  {currency.format(item.base_price || item.price || 0)}</span></>} />}
         {step === 2 && <BookingChoiceGrid title="Escolha A Profissional" items={professionals} value={form.professional_id} onSelect={(id) => { setForm({ ...form, professional_id: id, appointment_time: "" }); setStep(3); }} render={(item) => <><strong>{item.name}</strong><p>{item.specialty || "Body Piercer Aura"}</p></>} />}
         {step === 3 && (
           <section className="booking-panel booking-date-card">
@@ -1293,7 +1293,7 @@ function PublicBooking() {
             <p><strong>ServiÃ§o:</strong> {selectedService?.name}</p>
             <p><strong>Profissional:</strong> {selectedProfessional?.name}</p>
             <p><strong>Data E HorÃ¡rio:</strong> {formatLongDate(form.appointment_date)} ?s {form.appointment_time}</p>
-            <p><strong>Valor:</strong> {currency.format(selectedService?.price || 0)}</p>
+            <p><strong>Valor:</strong> {currency.format(selectedService?.base_price || selectedService?.price || 0)}</p>
             <p><strong>Sinal:</strong> {currency.format(selectedService?.deposit_value || 0)}</p>
             <p><strong>Regras:</strong> {data.rules?.cancellation}</p>
             <label>Comprovante Do Sinal Pix<input type="file" accept="image/*,.pdf" onChange={(event) => setForm({ ...form, payment_proof: event.target.files?.[0] })} /></label>
@@ -1903,6 +1903,7 @@ function Appointments() {
   const { data: clients, refresh: refreshClients } = useFetch("/clients");
   const { data: appointments, refresh } = useFetch("/appointments");
   const { data: services } = useFetch("/services");
+  const { data: procedures } = useFetch("/procedures");
   const [form, setForm] = useState(defaultAppointment());
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -1912,6 +1913,7 @@ function Appointments() {
   const safeClients = asArray(clients);
   const safeAppointments = asArray(appointments);
   const safeServices = asArray(services);
+  const safeProcedures = asArray(procedures);
   const safeJewelry = asArray(safeOptions.jewelry);
   const safeProfessionals = asArray(safeOptions.professionals);
 
@@ -2007,7 +2009,7 @@ function Appointments() {
                 ...form,
                 service_id: value,
                 procedure: service?.name || "",
-                total_value: Number(service?.price || 0),
+                total_value: Number(service?.base_price || service?.price || 0),
                 deposit_value: Number(service?.deposit_value || 0),
                 appointment_time: ""
               }));
@@ -4039,6 +4041,7 @@ function FinanceAdmin() {
 function SalesWorkspace() {
   const { data: orders, refresh: refreshOrders } = useFetch("/sales-orders");
   const { data: services } = useFetch("/services");
+  const { data: procedures } = useFetch("/procedures");
   const { data: jewelry } = useFetch("/jewelry");
   const { data: appointments } = useFetch("/appointments");
   const [tab, setTab] = useState("produto");
@@ -4048,6 +4051,7 @@ function SalesWorkspace() {
   const [error, setError] = useState("");
   const safeOrders = asArray(orders);
   const safeServices = asArray(services);
+  const safeProcedures = asArray(procedures);
   const safeJewelry = asArray(jewelry);
   const safeAppointments = asArray(appointments);
 
@@ -4063,7 +4067,7 @@ function SalesWorkspace() {
 
   useEffect(() => {
     if (safeServices.length && (tab === "servico" || tab === "ordem")) {
-      setLine((current) => ({ ...current, service_id: String(safeServices[0].id), item_name: safeServices[0].name, unit_price: safeServices[0].price || 0 }));
+      setLine((current) => ({ ...current, service_id: String(safeServices[0].id), item_name: safeServices[0].name, unit_price: safeServices[0].base_price || safeServices[0].price || 0 }));
     }
   }, [safeServices.length, tab]);
 
@@ -4425,32 +4429,136 @@ function AccessAdmin() {
 
 function BookingAdmin() {
   const { data: services, refresh: refreshServices } = useFetch("/services");
+  const { data: procedures, refresh: refreshProcedures } = useFetch("/procedures");
   const { data: options } = useFetch("/options");
   const { data: availability, refresh: refreshAvailability } = useFetch("/availability");
   const { data: blocks, refresh: refreshBlocks } = useFetch("/schedule-blocks");
   const { data: appointments, refresh: refreshAppointments } = useFetch("/appointments?status=pendente");
   const [tab, setTab] = useState("servicos");
   const [serviceForm, setServiceForm] = useState(defaultServiceForm());
+  const [editingServiceId, setEditingServiceId] = useState(null);
+  const [procedureForm, setProcedureForm] = useState(defaultProcedureForm());
+  const [editingProcedureId, setEditingProcedureId] = useState(null);
+  const [serviceError, setServiceError] = useState("");
+  const [procedureError, setProcedureError] = useState("");
   const [blockForm, setBlockForm] = useState(defaultScheduleBlock());
   const professionals = asArray(asObject(options).professionals);
   const safeServices = asArray(services);
+  const safeProcedures = asArray(procedures);
   const safeAvailability = asArray(availability);
   const safeBlocks = asArray(blocks);
   const safeAppointments = asArray(appointments);
 
-  if (services == null || availability == null || blocks == null || appointments == null) return <Loading />;
+  if (services == null || procedures == null || availability == null || blocks == null || appointments == null) return <Loading />;
+
+  function validateServiceForm() {
+    if (!serviceForm.name.trim()) return "Informe o nome do serviço.";
+    if (Number(serviceForm.base_price || 0) < 0) return "Preço não pode ser negativo.";
+    if (Number(serviceForm.duration_minutes || 0) <= 0) return "Duração deve ser um número positivo.";
+    return "";
+  }
+
+  function validateProcedureForm() {
+    if (!procedureForm.name.trim()) return "Informe o nome do procedimento.";
+    if (!procedureForm.service_id) return "Procedimento precisa ter um serviço vinculado.";
+    if (Number(procedureForm.price || 0) < 0) return "Preço não pode ser negativo.";
+    if (Number(procedureForm.duration_minutes || 0) <= 0) return "Duração deve ser um número positivo.";
+    return "";
+  }
 
   async function saveService(event) {
     event.preventDefault();
-    await apiFetch("/services", {
-      method: "POST",
+    setServiceError("");
+    const error = validateServiceForm();
+    if (error) return setServiceError(error);
+    const response = await apiFetch(editingServiceId ? `/services/${editingServiceId}` : "/services", {
+      method: editingServiceId ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(serviceForm)
     });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      return setServiceError(payload.error || "Não foi possível salvar o serviço.");
+    }
     setServiceForm(defaultServiceForm());
+    setEditingServiceId(null);
     refreshServices();
   }
 
+  function editService(service) {
+    setEditingServiceId(service.id);
+    setServiceError("");
+    setServiceForm({
+      name: service.name || "",
+      description: service.description || "",
+      base_price: service.base_price || 0,
+      duration_minutes: service.duration_minutes || 40,
+      is_active: Boolean(service.is_active)
+    });
+  }
+
+  async function removeService(service) {
+    if (!window.confirm(`Excluir ${service.name}?`)) return;
+    const response = await apiFetch(`/services/${service.id}`, { method: "DELETE" });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      return setServiceError(payload.error || "Não foi possível excluir o serviço.");
+    }
+    if (editingServiceId === service.id) {
+      setEditingServiceId(null);
+      setServiceForm(defaultServiceForm());
+    }
+    refreshServices();
+    refreshProcedures();
+  }
+
+  async function saveProcedure(event) {
+    event.preventDefault();
+    setProcedureError("");
+    const error = validateProcedureForm();
+    if (error) return setProcedureError(error);
+    const response = await apiFetch(editingProcedureId ? `/procedures/${editingProcedureId}` : "/procedures", {
+      method: editingProcedureId ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(procedureForm)
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      return setProcedureError(payload.error || "Não foi possível salvar o procedimento.");
+    }
+    setProcedureForm(defaultProcedureForm());
+    setEditingProcedureId(null);
+    refreshProcedures();
+  }
+
+  function editProcedure(procedure) {
+    setEditingProcedureId(procedure.id);
+    setProcedureError("");
+    setProcedureForm({
+      service_id: procedure.service_id || "",
+      name: procedure.name || "",
+      body_area: procedure.body_area || "",
+      description: procedure.description || "",
+      price: procedure.price || 0,
+      duration_minutes: procedure.duration_minutes || 40,
+      aftercare_instructions: procedure.aftercare_instructions || "",
+      is_active: Boolean(procedure.is_active)
+    });
+  }
+
+  async function removeProcedure(procedure) {
+    if (!window.confirm(`Excluir ${procedure.name}?`)) return;
+    const response = await apiFetch(`/procedures/${procedure.id}`, { method: "DELETE" });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      return setProcedureError(payload.error || "Não foi possível excluir o procedimento.");
+    }
+    if (editingProcedureId === procedure.id) {
+      setEditingProcedureId(null);
+      setProcedureForm(defaultProcedureForm());
+    }
+    refreshProcedures();
+  }
   async function updateAvailability(item, patch) {
     await apiFetch(`/availability/${item.id}`, {
       method: "PATCH",
@@ -4497,33 +4605,86 @@ function BookingAdmin() {
       {tab === "servicos" && (
         <div className="booking-admin-grid">
           <form className="panel" onSubmit={saveService}>
-            <div className="panel-heading"><h2>Novo serviÃ§o</h2><span>DisponÃ­vel no link pÃºblico</span></div>
+            <div className="panel-heading">
+              <h2>{editingServiceId ? "Editar serviço" : "Novo serviço"}</h2>
+              <span>Cadastro real no PostgreSQL</span>
+            </div>
             <div className="form-grid">
               <Input label="Nome" value={serviceForm.name} onChange={(value) => setServiceForm({ ...serviceForm, name: value })} required />
-              <Input type="number" label="DuraÃ§Ã£o em minutos" value={serviceForm.duration_minutes} onChange={(value) => setServiceForm({ ...serviceForm, duration_minutes: value })} />
-              <Input type="number" label="Valor" value={serviceForm.price} onChange={(value) => setServiceForm({ ...serviceForm, price: value })} />
-              <Input type="number" label="Valor do sinal" value={serviceForm.deposit_value} onChange={(value) => setServiceForm({ ...serviceForm, deposit_value: value })} />
+              <Input type="number" label="Duração em minutos" value={serviceForm.duration_minutes} onChange={(value) => setServiceForm({ ...serviceForm, duration_minutes: value })} />
+              <Input type="number" label="Preço base" value={serviceForm.base_price} onChange={(value) => setServiceForm({ ...serviceForm, base_price: value })} />
             </div>
-            <label>DescriÃ§Ã£o<textarea value={serviceForm.description} onChange={(event) => setServiceForm({ ...serviceForm, description: event.target.value })} /></label>
-            <label>ObservaÃ§Ãµes prÃ©-atendimento<textarea value={serviceForm.pre_service_notes} onChange={(event) => setServiceForm({ ...serviceForm, pre_service_notes: event.target.value })} /></label>
-            <Toggle label="Ativo no agendamento online" checked={serviceForm.active_online_booking} onChange={(value) => setServiceForm({ ...serviceForm, active_online_booking: value })} />
-            <button className="primary-button">Salvar serviÃ§o</button>
+            <label>Descrição<textarea value={serviceForm.description} onChange={(event) => setServiceForm({ ...serviceForm, description: event.target.value })} /></label>
+            <Toggle label="Serviço ativo" checked={serviceForm.is_active} onChange={(value) => setServiceForm({ ...serviceForm, is_active: value })} />
+            {serviceError && <span className="form-error">{serviceError}</span>}
+            <div className="modal-actions">
+              {editingServiceId && <button type="button" className="secondary-button" onClick={() => { setEditingServiceId(null); setServiceForm(defaultServiceForm()); setServiceError(""); }}>Cancelar</button>}
+              <button className="primary-button">Salvar serviço</button>
+            </div>
           </form>
+
           <div className="panel">
-            <div className="panel-heading"><h2>ServiÃ§os cadastrados</h2></div>
+            <div className="panel-heading"><h2>Serviços cadastrados</h2></div>
             <div className="service-list">
               {safeServices.map((service) => (
                 <article key={service.id}>
                   <strong>{service.name}</strong>
-                  <span>{service.duration_minutes} min Â· {currency.format(service.price || 0)} Â· sinal {currency.format(service.deposit_value || 0)}</span>
-                  <small>{service.active_online_booking ? "Ativo online" : "Inativo online"}</small>
+                  <span>{service.duration_minutes} min · {currency.format(service.base_price || 0)}</span>
+                  <small>{service.is_active ? "Ativo" : "Inativo"}</small>
+                  <div className="table-actions">
+                    <button type="button" onClick={() => editService(service)}>Editar</button>
+                    <button type="button" className="danger-link" onClick={() => removeService(service)}>Excluir</button>
+                  </div>
                 </article>
               ))}
+              {!safeServices.length && <p className="empty-state">Você ainda não possui serviços cadastrados.</p>}
+            </div>
+          </div>
+
+          <form className="panel" onSubmit={saveProcedure}>
+            <div className="panel-heading">
+              <h2>{editingProcedureId ? "Editar procedimento" : "Novo procedimento"}</h2>
+              <span>Vincule a um serviço</span>
+            </div>
+            <div className="form-grid">
+              <Select label="Serviço" value={procedureForm.service_id} onChange={(value) => setProcedureForm({ ...procedureForm, service_id: value })} required>
+                <option value="">Selecione</option>
+                {safeServices.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
+              </Select>
+              <Input label="Nome" value={procedureForm.name} onChange={(value) => setProcedureForm({ ...procedureForm, name: value })} required />
+              <Input label="Área do corpo" value={procedureForm.body_area} onChange={(value) => setProcedureForm({ ...procedureForm, body_area: value })} />
+              <Input type="number" label="Preço" value={procedureForm.price} onChange={(value) => setProcedureForm({ ...procedureForm, price: value })} />
+              <Input type="number" label="Duração em minutos" value={procedureForm.duration_minutes} onChange={(value) => setProcedureForm({ ...procedureForm, duration_minutes: value })} />
+            </div>
+            <label>Descrição<textarea value={procedureForm.description} onChange={(event) => setProcedureForm({ ...procedureForm, description: event.target.value })} /></label>
+            <label>Orientações pós-atendimento<textarea value={procedureForm.aftercare_instructions} onChange={(event) => setProcedureForm({ ...procedureForm, aftercare_instructions: event.target.value })} /></label>
+            <Toggle label="Procedimento ativo" checked={procedureForm.is_active} onChange={(value) => setProcedureForm({ ...procedureForm, is_active: value })} />
+            {procedureError && <span className="form-error">{procedureError}</span>}
+            <div className="modal-actions">
+              {editingProcedureId && <button type="button" className="secondary-button" onClick={() => { setEditingProcedureId(null); setProcedureForm(defaultProcedureForm()); setProcedureError(""); }}>Cancelar</button>}
+              <button className="primary-button">Salvar procedimento</button>
+            </div>
+          </form>
+
+          <div className="panel">
+            <div className="panel-heading"><h2>Procedimentos cadastrados</h2></div>
+            <div className="service-list">
+              {safeProcedures.map((procedure) => (
+                <article key={procedure.id}>
+                  <strong>{procedure.name}</strong>
+                  <span>{procedure.service_name || "Sem serviço"} · {procedure.body_area || "Sem área"} · {procedure.duration_minutes} min · {currency.format(procedure.price || 0)}</span>
+                  <small>{procedure.is_active ? "Ativo" : "Inativo"}</small>
+                  <div className="table-actions">
+                    <button type="button" onClick={() => editProcedure(procedure)}>Editar</button>
+                    <button type="button" className="danger-link" onClick={() => removeProcedure(procedure)}>Excluir</button>
+                  </div>
+                </article>
+              ))}
+              {!safeProcedures.length && <p className="empty-state">Você ainda não possui procedimentos cadastrados.</p>}
             </div>
           </div>
         </div>
       )}
-
       {tab === "horarios" && (
         <div className="availability-grid">
           {safeAvailability.map((item) => (
@@ -5594,11 +5755,22 @@ function defaultServiceForm() {
   return {
     name: "",
     description: "",
+    base_price: 0,
     duration_minutes: 40,
+    is_active: true
+  };
+}
+
+function defaultProcedureForm() {
+  return {
+    service_id: "",
+    name: "",
+    body_area: "",
+    description: "",
     price: 0,
-    deposit_value: 0,
-    active_online_booking: true,
-    pre_service_notes: ""
+    duration_minutes: 40,
+    aftercare_instructions: "",
+    is_active: true
   };
 }
 
@@ -6178,3 +6350,4 @@ function dateKey(date) {
 const auraRoot = window.__auraReactRoot || createRoot(document.getElementById("root"));
 window.__auraReactRoot = auraRoot;
 auraRoot.render(<AppErrorBoundary><App /></AppErrorBoundary>);
+
