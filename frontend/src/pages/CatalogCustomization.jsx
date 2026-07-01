@@ -4,7 +4,7 @@ import { Loading, ApiError } from "../components/common/Feedback";
 import { Input, Select } from "../components/common/Ui";
 import { API_ORIGIN, apiFetch, useFetch } from "../lib/api";
 import { asArray, asNumber, asObject } from "../lib/utils";
-import { defaultCatalogSettings } from "../lib/defaultForms";
+import { JEWELRY_CATEGORY_OPTIONS, defaultCatalogSettings } from "../lib/defaultForms";
 import { cleanDisplayText } from "../features/catalog/catalogUtils";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });

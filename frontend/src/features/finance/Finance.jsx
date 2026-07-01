@@ -1,7 +1,7 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import React, { useState } from "react";
 import { Download } from "lucide-react";
-import { Input, Metric, PaymentSelect, Select } from "../../components/common/Ui";
+import { Button, Input, Metric, PaymentSelect, Select, StatusBadge } from "../../components/common/Ui";
 import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../components/common/Crud";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, asNumber, asObject, formatDate, formatLongDate } from "../../lib/utils";
@@ -30,7 +30,7 @@ export function Finance() {
       <div className="panel">
         <div className="panel-heading">
           <h2>Relatório Financeiro</h2>
-          <button className="secondary-button" type="button" onClick={() => downloadApiFile("/finance/export.csv", "relatorio-aura-clinic.csv")}><Download size={16} /> Exportar CSV</button>
+          <Button variant="secondary" type="button" onClick={() => downloadApiFile("/finance/export.csv", "relatorio-aura-clinic.csv")}><Download size={16} /> Exportar CSV</Button>
         </div>
         <div className="payment-bars">
           {methods.map((item) => <div key={item.method || item.name}><span>{item.method || "Não informado"}</span><strong>{asNumber(item.total)}</strong></div>)}
@@ -145,9 +145,9 @@ export function FinanceAdmin() {
         <div className="panel-heading">
           <h2>Relatórios exportáveis</h2>
           <div className="export-actions">
-            <button className="secondary-button" type="button" onClick={() => downloadApiFile("/finance/export.pdf", "relatorio-Financeiro-aura.pdf")}><Download size={16} /> PDF</button>
-            <button className="secondary-button" type="button" onClick={() => downloadApiFile("/finance/export.xlsx", "relatorio-Financeiro-aura.xlsx")}><Download size={16} /> Excel</button>
-            <button className="secondary-button" type="button" onClick={() => downloadApiFile("/finance/export.csv", "relatorio-aura-clinic.csv")}><Download size={16} /> CSV</button>
+            <Button variant="secondary" type="button" onClick={() => downloadApiFile("/finance/export.pdf", "relatorio-Financeiro-aura.pdf")}><Download size={16} /> PDF</Button>
+            <Button variant="secondary" type="button" onClick={() => downloadApiFile("/finance/export.xlsx", "relatorio-Financeiro-aura.xlsx")}><Download size={16} /> Excel</Button>
+            <Button variant="secondary" type="button" onClick={() => downloadApiFile("/finance/export.csv", "relatorio-aura-clinic.csv")}><Download size={16} /> CSV</Button>
           </div>
         </div>
       </div>
@@ -167,7 +167,7 @@ export function FinanceAdmin() {
             { key: "category", label: "Categoria", render: (item) => item.category || "sem categoria" },
             { key: "amount", label: "Valor", align: "right", render: (item) => currency.format(item.amount) },
             { key: "due_date", label: "Vencimento", render: (item) => formatDate(item.due_date) },
-            { key: "status", label: "Status", render: (item) => <span className={`status-badge ${item.status === "paga" ? "status-atendido" : "status-pendente"}`}>{item.status}</span> }
+            { key: "status", label: "Status", render: (item) => <StatusBadge status={item.status} tone={item.status === "paga" ? "ok" : "warn"} /> }
           ]}
           actions={(item) => (
             <button type="button" onClick={() => setDeleting({ message: `Apagar esta despesa?`, run: () => removeExpense(item.id) })}>Apagar</button>
@@ -183,8 +183,8 @@ export function FinanceAdmin() {
         onClose={closeModal}
         footer={(
           <>
-            <button type="button" className="secondary-button" onClick={closeModal}>Cancelar</button>
-            <button type="submit" form="expense-form" className="primary-button">Salvar despesa</button>
+            <Button type="button" variant="secondary" onClick={closeModal}>Cancelar</Button>
+            <Button type="submit" form="expense-form" variant="primary">Salvar despesa</Button>
           </>
         )}
       >

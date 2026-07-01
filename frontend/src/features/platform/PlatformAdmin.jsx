@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { ChevronRight, LogOut } from "lucide-react";
+import { Button, StatusBadge } from "../../components/common/Ui";
 import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../components/common/Crud";
 import { API } from "../../lib/api";
 import { asArray } from "../../lib/utils";
@@ -281,9 +282,9 @@ export function PlatformAdmin() {
           <p>Gerencie as clínicas cadastradas no SaaS.</p>
         </div>
         <div className="topbar-actions">
-          <button className="secondary-button" onClick={clearPlatformSession}>
+          <Button variant="secondary" onClick={clearPlatformSession}>
             <LogOut size={16} /> Sair
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -309,9 +310,7 @@ export function PlatformAdmin() {
                 { key: "name", label: "Nome", render: (tenant) => tenant.name || "—" },
                 { key: "slug", label: "Código", render: (tenant) => tenant.slug || "—" },
                 { key: "status", label: "Status", render: (tenant) => (
-                  <span className={`status-badge ${tenant.status === "suspenso" ? "status-cancelado" : "status-confirmado"}`}>
-                    {tenant.status || "ativo"}
-                  </span>
+                  <StatusBadge status={tenant.status || "ativo"} tone={tenant.status === "suspenso" ? "danger" : "ok"} />
                 ) },
                 { key: "plan", label: "Plano", render: (tenant) => tenant.plan || "—" },
                 { key: "created_at", label: "Criada em", render: (tenant) => tenantCreatedAt(tenant.created_at) },
@@ -336,8 +335,8 @@ export function PlatformAdmin() {
           onClose={closeCreate}
           footer={(
             <>
-              <button type="button" className="secondary-button" onClick={closeCreate}>Cancelar</button>
-              <button type="submit" form="platform-tenant-form" className="primary-button" disabled={createLoading}>{createLoading ? "Criando…" : "Criar clínica"}</button>
+              <Button type="button" variant="secondary" onClick={closeCreate}>Cancelar</Button>
+              <Button type="submit" form="platform-tenant-form" variant="primary" disabled={createLoading}>{createLoading ? "Criando…" : "Criar clínica"}</Button>
             </>
           )}
         >

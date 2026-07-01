@@ -1,7 +1,7 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import React, { useEffect, useMemo, useState } from "react";
 import { Calendar, CheckCircle2, ChevronLeft, ChevronRight, Clock, ShieldCheck, XCircle } from "lucide-react";
-import { Input, PaymentSelect, Select, StatusSelect } from "../../components/common/Ui";
+import { Button, Input, PaymentSelect, Select, StatusBadge, StatusSelect } from "../../components/common/Ui";
 import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../components/common/Crud";
 import { Loading } from "../../components/common/Feedback";
 import { asArray, asNumber, asObject, formatDate } from "../../lib/utils";
@@ -585,7 +585,7 @@ export function BookingAdmin() {
                 { key: "name", label: "Nome" },
                 { key: "duration_minutes", label: "Duração", render: (service) => `${service.duration_minutes} min` },
                 { key: "base_price", label: "Preço base", render: (service) => currency.format(service.base_price || 0) },
-                { key: "is_active", label: "Status", render: (service) => <span className="status-badge">{service.is_active ? "Ativo" : "Inativo"}</span> },
+                { key: "is_active", label: "Status", render: (service) => <StatusBadge status={service.is_active ? "Ativo" : "Inativo"} /> },
               ]}
               actions={(service) => (
                 <>
@@ -612,7 +612,7 @@ export function BookingAdmin() {
                 { key: "body_area", label: "Área do corpo", render: (procedure) => procedure.body_area || "Sem área" },
                 { key: "duration_minutes", label: "Duração", render: (procedure) => `${procedure.duration_minutes} min` },
                 { key: "price", label: "Preço", render: (procedure) => currency.format(procedure.price || 0) },
-                { key: "is_active", label: "Status", render: (procedure) => <span className="status-badge">{procedure.is_active ? "Ativo" : "Inativo"}</span> },
+                { key: "is_active", label: "Status", render: (procedure) => <StatusBadge status={procedure.is_active ? "Ativo" : "Inativo"} /> },
               ]}
               actions={(procedure) => (
                 <>
@@ -795,7 +795,7 @@ export function AppointmentList({ appointments = [], onChanged, compact }) {
             <p>{item.procedure} · {item.piercing_region}</p>
             <small>{item.professional_name} · {item.jewelry_name || "sem joia vinculada"}</small>
           </div>
-          <span className={`status-badge ${statusClass[item.status]}`}>{item.status}</span>
+          <StatusBadge status={item.status} />
           {!compact && <div className="row-actions">
             <a title="WhatsApp" href={whatsappUrl(item.whatsapp, `Ola ${item.full_name}, tudo bem Aqui e da Aura Clinic sobre seu atendimento de ${formatDate(item.appointment_date)} as ${item.appointment_time}.`)} target="_blank" rel="noreferrer">WhatsApp</a>
             <button title="Cancelar" onClick={() => updateAppointment(item.id, { status: "cancelado" }, onChanged)}><XCircle size={16} /></button>

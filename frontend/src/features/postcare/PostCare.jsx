@@ -1,7 +1,7 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import React, { useState } from "react";
 import { Instagram, Search } from "lucide-react";
-import { Metric, Select } from "../../components/common/Ui";
+import { Button, Metric, Select, StatusBadge } from "../../components/common/Ui";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, formatDate } from "../../lib/utils";
 import { API_ORIGIN, apiFetch, useFetch } from "../../lib/api";
@@ -75,7 +75,7 @@ export function PostCareCard({ item, onChanged }) {
           <h2>{item.full_name}</h2>
           <p>{item.whatsapp} · {item.instagram || "sem Instagram"}</p>
         </div>
-        <span className={`status-badge ${isDue ? "status-pendente" : "status-atendido"}`}>{formatDate(item.due_date)}</span>
+        <StatusBadge tone={isDue ? "warn" : "ok"}>{formatDate(item.due_date)}</StatusBadge>
       </header>
       <dl>
         <div><dt>Procedimento</dt><dd>{item.procedure}</dd></div>
@@ -109,7 +109,7 @@ export function PostCareCard({ item, onChanged }) {
         <label>Foto enviada pelo cliente
           <input type="file" accept="image/*" onChange={(event) => setPhoto(event.target.files[0])} />
         </label>
-        <button className="primary-button">Salvar acompanhamento</button>
+        <Button variant="primary" type="submit">Salvar acompanhamento</Button>
       </form>
     </article>
   );

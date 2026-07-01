@@ -1,6 +1,6 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import React, { useEffect, useState } from "react";
-import { Input, Metric, Select } from "../../components/common/Ui";
+import { Button, Input, Metric, Select, StatusBadge } from "../../components/common/Ui";
 import { Modal, CrudHeader, DataTable } from "../../components/common/Crud";
 import { Loading } from "../../components/common/Feedback";
 import { asArray, formatDate } from "../../lib/utils";
@@ -163,7 +163,7 @@ export function SalesWorkspace() {
               key: "status",
               label: "Status",
               render: (order) => (
-                <span className={`status-badge ${order.status === "cancelada" ? "status-cancelado" : order.status === "aberta" ? "status-pendente" : "status-atendido"}`}>{order.status}</span>
+                <StatusBadge status={order.status} tone={order.status === "cancelada" ? "danger" : order.status === "aberta" ? "warn" : "ok"} />
               )
             },
             { key: "created_at", label: "Data", render: (order) => formatDate(String(order.created_at || "").slice(0, 10)) }
@@ -186,8 +186,8 @@ export function SalesWorkspace() {
         onClose={closeModal}
         footer={(
           <>
-            <button type="button" className="secondary-button" onClick={closeModal}>Cancelar</button>
-            <button type="submit" form="sales-order-form" className="primary-button">Salvar venda</button>
+            <Button type="button" variant="secondary" onClick={closeModal}>Cancelar</Button>
+            <Button type="submit" form="sales-order-form" variant="primary">Salvar venda</Button>
           </>
         )}
       >
@@ -268,7 +268,7 @@ export function SalesWorkspace() {
             <label>Observações do item
               <textarea value={line.notes} onChange={(event) => setLine({ ...line, notes: event.target.value })} />
             </label>
-            <button className="secondary-button" type="button" onClick={addLineItem}>Adicionar item</button>
+            <Button variant="secondary" type="button" onClick={addLineItem}>Adicionar item</Button>
           </div>
 
           <div className="sales-items-list">

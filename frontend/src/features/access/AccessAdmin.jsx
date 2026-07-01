@@ -1,7 +1,7 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import React, { useState } from "react";
 import { ChevronRight } from "lucide-react";
-import { Input, Metric, Select } from "../../components/common/Ui";
+import { Button, Input, Metric, Select, StatusBadge } from "../../components/common/Ui";
 import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../components/common/Crud";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, asNumber, asObject, removeAccents } from "../../lib/utils";
@@ -238,7 +238,7 @@ export function AccessAdmin() {
           columns={[
             { key: "name", label: "Nome" },
             { key: "email", label: "E-mail" },
-            { key: "role", label: "Nível", render: (user) => <span className="status-badge">{roleLabel(user.role)}</span> },
+            { key: "role", label: "Nível", render: (user) => <StatusBadge status={roleLabel(user.role)} /> },
           ]}
           actions={(user) => (
             <>
@@ -257,8 +257,8 @@ export function AccessAdmin() {
         onClose={() => setModalOpen(false)}
         footer={(
           <>
-            <button type="button" className="secondary-button" onClick={() => setModalOpen(false)}>Cancelar</button>
-            <button type="submit" form="access-user-form" className="primary-button">{editing ? "Salvar alterações" : "Criar usuário"}</button>
+            <Button type="button" variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>
+            <Button type="submit" form="access-user-form" variant="primary">{editing ? "Salvar alterações" : "Criar usuário"}</Button>
           </>
         )}
       >
@@ -286,14 +286,14 @@ export function AccessAdmin() {
         </div>
         <div className="admin-reset-action">
           <Input label="Digite RESETAR para confirmar" value={resetConfirmation} onChange={setResetConfirmation} />
-          <button
+          <Button
             type="button"
-            className="danger-button"
+            variant="danger"
             disabled={resetConfirmation !== "RESETAR" || resetLoading}
             onClick={resetDemoData}
           >
             {resetLoading ? "Limpando..." : "Limpar Dados Fictícios"}
-          </button>
+          </Button>
         </div>
         {resetMessage && <span className="admin-reset-message">{resetMessage}</span>}
       </article>

@@ -1,7 +1,7 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import React, { useEffect, useState } from "react";
 import { Download, Instagram } from "lucide-react";
-import { Input, Select } from "../../components/common/Ui";
+import { Button, Input, Select, StatusBadge } from "../../components/common/Ui";
 import { asArray, formatDate } from "../../lib/utils";
 import { API_ORIGIN, apiFetch, useFetch } from "../../lib/api";
 import { DIGITAL_TERM_HEALTH_ITEMS, DIGITAL_TERM_LIFESTYLE_ITEMS, defaultDigitalTerm } from "../../lib/defaultForms";
@@ -211,7 +211,7 @@ export function DigitalTerms() {
         {error && <span className="form-error">{error}</span>}
         <div className="modal-actions">
           {savedTerm?.pdf_url && <a className="secondary-button" href={`${API_ORIGIN}${savedTerm.pdf_url}`} target="_blank" rel="noreferrer"><Download size={16} /> Abrir PDF Salvo</a>}
-          <button className="primary-button">Salvar Termo Em PDF</button>
+          <Button variant="primary" type="submit">Salvar Termo Em PDF</Button>
         </div>
       </form>
 
@@ -266,7 +266,7 @@ export function LoyaltyPanel({ client, onChanged }) {
           <h3>{loyalty.level}</h3>
           <p>{loyalty.availablePoints} pontos disponíveis · {loyalty.totalEarned} pontos acumulados</p>
         </div>
-        <span className="status-badge status-confirmado">{loyalty.redeemedPoints} pontos resgatados</span>
+        <StatusBadge tone="ok">{loyalty.redeemedPoints} pontos resgatados</StatusBadge>
       </div>
       <div className="loyalty-grid">
         <div>
@@ -283,7 +283,7 @@ export function LoyaltyPanel({ client, onChanged }) {
           </div>
           <Input label="Observação" value={redeem.notes} onChange={(value) => setRedeem({ ...redeem, notes: value })} />
           {error && <span className="form-error">{error}</span>}
-          <button className="primary-button">Resgatar</button>
+          <Button variant="primary" type="submit">Resgatar</Button>
         </form>
       </div>
       <div className="loyalty-history">

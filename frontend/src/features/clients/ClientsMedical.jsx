@@ -1,7 +1,7 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import React, { useState } from "react";
 import { ChevronRight, FileSignature, HeartPulse, Search, UsersRound } from "lucide-react";
-import { Input, Select } from "../../components/common/Ui";
+import { Button, Input, Select } from "../../components/common/Ui";
 import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../components/common/Crud";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, dateInputValue, formatDate, formatLongDate } from "../../lib/utils";
@@ -119,8 +119,8 @@ export function ClientsMedical() {
         onClose={() => setModalOpen(false)}
         footer={(
           <>
-            <button type="button" className="secondary-button" onClick={() => setModalOpen(false)}>Cancelar</button>
-            <button type="submit" form="client-form" className="primary-button">{editing ? "Salvar alterações" : "Salvar cliente"}</button>
+            <Button type="button" variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>
+            <Button type="submit" form="client-form" variant="primary">{editing ? "Salvar alterações" : "Salvar cliente"}</Button>
           </>
         )}
       >
@@ -188,8 +188,8 @@ export function ClientEditForm({ client, onSaved, onCancel, formId }) {
       {error && <span className="form-error">{error}</span>}
       {!formId && (
         <div className="modal-actions">
-          <button type="button" className="secondary-button" onClick={onCancel}>Cancelar</button>
-          <button className="primary-button">Salvar cliente</button>
+          <Button type="button" variant="secondary" onClick={onCancel}>Cancelar</Button>
+          <Button variant="primary">Salvar cliente</Button>
         </div>
       )}
     </form>
@@ -256,7 +256,7 @@ export function MedicalRecordForm({ client, onSaved }) {
         <textarea value={record.returns_done} onChange={(event) => setRecord({ ...record, returns_done: event.target.value })} />
       </label>
       {error && <span className="form-error">{error}</span>}
-      <button className="primary-button">Salvar prontuário</button>
+      <Button variant="primary">Salvar prontuário</Button>
     </form>
   );
 }

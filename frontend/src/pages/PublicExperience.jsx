@@ -38,6 +38,18 @@ import { variantCatalogLabel } from "../features/shared/helpers";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
+// Leitura resiliente do localStorage do catálogo público (favoritos / itens do pedido).
+function readCatalogStorage(key, fallback = []) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export function PublicCatalog() {
   const { data } = usePublicFetch("/catalog");
   const [activeCategory, setActiveCategory] = useState("Todos");

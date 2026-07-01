@@ -1,6 +1,7 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import React, { useState } from "react";
 import { Bell, Cake, Calendar, ChevronRight, CircleDollarSign, Gem, Trophy, UsersRound, X } from "lucide-react";
+import { Button, StatusBadge } from "../../components/common/Ui";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, asNumber, asObject, formatDate, formatLongDate, initials } from "../../lib/utils";
 import { useFetch } from "../../lib/api";
@@ -90,7 +91,7 @@ export function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpe
         <article className="panel upcoming-card">
           <div className="panel-heading">
             <h2>Próximos agendamentos</h2>
-            <button className="ghost-button" type="button" onClick={() => setPage("agenda")}>Ver todos</button>
+            <Button variant="ghost" onClick={() => setPage("agenda")}>Ver todos</Button>
           </div>
           <div className="premium-appointment-list">
             {upcomingAppointments.slice(0, 4).map((item) => (
@@ -114,7 +115,7 @@ export function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpe
         <article className="panel compact-list-card">
           <div className="panel-heading">
             <h2>Estoque crítico</h2>
-            <button className="ghost-button" type="button" onClick={() => setPage("catalog")}>Ver estoque</button>
+            <Button variant="ghost" onClick={() => setPage("catalog")}>Ver estoque</Button>
           </div>
           <div className="clean-list">
             {criticalStockItems.slice(0, 3).map((item) => (
@@ -131,7 +132,7 @@ export function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpe
         <article className="panel compact-list-card">
           <div className="panel-heading">
             <h2>Aniversariantes do mês</h2>
-            <button className="ghost-button" type="button" onClick={() => setPage("client-center")}>Ver todos</button>
+            <Button variant="ghost" onClick={() => setPage("client-center")}>Ver todos</Button>
           </div>
           <div className="clean-list birthday-list">
             {birthdaysItems.slice(0, 3).map((item) => (

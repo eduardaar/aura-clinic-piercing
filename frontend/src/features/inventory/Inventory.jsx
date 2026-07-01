@@ -1,7 +1,7 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import React, { useEffect, useState } from "react";
 import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Gem, LayoutGrid, ListFilter, Pencil, Search, ShoppingCart, SlidersHorizontal, Sparkles, Table2, Trash2, X } from "lucide-react";
-import { Input, Metric, Select } from "../../components/common/Ui";
+import { Button, Input, Metric, Select, StatusBadge } from "../../components/common/Ui";
 import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../components/common/Crud";
 import { asArray, asObject, formatDate, removeAccents } from "../../lib/utils";
 import { apiFetch, useFetch } from "../../lib/api";
@@ -20,10 +20,10 @@ export function CatalogWorkspace() {
   if (tab !== "inicio") {
     return (
       <section className="workspace-page workspace-subpage">
-        <button className="secondary-button workspace-back-button" type="button" onClick={() => setTab("inicio")}>
+        <Button variant="secondary" className="workspace-back-button" onClick={() => setTab("inicio")}>
           <ChevronLeft size={16} />
           Voltar para Catálogo
-        </button>
+        </Button>
         {tab === "estoque" && <Inventory2 compact />}
         {tab === "personalizacao" && <CatalogCustomization />}
       </section>
@@ -99,7 +99,7 @@ export function JewelryCards({ items, onOpen, onEdit, onMovement, onArchive }) {
         >
           <img src={catalogImageUrl(item.photo_url)} alt={elegantProductName(item.name)} />
           <div>
-            <span className={`pill ${inventoryStatusClass(item)}`}>{inventoryStatusLabel(item)}</span>
+            <StatusBadge status={inventoryStatusLabel(item)} className={`pill ${inventoryStatusClass(item)}`} />
             <h2>{elegantProductName(item.name)}</h2>
             <p>{[item.category, item.subcategory].map(cleanDisplayText).filter(Boolean).join(" · ")}</p>
             <div className="inventory-inline-meta">
@@ -277,13 +277,13 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
           </nav>
 
           <div className="inventory-product-navigation">
-            <button type="button" className="secondary-button" onClick={() => closeProduct({ keepCategory: false })}>
+            <Button variant="secondary" onClick={() => closeProduct({ keepCategory: false })}>
               <ArrowLeft size={16} /> Voltar para Estoque
-            </button>
+            </Button>
             {productCategory && (
-              <button type="button" className="secondary-button" onClick={() => closeProduct({ keepCategory: true })}>
+              <Button variant="secondary" onClick={() => closeProduct({ keepCategory: true })}>
                 <ArrowLeft size={16} /> Voltar para {productCategory}
-              </button>
+              </Button>
             )}
           </div>
 
@@ -314,7 +314,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
             <p>Produtos, variações e movimentações em uma navegação simples.</p>
           </div>
           <div className="inventory-hero-actions">
-            <button className="primary-button" type="button" onClick={openNewProduct}><Gem size={16} /> Nova Joia</button>
+            <Button variant="primary" onClick={openNewProduct}><Gem size={16} /> Nova Joia</Button>
           </div>
         </header>
 
@@ -437,9 +437,9 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
                   <h2>Categorias e cadastros auxiliares</h2>
                   <span>Organize categorias, tamanhos, espessuras e profissionais sem sair desta página.</span>
                 </div>
-                <button className="secondary-button" type="button" onClick={() => setShowManagement((value) => !value)}>
+                <Button variant="secondary" onClick={() => setShowManagement((value) => !value)}>
                   {showManagement ? "Ocultar cadastros" : "Abrir cadastros"}
-                </button>
+                </Button>
               </div>
               <div className="inventory-summary-grid compact">
                 <Metric label="Categorias" value={String(inventoryOptions.category?.length || 0)} />
@@ -673,7 +673,7 @@ export function JewelryEditor({ options, editing, onSaved, onCancel, onMovementO
               <h3>Variações do Produto</h3>
               <p>Cada combinação possui SKU, preço e estoque próprios.</p>
             </div>
-            <button type="button" className="primary-button" onClick={addVariant}>+ Nova Variação</button>
+            <Button variant="primary" onClick={addVariant}>+ Nova Variação</Button>
           </div>
           <div className="variant-editor-list">
             {form.variants.map((variant, index) => {
@@ -733,8 +733,8 @@ export function JewelryEditor({ options, editing, onSaved, onCancel, onMovementO
             </div>
             {editing?.id && (
               <div className="product-movement-actions">
-                <button type="button" className="secondary-button" onClick={() => onMovementOpen?.(editing, "Entrada")}>Registrar Entrada</button>
-                <button type="button" className="secondary-button" onClick={() => onMovementOpen?.(editing, "Saída")}>Registrar Saída</button>
+                <Button variant="secondary" onClick={() => onMovementOpen?.(editing, "Entrada")}>Registrar Entrada</Button>
+                <Button variant="secondary" onClick={() => onMovementOpen?.(editing, "Saída")}>Registrar Saída</Button>
               </div>
             )}
           </div>
@@ -799,8 +799,8 @@ export function JewelryEditor({ options, editing, onSaved, onCancel, onMovementO
 
       {error && <span className="form-error">{error}</span>}
       <div className="modal-actions">
-        {editing && <button type="button" className="secondary-button" onClick={onCancel}>Cancelar edição</button>}
-        <button className="primary-button">{editing ? "Salvar joia" : "Cadastrar joia"}</button>
+        {editing && <Button variant="secondary" onClick={onCancel}>Cancelar edição</Button>}
+        <Button variant="primary" type="submit">{editing ? "Salvar joia" : "Cadastrar joia"}</Button>
       </div>
     </form>
   );
@@ -886,7 +886,7 @@ export function VariantEditModal({ category, variant, onChange, onClose }) {
           </div>
           <Toggle label="Variação Ativa" checked={variant.is_active} onChange={(value) => onChange({ is_active: value })} />
         </div>
-        <footer><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button type="button" className="primary-button" onClick={onClose}>Salvar Variação</button></footer>
+        <footer><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={onClose}>Salvar Variação</Button></footer>
       </section>
     </div>
   );
@@ -977,8 +977,8 @@ export function StockMovementModal({ item, initialType = "Entrada", onClose, onS
         </label>
         <p className="movement-date-hint">Data automática: {new Date().toLocaleDateString("pt-BR")}</p>
         <div className="modal-actions">
-          <button type="button" className="secondary-button" onClick={onClose}>Cancelar</button>
-          <button className="primary-button">Salvar movimentação</button>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button variant="primary" type="submit">Salvar movimentação</Button>
         </div>
       </form>
     </div>
@@ -1205,7 +1205,7 @@ export function JewelryTable({ items, onOpen, onEdit, onMovement, onArchive }) {
             </td>
             <td>{item.variant_count || item.variants?.length || 0}</td>
             <td>{item.quantity}</td>
-            <td><span className={`inventory-status ${inventoryStatusClass(item)}`}>{inventoryStatusLabel(item)}</span></td>
+            <td><StatusBadge status={inventoryStatusLabel(item)} className={`inventory-status ${inventoryStatusClass(item)}`} /></td>
             <td>A partir de {currency.format(item.sale_value || 0)}</td>
             <td>
               <div className="table-actions">
