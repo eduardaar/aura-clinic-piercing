@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { ChevronRight, FileSignature, HeartPulse, Search, UsersRound } from "lucide-react";
 import { Input, Select } from "../../components/common/Ui";
-import { Modal, CrudHeader, DataTable } from "../../components/common/Crud";
+import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../components/common/Crud";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, dateInputValue, formatDate, formatLongDate } from "../../lib/utils";
 import { API_ORIGIN, apiFetch, useFetch } from "../../lib/api";
@@ -44,6 +44,7 @@ export function ClientsMedical() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState("");
+  const [deleting, setDeleting] = useState(null);
   if (!data) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
   const clients = asArray(data);
@@ -62,7 +63,6 @@ export function ClientsMedical() {
   }
 
   async function removeClient(client) {
-    if (!window.confirm(`Excluir ${client.name}?`)) return;
     setError("");
     const response = await apiFetch(`/clients/${client.id}`, { method: "DELETE" });
     if (!response.ok) {
@@ -105,7 +105,7 @@ export function ClientsMedical() {
             <>
               <a className="secondary-button" href={whatsappUrl(client.whatsapp, `Ola ${client.name}, tudo bem Aqui e da Aura Clinic.`)} target="_blank" rel="noreferrer">WhatsApp</a>
               <button type="button" onClick={() => openEdit(client)}>Editar</button>
-              <button type="button" onClick={() => removeClient(client)}>Apagar</button>
+              <button type="button" onClick={() => setDeleting({ message: `Excluir ${client.name}?`, run: () => removeClient(client) })}>Apagar</button>
             </>
           )}
           empty={clients.length ? "Nenhum cliente encontrado." : "Você ainda não possui clientes cadastrados."}
@@ -135,6 +135,13 @@ export function ClientsMedical() {
           }}
         />
       </Modal>
+
+      <ConfirmDeleteModal
+        open={!!deleting}
+        message={deleting?.message}
+        onClose={() => setDeleting(null)}
+        onConfirm={async () => { await deleting.run(); setDeleting(null); }}
+      />
     </section>
   );
 }
@@ -255,6 +262,8 @@ export function MedicalRecordForm({ client, onSaved }) {
 }
 
 export function MedicalRecordTimeline({ client, onChanged }) {
+  const [deleting, setDeleting] = useState(null);
+
   async function remove(recordId) {
     await apiFetch(`/clients/${client.id}/medical-records/${recordId}`, { method: "DELETE" });
     onChanged();
@@ -271,7 +280,7 @@ export function MedicalRecordTimeline({ client, onChanged }) {
                 <strong>{formatLongDate(record.record_date)}</strong>
                 <span>{record.procedure || "Registro avulso"} · {record.piercing_region || "sem região vinculada"}</span>
               </div>
-              <button onClick={() => remove(record.id)}>Apagar</button>
+              <button onClick={() => setDeleting({ message: "Excluir este registro do prontuário?", run: () => remove(record.id) })}>Apagar</button>
             </header>
             <div className="record-photos">
               {record.before_photo_url && (
@@ -299,6 +308,13 @@ export function MedicalRecordTimeline({ client, onChanged }) {
           </article>
         )) : <p className="empty-state">Nenhum registro de prontuário ainda.</p>}
       </div>
+
+      <ConfirmDeleteModal
+        open={!!deleting}
+        message={deleting?.message}
+        onClose={() => setDeleting(null)}
+        onConfirm={async () => { await deleting.run(); setDeleting(null); }}
+      />
     </div>
   );
 }

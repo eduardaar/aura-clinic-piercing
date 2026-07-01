@@ -9438,3 +9438,21 @@ body,
   }
 }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* Modal de confirmação de exclusão */
+.confirm-delete-body {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.confirm-delete-icon {
+  display: grid;
+  place-items: center;
+  min-width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(184, 92, 92, .12);
+  color: #B85C5C;
+}
+.confirm-delete-message { margin: 0; color: #4A3427; line-height: 1.5; }
+.confirm-delete-field strong { color: #B85C5C; text-transform: uppercase; letter-spacing: .03em; }

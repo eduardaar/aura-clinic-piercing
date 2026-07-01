@@ -3,8 +3,8 @@
 // - DataTable: lista/tabela padrão de registros, com ações por linha.
 // - CrudHeader: cabeçalho de página com título e botão "Novo".
 // Reaproveitam o CSS existente (.modal-backdrop, .table-wrap, .panel-heading).
-import React, { useEffect } from "react";
-import { Plus, X } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { AlertTriangle, Plus, X } from "lucide-react";
 
 export function Modal({ open, title, subtitle, onClose, children, footer, size = "md" }) {
   useEffect(() => {
@@ -41,6 +41,75 @@ export function Modal({ open, title, subtitle, onClose, children, footer, size =
         {footer && <div className="modal-actions">{footer}</div>}
       </div>
     </div>
+  );
+}
+
+// Modal de confirmação de exclusão: o usuário precisa DIGITAR a palavra de
+// confirmação (padrão "sim") para habilitar o botão Excluir. Use em TODA exclusão.
+// Uso típico:
+//   const [deleting, setDeleting] = useState(null); // { message, run }
+//   // no botão: onClick={() => setDeleting({ message: "Excluir X?", run: () => remove(x) })}
+//   <ConfirmDeleteModal open={!!deleting} message={deleting?.message}
+//     onClose={() => setDeleting(null)}
+//     onConfirm={async () => { await deleting.run(); setDeleting(null); }} />
+export function ConfirmDeleteModal({
+  open,
+  onClose,
+  onConfirm,
+  title = "Confirmar exclusão",
+  message,
+  confirmWord = "sim",
+  loading = false,
+}) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (!open) { setText(""); setBusy(false); } }, [open]);
+
+  const canConfirm = text.trim().toLowerCase() === String(confirmWord).toLowerCase();
+  const isLoading = loading || busy;
+
+  async function confirm() {
+    if (!canConfirm || isLoading) return;
+    try {
+      setBusy(true);
+      await onConfirm();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      title={title}
+      size="sm"
+      onClose={onClose}
+      footer={(
+        <>
+          <button type="button" className="secondary-button" onClick={onClose} disabled={isLoading}>Cancelar</button>
+          <button type="button" className="danger-button" disabled={!canConfirm || isLoading} onClick={confirm}>
+            {isLoading ? "Excluindo…" : "Excluir"}
+          </button>
+        </>
+      )}
+    >
+      <div className="confirm-delete-body">
+        <span className="confirm-delete-icon" aria-hidden="true"><AlertTriangle size={22} /></span>
+        <p className="confirm-delete-message">{message || "Esta ação é permanente e não pode ser desfeita."}</p>
+      </div>
+      <label className="confirm-delete-field">
+        Digite <strong>{confirmWord}</strong> para confirmar
+        <input
+          type="text"
+          value={text}
+          autoFocus
+          autoComplete="off"
+          placeholder={confirmWord}
+          onChange={(event) => setText(event.target.value)}
+          onKeyDown={(event) => { if (event.key === "Enter") confirm(); }}
+        />
+      </label>
+    </Modal>
   );
 }
 

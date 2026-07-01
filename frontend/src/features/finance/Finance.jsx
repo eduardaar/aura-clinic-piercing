@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { Download } from "lucide-react";
 import { Input, Metric, PaymentSelect, Select } from "../../components/common/Ui";
-import { Modal, CrudHeader, DataTable } from "../../components/common/Crud";
+import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../components/common/Crud";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, asNumber, asObject, formatDate, formatLongDate } from "../../lib/utils";
 import { apiFetch, downloadApiFile, useFetch } from "../../lib/api";
@@ -66,6 +66,7 @@ export function FinanceAdmin() {
   const [expense, setExpense] = useState(defaultExpense());
   const [modalOpen, setModalOpen] = useState(false);
   const [error, setError] = useState("");
+  const [deleting, setDeleting] = useState(null);
   if (!data) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
   const safeData = asObject(data);
@@ -103,7 +104,6 @@ export function FinanceAdmin() {
   }
 
   async function removeExpense(id) {
-    if (!window.confirm("Apagar esta despesa?")) return;
     await apiFetch(`/expenses/${id}`, { method: "DELETE" });
     refresh();
   }
@@ -170,7 +170,7 @@ export function FinanceAdmin() {
             { key: "status", label: "Status", render: (item) => <span className={`status-badge ${item.status === "paga" ? "status-atendido" : "status-pendente"}`}>{item.status}</span> }
           ]}
           actions={(item) => (
-            <button type="button" onClick={() => removeExpense(item.id)}>Apagar</button>
+            <button type="button" onClick={() => setDeleting({ message: `Apagar esta despesa?`, run: () => removeExpense(item.id) })}>Apagar</button>
           )}
           empty="Nenhuma despesa lançada ainda."
         />
@@ -210,6 +210,13 @@ export function FinanceAdmin() {
           {error && <span className="form-error">{error}</span>}
         </form>
       </Modal>
+
+      <ConfirmDeleteModal
+        open={!!deleting}
+        message={deleting?.message}
+        onClose={() => setDeleting(null)}
+        onConfirm={async () => { await deleting.run(); setDeleting(null); }}
+      />
     </section>
   );
 }

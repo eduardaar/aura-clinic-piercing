@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { ChevronRight, LogOut } from "lucide-react";
-import { Modal, CrudHeader, DataTable } from "../../components/common/Crud";
+import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../components/common/Crud";
 import { API } from "../../lib/api";
 import { asArray } from "../../lib/utils";
 
@@ -40,6 +40,7 @@ export function PlatformAdmin() {
   const [createForm, setCreateForm] = useState(EMPTY_TENANT_FORM);
   const [createError, setCreateError] = useState("");
   const [createLoading, setCreateLoading] = useState(false);
+  const [deleting, setDeleting] = useState(null);
 
   const token = session?.token || "";
 
@@ -192,30 +193,28 @@ export function PlatformAdmin() {
     }
   }
 
-  async function removeTenant(tenant) {
+  function removeTenant(tenant) {
     setActionError("");
-    const confirmation = window.prompt(
-      `Excluir a clínica "${tenant.name}" apaga todos os dados dela.\nDigite o código (${tenant.slug}) para confirmar:`
-    );
-    if (confirmation === null) return;
-    if (confirmation.trim() !== tenant.slug) {
-      setActionError("Exclusão cancelada: o código digitado não confere.");
-      return;
-    }
-    try {
-      const response = await platformFetch(`/platform/tenants/${tenant.id}`, {
-        method: "DELETE",
-        body: JSON.stringify({ confirmation: confirmation.trim() }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        if (response.status !== 401) setActionError(payload.error || "Não foi possível excluir a clínica.");
-        return;
+    setDeleting({
+      message: `Excluir a clínica "${tenant.name}"? Isso remove TODOS os dados dela.`,
+      confirmWord: tenant.slug,
+      run: async () => {
+        try {
+          const response = await platformFetch(`/platform/tenants/${tenant.id}`, {
+            method: "DELETE",
+            body: JSON.stringify({ confirmation: tenant.slug }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            if (response.status !== 401) setActionError(payload.error || "Não foi possível excluir a clínica.");
+            return;
+          }
+          loadTenants();
+        } catch {
+          setActionError("Não foi possível conectar ao servidor.");
+        }
       }
-      loadTenants();
-    } catch {
-      setActionError("Não foi possível conectar ao servidor.");
-    }
+    });
   }
 
   // Sem sessão de plataforma: formulário de login do super-admin.
@@ -399,6 +398,14 @@ export function PlatformAdmin() {
             </div>
           </section>
         )}
+
+        <ConfirmDeleteModal
+          open={!!deleting}
+          message={deleting?.message}
+          confirmWord={deleting?.confirmWord}
+          onClose={() => setDeleting(null)}
+          onConfirm={async () => { await deleting.run(); setDeleting(null); }}
+        />
       </div>
     </main>
   );

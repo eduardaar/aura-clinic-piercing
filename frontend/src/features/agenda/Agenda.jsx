@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Calendar, CheckCircle2, ChevronLeft, ChevronRight, Clock, ShieldCheck, XCircle } from "lucide-react";
 import { Input, PaymentSelect, Select, StatusSelect } from "../../components/common/Ui";
-import { Modal, CrudHeader, DataTable } from "../../components/common/Crud";
+import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../components/common/Crud";
 import { Loading } from "../../components/common/Feedback";
 import { asArray, asNumber, asObject, formatDate } from "../../lib/utils";
 import { apiFetch, useFetch } from "../../lib/api";
@@ -361,6 +361,7 @@ export function BookingAdmin() {
   const [blockForm, setBlockForm] = useState(defaultScheduleBlock());
   const [blockModalOpen, setBlockModalOpen] = useState(false);
   const [blockError, setBlockError] = useState("");
+  const [deleting, setDeleting] = useState(null);
   const professionals = asArray(asObject(options).professionals);
   const safeServices = asArray(services);
   const safeProcedures = asArray(procedures);
@@ -425,19 +426,23 @@ export function BookingAdmin() {
     setServiceModalOpen(true);
   }
 
-  async function removeService(service) {
-    if (!window.confirm(`Excluir ${service.name}?`)) return;
-    const response = await apiFetch(`/services/${service.id}`, { method: "DELETE" });
-    if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
-      return setServiceError(payload.error || "Não foi possível excluir o serviço.");
-    }
-    if (editingServiceId === service.id) {
-      setEditingServiceId(null);
-      setServiceForm(defaultServiceForm());
-    }
-    refreshServices();
-    refreshProcedures();
+  function removeService(service) {
+    setDeleting({
+      message: `Excluir ${service.name}?`,
+      run: async () => {
+        const response = await apiFetch(`/services/${service.id}`, { method: "DELETE" });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          return setServiceError(payload.error || "Não foi possível excluir o serviço.");
+        }
+        if (editingServiceId === service.id) {
+          setEditingServiceId(null);
+          setServiceForm(defaultServiceForm());
+        }
+        refreshServices();
+        refreshProcedures();
+      }
+    });
   }
 
   function openNewProcedure() {
@@ -483,18 +488,22 @@ export function BookingAdmin() {
     setProcedureModalOpen(true);
   }
 
-  async function removeProcedure(procedure) {
-    if (!window.confirm(`Excluir ${procedure.name}?`)) return;
-    const response = await apiFetch(`/procedures/${procedure.id}`, { method: "DELETE" });
-    if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
-      return setProcedureError(payload.error || "Não foi possível excluir o procedimento.");
-    }
-    if (editingProcedureId === procedure.id) {
-      setEditingProcedureId(null);
-      setProcedureForm(defaultProcedureForm());
-    }
-    refreshProcedures();
+  function removeProcedure(procedure) {
+    setDeleting({
+      message: `Excluir ${procedure.name}?`,
+      run: async () => {
+        const response = await apiFetch(`/procedures/${procedure.id}`, { method: "DELETE" });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          return setProcedureError(payload.error || "Não foi possível excluir o procedimento.");
+        }
+        if (editingProcedureId === procedure.id) {
+          setEditingProcedureId(null);
+          setProcedureForm(defaultProcedureForm());
+        }
+        refreshProcedures();
+      }
+    });
   }
   async function updateAvailability(item, patch) {
     await apiFetch(`/availability/${item.id}`, {
@@ -528,10 +537,14 @@ export function BookingAdmin() {
     refreshBlocks();
   }
 
-  async function removeBlock(block) {
-    if (!window.confirm(`Apagar o bloqueio "${block.reason}"?`)) return;
-    await apiFetch(`/schedule-blocks/${block.id}`, { method: "DELETE" });
-    refreshBlocks();
+  function removeBlock(block) {
+    setDeleting({
+      message: `Apagar o bloqueio "${block.reason}"?`,
+      run: async () => {
+        await apiFetch(`/schedule-blocks/${block.id}`, { method: "DELETE" });
+        refreshBlocks();
+      }
+    });
   }
 
   async function updateRequest(id, status) {
@@ -758,6 +771,13 @@ export function BookingAdmin() {
           </div>
         </div>
       )}
+      <ConfirmDeleteModal
+        open={!!deleting}
+        message={deleting?.message}
+        confirmWord={deleting?.confirmWord}
+        onClose={() => setDeleting(null)}
+        onConfirm={async () => { await deleting.run(); setDeleting(null); }}
+      />
     </section>
   );
 }

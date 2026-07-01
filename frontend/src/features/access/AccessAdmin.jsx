@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { Input, Metric, Select } from "../../components/common/Ui";
-import { Modal, CrudHeader, DataTable } from "../../components/common/Crud";
+import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../components/common/Crud";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, asNumber, asObject, removeAccents } from "../../lib/utils";
 import { apiFetch, useFetch } from "../../lib/api";
@@ -167,6 +167,7 @@ export function AccessAdmin() {
   const [resetConfirmation, setResetConfirmation] = useState("");
   const [resetMessage, setResetMessage] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
+  const [deleting, setDeleting] = useState(null);
   if (!data) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
   const users = asArray(data);
@@ -201,7 +202,6 @@ export function AccessAdmin() {
   }
 
   async function remove(user) {
-    if (!window.confirm(`Remover o acesso de ${user.name}?`)) return;
     await apiFetch(`/users/${user.id}`, { method: "DELETE" });
     refresh();
   }
@@ -243,7 +243,7 @@ export function AccessAdmin() {
           actions={(user) => (
             <>
               <button type="button" onClick={() => openEdit(user)}>Editar</button>
-              <button type="button" onClick={() => remove(user)}>Apagar</button>
+              <button type="button" onClick={() => setDeleting({ message: `Remover o acesso de ${user.name}?`, run: () => remove(user) })}>Apagar</button>
             </>
           )}
           empty="Nenhum usuário cadastrado ainda."
@@ -297,6 +297,13 @@ export function AccessAdmin() {
         </div>
         {resetMessage && <span className="admin-reset-message">{resetMessage}</span>}
       </article>
+
+      <ConfirmDeleteModal
+        open={!!deleting}
+        message={deleting?.message}
+        onClose={() => setDeleting(null)}
+        onConfirm={async () => { await deleting.run(); setDeleting(null); }}
+      />
     </section>
   );
 }

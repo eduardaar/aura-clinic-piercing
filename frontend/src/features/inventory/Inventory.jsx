@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Gem, LayoutGrid, ListFilter, Pencil, Search, ShoppingCart, SlidersHorizontal, Sparkles, Table2, Trash2, X } from "lucide-react";
 import { Input, Metric, Select } from "../../components/common/Ui";
-import { Modal, CrudHeader, DataTable } from "../../components/common/Crud";
+import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../components/common/Crud";
 import { asArray, asObject, formatDate, removeAccents } from "../../lib/utils";
 import { apiFetch, useFetch } from "../../lib/api";
 import { ANODIZATION_COLOR_OPTIONS, JEWELRY_CATEGORY_OPTIONS, JEWELRY_LENGTH_OPTIONS, JEWELRY_THICKNESS_OPTIONS, JEWELRY_THREAD_OPTIONS, defaultJewelry, defaultJewelryVariant, normalizeJewelryForm, parseGalleryUrls } from "../../lib/defaultForms";
@@ -1007,6 +1007,7 @@ export function OptionManager({ title, type, items = [], onChanged, placeholder 
   const [editing, setEditing] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [error, setError] = useState("");
+  const [deleting, setDeleting] = useState(null);
   const formId = `option-${type}-form`;
 
   function openNew() {
@@ -1038,12 +1039,16 @@ export function OptionManager({ title, type, items = [], onChanged, placeholder 
     onChanged();
   }
 
-  async function remove(item) {
-    if (!window.confirm(`Remover ${item.name}?`)) return;
-    setError("");
-    const response = await apiFetch(`/inventory-options/${item.id}`, { method: "DELETE" });
-    if (!response.ok) return setError((await response.json()).error || "Não foi possível apagar.");
-    onChanged();
+  function remove(item) {
+    setDeleting({
+      message: `Remover ${item.name}?`,
+      run: async () => {
+        setError("");
+        const response = await apiFetch(`/inventory-options/${item.id}`, { method: "DELETE" });
+        if (!response.ok) return setError((await response.json()).error || "Não foi possível apagar.");
+        onChanged();
+      }
+    });
   }
 
   return (
@@ -1077,6 +1082,13 @@ export function OptionManager({ title, type, items = [], onChanged, placeholder 
           {error && <span className="form-error">{error}</span>}
         </form>
       </Modal>
+      <ConfirmDeleteModal
+        open={!!deleting}
+        message={deleting?.message}
+        confirmWord={deleting?.confirmWord}
+        onClose={() => setDeleting(null)}
+        onConfirm={async () => { await deleting.run(); setDeleting(null); }}
+      />
     </article>
   );
 }
@@ -1086,6 +1098,7 @@ export function ProfessionalManager({ professionals = [], onChanged }) {
   const [editing, setEditing] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [error, setError] = useState("");
+  const [deleting, setDeleting] = useState(null);
 
   function openNew() {
     setEditing(null);
@@ -1116,12 +1129,16 @@ export function ProfessionalManager({ professionals = [], onChanged }) {
     onChanged();
   }
 
-  async function remove(professional) {
-    if (!window.confirm(`Remover ${professional.name}?`)) return;
-    setError("");
-    const response = await apiFetch(`/professionals/${professional.id}`, { method: "DELETE" });
-    if (!response.ok) return setError((await response.json()).error || "Não foi possível apagar.");
-    onChanged();
+  function remove(professional) {
+    setDeleting({
+      message: `Remover ${professional.name}?`,
+      run: async () => {
+        setError("");
+        const response = await apiFetch(`/professionals/${professional.id}`, { method: "DELETE" });
+        if (!response.ok) return setError((await response.json()).error || "Não foi possível apagar.");
+        onChanged();
+      }
+    });
   }
 
   return (
@@ -1161,6 +1178,13 @@ export function ProfessionalManager({ professionals = [], onChanged }) {
           {error && <span className="form-error">{error}</span>}
         </form>
       </Modal>
+      <ConfirmDeleteModal
+        open={!!deleting}
+        message={deleting?.message}
+        confirmWord={deleting?.confirmWord}
+        onClose={() => setDeleting(null)}
+        onConfirm={async () => { await deleting.run(); setDeleting(null); }}
+      />
     </article>
   );
 }
