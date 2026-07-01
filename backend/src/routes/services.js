@@ -4,6 +4,8 @@ import { withDb } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { boolNumber } from "../services/utils.js";
 import { listServices, replaceProfessionalServices } from "../services/appointments.js";
+import { validateBody } from "../middleware/validate.js";
+import { serviceCreateSchema, serviceUpdateSchema } from "../schemas/index.js";
 
 const router = Router();
 
@@ -13,6 +15,7 @@ router.get("/api/services", withDb(async (_req, res, db) => {
 
 router.post("/api/services", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!validateBody(serviceCreateSchema, req, res)) return;
   const result = await db.run(
     "INSERT INTO services (name, description, duration_minutes, price, deposit_value, active_online_booking, pre_service_notes) VALUES (?, ?, ?, ?, ?, ?, ?)",
     [req.body.name, req.body.description || "", Number(req.body.duration_minutes || 40), Number(req.body.price || 0), Number(req.body.deposit_value || 0), boolNumber(req.body.active_online_booking), req.body.pre_service_notes || ""]
@@ -23,6 +26,7 @@ router.post("/api/services", withDb(async (req, res, db) => {
 
 router.patch("/api/services/:id", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!validateBody(serviceUpdateSchema, req, res)) return;
   const service = await db.get("SELECT * FROM services WHERE id = ?", [req.params.id]);
   if (!service) return res.status(404).json({ error: "Serviço não encontrado." });
   await db.run(

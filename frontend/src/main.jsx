@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   AlertTriangle,
@@ -56,18 +56,26 @@ import { canAccessPage, defaultPageForRole, pageTitle } from "./lib/permissions"
 import { buildCalendar, buildTimeSlots, dateKey, movePeriod } from "./lib/calendarUtils";
 import { ANODIZATION_COLOR_OPTIONS, DIGITAL_TERM_HEALTH_ITEMS, DIGITAL_TERM_LIFESTYLE_ITEMS, JEWELRY_CATEGORY_OPTIONS, JEWELRY_LENGTH_OPTIONS, JEWELRY_THICKNESS_OPTIONS, JEWELRY_THREAD_OPTIONS, defaultAccessUser, defaultAppointment, defaultCatalogSettings, defaultDigitalTerm, defaultExpense, defaultJewelry, defaultJewelryVariant, defaultMedicalRecord, defaultProcedureForm, defaultSalesLine, defaultSalesOrderForm, defaultScheduleBlock, defaultServiceForm, normalizeJewelryForm, parseGalleryUrls } from "./lib/defaultForms";
 import { catalogCategoryTerms, catalogFilterOptions, catalogPromotionForItem, catalogStockText, cleanDisplayText, elegantProductName, normalizeJewelryMaterial, normalizeJewelryThread, promotionalPrice, splitColorOptions } from "./features/catalog/catalogUtils";
-import { PublicBooking, PublicCatalog, PublicCheckout } from "./pages/PublicExperience";
-import { CatalogCustomization } from "./pages/CatalogCustomization";
 import { calcRemaining, catalogImageUrl, currency, formatRevenueAxisLabel, formatRevenueLabel, inventoryStatusClass, inventoryStatusLabel, inventoryStockState, jewelrySkuBase, matchesClientSearch, roleLabel, saleItemLabel, saleOrderTypeLabel, statusClass, statuses, weekdayLabel, whatsappUrl } from "./features/shared/helpers";
-import { AlertsPopup, Dashboard } from "./features/dashboard/Dashboard";
-import { AgendaWorkspace } from "./features/agenda/Agenda";
-import { CatalogWorkspace } from "./features/inventory/Inventory";
-import { SalesWorkspace } from "./features/sales/Sales";
-import { FinanceAdmin } from "./features/finance/Finance";
-import { AccessAdmin, AuraERP } from "./features/access/AccessAdmin";
-import { ClientWorkspace, ClientsMedical } from "./features/clients/ClientsMedical";
-import { DigitalTerms } from "./features/terms/DigitalTerms";
-import { PostCare } from "./features/postcare/PostCare";
+
+// Code-splitting: telas pesadas carregadas sob demanda via React.lazy().
+// Todos os componentes usam named export, por isso mapeamos para { default } no wrapper.
+const Dashboard = lazy(() => import("./features/dashboard/Dashboard").then((m) => ({ default: m.Dashboard })));
+const AlertsPopup = lazy(() => import("./features/dashboard/Dashboard").then((m) => ({ default: m.AlertsPopup })));
+const AgendaWorkspace = lazy(() => import("./features/agenda/Agenda").then((m) => ({ default: m.AgendaWorkspace })));
+const CatalogWorkspace = lazy(() => import("./features/inventory/Inventory").then((m) => ({ default: m.CatalogWorkspace })));
+const SalesWorkspace = lazy(() => import("./features/sales/Sales").then((m) => ({ default: m.SalesWorkspace })));
+const FinanceAdmin = lazy(() => import("./features/finance/Finance").then((m) => ({ default: m.FinanceAdmin })));
+const AccessAdmin = lazy(() => import("./features/access/AccessAdmin").then((m) => ({ default: m.AccessAdmin })));
+const AuraERP = lazy(() => import("./features/access/AccessAdmin").then((m) => ({ default: m.AuraERP })));
+const ClientWorkspace = lazy(() => import("./features/clients/ClientsMedical").then((m) => ({ default: m.ClientWorkspace })));
+const ClientsMedical = lazy(() => import("./features/clients/ClientsMedical").then((m) => ({ default: m.ClientsMedical })));
+const DigitalTerms = lazy(() => import("./features/terms/DigitalTerms").then((m) => ({ default: m.DigitalTerms })));
+const PostCare = lazy(() => import("./features/postcare/PostCare").then((m) => ({ default: m.PostCare })));
+const PublicCatalog = lazy(() => import("./pages/PublicExperience").then((m) => ({ default: m.PublicCatalog })));
+const PublicBooking = lazy(() => import("./pages/PublicExperience").then((m) => ({ default: m.PublicBooking })));
+const PublicCheckout = lazy(() => import("./pages/PublicExperience").then((m) => ({ default: m.PublicCheckout })));
+const CatalogCustomization = lazy(() => import("./pages/CatalogCustomization").then((m) => ({ default: m.CatalogCustomization })));
 
 function App() {
   const [session, setSession] = useState(readStoredSession);
@@ -133,10 +141,10 @@ function App() {
     return <Login onLogin={setSession} />;
   }
 
-  // Rotas públicas: sempre acessíveis
-  if (isPublicCatalog) return <PublicCatalog />;
-  if (isPublicBooking) return <PublicBooking />;
-  if (isPublicCheckout) return <PublicCheckout />;
+  // Rotas públicas: sempre acessíveis (carregadas sob demanda).
+  if (isPublicCatalog) return <Suspense fallback={<Loading />}><PublicCatalog /></Suspense>;
+  if (isPublicBooking) return <Suspense fallback={<Loading />}><PublicBooking /></Suspense>;
+  if (isPublicCheckout) return <Suspense fallback={<Loading />}><PublicCheckout /></Suspense>;
   
   // Se não tem sessão, renderizar nada (useEffect acima vai redirecionar)
   if (!normalizedSession) {
@@ -193,19 +201,21 @@ function App() {
           </div>
           </div>
         </header>
-        {activePage === "dashboard" && <Dashboard user={normalizedSession.user} setPage={setPage} alertsOpen={alertsOpen} setAlertsOpen={setAlertsOpen} alertsData={alertsData} alertsLoading={alertsLoading} />}
-        {activePage !== "dashboard" && alertsOpen && <AlertsPopup alerts={alertsData} loading={alertsLoading} onClose={() => setAlertsOpen(false)} onAction={(nextPage) => { setAlertsOpen(false); setPage(nextPage); }} />}
-        {activePage === "erp" && <AuraERP setPage={setPage} />}
-        {activePage === "agenda" && <AgendaWorkspace />}
-        {activePage === "catalog" && <CatalogWorkspace />}
-        {activePage === "client-center" && <ClientWorkspace />}
-        {activePage === "catalog-customization" && <CatalogCustomization />}
-        {activePage === "sales" && <SalesWorkspace />}
-        {activePage === "finance" && <FinanceAdmin />}
-        {activePage === "clients" && <ClientsMedical />}
-        {activePage === "terms" && <DigitalTerms />}
-        {activePage === "postcare" && <PostCare />}
-        {activePage === "admin" && <AccessAdmin />}
+        <Suspense fallback={<Loading />}>
+          {activePage === "dashboard" && <Dashboard user={normalizedSession.user} setPage={setPage} alertsOpen={alertsOpen} setAlertsOpen={setAlertsOpen} alertsData={alertsData} alertsLoading={alertsLoading} />}
+          {activePage !== "dashboard" && alertsOpen && <AlertsPopup alerts={alertsData} loading={alertsLoading} onClose={() => setAlertsOpen(false)} onAction={(nextPage) => { setAlertsOpen(false); setPage(nextPage); }} />}
+          {activePage === "erp" && <AuraERP setPage={setPage} />}
+          {activePage === "agenda" && <AgendaWorkspace />}
+          {activePage === "catalog" && <CatalogWorkspace />}
+          {activePage === "client-center" && <ClientWorkspace />}
+          {activePage === "catalog-customization" && <CatalogCustomization />}
+          {activePage === "sales" && <SalesWorkspace />}
+          {activePage === "finance" && <FinanceAdmin />}
+          {activePage === "clients" && <ClientsMedical />}
+          {activePage === "terms" && <DigitalTerms />}
+          {activePage === "postcare" && <PostCare />}
+          {activePage === "admin" && <AccessAdmin />}
+        </Suspense>
       </main>
     </div>
   );

@@ -3,16 +3,17 @@ import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { upload } from "../middleware/upload.js";
-import { listAppointments, listMedicalRecords } from "../services/appointments.js";
+import { listMedicalRecords } from "../services/appointments.js";
 import { getClientLoyalty } from "../services/loyalty.js";
+import { listClientsWithDetails } from "../services/clients.js";
+import { validateBody } from "../middleware/validate.js";
+import { clientCreateSchema, clientUpdateSchema } from "../schemas/index.js";
 
 const router = Router();
 
 router.post("/api/clients", withDb(async (req, res, db) => {
+  if (!validateBody(clientCreateSchema, req, res)) return;
   const b = req.body || {};
-  if (!b.full_name?.trim() || !b.whatsapp?.trim()) {
-    return res.status(400).json({ error: "Informe nome e WhatsApp do cliente." });
-  }
   const result = await db.run(
     "INSERT INTO clients (full_name, whatsapp, instagram, birth_date, notes) VALUES (?, ?, ?, ?, ?)",
     [b.full_name.trim(), b.whatsapp.trim(), b.instagram || "", b.birth_date || "", b.notes || ""]
@@ -21,6 +22,7 @@ router.post("/api/clients", withDb(async (req, res, db) => {
 }));
 
 router.put("/api/clients/:id", withDb(async (req, res, db) => {
+  if (!validateBody(clientUpdateSchema, req, res)) return;
   const client = await db.get("SELECT * FROM clients WHERE id = ?", [req.params.id]);
   if (!client) return res.status(404).json({ error: "Cliente não encontrado." });
   const b = req.body || {};
@@ -38,14 +40,9 @@ router.delete("/api/clients/:id", withDb(async (req, res, db) => {
 }));
 
 router.get("/api/clients", withDb(async (_req, res, db) => {
-  const clients = await db.all("SELECT * FROM clients ORDER BY full_name");
-  for (const client of clients) {
-    client.history = await listAppointments(db, "WHERE a.client_id = ?", [client.id]);
-    client.payments = await db.all("SELECT * FROM payments WHERE client_id = ? ORDER BY paid_at DESC", [client.id]);
-    client.medicalRecords = await listMedicalRecords(db, client.id);
-    client.loyalty = await getClientLoyalty(db, client.id);
-  }
-  res.json(clients);
+  // Enriquecimento em batch (elimina o antigo N+1 por-cliente). O shape de cada
+  // cliente permanece idêntico: history, payments, medicalRecords, loyalty.
+  res.json(await listClientsWithDetails(db));
 }));
 
 router.patch("/api/clients/:id", withDb(async (req, res, db) => {

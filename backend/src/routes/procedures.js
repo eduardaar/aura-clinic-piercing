@@ -3,6 +3,8 @@ import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { boolNumber } from "../services/utils.js";
+import { validateBody } from "../middleware/validate.js";
+import { procedureCreateSchema, procedureUpdateSchema } from "../schemas/index.js";
 
 const router = Router();
 
@@ -28,9 +30,8 @@ router.get("/api/procedures/:id", withDb(async (req, res, db) => {
 
 router.post("/api/procedures", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!validateBody(procedureCreateSchema, req, res)) return;
   const b = req.body || {};
-  if (!b.name?.trim()) return res.status(400).json({ error: "Informe o nome do procedimento." });
-  if (!b.service_id) return res.status(400).json({ error: "Procedimento precisa de um serviço vinculado." });
   const result = await db.run(
     `INSERT INTO procedures (service_id, name, body_area, description, price, duration_minutes, aftercare_instructions, is_active)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -41,6 +42,7 @@ router.post("/api/procedures", withDb(async (req, res, db) => {
 
 router.put("/api/procedures/:id", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!validateBody(procedureUpdateSchema, req, res)) return;
   const existing = await db.get("SELECT * FROM procedures WHERE id = ?", [req.params.id]);
   if (!existing) return res.status(404).json({ error: "Procedimento não encontrado." });
   const b = req.body || {};

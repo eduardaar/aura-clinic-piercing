@@ -11,6 +11,8 @@ import {
 } from "../services/appointments.js";
 import { ensurePostCareFollowups } from "../services/postcare.js";
 import { awardLoyaltyForAppointment } from "../services/loyalty.js";
+import { validateBody } from "../middleware/validate.js";
+import { appointmentCreateSchema } from "../schemas/index.js";
 
 const router = Router();
 
@@ -30,6 +32,9 @@ router.get("/api/appointments", withDb(async (req, res, db) => {
 }));
 
 router.post("/api/appointments", upload.single("reference_photo"), withDb(async (req, res, db) => {
+  // Payload chega como multipart (multer já populou req.body). Valida os
+  // obrigatórios (profissional/data/hora) preservando os demais campos.
+  if (!validateBody(appointmentCreateSchema, req, res)) return;
   const body = normalizeAppointment(req.body);
   // Bloqueia horários já ocupados para o mesmo profissional.
   const conflict = await db.get(

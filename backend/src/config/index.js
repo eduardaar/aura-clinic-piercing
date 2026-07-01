@@ -8,10 +8,20 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const PORT = process.env.PORT || 4000;
 export const isProduction = process.env.NODE_ENV === "production";
 
+// Valor padrão usado apenas em desenvolvimento local. Nunca deve ser aceito em produção.
+export const DEV_AUTH_SECRET = "aura-clinic-dev-secret";
+
 export const AUTH_SECRET =
-  process.env.AUTH_SECRET || (isProduction ? "" : "aura-clinic-dev-secret");
+  process.env.AUTH_SECRET || (isProduction ? "" : DEV_AUTH_SECRET);
 if (!AUTH_SECRET) {
   throw new Error("AUTH_SECRET é obrigatória em produção. Defina-a no ambiente (.env).");
+}
+// Em produção, bloqueia o boot se o segredo for o default de desenvolvimento
+// (evita rodar em produção com um segredo público/previsível).
+if (isProduction && AUTH_SECRET === DEV_AUTH_SECRET) {
+  throw new Error(
+    "AUTH_SECRET não pode ser o valor padrão de desenvolvimento em produção. Defina um segredo forte no ambiente (.env)."
+  );
 }
 
 // Diretório onde os uploads (fotos, PDFs de termos) são gravados/servidos.

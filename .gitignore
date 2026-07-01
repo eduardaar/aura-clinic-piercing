@@ -9,3 +9,6 @@ npm-debug.log
 # Uploads locais e artefatos gerados pelo backend
 backend/src/data/uploads/
 backend/src/data/*.pdf
+
+# Backups locais do banco (gerados por backend/scripts/backup.sh)
+backend/backups/

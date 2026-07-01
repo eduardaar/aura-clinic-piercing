@@ -1,6 +1,7 @@
 // Rotas de saúde da aplicação e do banco de dados.
 import { Router } from "express";
 import { testConnection } from "../database/connection.js";
+import { isProduction } from "../config/index.js";
 
 const router = Router();
 
@@ -15,13 +16,16 @@ router.get("/api/health/db", async (_req, res) => {
   } catch (error) {
     console.error("DB health error:", error);
 
-    res.status(500).json({
-      ok: false,
-      database: "error",
-      message: error?.message || String(error),
-      code: error?.code || null,
-      detail: error?.detail || null,
-    });
+    // Em produção não expomos mensagem/código/detalhe do erro (evita vazamento).
+    const body = { ok: false, database: "error" };
+    if (!isProduction) {
+      body.message = error?.message || String(error);
+      body.code = error?.code || null;
+      body.detail = error?.detail || null;
+    } else {
+      body.message = "Erro interno no servidor.";
+    }
+    res.status(500).json(body);
   }
 });
 

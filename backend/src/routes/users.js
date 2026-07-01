@@ -3,6 +3,8 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { withDb } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
+import { validateBody } from "../middleware/validate.js";
+import { userCreateSchema, userUpdateSchema } from "../schemas/index.js";
 
 const router = Router();
 
@@ -13,11 +15,9 @@ router.get("/api/users", withDb(async (_req, res, db) => {
 
 router.post("/api/users", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
+  // Valida presença/tipo dos campos e exige senha com no mínimo 8 caracteres.
+  if (!validateBody(userCreateSchema, req, res)) return;
   const { name, email, password, role } = req.body;
-  const validRoles = ["admin", "piercer", "reception", "finance"];
-  if (!name?.trim() || !email?.trim() || !password || !validRoles.includes(role)) {
-    return res.status(400).json({ error: "Dados de usuário inválidos." });
-  }
   const passwordHash = await bcrypt.hash(password, 10);
   const result = await db.run(
     "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)",
@@ -28,10 +28,12 @@ router.post("/api/users", withDb(async (req, res, db) => {
 
 router.patch("/api/users/:id", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
+  // Valida tipos dos campos presentes; se vier password, exige mínimo de 8 caracteres.
+  if (!validateBody(userUpdateSchema, req, res)) return;
   const user = await db.get("SELECT * FROM users WHERE id = ?", [req.params.id]);
   if (!user) return res.status(404).json({ error: "Usuário não encontrado." });
   const role = req.body.role || user.role;
-  if (!["admin", "piercer", "reception", "finance"].includes(role)) return res.status(400).json({ error: "Nível de acesso inválido." });
+  // Só faz bcrypt hash quando o password vier no body (senão preserva o hash atual).
   const passwordHash = req.body.password ? await bcrypt.hash(req.body.password, 10) : user.password_hash;
   await db.run(
     "UPDATE users SET name = ?, email = ?, role = ?, password_hash = ? WHERE id = ?",

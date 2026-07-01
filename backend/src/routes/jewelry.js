@@ -2,7 +2,6 @@
 import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
-import { JEWELRY_CATEGORIES } from "../config/index.js";
 import { boolNumber, elegantProductName, variantStatus, variantFromLegacy } from "../services/utils.js";
 import {
   attachVariants,
@@ -10,6 +9,8 @@ import {
   replaceJewelryVariants,
   syncProductInventory
 } from "../services/inventory.js";
+import { validateBody } from "../middleware/validate.js";
+import { jewelryCreateSchema, jewelryUpdateSchema } from "../schemas/index.js";
 
 const router = Router();
 
@@ -46,10 +47,7 @@ router.get("/api/jewelry", withDb(async (req, res, db) => {
 
 router.post("/api/jewelry", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
-  if (!JEWELRY_CATEGORIES.includes(req.body.category)) {
-    return res.status(400).json({ error: "Selecione uma categoria principal válida." });
-  }
-  if (!req.body.name?.trim()) return res.status(400).json({ error: "Informe o nome do produto." });
+  if (!validateBody(jewelryCreateSchema, req, res)) return;
   const result = await db.run(
     `INSERT INTO jewelry_inventory
     (name, description, photo_url, gallery_urls, category, subcategory, variant_group, variation_label, material, color, stone, size, thickness, stem_length, thread_type, piercing_type, weight_grams, package_length_cm, package_width_cm, package_height_cm, package_type, virtual_store_active, preparation_days, shipping_info, seo_title, seo_description, freight_notes, quantity, cost_value, sale_value, supplier, physical_location, sku, is_catalog_active, is_featured, is_new, is_most_wanted, is_promotion, is_last_units, notes, status, low_stock_threshold, critical_stock_threshold)
@@ -106,6 +104,7 @@ router.post("/api/jewelry", withDb(async (req, res, db) => {
 
 router.patch("/api/jewelry/:id", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!validateBody(jewelryUpdateSchema, req, res)) return;
   const jewelry = await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [req.params.id]);
   if (!jewelry) return res.status(404).json({ error: "Joia não encontrada." });
   const fields = ["name", "description", "photo_url", "image_url", "gallery_urls", "category", "subcategory", "variant_group", "variation_label", "material", "color", "stone", "size", "thickness", "stem_length", "thread_type", "piercing_type", "weight_grams", "package_length_cm", "package_width_cm", "package_height_cm", "package_type", "virtual_store_active", "preparation_days", "shipping_info", "seo_title", "seo_description", "freight_notes", "quantity", "cost_value", "sale_value", "supplier", "physical_location", "sku", "is_catalog_active", "is_featured", "is_new", "is_most_wanted", "is_promotion", "is_last_units", "is_published", "notes", "status", "low_stock_threshold", "critical_stock_threshold"];

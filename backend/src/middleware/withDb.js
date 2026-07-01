@@ -6,6 +6,7 @@
 import { getDb } from "../db/sqliteCompat.js";
 import { normalizeDbValue } from "../text-normalizer.js";
 import { requiresAuth, authenticateRequest } from "./auth.js";
+import { isProduction } from "../config/index.js";
 
 export const withDb = (handler) => async (req, res) => {
   const db = await getDb();
@@ -20,9 +21,10 @@ export const withDb = (handler) => async (req, res) => {
     await handler(req, res, db);
   } catch (error) {
     console.error(error);
+    // Em produção nunca expomos detalhes do erro ao cliente (evita vazamento de
+    // stack/SQL/mensagens internas). Em dev mantemos o detalhe para diagnóstico.
     res.status(500).json({
-      error: process.env.NODE_ENV === "production" ? "Erro interno no servidor." : `Erro interno: ${error.message}`
+      error: isProduction ? "Erro interno no servidor." : `Erro interno: ${error.message}`
     });
-  } finally {
   }
 };

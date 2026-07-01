@@ -2,8 +2,13 @@ import React, { useState } from "react";
 import { AlertTriangle, Calendar, ChevronRight, UserRound, WalletCards } from "lucide-react";
 import { apiFetch } from "../../lib/api";
 
+const DEFAULT_LOGIN_EMAIL = "admin@auraclinic.com";
+
 export function Login({ onLogin }) {
-  const [form, setForm] = useState({ password: "" });
+  const [form, setForm] = useState({
+    email: localStorage.getItem("aura-last-email") || DEFAULT_LOGIN_EMAIL,
+    password: "",
+  });
   const [rememberAccess, setRememberAccess] = useState(Boolean(localStorage.getItem("aura-admin-authenticated")));
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -14,16 +19,21 @@ export function Login({ onLogin }) {
     setLoading(true);
     try {
       // Autentica no backend e obtém um token assinado (necessário em produção).
+      // Envia e-mail + senha do formulário: o backend suporta contas por usuário
+      // com papéis (reception/finance/piercer/admin). Sem checagem de senha no cliente.
+      const email = form.email.trim();
       const response = await apiFetch("/login", {
         method: "POST",
-        body: JSON.stringify({ email: "admin@auraclinic.com", password: form.password }),
+        body: JSON.stringify({ email, password: form.password }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setError(payload.error || "Senha incorreta. Por favor, tente novamente.");
+        setError(payload.error || "E-mail ou senha incorretos. Por favor, tente novamente.");
         return;
       }
       const session = { token: payload.token, user: payload.user };
+      // Guarda o último e-mail usado para pré-preencher no próximo acesso.
+      localStorage.setItem("aura-last-email", email);
       localStorage.setItem("aura-admin-authenticated", rememberAccess ? "true" : "");
       localStorage.setItem("aura-session", JSON.stringify(session));
       onLogin(session);
@@ -52,6 +62,10 @@ export function Login({ onLogin }) {
         </div>
 
         <form className="login-form" onSubmit={submit}>
+          <label>
+            E-mail
+            <input type="email" autoComplete="username" required value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="seu@email.com" />
+          </label>
           <label>
             Senha da Central Administrativa
             <input type="password" autoComplete="current-password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder="Digite a senha" />

@@ -9,6 +9,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { PORT } from "./config/index.js";
 import { runSchema } from "./db/sqliteCompat.js";
+import { apiLimiter } from "./middleware/rateLimit.js";
 
 // Routers por domínio.
 import healthRoutes from "./routes/health.js";
@@ -52,6 +53,10 @@ app.use((_req, res, next) => {
   next();
 });
 app.use("/uploads", express.static(path.join(__dirname, "data", "uploads")));
+
+// Rate limit global leve em toda a API (300 req/min por IP). O /login mantém
+// o limite estrito próprio, aplicado no router de auth.
+app.use("/api", apiLimiter);
 
 // ---------- Montagem dos routers ----------
 // Cada router declara seus caminhos absolutos (/api/...), preservando o comportamento original.

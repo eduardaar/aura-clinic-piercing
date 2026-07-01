@@ -2,11 +2,19 @@
 import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
+import { isProduction } from "../config/index.js";
 
 const router = Router();
 
 router.post("/api/admin/reset-demo-data", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
+  // Endpoint destrutivo (TRUNCATE geral). Em produção fica bloqueado por padrão,
+  // a menos que o operador libere explicitamente via ALLOW_DEMO_RESET=true.
+  if (isProduction && process.env.ALLOW_DEMO_RESET !== "true") {
+    return res.status(403).json({
+      error: "Reset de dados de demonstração está desabilitado em produção. Defina ALLOW_DEMO_RESET=true no ambiente para liberar."
+    });
+  }
   if (req.body?.confirmation !== "RESETAR") {
     return res.status(400).json({ error: "Digite RESETAR para confirmar a limpeza dos dados." });
   }
