@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ChevronRight, LogOut, Plus } from "lucide-react";
+import { ChevronRight, LogOut } from "lucide-react";
+import { Modal, CrudHeader, DataTable } from "../../components/common/Crud";
 import { API } from "../../lib/api";
 import { asArray } from "../../lib/utils";
 
@@ -66,6 +67,17 @@ export function PlatformAdmin() {
     }
     return response;
   }, [token]);
+
+  function openCreate() {
+    setCreateForm(EMPTY_TENANT_FORM);
+    setCreateError("");
+    setShowCreate(true);
+  }
+
+  function closeCreate() {
+    setShowCreate(false);
+    setCreateError("");
+  }
 
   const loadTenants = useCallback(async () => {
     setListError("");
@@ -278,92 +290,84 @@ export function PlatformAdmin() {
 
       <div className="stack">
         <section className="panel">
-          <div className="panel-heading">
-            <h2>Clínicas cadastradas</h2>
-            <button className="primary-button" onClick={() => { setShowCreate((value) => !value); setCreateError(""); }}>
-              <Plus size={16} /> Nova clínica
-            </button>
-          </div>
-
-          {showCreate && (
-            <form className="appointment-form" onSubmit={submitCreate} style={{ marginBottom: 18 }}>
-              <div className="form-grid">
-                <label>
-                  Nome da clínica
-                  <input type="text" required value={createForm.name} onChange={(event) => setCreateForm({ ...createForm, name: event.target.value })} placeholder="ex.: Aura Clinic Piercing" />
-                </label>
-                <label>
-                  Código (slug)
-                  <input type="text" required value={createForm.slug} onChange={(event) => setCreateForm({ ...createForm, slug: event.target.value.toLowerCase() })} placeholder="ex.: aura" />
-                </label>
-                <label>
-                  Nome do responsável (opcional)
-                  <input type="text" value={createForm.admin_name} onChange={(event) => setCreateForm({ ...createForm, admin_name: event.target.value })} placeholder="ex.: Eduarda Santos" />
-                </label>
-                <label>
-                  E-mail do administrador
-                  <input type="email" required value={createForm.admin_email} onChange={(event) => setCreateForm({ ...createForm, admin_email: event.target.value })} placeholder="admin@clinica.com" />
-                </label>
-                <label>
-                  Senha do administrador (mín. 8)
-                  <input type="password" required minLength={8} value={createForm.admin_password} onChange={(event) => setCreateForm({ ...createForm, admin_password: event.target.value })} placeholder="Senha inicial" />
-                </label>
-              </div>
-              {createError && <span className="form-error">{createError}</span>}
-              <div className="table-actions">
-                <button className="primary-button" disabled={createLoading}>{createLoading ? "Criando…" : "Criar clínica"}</button>
-                <button type="button" className="secondary-button" onClick={() => { setShowCreate(false); setCreateError(""); }}>Cancelar</button>
-              </div>
-            </form>
-          )}
+          <CrudHeader
+            title="Clínicas cadastradas"
+            subtitle="Gerencie as clínicas cadastradas no SaaS"
+            actionLabel="Nova clínica"
+            onAction={openCreate}
+          />
 
           {listError && <span className="form-error">{listError}</span>}
           {actionError && <span className="form-error">{actionError}</span>}
 
           {tenants === null && !listError ? (
             <p>Carregando clínicas…</p>
-          ) : tenantList.length === 0 ? (
-            <p>Nenhuma clínica cadastrada até o momento.</p>
           ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Nome</th>
-                    <th>Código</th>
-                    <th>Status</th>
-                    <th>Plano</th>
-                    <th>Criada em</th>
-                    <th>Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tenantList.map((tenant) => (
-                    <tr key={tenant.id ?? tenant.slug}>
-                      <td>{tenant.name || "—"}</td>
-                      <td>{tenant.slug || "—"}</td>
-                      <td>
-                        <span className={`status-badge ${tenant.status === "suspenso" ? "status-cancelado" : "status-confirmado"}`}>
-                          {tenant.status || "ativo"}
-                        </span>
-                      </td>
-                      <td>{tenant.plan || "—"}</td>
-                      <td>{tenantCreatedAt(tenant.created_at)}</td>
-                      <td>
-                        <div className="table-actions">
-                          <button className="secondary-button" onClick={() => toggleStatus(tenant)}>
-                            {tenant.status === "suspenso" ? "Reativar" : "Suspender"}
-                          </button>
-                          <button className="danger-button" onClick={() => removeTenant(tenant)}>Excluir</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              rows={tenantList}
+              rowKey={(tenant) => tenant.id ?? tenant.slug}
+              columns={[
+                { key: "name", label: "Nome", render: (tenant) => tenant.name || "—" },
+                { key: "slug", label: "Código", render: (tenant) => tenant.slug || "—" },
+                { key: "status", label: "Status", render: (tenant) => (
+                  <span className={`status-badge ${tenant.status === "suspenso" ? "status-cancelado" : "status-confirmado"}`}>
+                    {tenant.status || "ativo"}
+                  </span>
+                ) },
+                { key: "plan", label: "Plano", render: (tenant) => tenant.plan || "—" },
+                { key: "created_at", label: "Criada em", render: (tenant) => tenantCreatedAt(tenant.created_at) },
+              ]}
+              actions={(tenant) => (
+                <>
+                  <button className="secondary-button" onClick={() => toggleStatus(tenant)}>
+                    {tenant.status === "suspenso" ? "Reativar" : "Suspender"}
+                  </button>
+                  <button className="danger-button" onClick={() => removeTenant(tenant)}>Excluir</button>
+                </>
+              )}
+              empty="Nenhuma clínica cadastrada até o momento."
+            />
           )}
         </section>
+
+        <Modal
+          open={showCreate}
+          title="Nova clínica"
+          subtitle="Cadastro de clínica no SaaS"
+          onClose={closeCreate}
+          footer={(
+            <>
+              <button type="button" className="secondary-button" onClick={closeCreate}>Cancelar</button>
+              <button type="submit" form="platform-tenant-form" className="primary-button" disabled={createLoading}>{createLoading ? "Criando…" : "Criar clínica"}</button>
+            </>
+          )}
+        >
+          <form id="platform-tenant-form" onSubmit={submitCreate}>
+            <div className="form-grid">
+              <label>
+                Nome da clínica
+                <input type="text" required value={createForm.name} onChange={(event) => setCreateForm({ ...createForm, name: event.target.value })} placeholder="ex.: Aura Clinic Piercing" />
+              </label>
+              <label>
+                Código (slug)
+                <input type="text" required value={createForm.slug} onChange={(event) => setCreateForm({ ...createForm, slug: event.target.value.toLowerCase() })} placeholder="ex.: aura" />
+              </label>
+              <label>
+                Nome do responsável (opcional)
+                <input type="text" value={createForm.admin_name} onChange={(event) => setCreateForm({ ...createForm, admin_name: event.target.value })} placeholder="ex.: Eduarda Santos" />
+              </label>
+              <label>
+                E-mail do administrador
+                <input type="email" required value={createForm.admin_email} onChange={(event) => setCreateForm({ ...createForm, admin_email: event.target.value })} placeholder="admin@clinica.com" />
+              </label>
+              <label>
+                Senha do administrador (mín. 8)
+                <input type="password" required minLength={8} value={createForm.admin_password} onChange={(event) => setCreateForm({ ...createForm, admin_password: event.target.value })} placeholder="Senha inicial" />
+              </label>
+            </div>
+            {createError && <span className="form-error">{createError}</span>}
+          </form>
+        </Modal>
 
         {metricList.length > 0 && (
           <section className="panel">

@@ -2,9 +2,10 @@
 import React, { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { Input, Metric, Select } from "../../components/common/Ui";
+import { Modal, CrudHeader, DataTable } from "../../components/common/Crud";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, asNumber, asObject, removeAccents } from "../../lib/utils";
-import { apiFetch, downloadApiFile, useFetch } from "../../lib/api";
+import { apiFetch, useFetch } from "../../lib/api";
 import { defaultAccessUser } from "../../lib/defaultForms";
 import { currency, roleLabel } from "../../features/shared/helpers";
 
@@ -161,6 +162,7 @@ export function AccessAdmin() {
   const { data, refresh } = useFetch("/users");
   const [form, setForm] = useState(defaultAccessUser());
   const [editing, setEditing] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
   const [error, setError] = useState("");
   const [resetConfirmation, setResetConfirmation] = useState("");
   const [resetMessage, setResetMessage] = useState("");
@@ -168,6 +170,20 @@ export function AccessAdmin() {
   if (!data) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
   const users = asArray(data);
+
+  function openNew() {
+    setEditing(null);
+    setForm(defaultAccessUser());
+    setError("");
+    setModalOpen(true);
+  }
+
+  function openEdit(user) {
+    setEditing(user);
+    setForm({ name: user.name, email: user.email, role: user.role, password: "" });
+    setError("");
+    setModalOpen(true);
+  }
 
   async function save(event) {
     event.preventDefault();
@@ -180,10 +196,12 @@ export function AccessAdmin() {
     if (!response.ok) return setError((await response.json()).error || "Não foi possível salvar o usuário.");
     setForm(defaultAccessUser());
     setEditing(null);
+    setModalOpen(false);
     refresh();
   }
 
   async function remove(user) {
+    if (!window.confirm(`Remover o acesso de ${user.name}?`)) return;
     await apiFetch(`/users/${user.id}`, { method: "DELETE" });
     refresh();
   }
@@ -208,17 +226,48 @@ export function AccessAdmin() {
 
   return (
     <section className="stack">
-      <div className="split-layout">
-        <form className="panel appointment-form" onSubmit={save}>
-          <div className="panel-heading">
-            <h2>{editing ? "Editar Acesso" : "Novo Acesso"}</h2>
-            <span>Níveis administrativos</span>
-          </div>
+      <div className="panel">
+        <CrudHeader
+          title="Usuários"
+          subtitle="Níveis administrativos e acessos da equipe"
+          actionLabel="Novo usuário"
+          onAction={openNew}
+        />
+        <DataTable
+          rows={users}
+          columns={[
+            { key: "name", label: "Nome" },
+            { key: "email", label: "E-mail" },
+            { key: "role", label: "Nível", render: (user) => <span className="status-badge">{roleLabel(user.role)}</span> },
+          ]}
+          actions={(user) => (
+            <>
+              <button type="button" onClick={() => openEdit(user)}>Editar</button>
+              <button type="button" onClick={() => remove(user)}>Apagar</button>
+            </>
+          )}
+          empty="Nenhum usuário cadastrado ainda."
+        />
+      </div>
+
+      <Modal
+        open={modalOpen}
+        title={editing ? "Editar acesso" : "Novo acesso"}
+        subtitle="Níveis administrativos"
+        onClose={() => setModalOpen(false)}
+        footer={(
+          <>
+            <button type="button" className="secondary-button" onClick={() => setModalOpen(false)}>Cancelar</button>
+            <button type="submit" form="access-user-form" className="primary-button">{editing ? "Salvar alterações" : "Criar usuário"}</button>
+          </>
+        )}
+      >
+        <form id="access-user-form" onSubmit={save}>
           <div className="form-grid">
             <Input label="Nome" value={form.name} onChange={(value) => setForm({ ...form, name: value })} required />
             <Input label="E-mail" value={form.email} onChange={(value) => setForm({ ...form, email: value })} required />
-            <Input type="password" label={editing ? "Nova Senha Opcional" : "Senha"} value={form.password} onChange={(value) => setForm({ ...form, password: value })} required={!editing} />
-            <Select label="Nível de Acesso" value={form.role} onChange={(value) => setForm({ ...form, role: value })}>
+            <Input type="password" label={editing ? "Nova senha (opcional)" : "Senha"} value={form.password} onChange={(value) => setForm({ ...form, password: value })} required={!editing} />
+            <Select label="Nível de acesso" value={form.role} onChange={(value) => setForm({ ...form, role: value })}>
               <option value="admin">Administrador Geral</option>
               <option value="piercer">Body Piercer</option>
               <option value="reception">Recepção</option>
@@ -226,27 +275,8 @@ export function AccessAdmin() {
             </Select>
           </div>
           {error && <span className="form-error">{error}</span>}
-          <button className="primary-button">{editing ? "Salvar Alterações" : "Criar Usuário"}</button>
         </form>
-        <div className="panel">
-          <div className="panel-heading">
-            <h2>Usuários</h2>
-            <button className="secondary-button" type="button" onClick={() => downloadApiFile("/backup.sqlite", `backup-aura-clinic.sqlite`)}>Backup SQLite</button>
-          </div>
-          <div className="access-list">
-            {users.map((user) => (
-              <article className="access-row" key={user.id}>
-                <div>
-                  <strong>{user.name}</strong>
-                  <span>{user.email} · {roleLabel(user.role)}</span>
-                </div>
-                <button onClick={() => { setEditing(user); setForm({ name: user.name, email: user.email, role: user.role, password: "" }); }}>Editar</button>
-                <button onClick={() => remove(user)}>Apagar</button>
-              </article>
-            ))}
-          </div>
-        </div>
-      </div>
+      </Modal>
 
       <article className="panel admin-reset-panel">
         <div>

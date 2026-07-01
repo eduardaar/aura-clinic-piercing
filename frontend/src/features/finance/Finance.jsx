@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import { Download } from "lucide-react";
 import { Input, Metric, PaymentSelect, Select } from "../../components/common/Ui";
+import { Modal, CrudHeader, DataTable } from "../../components/common/Crud";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, asNumber, asObject, formatDate, formatLongDate } from "../../lib/utils";
 import { apiFetch, downloadApiFile, useFetch } from "../../lib/api";
@@ -63,6 +64,7 @@ export function Clients() {
 export function FinanceAdmin() {
   const { data, refresh } = useFetch("/finance");
   const [expense, setExpense] = useState(defaultExpense());
+  const [modalOpen, setModalOpen] = useState(false);
   const [error, setError] = useState("");
   if (!data) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
@@ -76,6 +78,16 @@ export function FinanceAdmin() {
   const expenses = asArray(safeData.expenses);
   const monthlyRevenue = asArray(safeData.monthlyRevenue);
 
+  function openNew() {
+    setExpense(defaultExpense());
+    setError("");
+    setModalOpen(true);
+  }
+
+  function closeModal() {
+    setModalOpen(false);
+  }
+
   async function saveExpense(event) {
     event.preventDefault();
     setError("");
@@ -86,10 +98,12 @@ export function FinanceAdmin() {
     });
     if (!response.ok) return setError((await response.json()).error || "Não foi possível salvar a despesa.");
     setExpense(defaultExpense());
+    setModalOpen(false);
     refresh();
   }
 
   async function removeExpense(id) {
+    if (!window.confirm("Apagar esta despesa?")) return;
     await apiFetch(`/expenses/${id}`, { method: "DELETE" });
     refresh();
   }
@@ -138,12 +152,43 @@ export function FinanceAdmin() {
         </div>
       </div>
 
-      <div className="split-layout">
-        <form className="panel appointment-form" onSubmit={saveExpense}>
-          <div className="panel-heading">
-            <h2>Nova despesa</h2>
-            <span>Fixa ou variável</span>
-          </div>
+      <div className="panel">
+        <CrudHeader
+          title="Despesas lançadas"
+          subtitle={`${currency.format(asNumber(expensesSummary.total))} no mês`}
+          actionLabel="Nova despesa"
+          onAction={openNew}
+        />
+        <DataTable
+          rows={expenses}
+          columns={[
+            { key: "description", label: "Descrição" },
+            { key: "expense_type", label: "Tipo" },
+            { key: "category", label: "Categoria", render: (item) => item.category || "sem categoria" },
+            { key: "amount", label: "Valor", align: "right", render: (item) => currency.format(item.amount) },
+            { key: "due_date", label: "Vencimento", render: (item) => formatDate(item.due_date) },
+            { key: "status", label: "Status", render: (item) => <span className={`status-badge ${item.status === "paga" ? "status-atendido" : "status-pendente"}`}>{item.status}</span> }
+          ]}
+          actions={(item) => (
+            <button type="button" onClick={() => removeExpense(item.id)}>Apagar</button>
+          )}
+          empty="Nenhuma despesa lançada ainda."
+        />
+      </div>
+
+      <Modal
+        open={modalOpen}
+        title="Nova despesa"
+        subtitle="Fixa ou variável"
+        onClose={closeModal}
+        footer={(
+          <>
+            <button type="button" className="secondary-button" onClick={closeModal}>Cancelar</button>
+            <button type="submit" form="expense-form" className="primary-button">Salvar despesa</button>
+          </>
+        )}
+      >
+        <form id="expense-form" onSubmit={saveExpense}>
           <div className="form-grid">
             <Input label="Descrição" value={expense.description} onChange={(value) => setExpense({ ...expense, description: value })} required />
             <Select label="Tipo" value={expense.expense_type} onChange={(value) => setExpense({ ...expense, expense_type: value })}>
@@ -163,29 +208,8 @@ export function FinanceAdmin() {
             <textarea value={expense.notes} onChange={(event) => setExpense({ ...expense, notes: event.target.value })} />
           </label>
           {error && <span className="form-error">{error}</span>}
-          <button className="primary-button">Salvar despesa</button>
         </form>
-
-        <div className="panel">
-          <div className="panel-heading">
-            <h2>Despesas lançadas</h2>
-            <span>{currency.format(asNumber(expensesSummary.total))} no mês</span>
-          </div>
-          <div className="expense-list">
-            {expenses.map((item) => (
-              <article key={item.id} className="expense-row">
-                <div>
-                  <strong>{item.description}</strong>
-                  <span>{item.expense_type} · {item.category || "sem categoria"} · {formatDate(item.due_date)}</span>
-                </div>
-                <strong>{currency.format(item.amount)}</strong>
-                <span className={`status-badge ${item.status === "paga" ? "status-atendido" : "status-pendente"}`}>{item.status}</span>
-                <button onClick={() => removeExpense(item.id)}>Apagar</button>
-              </article>
-            ))}
-          </div>
-        </div>
-      </div>
+      </Modal>
     </section>
   );
 }

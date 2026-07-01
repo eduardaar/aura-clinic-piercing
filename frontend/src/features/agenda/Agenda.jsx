@@ -1,7 +1,8 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import React, { useEffect, useMemo, useState } from "react";
-import { Calendar, CheckCircle2, ChevronLeft, ChevronRight, Clock, Instagram, Plus, ShieldCheck, X, XCircle } from "lucide-react";
+import { Calendar, CheckCircle2, ChevronLeft, ChevronRight, Clock, ShieldCheck, XCircle } from "lucide-react";
 import { Input, PaymentSelect, Select, StatusSelect } from "../../components/common/Ui";
+import { Modal, CrudHeader, DataTable } from "../../components/common/Crud";
 import { Loading } from "../../components/common/Feedback";
 import { asArray, asNumber, asObject, formatDate } from "../../lib/utils";
 import { apiFetch, useFetch } from "../../lib/api";
@@ -61,7 +62,7 @@ export function Appointments() {
   const { data: procedures } = useFetch("/procedures");
   const [form, setForm] = useState(defaultAppointment());
   const [error, setError] = useState("");
-  const [showForm, setShowForm] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
   const [slots, setSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const safeOptions = asObject(options);
@@ -102,6 +103,13 @@ export function Appointments() {
     });
   }
 
+  function openNew() {
+    setForm(defaultAppointment());
+    setSlots([]);
+    setError("");
+    setModalOpen(true);
+  }
+
   async function submit(event) {
     event.preventDefault();
     setError("");
@@ -119,7 +127,7 @@ export function Appointments() {
       return;
     }
     setForm(defaultAppointment());
-    setShowForm(false);
+    setModalOpen(false);
     refresh();
     refreshClients();
   }
@@ -127,17 +135,27 @@ export function Appointments() {
   return (
     <section className="stack appointments-admin">
       <div className="panel appointments-toolbar">
-        <div className="panel-heading">
-          <div><span className="eyebrow">Agenda Aura</span><h2>Agendamentos</h2><span>Cadastre e acompanhe os próximos atendimentos.</span></div>
-          <button className="primary-button" type="button" onClick={() => setShowForm(true)}><Plus size={17} /> Novo Agendamento</button>
-        </div>
+        <CrudHeader
+          title="Agendamentos"
+          subtitle="Cadastre e acompanhe os próximos atendimentos."
+          actionLabel="Novo Agendamento"
+          onAction={openNew}
+        />
       </div>
-      {showForm && <div className="modal-backdrop appointment-modal-backdrop" onClick={() => setShowForm(false)}>
-      <form className="panel appointment-form manual-appointment-modal" onSubmit={submit} onClick={(event) => event.stopPropagation()}>
-        <div className="panel-heading">
-          <div><h2>Novo Agendamento</h2><span>Profissional, serviço, cliente, data e horário.</span></div>
-          <button className="icon-button" type="button" aria-label="Fechar" onClick={() => setShowForm(false)}><X size={18} /></button>
-        </div>
+      <Modal
+        open={modalOpen}
+        title="Novo Agendamento"
+        subtitle="Profissional, serviço, cliente, data e horário."
+        size="lg"
+        onClose={() => setModalOpen(false)}
+        footer={(
+          <>
+            <button type="button" className="secondary-button" onClick={() => setModalOpen(false)}>Cancelar</button>
+            <button type="submit" form="appointment-form" className="primary-button" disabled={!form.appointment_time}>Salvar Agendamento</button>
+          </>
+        )}
+      >
+      <form id="appointment-form" onSubmit={submit}>
         <div className="form-section">
           <h3>Cliente</h3>
           <div className="form-grid">
@@ -221,12 +239,8 @@ export function Appointments() {
           </label>
         </div>
         {error && <span className="form-error">{error}</span>}
-        <div className="modal-actions">
-          <button type="button" className="secondary-button" onClick={() => setShowForm(false)}>Cancelar</button>
-          <button className="primary-button" disabled={!form.appointment_time}>Salvar Agendamento</button>
-        </div>
       </form>
-      </div>}
+      </Modal>
       <div className="panel">
         <div className="panel-heading">
           <h2>Próximos Atendimentos</h2>
@@ -338,11 +352,15 @@ export function BookingAdmin() {
   const [tab, setTab] = useState("servicos");
   const [serviceForm, setServiceForm] = useState(defaultServiceForm());
   const [editingServiceId, setEditingServiceId] = useState(null);
+  const [serviceModalOpen, setServiceModalOpen] = useState(false);
   const [procedureForm, setProcedureForm] = useState(defaultProcedureForm());
   const [editingProcedureId, setEditingProcedureId] = useState(null);
+  const [procedureModalOpen, setProcedureModalOpen] = useState(false);
   const [serviceError, setServiceError] = useState("");
   const [procedureError, setProcedureError] = useState("");
   const [blockForm, setBlockForm] = useState(defaultScheduleBlock());
+  const [blockModalOpen, setBlockModalOpen] = useState(false);
+  const [blockError, setBlockError] = useState("");
   const professionals = asArray(asObject(options).professionals);
   const safeServices = asArray(services);
   const safeProcedures = asArray(procedures);
@@ -367,6 +385,13 @@ export function BookingAdmin() {
     return "";
   }
 
+  function openNewService() {
+    setEditingServiceId(null);
+    setServiceForm(defaultServiceForm());
+    setServiceError("");
+    setServiceModalOpen(true);
+  }
+
   async function saveService(event) {
     event.preventDefault();
     setServiceError("");
@@ -383,6 +408,7 @@ export function BookingAdmin() {
     }
     setServiceForm(defaultServiceForm());
     setEditingServiceId(null);
+    setServiceModalOpen(false);
     refreshServices();
   }
 
@@ -396,6 +422,7 @@ export function BookingAdmin() {
       duration_minutes: service.duration_minutes || 40,
       is_active: Boolean(service.is_active)
     });
+    setServiceModalOpen(true);
   }
 
   async function removeService(service) {
@@ -411,6 +438,13 @@ export function BookingAdmin() {
     }
     refreshServices();
     refreshProcedures();
+  }
+
+  function openNewProcedure() {
+    setEditingProcedureId(null);
+    setProcedureForm(defaultProcedureForm());
+    setProcedureError("");
+    setProcedureModalOpen(true);
   }
 
   async function saveProcedure(event) {
@@ -429,6 +463,7 @@ export function BookingAdmin() {
     }
     setProcedureForm(defaultProcedureForm());
     setEditingProcedureId(null);
+    setProcedureModalOpen(false);
     refreshProcedures();
   }
 
@@ -445,6 +480,7 @@ export function BookingAdmin() {
       aftercare_instructions: procedure.aftercare_instructions || "",
       is_active: Boolean(procedure.is_active)
     });
+    setProcedureModalOpen(true);
   }
 
   async function removeProcedure(procedure) {
@@ -469,14 +505,32 @@ export function BookingAdmin() {
     refreshAvailability();
   }
 
+  function openNewBlock() {
+    setBlockForm(defaultScheduleBlock());
+    setBlockError("");
+    setBlockModalOpen(true);
+  }
+
   async function saveBlock(event) {
     event.preventDefault();
-    await apiFetch("/schedule-blocks", {
+    setBlockError("");
+    const response = await apiFetch("/schedule-blocks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(blockForm)
     });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      return setBlockError(payload.error || "Não foi possível salvar o bloqueio.");
+    }
     setBlockForm(defaultScheduleBlock());
+    setBlockModalOpen(false);
+    refreshBlocks();
+  }
+
+  async function removeBlock(block) {
+    if (!window.confirm(`Apagar o bloqueio "${block.reason}"?`)) return;
+    await apiFetch(`/schedule-blocks/${block.id}`, { method: "DELETE" });
     refreshBlocks();
   }
 
@@ -504,86 +558,112 @@ export function BookingAdmin() {
       </nav>
 
       {tab === "servicos" && (
-        <div className="booking-admin-grid">
-          <form className="panel" onSubmit={saveService}>
-            <div className="panel-heading">
-              <h2>{editingServiceId ? "Editar serviço" : "Novo serviço"}</h2>
-              <span>Cadastro real no PostgreSQL</span>
-            </div>
-            <div className="form-grid">
-              <Input label="Nome" value={serviceForm.name} onChange={(value) => setServiceForm({ ...serviceForm, name: value })} required />
-              <Input type="number" label="Duração em minutos" value={serviceForm.duration_minutes} onChange={(value) => setServiceForm({ ...serviceForm, duration_minutes: value })} />
-              <Input type="number" label="Preço base" value={serviceForm.base_price} onChange={(value) => setServiceForm({ ...serviceForm, base_price: value })} />
-            </div>
-            <label>Descrição<textarea value={serviceForm.description} onChange={(event) => setServiceForm({ ...serviceForm, description: event.target.value })} /></label>
-            <Toggle label="Serviço ativo" checked={serviceForm.is_active} onChange={(value) => setServiceForm({ ...serviceForm, is_active: value })} />
-            {serviceError && <span className="form-error">{serviceError}</span>}
-            <div className="modal-actions">
-              {editingServiceId && <button type="button" className="secondary-button" onClick={() => { setEditingServiceId(null); setServiceForm(defaultServiceForm()); setServiceError(""); }}>Cancelar</button>}
-              <button className="primary-button">Salvar serviço</button>
-            </div>
-          </form>
-
+        <div className="stack">
           <div className="panel">
-            <div className="panel-heading"><h2>Serviços cadastrados</h2></div>
-            <div className="service-list">
-              {safeServices.map((service) => (
-                <article key={service.id}>
-                  <strong>{service.name}</strong>
-                  <span>{service.duration_minutes} min · {currency.format(service.base_price || 0)}</span>
-                  <small>{service.is_active ? "Ativo" : "Inativo"}</small>
-                  <div className="table-actions">
-                    <button type="button" onClick={() => editService(service)}>Editar</button>
-                    <button type="button" className="danger-link" onClick={() => removeService(service)}>Excluir</button>
-                  </div>
-                </article>
-              ))}
-              {!safeServices.length && <p className="empty-state">Você ainda não possui serviços cadastrados.</p>}
-            </div>
+            <CrudHeader
+              title="Serviços cadastrados"
+              subtitle="Cadastro real no PostgreSQL"
+              actionLabel="Novo serviço"
+              onAction={openNewService}
+            />
+            <DataTable
+              rows={safeServices}
+              columns={[
+                { key: "name", label: "Nome" },
+                { key: "duration_minutes", label: "Duração", render: (service) => `${service.duration_minutes} min` },
+                { key: "base_price", label: "Preço base", render: (service) => currency.format(service.base_price || 0) },
+                { key: "is_active", label: "Status", render: (service) => <span className="status-badge">{service.is_active ? "Ativo" : "Inativo"}</span> },
+              ]}
+              actions={(service) => (
+                <>
+                  <button type="button" onClick={() => editService(service)}>Editar</button>
+                  <button type="button" onClick={() => removeService(service)}>Excluir</button>
+                </>
+              )}
+              empty="Você ainda não possui serviços cadastrados."
+            />
           </div>
 
-          <form className="panel" onSubmit={saveProcedure}>
-            <div className="panel-heading">
-              <h2>{editingProcedureId ? "Editar procedimento" : "Novo procedimento"}</h2>
-              <span>Vincule a um serviço</span>
-            </div>
-            <div className="form-grid">
-              <Select label="Serviço" value={procedureForm.service_id} onChange={(value) => setProcedureForm({ ...procedureForm, service_id: value })} required>
-                <option value="">Selecione</option>
-                {safeServices.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
-              </Select>
-              <Input label="Nome" value={procedureForm.name} onChange={(value) => setProcedureForm({ ...procedureForm, name: value })} required />
-              <Input label="Área do corpo" value={procedureForm.body_area} onChange={(value) => setProcedureForm({ ...procedureForm, body_area: value })} />
-              <Input type="number" label="Preço" value={procedureForm.price} onChange={(value) => setProcedureForm({ ...procedureForm, price: value })} />
-              <Input type="number" label="Duração em minutos" value={procedureForm.duration_minutes} onChange={(value) => setProcedureForm({ ...procedureForm, duration_minutes: value })} />
-            </div>
-            <label>Descrição<textarea value={procedureForm.description} onChange={(event) => setProcedureForm({ ...procedureForm, description: event.target.value })} /></label>
-            <label>Orientações pós-atendimento<textarea value={procedureForm.aftercare_instructions} onChange={(event) => setProcedureForm({ ...procedureForm, aftercare_instructions: event.target.value })} /></label>
-            <Toggle label="Procedimento ativo" checked={procedureForm.is_active} onChange={(value) => setProcedureForm({ ...procedureForm, is_active: value })} />
-            {procedureError && <span className="form-error">{procedureError}</span>}
-            <div className="modal-actions">
-              {editingProcedureId && <button type="button" className="secondary-button" onClick={() => { setEditingProcedureId(null); setProcedureForm(defaultProcedureForm()); setProcedureError(""); }}>Cancelar</button>}
-              <button className="primary-button">Salvar procedimento</button>
-            </div>
-          </form>
-
           <div className="panel">
-            <div className="panel-heading"><h2>Procedimentos cadastrados</h2></div>
-            <div className="service-list">
-              {safeProcedures.map((procedure) => (
-                <article key={procedure.id}>
-                  <strong>{procedure.name}</strong>
-                  <span>{procedure.service_name || "Sem serviço"} · {procedure.body_area || "Sem área"} · {procedure.duration_minutes} min · {currency.format(procedure.price || 0)}</span>
-                  <small>{procedure.is_active ? "Ativo" : "Inativo"}</small>
-                  <div className="table-actions">
-                    <button type="button" onClick={() => editProcedure(procedure)}>Editar</button>
-                    <button type="button" className="danger-link" onClick={() => removeProcedure(procedure)}>Excluir</button>
-                  </div>
-                </article>
-              ))}
-              {!safeProcedures.length && <p className="empty-state">Você ainda não possui procedimentos cadastrados.</p>}
-            </div>
+            <CrudHeader
+              title="Procedimentos cadastrados"
+              subtitle="Vincule a um serviço"
+              actionLabel="Novo procedimento"
+              onAction={openNewProcedure}
+            />
+            <DataTable
+              rows={safeProcedures}
+              columns={[
+                { key: "name", label: "Nome" },
+                { key: "service_name", label: "Serviço", render: (procedure) => procedure.service_name || "Sem serviço" },
+                { key: "body_area", label: "Área do corpo", render: (procedure) => procedure.body_area || "Sem área" },
+                { key: "duration_minutes", label: "Duração", render: (procedure) => `${procedure.duration_minutes} min` },
+                { key: "price", label: "Preço", render: (procedure) => currency.format(procedure.price || 0) },
+                { key: "is_active", label: "Status", render: (procedure) => <span className="status-badge">{procedure.is_active ? "Ativo" : "Inativo"}</span> },
+              ]}
+              actions={(procedure) => (
+                <>
+                  <button type="button" onClick={() => editProcedure(procedure)}>Editar</button>
+                  <button type="button" onClick={() => removeProcedure(procedure)}>Excluir</button>
+                </>
+              )}
+              empty="Você ainda não possui procedimentos cadastrados."
+            />
           </div>
+
+          <Modal
+            open={serviceModalOpen}
+            title={editingServiceId ? "Editar serviço" : "Novo serviço"}
+            subtitle="Cadastro real no PostgreSQL"
+            onClose={() => setServiceModalOpen(false)}
+            footer={(
+              <>
+                <button type="button" className="secondary-button" onClick={() => setServiceModalOpen(false)}>Cancelar</button>
+                <button type="submit" form="service-form" className="primary-button">{editingServiceId ? "Salvar alterações" : "Salvar serviço"}</button>
+              </>
+            )}
+          >
+            <form id="service-form" onSubmit={saveService}>
+              <div className="form-grid">
+                <Input label="Nome" value={serviceForm.name} onChange={(value) => setServiceForm({ ...serviceForm, name: value })} required />
+                <Input type="number" label="Duração em minutos" value={serviceForm.duration_minutes} onChange={(value) => setServiceForm({ ...serviceForm, duration_minutes: value })} />
+                <Input type="number" label="Preço base" value={serviceForm.base_price} onChange={(value) => setServiceForm({ ...serviceForm, base_price: value })} />
+              </div>
+              <label>Descrição<textarea value={serviceForm.description} onChange={(event) => setServiceForm({ ...serviceForm, description: event.target.value })} /></label>
+              <Toggle label="Serviço ativo" checked={serviceForm.is_active} onChange={(value) => setServiceForm({ ...serviceForm, is_active: value })} />
+              {serviceError && <span className="form-error">{serviceError}</span>}
+            </form>
+          </Modal>
+
+          <Modal
+            open={procedureModalOpen}
+            title={editingProcedureId ? "Editar procedimento" : "Novo procedimento"}
+            subtitle="Vincule a um serviço"
+            onClose={() => setProcedureModalOpen(false)}
+            footer={(
+              <>
+                <button type="button" className="secondary-button" onClick={() => setProcedureModalOpen(false)}>Cancelar</button>
+                <button type="submit" form="procedure-form" className="primary-button">{editingProcedureId ? "Salvar alterações" : "Salvar procedimento"}</button>
+              </>
+            )}
+          >
+            <form id="procedure-form" onSubmit={saveProcedure}>
+              <div className="form-grid">
+                <Select label="Serviço" value={procedureForm.service_id} onChange={(value) => setProcedureForm({ ...procedureForm, service_id: value })} required>
+                  <option value="">Selecione</option>
+                  {safeServices.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
+                </Select>
+                <Input label="Nome" value={procedureForm.name} onChange={(value) => setProcedureForm({ ...procedureForm, name: value })} required />
+                <Input label="Área do corpo" value={procedureForm.body_area} onChange={(value) => setProcedureForm({ ...procedureForm, body_area: value })} />
+                <Input type="number" label="Preço" value={procedureForm.price} onChange={(value) => setProcedureForm({ ...procedureForm, price: value })} />
+                <Input type="number" label="Duração em minutos" value={procedureForm.duration_minutes} onChange={(value) => setProcedureForm({ ...procedureForm, duration_minutes: value })} />
+              </div>
+              <label>Descrição<textarea value={procedureForm.description} onChange={(event) => setProcedureForm({ ...procedureForm, description: event.target.value })} /></label>
+              <label>Orientações pós-atendimento<textarea value={procedureForm.aftercare_instructions} onChange={(event) => setProcedureForm({ ...procedureForm, aftercare_instructions: event.target.value })} /></label>
+              <Toggle label="Procedimento ativo" checked={procedureForm.is_active} onChange={(value) => setProcedureForm({ ...procedureForm, is_active: value })} />
+              {procedureError && <span className="form-error">{procedureError}</span>}
+            </form>
+          </Modal>
         </div>
       )}
       {tab === "horarios" && (
@@ -606,35 +686,57 @@ export function BookingAdmin() {
       )}
 
       {tab === "bloqueios" && (
-        <div className="booking-admin-grid">
-          <form className="panel" onSubmit={saveBlock}>
-            <div className="panel-heading"><h2>Novo bloqueio</h2><span>Não aparece para o cliente</span></div>
-            <div className="form-grid">
-              <Select label="Profissional" value={blockForm.professional_id} onChange={(value) => setBlockForm({ ...blockForm, professional_id: value })}>
-                <option value="">Selecione</option>
-                {professionals.map((professional) => <option value={professional.id} key={professional.id}>{professional.name}</option>)}
-              </Select>
-              <Input label="Motivo" value={blockForm.reason} onChange={(value) => setBlockForm({ ...blockForm, reason: value })} />
-              <Input type="datetime-local" label="Início" value={blockForm.start_datetime} onChange={(value) => setBlockForm({ ...blockForm, start_datetime: value })} />
-              <Input type="datetime-local" label="Final" value={blockForm.end_datetime} onChange={(value) => setBlockForm({ ...blockForm, end_datetime: value })} />
-            </div>
-            <Toggle label="Dia inteiro" checked={blockForm.is_full_day} onChange={(value) => setBlockForm({ ...blockForm, is_full_day: value })} />
-            <Toggle label="Recorrente" checked={blockForm.is_recurring} onChange={(value) => setBlockForm({ ...blockForm, is_recurring: value })} />
-            <label>Observação<textarea value={blockForm.notes} onChange={(event) => setBlockForm({ ...blockForm, notes: event.target.value })} /></label>
-            <button className="primary-button">Salvar bloqueio</button>
-          </form>
+        <div className="stack">
           <div className="panel">
-            <div className="panel-heading"><h2>Bloqueios cadastrados</h2></div>
-            <div className="service-list">
-              {safeBlocks.map((block) => (
-                <article key={block.id}>
-                  <strong>{block.reason}</strong>
-                  <span>{block.professional_name} · {new Date(block.start_datetime).toLocaleString("pt-BR")} até {new Date(block.end_datetime).toLocaleString("pt-BR")}</span>
-                  <button className="danger-link" onClick={async () => { await apiFetch(`/schedule-blocks/${block.id}`, { method: "DELETE" }); refreshBlocks(); }}>Apagar</button>
-                </article>
-              ))}
-            </div>
+            <CrudHeader
+              title="Bloqueios cadastrados"
+              subtitle="Não aparece para o cliente"
+              actionLabel="Novo bloqueio"
+              onAction={openNewBlock}
+            />
+            <DataTable
+              rows={safeBlocks}
+              columns={[
+                { key: "reason", label: "Motivo" },
+                { key: "professional_name", label: "Profissional", render: (block) => block.professional_name || "Todos" },
+                { key: "start_datetime", label: "Início", render: (block) => new Date(block.start_datetime).toLocaleString("pt-BR") },
+                { key: "end_datetime", label: "Final", render: (block) => new Date(block.end_datetime).toLocaleString("pt-BR") },
+              ]}
+              actions={(block) => (
+                <button type="button" onClick={() => removeBlock(block)}>Apagar</button>
+              )}
+              empty="Nenhum bloqueio cadastrado ainda."
+            />
           </div>
+
+          <Modal
+            open={blockModalOpen}
+            title="Novo bloqueio"
+            subtitle="Não aparece para o cliente"
+            onClose={() => setBlockModalOpen(false)}
+            footer={(
+              <>
+                <button type="button" className="secondary-button" onClick={() => setBlockModalOpen(false)}>Cancelar</button>
+                <button type="submit" form="block-form" className="primary-button">Salvar bloqueio</button>
+              </>
+            )}
+          >
+            <form id="block-form" onSubmit={saveBlock}>
+              <div className="form-grid">
+                <Select label="Profissional" value={blockForm.professional_id} onChange={(value) => setBlockForm({ ...blockForm, professional_id: value })}>
+                  <option value="">Selecione</option>
+                  {professionals.map((professional) => <option value={professional.id} key={professional.id}>{professional.name}</option>)}
+                </Select>
+                <Input label="Motivo" value={blockForm.reason} onChange={(value) => setBlockForm({ ...blockForm, reason: value })} />
+                <Input type="datetime-local" label="Início" value={blockForm.start_datetime} onChange={(value) => setBlockForm({ ...blockForm, start_datetime: value })} />
+                <Input type="datetime-local" label="Final" value={blockForm.end_datetime} onChange={(value) => setBlockForm({ ...blockForm, end_datetime: value })} />
+              </div>
+              <Toggle label="Dia inteiro" checked={blockForm.is_full_day} onChange={(value) => setBlockForm({ ...blockForm, is_full_day: value })} />
+              <Toggle label="Recorrente" checked={blockForm.is_recurring} onChange={(value) => setBlockForm({ ...blockForm, is_recurring: value })} />
+              <label>Observação<textarea value={blockForm.notes} onChange={(event) => setBlockForm({ ...blockForm, notes: event.target.value })} /></label>
+              {blockError && <span className="form-error">{blockError}</span>}
+            </form>
+          </Modal>
         </div>
       )}
 

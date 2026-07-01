@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Gem, LayoutGrid, ListFilter, Pencil, Search, ShoppingCart, SlidersHorizontal, Sparkles, Table2, Trash2, X } from "lucide-react";
 import { Input, Metric, Select } from "../../components/common/Ui";
+import { Modal, CrudHeader, DataTable } from "../../components/common/Crud";
 import { asArray, asObject, formatDate, removeAccents } from "../../lib/utils";
 import { apiFetch, useFetch } from "../../lib/api";
 import { ANODIZATION_COLOR_OPTIONS, JEWELRY_CATEGORY_OPTIONS, JEWELRY_LENGTH_OPTIONS, JEWELRY_THICKNESS_OPTIONS, JEWELRY_THREAD_OPTIONS, defaultJewelry, defaultJewelryVariant, normalizeJewelryForm, parseGalleryUrls } from "../../lib/defaultForms";
@@ -1004,7 +1005,23 @@ export function InventoryManagement({ options, professionals, onChanged }) {
 export function OptionManager({ title, type, items = [], onChanged, placeholder }) {
   const [name, setName] = useState("");
   const [editing, setEditing] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
   const [error, setError] = useState("");
+  const formId = `option-${type}-form`;
+
+  function openNew() {
+    setEditing(null);
+    setName("");
+    setError("");
+    setModalOpen(true);
+  }
+
+  function openEdit(item) {
+    setEditing(item);
+    setName(item.name);
+    setError("");
+    setModalOpen(true);
+  }
 
   async function save(event) {
     event.preventDefault();
@@ -1017,10 +1034,12 @@ export function OptionManager({ title, type, items = [], onChanged, placeholder 
     if (!response.ok) return setError((await response.json()).error || "Não foi possível salvar.");
     setName("");
     setEditing(null);
+    setModalOpen(false);
     onChanged();
   }
 
   async function remove(item) {
+    if (!window.confirm(`Remover ${item.name}?`)) return;
     setError("");
     const response = await apiFetch(`/inventory-options/${item.id}`, { method: "DELETE" });
     if (!response.ok) return setError((await response.json()).error || "Não foi possível apagar.");
@@ -1029,21 +1048,35 @@ export function OptionManager({ title, type, items = [], onChanged, placeholder 
 
   return (
     <article className="manager-card">
-      <h3>{title}</h3>
-      <form onSubmit={save} className="inline-form">
-        <input placeholder={placeholder} value={name} onChange={(event) => setName(event.target.value)} />
-        <button>{editing ? "Salvar" : "Criar"}</button>
-      </form>
-      {error && <span className="form-error">{error}</span>}
-      <div className="manager-list">
-        {asArray(items).map((item) => (
-          <div key={item.id}>
-            <span>{item.name}</span>
-            <button onClick={() => { setEditing(item); setName(item.name); }}>Editar</button>
-            <button onClick={() => remove(item)}>Apagar</button>
-          </div>
-        ))}
-      </div>
+      <CrudHeader title={title} actionLabel="Novo" onAction={openNew} />
+      {error && !modalOpen && <span className="form-error">{error}</span>}
+      <DataTable
+        rows={asArray(items)}
+        columns={[{ key: "name", label: "Nome" }]}
+        actions={(item) => (
+          <>
+            <button type="button" onClick={() => openEdit(item)}>Editar</button>
+            <button type="button" onClick={() => remove(item)}>Apagar</button>
+          </>
+        )}
+        empty="Nenhum registro cadastrado ainda."
+      />
+      <Modal
+        open={modalOpen}
+        title={editing ? `Editar ${title.toLowerCase()}` : `Novo em ${title.toLowerCase()}`}
+        onClose={() => setModalOpen(false)}
+        footer={(
+          <>
+            <button type="button" className="secondary-button" onClick={() => setModalOpen(false)}>Cancelar</button>
+            <button type="submit" form={formId} className="primary-button">{editing ? "Salvar" : "Criar"}</button>
+          </>
+        )}
+      >
+        <form id={formId} onSubmit={save}>
+          <Input label={title} value={name} onChange={setName} placeholder={placeholder} required />
+          {error && <span className="form-error">{error}</span>}
+        </form>
+      </Modal>
     </article>
   );
 }
@@ -1051,7 +1084,22 @@ export function OptionManager({ title, type, items = [], onChanged, placeholder 
 export function ProfessionalManager({ professionals = [], onChanged }) {
   const [form, setForm] = useState({ name: "", specialty: "" });
   const [editing, setEditing] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
   const [error, setError] = useState("");
+
+  function openNew() {
+    setEditing(null);
+    setForm({ name: "", specialty: "" });
+    setError("");
+    setModalOpen(true);
+  }
+
+  function openEdit(professional) {
+    setEditing(professional);
+    setForm({ name: professional.name, specialty: professional.specialty || "" });
+    setError("");
+    setModalOpen(true);
+  }
 
   async function save(event) {
     event.preventDefault();
@@ -1064,10 +1112,12 @@ export function ProfessionalManager({ professionals = [], onChanged }) {
     if (!response.ok) return setError((await response.json()).error || "Não foi possível salvar.");
     setForm({ name: "", specialty: "" });
     setEditing(null);
+    setModalOpen(false);
     onChanged();
   }
 
   async function remove(professional) {
+    if (!window.confirm(`Remover ${professional.name}?`)) return;
     setError("");
     const response = await apiFetch(`/professionals/${professional.id}`, { method: "DELETE" });
     if (!response.ok) return setError((await response.json()).error || "Não foi possível apagar.");
@@ -1076,22 +1126,41 @@ export function ProfessionalManager({ professionals = [], onChanged }) {
 
   return (
     <article className="manager-card professionals-manager">
-      <h3>Profissionais</h3>
-      <form onSubmit={save} className="inline-form professional-form">
-        <input placeholder="Nome profissional" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
-        <input placeholder="Especialidade" value={form.specialty} onChange={(event) => setForm({ ...form, specialty: event.target.value })} />
-        <button>{editing ? "Salvar" : "Criar"}</button>
-      </form>
-      {error && <span className="form-error">{error}</span>}
-      <div className="manager-list">
-        {asArray(professionals).map((professional) => (
-          <div key={professional.id}>
-            <span>{professional.name}<small>{professional.specialty}</small></span>
-            <button onClick={() => { setEditing(professional); setForm({ name: professional.name, specialty: professional.specialty || "" }); }}>Editar</button>
-            <button onClick={() => remove(professional)}>Apagar</button>
+      <CrudHeader title="Profissionais" actionLabel="Novo profissional" onAction={openNew} />
+      {error && !modalOpen && <span className="form-error">{error}</span>}
+      <DataTable
+        rows={asArray(professionals)}
+        columns={[
+          { key: "name", label: "Nome" },
+          { key: "specialty", label: "Especialidade" }
+        ]}
+        actions={(professional) => (
+          <>
+            <button type="button" onClick={() => openEdit(professional)}>Editar</button>
+            <button type="button" onClick={() => remove(professional)}>Apagar</button>
+          </>
+        )}
+        empty="Nenhum profissional cadastrado ainda."
+      />
+      <Modal
+        open={modalOpen}
+        title={editing ? "Editar profissional" : "Novo profissional"}
+        onClose={() => setModalOpen(false)}
+        footer={(
+          <>
+            <button type="button" className="secondary-button" onClick={() => setModalOpen(false)}>Cancelar</button>
+            <button type="submit" form="professional-form" className="primary-button">{editing ? "Salvar" : "Criar"}</button>
+          </>
+        )}
+      >
+        <form id="professional-form" onSubmit={save}>
+          <div className="form-grid">
+            <Input label="Nome" value={form.name} onChange={(value) => setForm({ ...form, name: value })} required />
+            <Input label="Especialidade" value={form.specialty} onChange={(value) => setForm({ ...form, specialty: value })} />
           </div>
-        ))}
-      </div>
+          {error && <span className="form-error">{error}</span>}
+        </form>
+      </Modal>
     </article>
   );
 }

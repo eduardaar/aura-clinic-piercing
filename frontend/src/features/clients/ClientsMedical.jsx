@@ -1,7 +1,8 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import React, { useState } from "react";
-import { ChevronRight, FileSignature, HeartPulse, Instagram, Plus, Search, UsersRound } from "lucide-react";
+import { ChevronRight, FileSignature, HeartPulse, Search, UsersRound } from "lucide-react";
 import { Input, Select } from "../../components/common/Ui";
+import { Modal, CrudHeader, DataTable } from "../../components/common/Crud";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, dateInputValue, formatDate, formatLongDate } from "../../lib/utils";
 import { API_ORIGIN, apiFetch, useFetch } from "../../lib/api";
@@ -40,13 +41,25 @@ export function ClientWorkspace() {
 export function ClientsMedical() {
   const { data, refresh } = useFetch("/clients");
   const [search, setSearch] = useState("");
-  const [editingClientId, setEditingClientId] = useState(null);
-  const [creatingClient, setCreatingClient] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
   const [error, setError] = useState("");
   if (!data) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
   const clients = asArray(data);
   const filteredClients = clients.filter((client) => matchesClientSearch(client, search));
+
+  function openNew() {
+    setEditing(null);
+    setError("");
+    setModalOpen(true);
+  }
+
+  function openEdit(client) {
+    setEditing(client);
+    setError("");
+    setModalOpen(true);
+  }
 
   async function removeClient(client) {
     if (!window.confirm(`Excluir ${client.name}?`)) return;
@@ -57,72 +70,76 @@ export function ClientsMedical() {
       setError(payload.error || "Não foi possível excluir o cliente.");
       return;
     }
-    if (editingClientId === client.id) setEditingClientId(null);
+    if (editing && editing.id === client.id) {
+      setEditing(null);
+      setModalOpen(false);
+    }
     refresh();
   }
 
   return (
-    <section className="medical-client-list simplified-client-list">
-      <div className="panel-heading">
+    <section className="stack">
+      <div className="panel">
+        <CrudHeader
+          title="Clientes"
+          subtitle="Base de clientes da Aura Clinic"
+          actionLabel="Novo cliente"
+          onAction={openNew}
+        />
         <label className="client-search">
           <Search size={17} />
           <input placeholder="Pesquisar cliente, WhatsApp ou Instagram" value={search} onChange={(event) => setSearch(event.target.value)} />
         </label>
-        <button type="button" className="primary-button" onClick={() => setCreatingClient(true)}>
-          <Plus size={16} /> Novo cliente
-        </button>
-      </div>
-      {creatingClient && (
-        <article className="panel medical-card simplified-client-card">
-          <ClientEditForm
-            onCancel={() => setCreatingClient(false)}
-            onSaved={() => {
-              setCreatingClient(false);
-              refresh();
-            }}
-          />
-        </article>
-      )}
-      {error && <span className="form-error">{error}</span>}
-      {filteredClients.map((client) => (
-        <article className="panel medical-card simplified-client-card" key={client.id}>
-          <div className="medical-header compact">
-            <div>
-              <h2>{client.name}</h2>
-              <p>{client.whatsapp} · {client.instagram || "sem Instagram"}</p>
-            </div>
-            <div className="header-actions">
-              <span className="status-badge status-atendido">Cliente Aura</span>
+        {error && <span className="form-error">{error}</span>}
+        <DataTable
+          rows={filteredClients}
+          columns={[
+            { key: "name", label: "Nome" },
+            { key: "whatsapp", label: "WhatsApp", render: (client) => client.whatsapp || "—" },
+            { key: "instagram", label: "Instagram", render: (client) => client.instagram || "sem Instagram" },
+            { key: "contact", label: "Contato", render: (client) => (
+              <span>{client.phone || "Sem telefone"} · {client.email || "Sem e-mail"}</span>
+            ) },
+          ]}
+          actions={(client) => (
+            <>
               <a className="secondary-button" href={whatsappUrl(client.whatsapp, `Ola ${client.name}, tudo bem Aqui e da Aura Clinic.`)} target="_blank" rel="noreferrer">WhatsApp</a>
-              <button type="button" className="secondary-button" onClick={() => setEditingClientId(editingClientId === client.id ? null : client.id)}>Editar</button>
-              <button type="button" className="danger-link" onClick={() => removeClient(client)}>Excluir</button>
-            </div>
-          </div>
-          {client.birth_date && <small className="client-birth">Aniversário: {formatLongDate(client.birth_date)}</small>}
-          {editingClientId === client.id && (
-            <ClientEditForm
-              client={client}
-              onCancel={() => setEditingClientId(null)}
-              onSaved={() => {
-                setEditingClientId(null);
-                refresh();
-              }}
-            />
+              <button type="button" onClick={() => openEdit(client)}>Editar</button>
+              <button type="button" onClick={() => removeClient(client)}>Apagar</button>
+            </>
           )}
-          <div className="medical-summary-line">
-            <span>Telefone: {client.phone || "Sem registro"}</span>
-            <span>E-mail: {client.email || "Sem registro"}</span>
-            <span>CPF: {client.cpf || "Sem registro"}</span>
-          </div>
-        </article>
-      ))}
-      {!clients.length && !creatingClient && <p className="empty-state">Você ainda não possui clientes cadastrados.</p>}
-      {clients.length > 0 && !filteredClients.length && <p className="empty-state">Nenhum cliente encontrado.</p>}
+          empty={clients.length ? "Nenhum cliente encontrado." : "Você ainda não possui clientes cadastrados."}
+        />
+      </div>
+
+      <Modal
+        open={modalOpen}
+        title={editing ? "Editar cliente" : "Novo cliente"}
+        subtitle="Dados cadastrais do cliente"
+        onClose={() => setModalOpen(false)}
+        footer={(
+          <>
+            <button type="button" className="secondary-button" onClick={() => setModalOpen(false)}>Cancelar</button>
+            <button type="submit" form="client-form" className="primary-button">{editing ? "Salvar alterações" : "Salvar cliente"}</button>
+          </>
+        )}
+      >
+        <ClientEditForm
+          key={editing ? editing.id : "new"}
+          formId="client-form"
+          client={editing || undefined}
+          onSaved={() => {
+            setModalOpen(false);
+            setEditing(null);
+            refresh();
+          }}
+        />
+      </Modal>
     </section>
   );
 }
 
-export function ClientEditForm({ client, onSaved, onCancel }) {
+export function ClientEditForm({ client, onSaved, onCancel, formId }) {
   const [form, setForm] = useState({
     name: client?.name || "",
     phone: client?.phone || "",
@@ -148,7 +165,7 @@ export function ClientEditForm({ client, onSaved, onCancel }) {
   }
 
   return (
-    <form className="client-edit-form" onSubmit={submit}>
+    <form id={formId} className="client-edit-form" onSubmit={submit}>
       <div className="form-grid">
         <Input label="Nome" value={form.name} onChange={(value) => setForm({ ...form, name: value })} required />
         <Input label="Telefone" value={form.phone} onChange={(value) => setForm({ ...form, phone: value })} />
@@ -162,10 +179,12 @@ export function ClientEditForm({ client, onSaved, onCancel }) {
         <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
       </label>
       {error && <span className="form-error">{error}</span>}
-      <div className="modal-actions">
-        <button type="button" className="secondary-button" onClick={onCancel}>Cancelar</button>
-        <button className="primary-button">Salvar cliente</button>
-      </div>
+      {!formId && (
+        <div className="modal-actions">
+          <button type="button" className="secondary-button" onClick={onCancel}>Cancelar</button>
+          <button className="primary-button">Salvar cliente</button>
+        </div>
+      )}
     </form>
   );
 }

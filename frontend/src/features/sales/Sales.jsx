@@ -1,7 +1,7 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import React, { useEffect, useState } from "react";
-import { Instagram } from "lucide-react";
 import { Input, Metric, Select } from "../../components/common/Ui";
+import { Modal, CrudHeader, DataTable } from "../../components/common/Crud";
 import { Loading } from "../../components/common/Feedback";
 import { asArray, formatDate } from "../../lib/utils";
 import { apiFetch, useFetch } from "../../lib/api";
@@ -14,6 +14,7 @@ export function SalesWorkspace() {
   const { data: procedures } = useFetch("/procedures");
   const { data: jewelry } = useFetch("/jewelry");
   const { data: appointments } = useFetch("/appointments");
+  const [modalOpen, setModalOpen] = useState(false);
   const [tab, setTab] = useState("produto");
   const [form, setForm] = useState(defaultSalesOrderForm());
   const [line, setLine] = useState(defaultSalesLine());
@@ -51,6 +52,19 @@ export function SalesWorkspace() {
     services: monthOrders.filter((order) => order.order_type === "servico").reduce((sum, order) => sum + Number(order.total_value || 0), 0),
     mixed: monthOrders.filter((order) => order.order_type === "ordem_servico").reduce((sum, order) => sum + Number(order.total_value || 0), 0)
   };
+
+  function openNew() {
+    setForm(defaultSalesOrderForm());
+    setItems([]);
+    setLine(defaultSalesLine());
+    setTab("produto");
+    setError("");
+    setModalOpen(true);
+  }
+
+  function closeModal() {
+    setModalOpen(false);
+  }
 
   function addLineItem() {
     const quantity = Math.max(1, Number(line.quantity || 1));
@@ -99,6 +113,7 @@ export function SalesWorkspace() {
     setItems([]);
     setLine(defaultSalesLine());
     setTab("produto");
+    setModalOpen(false);
     refreshOrders();
   }
 
@@ -120,166 +135,161 @@ export function SalesWorkspace() {
         <Metric label="Ordens de serviço" value={currency.format(summary.mixed)} />
       </div>
 
-      <div className="customization-tabs sales-tabs">
-        {[
-          ["produto", "Venda de produto"],
-          ["servico", "Venda de serviço"],
-          ["ordem", "Ordem de serviço"],
-          ["historico", "Histórico"]
-        ].map(([id, label]) => (
-          <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}</button>
-        ))}
-      </div>
-
-      {tab !== "historico" && (
-        <div className="split-layout">
-          <form className="panel appointment-form" onSubmit={saveOrder}>
-            <div className="panel-heading">
-              <h2>{tab === "ordem" ? "Nova ordem de serviço" : tab === "servico" ? "Venda de serviço" : "Venda de produto"}</h2>
-              <span>Cadastro interno com baixa financeira</span>
-            </div>
-            <div className="form-grid">
-              <Input label="Cliente" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} required />
-              <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => setForm({ ...form, whatsapp: value })} required />
-              <Input label="Instagram" value={form.instagram} onChange={(value) => setForm({ ...form, instagram: value })} />
-              <Select label="Agendamento vinculado" value={form.appointment_id} onChange={(value) => setForm({ ...form, appointment_id: value })}>
-                <option value="">Sem vínculo</option>
-                {safeAppointments.map((appointment) => (
-                  <option key={appointment.id} value={appointment.id}>
-                    {appointment.full_name} · {formatDate(appointment.appointment_date)} · {appointment.appointment_time}
-                  </option>
-                ))}
-              </Select>
-              <Select label="Forma de pagamento" value={form.payment_method} onChange={(value) => setForm({ ...form, payment_method: value })}>
-                <option>Pix</option>
-                <option>Dinheiro</option>
-                <option>Cartão de crédito</option>
-                <option>Cartão de débito</option>
-              </Select>
-              <Select label="Status" value={form.status} onChange={(value) => setForm({ ...form, status: value })}>
-                <option value="concluida">concluída</option>
-                <option value="aberta">aberta</option>
-                <option value="cancelada">cancelada</option>
-              </Select>
-            </div>
-
-            <div className="sales-line-builder">
-              <div className="sales-line-header">
-                <strong>{tab === "servico" ? "Selecionar serviço" : "Selecionar joia"}</strong>
-                <span>Adicione os itens da venda.</span>
-              </div>
-              <div className="form-grid">
-                <Select label="Tipo do item" value={line.item_type} onChange={(value) => setLine({ ...line, item_type: value })}>
-                  <option value="produto">produto</option>
-                  <option value="servico">serviço</option>
-                </Select>
-                {line.item_type === "servico" ? (
-                  <Select label="Serviço" value={line.service_id} onChange={(value) => {
-                    const selected = safeServices.find((item) => String(item.id) === String(value));
-                    setLine({
-                      ...line,
-                      service_id: value,
-                      item_name: selected?.name || "",
-                      unit_price: selected?.price || 0
-                    });
-                  }}>
-                    {safeServices.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
-                  </Select>
-                ) : (
-                  <Select label="Joia" value={line.product_id} onChange={(value) => {
-                    const selected = safeJewelry.find((item) => String(item.id) === String(value));
-                    setLine({
-                      ...line,
-                      product_id: value,
-                      item_name: selected?.name || "",
-                      unit_price: selected?.sale_value || 0
-                    });
-                  }}>
-                    {safeJewelry.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-                  </Select>
-                )}
-                <Input type="number" label="Quantidade" value={line.quantity} onChange={(value) => setLine({ ...line, quantity: value })} />
-                <Input type="number" label="Valor unitário" value={line.unit_price} onChange={(value) => setLine({ ...line, unit_price: value })} />
-              </div>
-              <label>Observações do item
-                <textarea value={line.notes} onChange={(event) => setLine({ ...line, notes: event.target.value })} />
-              </label>
-              <button className="secondary-button" type="button" onClick={addLineItem}>Adicionar item</button>
-            </div>
-
-            <div className="sales-items-list">
-              {items.length ? items.map((item, index) => (
-                <article key={`${item.item_name}-${index}`}>
-                  <div>
-                    <strong>{item.item_name}</strong>
-                    <span>{saleItemLabel(item.item_type)} · {item.quantity}x · {currency.format(item.unit_price)}</span>
-                    {item.notes && <small>{item.notes}</small>}
-                  </div>
-                  <button type="button" onClick={() => removeLine(index)}>Remover</button>
-                </article>
-              )) : <p className="empty-state">Nenhum item adicionado ainda.</p>}
-            </div>
-
-            <label>Observações da venda
-              <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
-            </label>
-            {error && <span className="form-error">{error}</span>}
-            <button className="primary-button">Salvar venda</button>
-          </form>
-
-          <div className="panel">
-            <div className="panel-heading">
-              <h2>Atalhos e referência</h2>
-              <span>{safeAppointments.length} agendamentos disponíveis</span>
-            </div>
-            <div className="sales-quick-reference">
-              <div>
-                <strong>Produtos</strong>
-                <small>Venda direta de joia, com baixa simples de estoque.</small>
-              </div>
-              <div>
-                <strong>Serviços</strong>
-                <small>Venda de procedimento avulso, sem depender de agenda.</small>
-              </div>
-              <div>
-                <strong>Ordens de serviço</strong>
-                <small>Registro interno com vínculo ao atendimento ou cliente.</small>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {tab === "historico" && (
-        <div className="panel">
-          <div className="panel-heading">
-            <h2>Histórico de vendas</h2>
-            <span>Pedidos do mês com status e valor</span>
-          </div>
-          <div className="sales-history-list">
-            {safeOrders.map((order) => (
-              <article key={order.id} className="sales-history-row">
+      <div className="panel">
+        <CrudHeader
+          title="Vendas"
+          subtitle="Pedidos internos com baixa financeira"
+          actionLabel="Nova venda"
+          onAction={openNew}
+        />
+        <DataTable
+          rows={safeOrders}
+          columns={[
+            {
+              key: "full_name",
+              label: "Cliente",
+              render: (order) => (
                 <div>
                   <strong>{order.full_name}</strong>
-                  <span>{saleOrderTypeLabel(order.order_type)} · {order.source} · {formatDate(order.created_at.slice(0, 10))}</span>
+                  <br />
                   <small>{asArray(order.items).map((item) => `${item.quantity}x ${item.item_name}`).join(" · ")}</small>
                 </div>
-                <div className="sales-history-money">
-                  <strong>{currency.format(order.total_value || 0)}</strong>
-                  <span>{order.payment_method || "Pix"}</span>
-                </div>
-                <div className="sales-history-actions">
-                  <span className={`status-badge ${order.status === "cancelada" ? "status-cancelado" : order.status === "aberta" ? "status-pendente" : "status-atendido"}`}>{order.status}</span>
-                  <button type="button" onClick={() => updateStatus(order.id, "concluida")}>Concluir</button>
-                  <button type="button" onClick={() => updateStatus(order.id, "cancelada")}>Cancelar</button>
-                </div>
-              </article>
-            ))}
-            {!safeOrders.length && <p className="empty-state">Nenhuma venda registrada ainda.</p>}
-          </div>
+              )
+            },
+            { key: "order_type", label: "Tipo", render: (order) => saleOrderTypeLabel(order.order_type) },
+            { key: "total_value", label: "Valor", align: "right", render: (order) => currency.format(order.total_value || 0) },
+            { key: "payment_method", label: "Pagamento", render: (order) => order.payment_method || "Pix" },
+            {
+              key: "status",
+              label: "Status",
+              render: (order) => (
+                <span className={`status-badge ${order.status === "cancelada" ? "status-cancelado" : order.status === "aberta" ? "status-pendente" : "status-atendido"}`}>{order.status}</span>
+              )
+            },
+            { key: "created_at", label: "Data", render: (order) => formatDate(String(order.created_at || "").slice(0, 10)) }
+          ]}
+          actions={(order) => (
+            <>
+              <button type="button" onClick={() => updateStatus(order.id, "concluida")}>Concluir</button>
+              <button type="button" onClick={() => updateStatus(order.id, "cancelada")}>Cancelar</button>
+            </>
+          )}
+          empty="Nenhuma venda registrada ainda."
+        />
+      </div>
+
+      <Modal
+        open={modalOpen}
+        title={tab === "ordem" ? "Nova ordem de serviço" : tab === "servico" ? "Venda de serviço" : "Venda de produto"}
+        subtitle="Cadastro interno com baixa financeira"
+        size="lg"
+        onClose={closeModal}
+        footer={(
+          <>
+            <button type="button" className="secondary-button" onClick={closeModal}>Cancelar</button>
+            <button type="submit" form="sales-order-form" className="primary-button">Salvar venda</button>
+          </>
+        )}
+      >
+        <div className="customization-tabs sales-tabs">
+          {[
+            ["produto", "Venda de produto"],
+            ["servico", "Venda de serviço"],
+            ["ordem", "Ordem de serviço"]
+          ].map(([id, label]) => (
+            <button key={id} type="button" className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}</button>
+          ))}
         </div>
-      )}
+
+        <form id="sales-order-form" onSubmit={saveOrder}>
+          <div className="form-grid">
+            <Input label="Cliente" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} required />
+            <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => setForm({ ...form, whatsapp: value })} required />
+            <Input label="Instagram" value={form.instagram} onChange={(value) => setForm({ ...form, instagram: value })} />
+            <Select label="Agendamento vinculado" value={form.appointment_id} onChange={(value) => setForm({ ...form, appointment_id: value })}>
+              <option value="">Sem vínculo</option>
+              {safeAppointments.map((appointment) => (
+                <option key={appointment.id} value={appointment.id}>
+                  {appointment.full_name} · {formatDate(appointment.appointment_date)} · {appointment.appointment_time}
+                </option>
+              ))}
+            </Select>
+            <Select label="Forma de pagamento" value={form.payment_method} onChange={(value) => setForm({ ...form, payment_method: value })}>
+              <option>Pix</option>
+              <option>Dinheiro</option>
+              <option>Cartão de crédito</option>
+              <option>Cartão de débito</option>
+            </Select>
+            <Select label="Status" value={form.status} onChange={(value) => setForm({ ...form, status: value })}>
+              <option value="concluida">concluída</option>
+              <option value="aberta">aberta</option>
+              <option value="cancelada">cancelada</option>
+            </Select>
+          </div>
+
+          <div className="sales-line-builder">
+            <div className="sales-line-header">
+              <strong>{tab === "servico" ? "Selecionar serviço" : "Selecionar joia"}</strong>
+              <span>Adicione os itens da venda.</span>
+            </div>
+            <div className="form-grid">
+              <Select label="Tipo do item" value={line.item_type} onChange={(value) => setLine({ ...line, item_type: value })}>
+                <option value="produto">produto</option>
+                <option value="servico">serviço</option>
+              </Select>
+              {line.item_type === "servico" ? (
+                <Select label="Serviço" value={line.service_id} onChange={(value) => {
+                  const selected = safeServices.find((item) => String(item.id) === String(value));
+                  setLine({
+                    ...line,
+                    service_id: value,
+                    item_name: selected?.name || "",
+                    unit_price: selected?.price || 0
+                  });
+                }}>
+                  {safeServices.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
+                </Select>
+              ) : (
+                <Select label="Joia" value={line.product_id} onChange={(value) => {
+                  const selected = safeJewelry.find((item) => String(item.id) === String(value));
+                  setLine({
+                    ...line,
+                    product_id: value,
+                    item_name: selected?.name || "",
+                    unit_price: selected?.sale_value || 0
+                  });
+                }}>
+                  {safeJewelry.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </Select>
+              )}
+              <Input type="number" label="Quantidade" value={line.quantity} onChange={(value) => setLine({ ...line, quantity: value })} />
+              <Input type="number" label="Valor unitário" value={line.unit_price} onChange={(value) => setLine({ ...line, unit_price: value })} />
+            </div>
+            <label>Observações do item
+              <textarea value={line.notes} onChange={(event) => setLine({ ...line, notes: event.target.value })} />
+            </label>
+            <button className="secondary-button" type="button" onClick={addLineItem}>Adicionar item</button>
+          </div>
+
+          <div className="sales-items-list">
+            {items.length ? items.map((item, index) => (
+              <article key={`${item.item_name}-${index}`}>
+                <div>
+                  <strong>{item.item_name}</strong>
+                  <span>{saleItemLabel(item.item_type)} · {item.quantity}x · {currency.format(item.unit_price)}</span>
+                  {item.notes && <small>{item.notes}</small>}
+                </div>
+                <button type="button" onClick={() => removeLine(index)}>Remover</button>
+              </article>
+            )) : <p className="empty-state">Nenhum item adicionado ainda.</p>}
+          </div>
+
+          <label>Observações da venda
+            <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
+          </label>
+          {error && <span className="form-error">{error}</span>}
+        </form>
+      </Modal>
     </section>
   );
 }
-
