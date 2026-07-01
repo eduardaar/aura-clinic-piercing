@@ -9463,3 +9463,79 @@ body,
 }
 .confirm-delete-message { margin: 0; color: #4A3427; line-height: 1.5; }
 .confirm-delete-field strong { color: #B85C5C; text-transform: uppercase; letter-spacing: .03em; }
+
+/* ============================================================
+   Componentes reutilizáveis: Button (ghost), StatusBadge (tons), Checkbox, foco
+   ============================================================ */
+.ghost-button {
+  border: 0;
+  background: transparent;
+  color: var(--gold-dark);
+  font-weight: 700;
+  padding: 10px 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.ghost-button:hover { color: var(--bronze); }
+
+/* Tons de status (etiquetas coloridas conforme a paleta) */
+.status-badge.tone-ok { background: rgba(79, 143, 91, .14); color: #3f7a4c; }
+.status-badge.tone-warn { background: rgba(217, 164, 65, .18); color: #9a6c1f; }
+.status-badge.tone-danger { background: rgba(184, 92, 92, .15); color: #a2494a; }
+.status-badge.tone-info { background: rgba(109, 144, 184, .16); color: #4d6f97; }
+.status-badge.tone-neutral { background: rgba(74, 52, 39, .08); color: var(--nude-strong); }
+
+/* Foco dourado consistente nos campos */
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(201, 168, 106, .22);
+}
+input[type="checkbox"], input[type="radio"] { accent-color: var(--gold); width: auto; }
+
+.checkbox-field {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+.checkbox-field input { width: 18px; height: 18px; }
+.checkbox-field span { color: var(--ink); font-size: 14px; }
+
+/* CTA de cadastro de clínica na tela de login (bem visível) */
+.login-signup-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(216, 195, 165, .45);
+}
+.login-signup-cta span {
+  color: var(--muted);
+  font-size: 13px;
+}
+.login-signup-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 18px;
+  border-radius: 14px;
+  border: 1.5px solid var(--gold);
+  background: rgba(201, 168, 106, .10);
+  color: var(--gold-dark);
+  font-weight: 800;
+  text-decoration: none;
+  transition: background .16s ease, color .16s ease;
+}
+.login-signup-button:hover {
+  background: var(--gold);
+  color: var(--brown-dark);
+}

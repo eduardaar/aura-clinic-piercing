@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { AlertTriangle, Calendar, ChevronRight, UserRound, WalletCards } from "lucide-react";
+import { AlertTriangle, Calendar, ChevronRight, Plus, UserRound, WalletCards } from "lucide-react";
 import { apiFetch, setTenantSlug, tenantSlug } from "../../lib/api";
 
 const DEFAULT_LOGIN_EMAIL = "admin@auraclinic.com";
@@ -98,7 +98,12 @@ export function Login({ onLogin }) {
           </label>
           {error && <span className="form-error">{error}</span>}
           <button className="login-submit" disabled={loading}>{loading ? "Entrando…" : "Entrar no sistema"} <ChevronRight size={18} /></button>
-          <a className="remember-access" href="/cadastro">Criar minha clínica</a>
+          <div className="login-signup-cta">
+            <span>Ainda não tem uma clínica cadastrada?</span>
+            <a className="login-signup-button" href="/cadastro">
+              <Plus size={18} /> Criar minha clínica
+            </a>
+          </div>
         </form>
 
         <footer className="login-footer">
