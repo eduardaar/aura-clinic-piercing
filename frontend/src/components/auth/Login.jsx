@@ -1,31 +1,37 @@
 import React, { useState } from "react";
 import { AlertTriangle, Calendar, ChevronRight, UserRound, WalletCards } from "lucide-react";
+import { apiFetch } from "../../lib/api";
 
 export function Login({ onLogin }) {
-  const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD || "aura123";
   const [form, setForm] = useState({ password: "" });
   const [rememberAccess, setRememberAccess] = useState(Boolean(localStorage.getItem("aura-admin-authenticated")));
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   async function submit(event) {
     event.preventDefault();
     setError("");
-
-    if (form.password === adminPassword) {
-      const user = {
-        id: 1,
-        name: "Administrador Aura",
-        email: "admin@auraclinic.com",
-        role: "admin",
-      };
-
+    setLoading(true);
+    try {
+      // Autentica no backend e obtém um token assinado (necessário em produção).
+      const response = await apiFetch("/login", {
+        method: "POST",
+        body: JSON.stringify({ email: "admin@auraclinic.com", password: form.password }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(payload.error || "Senha incorreta. Por favor, tente novamente.");
+        return;
+      }
+      const session = { token: payload.token, user: payload.user };
       localStorage.setItem("aura-admin-authenticated", rememberAccess ? "true" : "");
-      localStorage.setItem("aura-session", JSON.stringify({ user }));
-      onLogin({ user });
-      return;
+      localStorage.setItem("aura-session", JSON.stringify(session));
+      onLogin(session);
+    } catch {
+      setError("Não foi possível conectar ao servidor. Tente novamente.");
+    } finally {
+      setLoading(false);
     }
-
-    setError("Senha incorreta. Por favor, tente novamente.");
   }
 
   return (
@@ -55,7 +61,7 @@ export function Login({ onLogin }) {
             <span>Manter conectado</span>
           </label>
           {error && <span className="form-error">{error}</span>}
-          <button className="login-submit">Entrar no sistema <ChevronRight size={18} /></button>
+          <button className="login-submit" disabled={loading}>{loading ? "Entrando…" : "Entrar no sistema"} <ChevronRight size={18} /></button>
         </form>
 
         <footer className="login-footer">

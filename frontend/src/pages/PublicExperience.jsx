@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Calendar,
   CheckCircle2,
@@ -34,6 +34,7 @@ import {
   promotionalPrice,
   splitColorOptions
 } from "../features/catalog/catalogUtils";
+import { variantCatalogLabel } from "../features/shared/helpers";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -74,7 +75,7 @@ export function PublicCatalog() {
   const contentSections = catalogContentSections(settings.content_sections);
   const activeBanners = asArray(safeData.banners).filter((banner) => Boolean(asNumber(banner?.is_active))).sort((a, b) => asNumber(a?.sort_order) - asNumber(b?.sort_order));
   const fallbackBanner = {
-    title: data.title || "Escolha a joia perfeita para vocÃƒÂª",
+    title: data.title || "Escolha a joia perfeita para você",
     subtitle: data.subtitle || "",
     image_url: data.hero_image_url,
     button_text: "Ver todas as joias",
@@ -87,7 +88,7 @@ export function PublicCatalog() {
   const activeBanner = banners[bannerIndex % banners.length] || fallbackBanner;
   const categories = asArray(catalogCategoriesFromCatalog(safeData));
   const catalogItems = asArray(safeData.items);
-  // Filtrar apenas produtos publicados para o catÃƒÂ¡logo pÃƒÂºblico
+  // Filtrar apenas produtos publicados para o catálogo público
   const publishedItems = catalogItems.filter((item) => Boolean(Number(item.is_published || 0)));
   const selectedProduct = publishedItems.find((item) => asNumber(item?.id) === selectedProductId) || null;
   const filteredItems = publishedItems.filter((item) => {
@@ -163,7 +164,7 @@ function addToOrder(item) {
             customer_notes: [
               variant.variation_name,
               variant.selected_color && `Cor: ${variant.selected_color}`
-            ].filter(Boolean).join(" Ã‚Â· ")
+            ].filter(Boolean).join(" · ")
           } : selectedProduct);
           setDrawer("order");
         }}
@@ -191,9 +192,9 @@ function addToOrder(item) {
         </header>
 
         <div className="catalog-title">
-          <span className="eyebrow">CatÃƒÂ¡logo online</span>
-          <h1 style={{ fontFamily: theme.title_font || "Georgia" }}>{settings.page_title || "CatÃƒÂ¡logo Online"} <Sparkles size={26} /></h1>
-          <p>{data.title || "Escolha a joia perfeita para vocÃƒÂª"}</p>
+          <span className="eyebrow">Catálogo online</span>
+          <h1 style={{ fontFamily: theme.title_font || "Georgia" }}>{settings.page_title || "Catálogo Online"} <Sparkles size={26} /></h1>
+          <p>{data.title || "Escolha a joia perfeita para você"}</p>
           {data.subtitle && <small>{data.subtitle}</small>}
         </div>
 
@@ -230,30 +231,30 @@ function addToOrder(item) {
         <section className="catalog-filters">
           <span className="catalog-filter-label">Refinar</span>
           <CatalogSelect label="Material" value={filters.material} options={options.materials} onChange={(value) => setFilters({ ...filters, material: value })} />
-          <CatalogSelect label="ObservaÃƒÂ§ÃƒÂ£o de cor" value={filters.color} options={options.colors} onChange={(value) => setFilters({ ...filters, color: value })} />
+          <CatalogSelect label="Observação de cor" value={filters.color} options={options.colors} onChange={(value) => setFilters({ ...filters, color: value })} />
           <CatalogSelect label="Pedra" value={filters.stone} options={options.stones} onChange={(value) => setFilters({ ...filters, stone: value })} />
           <CatalogSelect label="Tamanho" value={filters.size} options={options.sizes} onChange={(value) => setFilters({ ...filters, size: value })} />
           <label className="catalog-sort">
             <SlidersHorizontal size={16} />
             <select value={sort} onChange={(event) => setSort(event.target.value)}>
               <option value="recentes">Mais recentes</option>
-              <option value="menor-preco">Menor preÃƒÂ§o</option>
-              <option value="maior-preco">Maior preÃƒÂ§o</option>
+              <option value="menor-preco">Menor preço</option>
+              <option value="maior-preco">Maior preço</option>
             </select>
           </label>
         </section>
 
         <section className="catalog-trust-strip" aria-label="Diferenciais Aura">
           <span><ShieldCheck size={20} /><strong>Curadoria profissional</strong><small>Joias selecionadas pela Aura</small></span>
-          <span><Gem size={20} /><strong>Materiais premium</strong><small>TitÃƒÂ¢nio, ouro e peÃƒÂ§as seguras</small></span>
+          <span><Gem size={20} /><strong>Materiais premium</strong><small>Titânio, ouro e peças seguras</small></span>
           <span><Truck size={20} /><strong>Envio orientado</strong><small>Pedido finalizado pelo WhatsApp</small></span>
-          <span><Heart size={20} /><strong>ComposiÃƒÂ§ÃƒÂ£o personalizada</strong><small>Favoritos e observaÃƒÂ§ÃƒÂµes no pedido</small></span>
+          <span><Heart size={20} /><strong>Composição personalizada</strong><small>Favoritos e observações no pedido</small></span>
         </section>
 
-        <CatalogProductRail title="LanÃƒÂ§amentos" subtitle="Novidades recÃƒÂ©m-adicionadas ÃƒÂ  curadoria." items={latestItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} />
-        <CatalogProductRail title="Mais desejadas" subtitle="PeÃƒÂ§as premium em destaque para composiÃƒÂ§ÃƒÂµes especiais." items={bestSellerItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} />
-        {promoItems.length > 0 && <CatalogProductRail title="PromoÃƒÂ§ÃƒÂµes" subtitle="Ofertas ativas com preÃƒÂ§o especial." items={promoItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} />}
-        {lastUnitsItems.length > 0 && <CatalogProductRail title="ÃƒÅ¡ltimas unidades" subtitle="Joias com poucas peÃƒÂ§as disponÃƒÂ­veis." items={lastUnitsItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} />}
+        <CatalogProductRail title="Lançamentos" subtitle="Novidades recém-adicionadas à curadoria." items={latestItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} />
+        <CatalogProductRail title="Mais desejadas" subtitle="Peças premium em destaque para composições especiais." items={bestSellerItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} />
+        {promoItems.length > 0 && <CatalogProductRail title="Promoções" subtitle="Ofertas ativas com preço especial." items={promoItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} />}
+        {lastUnitsItems.length > 0 && <CatalogProductRail title="Últimas unidades" subtitle="Joias com poucas peças disponíveis." items={lastUnitsItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} />}
 
         <CatalogBookingWidget />
         <CatalogContentSections sections={contentSections} />
@@ -275,18 +276,18 @@ function addToOrder(item) {
             />
           ))}
         </section>
-        {!items.length && <p className="empty-state catalog-empty">Nenhuma joia disponÃƒÂ­vel no catÃƒÂ¡logo no momento.</p>}
+        {!items.length && <p className="empty-state catalog-empty">Nenhuma joia disponível no catálogo no momento.</p>}
 
         <section className="catalog-guide-section">
           <article>
             <span className="eyebrow">Guia Aura</span>
-            <h2>Escolha com mais seguranÃƒÂ§a</h2>
-            <p>Na dÃƒÂºvida sobre tamanho, espessura, anodizaÃƒÂ§ÃƒÂ£o ou regiÃƒÂ£o ideal Adicione observaÃƒÂ§ÃƒÂµes no pedido e finalize pelo WhatsApp para receber orientaÃƒÂ§ÃƒÂ£o personalizada.</p>
+            <h2>Escolha com mais segurança</h2>
+            <p>Na dúvida sobre tamanho, espessura, anodização ou região ideal Adicione observações no pedido e finalize pelo WhatsApp para receber orientação personalizada.</p>
           </article>
           <div>
             <span><strong>Medidas</strong><small>Confira tamanho, espessura e haste antes de reservar.</small></span>
-            <span><strong>Materiais</strong><small>Priorize titÃƒÂ¢nio grau implante, ouro 14k/18k e peÃƒÂ§as adequadas ÃƒÂ  sua pele.</small></span>
-            <span><strong>AnodizaÃƒÂ§ÃƒÂ£o</strong><small>Descreva a cor desejada nas observaÃƒÂ§ÃƒÂµes do pedido.</small></span>
+            <span><strong>Materiais</strong><small>Priorize titânio grau implante, ouro 14k/18k e peças adequadas à sua pele.</small></span>
+            <span><strong>Anodização</strong><small>Descreva a cor desejada nas observações do pedido.</small></span>
           </div>
         </section>
 
@@ -300,7 +301,7 @@ function addToOrder(item) {
             {settings.whatsapp_phone && (
               <a href={whatsappCatalogUrl(settings.whatsapp_message, settings.whatsapp_phone)} target="_blank" rel="noreferrer">
                 <i><MessageCircle size={20} /></i>
-                <span><small>Atendimento rÃƒÂ¡pido</small><strong>WhatsApp</strong><em>{settings.whatsapp_phone}</em></span>
+                <span><small>Atendimento rápido</small><strong>WhatsApp</strong><em>{settings.whatsapp_phone}</em></span>
                 <ChevronRight size={17} />
               </a>
             )}
@@ -314,7 +315,7 @@ function addToOrder(item) {
             {settings.company_email && (
               <a href={`mailto:${settings.company_email}`}>
                 <i><Mail size={20} /></i>
-                <span><small>Envie sua dÃƒÂºvida</small><strong>E-mail</strong><em>{settings.company_email}</em></span>
+                <span><small>Envie sua dúvida</small><strong>E-mail</strong><em>{settings.company_email}</em></span>
                 <ChevronRight size={17} />
               </a>
             )}
@@ -327,7 +328,7 @@ function addToOrder(item) {
             {settings.company_address && (
               <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(settings.company_address)}`} target="_blank" rel="noreferrer">
                 <i><MapPin size={20} /></i>
-                <span><small>Visite a clÃƒÂ­nica</small><strong>EndereÃƒÂ§o</strong><em>{settings.company_address}</em></span>
+                <span><small>Visite a clínica</small><strong>Endereço</strong><em>{settings.company_address}</em></span>
                 <ChevronRight size={17} />
               </a>
             )}
@@ -408,11 +409,11 @@ function CatalogBookingWidget() {
     <section className="catalog-booking-widget" id="catalog-agenda">
       <div>
         <span className="eyebrow">Agenda online</span>
-        <h2>Escolha Um HorÃƒÂ¡rio DisponÃƒÂ­vel</h2>
-        <p>Reserve pelo link pÃƒÂºblico da Aura. A equipe confirma manualmente pelo WhatsApp.</p>
+        <h2>Escolha Um Horário Disponível</h2>
+        <p>Reserve pelo link público da Aura. A equipe confirma manualmente pelo WhatsApp.</p>
       </div>
       <div className="catalog-booking-controls">
-        <Select label="ServiÃƒÂ§o" value={form.service_id} onChange={(value) => setForm({ ...form, service_id: value, appointment_time: "" })}>
+        <Select label="Serviço" value={form.service_id} onChange={(value) => setForm({ ...form, service_id: value, appointment_time: "" })}>
           {services.map((service) => <option value={service.id} key={service.id}>{service.name}</option>)}
         </Select>
         <Select label="Profissional" value={form.professional_id} onChange={(value) => setForm({ ...form, professional_id: value, appointment_time: "" })}>
@@ -422,7 +423,7 @@ function CatalogBookingWidget() {
       </div>
       <div className="catalog-slot-row">
           {slots.slice(0, 8).map((slot) => <button type="button" key={slot.time} className={form.appointment_time === slot.time ? "active" : ""} onClick={() => setForm({ ...form, appointment_time: slot.time })}>{slot.time}</button>)}
-        {!slots.length && <span>Nenhum horÃƒÂ¡rio nesta seleÃƒÂ§ÃƒÂ£o.</span>}
+        {!slots.length && <span>Nenhum horário nesta seleção.</span>}
       </div>
       <a className="primary-button booking-wide-button" href={href}>Continuar Agendamento</a>
     </section>
@@ -487,22 +488,22 @@ function CatalogProductRail({ title, subtitle, items, data, theme, settings, fav
 
 function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, theme = {}, settings = {}, promotion }) {
   const productName = elegantProductName(item.name);
-  const description = [elegantProductName(item.material), cleanDisplayText(item.size)].filter(Boolean).join(" Ã‚Â· ");
-  const detail = [elegantProductName(item.color), elegantProductName(item.stone)].filter(Boolean).join(" Ã‚Â· ");
+  const description = [elegantProductName(item.material), cleanDisplayText(item.size)].filter(Boolean).join(" · ");
+  const detail = [elegantProductName(item.color), elegantProductName(item.stone)].filter(Boolean).join(" · ");
   const saleValue = Number(item.sale_value || 0);
   const promotionalValue = promotion ? promotionalPrice(saleValue, promotion) : null;
   const finalValue = promotionalValue || saleValue;
   const pixValue = finalValue * 0.95;
   const installmentValue = finalValue / 3;
   const shareText = `${settings.product_share_text || "Olha essa joia da Aura Clinic:"} ${productName} - ${description} - ${currency.format(finalValue)}.`;
-  const notifyText = `OlÃƒÂ¡! Quero ser avisada quando a joia ${productName} voltar ao estoque.`;
+  const notifyText = `Olá! Quero ser avisada quando a joia ${productName} voltar ao estoque.`;
   const stockText = catalogStockText(item, theme, settings);
   const available = Number(item.quantity || 0) > 0 && item.status !== "esgotado";
 
   return (
     <article className="catalog-product-card">
       <figure>
-        {(item.badge || promotion || !available) && <em className={`catalog-product-badge ${!available ? "unavailable" : ""}`}>{!available ? "IndisponÃƒÂ­vel" : promotion ? "PromoÃƒÂ§ÃƒÂ£o" : cleanDisplayText(item.badge)}</em>}
+        {(item.badge || promotion || !available) && <em className={`catalog-product-badge ${!available ? "unavailable" : ""}`}>{!available ? "Indisponível" : promotion ? "Promoção" : cleanDisplayText(item.badge)}</em>}
         <a className="catalog-product-image-link" href={catalogProductUrl(item.id)} aria-label={`Abrir ${productName}`}>
           <img src={catalogImageUrl(item.photo_url)} alt={productName} />
         </a>
@@ -517,7 +518,7 @@ function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, th
         {item.sku && <small className="catalog-sku">SKU {item.sku}</small>}
         <strong>{finalValue > 0 ? <>{promotion && <del>{currency.format(saleValue)}</del>}{currency.format(finalValue)}</> : "Valor Sob Consulta"}</strong>
         {finalValue > 0 && <span className="catalog-payment-line">ou {currency.format(pixValue)} via Pix</span>}
-        {finalValue >= 60 && <span className="catalog-payment-line muted">atÃƒÂ© 3x de {currency.format(installmentValue)} sem juros</span>}
+        {finalValue >= 60 && <span className="catalog-payment-line muted">até 3x de {currency.format(installmentValue)} sem juros</span>}
         {stockText && <small className={Number(item.quantity || 0) <= 2 ? "catalog-stock warning" : "catalog-stock"}>{stockText}</small>}
         <div className="catalog-actions">
           {available && Boolean(Number(theme.show_schedule_button || 1)) && <button className="primary-button" type="button" onClick={onAddToOrder}>Quero essa joia</button>}
@@ -546,16 +547,16 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
   const description = item.description || "Joia selecionada da curadoria Aura Clinic.";
   const detailItems = [
     selectedVariant.material && { label: "Material", value: elegantProductName(selectedVariant.material) },
-    selectedColor && { label: "ObservaÃƒÂ§ÃƒÂ£o de Cor", value: elegantProductName(selectedColor) },
+    selectedColor && { label: "Observação de Cor", value: elegantProductName(selectedColor) },
     item.stone && { label: "Pedra", value: elegantProductName(item.stone) },
     selectedVariant.size && { label: "Tamanho", value: selectedVariant.size },
     selectedVariant.thickness && { label: "Espessura", value: selectedVariant.thickness },
     selectedVariant.length && { label: "Comprimento", value: selectedVariant.length },
-    selectedVariant.diameter && { label: "DiÃƒÂ¢metro", value: selectedVariant.diameter },
+    selectedVariant.diameter && { label: "Diâmetro", value: selectedVariant.diameter },
     selectedVariant.thread_type && { label: "Tipo de Rosca", value: elegantProductName(selectedVariant.thread_type) },
     item.weight_grams ? { label: "Peso", value: `${item.weight_grams} g` } : null,
     item.package_length_cm || item.package_width_cm || item.package_height_cm ? { label: "Embalagem", value: `${item.package_length_cm || 0} x ${item.package_width_cm || 0} x ${item.package_height_cm || 0} cm` } : null,
-    item.physical_location && { label: "LocalizaÃƒÂ§ÃƒÂ£o", value: item.physical_location }
+    item.physical_location && { label: "Localização", value: item.physical_location }
   ].filter(Boolean);
   const stockText = catalogStockText(item, theme, settings);
   const saleValue = Number(selectedVariant.sale_value || item.sale_value || 0);
@@ -574,7 +575,7 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
             <span>{theme.slogan || data.slogan || "Clinic Piercing"}</span>
           </a>
           <div className="catalog-top-actions">
-            <a className="secondary-button" href="/catalogo">Voltar ao catÃƒÂ¡logo</a>
+            <a className="secondary-button" href="/catalogo">Voltar ao catálogo</a>
             {Boolean(Number(theme.show_favorites || 1)) && <button className="catalog-icon-action" onClick={onToggleFavorite} aria-label={favorite ? "Remover dos favoritos" : "Favoritar"}><Heart size={18} /></button>}
           </div>
         </header>
@@ -589,25 +590,25 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
             </div>
           </div>
           <div className="catalog-product-sidebar">
-            <span className={`catalog-product-badge detail ${available ? "" : "unavailable"}`}>{available ? item.badge || "DisponÃƒÂ­vel" : "IndisponÃƒÂ­vel"}</span>
-            <p className="catalog-breadcrumb">CatÃƒÂ¡logo / {cleanDisplayText(item.category || "Joias")} / {cleanDisplayText(item.subcategory || productName)}</p>
+            <span className={`catalog-product-badge detail ${available ? "" : "unavailable"}`}>{available ? item.badge || "Disponível" : "Indisponível"}</span>
+            <p className="catalog-breadcrumb">Catálogo / {cleanDisplayText(item.category || "Joias")} / {cleanDisplayText(item.subcategory || productName)}</p>
             <h1>{productName}</h1>
             <p className="catalog-product-description">{description}</p>
             {availableVariants.length > 0 && (
               <div className="catalog-variant-picker">
                 <label>
-                  <span>Escolha a VariaÃƒÂ§ÃƒÂ£o</span>
+                  <span>Escolha a Variação</span>
                   <select value={selectedVariantId} onChange={(event) => setSelectedVariantId(event.target.value)}>
                     {availableVariants.map((variant) => (
                       <option key={variant.id} value={variant.id} disabled={Number(variant.quantity || 0) <= 0}>
-                        {variantCatalogLabel(variant)} Ã‚Â· {variant.quantity > 0 ? `${variant.quantity} disponÃƒÂ­veis` : "IndisponÃƒÂ­vel"}
+                        {variantCatalogLabel(variant)} · {variant.quantity > 0 ? `${variant.quantity} disponíveis` : "Indisponível"}
                       </option>
                     ))}
                   </select>
                 </label>
                 {colorOptions.length > 0 && (
                   <label>
-                    <span>ObservaÃƒÂ§ÃƒÂ£o de Cor / AnodizaÃƒÂ§ÃƒÂ£o</span>
+                    <span>Observação de Cor / Anodização</span>
                     <select value={selectedColor} onChange={(event) => setSelectedColor(event.target.value)}>
                       {colorOptions.map((color) => <option key={color}>{color}</option>)}
                     </select>
@@ -630,18 +631,18 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
             <div className="catalog-detail-actions">
               {available && Boolean(Number(theme.show_schedule_button || 1)) && <button className="primary-button" type="button" onClick={() => onAddToOrder({ ...selectedVariant, selected_color: selectedColor })}>Agendar com esta Joia</button>}
               {available && Boolean(Number(theme.show_buy_button)) && <button className="secondary-button" type="button" onClick={() => onAddToOrder({ ...selectedVariant, selected_color: selectedColor })}>Comprar Agora</button>}
-              {settings.whatsapp_phone && <a className="secondary-button" href={whatsappCatalogUrl(`OlÃƒÂ¡! Quero informaÃƒÂ§ÃƒÂµes sobre ${productName}, ${variantCatalogLabel(selectedVariant)}${selectedColor ? `, na cor ${selectedColor}` : ""}.`, settings.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Falar com a Aura</a>}
+              {settings.whatsapp_phone && <a className="secondary-button" href={whatsappCatalogUrl(`Olá! Quero informações sobre ${productName}, ${variantCatalogLabel(selectedVariant)}${selectedColor ? `, na cor ${selectedColor}` : ""}.`, settings.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Falar com a Aura</a>}
               <a className="secondary-button" href={whatsappShareUrl(`${settings.product_share_text || "Olha essa joia da Aura Clinic:"} ${item.name} - ${currency.format(saleValue)}.`)} target="_blank" rel="noreferrer">Compartilhar</a>
             </div>
-            {item.notes && <div className="catalog-notes-box"><strong>ObservaÃƒÂ§ÃƒÂµes</strong><p>{item.notes}</p></div>}
+            {item.notes && <div className="catalog-notes-box"><strong>Observações</strong><p>{item.notes}</p></div>}
           </div>
         </section>
 
         {related.length > 0 && (
           <section className="catalog-related-section">
             <div className="panel-heading">
-              <h2>Mais opÃƒÂ§ÃƒÂµes parecidas</h2>
-              <a className="secondary-button" href="/catalogo">Ver catÃƒÂ¡logo</a>
+              <h2>Mais opções parecidas</h2>
+              <a className="secondary-button" href="/catalogo">Ver catálogo</a>
             </div>
             <div className="catalog-grid catalog-related-grid">
               {related.map((relatedItem) => (
@@ -670,11 +671,11 @@ function CatalogDrawer({ type, favorites, orderItems, orderTotal, whatsappPhone,
   const safeOrderItems = asArray(orderItems);
   const items = isFavorites ? safeFavorites : safeOrderItems;
   const favoriteMessage = safeFavorites.length
-    ? `OlÃƒÂ¡! Quero ajuda com estas joias favoritas: ${safeFavorites.map((item) => item.name).join(", ")}.`
-    : "OlÃƒÂ¡! Quero ajuda para escolher minhas joias favoritas no catÃƒÂ¡logo da Aura Clinic.";
+    ? `Olá! Quero ajuda com estas joias favoritas: ${safeFavorites.map((item) => item.name).join(", ")}.`
+    : "Olá! Quero ajuda para escolher minhas joias favoritas no catálogo da Aura Clinic.";
   const message = safeOrderItems.length
-    ? `OlÃƒÂ¡! Quero agendar com estas joias: ${safeOrderItems.map((item) => `${item.qty || 1}x ${item.name}${item.customer_notes ? ` (${item.customer_notes})` : ""}`).join(", ")}. Total aproximado: ${currency.format(asNumber(orderTotal))}.`
-    : "OlÃƒÂ¡! Quero ajuda para montar meu pedido no catÃƒÂ¡logo da Aura Clinic.";
+    ? `Olá! Quero agendar com estas joias: ${safeOrderItems.map((item) => `${item.qty || 1}x ${item.name}${item.customer_notes ? ` (${item.customer_notes})` : ""}`).join(", ")}. Total aproximado: ${currency.format(asNumber(orderTotal))}.`
+    : "Olá! Quero ajuda para montar meu pedido no catálogo da Aura Clinic.";
 
   return (
     <div className="catalog-drawer-backdrop" role="presentation" onClick={onClose}>
@@ -692,13 +693,13 @@ function CatalogDrawer({ type, favorites, orderItems, orderTotal, whatsappPhone,
               <img src={catalogImageUrl(item.photo_url)} alt={item.name} />
               <div>
                 <strong>{item.name}</strong>
-                <span>{[item.material, item.selected_color || item.color, item.selected_variant_name || item.size].map(elegantProductName).filter(Boolean).join(" Ã‚Â· ")}</span>
-                <small>{isFavorites ? currency.format(item.sale_value || 0) : `${item.qty || 1}x Ã‚Â· ${currency.format(item.sale_value || 0)}`}</small>
-                {!isFavorites && <textarea value={item.customer_notes || ""} onChange={(event) => onUpdateOrderNotes(item.order_key || item.id, event.target.value)} placeholder="ObservaÃƒÂ§ÃƒÂµes de cor, tamanho ou envio" />}
+                <span>{[item.material, item.selected_color || item.color, item.selected_variant_name || item.size].map(elegantProductName).filter(Boolean).join(" · ")}</span>
+                <small>{isFavorites ? currency.format(item.sale_value || 0) : `${item.qty || 1}x · ${currency.format(item.sale_value || 0)}`}</small>
+                {!isFavorites && <textarea value={item.customer_notes || ""} onChange={(event) => onUpdateOrderNotes(item.order_key || item.id, event.target.value)} placeholder="Observações de cor, tamanho ou envio" />}
               </div>
               <button onClick={() => isFavorites ? onRemoveFavorite(item.id) : onRemoveOrder(item.order_key || item.id)}>Remover</button>
             </article>
-          )) : <p className="empty-state">{isFavorites ? "Nenhuma joia favoritada ainda." : "Seu pedido ainda estÃƒÂ¡ vazio."}</p>}
+          )) : <p className="empty-state">{isFavorites ? "Nenhuma joia favoritada ainda." : "Seu pedido ainda está vazio."}</p>}
         </div>
         {!isFavorites && (
           <footer>
@@ -740,7 +741,7 @@ export function PublicCheckout() {
       return;
     }
     if (!safeOrderItems.length) {
-      setError("Seu pedido estÃƒÂ¡ vazio.");
+      setError("Seu pedido está vazio.");
       return;
     }
     const response = await fetch(`${API}/sales-orders/public`, {
@@ -767,7 +768,7 @@ export function PublicCheckout() {
     });
     const json = await response.json().catch(() => ({}));
     if (!response.ok) {
-      setError(json.error || "NÃƒÂ£o foi possÃƒÂ­vel concluir a compra.");
+      setError(json.error || "Não foi possível concluir a compra.");
       return;
     }
     localStorage.removeItem("aura-catalog-order");
@@ -787,7 +788,7 @@ export function PublicCheckout() {
           </div>
           <p>Pedido #{success.id} confirmado para {success.full_name}.</p>
           <div className="checkout-actions">
-            <a className="primary-button" href="/catalogo">Voltar ao catÃƒÂ¡logo</a>
+            <a className="primary-button" href="/catalogo">Voltar ao catálogo</a>
             <a className="secondary-button" href="/catalogo">Continuar comprando</a>
           </div>
         </section>
@@ -800,13 +801,13 @@ export function PublicCheckout() {
       <section className="booking-shell">
         <header className="booking-public-header">
           <a className="catalog-client-brand" href="/catalogo"><strong>{data.theme?.brand_name || "Aura Clinic"}</strong><span>Checkout direto</span></a>
-          <a className="secondary-button" href="/catalogo">Voltar ao catÃƒÂ¡logo</a>
+          <a className="secondary-button" href="/catalogo">Voltar ao catálogo</a>
         </header>
         <div className="checkout-grid">
           <form className="panel appointment-form" onSubmit={submit}>
             <div className="panel-heading">
               <h2>Finalizar compra</h2>
-              <span>Vitrine pÃƒÂºblica Aura Clinic</span>
+              <span>Vitrine pública Aura Clinic</span>
             </div>
             <div className="form-grid">
               <Input label="Nome completo" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} required />
@@ -815,12 +816,12 @@ export function PublicCheckout() {
               <Select label="Forma de pagamento" value={form.payment_method} onChange={(value) => setForm({ ...form, payment_method: value })}>
                 <option>Pix</option>
                 <option>Dinheiro</option>
-                <option>CartÃƒÂ£o de crÃƒÂ©dito</option>
-                <option>CartÃƒÂ£o de dÃƒÂ©bito</option>
+                <option>Cartão de crédito</option>
+                <option>Cartão de débito</option>
               </Select>
             </div>
-            <label>ObservaÃƒÂ§ÃƒÂµes
-              <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="ObservaÃƒÂ§ÃƒÂ£o de cor, tamanho, envio ou retirada." />
+            <label>Observações
+              <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Observação de cor, tamanho, envio ou retirada." />
             </label>
             {error && <span className="form-error">{error}</span>}
             <button className="primary-button" type="submit">Confirmar compra</button>
@@ -836,11 +837,11 @@ export function PublicCheckout() {
                   <img src={catalogImageUrl(item.photo_url)} alt={item.name} />
                   <div>
                     <strong>{item.name}</strong>
-                    <small>{[item.material, item.color, item.size].filter(Boolean).join(" Ã‚Â· ")}</small>
+                    <small>{[item.material, item.color, item.size].filter(Boolean).join(" · ")}</small>
                     <span>{Number(item.qty || 1)}x {currency.format(item.sale_value || 0)}</span>
                   </div>
                 </article>
-              )) : <p className="empty-state">Seu carrinho estÃƒÂ¡ vazio. Volte ao catÃƒÂ¡logo e adicione joias.</p>}
+              )) : <p className="empty-state">Seu carrinho está vazio. Volte ao catálogo e adicione joias.</p>}
             </div>
             <div className="checkout-total-row">
               <strong>Total</strong>
@@ -879,7 +880,7 @@ export function PublicBooking() {
       const json = await response.json().catch(() => ({}));
       setLoadingSlots(false);
       setSlots(response.ok ? asArray(json.slots) : []);
-      if (!response.ok) setError(json.error || "NÃƒÂ£o foi possÃƒÂ­vel carregar os horÃƒÂ¡rios.");
+      if (!response.ok) setError(json.error || "Não foi possível carregar os horários.");
     }
     loadSlots();
   }, [form.service_id, form.professional_id, form.appointment_date]);
@@ -895,7 +896,7 @@ export function PublicBooking() {
     });
     const response = await fetch(API + "/booking/requests", { method: "POST", body });
     const json = await response.json().catch(() => ({}));
-    if (!response.ok) return setError(json.error || "NÃƒÂ£o foi possÃƒÂ­vel solicitar o agendamento.");
+    if (!response.ok) return setError(json.error || "Não foi possível solicitar o agendamento.");
     setConfirmed(json);
     setStep(7);
   }
@@ -905,15 +906,15 @@ export function PublicBooking() {
       <section className="booking-shell">
         <header className="booking-public-header">
           <a className="catalog-client-brand" href="/catalogo"><strong>Aura Clinic</strong><span>Piercing</span></a>
-          <a className="secondary-button" href="/catalogo">Ver CatÃƒÂ¡logo</a>
+          <a className="secondary-button" href="/catalogo">Ver Catálogo</a>
         </header>
         <div className="booking-hero">
           <span className="eyebrow">Agendamento online</span>
-          <h1>Reserve Seu HorÃƒÂ¡rio Na Aura Clinic</h1>
-          <p>Escolha ServiÃƒÂ§o, Profissional, Data E HorÃƒÂ¡rio DisponÃƒÂ­vel. A equipe confirma manualmente sua solicitaÃƒÂ§ÃƒÂ£o.</p>
+          <h1>Reserve Seu Horário Na Aura Clinic</h1>
+          <p>Escolha Serviço, Profissional, Data E Horário Disponível. A equipe confirma manualmente sua solicitação.</p>
         </div>
         <div className="booking-progress">
-          {["ServiÃƒÂ§o", "Profissional", "Data", "HorÃƒÂ¡rio", "Dados", "Resumo"].map((label, index) => (
+          {["Serviço", "Profissional", "Data", "Horário", "Dados", "Resumo"].map((label, index) => (
             <button key={label} className={step === index + 1 ? "active" : step > index + 1 ? "done" : ""} onClick={() => step > index + 1 && setStep(index + 1)}>
               <strong>{index + 1}</strong>
               <span>{label}</span>
@@ -921,13 +922,13 @@ export function PublicBooking() {
           ))}
         </div>
 
-        {step === 1 && <BookingChoiceGrid title="Escolha O ServiÃƒÂ§o" items={services} value={form.service_id} onSelect={(id) => { setForm({ ...form, service_id: id, appointment_time: "" }); setStep(2); }} render={(item) => <><strong>{item.name}</strong><p>{item.description}</p><span>{item.duration_minutes} min  {currency.format(item.base_price || item.price || 0)}</span></>} />}
+        {step === 1 && <BookingChoiceGrid title="Escolha O Serviço" items={services} value={form.service_id} onSelect={(id) => { setForm({ ...form, service_id: id, appointment_time: "" }); setStep(2); }} render={(item) => <><strong>{item.name}</strong><p>{item.description}</p><span>{item.duration_minutes} min  {currency.format(item.base_price || item.price || 0)}</span></>} />}
         {step === 2 && <BookingChoiceGrid title="Escolha A Profissional" items={professionals} value={form.professional_id} onSelect={(id) => { setForm({ ...form, professional_id: id, appointment_time: "" }); setStep(3); }} render={(item) => <><strong>{item.name}</strong><p>{item.specialty || "Body Piercer Aura"}</p></>} />}
         {step === 3 && (
           <section className="booking-panel booking-date-card">
-            <span className="booking-section-kicker">Etapa 3 Ã‚Â· Data</span>
+            <span className="booking-section-kicker">Etapa 3 · Data</span>
             <h2>Escolha a Data</h2>
-            <p>Os horÃƒÂ¡rios serÃƒÂ£o carregados automaticamente para o dia escolhido.</p>
+            <p>Os horários serão carregados automaticamente para o dia escolhido.</p>
             <div className="booking-date-strip">
               {bookingDates.map((date) => (
                 <button key={date.value} type="button" className={form.appointment_date === date.value ? "active" : ""} onClick={() => {
@@ -942,9 +943,9 @@ export function PublicBooking() {
         )}
         {step === 4 && (
           <section className="booking-panel booking-time-card">
-            <span className="booking-section-kicker">Etapa 4 Ã‚Â· HorÃƒÂ¡rios</span>
-            <h2>Agende seu HorÃƒÂ¡rio</h2>
-            <p className="booking-selected-date">{form.appointment_date ? formatLongDate(form.appointment_date) : "Selecione uma data para ver os horÃƒÂ¡rios."}</p>
+            <span className="booking-section-kicker">Etapa 4 · Horários</span>
+            <h2>Agende seu Horário</h2>
+            <p className="booking-selected-date">{form.appointment_date ? formatLongDate(form.appointment_date) : "Selecione uma data para ver os horários."}</p>
             <div className="booking-date-strip compact">
               {bookingDates.map((date) => (
                 <button key={date.value} type="button" className={form.appointment_date === date.value ? "active" : ""} onClick={() => setForm({ ...form, appointment_date: date.value, appointment_time: "" })}>
@@ -952,11 +953,11 @@ export function PublicBooking() {
                 </button>
               ))}
             </div>
-            {loadingSlots && <p className="empty-state">Carregando horÃƒÂ¡rios...</p>}
+            {loadingSlots && <p className="empty-state">Carregando horários...</p>}
             <div className="slot-grid">
               {slots.map((slot) => <button key={slot.time} className={form.appointment_time === slot.time ? "active" : ""} onClick={() => setForm({ ...form, appointment_time: slot.time })}>{slot.time}</button>)}
             </div>
-            {!loadingSlots && !slots.length && <p className="empty-state">Nenhum horÃƒÂ¡rio disponÃƒÂ­vel nesta data.</p>}
+            {!loadingSlots && !slots.length && <p className="empty-state">Nenhum horário disponível nesta data.</p>}
             <button className="primary-button booking-wide-button" disabled={!form.appointment_time} onClick={() => setStep(5)}>Continuar</button>
           </section>
         )}
@@ -968,35 +969,35 @@ export function PublicBooking() {
               <Input label="Nome" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} required />
               <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => setForm({ ...form, whatsapp: value })} required />
               <Input label="Instagram" value={form.instagram} onChange={(value) => setForm({ ...form, instagram: value })} />
-              <label>Foto de referÃƒÂªncia<input type="file" accept="image/*" onChange={(event) => setForm({ ...form, reference_photo: event.target.files?.[0] })} /></label>
+              <label>Foto de referência<input type="file" accept="image/*" onChange={(event) => setForm({ ...form, reference_photo: event.target.files?.[0] })} /></label>
             </div>
-            <label>ObservaÃƒÂ§ÃƒÂµes<textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
+            <label>Observações<textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
             <button className="primary-button booking-wide-button" disabled={!form.full_name || !form.whatsapp} onClick={() => setStep(6)}>Ver Resumo</button>
           </section>
         )}
         {step === 6 && (
           <section className="booking-panel booking-summary">
             <span className="booking-section-kicker">Etapa 6  Resumo</span>
-            <h2>Resumo Da SolicitaÃƒÂ§ÃƒÂ£o</h2>
-            <p><strong>ServiÃƒÂ§o:</strong> {selectedService?.name}</p>
+            <h2>Resumo Da Solicitação</h2>
+            <p><strong>Serviço:</strong> {selectedService?.name}</p>
             <p><strong>Profissional:</strong> {selectedProfessional?.name}</p>
-            <p><strong>Data E HorÃƒÂ¡rio:</strong> {formatLongDate(form.appointment_date)} ?s {form.appointment_time}</p>
+            <p><strong>Data E Horário:</strong> {formatLongDate(form.appointment_date)} ?s {form.appointment_time}</p>
             <p><strong>Valor:</strong> {currency.format(selectedService?.base_price || selectedService?.price || 0)}</p>
             <p><strong>Sinal:</strong> {currency.format(selectedService?.deposit_value || 0)}</p>
             <p><strong>Regras:</strong> {data.rules?.cancellation}</p>
             <label>Comprovante Do Sinal Pix<input type="file" accept="image/*,.pdf" onChange={(event) => setForm({ ...form, payment_proof: event.target.files?.[0] })} /></label>
             {error && <span className="form-error">{error}</span>}
-            <button className="primary-button booking-wide-button" onClick={submit}>Confirmar SolicitaÃƒÂ§ÃƒÂ£o</button>
+            <button className="primary-button booking-wide-button" onClick={submit}>Confirmar Solicitação</button>
           </section>
         )}
         {step === 7 && (
           <section className="booking-panel booking-confirmation">
             <CheckCircle2 size={42} />
-            <span className="booking-section-kicker">SolicitaÃƒÂ§ÃƒÂ£o enviada</span>
-            <h2>SolicitaÃƒÂ§ÃƒÂ£o Enviada</h2>
-            <p>Seu horÃƒÂ¡rio ficou como pendente. A Aura Clinic vai confirmar manualmente pelo WhatsApp.</p>
+            <span className="booking-section-kicker">Solicitação enviada</span>
+            <h2>Solicitação Enviada</h2>
+            <p>Seu horário ficou como pendente. A Aura Clinic vai confirmar manualmente pelo WhatsApp.</p>
             <strong>{confirmed?.procedure}  {formatLongDate(confirmed?.appointment_date)} ?s {confirmed?.appointment_time}</strong>
-            <a className="primary-button booking-wide-button" href="/catalogo">Voltar Ao CatÃƒÂ¡logo</a>
+            <a className="primary-button booking-wide-button" href="/catalogo">Voltar Ao Catálogo</a>
           </section>
         )}
       </section>
@@ -1022,7 +1023,7 @@ function instagramCatalogUrl(handle = "") {
 function whatsappCatalogUrl(message, phone) {
   const digits = String(phone || "").replace(/\D/g, "");
   const normalized = digits ? (digits.startsWith("55") ? digits : `55${digits}`) : "";
-  return `https://wa.me/${normalized}?text=${encodeURIComponent(message || "OlÃƒÂ¡! Vim pelo catÃƒÂ¡logo online da Aura Clinic.")}`;
+  return `https://wa.me/${normalized}?text=${encodeURIComponent(message || "Olá! Vim pelo catálogo online da Aura Clinic.")}`;
 }
 
 function catalogProductUrl(id) {
@@ -1043,10 +1044,10 @@ function catalogCategories(names = []) {
     Surface: Sparkles,
     "Ouro 14k": Gem,
     "Ouro 18k": Gem,
-    "TitÃƒÂ¢nio": CircleDollarSign,
+    "Titânio": CircleDollarSign,
     Titanio: CircleDollarSign,
     Opalas: Gem,
-    "LanÃƒÂ§amentos": Star,
+    "Lançamentos": Star,
     Lancamentos: Star
   };
   const safeNames = asArray(names);

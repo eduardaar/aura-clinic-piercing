@@ -38,7 +38,7 @@ export function CatalogCustomization() {
     ...new Set(products.map((item) => item.category).filter(Boolean))
   ].filter((value, index, arr) => value && arr.indexOf(value) === index);
 
-  async function save(path = "/catalog-customization", success = "AlteraÃ§Ãµes salvas.") {
+  async function save(path = "/catalog-customization", success = "Alterações salvas.") {
     setError("");
     setMessage("");
     const payload = serializeCatalogCustomization(form);
@@ -48,7 +48,7 @@ export function CatalogCustomization() {
       body: path.includes("reset") ? undefined : JSON.stringify(payload)
     });
     const json = await response.json().catch(() => ({}));
-    if (!response.ok) return setError(json.error || "NÃ£o foi possÃ­vel salvar.");
+    if (!response.ok) return setError(json.error || "Não foi possível salvar.");
     if (path.includes("reset")) setForm(normalizeCatalogCustomization(json));
     setMessage(success);
     refresh();
@@ -60,24 +60,24 @@ export function CatalogCustomization() {
         <header className="customization-header">
           <div>
             <span className="eyebrow">Aura Clinic</span>
-            <h2>PersonalizaÃ§Ã£o do CatÃ¡logo</h2>
-            <p>Edite aparÃªncia, banners, categorias, produtos, promoÃ§Ãµes e textos sem mexer no cÃ³digo.</p>
+            <h2>Personalização do Catálogo</h2>
+            <p>Edite aparência, banners, categorias, produtos, promoções e textos sem mexer no código.</p>
           </div>
           <div>
-            <button className="secondary-button" type="button" onClick={() => save("/catalog-customization/reset", "PadrÃ£o restaurado.")}>Restaurar padrÃ£o</button>
-            <button className="primary-button" type="button" onClick={() => save("/catalog-customization/publish", "CatÃ¡logo publicado.")}>Publicar</button>
+            <button className="secondary-button" type="button" onClick={() => save("/catalog-customization/reset", "Padrão restaurado.")}>Restaurar padrão</button>
+            <button className="primary-button" type="button" onClick={() => save("/catalog-customization/publish", "Catálogo publicado.")}>Publicar</button>
           </div>
         </header>
 
         <nav className="customization-tabs">
           {[
-            ["aparencia", "AparÃªncia"],
+            ["aparencia", "Aparência"],
             ["banners", "Banners"],
             ["componentes", "Componentes"],
             ["categorias", "Categorias"],
             ["produtos", "Produtos"],
-            ["promocoes", "PromoÃ§Ãµes"],
-            ["exibicao", "ExibiÃ§Ã£o"],
+            ["promocoes", "Promoções"],
+            ["exibicao", "Exibição"],
             ["textos", "Textos"],
             ["contato", "Contato"],
             ["seo", "SEO"]
@@ -87,17 +87,17 @@ export function CatalogCustomization() {
         </nav>
 
         {activeSection === "aparencia" && (
-          <CustomizationCard title="AparÃªncia do catÃ¡logo">
+          <CustomizationCard title="Aparência do catálogo">
             <div className="form-grid">
               <ImageUploadField label="Logo" value={form.theme.logo_url} onChange={(value) => setForm(updateTheme(form, { logo_url: value }))} />
               <div className="form-grid compact-fields">
                 <Input label="Nome da marca" value={form.theme.brand_name} onChange={(value) => setForm(updateTheme(form, { brand_name: value }))} />
                 <Input label="Slogan" value={form.theme.slogan} onChange={(value) => setForm(updateTheme(form, { slogan: value }))} />
                 <Input type="color" label="Cor principal" value={form.theme.primary_color} onChange={(value) => setForm(updateTheme(form, { primary_color: value }))} />
-                <Input type="color" label="Cor secundÃ¡ria" value={form.theme.secondary_color} onChange={(value) => setForm(updateTheme(form, { secondary_color: value }))} />
-                <Input type="color" label="Cor dos botÃµes" value={form.theme.button_color} onChange={(value) => setForm(updateTheme(form, { button_color: value }))} />
+                <Input type="color" label="Cor secundária" value={form.theme.secondary_color} onChange={(value) => setForm(updateTheme(form, { secondary_color: value }))} />
+                <Input type="color" label="Cor dos botões" value={form.theme.button_color} onChange={(value) => setForm(updateTheme(form, { button_color: value }))} />
                 <Input type="color" label="Cor do fundo" value={form.theme.background_color} onChange={(value) => setForm(updateTheme(form, { background_color: value }))} />
-                <Select label="Fonte do tÃ­tulo" value={form.theme.title_font} onChange={(value) => setForm(updateTheme(form, { title_font: value }))}>
+                <Select label="Fonte do título" value={form.theme.title_font} onChange={(value) => setForm(updateTheme(form, { title_font: value }))}>
                   <option>Georgia</option><option>Playfair Display</option><option>Inter</option><option>Arial</option>
                 </Select>
                 <Select label="Fonte dos textos" value={form.theme.body_font} onChange={(value) => setForm(updateTheme(form, { body_font: value }))}>
@@ -125,14 +125,14 @@ export function CatalogCustomization() {
                   </div>
                   <ImageUploadField label="Imagem do banner" value={banner.image_url} onChange={(value) => setForm(updateList(form, "banners", index, { image_url: value }))} />
                   <div className="form-grid">
-                    <Input label="TÃ­tulo" value={banner.title} onChange={(value) => setForm(updateList(form, "banners", index, { title: value }))} />
-                    <Input label="SubtÃ­tulo" value={banner.subtitle} onChange={(value) => setForm(updateList(form, "banners", index, { subtitle: value }))} />
-                  <Input label="Texto do botÃ£o" value={banner.button_text} onChange={(value) => setForm(updateList(form, "banners", index, { button_text: value }))} />
-                  <Input label="Link do botÃ£o" value={banner.button_link} onChange={(value) => setForm(updateList(form, "banners", index, { button_link: value }))} />
+                    <Input label="Título" value={banner.title} onChange={(value) => setForm(updateList(form, "banners", index, { title: value }))} />
+                    <Input label="Subtítulo" value={banner.subtitle} onChange={(value) => setForm(updateList(form, "banners", index, { subtitle: value }))} />
+                  <Input label="Texto do botão" value={banner.button_text} onChange={(value) => setForm(updateList(form, "banners", index, { button_text: value }))} />
+                  <Input label="Link do botão" value={banner.button_link} onChange={(value) => setForm(updateList(form, "banners", index, { button_link: value }))} />
                   <Input type="number" label="Altura do banner (px)" value={banner.banner_height} onChange={(value) => setForm(updateList(form, "banners", index, { banner_height: value }))} />
-                  <Input type="number" label="Largura mÃ¡xima (px)" value={banner.banner_width} onChange={(value) => setForm(updateList(form, "banners", index, { banner_width: value }))} />
+                  <Input type="number" label="Largura máxima (px)" value={banner.banner_width} onChange={(value) => setForm(updateList(form, "banners", index, { banner_width: value }))} />
                   <Select label="Enquadramento" value={banner.banner_fit || "cover"} onChange={(value) => setForm(updateList(form, "banners", index, { banner_fit: value }))}>
-                    <option value="cover">Cobrir Ã¡rea</option>
+                    <option value="cover">Cobrir área</option>
                     <option value="contain">Mostrar inteira</option>
                     <option value="fill">Preencher</option>
                   </Select>
@@ -147,7 +147,7 @@ export function CatalogCustomization() {
         )}
 
         {activeSection === "componentes" && (
-          <CustomizationCard title="Componentes do catÃ¡logo" action={<button type="button" onClick={() => setForm({ ...form, contentSections: [...form.contentSections, defaultContentSection(form.contentSections.length + 1)] })}>Novo componente</button>}>
+          <CustomizationCard title="Componentes do catálogo" action={<button type="button" onClick={() => setForm({ ...form, contentSections: [...form.contentSections, defaultContentSection(form.contentSections.length + 1)] })}>Novo componente</button>}>
             <div className="custom-list">
               {form.contentSections.map((section, index) => (
                 <article key={index}>
@@ -160,17 +160,17 @@ export function CatalogCustomization() {
                   </div>
                   <div className="form-grid">
                     <Input label="Etiqueta" value={section.kicker} onChange={(value) => setForm(updateList(form, "contentSections", index, { kicker: value }))} />
-                    <Input label="TÃ­tulo" value={section.title} onChange={(value) => setForm(updateList(form, "contentSections", index, { title: value }))} />
+                    <Input label="Título" value={section.title} onChange={(value) => setForm(updateList(form, "contentSections", index, { title: value }))} />
                     <Input type="number" label="Ordem" value={section.order} onChange={(value) => setForm(updateList(form, "contentSections", index, { order: value }))} />
-                    <Select label="Tipo de mÃ­dia" value={section.media_type} onChange={(value) => setForm(updateList(form, "contentSections", index, { media_type: value }))}>
+                    <Select label="Tipo de mídia" value={section.media_type} onChange={(value) => setForm(updateList(form, "contentSections", index, { media_type: value }))}>
                       <option value="image">foto</option>
-                      <option value="video">vÃ­deo</option>
-                      <option value="none">sem mÃ­dia</option>
+                      <option value="video">vídeo</option>
+                      <option value="none">sem mídia</option>
                     </Select>
-                    <Input label="Texto do botÃ£o" value={section.button_text} onChange={(value) => setForm(updateList(form, "contentSections", index, { button_text: value }))} />
-                    <Input label="Link do botÃ£o" value={section.button_link} onChange={(value) => setForm(updateList(form, "contentSections", index, { button_link: value }))} />
+                    <Input label="Texto do botão" value={section.button_text} onChange={(value) => setForm(updateList(form, "contentSections", index, { button_text: value }))} />
+                    <Input label="Link do botão" value={section.button_link} onChange={(value) => setForm(updateList(form, "contentSections", index, { button_link: value }))} />
                   </div>
-                  {section.media_type === "image" ? <ImageUploadField label="Foto do componente" value={section.media_url} onChange={(value) => setForm(updateList(form, "contentSections", index, { media_url: value }))} /> : <Input label="URL do vÃ­deo incorporado" value={section.media_url} onChange={(value) => setForm(updateList(form, "contentSections", index, { media_url: value }))} />}
+                  {section.media_type === "image" ? <ImageUploadField label="Foto do componente" value={section.media_url} onChange={(value) => setForm(updateList(form, "contentSections", index, { media_url: value }))} /> : <Input label="URL do vídeo incorporado" value={section.media_url} onChange={(value) => setForm(updateList(form, "contentSections", index, { media_url: value }))} />}
                   <label>Texto
                     <textarea value={section.text} onChange={(event) => setForm(updateList(form, "contentSections", index, { text: event.target.value }))} />
                   </label>
@@ -192,9 +192,9 @@ export function CatalogCustomization() {
                       <option value="">Selecione</option>
                       {categoryOptions.map((option) => <option key={option}>{option}</option>)}
                     </Select>
-                    <Input label="Nome pÃºblico" value={category.public_name} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { public_name: value }))} />
-                    <Select label="Ãcone" value={category.icon} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { icon: value }))}>
-                      <option value="gem">diamante</option><option value="heart">coraÃ§Ã£o</option><option value="star">estrela</option><option value="sparkles">brilho</option><option value="shield">escudo</option>
+                    <Input label="Nome público" value={category.public_name} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { public_name: value }))} />
+                    <Select label="Ícone" value={category.icon} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { icon: value }))}>
+                      <option value="gem">diamante</option><option value="heart">coração</option><option value="star">estrela</option><option value="sparkles">brilho</option><option value="shield">escudo</option>
                     </Select>
                     <Input type="number" label="Ordem" value={category.sort_order} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { sort_order: value }))} />
                     <Toggle label="Ativa" checked={category.is_active} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { is_active: value }))} />
@@ -218,10 +218,10 @@ export function CatalogCustomization() {
                       {products.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}
                     </Select>
                     <Select label="Selo" value={product.badge} onChange={(value) => setForm(updateList(form, "featuredProducts", index, { badge: value }))}>
-                      <option value="">Sem selo</option><option value="LanÃ§amento">LanÃ§amento</option><option value="Mais vendido">Mais vendido</option><option value="PromoÃ§Ã£o">PromoÃ§Ã£o</option>
+                      <option value="">Sem selo</option><option value="Lançamento">Lançamento</option><option value="Mais vendido">Mais vendido</option><option value="Promoção">Promoção</option>
                     </Select>
                     <Input type="number" label="Ordem" value={product.sort_order} onChange={(value) => setForm(updateList(form, "featuredProducts", index, { sort_order: value }))} />
-                    <Toggle label="Ativo no catÃ¡logo" checked={product.is_active} onChange={(value) => setForm(updateList(form, "featuredProducts", index, { is_active: value }))} />
+                    <Toggle label="Ativo no catálogo" checked={product.is_active} onChange={(value) => setForm(updateList(form, "featuredProducts", index, { is_active: value }))} />
                   </div>
                   <button type="button" className="danger-link" onClick={() => setForm(removeListItem(form, "featuredProducts", index))}>Remover produto</button>
                 </article>
@@ -231,12 +231,12 @@ export function CatalogCustomization() {
         )}
 
         {activeSection === "promocoes" && (
-          <CustomizationCard title="PromoÃ§Ãµes" action={<button type="button" onClick={() => setForm({ ...form, promotions: [...form.promotions, defaultPromotion()] })}>Nova promoÃ§Ã£o</button>}>
+          <CustomizationCard title="Promoções" action={<button type="button" onClick={() => setForm({ ...form, promotions: [...form.promotions, defaultPromotion()] })}>Nova promoção</button>}>
             <div className="custom-list">
               {form.promotions.map((promotion, index) => (
                 <article key={index}>
                   <div className="form-grid">
-                    <Input label="Nome da promoÃ§Ã£o" value={promotion.name} onChange={(value) => setForm(updateList(form, "promotions", index, { name: value }))} />
+                    <Input label="Nome da promoção" value={promotion.name} onChange={(value) => setForm(updateList(form, "promotions", index, { name: value }))} />
                     <Select label="Tipo de desconto" value={promotion.discount_type} onChange={(value) => setForm(updateList(form, "promotions", index, { discount_type: value }))}>
                       <option value="percent">porcentagem</option><option value="fixed">valor fixo</option>
                     </Select>
@@ -244,13 +244,13 @@ export function CatalogCustomization() {
                     <Input type="date" label="Data inicial" value={promotion.start_date} onChange={(value) => setForm(updateList(form, "promotions", index, { start_date: value }))} />
                     <Input type="date" label="Data final" value={promotion.end_date} onChange={(value) => setForm(updateList(form, "promotions", index, { end_date: value }))} />
                     <Select label="Aplicar em" value={promotion.applies_to} onChange={(value) => setForm(updateList(form, "promotions", index, { applies_to: value }))}>
-                      <option value="products">produtos especÃ­ficos</option><option value="categories">categorias especÃ­ficas</option><option value="all">todo catÃ¡logo</option>
+                      <option value="products">produtos específicos</option><option value="categories">categorias específicas</option><option value="all">todo catálogo</option>
                     </Select>
                     <Input label="IDs de produtos" value={promotion.product_ids} onChange={(value) => setForm(updateList(form, "promotions", index, { product_ids: value }))} />
                     <Input label="Categorias" value={promotion.category_ids} onChange={(value) => setForm(updateList(form, "promotions", index, { category_ids: value }))} />
-                    <Toggle label="PromoÃ§Ã£o ativa" checked={promotion.is_active} onChange={(value) => setForm(updateList(form, "promotions", index, { is_active: value }))} />
+                    <Toggle label="Promoção ativa" checked={promotion.is_active} onChange={(value) => setForm(updateList(form, "promotions", index, { is_active: value }))} />
                   </div>
-                  <button type="button" className="danger-link" onClick={() => setForm(removeListItem(form, "promotions", index))}>Remover promoÃ§Ã£o</button>
+                  <button type="button" className="danger-link" onClick={() => setForm(removeListItem(form, "promotions", index))}>Remover promoção</button>
                 </article>
               ))}
             </div>
@@ -258,17 +258,17 @@ export function CatalogCustomization() {
         )}
 
         {activeSection === "exibicao" && (
-          <CustomizationCard title="ConfiguraÃ§Ãµes de exibiÃ§Ã£o">
+          <CustomizationCard title="Configurações de exibição">
             <div className="toggle-grid">
               <Toggle label="Mostrar produtos sem estoque" checked={form.theme.show_out_of_stock} onChange={(value) => setForm(updateTheme(form, { show_out_of_stock: value }))} />
               <Toggle label="Mostrar quantidade em estoque" checked={form.theme.show_stock_quantity} onChange={(value) => setForm(updateTheme(form, { show_stock_quantity: value }))} />
-              <Toggle label="Mostrar botÃ£o WhatsApp" checked={form.theme.show_whatsapp_button} onChange={(value) => setForm(updateTheme(form, { show_whatsapp_button: value }))} />
-              <Toggle label="Mostrar botÃ£o Agendar" checked={form.theme.show_schedule_button} onChange={(value) => setForm(updateTheme(form, { show_schedule_button: value }))} />
-              <Toggle label="Mostrar botÃ£o Comprar agora" checked={form.theme.show_buy_button} onChange={(value) => setForm(updateTheme(form, { show_buy_button: value }))} />
+              <Toggle label="Mostrar botão WhatsApp" checked={form.theme.show_whatsapp_button} onChange={(value) => setForm(updateTheme(form, { show_whatsapp_button: value }))} />
+              <Toggle label="Mostrar botão Agendar" checked={form.theme.show_schedule_button} onChange={(value) => setForm(updateTheme(form, { show_schedule_button: value }))} />
+              <Toggle label="Mostrar botão Comprar agora" checked={form.theme.show_buy_button} onChange={(value) => setForm(updateTheme(form, { show_buy_button: value }))} />
               <Toggle label="Mostrar favoritos" checked={form.theme.show_favorites} onChange={(value) => setForm(updateTheme(form, { show_favorites: value }))} />
             </div>
             <Select label="Texto de estoque" value={form.theme.stock_display_mode} onChange={(value) => setForm(updateTheme(form, { stock_display_mode: value }))}>
-              <option value="status">Em estoque / Poucas unidades / IndisponÃ­vel</option>
+              <option value="status">Em estoque / Poucas unidades / Indisponível</option>
               <option value="quantity">Mostrar quantidade</option>
               <option value="hidden">Ocultar estoque</option>
             </Select>
@@ -276,33 +276,33 @@ export function CatalogCustomization() {
         )}
 
         {activeSection === "textos" && (
-          <CustomizationCard title="Textos do catÃ¡logo">
+          <CustomizationCard title="Textos do catálogo">
             <div className="form-grid">
-              <Input label="TÃ­tulo da pÃ¡gina" value={form.settings.page_title} onChange={(value) => setForm(updateSettings(form, { page_title: value }))} />
-              <Input label="SubtÃ­tulo" value={form.settings.subtitle} onChange={(value) => setForm(updateSettings(form, { subtitle: value }))} />
-              <Input label="Mensagem indisponÃ­vel" value={form.settings.unavailable_message} onChange={(value) => setForm(updateSettings(form, { unavailable_message: value }))} />
+              <Input label="Título da página" value={form.settings.page_title} onChange={(value) => setForm(updateSettings(form, { page_title: value }))} />
+              <Input label="Subtítulo" value={form.settings.subtitle} onChange={(value) => setForm(updateSettings(form, { subtitle: value }))} />
+              <Input label="Mensagem indisponível" value={form.settings.unavailable_message} onChange={(value) => setForm(updateSettings(form, { unavailable_message: value }))} />
               <Input label="Mensagem poucas unidades" value={form.settings.low_stock_message} onChange={(value) => setForm(updateSettings(form, { low_stock_message: value }))} />
             </div>
             <label>Texto institucional
               <textarea value={form.settings.institutional_text} onChange={(event) => setForm(updateSettings(form, { institutional_text: event.target.value }))} />
             </label>
-            <label>Texto do rodapÃ©
+            <label>Texto do rodapé
               <textarea value={form.theme.footer_text} onChange={(event) => setForm(updateTheme(form, { footer_text: event.target.value }))} />
             </label>
           </CustomizationCard>
         )}
 
         {activeSection === "contato" && (
-          <CustomizationCard title="Contato e InformaÃ§Ãµes da Empresa">
-            <p className="customization-help">Estes dados aparecem no rodapÃ© do catÃ¡logo e nos botÃµes de atendimento ao cliente.</p>
+          <CustomizationCard title="Contato e Informações da Empresa">
+            <p className="customization-help">Estes dados aparecem no rodapé do catálogo e nos botões de atendimento ao cliente.</p>
             <div className="form-grid">
               <Input label="WhatsApp com DDD" value={form.settings.whatsapp_phone} onChange={(value) => setForm(updateSettings(form, { whatsapp_phone: value }))} />
               <Input label="Instagram" value={form.settings.company_instagram} onChange={(value) => setForm(updateSettings(form, { company_instagram: value }))} />
               <Input type="email" label="E-mail" value={form.settings.company_email} onChange={(value) => setForm(updateSettings(form, { company_email: value }))} />
-              <Input label="HorÃ¡rio de Atendimento" value={form.settings.company_hours} onChange={(value) => setForm(updateSettings(form, { company_hours: value }))} />
+              <Input label="Horário de Atendimento" value={form.settings.company_hours} onChange={(value) => setForm(updateSettings(form, { company_hours: value }))} />
             </div>
-            <label>EndereÃ§o
-              <textarea value={form.settings.company_address} onChange={(event) => setForm(updateSettings(form, { company_address: event.target.value }))} placeholder="Rua, nÃºmero, bairro, cidade e estado" />
+            <label>Endereço
+              <textarea value={form.settings.company_address} onChange={(event) => setForm(updateSettings(form, { company_address: event.target.value }))} placeholder="Rua, número, bairro, cidade e estado" />
             </label>
             <label>Mensagem Inicial do WhatsApp
               <textarea value={form.settings.whatsapp_message} onChange={(event) => setForm(updateSettings(form, { whatsapp_message: event.target.value }))} />
@@ -313,9 +313,9 @@ export function CatalogCustomization() {
         {activeSection === "seo" && (
           <CustomizationCard title="SEO e compartilhamento">
             <div className="form-grid">
-              <Input label="TÃ­tulo para Google" value={form.settings.seo_title} onChange={(value) => setForm(updateSettings(form, { seo_title: value }))} />
-              <Input label="DescriÃ§Ã£o para Google" value={form.settings.seo_description} onChange={(value) => setForm(updateSettings(form, { seo_description: value }))} />
-              <Input label="Texto padrÃ£o WhatsApp" value={form.settings.product_share_text} onChange={(value) => setForm(updateSettings(form, { product_share_text: value }))} />
+              <Input label="Título para Google" value={form.settings.seo_title} onChange={(value) => setForm(updateSettings(form, { seo_title: value }))} />
+              <Input label="Descrição para Google" value={form.settings.seo_description} onChange={(value) => setForm(updateSettings(form, { seo_description: value }))} />
+              <Input label="Texto padrão WhatsApp" value={form.settings.product_share_text} onChange={(value) => setForm(updateSettings(form, { product_share_text: value }))} />
               <ImageUploadField label="Imagem de compartilhamento" value={form.settings.share_image_url} onChange={(value) => setForm(updateSettings(form, { share_image_url: value }))} />
             </div>
           </CustomizationCard>
@@ -323,7 +323,7 @@ export function CatalogCustomization() {
 
         {error && <span className="form-error">{error}</span>}
         {message && <span className="form-success">{message}</span>}
-        <button className="primary-button customization-save" type="button" onClick={() => save()}>Salvar alteraÃ§Ãµes</button>
+        <button className="primary-button customization-save" type="button" onClick={() => save()}>Salvar alterações</button>
       </div>
 
       <CatalogCustomizationPreview form={form} products={products} />
@@ -343,7 +343,7 @@ function CustomizationCard({ title, action, children }) {
   );
 }
 
-function Toggle({ label, checked, onChange }) {
+export function Toggle({ label, checked, onChange }) {
   return (
     <label className="toggle-field">
       <input type="checkbox" checked={Boolean(Number(checked))} onChange={(event) => onChange(event.target.checked)} />
@@ -368,7 +368,7 @@ function CatalogCustomizationPreview({ form, products }) {
     <aside className={`catalog-live-preview theme-${theme.theme}`} style={style}>
       <div className="preview-browser-bar">
         <span />
-        <strong>PrÃ©-visualizaÃ§Ã£o em tempo real</strong>
+        <strong>Pré-visualização em tempo real</strong>
         <a href="/catalogo" target="_blank" rel="noreferrer">Abrir</a>
       </div>
       <div className="preview-storefront">
@@ -476,8 +476,8 @@ function normalizeSortOrder(list, mode = "asc") {
 
 function defaultCatalogBanner(order) {
   return {
-    title: "Escolha a joia perfeita para vocÃª",
-    subtitle: "Joias de alta qualidade para realÃ§ar sua essÃªncia.",
+    title: "Escolha a joia perfeita para você",
+    subtitle: "Joias de alta qualidade para realçar sua essência.",
     image_url: "https://images.unsplash.com/photo-1602751584552-8ba73aad10e1?auto=format&fit=crop&w=1200&q=85",
     button_text: "Ver todas as joias",
     button_link: "#catalog-products",
@@ -514,8 +514,8 @@ function defaultPromotion() {
 function defaultContentSection(order) {
   return {
     kicker: "Guia Aura",
-    title: "Escolha sua joia com orientaÃ§Ã£o profissional",
-    text: "Use este espaÃ§o para explicar materiais, cuidados, medidas, anodizaÃ§Ã£o, curadoria ou diferenciais da Aura Clinic.",
+    title: "Escolha sua joia com orientação profissional",
+    text: "Use este espaço para explicar materiais, cuidados, medidas, anodização, curadoria ou diferenciais da Aura Clinic.",
     media_type: "image",
     media_url: "https://images.unsplash.com/photo-1602751584552-8ba73aad10e1?auto=format&fit=crop&w=1200&q=85",
     button_text: "Agendar atendimento",
@@ -528,21 +528,21 @@ function defaultContentSection(order) {
 function defaultCatalogCustomization() {
   return {
     settings: {
-      page_title: "CatÃ¡logo Online",
-      title: "Escolha a joia perfeita para vocÃª",
+      page_title: "Catálogo Online",
+      title: "Escolha a joia perfeita para você",
       subtitle: "Curadoria premium da Aura Clinic Piercing",
-      institutional_text: "Joias selecionadas com cuidado, seguranÃ§a e estÃ©tica premium.",
-      unavailable_message: "Produto indisponÃ­vel no momento.",
+      institutional_text: "Joias selecionadas com cuidado, segurança e estética premium.",
+      unavailable_message: "Produto indisponível no momento.",
       low_stock_message: "Poucas unidades",
       footer_text: "Aura Clinic Piercing. Curadoria de joias, cuidado e atendimento especializado.",
-      seo_title: "Aura Clinic Piercing | CatÃ¡logo Online",
+      seo_title: "Aura Clinic Piercing | Catálogo Online",
       seo_description: "Escolha joias premium para piercing na Aura Clinic.",
       share_image_url: "",
       product_share_text: "Olha essa joia da Aura Clinic:",
       content_sections: JSON.stringify([defaultContentSection(1)]),
       categories: `Todos,${JEWELRY_CATEGORY_OPTIONS.join(",")}`,
       whatsapp_phone: "",
-      whatsapp_message: "OlÃ¡! Vim pelo catÃ¡logo online da Aura Clinic e quero ajuda para escolher uma joia.",
+      whatsapp_message: "Olá! Vim pelo catálogo online da Aura Clinic e quero ajuda para escolher uma joia.",
       company_instagram: "",
       company_email: "",
       company_address: "",
@@ -576,7 +576,7 @@ function defaultCatalogCustomization() {
   };
 }
 
-function ImageUploadField({ label, value, onChange }) {
+export function ImageUploadField({ label, value, onChange }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
 
@@ -599,7 +599,7 @@ function ImageUploadField({ label, value, onChange }) {
     onChange(data.url);
   } catch (err) {
     console.error(err);
-    setError("NÃ£o foi possÃ­vel enviar a imagem.");
+    setError("Não foi possível enviar a imagem.");
   } finally {
     setUploading(false);
     event.target.value = "";
@@ -609,7 +609,7 @@ function ImageUploadField({ label, value, onChange }) {
     <label className="image-upload-field">{label}
       <div className="image-upload-preview">
         <img src={catalogImageUrl(value)} alt={label} />
-        <span><ImageIcon size={18} /> PrÃ©via da imagem</span>
+        <span><ImageIcon size={18} /> Prévia da imagem</span>
       </div>
       <input value={value || ""} onChange={(event) => onChange(event.target.value)} placeholder="Cole a URL da imagem ou envie um arquivo" />
       <input type="file" accept="image/*" onChange={uploadImage} />

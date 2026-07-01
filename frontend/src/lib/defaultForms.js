@@ -26,8 +26,8 @@ export const DIGITAL_TERM_HEALTH_ITEMS = [
   { key: "epilepsia", label: "Epilepsia" },
   { key: "hemofilia", label: "Hemofilia" },
   { key: "diabetes", label: "Diabetes" },
-  { key: "alteracoes_hormonais", label: "AlteraÃ§Ãµes Hormonais" },
-  { key: "doencas_cardiacas", label: "DoenÃ§as CardÃ­acas" },
+  { key: "alteracoes_hormonais", label: "Alterações Hormonais" },
+  { key: "doencas_cardiacas", label: "Doenças Cardíacas" },
   { key: "queloide", label: "Queloide" },
   { key: "ists", label: "IST's" },
   { key: "hepatite", label: "Hepatite" },
@@ -38,14 +38,14 @@ export const DIGITAL_TERM_HEALTH_ITEMS = [
 export const DIGITAL_TERM_LIFESTYLE_ITEMS = [
   { key: "eats_well", label: "Alimenta-Se Bem?" },
   { key: "sleep_regular", label: "Tem Sono Regular?" },
-  { key: "physical_activity", label: "Pratica Atividade FÃ­sica?" },
-  { key: "alcohol", label: "Bebe Ãlcool?" },
+  { key: "physical_activity", label: "Pratica Atividade Física?" },
+  { key: "alcohol", label: "Bebe Álcool?" },
   { key: "smokes", label: "Fuma?" },
-  { key: "health_problem", label: "Algum Problema De SaÃºde?" },
+  { key: "health_problem", label: "Algum Problema De Saúde?" },
   { key: "medication", label: "Usa Algum Medicamento?" },
   { key: "treatment", label: "Faz Algum Tratamento?" },
   { key: "phobia", label: "Tem Alguma Fobia?" },
-  { key: "blood_pressure", label: "PressÃ£o SanguÃ­nea" }
+  { key: "blood_pressure", label: "Pressão Sanguínea" }
 ];
 
 export function defaultDigitalTerm() {
@@ -263,7 +263,7 @@ export function defaultJewelry() {
     is_last_units: false,
     is_published: false,
     notes: "",
-    status: "disponÃ­vel",
+    status: "disponível",
     variants: [defaultJewelryVariant()]
   };
 }
@@ -272,8 +272,8 @@ export function defaultJewelryVariant(index = 1) {
   return {
     id: null,
     sku: "",
-    variation_name: `VariaÃ§Ã£o ${index}`,
-    material: "TitÃ¢nio ASTM F136",
+    variation_name: `Variação ${index}`,
+    material: "Titânio ASTM F136",
     color: "Natural",
     stone_color: "",
     side: "",
@@ -287,7 +287,7 @@ export function defaultJewelryVariant(index = 1) {
     sale_value: 0,
     quantity: 0,
     low_stock_threshold: 5,
-    status: "disponÃ­vel",
+    status: "disponível",
     is_active: true
   };
 }
@@ -344,14 +344,14 @@ export function parseGalleryUrls(value = "") {
 
 export function defaultCatalogSettings() {
   return {
-    title: "Escolha a joia perfeita para vocÃª",
+    title: "Escolha a joia perfeita para você",
     subtitle: "Curadoria premium da Aura Clinic Piercing",
     hero_title: "Joias de alta qualidade",
-    hero_subtitle: "para realÃ§ar sua essÃªncia",
+    hero_subtitle: "para realçar sua essência",
     hero_image_url: "https://images.unsplash.com/photo-1602751584552-8ba73aad10e1?auto=format&fit=crop&w=1200&q=85",
     categories: `Todos, ${JEWELRY_CATEGORY_OPTIONS.join(", ")}`,
     whatsapp_phone: "",
-    whatsapp_message: "OlÃ¡! Vim pelo catÃ¡logo online da Aura Clinic e quero ajuda para escolher uma joia.",
+    whatsapp_message: "Olá! Vim pelo catálogo online da Aura Clinic e quero ajuda para escolher uma joia.",
     company_instagram: "",
     company_email: "",
     company_address: "",

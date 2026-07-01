@@ -5,16 +5,12 @@ export const API_ORIGIN = API.replace(/\/api$/, "");
 
 export function readStoredSession() {
   try {
+    // Retorna a sessão armazenada no localStorage ou null. Não fabrica sessão de admin em nenhum ambiente.
     const storedSession = JSON.parse(localStorage.getItem("aura-session") || "null");
-    if (storedSession) return storedSession;
-    return import.meta.env.DEV && ["localhost", "127.0.0.1"].includes(window.location.hostname)
-      ? { user: { id: 1, name: "Administrador Aura", email: "admin@auraclinic.com", role: "admin" } }
-      : null;
+    return storedSession || null;
   } catch {
     localStorage.removeItem("aura-session");
-    return import.meta.env.DEV && ["localhost", "127.0.0.1"].includes(window.location.hostname)
-      ? { user: { id: 1, name: "Administrador Aura", email: "admin@auraclinic.com", role: "admin" } }
-      : null;
+    return null;
   }
 }
 
