@@ -71,7 +71,7 @@ const withDb = (handler) => async (req, res) => {
   try {
     if (requiresAuth(req)) {
       const user = await authenticateRequest(req, db);
-      if (!user) return res.status(401).json({ error: "Sessão inválida ou expirada." });
+      if (!user) return res.status(401).json({ error: "SessÃ£o invÃ¡lida ou expirada." });
       req.user = user;
     }
     await handler(req, res, db);
@@ -127,7 +127,7 @@ function productPayload(body = {}) {
     min_stock: Number(body.min_stock || body.low_stock_threshold || 1),
     supplier: body.supplier || firstVariant.supplier || "",
     notes: body.notes || "",
-    status: body.status || "disponível",
+    status: body.status || "disponÃ­vel",
     is_catalog_active: bool(body.is_catalog_active, true),
     is_published: bool(body.is_published, true),
     is_featured: bool(body.is_featured, false),
@@ -169,7 +169,7 @@ app.get("/api/dashboard", pg(async (_req, res) => {
   const critical = await one("SELECT COUNT(*) AS total FROM products WHERE quantity <= min_stock");
   const revenue = await one("SELECT COALESCE(SUM(amount), 0) AS total FROM financial_transactions WHERE type = 'receita' AND transaction_date = CURRENT_DATE");
   const upcoming = await rows(`
-    SELECT a.*, COALESCE(c.full_name, a.client_name, 'Cliente') AS client_name
+    SELECT a.*, COALESCE(c.name, a.client_name, 'Cliente') AS client_name
     FROM appointments a
     LEFT JOIN clients c ON c.id = a.client_id
     WHERE a.appointment_date >= CURRENT_DATE
@@ -202,32 +202,73 @@ app.get("/api/dashboard", pg(async (_req, res) => {
   });
 }));
 
+function clientSelect() {
+  return `SELECT id, name, phone, whatsapp, instagram, email, birth_date, cpf, notes, created_at, updated_at FROM clients`;
+}
+
+function clientValues(body = {}) {
+  return [
+    body.name || "",
+    body.phone || "",
+    body.whatsapp || "",
+    body.instagram || "",
+    body.email || "",
+    body.birth_date || "",
+    body.cpf || "",
+    body.notes || ""
+  ];
+}
+
 app.get("/api/clients", pg(async (_req, res) => {
-  const clients = await rows("SELECT *, full_name AS name FROM clients ORDER BY full_name");
-  res.json(clients.map((client) => ({ ...client, history: [], payments: [], medicalRecords: [], loyalty: {} })));
+  const clients = await rows(`${clientSelect()} ORDER BY name`);
+  res.json(clients);
+}));
+
+app.get("/api/clients/:id", pg(async (req, res) => {
+  const client = await one(`${clientSelect()} WHERE id = $1`, [req.params.id]);
+  if (!client) return res.status(404).json({ error: "Cliente não encontrado." });
+  res.json(client);
 }));
 
 app.post("/api/clients", pg(async (req, res) => {
   const body = req.body || {};
+  if (!body.name?.trim()) {
+    return res.status(400).json({ error: "Informe o nome do cliente." });
+  }
   const client = await one(
-    `INSERT INTO clients (full_name, whatsapp, instagram, email, birth_date, notes)
-     VALUES ($1, $2, $3, $4, NULLIF($5, '')::date, $6)
-     RETURNING *, full_name AS name`,
-    [body.full_name || body.name, body.whatsapp || "", body.instagram || "", body.email || "", body.birth_date || "", body.notes || ""]
+    `INSERT INTO clients (name, phone, whatsapp, instagram, email, birth_date, cpf, notes)
+     VALUES ($1, $2, $3, $4, $5, NULLIF($6, '')::date, $7, $8)
+     RETURNING id, name, phone, whatsapp, instagram, email, birth_date, cpf, notes, created_at, updated_at`,
+    clientValues(body)
   );
   res.status(201).json(client);
 }));
 
-app.patch("/api/clients/:id", pg(async (req, res) => {
+app.put("/api/clients/:id", pg(async (req, res) => {
   const body = req.body || {};
+  if (!body.name?.trim()) {
+    return res.status(400).json({ error: "Informe o nome do cliente." });
+  }
   const client = await one(
-    `UPDATE clients SET full_name = COALESCE($1, full_name), whatsapp = COALESCE($2, whatsapp),
-      instagram = COALESCE($3, instagram), email = COALESCE($4, email),
-      birth_date = COALESCE(NULLIF($5, '')::date, birth_date), notes = COALESCE($6, notes), updated_at = NOW()
-     WHERE id = $7 RETURNING *, full_name AS name`,
-    [body.full_name || body.name || null, body.whatsapp ?? null, body.instagram ?? null, body.email ?? null, body.birth_date ?? "", body.notes ?? null, req.params.id]
+    `UPDATE clients SET name = $1, phone = $2, whatsapp = $3, instagram = $4, email = $5,
+      birth_date = NULLIF($6, '')::date, cpf = $7, notes = $8, updated_at = NOW()
+     WHERE id = $9 RETURNING id, name, phone, whatsapp, instagram, email, birth_date, cpf, notes, created_at, updated_at`,
+    [...clientValues(body), req.params.id]
   );
   if (!client) return res.status(404).json({ error: "Cliente não encontrado." });
+  res.json(client);
+}));
+
+app.patch("/api/clients/:id", pg(async (req, res) => {
+  const current = await one(`${clientSelect()} WHERE id = $1`, [req.params.id]);
+  if (!current) return res.status(404).json({ error: "Cliente não encontrado." });
+  const body = { ...current, ...(req.body || {}) };
+  const client = await one(
+    `UPDATE clients SET name = $1, phone = $2, whatsapp = $3, instagram = $4, email = $5,
+      birth_date = NULLIF($6, '')::date, cpf = $7, notes = $8, updated_at = NOW()
+     WHERE id = $9 RETURNING id, name, phone, whatsapp, instagram, email, birth_date, cpf, notes, created_at, updated_at`,
+    [...clientValues(body), req.params.id]
+  );
   res.json(client);
 }));
 
@@ -258,7 +299,7 @@ app.patch("/api/services/:id", pg(async (req, res) => {
      WHERE id = $6 RETURNING *`,
     [body.name ?? null, body.description ?? null, body.duration_minutes ?? null, body.price ?? null, body.active ?? null, req.params.id]
   );
-  if (!service) return res.status(404).json({ error: "Serviço não encontrado." });
+  if (!service) return res.status(404).json({ error: "ServiÃ§o nÃ£o encontrado." });
   res.json(service);
 }));
 
@@ -289,7 +330,7 @@ app.patch("/api/procedures/:id", pg(async (req, res) => {
      WHERE id = $7 RETURNING *`,
     [body.name ?? null, body.description ?? null, body.region ?? null, body.service_id ?? null, body.base_price ?? body.price ?? null, body.active ?? null, req.params.id]
   );
-  if (!procedure) return res.status(404).json({ error: "Procedimento não encontrado." });
+  if (!procedure) return res.status(404).json({ error: "Procedimento nÃ£o encontrado." });
   res.json(procedure);
 }));
 
@@ -334,7 +375,7 @@ app.post(["/api/products", "/api/jewelry"], pg(async (req, res) => {
 
 app.patch(["/api/products/:id", "/api/jewelry/:id"], pg(async (req, res) => {
   const current = await one("SELECT * FROM products WHERE id = $1", [req.params.id]);
-  if (!current) return res.status(404).json({ error: "Produto não encontrado." });
+  if (!current) return res.status(404).json({ error: "Produto nÃ£o encontrado." });
   const item = productPayload({ ...current, ...req.body });
   const product = await one(
     `UPDATE products SET name=$1, description=$2, category=$3, subcategory=$4, material=$5, color=$6, size=$7, thickness=$8,
@@ -357,8 +398,8 @@ app.delete(["/api/products/:id", "/api/jewelry/:id"], pg(async (req, res) => {
 app.get("/api/catalog", pg(async (_req, res) => {
   const items = await rows(`${productSelect()} WHERE is_catalog_active = TRUE AND is_published = TRUE ORDER BY category, name`);
   res.json({
-    title: "Escolha a joia perfeita para você",
-    subtitle: "Joias selecionadas com cuidado, segurança e estética premium.",
+    title: "Escolha a joia perfeita para vocÃª",
+    subtitle: "Joias selecionadas com cuidado, seguranÃ§a e estÃ©tica premium.",
     items: items.map((item) => ({ ...item, status: item.computed_status || item.status, variants: Array.isArray(item.variants) ? item.variants : [] })),
     categories: [...new Set(items.map((item) => item.category).filter(Boolean))],
     banners: [],
@@ -385,7 +426,7 @@ app.get("/api/options", pg(async (_req, res) => {
 
 app.get("/api/appointments", pg(async (_req, res) => {
   res.json(await rows(`
-    SELECT a.*, COALESCE(c.full_name, a.client_name) AS client_name, c.instagram, s.name AS service_name
+    SELECT a.*, COALESCE(c.name, a.client_name) AS client_name, c.instagram, s.name AS service_name
     FROM appointments a
     LEFT JOIN clients c ON c.id = a.client_id
     LEFT JOIN services s ON s.id = a.service_id
@@ -398,8 +439,8 @@ app.post("/api/appointments", pg(async (req, res) => {
   let clientId = body.client_id || null;
   if (!clientId && (body.full_name || body.client_name || body.name)) {
     const client = await one(
-      "INSERT INTO clients (full_name, whatsapp, instagram, notes) VALUES ($1, $2, $3, $4) RETURNING *",
-      [body.full_name || body.client_name || body.name, body.whatsapp || "", body.instagram || "", body.notes || ""]
+      "INSERT INTO clients (name, phone, whatsapp, instagram, notes) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+      [body.full_name || body.client_name || body.name, body.phone || "", body.whatsapp || "", body.instagram || "", body.notes || ""]
     );
     clientId = client.id;
   }
@@ -427,7 +468,7 @@ app.post("/api/appointments", pg(async (req, res) => {
 app.patch("/api/appointments/:id", pg(async (req, res) => {
   const body = req.body || {};
   const current = await one("SELECT * FROM appointments WHERE id = $1", [req.params.id]);
-  if (!current) return res.status(404).json({ error: "Agendamento não encontrado." });
+  if (!current) return res.status(404).json({ error: "Agendamento nÃ£o encontrado." });
   const appointment = await one(
     `UPDATE appointments SET status=COALESCE($1,status), appointment_date=COALESCE($2,appointment_date), appointment_time=COALESCE($3,appointment_time),
       notes=COALESCE($4,notes), total_value=COALESCE($5,total_value), deposit_value=COALESCE($6,deposit_value),
@@ -475,7 +516,7 @@ app.post(["/api/financial-transactions", "/api/expenses"], pg(async (req, res) =
     `INSERT INTO financial_transactions (client_id, appointment_id, type, category, description, amount, payment_method, status, transaction_date, notes)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
     [body.client_id || null, body.appointment_id || null, isExpense ? "despesa" : "receita", body.category || body.expense_type || "",
-      body.description || "Lançamento financeiro", money(body.amount), body.payment_method || "", body.status || "pago", body.transaction_date || body.due_date || new Date().toISOString().slice(0, 10), body.notes || ""]
+      body.description || "LanÃ§amento financeiro", money(body.amount), body.payment_method || "", body.status || "pago", body.transaction_date || body.due_date || new Date().toISOString().slice(0, 10), body.notes || ""]
   );
   res.status(201).json(transaction);
 }));
@@ -499,7 +540,7 @@ app.post("/api/login", withDb(async (req, res, db) => {
   const { email, password } = req.body;
   const user = await db.get("SELECT * FROM users WHERE email = ?", [email]);
   if (!user || !(await bcrypt.compare(password, user.password_hash))) {
-    return res.status(401).json({ error: "Credenciais inválidas." });
+    return res.status(401).json({ error: "Credenciais invÃ¡lidas." });
   }
   res.json({
     token: createToken(user),
@@ -516,10 +557,10 @@ app.get("/api/catalog", withDb(async (_req, res, db) => {
       COALESCE(
         fp.badge,
         CASE
-          WHEN j.is_promotion = 1 THEN 'Promoção'
-          WHEN j.is_last_units = 1 THEN 'Últimas unidades'
+          WHEN j.is_promotion = 1 THEN 'PromoÃ§Ã£o'
+          WHEN j.is_last_units = 1 THEN 'Ãšltimas unidades'
           WHEN j.is_most_wanted = 1 THEN 'Mais desejado'
-          WHEN j.is_new = 1 THEN 'Lançamento'
+          WHEN j.is_new = 1 THEN 'LanÃ§amento'
           WHEN j.is_featured = 1 THEN 'Destaque'
           ELSE ''
         END
@@ -533,7 +574,7 @@ app.get("/api/catalog", withDb(async (_req, res, db) => {
   const items = (await attachVariants(db, productRows))
     .filter((item) => showOutOfStock || item.quantity > 0)
     .map((item) => ({
-      // Dados públicos
+      // Dados pÃºblicos
       id: item.id,
       name: item.name,
       photo_url: item.photo_url || item.image_url,
@@ -646,8 +687,8 @@ app.get("/api/booking/config", withDb(async (_req, res, db) => {
     services,
     professionals,
     rules: {
-      cancellation: "Remarcações e cancelamentos devem ser solicitados com antecedência.",
-      payment: "O sinal reserva o horário; a confirmação é feita manualmente pela Aura Clinic."
+      cancellation: "RemarcaÃ§Ãµes e cancelamentos devem ser solicitados com antecedÃªncia.",
+      payment: "O sinal reserva o horÃ¡rio; a confirmaÃ§Ã£o Ã© feita manualmente pela Aura Clinic."
     }
   });
 }));
@@ -657,12 +698,12 @@ app.get("/api/booking/slots", withDb(async (req, res, db) => {
   const professionalId = Number(req.query.professional_id || 0);
   const date = String(req.query.date || "");
   if (!serviceId || !professionalId || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return res.status(400).json({ error: "Serviço, profissional e data são obrigatórios." });
+    return res.status(400).json({ error: "ServiÃ§o, profissional e data sÃ£o obrigatÃ³rios." });
   }
   const service = await db.get("SELECT * FROM services WHERE id = ? AND active_online_booking = 1", [serviceId]);
-  if (!service) return res.status(404).json({ error: "Serviço não encontrado." });
+  if (!service) return res.status(404).json({ error: "ServiÃ§o nÃ£o encontrado." });
   const linked = await db.get("SELECT id FROM professional_services WHERE professional_id = ? AND service_id = ?", [professionalId, serviceId]);
-  if (!linked) return res.status(409).json({ error: "Este profissional não realiza o serviço selecionado." });
+  if (!linked) return res.status(409).json({ error: "Este profissional nÃ£o realiza o serviÃ§o selecionado." });
   const slots = await availableBookingSlots(db, { service, professionalId, date });
   res.json({ date, slots });
 }));
@@ -670,13 +711,13 @@ app.get("/api/booking/slots", withDb(async (req, res, db) => {
 app.post("/api/booking/requests", upload.fields([{ name: "reference_photo", maxCount: 1 }, { name: "payment_proof", maxCount: 1 }]), withDb(async (req, res, db) => {
   const body = req.body;
   const service = await db.get("SELECT * FROM services WHERE id = ? AND active_online_booking = 1", [body.service_id]);
-  if (!service) return res.status(404).json({ error: "Serviço não encontrado." });
+  if (!service) return res.status(404).json({ error: "ServiÃ§o nÃ£o encontrado." });
   const professionalId = Number(body.professional_id || 0);
   const date = String(body.appointment_date || "");
   const time = String(body.appointment_time || "");
   const slots = await availableBookingSlots(db, { service, professionalId, date });
-  if (!slots.some((slot) => slot.time === time)) return res.status(409).json({ error: "Este horário não está mais disponível." });
-  if (!body.full_name?.trim() || !body.whatsapp?.trim()) return res.status(400).json({ error: "Nome e WhatsApp são obrigatórios." });
+  if (!slots.some((slot) => slot.time === time)) return res.status(409).json({ error: "Este horÃ¡rio nÃ£o estÃ¡ mais disponÃ­vel." });
+  if (!body.full_name?.trim() || !body.whatsapp?.trim()) return res.status(400).json({ error: "Nome e WhatsApp sÃ£o obrigatÃ³rios." });
   const client = await upsertClient(db, {
     full_name: body.full_name,
     whatsapp: body.whatsapp,
@@ -732,7 +773,7 @@ app.post("/api/services", withDb(async (req, res, db) => {
 app.patch("/api/services/:id", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   const service = await db.get("SELECT * FROM services WHERE id = ?", [req.params.id]);
-  if (!service) return res.status(404).json({ error: "Serviço não encontrado." });
+  if (!service) return res.status(404).json({ error: "ServiÃ§o nÃ£o encontrado." });
   await db.run(
     `UPDATE services SET name = ?, description = ?, duration_minutes = ?, price = ?, deposit_value = ?, active_online_booking = ?, pre_service_notes = ? WHERE id = ?`,
     [
@@ -768,7 +809,7 @@ app.get("/api/availability", withDb(async (_req, res, db) => {
 app.patch("/api/availability/:id", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   const current = await db.get("SELECT * FROM professional_availability WHERE id = ?", [req.params.id]);
-  if (!current) return res.status(404).json({ error: "Disponibilidade não encontrada." });
+  if (!current) return res.status(404).json({ error: "Disponibilidade nÃ£o encontrada." });
   await db.run(
     `UPDATE professional_availability
      SET is_active = ?, start_time = ?, end_time = ?, lunch_start = ?, lunch_end = ?, duration_minutes = ?, buffer_minutes = ?
@@ -841,7 +882,7 @@ app.get("/api/alerts", withDb(async (_req, res, db) => {
       title: item.quantity <= 0 ? "Joia esgotada" : "Joia acabando",
       category: "Estoque",
       subject: item.name,
-      description: `${item.name} possui ${Number(item.quantity || 0)} unidade(s) disponível(is).`,
+      description: `${item.name} possui ${Number(item.quantity || 0)} unidade(s) disponÃ­vel(is).`,
       priority: item.quantity <= 0 ? "high" : item.quantity <= 2 ? "high" : "medium",
       related_date: today,
       action_label: "Ver estoque",
@@ -850,10 +891,10 @@ app.get("/api/alerts", withDb(async (_req, res, db) => {
     })),
     ...birthdays.map((item) => ({
       id: `birthday-${item.id}`,
-      title: item.days_until === 0 ? "Aniversário hoje" : "Aniversário próximo",
+      title: item.days_until === 0 ? "AniversÃ¡rio hoje" : "AniversÃ¡rio prÃ³ximo",
       category: "Clientes",
       subject: item.full_name,
-      description: item.days_until === 0 ? `${item.full_name} faz aniversário hoje.` : `${item.full_name} faz aniversário em ${item.days_until} dia(s).`,
+      description: item.days_until === 0 ? `${item.full_name} faz aniversÃ¡rio hoje.` : `${item.full_name} faz aniversÃ¡rio em ${item.days_until} dia(s).`,
       priority: item.days_until <= 7 ? "medium" : "low",
       related_date: item.next_birthday,
       action_label: "Ver cliente",
@@ -1042,22 +1083,22 @@ app.get("/api/erp", withDb(async (_req, res, db) => {
     modules: [
       ["Dashboard", "ativo", "Indicadores, alertas, graficos e agenda do dia"],
       ["Agendamentos", "ativo", "Calendario, status, sinais, profissionais e joias"],
-      ["Clientes e prontuários", "ativo", "Histórico, fotos, intercorrências, fidelidade e retornos"],
-      ["Termo digital", "ativo", "Assinatura, aceite e PDF automático"],
-      ["Estoque de joalherias", "ativo", "Cadastro, filtros, baixa automática e alertas"],
+      ["Clientes e prontuÃ¡rios", "ativo", "HistÃ³rico, fotos, intercorrÃªncias, fidelidade e retornos"],
+      ["Termo digital", "ativo", "Assinatura, aceite e PDF automÃ¡tico"],
+      ["Estoque de joalherias", "ativo", "Cadastro, filtros, baixa automÃ¡tica e alertas"],
       ["Catalogo online", "planejado", "Vitrine publica com reserva, compra e agendamento"],
-      ["Financeiro", "ativo", "Entradas, saidas, lucro e exportações"],
-      ["CRM", "planejado", "Funil, automações, reativação e aniversários"],
+      ["Financeiro", "ativo", "Entradas, saidas, lucro e exportaÃ§Ãµes"],
+      ["CRM", "planejado", "Funil, automaÃ§Ãµes, reativaÃ§Ã£o e aniversÃ¡rios"],
       ["Aura Rewards", "ativo", "Pontos, niveis e resgates"],
       ["Indique e Ganhe", "planejado", "Indicacoes, beneficios e acompanhamento"],
       ["Cupons", "planejado", "Cupons fixos, percentuais, validade e limite"],
       ["Influenciadores", "planejado", "Cupons, cliques, vendas, conversoes e comissoes"],
       ["Consultorias", "planejado", "Agenda, pagamento e Google Meet"],
       ["Aura Academy", "planejado", "Cursos, videos, PDFs e certificados"],
-      ["Conteúdo", "planejado", "Calendário editorial, ideias, hashtags e legendas IA"],
-      ["Mapa corporal", "planejado", "Modelo anatômico com histórico de perfurações"],
-      ["Administrativo", "ativo", "Permissões por perfil e usuários"],
-      ["Relatorios", "ativo", "Financeiro, clientes, estoque e exportações"],
+      ["ConteÃºdo", "planejado", "CalendÃ¡rio editorial, ideias, hashtags e legendas IA"],
+      ["Mapa corporal", "planejado", "Modelo anatÃ´mico com histÃ³rico de perfuraÃ§Ãµes"],
+      ["Administrativo", "ativo", "PermissÃµes por perfil e usuÃ¡rios"],
+      ["Relatorios", "ativo", "Financeiro, clientes, estoque e exportaÃ§Ãµes"],
       ["Configuracoes", "planejado", "Logo, cores, horarios, profissionais e mensagens"]
     ].map(([name, status, description]) => ({ name, status, description })),
     crm,
@@ -1101,7 +1142,7 @@ app.post("/api/users", withDb(async (req, res, db) => {
   const { name, email, password, role } = req.body;
   const validRoles = ["admin", "piercer", "reception", "finance"];
   if (!name?.trim() || !email?.trim() || !password || !validRoles.includes(role)) {
-    return res.status(400).json({ error: "Dados de usuário inválidos." });
+    return res.status(400).json({ error: "Dados de usuÃ¡rio invÃ¡lidos." });
   }
   const passwordHash = await bcrypt.hash(password, 10);
   const result = await db.run(
@@ -1114,9 +1155,9 @@ app.post("/api/users", withDb(async (req, res, db) => {
 app.patch("/api/users/:id", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   const user = await db.get("SELECT * FROM users WHERE id = ?", [req.params.id]);
-  if (!user) return res.status(404).json({ error: "Usuário não encontrado." });
+  if (!user) return res.status(404).json({ error: "UsuÃ¡rio nÃ£o encontrado." });
   const role = req.body.role || user.role;
-  if (!["admin", "piercer", "reception", "finance"].includes(role)) return res.status(400).json({ error: "Nível de acesso inválido." });
+  if (!["admin", "piercer", "reception", "finance"].includes(role)) return res.status(400).json({ error: "NÃ­vel de acesso invÃ¡lido." });
   const passwordHash = req.body.password ? await bcrypt.hash(req.body.password, 10) : user.password_hash;
   await db.run(
     "UPDATE users SET name = ?, email = ?, role = ?, password_hash = ? WHERE id = ?",
@@ -1128,10 +1169,10 @@ app.patch("/api/users/:id", withDb(async (req, res, db) => {
 app.delete("/api/users/:id", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   if (Number(req.params.id) === Number(req.user.id)) {
-    return res.status(409).json({ error: "Você não pode apagar o próprio acesso." });
+    return res.status(409).json({ error: "VocÃª nÃ£o pode apagar o prÃ³prio acesso." });
   }
   const target = await db.get("SELECT id, role FROM users WHERE id = ?", [req.params.id]);
-  if (!target) return res.status(404).json({ error: "Usuário não encontrado." });
+  if (!target) return res.status(404).json({ error: "UsuÃ¡rio nÃ£o encontrado." });
   if (target.role === "admin") {
     const admins = await db.get("SELECT COUNT(*) AS count FROM users WHERE role = 'admin'");
     if ((admins.count || 0) <= 1) return res.status(409).json({ error: "Mantenha ao menos um administrador ativo." });
@@ -1186,7 +1227,7 @@ app.post("/api/admin/reset-demo-data", withDb(async (req, res, db) => {
 
   res.json({
     ok: true,
-    message: "Dados de demonstração removidos. Usuários, categorias e configurações foram preservados.",
+    message: "Dados de demonstraÃ§Ã£o removidos. UsuÃ¡rios, categorias e configuraÃ§Ãµes foram preservados.",
     removed
   });
 }));
@@ -1208,7 +1249,7 @@ app.post("/api/inventory-options", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   const { type, name } = req.body;
   if (!["category", "size", "thickness"].includes(type) || !name?.trim()) {
-    return res.status(400).json({ error: "Opção inválida." });
+    return res.status(400).json({ error: "OpÃ§Ã£o invÃ¡lida." });
   }
   const cleanName = name.trim();
   const existing = await db.get("SELECT * FROM inventory_options WHERE type = ? AND name = ?", [type, cleanName]);
@@ -1220,14 +1261,14 @@ app.post("/api/inventory-options", withDb(async (req, res, db) => {
 app.patch("/api/inventory-options/:id", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   const option = await db.get("SELECT * FROM inventory_options WHERE id = ?", [req.params.id]);
-  if (!option) return res.status(404).json({ error: "Opção não encontrada." });
+  if (!option) return res.status(404).json({ error: "OpÃ§Ã£o nÃ£o encontrada." });
   const name = req.body.name?.trim();
-  if (!name) return res.status(400).json({ error: "Nome obrigatório." });
+  if (!name) return res.status(400).json({ error: "Nome obrigatÃ³rio." });
   const duplicate = await db.get("SELECT id FROM inventory_options WHERE type = ? AND name = ? AND id != ?", [option.type, name, req.params.id]);
-  if (duplicate) return res.status(409).json({ error: "Já existe uma opção com esse nome." });
+  if (duplicate) return res.status(409).json({ error: "JÃ¡ existe uma opÃ§Ã£o com esse nome." });
   const fieldByType = { category: "category", size: "size", thickness: "thickness" };
   const field = fieldByType[option.type];
-  if (!field) return res.status(400).json({ error: "Observação de cor agora é texto livre." });
+  if (!field) return res.status(400).json({ error: "ObservaÃ§Ã£o de cor agora Ã© texto livre." });
   await db.run("UPDATE inventory_options SET name = ? WHERE id = ?", [name, req.params.id]);
   await db.run(`UPDATE jewelry_inventory SET ${field} = ? WHERE ${field} = ?`, [name, option.name]);
   res.json(await db.get("SELECT * FROM inventory_options WHERE id = ?", [req.params.id]));
@@ -1236,9 +1277,9 @@ app.patch("/api/inventory-options/:id", withDb(async (req, res, db) => {
 app.delete("/api/inventory-options/:id", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   const option = await db.get("SELECT * FROM inventory_options WHERE id = ?", [req.params.id]);
-  if (!option) return res.status(404).json({ error: "Opção não encontrada." });
+  if (!option) return res.status(404).json({ error: "OpÃ§Ã£o nÃ£o encontrada." });
   const usage = await countOptionUsage(db, option);
-  if (usage > 0) return res.status(409).json({ error: "Esta opção está em uso no estoque e não pode ser apagada." });
+  if (usage > 0) return res.status(409).json({ error: "Esta opÃ§Ã£o estÃ¡ em uso no estoque e nÃ£o pode ser apagada." });
   await db.run("DELETE FROM inventory_options WHERE id = ?", [req.params.id]);
   res.json({ ok: true });
 }));
@@ -1246,7 +1287,7 @@ app.delete("/api/inventory-options/:id", withDb(async (req, res, db) => {
 app.post("/api/professionals", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   const { name, specialty } = req.body;
-  if (!name?.trim()) return res.status(400).json({ error: "Nome do profissional é obrigatório." });
+  if (!name?.trim()) return res.status(400).json({ error: "Nome do profissional Ã© obrigatÃ³rio." });
   const result = await db.run("INSERT INTO professionals (name, specialty, active) VALUES (?, ?, 1)", [name.trim(), specialty || ""]);
   res.status(201).json(await db.get("SELECT * FROM professionals WHERE id = ?", [result.lastID]));
 }));
@@ -1254,7 +1295,7 @@ app.post("/api/professionals", withDb(async (req, res, db) => {
 app.patch("/api/professionals/:id", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   const professional = await db.get("SELECT * FROM professionals WHERE id = ?", [req.params.id]);
-  if (!professional) return res.status(404).json({ error: "Profissional não encontrado." });
+  if (!professional) return res.status(404).json({ error: "Profissional nÃ£o encontrado." });
   await db.run("UPDATE professionals SET name = ?, specialty = ? WHERE id = ?", [req.body.name?.trim() || professional.name, req.body.specialty || professional.specialty, req.params.id]);
   res.json(await db.get("SELECT * FROM professionals WHERE id = ?", [req.params.id]));
 }));
@@ -1287,7 +1328,7 @@ app.get("/api/appointments", withDb(async (req, res, db) => {
 
 app.post("/api/appointments", upload.single("reference_photo"), withDb(async (req, res, db) => {
   const body = normalizeAppointment(req.body);
-  // Bloqueia horários já ocupados para o mesmo profissional.
+  // Bloqueia horÃ¡rios jÃ¡ ocupados para o mesmo profissional.
   const conflict = await db.get(
     `SELECT id FROM appointments
      WHERE professional_id = ? AND appointment_date = ? AND appointment_time = ?
@@ -1295,7 +1336,7 @@ app.post("/api/appointments", upload.single("reference_photo"), withDb(async (re
     [body.professional_id, body.appointment_date, body.appointment_time]
   );
   if (conflict) {
-    return res.status(409).json({ error: "Horário ocupado para este profissional." });
+    return res.status(409).json({ error: "HorÃ¡rio ocupado para este profissional." });
   }
   const photoUrl = req.file ? `/uploads/${req.file.filename}` : body.reference_photo_url || "";
   const client = await upsertClient(db, body);
@@ -1318,7 +1359,7 @@ app.post("/api/appointments", upload.single("reference_photo"), withDb(async (re
 
 app.patch("/api/appointments/:id", withDb(async (req, res, db) => {
   const appointment = await db.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
-  if (!appointment) return res.status(404).json({ error: "Agendamento não encontrado." });
+  if (!appointment) return res.status(404).json({ error: "Agendamento nÃ£o encontrado." });
 
   const fields = ["status", "appointment_date", "appointment_time", "end_time", "professional_id", "service_id", "jewelry_id", "jewelry_variant_id", "procedure", "description", "piercing_region", "total_value", "deposit_value", "remaining_value", "deposit_payment_method", "remaining_payment_method", "notes"];
   const updates = fields.filter((field) => req.body[field] !== undefined);
@@ -1346,20 +1387,20 @@ app.get("/api/sales-orders", withDb(async (req, res, db) => {
 app.post("/api/sales-orders", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "finance", "reception", "piercer"])) return;
   const order = await createSalesOrder(db, req.body || {}, req.user);
-  if (!order) return res.status(400).json({ error: "Não foi possível criar a venda." });
+  if (!order) return res.status(400).json({ error: "NÃ£o foi possÃ­vel criar a venda." });
   res.status(201).json(order);
 }));
 
 app.post("/api/sales-orders/public", withDb(async (req, res, db) => {
   const order = await createSalesOrder(db, req.body || {}, null);
-  if (!order) return res.status(400).json({ error: "Não foi possível criar a venda." });
+  if (!order) return res.status(400).json({ error: "NÃ£o foi possÃ­vel criar a venda." });
   res.status(201).json(order);
 }));
 
 app.patch("/api/sales-orders/:id", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "finance", "reception"])) return;
   const current = await db.get("SELECT * FROM sales_orders WHERE id = ?", [req.params.id]);
-  if (!current) return res.status(404).json({ error: "Venda não encontrada." });
+  if (!current) return res.status(404).json({ error: "Venda nÃ£o encontrada." });
   await db.run(
     "UPDATE sales_orders SET status = ?, payment_method = ?, notes = ? WHERE id = ?",
     [req.body.status || current.status, req.body.payment_method || current.payment_method, req.body.notes || current.notes, req.params.id]
@@ -1374,13 +1415,13 @@ app.get("/api/digital-terms", withDb(async (_req, res, db) => {
 app.post("/api/digital-terms", withDb(async (req, res, db) => {
   const body = req.body;
   if (!body.appointment_id || !body.client_id || !body.full_name?.trim() || !body.signature_data_url) {
-    return res.status(400).json({ error: "Dados obrigatórios do termo não foram preenchidos." });
+    return res.status(400).json({ error: "Dados obrigatÃ³rios do termo nÃ£o foram preenchidos." });
   }
   if (!body.orientations_confirmed) {
-    return res.status(400).json({ error: "O cliente precisa confirmar que recebeu as orientações." });
+    return res.status(400).json({ error: "O cliente precisa confirmar que recebeu as orientaÃ§Ãµes." });
   }
   const appointment = await listAppointments(db, "WHERE a.id = ?", [body.appointment_id]).then((rows) => rows[0]);
-  if (!appointment) return res.status(404).json({ error: "Agendamento não encontrado." });
+  if (!appointment) return res.status(404).json({ error: "Agendamento nÃ£o encontrado." });
 
   const result = await db.run(
     `INSERT INTO digital_terms
@@ -1417,7 +1458,7 @@ app.get("/api/post-care", withDb(async (_req, res, db) => {
 
 app.patch("/api/post-care/:id", upload.single("client_photo"), withDb(async (req, res, db) => {
   const existing = await db.get("SELECT * FROM post_care_followups WHERE id = ?", [req.params.id]);
-  if (!existing) return res.status(404).json({ error: "Acompanhamento não encontrado." });
+  if (!existing) return res.status(404).json({ error: "Acompanhamento nÃ£o encontrado." });
   const photoUrl = req.file ? `/uploads/${req.file.filename}` : existing.client_photo_url;
   await db.run(
     `UPDATE post_care_followups
@@ -1469,7 +1510,7 @@ app.get("/api/jewelry", withDb(async (req, res, db) => {
 app.post("/api/jewelry", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   if (!JEWELRY_CATEGORIES.includes(req.body.category)) {
-    return res.status(400).json({ error: "Selecione uma categoria principal válida." });
+    return res.status(400).json({ error: "Selecione uma categoria principal vÃ¡lida." });
   }
   if (!req.body.name?.trim()) return res.status(400).json({ error: "Informe o nome do produto." });
   const result = await db.run(
@@ -1517,7 +1558,7 @@ app.post("/api/jewelry", withDb(async (req, res, db) => {
       boolNumber(req.body.is_promotion),
       boolNumber(req.body.is_last_units),
       req.body.notes,
-      req.body.status || "disponível",
+      req.body.status || "disponÃ­vel",
       Number(req.body.low_stock_threshold || 5),
       Number(req.body.critical_stock_threshold || 3)
     ]
@@ -1529,7 +1570,7 @@ app.post("/api/jewelry", withDb(async (req, res, db) => {
 app.patch("/api/jewelry/:id", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   const jewelry = await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [req.params.id]);
-  if (!jewelry) return res.status(404).json({ error: "Joia não encontrada." });
+  if (!jewelry) return res.status(404).json({ error: "Joia nÃ£o encontrada." });
   const fields = ["name", "description", "photo_url", "image_url", "gallery_urls", "category", "subcategory", "variant_group", "variation_label", "material", "color", "stone", "size", "thickness", "stem_length", "thread_type", "piercing_type", "weight_grams", "package_length_cm", "package_width_cm", "package_height_cm", "package_type", "virtual_store_active", "preparation_days", "shipping_info", "seo_title", "seo_description", "freight_notes", "quantity", "cost_value", "sale_value", "supplier", "physical_location", "sku", "is_catalog_active", "is_featured", "is_new", "is_most_wanted", "is_promotion", "is_last_units", "is_published", "notes", "status", "low_stock_threshold", "critical_stock_threshold"];
   const updates = fields.filter((field) => req.body[field] !== undefined);
   if (updates.length) {
@@ -1552,7 +1593,7 @@ app.post("/api/jewelry/:id/variants/:variantId/movements", withDb(async (req, re
     "SELECT * FROM jewelry_variants WHERE id = ? AND jewelry_id = ?",
     [req.params.variantId, req.params.id]
   );
-  if (!variant) return res.status(404).json({ error: "Variação não encontrada." });
+  if (!variant) return res.status(404).json({ error: "VariaÃ§Ã£o nÃ£o encontrada." });
   const quantity = Math.max(0, Number(req.body.quantity || 0));
   const movementType = req.body.movement_type || "Ajuste";
   const normalizedMovement = String(movementType).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -1581,16 +1622,16 @@ app.get("/api/jewelry/:id/movements", withDb(async (req, res, db) => {
 app.post("/api/jewelry/:id/movements", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   const jewelry = await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [req.params.id]);
-  if (!jewelry) return res.status(404).json({ error: "Joia não encontrada." });
+  if (!jewelry) return res.status(404).json({ error: "Joia nÃ£o encontrada." });
   const quantity = Math.max(0, Number(req.body.quantity || 0));
   const movementType = req.body.movement_type || "Ajuste";
   const notes = req.body.notes || "";
-  const decreaseTypes = new Set(["Saída", "Venda", "Perda"]);
+  const decreaseTypes = new Set(["SaÃ­da", "Venda", "Perda"]);
   const delta = decreaseTypes.has(movementType) ? -quantity : quantity;
   const nextQuantity = Math.max(0, Number(jewelry.quantity || 0) + delta);
   const criticalThreshold = Number(jewelry.critical_stock_threshold || 3);
   const lowThreshold = Number(jewelry.low_stock_threshold || 5);
-  const status = nextQuantity <= 0 ? "esgotado" : nextQuantity <= criticalThreshold ? "crítico" : nextQuantity <= lowThreshold ? "baixo estoque" : "disponível";
+  const status = nextQuantity <= 0 ? "esgotado" : nextQuantity <= criticalThreshold ? "crÃ­tico" : nextQuantity <= lowThreshold ? "baixo estoque" : "disponÃ­vel";
   await db.run("INSERT INTO stock_movements (jewelry_id, movement_type, quantity, notes, movement_date) VALUES (?, ?, ?, ?, ?)", [
     jewelry.id,
     movementType,
@@ -1635,7 +1676,7 @@ app.get("/api/clients", withDb(async (_req, res, db) => {
 
 app.patch("/api/clients/:id", withDb(async (req, res, db) => {
   const client = await db.get("SELECT * FROM clients WHERE id = ?", [req.params.id]);
-  if (!client) return res.status(404).json({ error: "Cliente não encontrado." });
+  if (!client) return res.status(404).json({ error: "Cliente nÃ£o encontrado." });
   await db.run(
     "UPDATE clients SET full_name = ?, whatsapp = ?, instagram = ?, birth_date = ?, notes = ? WHERE id = ?",
     [
@@ -1658,7 +1699,7 @@ app.get("/api/backup.sqlite", withDb(async (req, res) => {
 
 app.post("/api/clients/:id/loyalty-redemptions", withDb(async (req, res, db) => {
   const client = await db.get("SELECT id FROM clients WHERE id = ?", [req.params.id]);
-  if (!client) return res.status(404).json({ error: "Cliente não encontrado." });
+  if (!client) return res.status(404).json({ error: "Cliente nÃ£o encontrado." });
   const points = Number(req.body.points_used || 0);
   const discount = Number(req.body.discount_value || 0);
   const loyalty = await getClientLoyalty(db, req.params.id);
@@ -1674,7 +1715,7 @@ app.post("/api/clients/:id/loyalty-redemptions", withDb(async (req, res, db) => 
 
 app.post("/api/clients/:id/medical-records", upload.fields([{ name: "before_photo", maxCount: 1 }, { name: "after_photo", maxCount: 1 }]), withDb(async (req, res, db) => {
   const client = await db.get("SELECT id FROM clients WHERE id = ?", [req.params.id]);
-  if (!client) return res.status(404).json({ error: "Cliente não encontrado." });
+  if (!client) return res.status(404).json({ error: "Cliente nÃ£o encontrado." });
   const body = req.body;
   const beforePhoto = req.files?.before_photo?.[0] ? `/uploads/${req.files.before_photo[0].filename}` : "";
   const afterPhoto = req.files?.after_photo?.[0] ? `/uploads/${req.files.after_photo[0].filename}` : "";
@@ -1717,7 +1758,7 @@ app.post("/api/expenses", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "finance"])) return;
   const { description, expense_type, category, amount, due_date, status, payment_method, notes } = req.body;
   if (!description?.trim() || !["fixa", "variavel"].includes(expense_type) || !due_date) {
-    return res.status(400).json({ error: "Dados da despesa inválidos." });
+    return res.status(400).json({ error: "Dados da despesa invÃ¡lidos." });
   }
   const result = await db.run(
     `INSERT INTO expenses (description, expense_type, category, amount, due_date, status, payment_method, notes)
@@ -2131,9 +2172,9 @@ function loyaltyLevel(points) {
 }
 
 function loyaltyBenefits(level) {
-  if (level === "Aura Premium") return ["15% de desconto em joias selecionadas", "prioridade em encaixes", "check-up de cicatrização cortesia"];
+  if (level === "Aura Premium") return ["15% de desconto em joias selecionadas", "prioridade em encaixes", "check-up de cicatrizaÃ§Ã£o cortesia"];
   if (level === "Aura Gold") return ["10% de desconto em joias selecionadas", "acesso antecipado a curadorias", "lembrete personalizado de retorno"];
-  return ["5% de desconto em joias selecionadas", "histórico de pontos ativo", "comunicação de cuidados pós-atendimento"];
+  return ["5% de desconto em joias selecionadas", "histÃ³rico de pontos ativo", "comunicaÃ§Ã£o de cuidados pÃ³s-atendimento"];
 }
 
 function dateAfter(date, days) {
@@ -2143,9 +2184,9 @@ function dateAfter(date, days) {
 }
 
 function defaultCareMessage(day) {
-  if (day === 7) return "Olá! Passando para acompanhar sua cicatrização. Evite atrito, não toque sem higienizar as mãos e mantenha os cuidados combinados. Pode nos enviar uma foto do piercing?";
-  if (day === 15) return "Olá! Já se passaram 15 dias do procedimento. Observe vermelhidão, dor, secreção ou inchaço persistente e envie uma foto para avaliarmos a evolução.";
-  return "Olá! Hoje completamos 30 dias de acompanhamento. Envie uma foto atual e conte como está a cicatrização para orientarmos os próximos cuidados.";
+  if (day === 7) return "OlÃ¡! Passando para acompanhar sua cicatrizaÃ§Ã£o. Evite atrito, nÃ£o toque sem higienizar as mÃ£os e mantenha os cuidados combinados. Pode nos enviar uma foto do piercing?";
+  if (day === 15) return "OlÃ¡! JÃ¡ se passaram 15 dias do procedimento. Observe vermelhidÃ£o, dor, secreÃ§Ã£o ou inchaÃ§o persistente e envie uma foto para avaliarmos a evoluÃ§Ã£o.";
+  return "OlÃ¡! Hoje completamos 30 dias de acompanhamento. Envie uma foto atual e conte como estÃ¡ a cicatrizaÃ§Ã£o para orientarmos os prÃ³ximos cuidados.";
 }
 
 async function createTermPdf(term, appointment) {
@@ -2169,14 +2210,14 @@ async function createTermPdf(term, appointment) {
 
     writeTermSection(doc, "Dados Pessoais");
     writeTermLine(doc, "Nome Completo", term.full_name);
-    writeTermLine(doc, "Nome Social", term.social_name || formData.personal?.social_name || "Não informado");
-    writeTermLine(doc, "Data De Nascimento", term.birth_date || "Não informado");
-    writeTermLine(doc, "Documento", term.document_number || "Não informado");
-    writeTermLine(doc, "WhatsApp", term.whatsapp || appointment.whatsapp || "Não informado");
-    writeTermLine(doc, "Instagram", term.instagram || appointment.instagram || "Não informado");
-    writeTermLine(doc, "Endereço", term.address || "Não informado");
+    writeTermLine(doc, "Nome Social", term.social_name || formData.personal?.social_name || "NÃ£o informado");
+    writeTermLine(doc, "Data De Nascimento", term.birth_date || "NÃ£o informado");
+    writeTermLine(doc, "Documento", term.document_number || "NÃ£o informado");
+    writeTermLine(doc, "WhatsApp", term.whatsapp || appointment.whatsapp || "NÃ£o informado");
+    writeTermLine(doc, "Instagram", term.instagram || appointment.instagram || "NÃ£o informado");
+    writeTermLine(doc, "EndereÃ§o", term.address || "NÃ£o informado");
 
-    writeTermSection(doc, "Histórico De Saúde");
+    writeTermSection(doc, "HistÃ³rico De SaÃºde");
     writeTermChecklistColumns(doc, HEALTH_HISTORY_FIELDS.map(({ label, key }) => ({ label, checked: Boolean(formData.health_history?.[key]) })));
 
     writeTermSection(doc, "Estilo De Vida");
@@ -2184,27 +2225,27 @@ async function createTermPdf(term, appointment) {
 
     writeTermSection(doc, "Informa?es Do Atendimento");
     writeTermLine(doc, "Procedimento", term.procedure || appointment.procedure);
-    writeTermLine(doc, "Região da Perfuração", term.piercing_region || appointment.piercing_region);
-    writeTermLine(doc, "Local Da Aplicação", formData.information?.application_location || "Não informado");
-    writeTermLine(doc, "Joia", formData.information?.jewelry || "Não informada");
-    writeTermLine(doc, "Observação", formData.information?.observation || term.health_declaration || "Sem observa?es adicionais.");
-    writeTermLine(doc, "Valor", formData.information?.value || "Não informado");
+    writeTermLine(doc, "RegiÃ£o da PerfuraÃ§Ã£o", term.piercing_region || appointment.piercing_region);
+    writeTermLine(doc, "Local Da AplicaÃ§Ã£o", formData.information?.application_location || "NÃ£o informado");
+    writeTermLine(doc, "Joia", formData.information?.jewelry || "NÃ£o informada");
+    writeTermLine(doc, "ObservaÃ§Ã£o", formData.information?.observation || term.health_declaration || "Sem observa?es adicionais.");
+    writeTermLine(doc, "Valor", formData.information?.value || "NÃ£o informado");
 
     writeTermSection(doc, "Termo De Consentimento");
-    doc.text("Declaro que recebi orientações sobre o procedimento, cuidados, higienização, riscos, intercorrências, cicatrização e retornos. Tamb?m confirmo que os materiais utilizados são esterilizados, lacrados e descartados após o procedimento.", {
+    doc.text("Declaro que recebi orientaÃ§Ãµes sobre o procedimento, cuidados, higienizaÃ§Ã£o, riscos, intercorrÃªncias, cicatrizaÃ§Ã£o e retornos. Tamb?m confirmo que os materiais utilizados sÃ£o esterilizados, lacrados e descartados apÃ³s o procedimento.", {
       lineGap: 2
     });
 
     if (formData.minor?.is_minor) {
-      writeTermSection(doc, "Autorização Para Menores");
-      writeTermLine(doc, "Responsável Legal", formData.minor?.responsible_name || "Não informado");
-      writeTermLine(doc, "Documento Do Responsável", formData.minor?.responsible_document || "Não informado");
-      writeTermLine(doc, "Nome Do Menor", formData.minor?.minor_name || "Não informado");
+      writeTermSection(doc, "AutorizaÃ§Ã£o Para Menores");
+      writeTermLine(doc, "ResponsÃ¡vel Legal", formData.minor?.responsible_name || "NÃ£o informado");
+      writeTermLine(doc, "Documento Do ResponsÃ¡vel", formData.minor?.responsible_document || "NÃ£o informado");
+      writeTermLine(doc, "Nome Do Menor", formData.minor?.minor_name || "NÃ£o informado");
     }
 
     writeTermSection(doc, "Assinaturas");
     writeTermLine(doc, "Assinatura Da Cliente", "Assinatura digital anexada");
-    writeTermLine(doc, "Assinatura Da Profissional", appointment.professional_name || "Profissional responsável");
+    writeTermLine(doc, "Assinatura Da Profissional", appointment.professional_name || "Profissional responsÃ¡vel");
     doc.text(`Assinado digitalmente em: ${new Date(term.signed_at).toLocaleString("pt-BR")}`);
     if (signatureBuffer) {
       doc.moveDown(0.4);
@@ -2235,7 +2276,7 @@ function writeTermSection(doc, title) {
 }
 
 function writeTermLine(doc, label, value) {
-  doc.text(`${label}: ${value || "Não informado"}`);
+  doc.text(`${label}: ${value || "NÃ£o informado"}`);
 }
 
 function writeTermCheck(doc, label, checked) {
@@ -2272,7 +2313,7 @@ function writeTermValueColumns(doc, items) {
     const column = index % 2;
     const x = startX + column * (columnWidth + gap);
     const y = column === 0 ? leftY : rightY;
-    const text = `${item.label}: ${item.value || "Não informado"}`;
+    const text = `${item.label}: ${item.value || "NÃ£o informado"}`;
     doc.text(text, x, y, { width: columnWidth });
     const height = doc.heightOfString(text, { width: columnWidth }) + 4;
     if (column === 0) leftY = y + height;
@@ -2283,8 +2324,8 @@ function writeTermValueColumns(doc, items) {
 
 function formatTermAnswer(value) {
   if (value === true) return "Sim";
-  if (value === false) return "Não";
-  if (value === null || value === undefined || value === "") return "Não informado";
+  if (value === false) return "NÃ£o";
+  if (value === null || value === undefined || value === "") return "NÃ£o informado";
   return String(value);
 }
 
@@ -2292,8 +2333,8 @@ const HEALTH_HISTORY_FIELDS = [
   { key: "epilepsia", label: "Epilepsia" },
   { key: "hemofilia", label: "Hemofilia" },
   { key: "diabetes", label: "Diabetes" },
-  { key: "alteracoes_hormonais", label: "Alterações Hormonais" },
-  { key: "doencas_cardiacas", label: "Doenças Cardíacas" },
+  { key: "alteracoes_hormonais", label: "AlteraÃ§Ãµes Hormonais" },
+  { key: "doencas_cardiacas", label: "DoenÃ§as CardÃ­acas" },
   { key: "queloide", label: "Queloide" },
   { key: "ists", label: "IST's" },
   { key: "hepatite", label: "Hepatite" },
@@ -2304,14 +2345,14 @@ const HEALTH_HISTORY_FIELDS = [
 const STYLE_QUESTIONS = [
   { key: "eats_well", label: "Alimenta-Se Bem?" },
   { key: "sleep_regular", label: "Tem Sono Regular?" },
-  { key: "physical_activity", label: "Pratica Atividade Física?" },
-  { key: "alcohol", label: "Bebe Álcool?" },
+  { key: "physical_activity", label: "Pratica Atividade FÃ­sica?" },
+  { key: "alcohol", label: "Bebe Ãlcool?" },
   { key: "smokes", label: "Fuma?" },
-  { key: "health_problem", label: "Algum Problema De Saúde?" },
+  { key: "health_problem", label: "Algum Problema De SaÃºde?" },
   { key: "medication", label: "Usa Algum Medicamento?" },
   { key: "treatment", label: "Faz Algum Tratamento?" },
   { key: "phobia", label: "Tem Alguma Fobia?" },
-  { key: "blood_pressure", label: "Pressão Sanguínea" }
+  { key: "blood_pressure", label: "PressÃ£o SanguÃ­nea" }
 ];
 
 function signatureBufferFromDataUrl(dataUrl) {
@@ -2359,8 +2400,8 @@ async function deductJewelryStock(db, appointmentId) {
       [nextQuantity, variantStatus(nextQuantity, variant.low_stock_threshold), variantId]
     );
     await db.run(
-      "INSERT INTO stock_movements (jewelry_id, variant_id, movement_type, quantity, notes) VALUES (?, ?, 'Saída', 1, ?)",
-      [appointment.jewelry_id, variantId, `Baixa automática do atendimento #${appointmentId}`]
+      "INSERT INTO stock_movements (jewelry_id, variant_id, movement_type, quantity, notes) VALUES (?, ?, 'SaÃ­da', 1, ?)",
+      [appointment.jewelry_id, variantId, `Baixa automÃ¡tica do atendimento #${appointmentId}`]
     );
     await db.run("UPDATE appointments SET jewelry_variant_id = ? WHERE id = ?", [variantId, appointmentId]);
     await syncProductInventory(db, appointment.jewelry_id);
@@ -2536,32 +2577,32 @@ async function getCatalogSettings(db) {
     brand_name: "Aura Clinic",
     slogan: "Piercing premium e joalherias selecionadas",
     logo_url: "",
-    title: "Escolha a joia perfeita para você",
+    title: "Escolha a joia perfeita para vocÃª",
     subtitle: "Curadoria premium da Aura Clinic Piercing",
     hero_title: "Joias de alta qualidade",
-    hero_subtitle: "para realçar sua essência",
+    hero_subtitle: "para realÃ§ar sua essÃªncia",
     hero_image_url: "https://images.unsplash.com/photo-1602751584552-8ba73aad10e1?auto=format&fit=crop&w=1200&q=85",
     categories: `Todos,${JEWELRY_CATEGORIES.join(",")}`,
     whatsapp_phone: "",
-    whatsapp_message: "Olá! Vim pelo catálogo online da Aura Clinic e quero ajuda para escolher uma joia.",
+    whatsapp_message: "OlÃ¡! Vim pelo catÃ¡logo online da Aura Clinic e quero ajuda para escolher uma joia.",
     company_instagram: "",
     company_email: "",
     company_address: "",
     company_hours: "",
     layout_style: "premium",
-    page_title: "Catálogo Online",
-    unavailable_message: "Produto indisponível no momento.",
+    page_title: "CatÃ¡logo Online",
+    unavailable_message: "Produto indisponÃ­vel no momento.",
     low_stock_message: "Poucas unidades",
-    institutional_text: "Joias selecionadas com cuidado, segurança e estética premium.",
+    institutional_text: "Joias selecionadas com cuidado, seguranÃ§a e estÃ©tica premium.",
     footer_text: "Aura Clinic Piercing. Curadoria de joias, cuidado e atendimento especializado.",
-    seo_title: "Aura Clinic Piercing | Catálogo Online",
+    seo_title: "Aura Clinic Piercing | CatÃ¡logo Online",
     seo_description: "Escolha joias premium para piercing na Aura Clinic.",
     share_image_url: "",
     product_share_text: "Olha essa joia da Aura Clinic:",
     content_sections: JSON.stringify([{
       kicker: "Guia Aura",
-      title: "Escolha sua joia com orientação profissional",
-      text: "Veja materiais, medidas, anodização e cuidados antes de reservar sua joia.",
+      title: "Escolha sua joia com orientaÃ§Ã£o profissional",
+      text: "Veja materiais, medidas, anodizaÃ§Ã£o e cuidados antes de reservar sua joia.",
       media_type: "image",
       media_url: "https://images.unsplash.com/photo-1602751584552-8ba73aad10e1?auto=format&fit=crop&w=1200&q=85",
       button_text: "Agendar atendimento",
@@ -2718,7 +2759,7 @@ async function saveCatalogCustomization(db, body) {
         `INSERT INTO catalog_promotions (name, discount_type, discount_value, start_date, end_date, applies_to, product_ids, category_ids, is_active)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          promotion.name || "Promoção",
+          promotion.name || "PromoÃ§Ã£o",
           promotion.discount_type || "percent",
           Number(promotion.discount_value || 0),
           promotion.start_date || "",
@@ -2748,8 +2789,8 @@ async function resetCatalogCustomization(db) {
   await saveCatalogCustomization(db, {
     settings: await getCatalogSettings(db),
     banners: [{
-      title: "Escolha a joia perfeita para você",
-      subtitle: "Joias de alta qualidade para realçar sua essência.",
+      title: "Escolha a joia perfeita para vocÃª",
+      subtitle: "Joias de alta qualidade para realÃ§ar sua essÃªncia.",
       image_url: "https://images.unsplash.com/photo-1602751584552-8ba73aad10e1?auto=format&fit=crop&w=1200&q=85",
       button_text: "Ver todas as joias",
       button_link: "#catalog-products",
@@ -2935,20 +2976,20 @@ async function attachVariants(db, products = []) {
 function aggregateVariantStatus(variants = []) {
   if (!variants.length || variants.every((variant) => Number(variant.quantity || 0) <= 0)) return "esgotado";
   if (variants.some((variant) => variantStatus(variant.quantity, variant.low_stock_threshold) === "baixo estoque")) return "baixo estoque";
-  return "disponível";
+  return "disponÃ­vel";
 }
 
 function variantStatus(quantity, lowStockThreshold = 5) {
   const stock = Number(quantity || 0);
   if (stock <= 0) return "esgotado";
   if (stock <= Number(lowStockThreshold || 5)) return "baixo estoque";
-  return "disponível";
+  return "disponÃ­vel";
 }
 
 function variantFromLegacy(body = {}) {
   return {
     sku: body.sku,
-    variation_name: body.variation_label || "Variação principal",
+    variation_name: body.variation_label || "VariaÃ§Ã£o principal",
     material: body.material,
     color: body.color,
     stone_color: body.stone_color,
@@ -2969,7 +3010,7 @@ function variantFromLegacy(body = {}) {
 
 async function replaceJewelryVariants(db, jewelryId, variants = []) {
   if (!Array.isArray(variants) || variants.length === 0) {
-    throw new Error("Cadastre ao menos uma variação para o produto.");
+    throw new Error("Cadastre ao menos uma variaÃ§Ã£o para o produto.");
   }
   const current = await db.all("SELECT * FROM jewelry_variants WHERE jewelry_id = ?", [jewelryId]);
   const product = await db.get("SELECT sku, material, category, subcategory, name FROM jewelry_inventory WHERE id = ?", [jewelryId]);
@@ -3052,7 +3093,7 @@ function buildVariationName(variant = {}) {
     variant.material,
     variant.color,
     variant.thread_type
-  ].filter(Boolean).join(" · ") || "Variação";
+  ].filter(Boolean).join(" Â· ") || "VariaÃ§Ã£o";
 }
 
 async function syncProductInventory(db, jewelryId) {
@@ -3087,12 +3128,12 @@ async function syncProductInventory(db, jewelryId) {
 function elegantProductName(value = "") {
   const smallWords = new Set(["de", "da", "do", "das", "dos", "e", "com", "para"]);
   const normalized = String(value || "")
-    .replace(/tit\?nio/gi, "titânio")
-    .replace(/tit�nio/gi, "titânio")
-    .replace(/zirc\?nia/gi, "zircônia")
+    .replace(/tit\?nio/gi, "titÃ¢nio")
+    .replace(/titï¿½nio/gi, "titÃ¢nio")
+    .replace(/zirc\?nia/gi, "zircÃ´nia")
     .replace(/^Joias Premium\b/i, "Joia Premium")
-    .replace(/\bTitanio\b/gi, "Titânio")
-    .replace(/\bZirconia\b/gi, "Zircônia")
+    .replace(/\bTitanio\b/gi, "TitÃ¢nio")
+    .replace(/\bZirconia\b/gi, "ZircÃ´nia")
     .replace(/\s+/g, " ")
     .trim();
   return normalized
@@ -3153,7 +3194,7 @@ async function authenticateRequest(req, db) {
 
 function requireRole(req, res, roles) {
   if (!roles.includes(req.user?.role)) {
-    res.status(403).json({ error: "Você não tem permissão para esta ação." });
+    res.status(403).json({ error: "VocÃª nÃ£o tem permissÃ£o para esta aÃ§Ã£o." });
     return false;
   }
   return true;

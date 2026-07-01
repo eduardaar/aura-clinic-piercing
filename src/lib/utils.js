@@ -16,12 +16,24 @@ export function initials(name = "") {
 
 export function formatDate(date) {
   if (!date) return "";
-  return new Date(`${date}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+  const value = String(date).slice(0, 10);
+  const parsed = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
 
 export function formatLongDate(date) {
   if (!date) return "";
-  return new Date(`${date}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "long" });
+  const value = String(date).slice(0, 10);
+  const parsed = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toLocaleDateString("pt-BR", { day: "2-digit", month: "long" });
+}
+
+export function dateInputValue(date) {
+  if (!date) return "";
+  const value = String(date).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
 }
 
 export function localDateValue(date) {

@@ -49,7 +49,7 @@ import { Login } from "./components/auth/Login";
 import { Sidebar } from "./components/layout/Sidebar";
 import { Loading, ApiError } from "./components/common/Feedback";
 import { AlertBlock, BookingChoiceGrid, Input, Metric, PaymentSelect, Select, StatusSelect } from "./components/common/Ui";
-import { asArray, asNumber, asObject, removeAccents, firstName, initials, formatDate, formatLongDate, localDateValue } from "./lib/utils";
+import { asArray, asNumber, asObject, removeAccents, firstName, initials, formatDate, formatLongDate, localDateValue, dateInputValue } from "./lib/utils";
 import { API, API_ORIGIN, apiFetch, downloadApiFile, readStoredSession, useFetch, usePublicFetch } from "./lib/api";
 import { canAccessPage, defaultPageForRole, pageTitle } from "./lib/permissions";
 import { catalogCategoryTerms, catalogFilterOptions, catalogPromotionForItem, catalogStockText, cleanDisplayText, elegantProductName, normalizeJewelryMaterial, normalizeJewelryThread, promotionalPrice, splitColorOptions } from "./features/catalog/catalogUtils";
@@ -4602,27 +4602,61 @@ function ClientsMedical() {
   const { data, refresh } = useFetch("/clients");
   const [search, setSearch] = useState("");
   const [editingClientId, setEditingClientId] = useState(null);
+  const [creatingClient, setCreatingClient] = useState(false);
+  const [error, setError] = useState("");
   if (!data) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
   const clients = asArray(data);
   const filteredClients = clients.filter((client) => matchesClientSearch(client, search));
+
+  async function removeClient(client) {
+    if (!window.confirm(`Excluir ${client.name}?`)) return;
+    setError("");
+    const response = await apiFetch(`/clients/${client.id}`, { method: "DELETE" });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      setError(payload.error || "Não foi possível excluir o cliente.");
+      return;
+    }
+    if (editingClientId === client.id) setEditingClientId(null);
+    refresh();
+  }
+
   return (
     <section className="medical-client-list simplified-client-list">
-      <label className="client-search">
-        <Search size={17} />
-        <input placeholder="Pesquisar cliente, WhatsApp ou Instagram" value={search} onChange={(event) => setSearch(event.target.value)} />
-      </label>
+      <div className="panel-heading">
+        <label className="client-search">
+          <Search size={17} />
+          <input placeholder="Pesquisar cliente, WhatsApp ou Instagram" value={search} onChange={(event) => setSearch(event.target.value)} />
+        </label>
+        <button type="button" className="primary-button" onClick={() => setCreatingClient(true)}>
+          <Plus size={16} /> Novo cliente
+        </button>
+      </div>
+      {creatingClient && (
+        <article className="panel medical-card simplified-client-card">
+          <ClientEditForm
+            onCancel={() => setCreatingClient(false)}
+            onSaved={() => {
+              setCreatingClient(false);
+              refresh();
+            }}
+          />
+        </article>
+      )}
+      {error && <span className="form-error">{error}</span>}
       {filteredClients.map((client) => (
         <article className="panel medical-card simplified-client-card" key={client.id}>
           <div className="medical-header compact">
             <div>
-              <h2>{client.full_name}</h2>
+              <h2>{client.name}</h2>
               <p>{client.whatsapp} Â· {client.instagram || "sem Instagram"}</p>
             </div>
             <div className="header-actions">
-              <span className="status-badge status-atendido">{asArray(client.history).length} atendimento(s)</span>
-              <a className="secondary-button" href={whatsappUrl(client.whatsapp, `Ola ${client.full_name}, tudo bem Aqui e da Aura Clinic.`)} target="_blank" rel="noreferrer">WhatsApp</a>
+              <span className="status-badge status-atendido">Cliente Aura</span>
+              <a className="secondary-button" href={whatsappUrl(client.whatsapp, `Ola ${client.name}, tudo bem Aqui e da Aura Clinic.`)} target="_blank" rel="noreferrer">WhatsApp</a>
               <button type="button" className="secondary-button" onClick={() => setEditingClientId(editingClientId === client.id ? null : client.id)}>Editar</button>
+              <button type="button" className="danger-link" onClick={() => removeClient(client)}>Excluir</button>
             </div>
           </div>
           {client.birth_date && <small className="client-birth">AniversÃ¡rio: {formatLongDate(client.birth_date)}</small>}
@@ -4637,52 +4671,36 @@ function ClientsMedical() {
             />
           )}
           <div className="medical-summary-line">
-            <span>Ãšltimo atendimento: {asArray(client.history)[0] ? formatDate(asArray(client.history)[0].appointment_date) : "Sem registro"}</span>
-            <span>Joia: {asArray(client.history)[0]?.jewelry_name || "Sem joia vinculada"}</span>
-            <span>Fidelidade: {client.loyalty?.level || "Cliente Aura"}</span>
+            <span>Telefone: {client.phone || "Sem registro"}</span>
+            <span>E-mail: {client.email || "Sem registro"}</span>
+            <span>CPF: {client.cpf || "Sem registro"}</span>
           </div>
-          <details className="medical-details">
-            <summary>Ver prontuÃ¡rio, fidelidade e retornos</summary>
-            <div className="medical-grid stacked">
-              <div className="medical-section">
-                <h3>HistÃ³rico De PerfuraÃ§Ãµes</h3>
-                <div className="history-stack">
-                  {asArray(client.history).length ? asArray(client.history).map((item) => (
-                    <div className="history-item" key={item.id}>
-                      <strong>{formatDate(item.appointment_date)}  {item.procedure}</strong>
-                      <span>{item.piercing_region}  {item.professional_name}</span>
-                      <small>Joia: {item.jewelry_name || "sem joia vinculada"}  {item.status}</small>
-                    </div>
-                  )) : <p className="empty-state">Nenhuma perfuraÃ§Ã£o registrada.</p>}
-                </div>
-              </div>
-              <MedicalRecordForm client={client} onSaved={refresh} />
-              <LoyaltyPanel client={client} onChanged={refresh} />
-              <MedicalRecordTimeline client={client} onChanged={refresh} />
-            </div>
-          </details>
         </article>
       ))}
-      {!filteredClients.length && <p className="empty-state">Nenhum cliente encontrado.</p>}
+      {!clients.length && !creatingClient && <p className="empty-state">Você ainda não possui clientes cadastrados.</p>}
+      {clients.length > 0 && !filteredClients.length && <p className="empty-state">Nenhum cliente encontrado.</p>}
     </section>
   );
 }
 
 function ClientEditForm({ client, onSaved, onCancel }) {
   const [form, setForm] = useState({
-    full_name: client.full_name || "",
-    whatsapp: client.whatsapp || "",
-    instagram: client.instagram || "",
-    birth_date: client.birth_date || "",
-    notes: client.notes || ""
+    name: client?.name || "",
+    phone: client?.phone || "",
+    whatsapp: client?.whatsapp || "",
+    instagram: client?.instagram || "",
+    email: client?.email || "",
+    birth_date: dateInputValue(client?.birth_date),
+    cpf: client?.cpf || "",
+    notes: client?.notes || ""
   });
   const [error, setError] = useState("");
 
   async function submit(event) {
     event.preventDefault();
     setError("");
-    const response = await apiFetch(`/clients/${client.id}`, {
-      method: "PATCH",
+    const response = await apiFetch(client?.id ? `/clients/${client.id}` : "/clients", {
+      method: client?.id ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form)
     });
@@ -4693,9 +4711,12 @@ function ClientEditForm({ client, onSaved, onCancel }) {
   return (
     <form className="client-edit-form" onSubmit={submit}>
       <div className="form-grid">
-        <Input label="Nome" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} required />
+        <Input label="Nome" value={form.name} onChange={(value) => setForm({ ...form, name: value })} required />
+        <Input label="Telefone" value={form.phone} onChange={(value) => setForm({ ...form, phone: value })} />
         <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => setForm({ ...form, whatsapp: value })} />
         <Input label="Instagram" value={form.instagram} onChange={(value) => setForm({ ...form, instagram: value })} />
+        <Input label="E-mail" value={form.email} onChange={(value) => setForm({ ...form, email: value })} />
+        <Input label="CPF" value={form.cpf} onChange={(value) => setForm({ ...form, cpf: value })} />
         <Input type="date" label="Nascimento" value={form.birth_date} onChange={(value) => setForm({ ...form, birth_date: value })} />
       </div>
       <label>Observacoes importantes
@@ -5852,9 +5873,7 @@ function matchesClientSearch(client, search) {
   const safeClient = asObject(client);
   const term = String(search || "").trim().toLowerCase();
   if (!term) return true;
-  const historyText = asArray(safeClient.history).map((item) => `${item?.procedure || ""} ${item?.piercing_region || ""} ${item?.jewelry_name || ""} ${item?.professional_name || ""}`).join(" ");
-  const recordText = asArray(safeClient.medicalRecords).map((record) => `${record?.piercing_history || ""} ${record?.jewelry_used || ""} ${record?.occurrences || ""} ${record?.guidance || ""} ${record?.allergies_notes || ""} ${record?.healing_evolution || ""} ${record?.returns_done || ""}`).join(" ");
-  return `${safeClient.full_name || ""} ${safeClient.whatsapp || ""} ${safeClient.instagram || ""} ${safeClient.notes || ""} ${historyText} ${recordText}`.toLowerCase().includes(term);
+  return `${safeClient.name || ""} ${safeClient.phone || ""} ${safeClient.whatsapp || ""} ${safeClient.instagram || ""} ${safeClient.email || ""} ${safeClient.cpf || ""} ${safeClient.notes || ""}`.toLowerCase().includes(term);
 }
 
 function whatsappUrl(phone, message) {

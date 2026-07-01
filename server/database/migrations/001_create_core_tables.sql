@@ -12,15 +12,38 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS clients (
   id SERIAL PRIMARY KEY,
-  full_name TEXT NOT NULL,
+  name TEXT NOT NULL,
+  phone TEXT,
   whatsapp TEXT,
   instagram TEXT,
   email TEXT,
   birth_date DATE,
+  cpf TEXT,
   notes TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS whatsapp TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS instagram TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS birth_date DATE;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS cpf TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'clients' AND column_name = 'full_name'
+  ) THEN
+    EXECUTE 'UPDATE clients SET name = COALESCE(name, full_name) WHERE name IS NULL';
+    EXECUTE 'ALTER TABLE clients DROP COLUMN full_name';
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS services (
   id SERIAL PRIMARY KEY,
@@ -135,7 +158,7 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(full_name);
+CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(name);
 CREATE INDEX IF NOT EXISTS idx_products_name ON products(name);
 CREATE INDEX IF NOT EXISTS idx_products_catalog ON products(is_catalog_active, is_published);
 CREATE INDEX IF NOT EXISTS idx_appointments_date ON appointments(appointment_date, appointment_time);
