@@ -1,156 +1,115 @@
 # Aura Clinic Piercing
 
-MVP local para gestão da Aura Clinic Piercing: agenda, estoque de joalherias, catálogo público, clientes, financeiro, prontuários, termos digitais, pós-atendimento, fidelidade e acessos administrativos.
+Sistema de gestão da Aura Clinic Piercing: agenda, estoque de joalherias, catálogo público, clientes, financeiro, prontuários, termos digitais, pós-atendimento, fidelidade e acessos administrativos.
+
+O repositório é um **monorepo com dois projetos independentes**:
+
+```text
+backend/    API Node.js + Express, banco PostgreSQL
+frontend/   SPA React + Vite
+```
 
 ## Tecnologias
 
 - Frontend: React + Vite
 - Backend: Node.js + Express
-- Banco: SQLite local
-- Uploads locais: `server/data/uploads`
-- Autenticacao: token assinado no login e envio via `Authorization: Bearer`
+- Banco: **PostgreSQL**
+- Uploads locais: `backend/src/data/uploads`
+- Autenticação: token HMAC assinado no login, enviado via `Authorization: Bearer`
+
+## Pré-requisitos
+
+- Node.js 18+
+- PostgreSQL 14+ em execução
+
+## Configuração
+
+1. Crie o banco:
+
+   ```bash
+   createdb aura_clinic   # ou: psql -U postgres -c "CREATE DATABASE aura_clinic;"
+   ```
+
+2. Configure o backend — copie `backend/.env.example` para `backend/.env` e ajuste:
+
+   ```env
+   DATABASE_URL=postgres://postgres:SUA_SENHA@localhost:5432/aura_clinic
+   AUTH_SECRET=<gere com: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))">
+   ```
+
+3. Configure o frontend — copie `frontend/.env.example` para `frontend/.env` (o padrão já aponta para `http://localhost:4000/api`).
+
+O schema (`backend/src/db/schema.sql`) é aplicado automaticamente no boot do backend.
 
 ## Como rodar
 
-Instale as dependencias:
+Instale as dependências dos dois projetos e da raiz:
 
 ```bash
-npm install
+npm run install:all
 ```
 
-Rode o sistema:
+Suba backend + frontend juntos:
 
 ```bash
 npm run dev
 ```
 
-No PowerShell do Windows, se aparecer bloqueio de script do `npm.ps1`, use:
+Ou individualmente:
 
-```powershell
-npm.cmd run dev
+```bash
+npm --prefix backend run dev     # API em :4000
+npm --prefix frontend run dev    # SPA em :5173
 ```
 
-Depois acesse:
+Acesse:
 
 - Frontend: `http://localhost:5173`
 - Backend: `http://localhost:4000`
-- Health check: `http://localhost:4000/api/health`
+- Health check: `http://localhost:4000/api/health` e `/api/health/db`
 
-## Login de teste
+## Login
 
-- Senha: `aura123` (defina `VITE_ADMIN_PASSWORD` em `.env.local`)
-
-Se a sessao antiga ficar invalida depois de atualizacoes de autenticacao, saia do sistema ou limpe o armazenamento do navegador e entre novamente.
+- Usuário admin: `admin@auraclinic.com` — senha padrão `aura123` (**troque em produção**).
+- Em desenvolvimento local a API libera acesso administrativo sem token para agilizar; em produção (`NODE_ENV=production`) o token é obrigatório em todas as rotas protegidas.
 
 ## Estrutura
 
 ```text
-server/
-  database.js       Schema SQLite, seeds e dados de exemplo
-  index.js          API Express, autenticacao, permissoes e rotas
-  data/             Banco local, PDFs e uploads
-src/
-  main.jsx          Aplicacao React, layout, telas e componentes
-  styles.css        Identidade visual premium e responsividade
-public/
-  placeholder-*.svg Assets locais de exemplo
+backend/
+  src/
+    index.js              API Express, rotas, autenticação e regras de negócio
+    database/connection.js Pool PostgreSQL
+    db/
+      schema.sql          Schema unificado do PostgreSQL
+      sqliteCompat.js     Camada de acesso (get/all/run) sobre o pool
+    text-normalizer.js    Normalização de texto em respostas
+    data/uploads/         PDFs e imagens enviadas
+  .env                    Config do backend (não versionado)
+frontend/
+  src/
+    main.jsx              Aplicação React (telas e componentes)
+    lib/, components/, features/, pages/
+    styles.css            Identidade visual e responsividade
+  index.html, vite.config.js
+  .env                    Config do frontend (não versionado)
 ```
-
-## Funcionalidades estaveis
-
-- Login administrativo com token assinado
-- Menu lateral e layout principal responsivo
-- Permissoes por perfil no frontend
-- Protecao de rotas sensiveis no backend
-- **Separação entre site público e painel administrativo (novo)**
-- Dashboard premium com indicadores, alertas e graficos
-- Agendamento manual em modal e agenda pública com horários por profissional
-- Agenda visual mensal, semanal e diária
-- Estoque profissional no modelo `Categoria → Produto → Variações`
-- Quantidade, SKU, custo, venda e estoque mínimo controlados por variação
-- Catálogo público integrado ao estoque e seletor de variações
-- Financeiro com despesas, lucro estimado e exportacao CSV/PDF/Excel
-- Clientes com historico, busca, prontuario e WhatsApp
-- Termo digital com assinatura e PDF
-- Pos-atendimento com lembretes de 7, 15 e 30 dias
-- Fidelidade com pontos, niveis e resgates
-- Acessos administrativos por papel
-
-## Segurança e Acesso
-
-### Rotas públicas (sem autenticação)
-- `/` - Página inicial
-- `/catalogo` - Catálogo de produtos publicados
-- `/agendar` - Agendamento público
-- `/comprar` - Checkout público
-
-### Rotas administrativas (autenticação obrigatória)
-- `/admin` - Dashboard administrativo
-- `/admin/estoque` - Gestão de estoque e produtos
-- `/admin/agenda` - Agenda interna
-- `/admin/clientes` - Base de clientes
-- `/admin/financeiro` - Relatórios financeiros
-- `/admin/configuracoes` - Configurações do sistema
-
-### Proteção de dados
-
-O catálogo público mostra apenas:
-- Nome, foto, categoria, material, tamanho, cor
-- Preço final (sale_value)
-- Variações disponíveis
-- Estoque disponível (somente se quantidade > 0)
-
-**Dados ocultos do público:**
-- Custo de produção (cost_value)
-- Lucro estimado
-- Fornecedor
-- Observações internas
-- Endereço físico do estoque
-- Dados de clientes
-- Financeiro interno
-- Relatórios
-
-### Autenticação
-
-1. Copie `.env.example` para `.env.local`
-2. Defina `VITE_ADMIN_PASSWORD` com uma senha forte
-3. Acesse `/login` e digite a senha
-4. Sessão salva em `localStorage` (aura-admin-authenticated)
-
-**Em produção:**
-- Use HTTPS obrigatoriamente
-- Altere `AUTH_SECRET` e `VITE_ADMIN_PASSWORD` com valores únicos
-- Configure variáveis de ambiente no servidor
 
 ## Banco de dados
 
-O SQLite e criado automaticamente em:
+PostgreSQL (`aura_clinic`). Tabelas principais:
 
-```text
-server/data/aura-clinic.sqlite
-```
+- `users`, `professionals`, `services`, `procedures`
+- `clients`, `appointments`, `payments`
+- `jewelry_inventory`, `jewelry_variants`, `stock_movements`, `inventory_options`
+- `sales_orders`, `sales_order_items`, `expenses`
+- `client_medical_records`, `digital_terms`, `post_care_followups`
+- `loyalty_points`, `loyalty_redemptions`
+- `catalog_settings`, `catalog_banners`, `catalog_featured_categories`, `catalog_promotions`, `catalog_theme`
 
-Tabelas principais:
+Para limpar os dados de demonstração preservando usuários e configurações, use o endpoint administrativo `POST /api/admin/reset-demo-data`.
 
-- `users`
-- `clients`
-- `appointments`
-- `jewelry_inventory`
-- `jewelry_variants`
-- `stock_movements`
-- `payments`
-- `professionals`
-- `inventory_options`
-- `expenses`
-- `client_medical_records`
-- `digital_terms`
-- `post_care_followups`
-- `loyalty_points`
-- `loyalty_redemptions`
-
-Para reiniciar os dados de exemplo, pare o servidor, apague `server/data/aura-clinic.sqlite` e rode `npm run dev` novamente.
-
-## Niveis de acesso
+## Níveis de acesso
 
 - `admin`: acessa tudo
 - `reception`: agenda, agendamentos e clientes
@@ -160,20 +119,26 @@ Para reiniciar os dados de exemplo, pare o servidor, apague `server/data/aura-cl
 ## Rotas principais
 
 - `POST /api/login`
-- `GET /api/health`
-- `GET /api/dashboard`
-- `GET/POST/PATCH /api/appointments`
-- `GET/POST/PATCH/DELETE /api/jewelry`
-- `POST /api/jewelry/:id/variants/:variantId/movements`
-- `GET /api/catalog`
-- `GET /api/booking/slots`
-- `GET/PATCH /api/clients`
-- `GET /api/finance`
-- `GET /api/finance/export.csv`
-- `GET /api/finance/export.pdf`
-- `GET /api/finance/export.xlsx`
+- `GET /api/health`, `GET /api/health/db`
+- `GET /api/dashboard`, `GET /api/erp`, `GET /api/alerts`
+- `GET/POST/PATCH/DELETE /api/appointments`
+- `GET/POST/PATCH/DELETE /api/jewelry` e `/api/jewelry/:id/movements`
+- `GET/POST/PUT/DELETE /api/procedures`
+- `GET/POST/PUT/DELETE /api/clients`
+- `GET /api/catalog`, `GET /api/booking/slots`
+- `GET /api/finance`, `GET /api/finance/export.{csv,pdf,xlsx}`
 - `GET/POST/PATCH/DELETE /api/users`
 
-## Observações de produção
+## Segurança e acesso
 
-Este projeto ainda e um MVP local. Para producao SaaS, o proximo passo recomendado e migrar para TypeScript, PostgreSQL, JWT com refresh token, Cloudinary e isolamento multiempresa por `tenant_id`.
+### Rotas públicas (sem autenticação)
+- `/catalogo`, `/agendar`, `/comprar` (e os endpoints `GET /api/catalog`, `/api/booking/*`, `POST /api/sales-orders/public`)
+
+### Proteção de dados
+O catálogo público expõe apenas nome, foto, categoria, material, tamanho, cor, preço final e disponibilidade. Ficam **ocultos**: custo, lucro, fornecedor, observações internas, localização física, dados de clientes e financeiro.
+
+### Produção
+- Use HTTPS.
+- Defina `AUTH_SECRET` forte e `NODE_ENV=production` (torna o token obrigatório).
+- Restrinja `CORS_ORIGIN` ao domínio do frontend.
+- Troque a senha do admin.
