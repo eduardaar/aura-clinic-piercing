@@ -11,16 +11,17 @@
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.108.2",
     "@vitejs/plugin-react": "^4.3.4",
     "bcryptjs": "^3.0.2",
     "concurrently": "^9.2.1",
     "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",
     "express": "^5.1.0",
     "lucide-react": "^0.468.0",
     "multer": "^2.0.2",
     "pdfkit": "^0.15.2",
+    "pg": "^8.22.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "sqlite": "^5.1.1",

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   AlertTriangle,
@@ -45,28 +45,17 @@ import {
   XCircle
 } from "lucide-react";
 import "./styles.css";
+import { Login } from "./components/auth/Login";
+import { Sidebar } from "./components/layout/Sidebar";
+import { Loading, ApiError } from "./components/common/Feedback";
+import { AlertBlock, BookingChoiceGrid, Input, Metric, PaymentSelect, Select, StatusSelect } from "./components/common/Ui";
+import { asArray, asNumber, asObject, removeAccents, firstName, initials, formatDate, formatLongDate, localDateValue } from "./lib/utils";
+import { API, API_ORIGIN, apiFetch, downloadApiFile, readStoredSession, useFetch, usePublicFetch } from "./lib/api";
+import { canAccessPage, defaultPageForRole, pageTitle } from "./lib/permissions";
+import { catalogCategoryTerms, catalogFilterOptions, catalogPromotionForItem, catalogStockText, cleanDisplayText, elegantProductName, normalizeJewelryMaterial, normalizeJewelryThread, promotionalPrice, splitColorOptions } from "./features/catalog/catalogUtils";
 
-const API =
-  import.meta.env.VITE_API_URL ||
-  (import.meta.env.PROD ? "" : "http://localhost:4000/api");
-const API_ORIGIN = API.replace(/\/api$/, "");
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
-
-// Páginas que requerem autenticação administrativa
-const ADMIN_PAGES = [
-  "dashboard",
-  "erp",
-  "agenda",
-  "catalog",
-  "catalog-customization",
-  "sales",
-  "finance",
-  "client-center",
-  "clients",
-  "terms",
-  "postcare",
-  "admin"
-];
+const SHOULD_AUTO_LOGIN_LOCAL = import.meta.env.DEV && ["localhost", "127.0.0.1"].includes(window.location.hostname);
 
 const ANODIZATION_COLOR_OPTIONS = [
   { name: "Natural", color: "#B8B8B3" },
@@ -88,9 +77,6 @@ const ANODIZATION_COLOR_OPTIONS = [
 const JEWELRY_LENGTH_OPTIONS = Array.from({ length: 11 }, (_, index) => `${index + 4}mm`);
 const JEWELRY_THICKNESS_OPTIONS = ["0.8mm", "1.0mm", "1.2mm", "1.6mm", "2.0mm", "2.5mm"];
 const JEWELRY_THREAD_OPTIONS = ["Interna", "Externa", "Push Pin"];
-const asArray = (value) => Array.isArray(value) ? value : [];
-const asNumber = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
-const asObject = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
 const statusClass = {
   pendente: "status-pendente",
   confirmado: "status-confirmado",
@@ -119,9 +105,9 @@ class AppErrorBoundary extends React.Component {
         <main className="runtime-error-page">
           <section className="panel">
             <span className="eyebrow">Aura Clinic</span>
-            <h1>Erro ao carregar esta área</h1>
-            <p>Os dados ainda podem estar sendo preparados. Volte ao início e tente novamente.</p>
-            <button type="button" className="primary-button" onClick={() => { window.location.href = "/"; }}>Voltar ao início</button>
+            <h1>Erro ao carregar esta Ã¡rea</h1>
+            <p>Os dados ainda podem estar sendo preparados. Volte ao inÃ­cio e tente novamente.</p>
+            <button type="button" className="primary-button" onClick={() => { window.location.href = "/"; }}>Voltar ao inÃ­cio</button>
           </section>
         </main>
       );
@@ -138,7 +124,7 @@ function App() {
   const [alertsData, setAlertsData] = useState({ count: 0, items: [] });
   const [alertsLoading, setAlertsLoading] = useState(false);
   
-  // Verificação de autenticação administrativa
+  // VerificaÃ§Ã£o de autenticaÃ§Ã£o administrativa
   const isAdminAuthenticated = session?.user?.id ? true : false;
   
   // Verificar pathname atual (para renderizar apenas login em /login)
@@ -162,7 +148,7 @@ function App() {
         items: asArray(payload?.items)
       } : { count: 0, items: [] });
     } catch (error) {
-      console.error("Não foi possível carregar os alertas:", error);
+      console.error("NÃ£o foi possÃ­vel carregar os alertas:", error);
       setAlertsData({ count: 0, items: [] });
     } finally {
       setAlertsLoading(false);
@@ -175,31 +161,31 @@ function App() {
     }
   }, [normalizedSession, page]);
 
-  // Se está em /login mas já autenticado, redirecionar para home
+  // Se estÃ¡ em /login mas jÃ¡ autenticado, redirecionar para home
   useEffect(() => {
     if (isLoginPath && isAdminAuthenticated) {
       window.location.href = "/";
     }
   }, [isLoginPath, isAdminAuthenticated]);
 
-  // Se não tem sessão e não está em rota pública, redirecionar para login
+  // Se nÃ£o tem sessÃ£o e nÃ£o estÃ¡ em rota pÃºblica, redirecionar para login
   useEffect(() => {
     if (!normalizedSession && !isPublicCatalog && !isPublicBooking && !isPublicCheckout && !isLoginPath) {
       window.location.href = "/login";
     }
   }, [normalizedSession, isPublicCatalog, isPublicBooking, isPublicCheckout, isLoginPath]);
 
-  // Se está em /login, renderizar APENAS login (sem app shell)
+  // Se estÃ¡ em /login, renderizar APENAS login (sem app shell)
   if (isLoginPath) {
     return <Login onLogin={setSession} />;
   }
 
-  // Rotas públicas: sempre acessíveis
+  // Rotas pÃºblicas: sempre acessÃ­veis
   if (isPublicCatalog) return <PublicCatalog />;
   if (isPublicBooking) return <PublicBooking />;
   if (isPublicCheckout) return <PublicCheckout />;
   
-  // Se não tem sessão, renderizar nada (useEffect acima vai redirecionar)
+  // Se nÃ£o tem sessÃ£o, renderizar nada (useEffect acima vai redirecionar)
   if (!normalizedSession) {
     return null;
   }
@@ -233,11 +219,11 @@ function App() {
           </button>
           <div className="topbar-title">
             <span className="eyebrow">Aura Clinic Piercing</span>
-            <h1>{activePage === "dashboard" ? `Olá, ${firstName(normalizedSession.user?.name || "Usuário")}!` : pageTitle(activePage)}</h1>
+            <h1>{activePage === "dashboard" ? `OlÃ¡, ${firstName(normalizedSession.user?.name || "UsuÃ¡rio")}!` : pageTitle(activePage)}</h1>
             {activePage === "dashboard" && <p>Bem-vinda ao painel administrativo da Aura Clinic.</p>}
           </div>
           <div className="topbar-actions">
-            <button className="notification-button" aria-label="Notificações" onClick={openAlerts}>
+            <button className="notification-button" aria-label="NotificaÃ§Ãµes" onClick={openAlerts}>
               <Bell size={19} />
               {asNumber(alertsData.count) > 0 && <span>{asNumber(alertsData.count)}</span>}
             </button>
@@ -250,7 +236,7 @@ function App() {
             </div>
           <div className="user-chip">
             <UserRound size={16} />
-            {normalizedSession.user?.name || "Usuário"} · {roleLabel(normalizedSession.user?.role)}
+            {normalizedSession.user?.name || "UsuÃ¡rio"} Â· {roleLabel(normalizedSession.user?.role)}
           </div>
           </div>
         </header>
@@ -272,7 +258,7 @@ function App() {
   );
 }
 
-function Login({ onLogin }) {
+function LegacyLogin({ onLogin }) {
   const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD || "aura123"; "admin@auraclinic.com";
   const [form, setForm] = useState({ password: "" });
   const [rememberAccess, setRememberAccess] = useState(Boolean(localStorage.getItem("aura-admin-authenticated")));
@@ -282,7 +268,7 @@ function Login({ onLogin }) {
     event.preventDefault();
     setError("");
 
-    // Verificação de senha simples
+    // VerificaÃ§Ã£o de senha simples
     const isValidPassword = form.password === adminPassword;
 
     if (isValidPassword) {
@@ -293,7 +279,7 @@ function Login({ onLogin }) {
         role: "admin",
       };
 
-      // Salvar autenticação no localStorage
+      // Salvar autenticaÃ§Ã£o no localStorage
       localStorage.setItem("aura-admin-authenticated", rememberAccess ? "true" : "");
       localStorage.setItem("aura-session", JSON.stringify({ user }));
       onLogin({ user });
@@ -310,14 +296,14 @@ function Login({ onLogin }) {
           <div className="login-monogram" aria-hidden="true">AC</div>
           <div>
             <strong>Aura Clinic</strong>
-            <span>Gestão Premium</span>
+            <span>GestÃ£o Premium</span>
           </div>
         </header>
 
         <div className="login-copy">
           <span className="login-kicker">Central Administrativa</span>
           <h1>Acesse sua central administrativa</h1>
-          <p>Controle estoque, agenda, clientes, biossegurança e financeiro em um único lugar.</p>
+          <p>Controle estoque, agenda, clientes, biosseguranÃ§a e financeiro em um Ãºnico lugar.</p>
         </div>
 
         <form className="login-form" onSubmit={submit}>
@@ -333,7 +319,7 @@ function Login({ onLogin }) {
         </form>
 
         <footer className="login-footer">
-          <strong>Sistema proprietário Aura Clinic®</strong>
+          <strong>Sistema proprietÃ¡rio Aura ClinicÂ®</strong>
           <span>Desenvolvido por Eduarda Santos</span>
         </footer>
       </section>
@@ -342,11 +328,11 @@ function Login({ onLogin }) {
         <div className="login-visual-content">
           <div className="gold-line" />
           <span className="login-visual-kicker">Aura Clinic Piercing</span>
-          <h2>Gestão inteligente para quem vive da perfuração.</h2>
+          <h2>GestÃ£o inteligente para quem vive da perfuraÃ§Ã£o.</h2>
           <p>Desenvolvido por body piercer para body piercers.</p>
 
           <div className="login-metrics" aria-label="Indicadores Aura Clinic">
-            <div><strong>+3500</strong><span>Perfurações registradas</span></div>
+            <div><strong>+3500</strong><span>PerfuraÃ§Ãµes registradas</span></div>
             <div><strong>+1200</strong><span>Joias cadastradas</span></div>
             <div><strong>+800</strong><span>Clientes atendidos</span></div>
           </div>
@@ -354,9 +340,9 @@ function Login({ onLogin }) {
 
         <div className="login-floating-cards" aria-hidden="true">
           <article><Calendar size={18} /><span>Agenda do Dia</span><strong>08 atendimentos</strong></article>
-          <article><AlertTriangle size={18} /><span>Estoque Crítico</span><strong>03 peças</strong></article>
-          <article><UserRound size={18} /><span>Último Atendimento</span><strong>Hélix · 16:30</strong></article>
-          <article><WalletCards size={18} /><span>Financeiro do Mês</span><strong>R$ 18.420</strong></article>
+          <article><AlertTriangle size={18} /><span>Estoque CrÃ­tico</span><strong>03 peÃ§as</strong></article>
+          <article><UserRound size={18} /><span>Ãšltimo Atendimento</span><strong>HÃ©lix Â· 16:30</strong></article>
+          <article><WalletCards size={18} /><span>Financeiro do MÃªs</span><strong>R$ 18.420</strong></article>
         </div>
       </section>
     </main>
@@ -365,7 +351,6 @@ function Login({ onLogin }) {
 
 function PublicCatalog() {
   const { data } = usePublicFetch("/catalog");
-  const supabaseProducts = useSupabaseProducts({ publicOnly: true });
   const [activeCategory, setActiveCategory] = useState("Todos");
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState({ material: "", color: "", stone: "", size: "" });
@@ -401,7 +386,7 @@ function PublicCatalog() {
   const contentSections = catalogContentSections(settings.content_sections);
   const activeBanners = asArray(safeData.banners).filter((banner) => Boolean(asNumber(banner?.is_active))).sort((a, b) => asNumber(a?.sort_order) - asNumber(b?.sort_order));
   const fallbackBanner = {
-    title: data.title || "Escolha a joia perfeita para você",
+    title: data.title || "Escolha a joia perfeita para vocÃª",
     subtitle: data.subtitle || "",
     image_url: data.hero_image_url,
     button_text: "Ver todas as joias",
@@ -413,10 +398,8 @@ function PublicCatalog() {
     const banners = activeBanners.length ? activeBanners : [fallbackBanner];
   const activeBanner = banners[bannerIndex % banners.length] || fallbackBanner;
   const categories = asArray(catalogCategoriesFromCatalog(safeData));
-  const catalogItems = supabaseProducts.enabled && Array.isArray(supabaseProducts.data)
-    ? supabaseProducts.data
-    : asArray(safeData.items);
-  // Filtrar apenas produtos publicados para o catálogo público
+  const catalogItems = asArray(safeData.items);
+  // Filtrar apenas produtos publicados para o catÃ¡logo pÃºblico
   const publishedItems = catalogItems.filter((item) => Boolean(Number(item.is_published || 0)));
   const selectedProduct = publishedItems.find((item) => asNumber(item?.id) === selectedProductId) || null;
   const filteredItems = publishedItems.filter((item) => {
@@ -492,7 +475,7 @@ function addToOrder(item) {
             customer_notes: [
               variant.variation_name,
               variant.selected_color && `Cor: ${variant.selected_color}`
-            ].filter(Boolean).join(" · ")
+            ].filter(Boolean).join(" Â· ")
           } : selectedProduct);
           setDrawer("order");
         }}
@@ -520,9 +503,9 @@ function addToOrder(item) {
         </header>
 
         <div className="catalog-title">
-          <span className="eyebrow">Catálogo online</span>
-          <h1 style={{ fontFamily: theme.title_font || "Georgia" }}>{settings.page_title || "Catálogo Online"} <Sparkles size={26} /></h1>
-          <p>{data.title || "Escolha a joia perfeita para você"}</p>
+          <span className="eyebrow">CatÃ¡logo online</span>
+          <h1 style={{ fontFamily: theme.title_font || "Georgia" }}>{settings.page_title || "CatÃ¡logo Online"} <Sparkles size={26} /></h1>
+          <p>{data.title || "Escolha a joia perfeita para vocÃª"}</p>
           {data.subtitle && <small>{data.subtitle}</small>}
         </div>
 
@@ -559,30 +542,30 @@ function addToOrder(item) {
         <section className="catalog-filters">
           <span className="catalog-filter-label">Refinar</span>
           <CatalogSelect label="Material" value={filters.material} options={options.materials} onChange={(value) => setFilters({ ...filters, material: value })} />
-          <CatalogSelect label="Observação de cor" value={filters.color} options={options.colors} onChange={(value) => setFilters({ ...filters, color: value })} />
+          <CatalogSelect label="ObservaÃ§Ã£o de cor" value={filters.color} options={options.colors} onChange={(value) => setFilters({ ...filters, color: value })} />
           <CatalogSelect label="Pedra" value={filters.stone} options={options.stones} onChange={(value) => setFilters({ ...filters, stone: value })} />
           <CatalogSelect label="Tamanho" value={filters.size} options={options.sizes} onChange={(value) => setFilters({ ...filters, size: value })} />
           <label className="catalog-sort">
             <SlidersHorizontal size={16} />
             <select value={sort} onChange={(event) => setSort(event.target.value)}>
               <option value="recentes">Mais recentes</option>
-              <option value="menor-preco">Menor preço</option>
-              <option value="maior-preco">Maior preço</option>
+              <option value="menor-preco">Menor preÃ§o</option>
+              <option value="maior-preco">Maior preÃ§o</option>
             </select>
           </label>
         </section>
 
         <section className="catalog-trust-strip" aria-label="Diferenciais Aura">
           <span><ShieldCheck size={20} /><strong>Curadoria profissional</strong><small>Joias selecionadas pela Aura</small></span>
-          <span><Gem size={20} /><strong>Materiais premium</strong><small>Titânio, ouro e peças seguras</small></span>
+          <span><Gem size={20} /><strong>Materiais premium</strong><small>TitÃ¢nio, ouro e peÃ§as seguras</small></span>
           <span><Truck size={20} /><strong>Envio orientado</strong><small>Pedido finalizado pelo WhatsApp</small></span>
-          <span><Heart size={20} /><strong>Composição personalizada</strong><small>Favoritos e observações no pedido</small></span>
+          <span><Heart size={20} /><strong>ComposiÃ§Ã£o personalizada</strong><small>Favoritos e observaÃ§Ãµes no pedido</small></span>
         </section>
 
-        <CatalogProductRail title="Lançamentos" subtitle="Novidades recém-adicionadas à curadoria." items={latestItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} />
-        <CatalogProductRail title="Mais desejadas" subtitle="Peças premium em destaque para composições especiais." items={bestSellerItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} />
-        {promoItems.length > 0 && <CatalogProductRail title="Promoções" subtitle="Ofertas ativas com preço especial." items={promoItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} />}
-        {lastUnitsItems.length > 0 && <CatalogProductRail title="Últimas unidades" subtitle="Joias com poucas peças disponíveis." items={lastUnitsItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} />}
+        <CatalogProductRail title="LanÃ§amentos" subtitle="Novidades recÃ©m-adicionadas Ã  curadoria." items={latestItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} />
+        <CatalogProductRail title="Mais desejadas" subtitle="PeÃ§as premium em destaque para composiÃ§Ãµes especiais." items={bestSellerItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} />
+        {promoItems.length > 0 && <CatalogProductRail title="PromoÃ§Ãµes" subtitle="Ofertas ativas com preÃ§o especial." items={promoItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} />}
+        {lastUnitsItems.length > 0 && <CatalogProductRail title="Ãšltimas unidades" subtitle="Joias com poucas peÃ§as disponÃ­veis." items={lastUnitsItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} />}
 
         <CatalogBookingWidget />
         <CatalogContentSections sections={contentSections} />
@@ -604,18 +587,18 @@ function addToOrder(item) {
             />
           ))}
         </section>
-        {!items.length && <p className="empty-state catalog-empty">{supabaseProducts.error || "Nenhuma joia disponível no catálogo no momento."}</p>}
+        {!items.length && <p className="empty-state catalog-empty">Nenhuma joia disponÃ­vel no catÃ¡logo no momento.</p>}
 
         <section className="catalog-guide-section">
           <article>
             <span className="eyebrow">Guia Aura</span>
-            <h2>Escolha com mais segurança</h2>
-            <p>Na dúvida sobre tamanho, espessura, anodização ou região ideal Adicione observações no pedido e finalize pelo WhatsApp para receber orientação personalizada.</p>
+            <h2>Escolha com mais seguranÃ§a</h2>
+            <p>Na dÃºvida sobre tamanho, espessura, anodizaÃ§Ã£o ou regiÃ£o ideal Adicione observaÃ§Ãµes no pedido e finalize pelo WhatsApp para receber orientaÃ§Ã£o personalizada.</p>
           </article>
           <div>
             <span><strong>Medidas</strong><small>Confira tamanho, espessura e haste antes de reservar.</small></span>
-            <span><strong>Materiais</strong><small>Priorize titânio grau implante, ouro 14k/18k e peças adequadas à sua pele.</small></span>
-            <span><strong>Anodização</strong><small>Descreva a cor desejada nas observações do pedido.</small></span>
+            <span><strong>Materiais</strong><small>Priorize titÃ¢nio grau implante, ouro 14k/18k e peÃ§as adequadas Ã  sua pele.</small></span>
+            <span><strong>AnodizaÃ§Ã£o</strong><small>Descreva a cor desejada nas observaÃ§Ãµes do pedido.</small></span>
           </div>
         </section>
 
@@ -629,7 +612,7 @@ function addToOrder(item) {
             {settings.whatsapp_phone && (
               <a href={whatsappCatalogUrl(settings.whatsapp_message, settings.whatsapp_phone)} target="_blank" rel="noreferrer">
                 <i><MessageCircle size={20} /></i>
-                <span><small>Atendimento rápido</small><strong>WhatsApp</strong><em>{settings.whatsapp_phone}</em></span>
+                <span><small>Atendimento rÃ¡pido</small><strong>WhatsApp</strong><em>{settings.whatsapp_phone}</em></span>
                 <ChevronRight size={17} />
               </a>
             )}
@@ -643,7 +626,7 @@ function addToOrder(item) {
             {settings.company_email && (
               <a href={`mailto:${settings.company_email}`}>
                 <i><Mail size={20} /></i>
-                <span><small>Envie sua dúvida</small><strong>E-mail</strong><em>{settings.company_email}</em></span>
+                <span><small>Envie sua dÃºvida</small><strong>E-mail</strong><em>{settings.company_email}</em></span>
                 <ChevronRight size={17} />
               </a>
             )}
@@ -656,7 +639,7 @@ function addToOrder(item) {
             {settings.company_address && (
               <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(settings.company_address)}`} target="_blank" rel="noreferrer">
                 <i><MapPin size={20} /></i>
-                <span><small>Visite a clínica</small><strong>Endereço</strong><em>{settings.company_address}</em></span>
+                <span><small>Visite a clÃ­nica</small><strong>EndereÃ§o</strong><em>{settings.company_address}</em></span>
                 <ChevronRight size={17} />
               </a>
             )}
@@ -737,11 +720,11 @@ function CatalogBookingWidget() {
     <section className="catalog-booking-widget" id="catalog-agenda">
       <div>
         <span className="eyebrow">Agenda online</span>
-        <h2>Escolha Um Horário Disponível</h2>
-        <p>Reserve pelo link público da Aura. A equipe confirma manualmente pelo WhatsApp.</p>
+        <h2>Escolha Um HorÃ¡rio DisponÃ­vel</h2>
+        <p>Reserve pelo link pÃºblico da Aura. A equipe confirma manualmente pelo WhatsApp.</p>
       </div>
       <div className="catalog-booking-controls">
-        <Select label="Serviço" value={form.service_id} onChange={(value) => setForm({ ...form, service_id: value, appointment_time: "" })}>
+        <Select label="ServiÃ§o" value={form.service_id} onChange={(value) => setForm({ ...form, service_id: value, appointment_time: "" })}>
           {services.map((service) => <option value={service.id} key={service.id}>{service.name}</option>)}
         </Select>
         <Select label="Profissional" value={form.professional_id} onChange={(value) => setForm({ ...form, professional_id: value, appointment_time: "" })}>
@@ -751,7 +734,7 @@ function CatalogBookingWidget() {
       </div>
       <div className="catalog-slot-row">
           {slots.slice(0, 8).map((slot) => <button type="button" key={slot.time} className={form.appointment_time === slot.time ? "active" : ""} onClick={() => setForm({ ...form, appointment_time: slot.time })}>{slot.time}</button>)}
-        {!slots.length && <span>Nenhum horário nesta seleção.</span>}
+        {!slots.length && <span>Nenhum horÃ¡rio nesta seleÃ§Ã£o.</span>}
       </div>
       <a className="primary-button booking-wide-button" href={href}>Continuar Agendamento</a>
     </section>
@@ -816,22 +799,22 @@ function CatalogProductRail({ title, subtitle, items, data, theme, settings, fav
 
 function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, theme = {}, settings = {}, promotion }) {
   const productName = elegantProductName(item.name);
-  const description = [elegantProductName(item.material), cleanDisplayText(item.size)].filter(Boolean).join(" · ");
-  const detail = [elegantProductName(item.color), elegantProductName(item.stone)].filter(Boolean).join(" · ");
+  const description = [elegantProductName(item.material), cleanDisplayText(item.size)].filter(Boolean).join(" Â· ");
+  const detail = [elegantProductName(item.color), elegantProductName(item.stone)].filter(Boolean).join(" Â· ");
   const saleValue = Number(item.sale_value || 0);
   const promotionalValue = promotion ? promotionalPrice(saleValue, promotion) : null;
   const finalValue = promotionalValue || saleValue;
   const pixValue = finalValue * 0.95;
   const installmentValue = finalValue / 3;
   const shareText = `${settings.product_share_text || "Olha essa joia da Aura Clinic:"} ${productName} - ${description} - ${currency.format(finalValue)}.`;
-  const notifyText = `Olá! Quero ser avisada quando a joia ${productName} voltar ao estoque.`;
+  const notifyText = `OlÃ¡! Quero ser avisada quando a joia ${productName} voltar ao estoque.`;
   const stockText = catalogStockText(item, theme, settings);
   const available = Number(item.quantity || 0) > 0 && item.status !== "esgotado";
 
   return (
     <article className="catalog-product-card">
       <figure>
-        {(item.badge || promotion || !available) && <em className={`catalog-product-badge ${!available ? "unavailable" : ""}`}>{!available ? "Indisponível" : promotion ? "Promoção" : cleanDisplayText(item.badge)}</em>}
+        {(item.badge || promotion || !available) && <em className={`catalog-product-badge ${!available ? "unavailable" : ""}`}>{!available ? "IndisponÃ­vel" : promotion ? "PromoÃ§Ã£o" : cleanDisplayText(item.badge)}</em>}
         <a className="catalog-product-image-link" href={catalogProductUrl(item.id)} aria-label={`Abrir ${productName}`}>
           <img src={catalogImageUrl(item.photo_url)} alt={productName} />
         </a>
@@ -846,7 +829,7 @@ function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, th
         {item.sku && <small className="catalog-sku">SKU {item.sku}</small>}
         <strong>{finalValue > 0 ? <>{promotion && <del>{currency.format(saleValue)}</del>}{currency.format(finalValue)}</> : "Valor Sob Consulta"}</strong>
         {finalValue > 0 && <span className="catalog-payment-line">ou {currency.format(pixValue)} via Pix</span>}
-        {finalValue >= 60 && <span className="catalog-payment-line muted">até 3x de {currency.format(installmentValue)} sem juros</span>}
+        {finalValue >= 60 && <span className="catalog-payment-line muted">atÃ© 3x de {currency.format(installmentValue)} sem juros</span>}
         {stockText && <small className={Number(item.quantity || 0) <= 2 ? "catalog-stock warning" : "catalog-stock"}>{stockText}</small>}
         <div className="catalog-actions">
           {available && Boolean(Number(theme.show_schedule_button || 1)) && <button className="primary-button" type="button" onClick={onAddToOrder}>Quero essa joia</button>}
@@ -875,16 +858,16 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
   const description = item.description || "Joia selecionada da curadoria Aura Clinic.";
   const detailItems = [
     selectedVariant.material && { label: "Material", value: elegantProductName(selectedVariant.material) },
-    selectedColor && { label: "Observação de Cor", value: elegantProductName(selectedColor) },
+    selectedColor && { label: "ObservaÃ§Ã£o de Cor", value: elegantProductName(selectedColor) },
     item.stone && { label: "Pedra", value: elegantProductName(item.stone) },
     selectedVariant.size && { label: "Tamanho", value: selectedVariant.size },
     selectedVariant.thickness && { label: "Espessura", value: selectedVariant.thickness },
     selectedVariant.length && { label: "Comprimento", value: selectedVariant.length },
-    selectedVariant.diameter && { label: "Diâmetro", value: selectedVariant.diameter },
+    selectedVariant.diameter && { label: "DiÃ¢metro", value: selectedVariant.diameter },
     selectedVariant.thread_type && { label: "Tipo de Rosca", value: elegantProductName(selectedVariant.thread_type) },
     item.weight_grams ? { label: "Peso", value: `${item.weight_grams} g` } : null,
     item.package_length_cm || item.package_width_cm || item.package_height_cm ? { label: "Embalagem", value: `${item.package_length_cm || 0} x ${item.package_width_cm || 0} x ${item.package_height_cm || 0} cm` } : null,
-    item.physical_location && { label: "Localização", value: item.physical_location }
+    item.physical_location && { label: "LocalizaÃ§Ã£o", value: item.physical_location }
   ].filter(Boolean);
   const stockText = catalogStockText(item, theme, settings);
   const saleValue = Number(selectedVariant.sale_value || item.sale_value || 0);
@@ -903,7 +886,7 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
             <span>{theme.slogan || data.slogan || "Clinic Piercing"}</span>
           </a>
           <div className="catalog-top-actions">
-            <a className="secondary-button" href="/catalogo">Voltar ao catálogo</a>
+            <a className="secondary-button" href="/catalogo">Voltar ao catÃ¡logo</a>
             {Boolean(Number(theme.show_favorites || 1)) && <button className="catalog-icon-action" onClick={onToggleFavorite} aria-label={favorite ? "Remover dos favoritos" : "Favoritar"}><Heart size={18} /></button>}
           </div>
         </header>
@@ -918,25 +901,25 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
             </div>
           </div>
           <div className="catalog-product-sidebar">
-            <span className={`catalog-product-badge detail ${available ? "" : "unavailable"}`}>{available ? item.badge || "Disponível" : "Indisponível"}</span>
-            <p className="catalog-breadcrumb">Catálogo / {cleanDisplayText(item.category || "Joias")} / {cleanDisplayText(item.subcategory || productName)}</p>
+            <span className={`catalog-product-badge detail ${available ? "" : "unavailable"}`}>{available ? item.badge || "DisponÃ­vel" : "IndisponÃ­vel"}</span>
+            <p className="catalog-breadcrumb">CatÃ¡logo / {cleanDisplayText(item.category || "Joias")} / {cleanDisplayText(item.subcategory || productName)}</p>
             <h1>{productName}</h1>
             <p className="catalog-product-description">{description}</p>
             {availableVariants.length > 0 && (
               <div className="catalog-variant-picker">
                 <label>
-                  <span>Escolha a Variação</span>
+                  <span>Escolha a VariaÃ§Ã£o</span>
                   <select value={selectedVariantId} onChange={(event) => setSelectedVariantId(event.target.value)}>
                     {availableVariants.map((variant) => (
                       <option key={variant.id} value={variant.id} disabled={Number(variant.quantity || 0) <= 0}>
-                        {variantCatalogLabel(variant)} · {variant.quantity > 0 ? `${variant.quantity} disponíveis` : "Indisponível"}
+                        {variantCatalogLabel(variant)} Â· {variant.quantity > 0 ? `${variant.quantity} disponÃ­veis` : "IndisponÃ­vel"}
                       </option>
                     ))}
                   </select>
                 </label>
                 {colorOptions.length > 0 && (
                   <label>
-                    <span>Observação de Cor / Anodização</span>
+                    <span>ObservaÃ§Ã£o de Cor / AnodizaÃ§Ã£o</span>
                     <select value={selectedColor} onChange={(event) => setSelectedColor(event.target.value)}>
                       {colorOptions.map((color) => <option key={color}>{color}</option>)}
                     </select>
@@ -959,18 +942,18 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
             <div className="catalog-detail-actions">
               {available && Boolean(Number(theme.show_schedule_button || 1)) && <button className="primary-button" type="button" onClick={() => onAddToOrder({ ...selectedVariant, selected_color: selectedColor })}>Agendar com esta Joia</button>}
               {available && Boolean(Number(theme.show_buy_button)) && <button className="secondary-button" type="button" onClick={() => onAddToOrder({ ...selectedVariant, selected_color: selectedColor })}>Comprar Agora</button>}
-              {settings.whatsapp_phone && <a className="secondary-button" href={whatsappCatalogUrl(`Olá! Quero informações sobre ${productName}, ${variantCatalogLabel(selectedVariant)}${selectedColor ? `, na cor ${selectedColor}` : ""}.`, settings.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Falar com a Aura</a>}
+              {settings.whatsapp_phone && <a className="secondary-button" href={whatsappCatalogUrl(`OlÃ¡! Quero informaÃ§Ãµes sobre ${productName}, ${variantCatalogLabel(selectedVariant)}${selectedColor ? `, na cor ${selectedColor}` : ""}.`, settings.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Falar com a Aura</a>}
               <a className="secondary-button" href={whatsappShareUrl(`${settings.product_share_text || "Olha essa joia da Aura Clinic:"} ${item.name} - ${currency.format(saleValue)}.`)} target="_blank" rel="noreferrer">Compartilhar</a>
             </div>
-            {item.notes && <div className="catalog-notes-box"><strong>Observações</strong><p>{item.notes}</p></div>}
+            {item.notes && <div className="catalog-notes-box"><strong>ObservaÃ§Ãµes</strong><p>{item.notes}</p></div>}
           </div>
         </section>
 
         {related.length > 0 && (
           <section className="catalog-related-section">
             <div className="panel-heading">
-              <h2>Mais opções parecidas</h2>
-              <a className="secondary-button" href="/catalogo">Ver catálogo</a>
+              <h2>Mais opÃ§Ãµes parecidas</h2>
+              <a className="secondary-button" href="/catalogo">Ver catÃ¡logo</a>
             </div>
             <div className="catalog-grid catalog-related-grid">
               {related.map((relatedItem) => (
@@ -999,11 +982,11 @@ function CatalogDrawer({ type, favorites, orderItems, orderTotal, whatsappPhone,
   const safeOrderItems = asArray(orderItems);
   const items = isFavorites ? safeFavorites : safeOrderItems;
   const favoriteMessage = safeFavorites.length
-    ? `Olá! Quero ajuda com estas joias favoritas: ${safeFavorites.map((item) => item.name).join(", ")}.`
-    : "Olá! Quero ajuda para escolher minhas joias favoritas no catálogo da Aura Clinic.";
+    ? `OlÃ¡! Quero ajuda com estas joias favoritas: ${safeFavorites.map((item) => item.name).join(", ")}.`
+    : "OlÃ¡! Quero ajuda para escolher minhas joias favoritas no catÃ¡logo da Aura Clinic.";
   const message = safeOrderItems.length
-    ? `Olá! Quero agendar com estas joias: ${safeOrderItems.map((item) => `${item.qty || 1}x ${item.name}${item.customer_notes ? ` (${item.customer_notes})` : ""}`).join(", ")}. Total aproximado: ${currency.format(asNumber(orderTotal))}.`
-    : "Olá! Quero ajuda para montar meu pedido no catálogo da Aura Clinic.";
+    ? `OlÃ¡! Quero agendar com estas joias: ${safeOrderItems.map((item) => `${item.qty || 1}x ${item.name}${item.customer_notes ? ` (${item.customer_notes})` : ""}`).join(", ")}. Total aproximado: ${currency.format(asNumber(orderTotal))}.`
+    : "OlÃ¡! Quero ajuda para montar meu pedido no catÃ¡logo da Aura Clinic.";
 
   return (
     <div className="catalog-drawer-backdrop" role="presentation" onClick={onClose}>
@@ -1021,13 +1004,13 @@ function CatalogDrawer({ type, favorites, orderItems, orderTotal, whatsappPhone,
               <img src={catalogImageUrl(item.photo_url)} alt={item.name} />
               <div>
                 <strong>{item.name}</strong>
-                <span>{[item.material, item.selected_color || item.color, item.selected_variant_name || item.size].map(elegantProductName).filter(Boolean).join(" · ")}</span>
-                <small>{isFavorites ? currency.format(item.sale_value || 0) : `${item.qty || 1}x · ${currency.format(item.sale_value || 0)}`}</small>
-                {!isFavorites && <textarea value={item.customer_notes || ""} onChange={(event) => onUpdateOrderNotes(item.order_key || item.id, event.target.value)} placeholder="Observações de cor, tamanho ou envio" />}
+                <span>{[item.material, item.selected_color || item.color, item.selected_variant_name || item.size].map(elegantProductName).filter(Boolean).join(" Â· ")}</span>
+                <small>{isFavorites ? currency.format(item.sale_value || 0) : `${item.qty || 1}x Â· ${currency.format(item.sale_value || 0)}`}</small>
+                {!isFavorites && <textarea value={item.customer_notes || ""} onChange={(event) => onUpdateOrderNotes(item.order_key || item.id, event.target.value)} placeholder="ObservaÃ§Ãµes de cor, tamanho ou envio" />}
               </div>
               <button onClick={() => isFavorites ? onRemoveFavorite(item.id) : onRemoveOrder(item.order_key || item.id)}>Remover</button>
             </article>
-          )) : <p className="empty-state">{isFavorites ? "Nenhuma joia favoritada ainda." : "Seu pedido ainda está vazio."}</p>}
+          )) : <p className="empty-state">{isFavorites ? "Nenhuma joia favoritada ainda." : "Seu pedido ainda estÃ¡ vazio."}</p>}
         </div>
         {!isFavorites && (
           <footer>
@@ -1069,7 +1052,7 @@ function PublicCheckout() {
       return;
     }
     if (!safeOrderItems.length) {
-      setError("Seu pedido está vazio.");
+      setError("Seu pedido estÃ¡ vazio.");
       return;
     }
     const response = await fetch(`${API}/sales-orders/public`, {
@@ -1096,7 +1079,7 @@ function PublicCheckout() {
     });
     const json = await response.json().catch(() => ({}));
     if (!response.ok) {
-      setError(json.error || "Não foi possível concluir a compra.");
+      setError(json.error || "NÃ£o foi possÃ­vel concluir a compra.");
       return;
     }
     localStorage.removeItem("aura-catalog-order");
@@ -1116,7 +1099,7 @@ function PublicCheckout() {
           </div>
           <p>Pedido #{success.id} confirmado para {success.full_name}.</p>
           <div className="checkout-actions">
-            <a className="primary-button" href="/catalogo">Voltar ao catálogo</a>
+            <a className="primary-button" href="/catalogo">Voltar ao catÃ¡logo</a>
             <a className="secondary-button" href="/catalogo">Continuar comprando</a>
           </div>
         </section>
@@ -1129,13 +1112,13 @@ function PublicCheckout() {
       <section className="booking-shell">
         <header className="booking-public-header">
           <a className="catalog-client-brand" href="/catalogo"><strong>{data.theme?.brand_name || "Aura Clinic"}</strong><span>Checkout direto</span></a>
-          <a className="secondary-button" href="/catalogo">Voltar ao catálogo</a>
+          <a className="secondary-button" href="/catalogo">Voltar ao catÃ¡logo</a>
         </header>
         <div className="checkout-grid">
           <form className="panel appointment-form" onSubmit={submit}>
             <div className="panel-heading">
               <h2>Finalizar compra</h2>
-              <span>Vitrine pública Aura Clinic</span>
+              <span>Vitrine pÃºblica Aura Clinic</span>
             </div>
             <div className="form-grid">
               <Input label="Nome completo" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} required />
@@ -1144,12 +1127,12 @@ function PublicCheckout() {
               <Select label="Forma de pagamento" value={form.payment_method} onChange={(value) => setForm({ ...form, payment_method: value })}>
                 <option>Pix</option>
                 <option>Dinheiro</option>
-                <option>Cartão de crédito</option>
-                <option>Cartão de débito</option>
+                <option>CartÃ£o de crÃ©dito</option>
+                <option>CartÃ£o de dÃ©bito</option>
               </Select>
             </div>
-            <label>Observações
-              <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Observação de cor, tamanho, envio ou retirada." />
+            <label>ObservaÃ§Ãµes
+              <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="ObservaÃ§Ã£o de cor, tamanho, envio ou retirada." />
             </label>
             {error && <span className="form-error">{error}</span>}
             <button className="primary-button" type="submit">Confirmar compra</button>
@@ -1165,11 +1148,11 @@ function PublicCheckout() {
                   <img src={catalogImageUrl(item.photo_url)} alt={item.name} />
                   <div>
                     <strong>{item.name}</strong>
-                    <small>{[item.material, item.color, item.size].filter(Boolean).join(" · ")}</small>
+                    <small>{[item.material, item.color, item.size].filter(Boolean).join(" Â· ")}</small>
                     <span>{Number(item.qty || 1)}x {currency.format(item.sale_value || 0)}</span>
                   </div>
                 </article>
-              )) : <p className="empty-state">Seu carrinho está vazio. Volte ao catálogo e adicione joias.</p>}
+              )) : <p className="empty-state">Seu carrinho estÃ¡ vazio. Volte ao catÃ¡logo e adicione joias.</p>}
             </div>
             <div className="checkout-total-row">
               <strong>Total</strong>
@@ -1208,7 +1191,7 @@ function PublicBooking() {
       const json = await response.json().catch(() => ({}));
       setLoadingSlots(false);
       setSlots(response.ok ? asArray(json.slots) : []);
-      if (!response.ok) setError(json.error || "Não foi possível carregar os horários.");
+      if (!response.ok) setError(json.error || "NÃ£o foi possÃ­vel carregar os horÃ¡rios.");
     }
     loadSlots();
   }, [form.service_id, form.professional_id, form.appointment_date]);
@@ -1224,7 +1207,7 @@ function PublicBooking() {
     });
     const response = await fetch(API + "/booking/requests", { method: "POST", body });
     const json = await response.json().catch(() => ({}));
-    if (!response.ok) return setError(json.error || "Não foi possível solicitar o agendamento.");
+    if (!response.ok) return setError(json.error || "NÃ£o foi possÃ­vel solicitar o agendamento.");
     setConfirmed(json);
     setStep(7);
   }
@@ -1234,15 +1217,15 @@ function PublicBooking() {
       <section className="booking-shell">
         <header className="booking-public-header">
           <a className="catalog-client-brand" href="/catalogo"><strong>Aura Clinic</strong><span>Piercing</span></a>
-          <a className="secondary-button" href="/catalogo">Ver Catálogo</a>
+          <a className="secondary-button" href="/catalogo">Ver CatÃ¡logo</a>
         </header>
         <div className="booking-hero">
           <span className="eyebrow">Agendamento online</span>
-          <h1>Reserve Seu Horário Na Aura Clinic</h1>
-          <p>Escolha Serviço, Profissional, Data E Horário Disponível. A equipe confirma manualmente sua solicitação.</p>
+          <h1>Reserve Seu HorÃ¡rio Na Aura Clinic</h1>
+          <p>Escolha ServiÃ§o, Profissional, Data E HorÃ¡rio DisponÃ­vel. A equipe confirma manualmente sua solicitaÃ§Ã£o.</p>
         </div>
         <div className="booking-progress">
-          {["Serviço", "Profissional", "Data", "Horário", "Dados", "Resumo"].map((label, index) => (
+          {["ServiÃ§o", "Profissional", "Data", "HorÃ¡rio", "Dados", "Resumo"].map((label, index) => (
             <button key={label} className={step === index + 1 ? "active" : step > index + 1 ? "done" : ""} onClick={() => step > index + 1 && setStep(index + 1)}>
               <strong>{index + 1}</strong>
               <span>{label}</span>
@@ -1250,13 +1233,13 @@ function PublicBooking() {
           ))}
         </div>
 
-        {step === 1 && <BookingChoiceGrid title="Escolha O Serviço" items={services} value={form.service_id} onSelect={(id) => { setForm({ ...form, service_id: id, appointment_time: "" }); setStep(2); }} render={(item) => <><strong>{item.name}</strong><p>{item.description}</p><span>{item.duration_minutes} min  {currency.format(item.price || 0)}</span></>} />}
+        {step === 1 && <BookingChoiceGrid title="Escolha O ServiÃ§o" items={services} value={form.service_id} onSelect={(id) => { setForm({ ...form, service_id: id, appointment_time: "" }); setStep(2); }} render={(item) => <><strong>{item.name}</strong><p>{item.description}</p><span>{item.duration_minutes} min  {currency.format(item.price || 0)}</span></>} />}
         {step === 2 && <BookingChoiceGrid title="Escolha A Profissional" items={professionals} value={form.professional_id} onSelect={(id) => { setForm({ ...form, professional_id: id, appointment_time: "" }); setStep(3); }} render={(item) => <><strong>{item.name}</strong><p>{item.specialty || "Body Piercer Aura"}</p></>} />}
         {step === 3 && (
           <section className="booking-panel booking-date-card">
-            <span className="booking-section-kicker">Etapa 3 · Data</span>
+            <span className="booking-section-kicker">Etapa 3 Â· Data</span>
             <h2>Escolha a Data</h2>
-            <p>Os horários serão carregados automaticamente para o dia escolhido.</p>
+            <p>Os horÃ¡rios serÃ£o carregados automaticamente para o dia escolhido.</p>
             <div className="booking-date-strip">
               {bookingDates.map((date) => (
                 <button key={date.value} type="button" className={form.appointment_date === date.value ? "active" : ""} onClick={() => {
@@ -1271,9 +1254,9 @@ function PublicBooking() {
         )}
         {step === 4 && (
           <section className="booking-panel booking-time-card">
-            <span className="booking-section-kicker">Etapa 4 · Horários</span>
-            <h2>Agende seu Horário</h2>
-            <p className="booking-selected-date">{form.appointment_date ? formatLongDate(form.appointment_date) : "Selecione uma data para ver os horários."}</p>
+            <span className="booking-section-kicker">Etapa 4 Â· HorÃ¡rios</span>
+            <h2>Agende seu HorÃ¡rio</h2>
+            <p className="booking-selected-date">{form.appointment_date ? formatLongDate(form.appointment_date) : "Selecione uma data para ver os horÃ¡rios."}</p>
             <div className="booking-date-strip compact">
               {bookingDates.map((date) => (
                 <button key={date.value} type="button" className={form.appointment_date === date.value ? "active" : ""} onClick={() => setForm({ ...form, appointment_date: date.value, appointment_time: "" })}>
@@ -1281,11 +1264,11 @@ function PublicBooking() {
                 </button>
               ))}
             </div>
-            {loadingSlots && <p className="empty-state">Carregando horários...</p>}
+            {loadingSlots && <p className="empty-state">Carregando horÃ¡rios...</p>}
             <div className="slot-grid">
               {slots.map((slot) => <button key={slot.time} className={form.appointment_time === slot.time ? "active" : ""} onClick={() => setForm({ ...form, appointment_time: slot.time })}>{slot.time}</button>)}
             </div>
-            {!loadingSlots && !slots.length && <p className="empty-state">Nenhum horário disponível nesta data.</p>}
+            {!loadingSlots && !slots.length && <p className="empty-state">Nenhum horÃ¡rio disponÃ­vel nesta data.</p>}
             <button className="primary-button booking-wide-button" disabled={!form.appointment_time} onClick={() => setStep(5)}>Continuar</button>
           </section>
         )}
@@ -1297,35 +1280,35 @@ function PublicBooking() {
               <Input label="Nome" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} required />
               <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => setForm({ ...form, whatsapp: value })} required />
               <Input label="Instagram" value={form.instagram} onChange={(value) => setForm({ ...form, instagram: value })} />
-              <label>Foto de referência<input type="file" accept="image/*" onChange={(event) => setForm({ ...form, reference_photo: event.target.files?.[0] })} /></label>
+              <label>Foto de referÃªncia<input type="file" accept="image/*" onChange={(event) => setForm({ ...form, reference_photo: event.target.files?.[0] })} /></label>
             </div>
-            <label>Observações<textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
+            <label>ObservaÃ§Ãµes<textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
             <button className="primary-button booking-wide-button" disabled={!form.full_name || !form.whatsapp} onClick={() => setStep(6)}>Ver Resumo</button>
           </section>
         )}
         {step === 6 && (
           <section className="booking-panel booking-summary">
             <span className="booking-section-kicker">Etapa 6  Resumo</span>
-            <h2>Resumo Da Solicitação</h2>
-            <p><strong>Serviço:</strong> {selectedService?.name}</p>
+            <h2>Resumo Da SolicitaÃ§Ã£o</h2>
+            <p><strong>ServiÃ§o:</strong> {selectedService?.name}</p>
             <p><strong>Profissional:</strong> {selectedProfessional?.name}</p>
-            <p><strong>Data E Horário:</strong> {formatLongDate(form.appointment_date)} ?s {form.appointment_time}</p>
+            <p><strong>Data E HorÃ¡rio:</strong> {formatLongDate(form.appointment_date)} ?s {form.appointment_time}</p>
             <p><strong>Valor:</strong> {currency.format(selectedService?.price || 0)}</p>
             <p><strong>Sinal:</strong> {currency.format(selectedService?.deposit_value || 0)}</p>
             <p><strong>Regras:</strong> {data.rules?.cancellation}</p>
             <label>Comprovante Do Sinal Pix<input type="file" accept="image/*,.pdf" onChange={(event) => setForm({ ...form, payment_proof: event.target.files?.[0] })} /></label>
             {error && <span className="form-error">{error}</span>}
-            <button className="primary-button booking-wide-button" onClick={submit}>Confirmar Solicitação</button>
+            <button className="primary-button booking-wide-button" onClick={submit}>Confirmar SolicitaÃ§Ã£o</button>
           </section>
         )}
         {step === 7 && (
           <section className="booking-panel booking-confirmation">
             <CheckCircle2 size={42} />
-            <span className="booking-section-kicker">Solicitação enviada</span>
-            <h2>Solicitação Enviada</h2>
-            <p>Seu horário ficou como pendente. A Aura Clinic vai confirmar manualmente pelo WhatsApp.</p>
+            <span className="booking-section-kicker">SolicitaÃ§Ã£o enviada</span>
+            <h2>SolicitaÃ§Ã£o Enviada</h2>
+            <p>Seu horÃ¡rio ficou como pendente. A Aura Clinic vai confirmar manualmente pelo WhatsApp.</p>
             <strong>{confirmed?.procedure}  {formatLongDate(confirmed?.appointment_date)} ?s {confirmed?.appointment_time}</strong>
-            <a className="primary-button booking-wide-button" href="/catalogo">Voltar Ao Catálogo</a>
+            <a className="primary-button booking-wide-button" href="/catalogo">Voltar Ao CatÃ¡logo</a>
           </section>
         )}
       </section>
@@ -1333,27 +1316,11 @@ function PublicBooking() {
   );
 }
 
-function BookingChoiceGrid({ title, items, value, onSelect, render }) {
-  const safeItems = asArray(items);
-  return (
-    <section className="booking-panel">
-      <h2>{title}</h2>
-      <div className="booking-choice-grid">
-        {safeItems.map((item) => (
-          <button key={item.id} className={String(value) === String(item.id) ? "active" : ""} onClick={() => onSelect(item.id)}>
-            {render(item)}
-          </button>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function Sidebar({ page, role, setPage, open, onLogout }) {
+function LegacySidebar({ page, role, setPage, open, onLogout }) {
   const items = [
     ["dashboard", Home, "Dashboard"],
     ["erp", ShieldCheck, "Aura ERP"],
-    ["catalog", Gem, "Catálogo"],
+    ["catalog", Gem, "CatÃ¡logo"],
     ["agenda", Calendar, "Agenda"],
     ["sales", ShoppingCart, "Vendas"],
     ["finance", WalletCards, "Financeiro"],
@@ -1418,9 +1385,9 @@ function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpen, aler
   const cards = [
     { label: "Agendamentos hoje", value: String(safeStats.todayCount ?? 0), icon: Calendar, action: "Ver agenda", page: "agenda", tone: "gold" },
     { label: "Clientes novos", value: String(upcomingAppointments.length || todaysAppointments.length), icon: UsersRound, action: "Ver clientes", page: "clients", tone: "nude" },
-    { label: "Joias em estoque crítico", value: String(safeStats.lowStockCount ?? safeStats.criticalStock ?? 0), icon: Gem, action: "Ver estoque", page: "catalog", tone: "green" },
+    { label: "Joias em estoque crÃ­tico", value: String(safeStats.lowStockCount ?? safeStats.criticalStock ?? 0), icon: Gem, action: "Ver estoque", page: "catalog", tone: "green" },
     { label: "Faturamento hoje", value: currency.format(Number(safeStats.depositReceived ?? 0)), icon: CircleDollarSign, action: "Ver Financeiro", page: "finance", tone: "brown" },
-    { label: "Aniversariantes do mês", value: String(birthdaysItems.length), icon: Cake, action: "Ver todos", page: "clients", tone: "gold" }
+    { label: "Aniversariantes do mÃªs", value: String(birthdaysItems.length), icon: Cake, action: "Ver todos", page: "clients", tone: "gold" }
   ];
 
   const pendingValue = Math.max(
@@ -1444,8 +1411,8 @@ function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpen, aler
             <div>
               <strong>{value}</strong>
               <span>{label}</span>
-              {critical && <small>crítico</small>}
-              <button type="button" onClick={() => setPage(page)}>{action} →</button>
+              {critical && <small>crÃ­tico</small>}
+              <button type="button" onClick={() => setPage(page)}>{action} â†’</button>
             </div>
           </article>
         ))}
@@ -1456,7 +1423,7 @@ function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpen, aler
           <div className="panel-heading">
             <h2>Faturamento</h2>
             <div className="segmented compact">
-              <button type="button" className={revenueMode === "diario" ? "active" : ""} onClick={() => setRevenueMode("diario")}>Diário</button>
+              <button type="button" className={revenueMode === "diario" ? "active" : ""} onClick={() => setRevenueMode("diario")}>DiÃ¡rio</button>
               <button type="button" className={revenueMode === "semanal" ? "active" : ""} onClick={() => setRevenueMode("semanal")}>Semanal</button>
               <button type="button" className={revenueMode === "mensal" ? "active" : ""} onClick={() => setRevenueMode("mensal")}>Mensal</button>
             </div>
@@ -1466,7 +1433,7 @@ function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpen, aler
 
         <article className="panel upcoming-card">
           <div className="panel-heading">
-            <h2>Próximos agendamentos</h2>
+            <h2>PrÃ³ximos agendamentos</h2>
             <button className="ghost-button" type="button" onClick={() => setPage("agenda")}>Ver todos</button>
           </div>
           <div className="premium-appointment-list">
@@ -1476,13 +1443,13 @@ function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpen, aler
                 <div className="avatar-circle">{initials(item.full_name)}</div>
                 <div>
                   <strong>{item.full_name || "Cliente"}</strong>
-                  <small>{item.procedure || "Procedimento"}<br />Prof. {item.professional_name || "—"}</small>
+                  <small>{item.procedure || "Procedimento"}<br />Prof. {item.professional_name || "â€”"}</small>
                 </div>
-                <em className={statusClass[item.status] || ""}>{item.status || "—"}</em>
+                <em className={statusClass[item.status] || ""}>{item.status || "â€”"}</em>
                 <ChevronRight size={18} />
               </button>
             ))}
-            {!upcomingAppointments.length && <p className="empty-state">Nenhum próximo agendamento.</p>}
+            {!upcomingAppointments.length && <p className="empty-state">Nenhum prÃ³ximo agendamento.</p>}
           </div>
         </article>
       </div>
@@ -1490,7 +1457,7 @@ function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpen, aler
       <div className="premium-lower-grid">
         <article className="panel compact-list-card">
           <div className="panel-heading">
-            <h2>Estoque crítico</h2>
+            <h2>Estoque crÃ­tico</h2>
             <button className="ghost-button" type="button" onClick={() => setPage("catalog")}>Ver estoque</button>
           </div>
           <div className="clean-list">
@@ -1501,13 +1468,13 @@ function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpen, aler
                 <em>{Number(item.quantity || 0)} unidade{Number(item.quantity || 0) === 1 ? "" : "s"}</em>
               </div>
             ))}
-            {!criticalStockItems.length && <p className="empty-state">Estoque sem alerta crítico.</p>}
+            {!criticalStockItems.length && <p className="empty-state">Estoque sem alerta crÃ­tico.</p>}
           </div>
         </article>
 
         <article className="panel compact-list-card">
           <div className="panel-heading">
-            <h2>Aniversariantes do mês</h2>
+            <h2>Aniversariantes do mÃªs</h2>
             <button className="ghost-button" type="button" onClick={() => setPage("client-center")}>Ver todos</button>
           </div>
           <div className="clean-list birthday-list">
@@ -1518,7 +1485,7 @@ function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpen, aler
                 <Cake size={18} />
               </div>
             ))}
-            {!birthdaysItems.length && <p className="empty-state">Nenhum aniversário neste mês.</p>}
+            {!birthdaysItems.length && <p className="empty-state">Nenhum aniversÃ¡rio neste mÃªs.</p>}
           </div>
         </article>
 
@@ -1546,14 +1513,14 @@ function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpen, aler
           <MiniBarChart data={procedureRanking} valueKey="total" labelKey="label" />
         </div>
         <div className="panel">
-          <div className="panel-heading"><h2>Joias mais vendidas</h2><span>Peças vinculadas</span></div>
+          <div className="panel-heading"><h2>Joias mais vendidas</h2><span>PeÃ§as vinculadas</span></div>
           <MiniBarChart data={jewelryRanking} valueKey="total" labelKey="label" />
         </div>
         <div className="panel">
           <div className="panel-heading"><h2>Ranking por categoria</h2><span>Joalherias</span></div>
           <MiniBarChart data={categoryRanking} valueKey="total" labelKey="label" />
         </div>
-        <DashboardList title="Clientes em retorno" items={returnClients} render={(item) => `${formatDate(item.due_date)} · ${item.full_name || "Cliente"} · ${item.reminder_day || 0} dias`} />
+        <DashboardList title="Clientes em retorno" items={returnClients} render={(item) => `${formatDate(item.due_date)} Â· ${item.full_name || "Cliente"} Â· ${item.reminder_day || 0} dias`} />
       </div>
     </section>
   );
@@ -1638,7 +1605,7 @@ function AlertsPopup({ alerts, loading, onClose, onAction }) {
         <header>
           <div>
             <span className="eyebrow">Central de alertas</span>
-            <h2>O que precisa de atenção hoje</h2>
+            <h2>O que precisa de atenÃ§Ã£o hoje</h2>
           </div>
           <button className="icon-button" onClick={onClose} aria-label="Fechar alertas">X</button>
         </header>
@@ -1651,31 +1618,19 @@ function AlertsPopup({ alerts, loading, onClose, onAction }) {
                   <div className="alert-card-icon"><Icon size={20} /></div>
                   <div className="alert-card-heading">
                     <span>{item.category || "Aura Clinic"}</span>
-                    <em>{item.priority === "high" ? "Alta" : item.priority === "medium" ? "Média" : "Baixa"}</em>
+                    <em>{item.priority === "high" ? "Alta" : item.priority === "medium" ? "MÃ©dia" : "Baixa"}</em>
                   </div>
                   <h3>{item.title || "Alerta"}</h3>
                   <strong>{item.subject || ""}</strong>
-                  <p>{item.description || "Verifique esta informação no sistema."}</p>
+                  <p>{item.description || "Verifique esta informaÃ§Ã£o no sistema."}</p>
                   {item.related_date && <small>{formatLongDate(item.related_date)}</small>}
                   {item.action_page && <button type="button" onClick={() => onAction?.(item.action_page)}>{item.action_label || "Ver detalhes"} <ChevronRight size={15} /></button>}
                 </article>
               );
             })}
           </div>
-        ) : <div className="alerts-empty-state"><Bell size={28} /><strong>Nenhum alerta importante no momento.</strong><span>Está tudo em ordem por aqui.</span></div>}
+        ) : <div className="alerts-empty-state"><Bell size={28} /><strong>Nenhum alerta importante no momento.</strong><span>EstÃ¡ tudo em ordem por aqui.</span></div>}
       </section>
-    </div>
-  );
-}
-
-function AlertBlock({ icon: Icon, title, empty, children }) {
-  const items = React.Children.toArray(children).filter(Boolean);
-  return (
-    <div className="alert-block">
-      <h3><Icon size={17} /> {title}</h3>
-      <div className="alert-list">
-        {items.length ? items : <p className="empty-state">{empty}</p>}
-      </div>
     </div>
   );
 }
@@ -1688,7 +1643,7 @@ function AuraERP({ setPage }) {
     return (
       <section className="panel erp-error">
         <span className="eyebrow">Aura Clinic ERP</span>
-        <h2>Não foi possível carregar esta área.</h2>
+        <h2>NÃ£o foi possÃ­vel carregar esta Ã¡rea.</h2>
         <p>{data.error}</p>
         <small>Reinicie o servidor com npm.cmd run dev para carregar a nova rota /api/erp.</small>
       </section>
@@ -1713,13 +1668,13 @@ function AuraERP({ setPage }) {
         <div>
           <span className="eyebrow">SaaS multiempresa</span>
           <h2>{product.name || "Aura ERP"}</h2>
-          <p>{product.positioning || "Gestão integrada para a Aura Clinic."}</p>
+          <p>{product.positioning || "GestÃ£o integrada para a Aura Clinic."}</p>
           <div className="erp-stack">
             {asArray(product.stackTarget).map((item) => <span key={item}>{item}</span>)}
           </div>
         </div>
         <div className="erp-metrics">
-          <Metric label="Estúdios" value={asNumber(metrics.studios)} />
+          <Metric label="EstÃºdios" value={asNumber(metrics.studios)} />
           <Metric label="Clientes" value={asNumber(metrics.clients)} />
           <Metric label="Agendamentos" value={asNumber(metrics.appointments)} />
           <Metric label="Receita" value={currency.format(asNumber(metrics.revenue))} />
@@ -1767,21 +1722,21 @@ function AuraERP({ setPage }) {
               <article key={item.id}>
                 <img src={item.photo_url} alt={item.name} />
                 <strong>{item.name}</strong>
-                <span>{currency.format(item.sale_value)} · {item.quantity} un.</span>
+                <span>{currency.format(item.sale_value)} Â· {item.quantity} un.</span>
               </article>
             ))}
           </div>
         </ERPPanel>
         <ERPPanel title="Cupons e influenciadores" subtitle="Rastreamento comercial">
           <div className="erp-list">
-            {coupons.map((coupon) => <p key={coupon.code}><strong>{coupon.code}</strong><span>{asNumber(coupon.value)}% · {coupon.status}</span></p>)}
-            {influencers.map((item) => <p key={item.instagram}><strong>{item.name}</strong><span>{item.coupon} · {asNumber(item.conversions)} conversões</span></p>)}
+            {coupons.map((coupon) => <p key={coupon.code}><strong>{coupon.code}</strong><span>{asNumber(coupon.value)}% Â· {coupon.status}</span></p>)}
+            {influencers.map((item) => <p key={item.instagram}><strong>{item.name}</strong><span>{item.coupon} Â· {asNumber(item.conversions)} conversÃµes</span></p>)}
           </div>
         </ERPPanel>
         <ERPPanel title="Consultorias e Aura Academy" subtitle="Produtos digitais">
           <div className="erp-list">
-            {consultancies.map((item) => <p key={item.name}><strong>{item.name}</strong><span>{currency.format(asNumber(item.price))} · {item.format}</span></p>)}
-            {academy.map((item) => <p key={item.name}><strong>{item.name}</strong><span>{asNumber(item.lessons)} aulas · {asNumber(item.students)} alunos</span></p>)}
+            {consultancies.map((item) => <p key={item.name}><strong>{item.name}</strong><span>{currency.format(asNumber(item.price))} Â· {item.format}</span></p>)}
+            {academy.map((item) => <p key={item.name}><strong>{item.name}</strong><span>{asNumber(item.lessons)} aulas Â· {asNumber(item.students)} alunos</span></p>)}
           </div>
         </ERPPanel>
         <ERPPanel title="Calendario editorial" subtitle="Planejamento de conteudo Aura">
@@ -1819,8 +1774,8 @@ function erpModuleAction(name = "") {
   if (normalized.includes("agendamento")) return { label: "Abrir agenda", page: "agenda" };
   if (normalized.includes("clientes") || normalized.includes("prontuario") || normalized.includes("crm") || normalized.includes("rewards") || normalized.includes("mapa corporal")) return { label: "Abrir clientes", page: "client-center" };
   if (normalized.includes("termo")) return { label: "Abrir clientes", page: "client-center" };
-  if (normalized.includes("estoque") || normalized.includes("joalheria")) return { label: "Abrir catálogo", page: "catalog" };
-  if (normalized.includes("catalogo")) return { label: "Abrir catálogo", page: "catalog" };
+  if (normalized.includes("estoque") || normalized.includes("joalheria")) return { label: "Abrir catÃ¡logo", page: "catalog" };
+  if (normalized.includes("catalogo")) return { label: "Abrir catÃ¡logo", page: "catalog" };
   if (normalized.includes("venda") || normalized.includes("ordem")) return { label: "Abrir vendas", page: "sales" };
   if (normalized.includes("Financeiro") || normalized.includes("relatorio")) return { label: "Abrir Financeiro", page: "finance" };
   if (normalized.includes("administrativo") || normalized.includes("configur")) return { label: "Abrir acessos", page: "admin" };
@@ -1828,7 +1783,7 @@ function erpModuleAction(name = "") {
   return { label: "Ver no Aura ERP", page: "erp" };
 }
 
-function removeAccents(value) {
+function legacyRemoveAccents(value) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
@@ -1838,7 +1793,7 @@ function AgendaWorkspace() {
     {
       id: "visual",
       title: "Agenda visual",
-      description: "Calendário mensal, semanal e diário com status dos atendimentos.",
+      description: "CalendÃ¡rio mensal, semanal e diÃ¡rio com status dos atendimentos.",
       icon: Calendar
     },
     {
@@ -1850,7 +1805,7 @@ function AgendaWorkspace() {
     {
       id: "disponibilidade",
       title: "Disponibilidade",
-      description: "Serviços online, horários disponíveis, bloqueios e solicitações pendentes.",
+      description: "ServiÃ§os online, horÃ¡rios disponÃ­veis, bloqueios e solicitaÃ§Ãµes pendentes.",
       icon: ShieldCheck
     }
   ];
@@ -1879,15 +1834,15 @@ function CatalogWorkspace() {
   const [tab, setTab] = useState("inicio");
   const tabs = [
     { id: "estoque", title: "Estoque", description: "Abra o controle administrativo completo das joias.", icon: Gem },
-    { id: "personalizacao", title: "Personalização", description: "Configure banners, cores, textos, categorias e destaques do catálogo.", icon: Sparkles },
-    { id: "público", title: "Catálogo público", description: "Abra a vitrine que o cliente visualiza.", icon: ShoppingCart }
+    { id: "personalizacao", title: "PersonalizaÃ§Ã£o", description: "Configure banners, cores, textos, categorias e destaques do catÃ¡logo.", icon: Sparkles },
+    { id: "pÃºblico", title: "CatÃ¡logo pÃºblico", description: "Abra a vitrine que o cliente visualiza.", icon: ShoppingCart }
   ];
   if (tab !== "inicio") {
     return (
       <section className="workspace-page workspace-subpage">
         <button className="secondary-button workspace-back-button" type="button" onClick={() => setTab("inicio")}>
           <ChevronLeft size={16} />
-          Voltar para Catálogo
+          Voltar para CatÃ¡logo
         </button>
         {tab === "estoque" && <Inventory2 compact />}
         {tab === "personalizacao" && <CatalogCustomization />}
@@ -1898,14 +1853,14 @@ function CatalogWorkspace() {
     <section className="workspace-page">
       <div className="workspace-intro panel">
         <div>
-          <span className="eyebrow">Catálogo e estoque</span>
-          <h2>Organize a vitrine pública e o controle interno em áreas separadas.</h2>
-          <p>Escolha Estoque para cadastrar uma nova joalheria, ajustar quantidades, medidas, valores e dados de envio. O catálogo público atualiza automaticamente.</p>
+          <span className="eyebrow">CatÃ¡logo e estoque</span>
+          <h2>Organize a vitrine pÃºblica e o controle interno em Ã¡reas separadas.</h2>
+          <p>Escolha Estoque para cadastrar uma nova joalheria, ajustar quantidades, medidas, valores e dados de envio. O catÃ¡logo pÃºblico atualiza automaticamente.</p>
         </div>
       </div>
       <div className="workspace-hub">
         {tabs.map(({ id, title, description, icon: Icon }) => (
-          <button key={id} className={tab === id ? "active" : ""} onClick={() => id === "público" ? window.open("/catalogo", "_blank", "noopener,noreferrer") : setTab(id)}>
+          <button key={id} className={tab === id ? "active" : ""} onClick={() => id === "pÃºblico" ? window.open("/catalogo", "_blank", "noopener,noreferrer") : setTab(id)}>
             <Icon size={20} />
             <span><strong>{title}</strong><small>{description}</small></span>
             <ChevronRight size={17} />
@@ -1919,9 +1874,9 @@ function CatalogWorkspace() {
 function ClientWorkspace() {
   const [tab, setTab] = useState("clientes");
   const tabs = [
-    { id: "clientes", title: "Clientes", description: "Histórico, prontuários, pagamentos e fidelidade.", icon: UsersRound },
-    { id: "termos", title: "Termos digitais", description: "Assinatura, aceite, PDF e vínculo ao agendamento.", icon: FileSignature },
-    { id: "retornos", title: "Pós-atendimento", description: "Lembretes, fotos, status de cicatrização e retornos.", icon: HeartPulse }
+    { id: "clientes", title: "Clientes", description: "HistÃ³rico, prontuÃ¡rios, pagamentos e fidelidade.", icon: UsersRound },
+    { id: "termos", title: "Termos digitais", description: "Assinatura, aceite, PDF e vÃ­nculo ao agendamento.", icon: FileSignature },
+    { id: "retornos", title: "PÃ³s-atendimento", description: "Lembretes, fotos, status de cicatrizaÃ§Ã£o e retornos.", icon: HeartPulse }
   ];
   return (
     <section className="workspace-page">
@@ -1968,7 +1923,7 @@ function Appointments() {
       const json = await response.json().catch(() => ({}));
       setLoadingSlots(false);
       setSlots(response.ok ? asArray(json.slots) : []);
-      if (!response.ok) setError(json.error || "Não foi possível carregar os horários.");
+      if (!response.ok) setError(json.error || "NÃ£o foi possÃ­vel carregar os horÃ¡rios.");
     }
     loadSlots();
   }, [form.service_id, form.professional_id, form.appointment_date]);
@@ -2003,7 +1958,7 @@ function Appointments() {
     });
     if (!response.ok) {
       const data = await response.json();
-      setError(data.error || "Não foi possível salvar o agendamento.");
+      setError(data.error || "NÃ£o foi possÃ­vel salvar o agendamento.");
       return;
     }
     setForm(defaultAppointment());
@@ -2016,14 +1971,14 @@ function Appointments() {
     <section className="stack appointments-admin">
       <div className="panel appointments-toolbar">
         <div className="panel-heading">
-          <div><span className="eyebrow">Agenda Aura</span><h2>Agendamentos</h2><span>Cadastre e acompanhe os próximos atendimentos.</span></div>
+          <div><span className="eyebrow">Agenda Aura</span><h2>Agendamentos</h2><span>Cadastre e acompanhe os prÃ³ximos atendimentos.</span></div>
           <button className="primary-button" type="button" onClick={() => setShowForm(true)}><Plus size={17} /> Novo Agendamento</button>
         </div>
       </div>
       {showForm && <div className="modal-backdrop appointment-modal-backdrop" onClick={() => setShowForm(false)}>
       <form className="panel appointment-form manual-appointment-modal" onSubmit={submit} onClick={(event) => event.stopPropagation()}>
         <div className="panel-heading">
-          <div><h2>Novo Agendamento</h2><span>Profissional, serviço, cliente, data e horário.</span></div>
+          <div><h2>Novo Agendamento</h2><span>Profissional, serviÃ§o, cliente, data e horÃ¡rio.</span></div>
           <button className="icon-button" type="button" aria-label="Fechar" onClick={() => setShowForm(false)}><X size={18} /></button>
         </div>
         <div className="form-section">
@@ -2040,7 +1995,7 @@ function Appointments() {
             <Input label="Nome completo" value={form.full_name} onChange={(v) => setForm({ ...form, full_name: v })} required />
             <Input label="WhatsApp" value={form.whatsapp} onChange={(v) => setForm({ ...form, whatsapp: v })} required />
             <Input label="Instagram" value={form.instagram} onChange={(v) => setForm({ ...form, instagram: v })} />
-            <Input type="date" label="Aniversário" value={form.birth_date} onChange={(v) => setForm({ ...form, birth_date: v })} />
+            <Input type="date" label="AniversÃ¡rio" value={form.birth_date} onChange={(v) => setForm({ ...form, birth_date: v })} />
           </div>
         </div>
         <div className="form-section">
@@ -2061,15 +2016,15 @@ function Appointments() {
               {safeServices.map((service) => <option key={service.id} value={service.id}>{service.name} ({service.duration_minutes} min)</option>)}
             </Select>
             <Input label="Procedimento" value={form.procedure} onChange={(v) => setForm({ ...form, procedure: v })} required />
-            <Input label="Região da perfuração" value={form.piercing_region} onChange={(v) => setForm({ ...form, piercing_region: v })} required />
+            <Input label="RegiÃ£o da perfuraÃ§Ã£o" value={form.piercing_region} onChange={(v) => setForm({ ...form, piercing_region: v })} required />
             <Select label="Joalheria escolhida" value={form.jewelry_id} onChange={(v) => setForm({ ...form, jewelry_id: v })}>
               <option value="">Sem joia vinculada</option>
               {safeJewelry.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </Select>
-            <Select label="Variação da Joia" value={form.jewelry_variant_id} onChange={(v) => setForm({ ...form, jewelry_variant_id: v })}>
+            <Select label="VariaÃ§Ã£o da Joia" value={form.jewelry_variant_id} onChange={(v) => setForm({ ...form, jewelry_variant_id: v })}>
               <option value="">Selecione</option>
               {asArray(safeJewelry.find((item) => String(item.id) === String(form.jewelry_id))?.variants).filter((variant) => asNumber(variant?.quantity) > 0).map((variant) => (
-                <option key={variant.id} value={variant.id}>{variant.variation_name || variant.sku} · {variant.quantity} un</option>
+                <option key={variant.id} value={variant.id}>{variant.variation_name || variant.sku} Â· {variant.quantity} un</option>
               ))}
             </Select>
             <Select label="Profissional" value={form.professional_id} onChange={(v) => setForm({ ...form, professional_id: v })} required>
@@ -2079,14 +2034,14 @@ function Appointments() {
             <Input type="date" label="Data" value={form.appointment_date} onChange={(v) => setForm({ ...form, appointment_date: v, appointment_time: "" })} required />
           </div>
           <div className="manual-slot-field">
-            <span>Horários Disponíveis</span>
+            <span>HorÃ¡rios DisponÃ­veis</span>
             <div className="manual-slot-grid">
-              {loadingSlots && <small>Carregando horários...</small>}
+              {loadingSlots && <small>Carregando horÃ¡rios...</small>}
               {asArray(slots).map((slot) => <button key={slot.time} type="button" className={form.appointment_time === slot.time ? "active" : ""} onClick={() => setForm({ ...form, appointment_time: slot.time })}>{slot.time}</button>)}
-              {!loadingSlots && form.appointment_date && form.service_id && form.professional_id && !asArray(slots).length && <small>Nenhum horário livre neste dia.</small>}
+              {!loadingSlots && form.appointment_date && form.service_id && form.professional_id && !asArray(slots).length && <small>Nenhum horÃ¡rio livre neste dia.</small>}
             </div>
           </div>
-          <label>Descrição do atendimento
+          <label>DescriÃ§Ã£o do atendimento
             <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </label>
         </div>
@@ -2100,12 +2055,12 @@ function Appointments() {
             <PaymentSelect label="Forma de pagamento restante" value={form.remaining_payment_method} onChange={(v) => setForm({ ...form, remaining_payment_method: v })} />
             <StatusSelect value={form.status} onChange={(v) => setForm({ ...form, status: v })} />
           </div>
-          <label>Observações importantes
+          <label>ObservaÃ§Ãµes importantes
             <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
           </label>
-          <label>Foto de referência
+          <label>Foto de referÃªncia
             <input type="file" accept="image/*" onChange={(event) => setForm({ ...form, reference_photo: event.target.files?.[0] || null })} />
-            <small>Opcional. Use uma foto nítida da referência enviada pela cliente.</small>
+            <small>Opcional. Use uma foto nÃ­tida da referÃªncia enviada pela cliente.</small>
           </label>
         </div>
         {error && <span className="form-error">{error}</span>}
@@ -2117,8 +2072,8 @@ function Appointments() {
       </div>}
       <div className="panel">
         <div className="panel-heading">
-          <h2>Próximos Atendimentos</h2>
-          <span>Com Ações Rápidas</span>
+          <h2>PrÃ³ximos Atendimentos</h2>
+          <span>Com AÃ§Ãµes RÃ¡pidas</span>
         </div>
         <AppointmentList appointments={safeAppointments} onChanged={refresh} />
       </div>
@@ -2149,9 +2104,9 @@ function VisualCalendar() {
           {statuses().map((status) => <option key={status}>{status}</option>)}
         </Select>
         <div className="calendar-nav">
-          <button aria-label="Período anterior" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, -1))}><ChevronLeft size={18} /></button>
+          <button aria-label="PerÃ­odo anterior" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, -1))}><ChevronLeft size={18} /></button>
           <strong>{calendar.title}</strong>
-          <button aria-label="Próximo período" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, 1))}><ChevronRight size={18} /></button>
+          <button aria-label="PrÃ³ximo perÃ­odo" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, 1))}><ChevronRight size={18} /></button>
           <button onClick={() => setCurrentDate(new Date())}>Hoje</button>
         </div>
       </div>
@@ -2167,7 +2122,7 @@ function VisualCalendar() {
 function GoogleLikeCalendar({ days, mode, refresh }) {
   return (
     <div className={`google-calendar ${mode === "semanal" ? "week-view" : ""}`}>
-      {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day) => <div className="calendar-weekday" key={day}>{day}</div>)}
+      {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "SÃ¡b"].map((day) => <div className="calendar-weekday" key={day}>{day}</div>)}
       {days.map((day) => (
         <article className={`calendar-cell ${day.isOutside ? "outside" : ""} ${day.isToday ? "today" : ""}`} key={day.key}>
           <header>
@@ -2227,15 +2182,15 @@ function Inventory() {
       <div className="toolbar">
         <label className="search-field">
           <Search size={17} />
-          <input placeholder="Buscar por nome, observação de cor, tamanho, espessura ou categoria" value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} />
+          <input placeholder="Buscar por nome, observaÃ§Ã£o de cor, tamanho, espessura ou categoria" value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} />
         </label>
         <Select label="Material" value={filters.material} onChange={(v) => setFilters({ ...filters, material: v })}>
           <option value="">Todos</option>
-          <option>titânio grau implante</option><option>ouro 14k</option><option>ouro 18k</option><option>aço</option><option>outro</option>
+          <option>titÃ¢nio grau implante</option><option>ouro 14k</option><option>ouro 18k</option><option>aÃ§o</option><option>outro</option>
         </Select>
         <Select label="Status" value={filters.status} onChange={(v) => setFilters({ ...filters, status: v })}>
           <option value="">Todos</option>
-          <option>disponível</option><option>baixo estoque</option><option>esgotado</option>
+          <option>disponÃ­vel</option><option>baixo estoque</option><option>esgotado</option>
         </Select>
         <div className="icon-toggle">
           <button className={view === "cards" ? "active" : ""} onClick={() => setView("cards")} aria-label="Cards"><LayoutGrid size={18} /></button>
@@ -2266,15 +2221,15 @@ function JewelryCards({ items, onOpen, onEdit, onMovement, onArchive }) {
           <div>
             <span className={`pill ${inventoryStatusClass(item)}`}>{inventoryStatusLabel(item)}</span>
             <h2>{elegantProductName(item.name)}</h2>
-            <p>{[item.category, item.subcategory].map(cleanDisplayText).filter(Boolean).join(" · ")}</p>
+            <p>{[item.category, item.subcategory].map(cleanDisplayText).filter(Boolean).join(" Â· ")}</p>
             <div className="inventory-inline-meta">
               <span className="stock-chip">{item.quantity} em estoque</span>
-              <span className="inventory-visual-tag">{item.variant_count || item.variants?.length || 0} variações</span>
+              <span className="inventory-visual-tag">{item.variant_count || item.variants?.length || 0} variaÃ§Ãµes</span>
               <strong>A partir de {currency.format(item.sale_value || 0)}</strong>
             </div>
             <div className="card-actions">
               {onMovement && <button type="button" onClick={(event) => { event.stopPropagation(); onMovement(item, "Entrada"); }}>Entrada</button>}
-              {onMovement && <button type="button" onClick={(event) => { event.stopPropagation(); onMovement(item, "Saída"); }}>Saída</button>}
+              {onMovement && <button type="button" onClick={(event) => { event.stopPropagation(); onMovement(item, "SaÃ­da"); }}>SaÃ­da</button>}
               <button type="button" onClick={(event) => { event.stopPropagation(); onEdit(item); }}>Editar</button>
               {onArchive && <button type="button" onClick={(event) => { event.stopPropagation(); onArchive(item); }}>Arquivar</button>}
             </div>
@@ -2286,7 +2241,6 @@ function JewelryCards({ items, onOpen, onEdit, onMovement, onArchive }) {
 }
 
 function Inventory2() {
-  const supabaseProducts = useSupabaseProducts();
   const [view, setView] = useState("table");
   const [sectionTab, setSectionTab] = useState("produtos");
   const [inventoryMode, setInventoryMode] = useState("internal");
@@ -2303,9 +2257,7 @@ function Inventory2() {
   const query = new URLSearchParams(Object.fromEntries(Object.entries(queryFilters).filter(([, value]) => value))).toString();
   const { data, refresh: refreshJewelry } = useFetch(`/jewelry?${query}`);
   const apiItems = asArray(data);
-  const items = supabaseProducts.enabled && Array.isArray(supabaseProducts.data)
-    ? supabaseProducts.data
-    : apiItems;
+  const items = apiItems;
   const safeOptions = asObject(options);
   const rawInventoryOptions = asObject(safeOptions.inventoryOptions);
   const inventoryOptions = {
@@ -2321,9 +2273,7 @@ const safeInventoryJewelry = asArray(inventoryJewelry);
 const safeCatalogJewelry = asArray(catalogJewelry);
 
 const fallbackJewelry = [...safeInventoryJewelry, ...safeCatalogJewelry];
-const allJewelry = supabaseProducts.enabled
-  ? items
-  : safeOptionJewelry.length
+const allJewelry = safeOptionJewelry.length
     ? safeOptionJewelry
     : fallbackJewelry.length
       ? fallbackJewelry
@@ -2346,7 +2296,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
     const effectiveStatus = statusTab !== "todos" ? statusTab : filters.status;
     if (!effectiveStatus || effectiveStatus === "todos") return true;
     if (effectiveStatus === "ativos") return inventoryStockState(item) === "active";
-    if (effectiveStatus === "critico" || effectiveStatus === "crítico") return inventoryStockState(item) === "critical";
+    if (effectiveStatus === "critico" || effectiveStatus === "crÃ­tico") return inventoryStockState(item) === "critical";
     if (effectiveStatus === "esgotados" || effectiveStatus === "esgotado") return inventoryStockState(item) === "sold-out";
     return true;
   });
@@ -2376,15 +2326,6 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
   }, [inventoryMode]);
 
   async function archiveJewelry(item) {
-    if (item?.supabase_source) {
-      try {
-        await removeSupabaseProduct(item.supabase_id || item.id);
-        supabaseProducts.refresh();
-      } catch (error) {
-        console.error(error);
-      }
-      return;
-    }
     const response = await apiFetch(`/jewelry/${item.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -2443,7 +2384,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
     return (
       <section className="inventory-studio inventory-product-page">
         <div className="inventory-main">
-          <nav className="inventory-breadcrumb" aria-label="Navegação do estoque">
+          <nav className="inventory-breadcrumb" aria-label="NavegaÃ§Ã£o do estoque">
             <button type="button" onClick={() => closeProduct({ keepCategory: false })}>Estoque</button>
             {productCategory && (
               <>
@@ -2475,7 +2416,6 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
               closeProduct({ keepCategory: Boolean(productCategory) });
               refreshJewelry();
               refreshOptions();
-              supabaseProducts.refresh();
             }}
           />
         </div>
@@ -2491,14 +2431,14 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
           <div>
             <span className="eyebrow">Aura Clinic / Estoque</span>
             <h2>Estoque</h2>
-            <p>Produtos, variações e movimentações em uma navegação simples.</p>
+            <p>Produtos, variaÃ§Ãµes e movimentaÃ§Ãµes em uma navegaÃ§Ã£o simples.</p>
           </div>
           <div className="inventory-hero-actions">
             <button className="primary-button" type="button" onClick={openNewProduct}><Gem size={16} /> Nova Joia</button>
           </div>
         </header>
 
-        <nav className="inventory-module-tabs" aria-label="Módulos do estoque">
+        <nav className="inventory-module-tabs" aria-label="MÃ³dulos do estoque">
           {mainTabs.map(({ id, label, icon: Icon }) => (
             <button key={id} type="button" className={sectionTab === id ? "active" : ""} onClick={() => setSectionTab(id)}>
               <Icon size={16} />
@@ -2510,7 +2450,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
         <div className="inventory-panel-shell">
           {sectionTab === "produtos" && (
             <>
-              <nav className="inventory-list-breadcrumb" aria-label="Navegação por categoria">
+              <nav className="inventory-list-breadcrumb" aria-label="NavegaÃ§Ã£o por categoria">
                 <button
                   type="button"
                   className={!filters.category ? "active" : ""}
@@ -2542,7 +2482,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
               <div className="inventory-filter-row simplified">
                 <label className="search-field">
                   <Search size={17} />
-                  <input placeholder="Buscar joia, SKU ou variação..." value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} />
+                  <input placeholder="Buscar joia, SKU ou variaÃ§Ã£o..." value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} />
                 </label>
                 <Select label="Categoria" value={filters.category} onChange={(value) => setFilters({ ...filters, category: value })}>
                   <option value="">Categoria</option>
@@ -2551,11 +2491,11 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
                 <Select label="Status" value={filters.status} onChange={(value) => setFilters({ ...filters, status: value })}>
                   <option value="">Status</option>
                   <option value="ativos">Ativos</option>
-                  <option value="critico">Crítico</option>
+                  <option value="critico">CrÃ­tico</option>
                   <option value="esgotados">Esgotados</option>
                 </Select>
                 <button type="button" className={`advanced-filter-toggle ${showAdvancedFilters ? "active" : ""}`} onClick={() => setShowAdvancedFilters((value) => !value)}>
-                  <SlidersHorizontal size={17} /> Filtros Avançados
+                  <SlidersHorizontal size={17} /> Filtros AvanÃ§ados
                 </button>
                 <div className="icon-toggle">
                   <button className={view === "cards" ? "active" : ""} onClick={() => setView("cards")} aria-label="Cards"><LayoutGrid size={18} /></button>
@@ -2569,7 +2509,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
                     <option value="">Todos os Materiais</option>
                     {variantOptions("material").map((option) => <option key={option}>{option}</option>)}
                   </Select>
-                  <Select label="Observação de Cor" value={filters.color} onChange={(value) => setFilters({ ...filters, color: value })}>
+                  <Select label="ObservaÃ§Ã£o de Cor" value={filters.color} onChange={(value) => setFilters({ ...filters, color: value })}>
                     <option value="">Todas</option>
                     {variantOptions("color").map((option) => <option key={option}>{option}</option>)}
                   </Select>
@@ -2585,7 +2525,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
                     <option value="">Todos</option>
                     {variantOptions("length").map((option) => <option key={option}>{option}</option>)}
                   </Select>
-                  <Select label="Diâmetro" value={filters.diameter} onChange={(value) => setFilters({ ...filters, diameter: value })}>
+                  <Select label="DiÃ¢metro" value={filters.diameter} onChange={(value) => setFilters({ ...filters, diameter: value })}>
                     <option value="">Todos</option>
                     {variantOptions("diameter").map((option) => <option key={option}>{option}</option>)}
                   </Select>
@@ -2599,7 +2539,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
               {!displayItems.length ? (
                 <div className="inventory-empty-state">
                   <Gem size={28} />
-                  <strong>{supabaseProducts.error || "Nenhuma joia cadastrada ainda."}</strong>
+                  <strong>Nenhuma joia cadastrada ainda.</strong>
                   <span>Cadastre uma nova joia ou ajuste os filtros para continuar.</span>
                 </div>
               ) : view === "cards" ? (
@@ -2615,7 +2555,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
               <div className="panel-heading">
                 <div>
                   <h2>Categorias e cadastros auxiliares</h2>
-                  <span>Organize categorias, tamanhos, espessuras e profissionais sem sair desta página.</span>
+                  <span>Organize categorias, tamanhos, espessuras e profissionais sem sair desta pÃ¡gina.</span>
                 </div>
                 <button className="secondary-button" type="button" onClick={() => setShowManagement((value) => !value)}>
                   {showManagement ? "Ocultar cadastros" : "Abrir cadastros"}
@@ -2635,23 +2575,23 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
             <div className="inventory-section-card">
               <div className="panel-heading">
                 <div>
-                  <h2>Unidades e visão rápida</h2>
-                  <span>Resumo por peça com foco no que importa primeiro.</span>
+                  <h2>Unidades e visÃ£o rÃ¡pida</h2>
+                  <span>Resumo por peÃ§a com foco no que importa primeiro.</span>
                 </div>
               </div>
               <div className="inventory-summary-grid compact">
-                <Metric label="Total de peças" value={String(stockSummary.totalPieces)} />
+                <Metric label="Total de peÃ§as" value={String(stockSummary.totalPieces)} />
                 <Metric label="Total de produtos" value={String(stockSummary.totalProducts)} />
-                <Metric label="Críticas" value={String(stockSummary.critical)} />
+                <Metric label="CrÃ­ticas" value={String(stockSummary.critical)} />
                 <Metric label="Esgotados" value={String(stockSummary.soldOut)} />
                 <Metric label="Valor investido" value={currency.format(stockSummary.invested)} />
                 <Metric label="Venda potencial" value={currency.format(stockSummary.potential)} />
                 <Metric label="Lucro potencial" value={currency.format(stockSummary.potential - stockSummary.invested)} />
               </div>
               <div className="inventory-quick-flags">
-                <span><strong>Ativos no Catálogo</strong><small>{allJewelry.filter((item) => Boolean(Number(item.is_catalog_active))).length} peças visíveis na vitrine</small></span>
-                <span><strong>Destaques Comerciais</strong><small>Lançamentos, promoções e últimas unidades ficam na Loja Virtual</small></span>
-                <span><strong>Alertas</strong><small>Criticidade e reposição continuam no fluxo interno</small></span>
+                <span><strong>Ativos no CatÃ¡logo</strong><small>{allJewelry.filter((item) => Boolean(Number(item.is_catalog_active))).length} peÃ§as visÃ­veis na vitrine</small></span>
+                <span><strong>Destaques Comerciais</strong><small>LanÃ§amentos, promoÃ§Ãµes e Ãºltimas unidades ficam na Loja Virtual</small></span>
+                <span><strong>Alertas</strong><small>Criticidade e reposiÃ§Ã£o continuam no fluxo interno</small></span>
               </div>
               <div className="inventory-mini-list">
                 {allJewelry.slice(0, 6).map((item) => (
@@ -2659,7 +2599,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
                     <img src={catalogImageUrl(item.photo_url)} alt={item.name} />
                     <div>
                       <strong>{item.name}</strong>
-                      <small>{[item.category, item.material].filter(Boolean).join(" · ")}</small>
+                      <small>{[item.category, item.material].filter(Boolean).join(" Â· ")}</small>
                     </div>
                     <span>{item.quantity} un</span>
                   </div>
@@ -2673,7 +2613,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
               <div className="panel-heading">
                 <div>
                   <h2>Curva ABC</h2>
-                  <span>Peças com maior valor total em estoque.</span>
+                  <span>PeÃ§as com maior valor total em estoque.</span>
                 </div>
               </div>
               <div className="inventory-abc-list">
@@ -2746,25 +2686,13 @@ function JewelryEditor({ options, editing, onSaved, onCancel, onMovementOpen }) 
       is_last_units: Boolean(form.is_last_units),
       image_url: form.image_url
     };
-    if (editing?.supabase_source) {
-      try {
-        const savedProduct = await saveSupabaseProduct(payload, editing.supabase_id || editing.id);
-        setForm(defaultJewelry());
-        onSaved(savedProduct);
-      } catch (saveError) {
-        console.error(saveError);
-        setError("Não foi possível salvar a joia no Supabase.");
-      }
-      return;
-    }
     const response = await apiFetch(`/jewelry${editing ? `/${editing.id}` : ""}`, {
       method: editing ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
     const json = await response.json().catch(() => ({}));
-    if (!response.ok) return setError(json.error || "Não foi possível salvar a joia.");
-    await syncProductToSupabase(json);
+    if (!response.ok) return setError(json.error || "NÃ£o foi possÃ­vel salvar a joia.");
     setForm(defaultJewelry());
     onSaved(json);
   }
@@ -2800,7 +2728,7 @@ function JewelryEditor({ options, editing, onSaved, onCancel, onMovementOpen }) 
   }
 
   function removeVariant(index) {
-    if (form.variants.length === 1) return setError("O produto precisa ter ao menos uma variação.");
+    if (form.variants.length === 1) return setError("O produto precisa ter ao menos uma variaÃ§Ã£o.");
     setForm((current) => ({ ...current, variants: current.variants.filter((_, variantIndex) => variantIndex !== index) }));
   }
 
@@ -2808,7 +2736,7 @@ function JewelryEditor({ options, editing, onSaved, onCancel, onMovementOpen }) 
     <form className="panel jewelry-editor stock-editor" onSubmit={submit}>
       <div className="panel-heading">
         <div>
-          <span className="eyebrow">Categoria → Produto → Variações</span>
+          <span className="eyebrow">Categoria â†’ Produto â†’ VariaÃ§Ãµes</span>
           <h2>{editing ? "Editar Produto" : "Novo Produto"}</h2>
           <span>Cadastre a joia uma vez e controle cada medida separadamente.</span>
         </div>
@@ -2817,10 +2745,10 @@ function JewelryEditor({ options, editing, onSaved, onCancel, onMovementOpen }) 
       <nav className="editor-tabs">
         {[
           ["dados", "Dados"],
-          ["variacoes", `Variações (${form.variants.length})`],
-          ["movimentacao", "Movimentação"],
+          ["variacoes", `VariaÃ§Ãµes (${form.variants.length})`],
+          ["movimentacao", "MovimentaÃ§Ã£o"],
           ["comercial", "Comercial"],
-          ["virtual", "Catálogo"]
+          ["virtual", "CatÃ¡logo"]
         ].map(([id, label]) => (
           <button key={id} type="button" className={editorTab === id ? "active" : ""} onClick={() => setEditorTab(id)}>{label}</button>
         ))}
@@ -2843,16 +2771,16 @@ function JewelryEditor({ options, editing, onSaved, onCancel, onMovementOpen }) 
             <ImageUploadField label="Foto principal" value={form.photo_url} onChange={(value) => setForm({ ...form, photo_url: value })} />
           </div>
           <label>Galeria de fotos
-            <textarea value={form.gallery_urls} onChange={(event) => setForm({ ...form, gallery_urls: event.target.value })} placeholder={"Cole uma URL por linha.\nCada imagem aparece no catálogo como galeria."} />
+            <textarea value={form.gallery_urls} onChange={(event) => setForm({ ...form, gallery_urls: event.target.value })} placeholder={"Cole uma URL por linha.\nCada imagem aparece no catÃ¡logo como galeria."} />
           </label>
           <div className="form-grid">
             <Input label="Pedra" value={form.stone} onChange={(value) => setForm({ ...form, stone: value })} />
-            <Input label="Indicação de Uso" value={form.piercing_type} onChange={(value) => setForm({ ...form, piercing_type: value })} />
+            <Input label="IndicaÃ§Ã£o de Uso" value={form.piercing_type} onChange={(value) => setForm({ ...form, piercing_type: value })} />
           </div>
-          <label>Descrição curta
+          <label>DescriÃ§Ã£o curta
             <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
           </label>
-          <label>Observações internas
+          <label>ObservaÃ§Ãµes internas
             <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
           </label>
         </div>
@@ -2862,20 +2790,20 @@ function JewelryEditor({ options, editing, onSaved, onCancel, onMovementOpen }) 
         <div className="editor-section">
           <div className="variant-editor-heading">
             <div>
-              <h3>Variações do Produto</h3>
-              <p>Cada combinação possui SKU, preço e estoque próprios.</p>
+              <h3>VariaÃ§Ãµes do Produto</h3>
+              <p>Cada combinaÃ§Ã£o possui SKU, preÃ§o e estoque prÃ³prios.</p>
             </div>
-            <button type="button" className="primary-button" onClick={addVariant}>+ Nova Variação</button>
+            <button type="button" className="primary-button" onClick={addVariant}>+ Nova VariaÃ§Ã£o</button>
           </div>
           <div className="variant-editor-list">
             {form.variants.map((variant, index) => {
               const measure = variant.diameter
-                ? `Diâmetro ${variant.diameter}`
+                ? `DiÃ¢metro ${variant.diameter}`
                 : variant.length
                   ? `Comprimento ${variant.length}`
                   : variant.size
                     ? `Tamanho ${variant.size}`
-                    : variant.variation_name || `Variação ${index + 1}`;
+                    : variant.variation_name || `VariaÃ§Ã£o ${index + 1}`;
               const specifications = [
                 variant.thickness && `${variant.thickness}`,
                 variant.material && elegantProductName(variant.material),
@@ -2890,16 +2818,16 @@ function JewelryEditor({ options, editing, onSaved, onCancel, onMovementOpen }) 
                   <div className="variant-card-specs">
                     {specifications.length
                       ? specifications.map((specification) => <span key={specification}>{specification}</span>)
-                      : <span>Configure as especificações</span>}
+                      : <span>Configure as especificaÃ§Ãµes</span>}
                   </div>
                   <div className="variant-card-business">
                     <span><small>Estoque</small><strong>{Number(variant.quantity || 0)} un</strong></span>
-                    <span><small>Preço</small><strong>{currency.format(variant.sale_value || 0)}</strong></span>
-                    <span><small>SKU</small><strong>{variant.sku || "Não informado"}</strong></span>
+                    <span><small>PreÃ§o</small><strong>{currency.format(variant.sale_value || 0)}</strong></span>
+                    <span><small>SKU</small><strong>{variant.sku || "NÃ£o informado"}</strong></span>
                   </div>
                   <div className="variant-card-actions">
-                    <button type="button" aria-label="Editar Variação" title="Editar Variação" onClick={() => setEditingVariantIndex(index)}><Pencil size={16} /></button>
-                    <button type="button" aria-label="Excluir Variação" title="Excluir Variação" onClick={() => removeVariant(index)}><Trash2 size={16} /></button>
+                    <button type="button" aria-label="Editar VariaÃ§Ã£o" title="Editar VariaÃ§Ã£o" onClick={() => setEditingVariantIndex(index)}><Pencil size={16} /></button>
+                    <button type="button" aria-label="Excluir VariaÃ§Ã£o" title="Excluir VariaÃ§Ã£o" onClick={() => removeVariant(index)}><Trash2 size={16} /></button>
                   </div>
                 </article>
               );
@@ -2920,39 +2848,39 @@ function JewelryEditor({ options, editing, onSaved, onCancel, onMovementOpen }) 
         <div className="editor-section">
           <div className="variant-editor-heading">
             <div>
-              <h3>Movimentação de Estoque</h3>
-              <p>Registre entradas e saídas sem misturar o histórico com o cadastro das variações.</p>
+              <h3>MovimentaÃ§Ã£o de Estoque</h3>
+              <p>Registre entradas e saÃ­das sem misturar o histÃ³rico com o cadastro das variaÃ§Ãµes.</p>
             </div>
             {editing?.id && (
               <div className="product-movement-actions">
                 <button type="button" className="secondary-button" onClick={() => onMovementOpen?.(editing, "Entrada")}>Registrar Entrada</button>
-                <button type="button" className="secondary-button" onClick={() => onMovementOpen?.(editing, "Saída")}>Registrar Saída</button>
+                <button type="button" className="secondary-button" onClick={() => onMovementOpen?.(editing, "SaÃ­da")}>Registrar SaÃ­da</button>
               </div>
             )}
           </div>
           {editing?.id
             ? <StockMovementHistory jewelryId={editing.id} />
-            : <p className="empty-state">Salve o produto antes de registrar movimentações.</p>}
+            : <p className="empty-state">Salve o produto antes de registrar movimentaÃ§Ãµes.</p>}
         </div>
       )}
 
       {editorTab === "comercial" && (
         <div className="editor-section">
           <div className="form-grid">
-            <Input label="Localização Física" value={form.physical_location} onChange={(value) => setForm({ ...form, physical_location: value })} />
+            <Input label="LocalizaÃ§Ã£o FÃ­sica" value={form.physical_location} onChange={(value) => setForm({ ...form, physical_location: value })} />
           </div>
           <div className="inventory-stat-box">
-            <div><span>Variações Ativas</span><strong>{form.variants.length}</strong></div>
-            <div><span>Total de Peças</span><strong>{form.variants.reduce((sum, variant) => sum + Number(variant.quantity || 0), 0)}</strong></div>
+            <div><span>VariaÃ§Ãµes Ativas</span><strong>{form.variants.length}</strong></div>
+            <div><span>Total de PeÃ§as</span><strong>{form.variants.reduce((sum, variant) => sum + Number(variant.quantity || 0), 0)}</strong></div>
             <div><span>Lucro Potencial</span><strong>{currency.format(potentialProfit)}</strong></div>
           </div>
           <div className="chip-toggle-grid">
-            <ToggleChip label="Ativo no catálogo" checked={form.is_catalog_active} onChange={(value) => setForm({ ...form, is_catalog_active: value })} />
+            <ToggleChip label="Ativo no catÃ¡logo" checked={form.is_catalog_active} onChange={(value) => setForm({ ...form, is_catalog_active: value })} />
             <ToggleChip label="Destaque" checked={form.is_featured} onChange={(value) => setForm({ ...form, is_featured: value })} />
-            <ToggleChip label="Promoção" checked={form.is_promotion} onChange={(value) => setForm({ ...form, is_promotion: value })} />
-            <ToggleChip label="Lançamento" checked={form.is_new} onChange={(value) => setForm({ ...form, is_new: value })} />
+            <ToggleChip label="PromoÃ§Ã£o" checked={form.is_promotion} onChange={(value) => setForm({ ...form, is_promotion: value })} />
+            <ToggleChip label="LanÃ§amento" checked={form.is_new} onChange={(value) => setForm({ ...form, is_new: value })} />
             <ToggleChip label="Mais desejado" checked={form.is_most_wanted} onChange={(value) => setForm({ ...form, is_most_wanted: value })} />
-            <ToggleChip label="Últimas unidades" checked={form.is_last_units} onChange={(value) => setForm({ ...form, is_last_units: value })} />
+            <ToggleChip label="Ãšltimas unidades" checked={form.is_last_units} onChange={(value) => setForm({ ...form, is_last_units: value })} />
           </div>
         </div>
       )}
@@ -2961,28 +2889,28 @@ function JewelryEditor({ options, editing, onSaved, onCancel, onMovementOpen }) 
         <div className="editor-section">
           <div className="form-grid">
             <Toggle label="Loja virtual ativa" checked={form.virtual_store_active} onChange={(value) => setForm({ ...form, virtual_store_active: value })} />
-            <Toggle label="Publicar no catálogo público" checked={form.is_published} onChange={(value) => setForm({ ...form, is_published: value })} />
+            <Toggle label="Publicar no catÃ¡logo pÃºblico" checked={form.is_published} onChange={(value) => setForm({ ...form, is_published: value })} />
           </div>
           {Boolean(form.virtual_store_active) && (
             <>
               <div className="form-grid">
-                <Input label="URL da imagem (para catálogo)" value={form.image_url} onChange={(value) => setForm({ ...form, image_url: value })} placeholder="https://..." />
+                <Input label="URL da imagem (para catÃ¡logo)" value={form.image_url} onChange={(value) => setForm({ ...form, image_url: value })} placeholder="https://..." />
                 <Input type="number" label="Peso para envio (g)" value={form.weight_grams} onChange={(value) => setForm({ ...form, weight_grams: value })} />
                 <Input type="number" label="Comprimento da embalagem (cm)" value={form.package_length_cm} onChange={(value) => setForm({ ...form, package_length_cm: value })} />
                 <Input type="number" label="Largura da embalagem (cm)" value={form.package_width_cm} onChange={(value) => setForm({ ...form, package_width_cm: value })} />
                 <Input type="number" label="Altura da embalagem (cm)" value={form.package_height_cm} onChange={(value) => setForm({ ...form, package_height_cm: value })} />
                 <Input label="Tipo de embalagem" value={form.package_type} onChange={(value) => setForm({ ...form, package_type: value })} />
-                <Input type="number" label="Prazo de preparação (dias)" value={form.preparation_days} onChange={(value) => setForm({ ...form, preparation_days: value })} />
+                <Input type="number" label="Prazo de preparaÃ§Ã£o (dias)" value={form.preparation_days} onChange={(value) => setForm({ ...form, preparation_days: value })} />
               </div>
-              <label>Informações de frete / envio
-                <textarea value={form.shipping_info} onChange={(event) => setForm({ ...form, shipping_info: event.target.value })} placeholder="Ex.: Envio para todo o Brasil, cálculo por Correios ou transportadora, embalagem protegida." />
+              <label>InformaÃ§Ãµes de frete / envio
+                <textarea value={form.shipping_info} onChange={(event) => setForm({ ...form, shipping_info: event.target.value })} placeholder="Ex.: Envio para todo o Brasil, cÃ¡lculo por Correios ou transportadora, embalagem protegida." />
               </label>
-              <label>Observações de frete e envio
-                <textarea value={form.freight_notes} onChange={(event) => setForm({ ...form, freight_notes: event.target.value })} placeholder="Ex.: proteger pedra ou opala, usar caixa pequena, separar por variações." />
+              <label>ObservaÃ§Ãµes de frete e envio
+                <textarea value={form.freight_notes} onChange={(event) => setForm({ ...form, freight_notes: event.target.value })} placeholder="Ex.: proteger pedra ou opala, usar caixa pequena, separar por variaÃ§Ãµes." />
               </label>
               <div className="form-grid">
-                <Input label="SEO título" value={form.seo_title} onChange={(value) => setForm({ ...form, seo_title: value })} />
-                <Input label="SEO descrição" value={form.seo_description} onChange={(value) => setForm({ ...form, seo_description: value })} />
+                <Input label="SEO tÃ­tulo" value={form.seo_title} onChange={(value) => setForm({ ...form, seo_title: value })} />
+                <Input label="SEO descriÃ§Ã£o" value={form.seo_description} onChange={(value) => setForm({ ...form, seo_description: value })} />
               </div>
             </>
           )}
@@ -2991,7 +2919,7 @@ function JewelryEditor({ options, editing, onSaved, onCancel, onMovementOpen }) 
 
       {error && <span className="form-error">{error}</span>}
       <div className="modal-actions">
-        {editing && <button type="button" className="secondary-button" onClick={onCancel}>Cancelar edição</button>}
+        {editing && <button type="button" className="secondary-button" onClick={onCancel}>Cancelar ediÃ§Ã£o</button>}
         <button className="primary-button">{editing ? "Salvar joia" : "Cadastrar joia"}</button>
       </div>
     </form>
@@ -3018,13 +2946,13 @@ function VariantEditModal({ category, variant, onChange, onClose }) {
     <div className="modal-backdrop variant-modal-backdrop" onClick={onClose}>
       <section className="panel variant-edit-modal" onClick={(event) => event.stopPropagation()}>
         <header>
-          <div><h2>Editar Variação</h2><p>Configure apenas as especificações necessárias para {category || "esta categoria"}.</p></div>
+          <div><h2>Editar VariaÃ§Ã£o</h2><p>Configure apenas as especificaÃ§Ãµes necessÃ¡rias para {category || "esta categoria"}.</p></div>
           <button type="button" aria-label="Fechar" onClick={onClose}><X size={18} /></button>
         </header>
         <div className="variant-modal-fields">
-          <Input label="Nome da Variação" value={variant.variation_name} onChange={(value) => onChange({ variation_name: value })} />
+          <Input label="Nome da VariaÃ§Ã£o" value={variant.variation_name} onChange={(value) => onChange({ variation_name: value })} />
           {usesSize && <Input label="Tamanho / Medida" value={variant.size} onChange={(value) => onChange({ size: value })} />}
-          {usesDiameter && <Input label="Diâmetro" value={variant.diameter} onChange={(value) => onChange({ diameter: value })} />}
+          {usesDiameter && <Input label="DiÃ¢metro" value={variant.diameter} onChange={(value) => onChange({ diameter: value })} />}
           {usesLength && (
             <Select label="Comprimento" value={variant.length} onChange={(value) => onChange({ length: value })}>
               <option value="">Selecione</option>
@@ -3038,11 +2966,11 @@ function VariantEditModal({ category, variant, onChange, onClose }) {
             </Select>
           )}
           <Select label="Material" value={variant.material} onChange={(value) => onChange({ material: value })}>
-            <option>Titânio ASTM F136</option><option>Ouro 14k</option><option>Ouro 18k</option><option>Aço</option><option>Outro</option>
+            <option>TitÃ¢nio ASTM F136</option><option>Ouro 14k</option><option>Ouro 18k</option><option>AÃ§o</option><option>Outro</option>
           </Select>
           <fieldset className="anodization-fieldset">
-            <legend>Observações de Cor / Anodização</legend>
-            <p>Selecione todas as cores que o cliente poderá solicitar para esta mesma joia.</p>
+            <legend>ObservaÃ§Ãµes de Cor / AnodizaÃ§Ã£o</legend>
+            <p>Selecione todas as cores que o cliente poderÃ¡ solicitar para esta mesma joia.</p>
             <div className="anodization-color-grid">
               {ANODIZATION_COLOR_OPTIONS.map((option) => (
                 <button
@@ -3059,7 +2987,7 @@ function VariantEditModal({ category, variant, onChange, onClose }) {
             </div>
           </fieldset>
           <Select label="Lado" value={variant.side} onChange={(value) => onChange({ side: value })}>
-            <option value="">Não se aplica</option><option>Direito</option><option>Esquerdo</option><option>Universal</option>
+            <option value="">NÃ£o se aplica</option><option>Direito</option><option>Esquerdo</option><option>Universal</option>
           </Select>
           <Input label="Cor da Pedraria" value={variant.stone_color} onChange={(value) => onChange({ stone_color: value })} />
           {usesThread && (
@@ -3074,11 +3002,11 @@ function VariantEditModal({ category, variant, onChange, onClose }) {
             <Input type="number" label="Valor de Custo" value={variant.cost_value} onChange={(value) => onChange({ cost_value: value })} />
             <Input type="number" label="Valor de Venda" value={variant.sale_value} onChange={(value) => onChange({ sale_value: value })} required />
             <Input type="number" label="Estoque Atual" value={variant.quantity} onChange={(value) => onChange({ quantity: value })} required />
-            <Input type="number" label="Estoque Mínimo" value={variant.low_stock_threshold} onChange={(value) => onChange({ low_stock_threshold: value })} />
+            <Input type="number" label="Estoque MÃ­nimo" value={variant.low_stock_threshold} onChange={(value) => onChange({ low_stock_threshold: value })} />
           </div>
-          <Toggle label="Variação Ativa" checked={variant.is_active} onChange={(value) => onChange({ is_active: value })} />
+          <Toggle label="VariaÃ§Ã£o Ativa" checked={variant.is_active} onChange={(value) => onChange({ is_active: value })} />
         </div>
-        <footer><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button type="button" className="primary-button" onClick={onClose}>Salvar Variação</button></footer>
+        <footer><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button type="button" className="primary-button" onClick={onClose}>Salvar VariaÃ§Ã£o</button></footer>
       </section>
     </div>
   );
@@ -3089,16 +3017,16 @@ function StockMovementHistory({ jewelryId }) {
   const movements = data || [];
   return (
     <div className="movement-history">
-      <h3>Histórico de movimentação</h3>
+      <h3>HistÃ³rico de movimentaÃ§Ã£o</h3>
       <div className="movement-history-list">
         {movements.slice(0, 6).map((movement) => (
           <div key={movement.id}>
             <strong>{movement.movement_type}</strong>
-            <span>{movement.quantity} un · {formatDate(movement.movement_date)}</span>
+            <span>{movement.quantity} un Â· {formatDate(movement.movement_date)}</span>
             {movement.notes && <small>{movement.notes}</small>}
           </div>
         ))}
-        {!movements.length && <p className="empty-state">Nenhuma movimentação registrada.</p>}
+        {!movements.length && <p className="empty-state">Nenhuma movimentaÃ§Ã£o registrada.</p>}
       </div>
     </div>
   );
@@ -3147,30 +3075,30 @@ function StockMovementModal({ item, initialType = "Entrada", onClose, onSave }) 
       <form className="panel stock-movement-modal" onClick={(event) => event.stopPropagation()} onSubmit={submit}>
         <div className="panel-heading">
           <h2>{item.name}</h2>
-          <span>{initialType === "Saída" ? "Saída rápida" : "Entrada rápida"}</span>
+          <span>{initialType === "SaÃ­da" ? "SaÃ­da rÃ¡pida" : "Entrada rÃ¡pida"}</span>
         </div>
         <div className="form-grid">
-          <Select label="Variação" value={form.variant_id} onChange={(value) => setForm({ ...form, variant_id: value })} required>
+          <Select label="VariaÃ§Ã£o" value={form.variant_id} onChange={(value) => setForm({ ...form, variant_id: value })} required>
             {(item.variants || []).map((variant) => (
-              <option key={variant.id} value={variant.id}>{variant.variation_name || variant.sku} · {variant.quantity} un</option>
+              <option key={variant.id} value={variant.id}>{variant.variation_name || variant.sku} Â· {variant.quantity} un</option>
             ))}
           </Select>
           <Input type="number" label="Quantidade" value={form.quantity} onChange={(value) => setForm({ ...form, quantity: value })} required />
           <Select label="Tipo" value={form.movement_type} onChange={(value) => setForm({ ...form, movement_type: value })} required>
             <option>Entrada</option>
-            <option>Saída</option>
+            <option>SaÃ­da</option>
             <option>Venda</option>
             <option>Ajuste</option>
             <option>Perda</option>
           </Select>
         </div>
-        <label>Observação
+        <label>ObservaÃ§Ã£o
           <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
         </label>
-        <p className="movement-date-hint">Data automática: {new Date().toLocaleDateString("pt-BR")}</p>
+        <p className="movement-date-hint">Data automÃ¡tica: {new Date().toLocaleDateString("pt-BR")}</p>
         <div className="modal-actions">
           <button type="button" className="secondary-button" onClick={onClose}>Cancelar</button>
-          <button className="primary-button">Salvar movimentação</button>
+          <button className="primary-button">Salvar movimentaÃ§Ã£o</button>
         </div>
       </form>
     </div>
@@ -3200,7 +3128,7 @@ function CatalogCustomization() {
     ...new Set(products.map((item) => item.category).filter(Boolean))
   ].filter((value, index, arr) => value && arr.indexOf(value) === index);
 
-  async function save(path = "/catalog-customization", success = "Alterações salvas.") {
+  async function save(path = "/catalog-customization", success = "AlteraÃ§Ãµes salvas.") {
     setError("");
     setMessage("");
     const payload = serializeCatalogCustomization(form);
@@ -3210,7 +3138,7 @@ function CatalogCustomization() {
       body: path.includes("reset") ? undefined : JSON.stringify(payload)
     });
     const json = await response.json().catch(() => ({}));
-    if (!response.ok) return setError(json.error || "Não foi possível salvar.");
+    if (!response.ok) return setError(json.error || "NÃ£o foi possÃ­vel salvar.");
     if (path.includes("reset")) setForm(normalizeCatalogCustomization(json));
     setMessage(success);
     refresh();
@@ -3222,24 +3150,24 @@ function CatalogCustomization() {
         <header className="customization-header">
           <div>
             <span className="eyebrow">Aura Clinic</span>
-            <h2>Personalização do Catálogo</h2>
-            <p>Edite aparência, banners, categorias, produtos, promoções e textos sem mexer no código.</p>
+            <h2>PersonalizaÃ§Ã£o do CatÃ¡logo</h2>
+            <p>Edite aparÃªncia, banners, categorias, produtos, promoÃ§Ãµes e textos sem mexer no cÃ³digo.</p>
           </div>
           <div>
-            <button className="secondary-button" type="button" onClick={() => save("/catalog-customization/reset", "Padrão restaurado.")}>Restaurar padrão</button>
-            <button className="primary-button" type="button" onClick={() => save("/catalog-customization/publish", "Catálogo publicado.")}>Publicar</button>
+            <button className="secondary-button" type="button" onClick={() => save("/catalog-customization/reset", "PadrÃ£o restaurado.")}>Restaurar padrÃ£o</button>
+            <button className="primary-button" type="button" onClick={() => save("/catalog-customization/publish", "CatÃ¡logo publicado.")}>Publicar</button>
           </div>
         </header>
 
         <nav className="customization-tabs">
           {[
-            ["aparencia", "Aparência"],
+            ["aparencia", "AparÃªncia"],
             ["banners", "Banners"],
             ["componentes", "Componentes"],
             ["categorias", "Categorias"],
             ["produtos", "Produtos"],
-            ["promocoes", "Promoções"],
-            ["exibicao", "Exibição"],
+            ["promocoes", "PromoÃ§Ãµes"],
+            ["exibicao", "ExibiÃ§Ã£o"],
             ["textos", "Textos"],
             ["contato", "Contato"],
             ["seo", "SEO"]
@@ -3249,17 +3177,17 @@ function CatalogCustomization() {
         </nav>
 
         {activeSection === "aparencia" && (
-          <CustomizationCard title="Aparência do catálogo">
+          <CustomizationCard title="AparÃªncia do catÃ¡logo">
             <div className="form-grid">
               <ImageUploadField label="Logo" value={form.theme.logo_url} onChange={(value) => setForm(updateTheme(form, { logo_url: value }))} />
               <div className="form-grid compact-fields">
                 <Input label="Nome da marca" value={form.theme.brand_name} onChange={(value) => setForm(updateTheme(form, { brand_name: value }))} />
                 <Input label="Slogan" value={form.theme.slogan} onChange={(value) => setForm(updateTheme(form, { slogan: value }))} />
                 <Input type="color" label="Cor principal" value={form.theme.primary_color} onChange={(value) => setForm(updateTheme(form, { primary_color: value }))} />
-                <Input type="color" label="Cor secundária" value={form.theme.secondary_color} onChange={(value) => setForm(updateTheme(form, { secondary_color: value }))} />
-                <Input type="color" label="Cor dos botões" value={form.theme.button_color} onChange={(value) => setForm(updateTheme(form, { button_color: value }))} />
+                <Input type="color" label="Cor secundÃ¡ria" value={form.theme.secondary_color} onChange={(value) => setForm(updateTheme(form, { secondary_color: value }))} />
+                <Input type="color" label="Cor dos botÃµes" value={form.theme.button_color} onChange={(value) => setForm(updateTheme(form, { button_color: value }))} />
                 <Input type="color" label="Cor do fundo" value={form.theme.background_color} onChange={(value) => setForm(updateTheme(form, { background_color: value }))} />
-                <Select label="Fonte do título" value={form.theme.title_font} onChange={(value) => setForm(updateTheme(form, { title_font: value }))}>
+                <Select label="Fonte do tÃ­tulo" value={form.theme.title_font} onChange={(value) => setForm(updateTheme(form, { title_font: value }))}>
                   <option>Georgia</option><option>Playfair Display</option><option>Inter</option><option>Arial</option>
                 </Select>
                 <Select label="Fonte dos textos" value={form.theme.body_font} onChange={(value) => setForm(updateTheme(form, { body_font: value }))}>
@@ -3287,14 +3215,14 @@ function CatalogCustomization() {
                   </div>
                   <ImageUploadField label="Imagem do banner" value={banner.image_url} onChange={(value) => setForm(updateList(form, "banners", index, { image_url: value }))} />
                   <div className="form-grid">
-                    <Input label="Título" value={banner.title} onChange={(value) => setForm(updateList(form, "banners", index, { title: value }))} />
-                    <Input label="Subtítulo" value={banner.subtitle} onChange={(value) => setForm(updateList(form, "banners", index, { subtitle: value }))} />
-                  <Input label="Texto do botão" value={banner.button_text} onChange={(value) => setForm(updateList(form, "banners", index, { button_text: value }))} />
-                  <Input label="Link do botão" value={banner.button_link} onChange={(value) => setForm(updateList(form, "banners", index, { button_link: value }))} />
+                    <Input label="TÃ­tulo" value={banner.title} onChange={(value) => setForm(updateList(form, "banners", index, { title: value }))} />
+                    <Input label="SubtÃ­tulo" value={banner.subtitle} onChange={(value) => setForm(updateList(form, "banners", index, { subtitle: value }))} />
+                  <Input label="Texto do botÃ£o" value={banner.button_text} onChange={(value) => setForm(updateList(form, "banners", index, { button_text: value }))} />
+                  <Input label="Link do botÃ£o" value={banner.button_link} onChange={(value) => setForm(updateList(form, "banners", index, { button_link: value }))} />
                   <Input type="number" label="Altura do banner (px)" value={banner.banner_height} onChange={(value) => setForm(updateList(form, "banners", index, { banner_height: value }))} />
-                  <Input type="number" label="Largura máxima (px)" value={banner.banner_width} onChange={(value) => setForm(updateList(form, "banners", index, { banner_width: value }))} />
+                  <Input type="number" label="Largura mÃ¡xima (px)" value={banner.banner_width} onChange={(value) => setForm(updateList(form, "banners", index, { banner_width: value }))} />
                   <Select label="Enquadramento" value={banner.banner_fit || "cover"} onChange={(value) => setForm(updateList(form, "banners", index, { banner_fit: value }))}>
-                    <option value="cover">Cobrir área</option>
+                    <option value="cover">Cobrir Ã¡rea</option>
                     <option value="contain">Mostrar inteira</option>
                     <option value="fill">Preencher</option>
                   </Select>
@@ -3309,7 +3237,7 @@ function CatalogCustomization() {
         )}
 
         {activeSection === "componentes" && (
-          <CustomizationCard title="Componentes do catálogo" action={<button type="button" onClick={() => setForm({ ...form, contentSections: [...form.contentSections, defaultContentSection(form.contentSections.length + 1)] })}>Novo componente</button>}>
+          <CustomizationCard title="Componentes do catÃ¡logo" action={<button type="button" onClick={() => setForm({ ...form, contentSections: [...form.contentSections, defaultContentSection(form.contentSections.length + 1)] })}>Novo componente</button>}>
             <div className="custom-list">
               {form.contentSections.map((section, index) => (
                 <article key={index}>
@@ -3322,17 +3250,17 @@ function CatalogCustomization() {
                   </div>
                   <div className="form-grid">
                     <Input label="Etiqueta" value={section.kicker} onChange={(value) => setForm(updateList(form, "contentSections", index, { kicker: value }))} />
-                    <Input label="Título" value={section.title} onChange={(value) => setForm(updateList(form, "contentSections", index, { title: value }))} />
+                    <Input label="TÃ­tulo" value={section.title} onChange={(value) => setForm(updateList(form, "contentSections", index, { title: value }))} />
                     <Input type="number" label="Ordem" value={section.order} onChange={(value) => setForm(updateList(form, "contentSections", index, { order: value }))} />
-                    <Select label="Tipo de mídia" value={section.media_type} onChange={(value) => setForm(updateList(form, "contentSections", index, { media_type: value }))}>
+                    <Select label="Tipo de mÃ­dia" value={section.media_type} onChange={(value) => setForm(updateList(form, "contentSections", index, { media_type: value }))}>
                       <option value="image">foto</option>
-                      <option value="video">vídeo</option>
-                      <option value="none">sem mídia</option>
+                      <option value="video">vÃ­deo</option>
+                      <option value="none">sem mÃ­dia</option>
                     </Select>
-                    <Input label="Texto do botão" value={section.button_text} onChange={(value) => setForm(updateList(form, "contentSections", index, { button_text: value }))} />
-                    <Input label="Link do botão" value={section.button_link} onChange={(value) => setForm(updateList(form, "contentSections", index, { button_link: value }))} />
+                    <Input label="Texto do botÃ£o" value={section.button_text} onChange={(value) => setForm(updateList(form, "contentSections", index, { button_text: value }))} />
+                    <Input label="Link do botÃ£o" value={section.button_link} onChange={(value) => setForm(updateList(form, "contentSections", index, { button_link: value }))} />
                   </div>
-                  {section.media_type === "image" ? <ImageUploadField label="Foto do componente" value={section.media_url} onChange={(value) => setForm(updateList(form, "contentSections", index, { media_url: value }))} /> : <Input label="URL do vídeo incorporado" value={section.media_url} onChange={(value) => setForm(updateList(form, "contentSections", index, { media_url: value }))} />}
+                  {section.media_type === "image" ? <ImageUploadField label="Foto do componente" value={section.media_url} onChange={(value) => setForm(updateList(form, "contentSections", index, { media_url: value }))} /> : <Input label="URL do vÃ­deo incorporado" value={section.media_url} onChange={(value) => setForm(updateList(form, "contentSections", index, { media_url: value }))} />}
                   <label>Texto
                     <textarea value={section.text} onChange={(event) => setForm(updateList(form, "contentSections", index, { text: event.target.value }))} />
                   </label>
@@ -3354,9 +3282,9 @@ function CatalogCustomization() {
                       <option value="">Selecione</option>
                       {categoryOptions.map((option) => <option key={option}>{option}</option>)}
                     </Select>
-                    <Input label="Nome público" value={category.public_name} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { public_name: value }))} />
-                    <Select label="Ícone" value={category.icon} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { icon: value }))}>
-                      <option value="gem">diamante</option><option value="heart">coração</option><option value="star">estrela</option><option value="sparkles">brilho</option><option value="shield">escudo</option>
+                    <Input label="Nome pÃºblico" value={category.public_name} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { public_name: value }))} />
+                    <Select label="Ãcone" value={category.icon} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { icon: value }))}>
+                      <option value="gem">diamante</option><option value="heart">coraÃ§Ã£o</option><option value="star">estrela</option><option value="sparkles">brilho</option><option value="shield">escudo</option>
                     </Select>
                     <Input type="number" label="Ordem" value={category.sort_order} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { sort_order: value }))} />
                     <Toggle label="Ativa" checked={category.is_active} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { is_active: value }))} />
@@ -3380,10 +3308,10 @@ function CatalogCustomization() {
                       {products.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}
                     </Select>
                     <Select label="Selo" value={product.badge} onChange={(value) => setForm(updateList(form, "featuredProducts", index, { badge: value }))}>
-                      <option value="">Sem selo</option><option value="Lançamento">Lançamento</option><option value="Mais vendido">Mais vendido</option><option value="Promoção">Promoção</option>
+                      <option value="">Sem selo</option><option value="LanÃ§amento">LanÃ§amento</option><option value="Mais vendido">Mais vendido</option><option value="PromoÃ§Ã£o">PromoÃ§Ã£o</option>
                     </Select>
                     <Input type="number" label="Ordem" value={product.sort_order} onChange={(value) => setForm(updateList(form, "featuredProducts", index, { sort_order: value }))} />
-                    <Toggle label="Ativo no catálogo" checked={product.is_active} onChange={(value) => setForm(updateList(form, "featuredProducts", index, { is_active: value }))} />
+                    <Toggle label="Ativo no catÃ¡logo" checked={product.is_active} onChange={(value) => setForm(updateList(form, "featuredProducts", index, { is_active: value }))} />
                   </div>
                   <button type="button" className="danger-link" onClick={() => setForm(removeListItem(form, "featuredProducts", index))}>Remover produto</button>
                 </article>
@@ -3393,12 +3321,12 @@ function CatalogCustomization() {
         )}
 
         {activeSection === "promocoes" && (
-          <CustomizationCard title="Promoções" action={<button type="button" onClick={() => setForm({ ...form, promotions: [...form.promotions, defaultPromotion()] })}>Nova promoção</button>}>
+          <CustomizationCard title="PromoÃ§Ãµes" action={<button type="button" onClick={() => setForm({ ...form, promotions: [...form.promotions, defaultPromotion()] })}>Nova promoÃ§Ã£o</button>}>
             <div className="custom-list">
               {form.promotions.map((promotion, index) => (
                 <article key={index}>
                   <div className="form-grid">
-                    <Input label="Nome da promoção" value={promotion.name} onChange={(value) => setForm(updateList(form, "promotions", index, { name: value }))} />
+                    <Input label="Nome da promoÃ§Ã£o" value={promotion.name} onChange={(value) => setForm(updateList(form, "promotions", index, { name: value }))} />
                     <Select label="Tipo de desconto" value={promotion.discount_type} onChange={(value) => setForm(updateList(form, "promotions", index, { discount_type: value }))}>
                       <option value="percent">porcentagem</option><option value="fixed">valor fixo</option>
                     </Select>
@@ -3406,13 +3334,13 @@ function CatalogCustomization() {
                     <Input type="date" label="Data inicial" value={promotion.start_date} onChange={(value) => setForm(updateList(form, "promotions", index, { start_date: value }))} />
                     <Input type="date" label="Data final" value={promotion.end_date} onChange={(value) => setForm(updateList(form, "promotions", index, { end_date: value }))} />
                     <Select label="Aplicar em" value={promotion.applies_to} onChange={(value) => setForm(updateList(form, "promotions", index, { applies_to: value }))}>
-                      <option value="products">produtos específicos</option><option value="categories">categorias específicas</option><option value="all">todo catálogo</option>
+                      <option value="products">produtos especÃ­ficos</option><option value="categories">categorias especÃ­ficas</option><option value="all">todo catÃ¡logo</option>
                     </Select>
                     <Input label="IDs de produtos" value={promotion.product_ids} onChange={(value) => setForm(updateList(form, "promotions", index, { product_ids: value }))} />
                     <Input label="Categorias" value={promotion.category_ids} onChange={(value) => setForm(updateList(form, "promotions", index, { category_ids: value }))} />
-                    <Toggle label="Promoção ativa" checked={promotion.is_active} onChange={(value) => setForm(updateList(form, "promotions", index, { is_active: value }))} />
+                    <Toggle label="PromoÃ§Ã£o ativa" checked={promotion.is_active} onChange={(value) => setForm(updateList(form, "promotions", index, { is_active: value }))} />
                   </div>
-                  <button type="button" className="danger-link" onClick={() => setForm(removeListItem(form, "promotions", index))}>Remover promoção</button>
+                  <button type="button" className="danger-link" onClick={() => setForm(removeListItem(form, "promotions", index))}>Remover promoÃ§Ã£o</button>
                 </article>
               ))}
             </div>
@@ -3420,17 +3348,17 @@ function CatalogCustomization() {
         )}
 
         {activeSection === "exibicao" && (
-          <CustomizationCard title="Configurações de exibição">
+          <CustomizationCard title="ConfiguraÃ§Ãµes de exibiÃ§Ã£o">
             <div className="toggle-grid">
               <Toggle label="Mostrar produtos sem estoque" checked={form.theme.show_out_of_stock} onChange={(value) => setForm(updateTheme(form, { show_out_of_stock: value }))} />
               <Toggle label="Mostrar quantidade em estoque" checked={form.theme.show_stock_quantity} onChange={(value) => setForm(updateTheme(form, { show_stock_quantity: value }))} />
-              <Toggle label="Mostrar botão WhatsApp" checked={form.theme.show_whatsapp_button} onChange={(value) => setForm(updateTheme(form, { show_whatsapp_button: value }))} />
-              <Toggle label="Mostrar botão Agendar" checked={form.theme.show_schedule_button} onChange={(value) => setForm(updateTheme(form, { show_schedule_button: value }))} />
-              <Toggle label="Mostrar botão Comprar agora" checked={form.theme.show_buy_button} onChange={(value) => setForm(updateTheme(form, { show_buy_button: value }))} />
+              <Toggle label="Mostrar botÃ£o WhatsApp" checked={form.theme.show_whatsapp_button} onChange={(value) => setForm(updateTheme(form, { show_whatsapp_button: value }))} />
+              <Toggle label="Mostrar botÃ£o Agendar" checked={form.theme.show_schedule_button} onChange={(value) => setForm(updateTheme(form, { show_schedule_button: value }))} />
+              <Toggle label="Mostrar botÃ£o Comprar agora" checked={form.theme.show_buy_button} onChange={(value) => setForm(updateTheme(form, { show_buy_button: value }))} />
               <Toggle label="Mostrar favoritos" checked={form.theme.show_favorites} onChange={(value) => setForm(updateTheme(form, { show_favorites: value }))} />
             </div>
             <Select label="Texto de estoque" value={form.theme.stock_display_mode} onChange={(value) => setForm(updateTheme(form, { stock_display_mode: value }))}>
-              <option value="status">Em estoque / Poucas unidades / Indisponível</option>
+              <option value="status">Em estoque / Poucas unidades / IndisponÃ­vel</option>
               <option value="quantity">Mostrar quantidade</option>
               <option value="hidden">Ocultar estoque</option>
             </Select>
@@ -3438,33 +3366,33 @@ function CatalogCustomization() {
         )}
 
         {activeSection === "textos" && (
-          <CustomizationCard title="Textos do catálogo">
+          <CustomizationCard title="Textos do catÃ¡logo">
             <div className="form-grid">
-              <Input label="Título da página" value={form.settings.page_title} onChange={(value) => setForm(updateSettings(form, { page_title: value }))} />
-              <Input label="Subtítulo" value={form.settings.subtitle} onChange={(value) => setForm(updateSettings(form, { subtitle: value }))} />
-              <Input label="Mensagem indisponível" value={form.settings.unavailable_message} onChange={(value) => setForm(updateSettings(form, { unavailable_message: value }))} />
+              <Input label="TÃ­tulo da pÃ¡gina" value={form.settings.page_title} onChange={(value) => setForm(updateSettings(form, { page_title: value }))} />
+              <Input label="SubtÃ­tulo" value={form.settings.subtitle} onChange={(value) => setForm(updateSettings(form, { subtitle: value }))} />
+              <Input label="Mensagem indisponÃ­vel" value={form.settings.unavailable_message} onChange={(value) => setForm(updateSettings(form, { unavailable_message: value }))} />
               <Input label="Mensagem poucas unidades" value={form.settings.low_stock_message} onChange={(value) => setForm(updateSettings(form, { low_stock_message: value }))} />
             </div>
             <label>Texto institucional
               <textarea value={form.settings.institutional_text} onChange={(event) => setForm(updateSettings(form, { institutional_text: event.target.value }))} />
             </label>
-            <label>Texto do rodapé
+            <label>Texto do rodapÃ©
               <textarea value={form.theme.footer_text} onChange={(event) => setForm(updateTheme(form, { footer_text: event.target.value }))} />
             </label>
           </CustomizationCard>
         )}
 
         {activeSection === "contato" && (
-          <CustomizationCard title="Contato e Informações da Empresa">
-            <p className="customization-help">Estes dados aparecem no rodapé do catálogo e nos botões de atendimento ao cliente.</p>
+          <CustomizationCard title="Contato e InformaÃ§Ãµes da Empresa">
+            <p className="customization-help">Estes dados aparecem no rodapÃ© do catÃ¡logo e nos botÃµes de atendimento ao cliente.</p>
             <div className="form-grid">
               <Input label="WhatsApp com DDD" value={form.settings.whatsapp_phone} onChange={(value) => setForm(updateSettings(form, { whatsapp_phone: value }))} />
               <Input label="Instagram" value={form.settings.company_instagram} onChange={(value) => setForm(updateSettings(form, { company_instagram: value }))} />
               <Input type="email" label="E-mail" value={form.settings.company_email} onChange={(value) => setForm(updateSettings(form, { company_email: value }))} />
-              <Input label="Horário de Atendimento" value={form.settings.company_hours} onChange={(value) => setForm(updateSettings(form, { company_hours: value }))} />
+              <Input label="HorÃ¡rio de Atendimento" value={form.settings.company_hours} onChange={(value) => setForm(updateSettings(form, { company_hours: value }))} />
             </div>
-            <label>Endereço
-              <textarea value={form.settings.company_address} onChange={(event) => setForm(updateSettings(form, { company_address: event.target.value }))} placeholder="Rua, número, bairro, cidade e estado" />
+            <label>EndereÃ§o
+              <textarea value={form.settings.company_address} onChange={(event) => setForm(updateSettings(form, { company_address: event.target.value }))} placeholder="Rua, nÃºmero, bairro, cidade e estado" />
             </label>
             <label>Mensagem Inicial do WhatsApp
               <textarea value={form.settings.whatsapp_message} onChange={(event) => setForm(updateSettings(form, { whatsapp_message: event.target.value }))} />
@@ -3475,9 +3403,9 @@ function CatalogCustomization() {
         {activeSection === "seo" && (
           <CustomizationCard title="SEO e compartilhamento">
             <div className="form-grid">
-              <Input label="Título para Google" value={form.settings.seo_title} onChange={(value) => setForm(updateSettings(form, { seo_title: value }))} />
-              <Input label="Descrição para Google" value={form.settings.seo_description} onChange={(value) => setForm(updateSettings(form, { seo_description: value }))} />
-              <Input label="Texto padrão WhatsApp" value={form.settings.product_share_text} onChange={(value) => setForm(updateSettings(form, { product_share_text: value }))} />
+              <Input label="TÃ­tulo para Google" value={form.settings.seo_title} onChange={(value) => setForm(updateSettings(form, { seo_title: value }))} />
+              <Input label="DescriÃ§Ã£o para Google" value={form.settings.seo_description} onChange={(value) => setForm(updateSettings(form, { seo_description: value }))} />
+              <Input label="Texto padrÃ£o WhatsApp" value={form.settings.product_share_text} onChange={(value) => setForm(updateSettings(form, { product_share_text: value }))} />
               <ImageUploadField label="Imagem de compartilhamento" value={form.settings.share_image_url} onChange={(value) => setForm(updateSettings(form, { share_image_url: value }))} />
             </div>
           </CustomizationCard>
@@ -3485,7 +3413,7 @@ function CatalogCustomization() {
 
         {error && <span className="form-error">{error}</span>}
         {message && <span className="form-success">{message}</span>}
-        <button className="primary-button customization-save" type="button" onClick={() => save()}>Salvar alterações</button>
+        <button className="primary-button customization-save" type="button" onClick={() => save()}>Salvar alteraÃ§Ãµes</button>
       </div>
 
       <CatalogCustomizationPreview form={form} products={products} />
@@ -3530,7 +3458,7 @@ function CatalogCustomizationPreview({ form, products }) {
     <aside className={`catalog-live-preview theme-${theme.theme}`} style={style}>
       <div className="preview-browser-bar">
         <span />
-        <strong>Pré-visualização em tempo real</strong>
+        <strong>PrÃ©-visualizaÃ§Ã£o em tempo real</strong>
         <a href="/catalogo" target="_blank" rel="noreferrer">Abrir</a>
       </div>
       <div className="preview-storefront">
@@ -3569,18 +3497,20 @@ function CatalogCustomizationPreview({ form, products }) {
 }
 
 function normalizeCatalogCustomization(data) {
-  const settings = { ...defaultCatalogCustomization().settings, ...(data.settings || {}) };
+  const safeData = asObject(data);
+  const defaults = defaultCatalogCustomization();
+  const settings = { ...defaults.settings, ...asObject(safeData.settings) };
   return {
     settings,
-    theme: { ...defaultCatalogCustomization().theme, ...(data.theme || {}) },
-    banners: (data.banners?.length ? data.banners : [defaultCatalogBanner(1)]).map((banner, index) => ({
+    theme: { ...defaults.theme, ...asObject(safeData.theme) },
+    banners: (asArray(safeData.banners).length ? asArray(safeData.banners) : [defaultCatalogBanner(1)]).map((banner, index) => ({
       ...defaultCatalogBanner(index + 1),
       ...normalizeBooleanRecord(banner)
     })).sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0)),
     contentSections: catalogContentSections(settings.content_sections),
-    featuredCategories: (data.featuredCategories?.length ? data.featuredCategories : defaultCatalogCustomization().featuredCategories).map(normalizeBooleanRecord),
-    featuredProducts: (data.featuredProducts || []).map(normalizeBooleanRecord),
-    promotions: (data.promotions || []).map(normalizeBooleanRecord)
+    featuredCategories: (asArray(safeData.featuredCategories).length ? asArray(safeData.featuredCategories) : defaults.featuredCategories).map(normalizeBooleanRecord),
+    featuredProducts: asArray(safeData.featuredProducts).map(normalizeBooleanRecord),
+    promotions: asArray(safeData.promotions).map(normalizeBooleanRecord)
   };
 }
 
@@ -3589,7 +3519,7 @@ function serializeCatalogCustomization(form) {
     ...form,
     settings: {
       ...form.settings,
-      content_sections: JSON.stringify((form.contentSections || []).map((section, index) => ({
+      content_sections: JSON.stringify(asArray(form.contentSections).map((section, index) => ({
         ...section,
         order: Number(section.order || index + 1),
         active: Boolean(section.active)
@@ -3611,32 +3541,33 @@ function updateSettings(form, patch) {
 }
 
 function updateList(form, key, index, patch) {
-  return { ...form, [key]: form[key].map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item) };
+  return { ...form, [key]: asArray(form?.[key]).map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item) };
 }
 
 function removeListItem(form, key, index) {
-  return { ...form, [key]: form[key].filter((_, itemIndex) => itemIndex !== index) };
+  return { ...form, [key]: asArray(form?.[key]).filter((_, itemIndex) => itemIndex !== index) };
 }
 
 function moveListItem(list, index, direction) {
+  const safeList = asArray(list);
   const nextIndex = index + direction;
-  if (nextIndex < 0 || nextIndex >= list.length) return list;
-  const copy = [...list];
+  if (nextIndex < 0 || nextIndex >= safeList.length) return safeList;
+  const copy = [...safeList];
   const [item] = copy.splice(index, 1);
   copy.splice(nextIndex, 0, item);
   return copy.map((entry, itemIndex) => ({ ...entry, sort_order: itemIndex + 1, order: itemIndex + 1 }));
 }
 
 function normalizeSortOrder(list, mode = "asc") {
-  const sorted = [...list].sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
+  const sorted = [...asArray(list)].sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
   const arranged = mode === "desc" ? sorted.reverse() : sorted;
   return arranged.map((entry, index) => ({ ...entry, sort_order: index + 1 }));
 }
 
 function defaultCatalogBanner(order) {
   return {
-    title: "Escolha a joia perfeita para você",
-    subtitle: "Joias de alta qualidade para realçar sua essência.",
+    title: "Escolha a joia perfeita para vocÃª",
+    subtitle: "Joias de alta qualidade para realÃ§ar sua essÃªncia.",
     image_url: "https://images.unsplash.com/photo-1602751584552-8ba73aad10e1?auto=format&fit=crop&w=1200&q=85",
     button_text: "Ver todas as joias",
     button_link: "#catalog-products",
@@ -3673,8 +3604,8 @@ function defaultPromotion() {
 function defaultContentSection(order) {
   return {
     kicker: "Guia Aura",
-    title: "Escolha sua joia com orientação profissional",
-    text: "Use este espaço para explicar materiais, cuidados, medidas, anodização, curadoria ou diferenciais da Aura Clinic.",
+    title: "Escolha sua joia com orientaÃ§Ã£o profissional",
+    text: "Use este espaÃ§o para explicar materiais, cuidados, medidas, anodizaÃ§Ã£o, curadoria ou diferenciais da Aura Clinic.",
     media_type: "image",
     media_url: "https://images.unsplash.com/photo-1602751584552-8ba73aad10e1?auto=format&fit=crop&w=1200&q=85",
     button_text: "Agendar atendimento",
@@ -3687,21 +3618,21 @@ function defaultContentSection(order) {
 function defaultCatalogCustomization() {
   return {
     settings: {
-      page_title: "Catálogo Online",
-      title: "Escolha a joia perfeita para você",
+      page_title: "CatÃ¡logo Online",
+      title: "Escolha a joia perfeita para vocÃª",
       subtitle: "Curadoria premium da Aura Clinic Piercing",
-      institutional_text: "Joias selecionadas com cuidado, segurança e estética premium.",
-      unavailable_message: "Produto indisponível no momento.",
+      institutional_text: "Joias selecionadas com cuidado, seguranÃ§a e estÃ©tica premium.",
+      unavailable_message: "Produto indisponÃ­vel no momento.",
       low_stock_message: "Poucas unidades",
       footer_text: "Aura Clinic Piercing. Curadoria de joias, cuidado e atendimento especializado.",
-      seo_title: "Aura Clinic Piercing | Catálogo Online",
+      seo_title: "Aura Clinic Piercing | CatÃ¡logo Online",
       seo_description: "Escolha joias premium para piercing na Aura Clinic.",
       share_image_url: "",
       product_share_text: "Olha essa joia da Aura Clinic:",
       content_sections: JSON.stringify([defaultContentSection(1)]),
       categories: `Todos,${JEWELRY_CATEGORY_OPTIONS.join(",")}`,
       whatsapp_phone: "",
-      whatsapp_message: "Olá! Vim pelo catálogo online da Aura Clinic e quero ajuda para escolher uma joia.",
+      whatsapp_message: "OlÃ¡! Vim pelo catÃ¡logo online da Aura Clinic e quero ajuda para escolher uma joia.",
       company_instagram: "",
       company_email: "",
       company_address: "",
@@ -3747,28 +3678,18 @@ function ImageUploadField({ label, value, onChange }) {
   setError("");
 
   try {
-    const { supabase, isSupabaseConfigured } = await import("./supabaseClient.js");
-    if (!isSupabaseConfigured || !supabase) {
-      throw new Error("Configure VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY para enviar imagens.");
-    }
-
-    const safeFileName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "-");
-    const filePath = `${Date.now()}-${safeFileName}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("jewelry-images")
-      .upload(filePath, file);
-
-    if (uploadError) throw uploadError;
-
-    const { data } = supabase.storage
-      .from("jewelry-images")
-      .getPublicUrl(filePath);
-
-    onChange(data.publicUrl);
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await apiFetch("/uploads", {
+      method: "POST",
+      body: formData
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "Upload invalido.");
+    onChange(data.url);
   } catch (err) {
     console.error(err);
-    setError("Não foi possível enviar a imagem.");
+    setError("NÃ£o foi possÃ­vel enviar a imagem.");
   } finally {
     setUploading(false);
     event.target.value = "";
@@ -3778,7 +3699,7 @@ function ImageUploadField({ label, value, onChange }) {
     <label className="image-upload-field">{label}
       <div className="image-upload-preview">
         <img src={catalogImageUrl(value)} alt={label} />
-        <span><ImageIcon size={18} /> Prévia da imagem</span>
+        <span><ImageIcon size={18} /> PrÃ©via da imagem</span>
       </div>
       <input value={value || ""} onChange={(event) => onChange(event.target.value)} placeholder="Cole a URL da imagem ou envie um arquivo" />
       <input type="file" accept="image/*" onChange={uploadImage} />
@@ -3793,7 +3714,7 @@ function InventoryManagement({ options, professionals, onChanged }) {
     <div className="management-grid">
       <article className="manager-card">
         <h3>Categorias Principais</h3>
-        <p className="manager-help">Estrutura fixa para evitar produtos duplicados e manter o catálogo organizado.</p>
+        <p className="manager-help">Estrutura fixa para evitar produtos duplicados e manter o catÃ¡logo organizado.</p>
         <div className="manager-list fixed-category-list">
           {JEWELRY_CATEGORY_OPTIONS.map((category) => <div key={category}><span>{category}</span></div>)}
         </div>
@@ -3818,7 +3739,7 @@ function OptionManager({ title, type, items = [], onChanged, placeholder }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type, name })
     });
-    if (!response.ok) return setError((await response.json()).error || "Não foi possível salvar.");
+    if (!response.ok) return setError((await response.json()).error || "NÃ£o foi possÃ­vel salvar.");
     setName("");
     setEditing(null);
     onChanged();
@@ -3827,7 +3748,7 @@ function OptionManager({ title, type, items = [], onChanged, placeholder }) {
   async function remove(item) {
     setError("");
     const response = await apiFetch(`/inventory-options/${item.id}`, { method: "DELETE" });
-    if (!response.ok) return setError((await response.json()).error || "Não foi possível apagar.");
+    if (!response.ok) return setError((await response.json()).error || "NÃ£o foi possÃ­vel apagar.");
     onChanged();
   }
 
@@ -3865,7 +3786,7 @@ function ProfessionalManager({ professionals = [], onChanged }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form)
     });
-    if (!response.ok) return setError((await response.json()).error || "Não foi possível salvar.");
+    if (!response.ok) return setError((await response.json()).error || "NÃ£o foi possÃ­vel salvar.");
     setForm({ name: "", specialty: "" });
     setEditing(null);
     onChanged();
@@ -3874,7 +3795,7 @@ function ProfessionalManager({ professionals = [], onChanged }) {
   async function remove(professional) {
     setError("");
     const response = await apiFetch(`/professionals/${professional.id}`, { method: "DELETE" });
-    if (!response.ok) return setError((await response.json()).error || "Não foi possível apagar.");
+    if (!response.ok) return setError((await response.json()).error || "NÃ£o foi possÃ­vel apagar.");
     onChanged();
   }
 
@@ -3905,13 +3826,13 @@ function JewelryTable({ items, onOpen, onEdit, onMovement, onArchive }) {
   return (
     <div className="table-wrap inventory-admin-table compact-inventory-table">
       <table>
-        <thead><tr><th>Produto</th><th>Variações</th><th>Estoque Total</th><th>Status</th><th>Venda</th><th>Ações</th></tr></thead>
+        <thead><tr><th>Produto</th><th>VariaÃ§Ãµes</th><th>Estoque Total</th><th>Status</th><th>Venda</th><th>AÃ§Ãµes</th></tr></thead>
         <tbody>{safeItems.map((item) => (
           <tr className="clickable-product-row" key={item.id} onClick={() => onOpen?.(item)}>
             <td>
               <div className="inventory-product-cell">
                 <img src={catalogImageUrl(item.photo_url)} alt={elegantProductName(item.name)} />
-                <span><strong>{elegantProductName(item.name)}</strong><small>{[item.category, item.subcategory].map(cleanDisplayText).filter(Boolean).join(" · ")}</small></span>
+                <span><strong>{elegantProductName(item.name)}</strong><small>{[item.category, item.subcategory].map(cleanDisplayText).filter(Boolean).join(" Â· ")}</small></span>
               </div>
             </td>
             <td>{item.variant_count || item.variants?.length || 0}</td>
@@ -3921,7 +3842,7 @@ function JewelryTable({ items, onOpen, onEdit, onMovement, onArchive }) {
             <td>
               <div className="table-actions">
                 {onMovement && <button type="button" onClick={(event) => { event.stopPropagation(); onMovement(item, "Entrada"); }}>Entrada</button>}
-                {onMovement && <button type="button" onClick={(event) => { event.stopPropagation(); onMovement(item, "Saída"); }}>Saída</button>}
+                {onMovement && <button type="button" onClick={(event) => { event.stopPropagation(); onMovement(item, "SaÃ­da"); }}>SaÃ­da</button>}
                 <button type="button" onClick={(event) => { event.stopPropagation(); onEdit(item); }}>Editar</button>
                 {onArchive && <button type="button" onClick={(event) => { event.stopPropagation(); onArchive(item); }}>Arquivar</button>}
               </div>
@@ -3946,18 +3867,18 @@ function Finance() {
       <div className="metric-grid">
         <Metric label="Recebido hoje" value={currency.format(asNumber(totals.day_total))} />
         <Metric label="Recebido na semana" value={currency.format(asNumber(totals.week_total))} />
-        <Metric label="Recebido no mês" value={currency.format(asNumber(totals.month_total))} />
+        <Metric label="Recebido no mÃªs" value={currency.format(asNumber(totals.month_total))} />
         <Metric label="Total previsto" value={currency.format(asNumber(forecast.total))} />
         <Metric label="Total pendente" value={currency.format(asNumber(forecast.pending))} />
         <Metric label="Pagamento mais usado" value={safeData.mostUsedMethod || "Sem registros"} />
       </div>
       <div className="panel">
         <div className="panel-heading">
-          <h2>Relatório Financeiro</h2>
+          <h2>RelatÃ³rio Financeiro</h2>
           <button className="secondary-button" type="button" onClick={() => downloadApiFile("/finance/export.csv", "relatorio-aura-clinic.csv")}><Download size={16} /> Exportar CSV</button>
         </div>
         <div className="payment-bars">
-          {methods.map((item) => <div key={item.method || item.name}><span>{item.method || "Não informado"}</span><strong>{asNumber(item.total)}</strong></div>)}
+          {methods.map((item) => <div key={item.method || item.name}><span>{item.method || "NÃ£o informado"}</span><strong>{asNumber(item.total)}</strong></div>)}
         </div>
       </div>
     </section>
@@ -3974,11 +3895,11 @@ function Clients() {
       {clients.map((client) => (
         <article className="panel client-card" key={client.id}>
           <h2>{client.full_name}</h2>
-          <p>{client.whatsapp} · {client.instagram}</p>
-          {client.birth_date && <small>Aniversário: {formatLongDate(client.birth_date)}</small>}
+          <p>{client.whatsapp} Â· {client.instagram}</p>
+          {client.birth_date && <small>AniversÃ¡rio: {formatLongDate(client.birth_date)}</small>}
           <span>{client.notes}</span>
-          <h3>Histórico</h3>
-          {asArray(client.history).map((item) => <div className="history-item" key={item.id}><strong>{formatDate(item.appointment_date)}</strong><span>{item.procedure} · {item.jewelry_name || "sem joia"}</span><small>{item.status} · {currency.format(asNumber(item.total_value))}</small></div>)}
+          <h3>HistÃ³rico</h3>
+          {asArray(client.history).map((item) => <div className="history-item" key={item.id}><strong>{formatDate(item.appointment_date)}</strong><span>{item.procedure} Â· {item.jewelry_name || "sem joia"}</span><small>{item.status} Â· {currency.format(asNumber(item.total_value))}</small></div>)}
         </article>
       ))}
     </section>
@@ -4009,7 +3930,7 @@ function FinanceAdmin() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(expense)
     });
-    if (!response.ok) return setError((await response.json()).error || "Não foi possível salvar a despesa.");
+    if (!response.ok) return setError((await response.json()).error || "NÃ£o foi possÃ­vel salvar a despesa.");
     setExpense(defaultExpense());
     refresh();
   }
@@ -4022,22 +3943,22 @@ function FinanceAdmin() {
   return (
     <section className="stack">
       <div className="metric-grid">
-        <Metric label="Faturamento diário" value={currency.format(asNumber(totals.day_total))} />
+        <Metric label="Faturamento diÃ¡rio" value={currency.format(asNumber(totals.day_total))} />
         <Metric label="Faturamento semanal" value={currency.format(asNumber(totals.week_total))} />
         <Metric label="Faturamento mensal" value={currency.format(asNumber(totals.month_total))} />
         <Metric label="Sinais recebidos" value={currency.format(asNumber(deposits.monthTotal))} />
         <Metric label="Valores pendentes" value={currency.format(asNumber(forecast.pending))} />
         <Metric label="Lucro estimado" value={currency.format(asNumber(profit.estimated))} />
         <Metric label="Despesas fixas" value={currency.format(asNumber(expensesSummary.fixed_total))} />
-        <Metric label="Despesas variáveis" value={currency.format(asNumber(expensesSummary.variable_total))} />
+        <Metric label="Despesas variÃ¡veis" value={currency.format(asNumber(expensesSummary.variable_total))} />
         <Metric label="Pagamento mais usado" value={safeData.mostUsedMethod || "Sem registros"} />
       </div>
 
       <div className="finance-grid">
         <div className="panel">
           <div className="panel-heading">
-            <h2>Gráfico de faturamento mensal</h2>
-            <span>Últimos meses registrados</span>
+            <h2>GrÃ¡fico de faturamento mensal</h2>
+            <span>Ãšltimos meses registrados</span>
           </div>
           <MonthlyChart data={monthlyRevenue} />
         </div>
@@ -4047,14 +3968,14 @@ function FinanceAdmin() {
             <span>Mais usadas</span>
           </div>
           <div className="payment-bars">
-            {methods.map((item) => <div key={item.method || item.name}><span>{item.method || "Não informado"}</span><strong>{asNumber(item.total)} · {currency.format(asNumber(item.amount))}</strong></div>)}
+            {methods.map((item) => <div key={item.method || item.name}><span>{item.method || "NÃ£o informado"}</span><strong>{asNumber(item.total)} Â· {currency.format(asNumber(item.amount))}</strong></div>)}
           </div>
         </div>
       </div>
 
       <div className="panel">
         <div className="panel-heading">
-          <h2>Relatórios exportáveis</h2>
+          <h2>RelatÃ³rios exportÃ¡veis</h2>
           <div className="export-actions">
             <button className="secondary-button" type="button" onClick={() => downloadApiFile("/finance/export.pdf", "relatorio-Financeiro-aura.pdf")}><Download size={16} /> PDF</button>
             <button className="secondary-button" type="button" onClick={() => downloadApiFile("/finance/export.xlsx", "relatorio-Financeiro-aura.xlsx")}><Download size={16} /> Excel</button>
@@ -4067,13 +3988,13 @@ function FinanceAdmin() {
         <form className="panel appointment-form" onSubmit={saveExpense}>
           <div className="panel-heading">
             <h2>Nova despesa</h2>
-            <span>Fixa ou variável</span>
+            <span>Fixa ou variÃ¡vel</span>
           </div>
           <div className="form-grid">
-            <Input label="Descrição" value={expense.description} onChange={(value) => setExpense({ ...expense, description: value })} required />
+            <Input label="DescriÃ§Ã£o" value={expense.description} onChange={(value) => setExpense({ ...expense, description: value })} required />
             <Select label="Tipo" value={expense.expense_type} onChange={(value) => setExpense({ ...expense, expense_type: value })}>
               <option value="fixa">fixa</option>
-              <option value="variavel">variável</option>
+              <option value="variavel">variÃ¡vel</option>
             </Select>
             <Input label="Categoria" value={expense.category} onChange={(value) => setExpense({ ...expense, category: value })} />
             <Input type="number" label="Valor" value={expense.amount} onChange={(value) => setExpense({ ...expense, amount: value })} required />
@@ -4084,7 +4005,7 @@ function FinanceAdmin() {
             </Select>
             <PaymentSelect label="Forma de pagamento" value={expense.payment_method} onChange={(value) => setExpense({ ...expense, payment_method: value })} />
           </div>
-          <label>Observações
+          <label>ObservaÃ§Ãµes
             <textarea value={expense.notes} onChange={(event) => setExpense({ ...expense, notes: event.target.value })} />
           </label>
           {error && <span className="form-error">{error}</span>}
@@ -4093,15 +4014,15 @@ function FinanceAdmin() {
 
         <div className="panel">
           <div className="panel-heading">
-            <h2>Despesas lançadas</h2>
-            <span>{currency.format(asNumber(expensesSummary.total))} no mês</span>
+            <h2>Despesas lanÃ§adas</h2>
+            <span>{currency.format(asNumber(expensesSummary.total))} no mÃªs</span>
           </div>
           <div className="expense-list">
             {expenses.map((item) => (
               <article key={item.id} className="expense-row">
                 <div>
                   <strong>{item.description}</strong>
-                  <span>{item.expense_type} · {item.category || "sem categoria"} · {formatDate(item.due_date)}</span>
+                  <span>{item.expense_type} Â· {item.category || "sem categoria"} Â· {formatDate(item.due_date)}</span>
                 </div>
                 <strong>{currency.format(item.amount)}</strong>
                 <span className={`status-badge ${item.status === "paga" ? "status-atendido" : "status-pendente"}`}>{item.status}</span>
@@ -4183,7 +4104,7 @@ function SalesWorkspace() {
     event.preventDefault();
     setError("");
     if (!items.length) {
-      setError("Adicione ao menos um item à venda.");
+      setError("Adicione ao menos um item Ã  venda.");
       return;
     }
     const response = await apiFetch("/sales-orders", {
@@ -4197,7 +4118,7 @@ function SalesWorkspace() {
       })
     });
     if (!response.ok) {
-      setError((await response.json()).error || "Não foi possível salvar a venda.");
+      setError((await response.json()).error || "NÃ£o foi possÃ­vel salvar a venda.");
       return;
     }
     setForm(defaultSalesOrderForm());
@@ -4219,18 +4140,18 @@ function SalesWorkspace() {
   return (
     <section className="sales-page stack">
       <div className="metric-grid">
-        <Metric label="Vendas no mês" value={currency.format(summary.total)} />
+        <Metric label="Vendas no mÃªs" value={currency.format(summary.total)} />
         <Metric label="Produtos" value={currency.format(summary.products)} />
-        <Metric label="Serviços" value={currency.format(summary.services)} />
-        <Metric label="Ordens de serviço" value={currency.format(summary.mixed)} />
+        <Metric label="ServiÃ§os" value={currency.format(summary.services)} />
+        <Metric label="Ordens de serviÃ§o" value={currency.format(summary.mixed)} />
       </div>
 
       <div className="customization-tabs sales-tabs">
         {[
           ["produto", "Venda de produto"],
-          ["servico", "Venda de serviço"],
-          ["ordem", "Ordem de serviço"],
-          ["historico", "Histórico"]
+          ["servico", "Venda de serviÃ§o"],
+          ["ordem", "Ordem de serviÃ§o"],
+          ["historico", "HistÃ³rico"]
         ].map(([id, label]) => (
           <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}</button>
         ))}
@@ -4240,7 +4161,7 @@ function SalesWorkspace() {
         <div className="split-layout">
           <form className="panel appointment-form" onSubmit={saveOrder}>
             <div className="panel-heading">
-              <h2>{tab === "ordem" ? "Nova ordem de serviço" : tab === "servico" ? "Venda de serviço" : "Venda de produto"}</h2>
+              <h2>{tab === "ordem" ? "Nova ordem de serviÃ§o" : tab === "servico" ? "Venda de serviÃ§o" : "Venda de produto"}</h2>
               <span>Cadastro interno com baixa financeira</span>
             </div>
             <div className="form-grid">
@@ -4248,21 +4169,21 @@ function SalesWorkspace() {
               <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => setForm({ ...form, whatsapp: value })} required />
               <Input label="Instagram" value={form.instagram} onChange={(value) => setForm({ ...form, instagram: value })} />
               <Select label="Agendamento vinculado" value={form.appointment_id} onChange={(value) => setForm({ ...form, appointment_id: value })}>
-                <option value="">Sem vínculo</option>
+                <option value="">Sem vÃ­nculo</option>
                 {safeAppointments.map((appointment) => (
                   <option key={appointment.id} value={appointment.id}>
-                    {appointment.full_name} · {formatDate(appointment.appointment_date)} · {appointment.appointment_time}
+                    {appointment.full_name} Â· {formatDate(appointment.appointment_date)} Â· {appointment.appointment_time}
                   </option>
                 ))}
               </Select>
               <Select label="Forma de pagamento" value={form.payment_method} onChange={(value) => setForm({ ...form, payment_method: value })}>
                 <option>Pix</option>
                 <option>Dinheiro</option>
-                <option>Cartão de crédito</option>
-                <option>Cartão de débito</option>
+                <option>CartÃ£o de crÃ©dito</option>
+                <option>CartÃ£o de dÃ©bito</option>
               </Select>
               <Select label="Status" value={form.status} onChange={(value) => setForm({ ...form, status: value })}>
-                <option value="concluida">concluída</option>
+                <option value="concluida">concluÃ­da</option>
                 <option value="aberta">aberta</option>
                 <option value="cancelada">cancelada</option>
               </Select>
@@ -4270,16 +4191,16 @@ function SalesWorkspace() {
 
             <div className="sales-line-builder">
               <div className="sales-line-header">
-                <strong>{tab === "servico" ? "Selecionar serviço" : "Selecionar joia"}</strong>
+                <strong>{tab === "servico" ? "Selecionar serviÃ§o" : "Selecionar joia"}</strong>
                 <span>Adicione os itens da venda.</span>
               </div>
               <div className="form-grid">
                 <Select label="Tipo do item" value={line.item_type} onChange={(value) => setLine({ ...line, item_type: value })}>
                   <option value="produto">produto</option>
-                  <option value="servico">serviço</option>
+                  <option value="servico">serviÃ§o</option>
                 </Select>
                 {line.item_type === "servico" ? (
-                  <Select label="Serviço" value={line.service_id} onChange={(value) => {
+                  <Select label="ServiÃ§o" value={line.service_id} onChange={(value) => {
                     const selected = safeServices.find((item) => String(item.id) === String(value));
                     setLine({
                       ...line,
@@ -4304,9 +4225,9 @@ function SalesWorkspace() {
                   </Select>
                 )}
                 <Input type="number" label="Quantidade" value={line.quantity} onChange={(value) => setLine({ ...line, quantity: value })} />
-                <Input type="number" label="Valor unitário" value={line.unit_price} onChange={(value) => setLine({ ...line, unit_price: value })} />
+                <Input type="number" label="Valor unitÃ¡rio" value={line.unit_price} onChange={(value) => setLine({ ...line, unit_price: value })} />
               </div>
-              <label>Observações do item
+              <label>ObservaÃ§Ãµes do item
                 <textarea value={line.notes} onChange={(event) => setLine({ ...line, notes: event.target.value })} />
               </label>
               <button className="secondary-button" type="button" onClick={addLineItem}>Adicionar item</button>
@@ -4317,7 +4238,7 @@ function SalesWorkspace() {
                 <article key={`${item.item_name}-${index}`}>
                   <div>
                     <strong>{item.item_name}</strong>
-                    <span>{saleItemLabel(item.item_type)} · {item.quantity}x · {currency.format(item.unit_price)}</span>
+                    <span>{saleItemLabel(item.item_type)} Â· {item.quantity}x Â· {currency.format(item.unit_price)}</span>
                     {item.notes && <small>{item.notes}</small>}
                   </div>
                   <button type="button" onClick={() => removeLine(index)}>Remover</button>
@@ -4325,7 +4246,7 @@ function SalesWorkspace() {
               )) : <p className="empty-state">Nenhum item adicionado ainda.</p>}
             </div>
 
-            <label>Observações da venda
+            <label>ObservaÃ§Ãµes da venda
               <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
             </label>
             {error && <span className="form-error">{error}</span>}
@@ -4334,8 +4255,8 @@ function SalesWorkspace() {
 
           <div className="panel">
             <div className="panel-heading">
-              <h2>Atalhos e referência</h2>
-              <span>{appointments.length} agendamentos disponíveis</span>
+              <h2>Atalhos e referÃªncia</h2>
+              <span>{safeAppointments.length} agendamentos disponÃ­veis</span>
             </div>
             <div className="sales-quick-reference">
               <div>
@@ -4343,12 +4264,12 @@ function SalesWorkspace() {
                 <small>Venda direta de joia, com baixa simples de estoque.</small>
               </div>
               <div>
-                <strong>Serviços</strong>
+                <strong>ServiÃ§os</strong>
                 <small>Venda de procedimento avulso, sem depender de agenda.</small>
               </div>
               <div>
-                <strong>Ordens de serviço</strong>
-                <small>Registro interno com vínculo ao atendimento ou cliente.</small>
+                <strong>Ordens de serviÃ§o</strong>
+                <small>Registro interno com vÃ­nculo ao atendimento ou cliente.</small>
               </div>
             </div>
           </div>
@@ -4358,16 +4279,16 @@ function SalesWorkspace() {
       {tab === "historico" && (
         <div className="panel">
           <div className="panel-heading">
-            <h2>Histórico de vendas</h2>
-            <span>Pedidos do mês com status e valor</span>
+            <h2>HistÃ³rico de vendas</h2>
+            <span>Pedidos do mÃªs com status e valor</span>
           </div>
           <div className="sales-history-list">
             {safeOrders.map((order) => (
               <article key={order.id} className="sales-history-row">
                 <div>
                   <strong>{order.full_name}</strong>
-                  <span>{saleOrderTypeLabel(order.order_type)} · {order.source} · {formatDate(order.created_at.slice(0, 10))}</span>
-                  <small>{asArray(order.items).map((item) => `${item.quantity}x ${item.item_name}`).join(" · ")}</small>
+                  <span>{saleOrderTypeLabel(order.order_type)} Â· {order.source} Â· {formatDate(order.created_at.slice(0, 10))}</span>
+                  <small>{asArray(order.items).map((item) => `${item.quantity}x ${item.item_name}`).join(" Â· ")}</small>
                 </div>
                 <div className="sales-history-money">
                   <strong>{currency.format(order.total_value || 0)}</strong>
@@ -4408,7 +4329,7 @@ function AccessAdmin() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form)
     });
-    if (!response.ok) return setError((await response.json()).error || "Não foi possível salvar o usuário.");
+    if (!response.ok) return setError((await response.json()).error || "NÃ£o foi possÃ­vel salvar o usuÃ¡rio.");
     setForm(defaultAccessUser());
     setEditing(null);
     refresh();
@@ -4430,11 +4351,11 @@ function AccessAdmin() {
     const payload = await response.json().catch(() => ({}));
     setResetLoading(false);
     if (!response.ok) {
-      setResetMessage(payload.error || "Não foi possível limpar os dados.");
+      setResetMessage(payload.error || "NÃ£o foi possÃ­vel limpar os dados.");
       return;
     }
     setResetConfirmation("");
-    setResetMessage(payload.message || "Dados de demonstração removidos.");
+    setResetMessage(payload.message || "Dados de demonstraÃ§Ã£o removidos.");
   }
 
   return (
@@ -4443,25 +4364,25 @@ function AccessAdmin() {
         <form className="panel appointment-form" onSubmit={save}>
           <div className="panel-heading">
             <h2>{editing ? "Editar Acesso" : "Novo Acesso"}</h2>
-            <span>Níveis administrativos</span>
+            <span>NÃ­veis administrativos</span>
           </div>
           <div className="form-grid">
             <Input label="Nome" value={form.name} onChange={(value) => setForm({ ...form, name: value })} required />
             <Input label="E-mail" value={form.email} onChange={(value) => setForm({ ...form, email: value })} required />
             <Input type="password" label={editing ? "Nova Senha Opcional" : "Senha"} value={form.password} onChange={(value) => setForm({ ...form, password: value })} required={!editing} />
-            <Select label="Nível de Acesso" value={form.role} onChange={(value) => setForm({ ...form, role: value })}>
+            <Select label="NÃ­vel de Acesso" value={form.role} onChange={(value) => setForm({ ...form, role: value })}>
               <option value="admin">Administrador Geral</option>
               <option value="piercer">Body Piercer</option>
-              <option value="reception">Recepção</option>
+              <option value="reception">RecepÃ§Ã£o</option>
               <option value="finance">Financeiro</option>
             </Select>
           </div>
           {error && <span className="form-error">{error}</span>}
-          <button className="primary-button">{editing ? "Salvar Alterações" : "Criar Usuário"}</button>
+          <button className="primary-button">{editing ? "Salvar AlteraÃ§Ãµes" : "Criar UsuÃ¡rio"}</button>
         </form>
         <div className="panel">
           <div className="panel-heading">
-            <h2>Usuários</h2>
+            <h2>UsuÃ¡rios</h2>
             <button className="secondary-button" type="button" onClick={() => downloadApiFile("/backup.sqlite", `backup-aura-clinic.sqlite`)}>Backup SQLite</button>
           </div>
           <div className="access-list">
@@ -4469,7 +4390,7 @@ function AccessAdmin() {
               <article className="access-row" key={user.id}>
                 <div>
                   <strong>{user.name}</strong>
-                  <span>{user.email} · {roleLabel(user.role)}</span>
+                  <span>{user.email} Â· {roleLabel(user.role)}</span>
                 </div>
                 <button onClick={() => { setEditing(user); setForm({ name: user.name, email: user.email, role: user.role, password: "" }); }}>Editar</button>
                 <button onClick={() => remove(user)}>Apagar</button>
@@ -4481,9 +4402,9 @@ function AccessAdmin() {
 
       <article className="panel admin-reset-panel">
         <div>
-          <span className="eyebrow">Preparação para Uso Real</span>
-          <h2>Limpar Dados de Demonstração</h2>
-          <p>Remove clientes, produtos, variações, agendamentos, vendas, despesas e lançamentos financeiros. Usuários, categorias e configurações permanecem.</p>
+          <span className="eyebrow">PreparaÃ§Ã£o para Uso Real</span>
+          <h2>Limpar Dados de DemonstraÃ§Ã£o</h2>
+          <p>Remove clientes, produtos, variaÃ§Ãµes, agendamentos, vendas, despesas e lanÃ§amentos financeiros. UsuÃ¡rios, categorias e configuraÃ§Ãµes permanecem.</p>
         </div>
         <div className="admin-reset-action">
           <Input label="Digite RESETAR para confirmar" value={resetConfirmation} onChange={setResetConfirmation} />
@@ -4493,7 +4414,7 @@ function AccessAdmin() {
             disabled={resetConfirmation !== "RESETAR" || resetLoading}
             onClick={resetDemoData}
           >
-            {resetLoading ? "Limpando..." : "Limpar Dados Fictícios"}
+            {resetLoading ? "Limpando..." : "Limpar Dados FictÃ­cios"}
           </button>
         </div>
         {resetMessage && <span className="admin-reset-message">{resetMessage}</span>}
@@ -4560,41 +4481,41 @@ function BookingAdmin() {
         <div>
           <span className="eyebrow">Agendamento online</span>
           <h2>Disponibilidade</h2>
-          <p>Configure serviços, horários, bloqueios e solicitações vindas do link público.</p>
+          <p>Configure serviÃ§os, horÃ¡rios, bloqueios e solicitaÃ§Ãµes vindas do link pÃºblico.</p>
         </div>
-        <a className="primary-button" href="/agendar" target="_blank" rel="noreferrer">Abrir link público</a>
+        <a className="primary-button" href="/agendar" target="_blank" rel="noreferrer">Abrir link pÃºblico</a>
       </header>
       <nav className="customization-tabs">
         {[
-          ["servicos", "Serviços"],
+          ["servicos", "ServiÃ§os"],
           ["horarios", "Disponibilidade"],
           ["bloqueios", "Bloqueios"],
-          ["solicitacoes", "Solicitações pendentes"]
+          ["solicitacoes", "SolicitaÃ§Ãµes pendentes"]
         ].map(([id, label]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}</button>)}
       </nav>
 
       {tab === "servicos" && (
         <div className="booking-admin-grid">
           <form className="panel" onSubmit={saveService}>
-            <div className="panel-heading"><h2>Novo serviço</h2><span>Disponível no link público</span></div>
+            <div className="panel-heading"><h2>Novo serviÃ§o</h2><span>DisponÃ­vel no link pÃºblico</span></div>
             <div className="form-grid">
               <Input label="Nome" value={serviceForm.name} onChange={(value) => setServiceForm({ ...serviceForm, name: value })} required />
-              <Input type="number" label="Duração em minutos" value={serviceForm.duration_minutes} onChange={(value) => setServiceForm({ ...serviceForm, duration_minutes: value })} />
+              <Input type="number" label="DuraÃ§Ã£o em minutos" value={serviceForm.duration_minutes} onChange={(value) => setServiceForm({ ...serviceForm, duration_minutes: value })} />
               <Input type="number" label="Valor" value={serviceForm.price} onChange={(value) => setServiceForm({ ...serviceForm, price: value })} />
               <Input type="number" label="Valor do sinal" value={serviceForm.deposit_value} onChange={(value) => setServiceForm({ ...serviceForm, deposit_value: value })} />
             </div>
-            <label>Descrição<textarea value={serviceForm.description} onChange={(event) => setServiceForm({ ...serviceForm, description: event.target.value })} /></label>
-            <label>Observações pré-atendimento<textarea value={serviceForm.pre_service_notes} onChange={(event) => setServiceForm({ ...serviceForm, pre_service_notes: event.target.value })} /></label>
+            <label>DescriÃ§Ã£o<textarea value={serviceForm.description} onChange={(event) => setServiceForm({ ...serviceForm, description: event.target.value })} /></label>
+            <label>ObservaÃ§Ãµes prÃ©-atendimento<textarea value={serviceForm.pre_service_notes} onChange={(event) => setServiceForm({ ...serviceForm, pre_service_notes: event.target.value })} /></label>
             <Toggle label="Ativo no agendamento online" checked={serviceForm.active_online_booking} onChange={(value) => setServiceForm({ ...serviceForm, active_online_booking: value })} />
-            <button className="primary-button">Salvar serviço</button>
+            <button className="primary-button">Salvar serviÃ§o</button>
           </form>
           <div className="panel">
-            <div className="panel-heading"><h2>Serviços cadastrados</h2></div>
+            <div className="panel-heading"><h2>ServiÃ§os cadastrados</h2></div>
             <div className="service-list">
               {safeServices.map((service) => (
                 <article key={service.id}>
                   <strong>{service.name}</strong>
-                  <span>{service.duration_minutes} min · {currency.format(service.price || 0)} · sinal {currency.format(service.deposit_value || 0)}</span>
+                  <span>{service.duration_minutes} min Â· {currency.format(service.price || 0)} Â· sinal {currency.format(service.deposit_value || 0)}</span>
                   <small>{service.active_online_booking ? "Ativo online" : "Inativo online"}</small>
                 </article>
               ))}
@@ -4610,11 +4531,11 @@ function BookingAdmin() {
               <div className="panel-heading"><h2>{weekdayLabel(item.weekday)}</h2><span>{item.professional_name}</span></div>
               <Toggle label="Atende neste dia" checked={item.is_active} onChange={(value) => updateAvailability(item, { is_active: value })} />
               <div className="form-grid">
-                <Input label="Início" value={item.start_time} onChange={(value) => updateAvailability(item, { start_time: value })} />
+                <Input label="InÃ­cio" value={item.start_time} onChange={(value) => updateAvailability(item, { start_time: value })} />
                 <Input label="Final" value={item.end_time} onChange={(value) => updateAvailability(item, { end_time: value })} />
-                <Input label="Almoço início" value={item.lunch_start || ""} onChange={(value) => updateAvailability(item, { lunch_start: value })} />
-                <Input label="Almoço final" value={item.lunch_end || ""} onChange={(value) => updateAvailability(item, { lunch_end: value })} />
-                <Input type="number" label="Duração padrão" value={item.duration_minutes} onChange={(value) => updateAvailability(item, { duration_minutes: value })} />
+                <Input label="AlmoÃ§o inÃ­cio" value={item.lunch_start || ""} onChange={(value) => updateAvailability(item, { lunch_start: value })} />
+                <Input label="AlmoÃ§o final" value={item.lunch_end || ""} onChange={(value) => updateAvailability(item, { lunch_end: value })} />
+                <Input type="number" label="DuraÃ§Ã£o padrÃ£o" value={item.duration_minutes} onChange={(value) => updateAvailability(item, { duration_minutes: value })} />
                 <Input type="number" label="Intervalo" value={item.buffer_minutes} onChange={(value) => updateAvailability(item, { buffer_minutes: value })} />
               </div>
             </article>
@@ -4625,19 +4546,19 @@ function BookingAdmin() {
       {tab === "bloqueios" && (
         <div className="booking-admin-grid">
           <form className="panel" onSubmit={saveBlock}>
-            <div className="panel-heading"><h2>Novo bloqueio</h2><span>Não aparece para o cliente</span></div>
+            <div className="panel-heading"><h2>Novo bloqueio</h2><span>NÃ£o aparece para o cliente</span></div>
             <div className="form-grid">
               <Select label="Profissional" value={blockForm.professional_id} onChange={(value) => setBlockForm({ ...blockForm, professional_id: value })}>
                 <option value="">Selecione</option>
                 {professionals.map((professional) => <option value={professional.id} key={professional.id}>{professional.name}</option>)}
               </Select>
               <Input label="Motivo" value={blockForm.reason} onChange={(value) => setBlockForm({ ...blockForm, reason: value })} />
-              <Input type="datetime-local" label="Início" value={blockForm.start_datetime} onChange={(value) => setBlockForm({ ...blockForm, start_datetime: value })} />
+              <Input type="datetime-local" label="InÃ­cio" value={blockForm.start_datetime} onChange={(value) => setBlockForm({ ...blockForm, start_datetime: value })} />
               <Input type="datetime-local" label="Final" value={blockForm.end_datetime} onChange={(value) => setBlockForm({ ...blockForm, end_datetime: value })} />
             </div>
             <Toggle label="Dia inteiro" checked={blockForm.is_full_day} onChange={(value) => setBlockForm({ ...blockForm, is_full_day: value })} />
             <Toggle label="Recorrente" checked={blockForm.is_recurring} onChange={(value) => setBlockForm({ ...blockForm, is_recurring: value })} />
-            <label>Observação<textarea value={blockForm.notes} onChange={(event) => setBlockForm({ ...blockForm, notes: event.target.value })} /></label>
+            <label>ObservaÃ§Ã£o<textarea value={blockForm.notes} onChange={(event) => setBlockForm({ ...blockForm, notes: event.target.value })} /></label>
             <button className="primary-button">Salvar bloqueio</button>
           </form>
           <div className="panel">
@@ -4646,7 +4567,7 @@ function BookingAdmin() {
               {safeBlocks.map((block) => (
                 <article key={block.id}>
                   <strong>{block.reason}</strong>
-                  <span>{block.professional_name} · {new Date(block.start_datetime).toLocaleString("pt-BR")} até {new Date(block.end_datetime).toLocaleString("pt-BR")}</span>
+                  <span>{block.professional_name} Â· {new Date(block.start_datetime).toLocaleString("pt-BR")} atÃ© {new Date(block.end_datetime).toLocaleString("pt-BR")}</span>
                   <button className="danger-link" onClick={async () => { await apiFetch(`/schedule-blocks/${block.id}`, { method: "DELETE" }); refreshBlocks(); }}>Apagar</button>
                 </article>
               ))}
@@ -4657,19 +4578,19 @@ function BookingAdmin() {
 
       {tab === "solicitacoes" && (
         <div className="panel">
-          <div className="panel-heading"><h2>Solicitações pendentes</h2><span>Confirme ou recuse manualmente</span></div>
+          <div className="panel-heading"><h2>SolicitaÃ§Ãµes pendentes</h2><span>Confirme ou recuse manualmente</span></div>
           <div className="appointment-list">
             {safeAppointments.map((item) => (
               <article className="appointment-row" key={item.id}>
                 <div className="time-box"><strong>{item.appointment_time}</strong><span>{formatDate(item.appointment_date)}</span></div>
-                <div><h3>{item.full_name}</h3><p>{item.procedure} · {currency.format(item.deposit_value || 0)} de sinal</p><small>{item.professional_name} · {item.whatsapp}</small></div>
+                <div><h3>{item.full_name}</h3><p>{item.procedure} Â· {currency.format(item.deposit_value || 0)} de sinal</p><small>{item.professional_name} Â· {item.whatsapp}</small></div>
                 <div className="row-actions">
                   <button onClick={() => updateRequest(item.id, "confirmado")}>Confirmar</button>
                   <button onClick={() => updateRequest(item.id, "recusado")}>Recusar</button>
                 </div>
               </article>
             ))}
-            {!safeAppointments.length && <p className="empty-state">Nenhuma solicitação pendente.</p>}
+            {!safeAppointments.length && <p className="empty-state">Nenhuma solicitaÃ§Ã£o pendente.</p>}
           </div>
         </div>
       )}
@@ -4696,7 +4617,7 @@ function ClientsMedical() {
           <div className="medical-header compact">
             <div>
               <h2>{client.full_name}</h2>
-              <p>{client.whatsapp} · {client.instagram || "sem Instagram"}</p>
+              <p>{client.whatsapp} Â· {client.instagram || "sem Instagram"}</p>
             </div>
             <div className="header-actions">
               <span className="status-badge status-atendido">{asArray(client.history).length} atendimento(s)</span>
@@ -4704,7 +4625,7 @@ function ClientsMedical() {
               <button type="button" className="secondary-button" onClick={() => setEditingClientId(editingClientId === client.id ? null : client.id)}>Editar</button>
             </div>
           </div>
-          {client.birth_date && <small className="client-birth">Aniversário: {formatLongDate(client.birth_date)}</small>}
+          {client.birth_date && <small className="client-birth">AniversÃ¡rio: {formatLongDate(client.birth_date)}</small>}
           {editingClientId === client.id && (
             <ClientEditForm
               client={client}
@@ -4716,15 +4637,15 @@ function ClientsMedical() {
             />
           )}
           <div className="medical-summary-line">
-            <span>Último atendimento: {asArray(client.history)[0] ? formatDate(asArray(client.history)[0].appointment_date) : "Sem registro"}</span>
+            <span>Ãšltimo atendimento: {asArray(client.history)[0] ? formatDate(asArray(client.history)[0].appointment_date) : "Sem registro"}</span>
             <span>Joia: {asArray(client.history)[0]?.jewelry_name || "Sem joia vinculada"}</span>
             <span>Fidelidade: {client.loyalty?.level || "Cliente Aura"}</span>
           </div>
           <details className="medical-details">
-            <summary>Ver prontuário, fidelidade e retornos</summary>
+            <summary>Ver prontuÃ¡rio, fidelidade e retornos</summary>
             <div className="medical-grid stacked">
               <div className="medical-section">
-                <h3>Histórico De Perfurações</h3>
+                <h3>HistÃ³rico De PerfuraÃ§Ãµes</h3>
                 <div className="history-stack">
                   {asArray(client.history).length ? asArray(client.history).map((item) => (
                     <div className="history-item" key={item.id}>
@@ -4732,7 +4653,7 @@ function ClientsMedical() {
                       <span>{item.piercing_region}  {item.professional_name}</span>
                       <small>Joia: {item.jewelry_name || "sem joia vinculada"}  {item.status}</small>
                     </div>
-                  )) : <p className="empty-state">Nenhuma perfuração registrada.</p>}
+                  )) : <p className="empty-state">Nenhuma perfuraÃ§Ã£o registrada.</p>}
                 </div>
               </div>
               <MedicalRecordForm client={client} onSaved={refresh} />
@@ -4765,7 +4686,7 @@ function ClientEditForm({ client, onSaved, onCancel }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form)
     });
-    if (!response.ok) return setError((await response.json()).error || "Não foi possível salvar o cliente.");
+    if (!response.ok) return setError((await response.json()).error || "NÃ£o foi possÃ­vel salvar o cliente.");
     onSaved();
   }
 
@@ -4839,14 +4760,14 @@ function DigitalTerms() {
     event.preventDefault();
     setError("");
     setSavedTerm(null);
-    if (!form.signature_data_url) return setError("Assinatura digital obrigatória.");
+    if (!form.signature_data_url) return setError("Assinatura digital obrigatÃ³ria.");
     const response = await apiFetch(`/digital-terms`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form)
     });
     const data = await response.json();
-    if (!response.ok) return setError(data.error || "Não foi possível salvar o termo.");
+    if (!response.ok) return setError(data.error || "NÃ£o foi possÃ­vel salvar o termo.");
     setSavedTerm(data);
     setForm(defaultDigitalTerm());
     refresh();
@@ -4864,13 +4785,13 @@ function DigitalTerms() {
         </div>
 
         <div className="term-intro">
-          <strong>Estrutura clínica fiel ao documento físico.</strong>
-          <p>Dados pessoais, histórico de saúde, estilo de vida, consentimento, autorização para menores e assinatura digital.</p>
+          <strong>Estrutura clÃ­nica fiel ao documento fÃ­sico.</strong>
+          <p>Dados pessoais, histÃ³rico de saÃºde, estilo de vida, consentimento, autorizaÃ§Ã£o para menores e assinatura digital.</p>
         </div>
 
         <div className="term-chip-row">
           <span>Dados Pessoais</span>
-          <span>Histórico De Saúde</span>
+          <span>HistÃ³rico De SaÃºde</span>
           <span>Estilo De Vida</span>
           <span>Consentimento</span>
           <span>Assinatura Digital</span>
@@ -4894,11 +4815,11 @@ function DigitalTerms() {
             <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => updateField("whatsapp", value)} />
             <Input label="Instagram" value={form.instagram} onChange={(value) => updateField("instagram", value)} />
           </div>
-          <Input label="Endereço" value={form.address} onChange={(value) => updateField("address", value)} />
+          <Input label="EndereÃ§o" value={form.address} onChange={(value) => updateField("address", value)} />
         </section>
 
         <section className="term-section">
-          <h3>Histórico De Saúde</h3>
+          <h3>HistÃ³rico De SaÃºde</h3>
           <div className="term-check-grid">
             {DIGITAL_TERM_HEALTH_ITEMS.map((item) => (
               <button
@@ -4907,7 +4828,7 @@ function DigitalTerms() {
                 className={`term-check-item ${form.form_data.health_history[item.key] ? "active" : ""}`}
                 onClick={() => toggleHealthItem(item.key)}
               >
-                <span>{form.form_data.health_history[item.key] ? "Sim" : "Não"}</span>
+                <span>{form.form_data.health_history[item.key] ? "Sim" : "NÃ£o"}</span>
                 <strong>{item.label}</strong>
               </button>
             ))}
@@ -4921,10 +4842,10 @@ function DigitalTerms() {
               <label key={item.key} className="term-choice">
                 {item.label}
                 <select value={form.form_data.lifestyle[item.key]} onChange={(event) => updateFormData("lifestyle", item.key, event.target.value)}>
-                  <option value="">Não Informado</option>
+                  <option value="">NÃ£o Informado</option>
                   <option value="Sim">Sim</option>
-                  <option value="Não">Não</option>
-                  <option value="Às Vezes">Às Vezes</option>
+                  <option value="NÃ£o">NÃ£o</option>
+                  <option value="Ã€s Vezes">Ã€s Vezes</option>
                   {item.key === "blood_pressure" && <option value="Normal">Normal</option>}
                   {item.key === "blood_pressure" && <option value="Alterada">Alterada</option>}
                 </select>
@@ -4934,28 +4855,28 @@ function DigitalTerms() {
         </section>
 
         <section className="term-section">
-          <h3>Informações do Atendimento</h3>
+          <h3>InformaÃ§Ãµes do Atendimento</h3>
           <div className="form-grid">
             <Input label="Procedimento" value={form.procedure} onChange={(value) => updateField("procedure", value)} />
-            <Input label="Região da Perfuração" value={form.piercing_region} onChange={(value) => updateField("piercing_region", value)} />
-            <Input label="Local da Aplicação" value={form.form_data.information.application_location} onChange={(value) => updateFormData("information", "application_location", value)} />
+            <Input label="RegiÃ£o da PerfuraÃ§Ã£o" value={form.piercing_region} onChange={(value) => updateField("piercing_region", value)} />
+            <Input label="Local da AplicaÃ§Ã£o" value={form.form_data.information.application_location} onChange={(value) => updateFormData("information", "application_location", value)} />
             <Input label="Joia" value={form.form_data.information.jewelry} onChange={(value) => updateFormData("information", "jewelry", value)} />
             <Input label="Valor" value={form.form_data.information.value} onChange={(value) => updateFormData("information", "value", value)} />
           </div>
           <label className="term-notes">
-            Observação
+            ObservaÃ§Ã£o
             <textarea
               value={form.form_data.information.observation}
               onChange={(event) => updateFormData("information", "observation", event.target.value)}
-              placeholder="Alergias, medicamentos, gestação, queloide, observações clínicas ou qualquer detalhe importante."
+              placeholder="Alergias, medicamentos, gestaÃ§Ã£o, queloide, observaÃ§Ãµes clÃ­nicas ou qualquer detalhe importante."
             />
           </label>
           <label className="term-notes">
-            Declaração de Saúde e Observações
+            DeclaraÃ§Ã£o de SaÃºde e ObservaÃ§Ãµes
             <textarea
               value={form.health_declaration}
               onChange={(event) => updateField("health_declaration", event.target.value)}
-              placeholder="Texto complementar livre, se necessário."
+              placeholder="Texto complementar livre, se necessÃ¡rio."
             />
           </label>
         </section>
@@ -4963,14 +4884,14 @@ function DigitalTerms() {
         <section className="term-section term-consent-section">
           <label className="checkbox-line">
             <input type="checkbox" checked={form.orientations_confirmed} onChange={(event) => updateField("orientations_confirmed", event.target.checked)} />
-            Confirmo que recebi orientações sobre cuidados, higienização, riscos, cicatrização e retornos.
+            Confirmo que recebi orientaÃ§Ãµes sobre cuidados, higienizaÃ§Ã£o, riscos, cicatrizaÃ§Ã£o e retornos.
           </label>
-          <p>Declaro que recebi todas as informações referentes ao procedimento e que os materiais utilizados são devidamente esterilizados, lacrados e descartados após o atendimento.</p>
+          <p>Declaro que recebi todas as informaÃ§Ãµes referentes ao procedimento e que os materiais utilizados sÃ£o devidamente esterilizados, lacrados e descartados apÃ³s o atendimento.</p>
         </section>
 
         <section className="term-section">
           <div className="term-section-heading">
-          <h3>Autorização para Menores</h3>
+          <h3>AutorizaÃ§Ã£o para Menores</h3>
             <label className="checkbox-line compact">
               <input
                 type="checkbox"
@@ -4982,8 +4903,8 @@ function DigitalTerms() {
           </div>
           {form.form_data.minor.is_minor && (
             <div className="form-grid">
-              <Input label="Nome do Responsável" value={form.form_data.minor.responsible_name} onChange={(value) => updateFormData("minor", "responsible_name", value)} />
-              <Input label="Documento Do Responsável" value={form.form_data.minor.responsible_document} onChange={(value) => updateFormData("minor", "responsible_document", value)} />
+              <Input label="Nome do ResponsÃ¡vel" value={form.form_data.minor.responsible_name} onChange={(value) => updateFormData("minor", "responsible_name", value)} />
+              <Input label="Documento Do ResponsÃ¡vel" value={form.form_data.minor.responsible_document} onChange={(value) => updateFormData("minor", "responsible_document", value)} />
               <Input label="Nome Do Menor" value={form.form_data.minor.minor_name} onChange={(value) => updateFormData("minor", "minor_name", value)} />
             </div>
           )}
@@ -5035,7 +4956,7 @@ function LoyaltyPanel({ client, onChanged }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(redeem)
     });
-    if (!response.ok) return setError((await response.json()).error || "Não foi possível resgatar desconto.");
+    if (!response.ok) return setError((await response.json()).error || "NÃ£o foi possÃ­vel resgatar desconto.");
     setRedeem({ points_used: 10, discount_value: 0, notes: "" });
     onChanged();
   }
@@ -5046,13 +4967,13 @@ function LoyaltyPanel({ client, onChanged }) {
         <div>
           <span className="eyebrow">Programa de fidelidade</span>
           <h3>{loyalty.level}</h3>
-          <p>{loyalty.availablePoints} pontos disponíveis · {loyalty.totalEarned} pontos acumulados</p>
+          <p>{loyalty.availablePoints} pontos disponÃ­veis Â· {loyalty.totalEarned} pontos acumulados</p>
         </div>
         <span className="status-badge status-confirmado">{loyalty.redeemedPoints} pontos resgatados</span>
       </div>
       <div className="loyalty-grid">
         <div>
-          <h4>Benefícios por nível</h4>
+          <h4>BenefÃ­cios por nÃ­vel</h4>
           <ul className="benefit-list">
             {asArray(loyalty.benefits).map((benefit) => <li key={benefit}>{benefit}</li>)}
           </ul>
@@ -5063,20 +4984,20 @@ function LoyaltyPanel({ client, onChanged }) {
             <Input type="number" label="Pontos" value={redeem.points_used} onChange={(value) => setRedeem({ ...redeem, points_used: value })} />
             <Input type="number" label="Desconto R$" value={redeem.discount_value} onChange={(value) => setRedeem({ ...redeem, discount_value: value })} />
           </div>
-          <Input label="Observação" value={redeem.notes} onChange={(value) => setRedeem({ ...redeem, notes: value })} />
+          <Input label="ObservaÃ§Ã£o" value={redeem.notes} onChange={(value) => setRedeem({ ...redeem, notes: value })} />
           {error && <span className="form-error">{error}</span>}
           <button className="primary-button">Resgatar</button>
         </form>
       </div>
       <div className="loyalty-history">
         <div>
-          <h4>Histórico de pontos</h4>
+          <h4>HistÃ³rico de pontos</h4>
           {(loyalty.history || []).slice(0, 5).map((item) => <p key={item.id}><strong>+{item.points}</strong> {item.description}</p>)}
           {!loyalty.history?.length && <small>Sem pontos registrados ainda.</small>}
         </div>
         <div>
           <h4>Resgates</h4>
-          {(loyalty.redemptions || []).slice(0, 5).map((item) => <p key={item.id}><strong>-{item.points_used}</strong> {currency.format(item.discount_value)} · {item.notes || "desconto"}</p>)}
+          {(loyalty.redemptions || []).slice(0, 5).map((item) => <p key={item.id}><strong>-{item.points_used}</strong> {currency.format(item.discount_value)} Â· {item.notes || "desconto"}</p>)}
           {!loyalty.redemptions?.length && <small>Nenhum resgate realizado.</small>}
         </div>
       </div>
@@ -5182,7 +5103,7 @@ function PostCare() {
           <option value="pendente">pendente</option>
           <option value="mensagem enviada">mensagem enviada</option>
           <option value="foto recebida">foto recebida</option>
-          <option value="concluido">concluído</option>
+          <option value="concluido">concluÃ­do</option>
         </Select>
       </div>
       <div className="post-care-grid">
@@ -5219,13 +5140,13 @@ function PostCareCard({ item, onChanged }) {
         <div>
           <span className="eyebrow">{item.reminder_day} dias</span>
           <h2>{item.full_name}</h2>
-          <p>{item.whatsapp} · {item.instagram || "sem Instagram"}</p>
+          <p>{item.whatsapp} Â· {item.instagram || "sem Instagram"}</p>
         </div>
         <span className={`status-badge ${isDue ? "status-pendente" : "status-atendido"}`}>{formatDate(item.due_date)}</span>
       </header>
       <dl>
         <div><dt>Procedimento</dt><dd>{item.procedure}</dd></div>
-        <div><dt>Região</dt><dd>{item.piercing_region}</dd></div>
+        <div><dt>RegiÃ£o</dt><dd>{item.piercing_region}</dd></div>
         <div><dt>Joia</dt><dd>{item.jewelry_name || "sem joia"}</dd></div>
         <div><dt>Profissional</dt><dd>{item.professional_name}</dd></div>
       </dl>
@@ -5235,21 +5156,21 @@ function PostCareCard({ item, onChanged }) {
           <textarea value={form.care_message} onChange={(event) => setForm({ ...form, care_message: event.target.value })} />
         </label>
         <div className="form-grid">
-          <Select label="Status da cicatrização" value={form.healing_status} onChange={(value) => setForm({ ...form, healing_status: value })}>
+          <Select label="Status da cicatrizaÃ§Ã£o" value={form.healing_status} onChange={(value) => setForm({ ...form, healing_status: value })}>
             <option>aguardando retorno</option>
-            <option>cicatrização normal</option>
-            <option>atenção necessária</option>
-            <option>intercorrência</option>
-            <option>cicatrização concluída</option>
+            <option>cicatrizaÃ§Ã£o normal</option>
+            <option>atenÃ§Ã£o necessÃ¡ria</option>
+            <option>intercorrÃªncia</option>
+            <option>cicatrizaÃ§Ã£o concluÃ­da</option>
           </Select>
           <Select label="Status do lembrete" value={form.status} onChange={(value) => setForm({ ...form, status: value })}>
             <option value="pendente">pendente</option>
             <option value="mensagem enviada">mensagem enviada</option>
             <option value="foto recebida">foto recebida</option>
-            <option value="concluido">concluído</option>
+            <option value="concluido">concluÃ­do</option>
           </Select>
         </div>
-        <label>Observações do cliente
+        <label>ObservaÃ§Ãµes do cliente
           <textarea value={form.client_notes} onChange={(event) => setForm({ ...form, client_notes: event.target.value })} />
         </label>
         <label>Foto enviada pelo cliente
@@ -5265,8 +5186,8 @@ const DIGITAL_TERM_HEALTH_ITEMS = [
   { key: "epilepsia", label: "Epilepsia" },
   { key: "hemofilia", label: "Hemofilia" },
   { key: "diabetes", label: "Diabetes" },
-  { key: "alteracoes_hormonais", label: "Alterações Hormonais" },
-  { key: "doencas_cardiacas", label: "Doenças Cardíacas" },
+  { key: "alteracoes_hormonais", label: "AlteraÃ§Ãµes Hormonais" },
+  { key: "doencas_cardiacas", label: "DoenÃ§as CardÃ­acas" },
   { key: "queloide", label: "Queloide" },
   { key: "ists", label: "IST's" },
   { key: "hepatite", label: "Hepatite" },
@@ -5277,14 +5198,14 @@ const DIGITAL_TERM_HEALTH_ITEMS = [
 const DIGITAL_TERM_LIFESTYLE_ITEMS = [
   { key: "eats_well", label: "Alimenta-Se Bem?" },
   { key: "sleep_regular", label: "Tem Sono Regular?" },
-  { key: "physical_activity", label: "Pratica Atividade Física?" },
-  { key: "alcohol", label: "Bebe Álcool?" },
+  { key: "physical_activity", label: "Pratica Atividade FÃ­sica?" },
+  { key: "alcohol", label: "Bebe Ãlcool?" },
   { key: "smokes", label: "Fuma?" },
-  { key: "health_problem", label: "Algum Problema De Saúde?" },
+  { key: "health_problem", label: "Algum Problema De SaÃºde?" },
   { key: "medication", label: "Usa Algum Medicamento?" },
   { key: "treatment", label: "Faz Algum Tratamento?" },
   { key: "phobia", label: "Tem Alguma Fobia?" },
-  { key: "blood_pressure", label: "Pressão Sanguínea" }
+  { key: "blood_pressure", label: "PressÃ£o SanguÃ­nea" }
 ];
 
 function defaultDigitalTerm() {
@@ -5335,7 +5256,7 @@ function MedicalRecordForm({ client, onSaved }) {
     if (files.before_photo) formData.append("before_photo", files.before_photo);
     if (files.after_photo) formData.append("after_photo", files.after_photo);
     const response = await apiFetch(`/clients/${client.id}/medical-records`, { method: "POST", body: formData });
-    if (!response.ok) return setError((await response.json()).error || "Não foi possível salvar o prontuário.");
+    if (!response.ok) return setError((await response.json()).error || "NÃ£o foi possÃ­vel salvar o prontuÃ¡rio.");
     setRecord(defaultMedicalRecord());
     setFiles({ before_photo: null, after_photo: null });
     event.currentTarget.reset();
@@ -5344,15 +5265,15 @@ function MedicalRecordForm({ client, onSaved }) {
 
   return (
     <form className="medical-form" onSubmit={submit}>
-      <h3>Novo registro de prontuário</h3>
+      <h3>Novo registro de prontuÃ¡rio</h3>
       <div className="form-grid">
         <Input type="date" label="Data do registro" value={record.record_date} onChange={(value) => setRecord({ ...record, record_date: value })} />
         <Select label="Atendimento vinculado" value={record.appointment_id} onChange={(value) => setRecord({ ...record, appointment_id: value })}>
-          <option value="">Sem vínculo</option>
-          {asArray(client.history).map((item) => <option key={item.id} value={item.id}>{formatDate(item.appointment_date)} · {item.procedure}</option>)}
+          <option value="">Sem vÃ­nculo</option>
+          {asArray(client.history).map((item) => <option key={item.id} value={item.id}>{formatDate(item.appointment_date)} Â· {item.procedure}</option>)}
         </Select>
       </div>
-      <label>Histórico de perfurações
+      <label>HistÃ³rico de perfuraÃ§Ãµes
         <textarea value={record.piercing_history} onChange={(event) => setRecord({ ...record, piercing_history: event.target.value })} />
       </label>
       <label>Joias usadas
@@ -5366,23 +5287,23 @@ function MedicalRecordForm({ client, onSaved }) {
           <input type="file" accept="image/*" onChange={(event) => setFiles({ ...files, after_photo: event.target.files[0] })} />
         </label>
       </div>
-      <label>Intercorrências
+      <label>IntercorrÃªncias
         <textarea value={record.occurrences} onChange={(event) => setRecord({ ...record, occurrences: event.target.value })} />
       </label>
-      <label>Orientações passadas
+      <label>OrientaÃ§Ãµes passadas
         <textarea value={record.guidance} onChange={(event) => setRecord({ ...record, guidance: event.target.value })} />
       </label>
-      <label>Alergias ou observações importantes
+      <label>Alergias ou observaÃ§Ãµes importantes
         <textarea value={record.allergies_notes} onChange={(event) => setRecord({ ...record, allergies_notes: event.target.value })} />
       </label>
-      <label>Evolução da cicatrização
+      <label>EvoluÃ§Ã£o da cicatrizaÃ§Ã£o
         <textarea value={record.healing_evolution} onChange={(event) => setRecord({ ...record, healing_evolution: event.target.value })} />
       </label>
       <label>Retornos realizados
         <textarea value={record.returns_done} onChange={(event) => setRecord({ ...record, returns_done: event.target.value })} />
       </label>
       {error && <span className="form-error">{error}</span>}
-      <button className="primary-button">Salvar prontuário</button>
+      <button className="primary-button">Salvar prontuÃ¡rio</button>
     </form>
   );
 }
@@ -5395,14 +5316,14 @@ function MedicalRecordTimeline({ client, onChanged }) {
 
   return (
     <div className="medical-section">
-      <h3>Prontuário individual</h3>
+      <h3>ProntuÃ¡rio individual</h3>
       <div className="medical-timeline">
-        {client.medicalRecords?.length ? client.medicalRecords.map((record) => (
+        {asArray(client.medicalRecords).length ? asArray(client.medicalRecords).map((record) => (
           <article className="record-entry" key={record.id}>
             <header>
               <div>
                 <strong>{formatLongDate(record.record_date)}</strong>
-                <span>{record.procedure || "Registro avulso"} · {record.piercing_region || "sem região vinculada"}</span>
+                <span>{record.procedure || "Registro avulso"} Â· {record.piercing_region || "sem regiÃ£o vinculada"}</span>
               </div>
               <button onClick={() => remove(record.id)}>Apagar</button>
             </header>
@@ -5422,15 +5343,15 @@ function MedicalRecordTimeline({ client, onChanged }) {
 )}
             </div>
             <dl className="record-details">
-              <div><dt>Joias usadas</dt><dd>{record.jewelry_used || record.appointment_jewelry || "Não informado"}</dd></div>
-              <div><dt>Intercorrências</dt><dd>{record.occurrences || "Sem intercorrências registradas"}</dd></div>
-              <div><dt>Orientações</dt><dd>{record.guidance || "Não informado"}</dd></div>
-              <div><dt>Alergias/observações</dt><dd>{record.allergies_notes || client.notes || "Não informado"}</dd></div>
-              <div><dt>Evolução</dt><dd>{record.healing_evolution || "Não informado"}</dd></div>
-              <div><dt>Retornos</dt><dd>{record.returns_done || "Não informado"}</dd></div>
+              <div><dt>Joias usadas</dt><dd>{record.jewelry_used || record.appointment_jewelry || "NÃ£o informado"}</dd></div>
+              <div><dt>IntercorrÃªncias</dt><dd>{record.occurrences || "Sem intercorrÃªncias registradas"}</dd></div>
+              <div><dt>OrientaÃ§Ãµes</dt><dd>{record.guidance || "NÃ£o informado"}</dd></div>
+              <div><dt>Alergias/observaÃ§Ãµes</dt><dd>{record.allergies_notes || client.notes || "NÃ£o informado"}</dd></div>
+              <div><dt>EvoluÃ§Ã£o</dt><dd>{record.healing_evolution || "NÃ£o informado"}</dd></div>
+              <div><dt>Retornos</dt><dd>{record.returns_done || "NÃ£o informado"}</dd></div>
             </dl>
           </article>
-        )) : <p className="empty-state">Nenhum registro de prontuário ainda.</p>}
+        )) : <p className="empty-state">Nenhum registro de prontuÃ¡rio ainda.</p>}
       </div>
     </div>
   );
@@ -5439,7 +5360,7 @@ function MedicalRecordTimeline({ client, onChanged }) {
 function MonthlyChart({ data = [] }) {
   const safeData = asArray(data);
   const max = Math.max(...safeData.map((item) => asNumber(item?.total)), 1);
-  if (!safeData.length) return <p className="empty-state">Sem faturamento registrado para montar o gráfico.</p>;
+  if (!safeData.length) return <p className="empty-state">Sem faturamento registrado para montar o grÃ¡fico.</p>;
   return (
     <div className="monthly-chart">
       {safeData.map((item, index) => (
@@ -5463,8 +5384,8 @@ function AppointmentList({ appointments = [], onChanged, compact }) {
           <div className="time-box"><strong>{item.appointment_time}</strong><span>{formatDate(item.appointment_date)}</span></div>
           <div>
             <h3>{item.full_name}</h3>
-            <p>{item.procedure} · {item.piercing_region}</p>
-            <small>{item.professional_name} · {item.jewelry_name || "sem joia vinculada"}</small>
+            <p>{item.procedure} Â· {item.piercing_region}</p>
+            <small>{item.professional_name} Â· {item.jewelry_name || "sem joia vinculada"}</small>
           </div>
           <span className={`status-badge ${statusClass[item.status]}`}>{item.status}</span>
           {!compact && <div className="row-actions">
@@ -5478,50 +5399,32 @@ function AppointmentList({ appointments = [], onChanged, compact }) {
   );
 }
 
-function Metric({ label, value }) {
-  return <article className="metric-card"><ListFilter size={20} /><span>{label}</span><strong>{value}</strong></article>;
-}
-
-function Input({ label, value, onChange, type = "text", required }) {
-  return <label>{label}<input type={type} value={value} required={required} onChange={(e) => onChange(e.target.value)} /></label>;
-}
-
-function Select({ label, value, onChange, children, required }) {
-  return <label>{label}<select value={value} required={required} onChange={(e) => onChange(e.target.value)}>{children}</select></label>;
-}
-
-function PaymentSelect(props) {
-  return <Select {...props}><option>Pix</option><option>dinheiro</option><option>cartão de crédito</option><option>cartão de débito</option></Select>;
-}
-
-function StatusSelect({ value, onChange }) {
-  return <Select label="Status" value={value} onChange={onChange}>{statuses().map((status) => <option key={status}>{status}</option>)}</Select>;
-}
-
-function Loading() {
+function LegacyLoading() {
   return <div className="loading">Carregando Aura Clinic...</div>;
 }
 
-function ApiError({ message }) {
+function LegacyApiError({ message }) {
   return (
     <section className="panel erp-error">
       <span className="eyebrow">Aura Clinic</span>
-      <h2>Não foi possível carregar os dados.</h2>
-      <p>{message || "Tente atualizar a página ou entrar novamente."}</p>
+      <h2>NÃ£o foi possÃ­vel carregar os dados.</h2>
+      <p>{message || "Tente atualizar a pÃ¡gina ou entrar novamente."}</p>
     </section>
   );
 }
 
-function readStoredSession() {
+function legacyReadStoredSession() {
   try {
-    return JSON.parse(localStorage.getItem("aura-session") || "null");
+    const storedSession = JSON.parse(localStorage.getItem("aura-session") || "null");
+    if (storedSession) return storedSession;
+    return SHOULD_AUTO_LOGIN_LOCAL ? { user: { id: 1, name: "Administrador Aura", email: "admin@auraclinic.com", role: "admin" } } : null;
   } catch {
     localStorage.removeItem("aura-session");
-    return null;
+    return SHOULD_AUTO_LOGIN_LOCAL ? { user: { id: 1, name: "Administrador Aura", email: "admin@auraclinic.com", role: "admin" } } : null;
   }
 }
 
-function authToken() {
+function legacyAuthToken() {
   try {
     return JSON.parse(localStorage.getItem("aura-session") || "null")?.token || "";
   } catch {
@@ -5530,7 +5433,7 @@ function authToken() {
   }
 }
 
-function apiFetch(path, options = {}) {
+function legacyApiFetch(path, options = {}) {
   const headers = new Headers(options.headers || {});
   if (!(options.body instanceof FormData) && options.body !== undefined && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
@@ -5546,7 +5449,7 @@ function apiFetch(path, options = {}) {
   });
 }
 
-async function downloadApiFile(path, filename) {
+async function legacyDownloadApiFile(path, filename) {
   const response = await apiFetch(path);
   if (!response.ok) return;
   const blob = await response.blob();
@@ -5560,7 +5463,7 @@ async function downloadApiFile(path, filename) {
   URL.revokeObjectURL(url);
 }
 
-function useFetch(path) {
+function legacyUseFetch(path) {
   const [data, setData] = useState(null);
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -5568,98 +5471,31 @@ function useFetch(path) {
     apiFetch(`${path}`)
       .then(async (res) => {
         const json = await res.json().catch(() => ({}));
-        if (!res.ok) return { error: json.error || "Não foi possível carregar os dados." };
+        if (!res.ok) return { error: json.error || "NÃ£o foi possÃ­vel carregar os dados." };
         return json;
       })
       .then((json) => active && setData(json))
-      .catch(() => active && setData({ error: "Não foi possível conectar com a API." }));
+      .catch(() => active && setData({ error: "NÃ£o foi possÃ­vel conectar com a API." }));
     return () => { active = false; };
   }, [path, tick]);
   return { data, refresh: () => setTick((value) => value + 1) };
 }
 
-function usePublicFetch(path) {
+function legacyUsePublicFetch(path) {
   const [data, setData] = useState(null);
   useEffect(() => {
     let active = true;
     fetch(`${API}${path}`)
       .then(async (res) => {
         const json = await res.json().catch(() => ({}));
-        if (!res.ok) return { error: json.error || "Não foi possível carregar os dados." };
+        if (!res.ok) return { error: json.error || "NÃ£o foi possÃ­vel carregar os dados." };
         return json;
       })
       .then((json) => active && setData(json))
-      .catch(() => active && setData({ error: "Não foi possível conectar com a API." }));
+      .catch(() => active && setData({ error: "NÃ£o foi possÃ­vel conectar com a API." }));
     return () => { active = false; };
   }, [path]);
   return { data };
-}
-
-function useSupabaseProducts({ publicOnly = false } = {}) {
-  const [state, setState] = useState({ enabled: false, data: null, error: "" });
-  const [tick, setTick] = useState(0);
-
-  useEffect(() => {
-    let active = true;
-    async function load() {
-      try {
-        const { supabase, isSupabaseConfigured, productFromSupabase } = await import("./supabaseClient.js");
-        if (!isSupabaseConfigured || !supabase) {
-          if (active) setState({ enabled: false, data: null, error: "" });
-          return;
-        }
-        let query = supabase.from("products").select("*").order("created_at", { ascending: false });
-        if (publicOnly) query = query.eq("is_active", true);
-        const { data, error } = await query;
-        if (error) throw error;
-        const products = asArray(data).map(productFromSupabase);
-        products.sort((a, b) => asNumber(b.is_featured) - asNumber(a.is_featured));
-        if (active) setState({ enabled: true, data: products, error: "" });
-      } catch (error) {
-        console.error("Supabase products:", error);
-        if (active) setState({ enabled: true, data: null, error: "Não foi possível carregar as joias do Supabase." });
-      }
-    }
-    load();
-    return () => { active = false; };
-  }, [publicOnly, tick]);
-
-  return { ...state, refresh: () => setTick((value) => value + 1) };
-}
-
-async function syncProductToSupabase(product) {
-  try {
-    const { supabase, isSupabaseConfigured, productToSupabase } = await import("./supabaseClient.js");
-    if (!isSupabaseConfigured || !supabase) return;
-    const payload = productToSupabase(product);
-    const existingId = product?.supabase_id || (product?.supabase_source ? product.id : null);
-    const query = existingId
-      ? supabase.from("products").update(payload).eq("id", existingId)
-      : supabase.from("products").insert(payload);
-    const { error } = await query;
-    if (error) throw error;
-  } catch (error) {
-    console.error("Não foi possível sincronizar o produto com o Supabase:", error);
-  }
-}
-
-async function saveSupabaseProduct(product, existingId = null) {
-  const { supabase, isSupabaseConfigured, productToSupabase, productFromSupabase } = await import("./supabaseClient.js");
-  if (!isSupabaseConfigured || !supabase) throw new Error("Supabase não configurado.");
-  const payload = productToSupabase(product);
-  const query = existingId
-    ? supabase.from("products").update(payload).eq("id", existingId).select("*").single()
-    : supabase.from("products").insert(payload).select("*").single();
-  const { data, error } = await query;
-  if (error) throw error;
-  return productFromSupabase(data);
-}
-
-async function removeSupabaseProduct(id) {
-  const { supabase, isSupabaseConfigured } = await import("./supabaseClient.js");
-  if (!isSupabaseConfigured || !supabase) return;
-  const { error } = await supabase.from("products").delete().eq("id", id);
-  if (error) throw error;
 }
 
 async function updateAppointment(id, body, refresh) {
@@ -5729,7 +5565,7 @@ function nextBookingDates(total = 10) {
   });
 }
 
-function localDateValue(date) {
+function legacyLocalDateValue(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
@@ -5840,7 +5676,7 @@ function defaultJewelry() {
     is_last_units: false,
     is_published: false,
     notes: "",
-    status: "disponível",
+    status: "disponÃ­vel",
     variants: [defaultJewelryVariant()]
   };
 }
@@ -5849,8 +5685,8 @@ function defaultJewelryVariant(index = 1) {
   return {
     id: null,
     sku: "",
-    variation_name: `Variação ${index}`,
-    material: "Titânio ASTM F136",
+    variation_name: `VariaÃ§Ã£o ${index}`,
+    material: "TitÃ¢nio ASTM F136",
     color: "Natural",
     stone_color: "",
     side: "",
@@ -5864,7 +5700,7 @@ function defaultJewelryVariant(index = 1) {
     sale_value: 0,
     quantity: 0,
     low_stock_threshold: 5,
-    status: "disponível",
+    status: "disponÃ­vel",
     is_active: true
   };
 }
@@ -5921,14 +5757,14 @@ function parseGalleryUrls(value = "") {
 
 function defaultCatalogSettings() {
   return {
-    title: "Escolha a joia perfeita para você",
+    title: "Escolha a joia perfeita para vocÃª",
     subtitle: "Curadoria premium da Aura Clinic Piercing",
     hero_title: "Joias de alta qualidade",
-    hero_subtitle: "para realçar sua essência",
+    hero_subtitle: "para realÃ§ar sua essÃªncia",
     hero_image_url: "https://images.unsplash.com/photo-1602751584552-8ba73aad10e1?auto=format&fit=crop&w=1200&q=85",
     categories: `Todos, ${JEWELRY_CATEGORY_OPTIONS.join(", ")}`,
     whatsapp_phone: "",
-    whatsapp_message: "Olá! Vim pelo catálogo online da Aura Clinic e quero ajuda para escolher uma joia.",
+    whatsapp_message: "OlÃ¡! Vim pelo catÃ¡logo online da Aura Clinic e quero ajuda para escolher uma joia.",
     company_instagram: "",
     company_email: "",
     company_address: "",
@@ -5977,14 +5813,14 @@ function statuses() {
 }
 
 function weekdayLabel(day) {
-  return ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"][Number(day)] || "Dia";
+  return ["Domingo", "Segunda", "TerÃ§a", "Quarta", "Quinta", "Sexta", "SÃ¡bado"][Number(day)] || "Dia";
 }
 
-function formatDate(date) {
+function legacyFormatDate(date) {
   return new Date(`${date}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
 
-function formatLongDate(date) {
+function legacyFormatLongDate(date) {
   return new Date(`${date}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "long" });
 }
 
@@ -5993,7 +5829,7 @@ function formatRevenueLabel(item, mode) {
   if (mode === "diario" && label) return formatDate(label);
   if (mode === "semanal") return label.replace("-W", " semana ");
   if (label.length === 7) return `${label.slice(5)}/${label.slice(0, 4)}`;
-  return label || "Período";
+  return label || "PerÃ­odo";
 }
 
 function formatRevenueAxisLabel(item, mode) {
@@ -6004,11 +5840,11 @@ function formatRevenueAxisLabel(item, mode) {
   return label.slice(0, 4);
 }
 
-function firstName(name = "") {
+function legacyFirstName(name = "") {
   return String(name).trim().split(" ")[0] || "Aura";
 }
 
-function initials(name = "") {
+function legacyInitials(name = "") {
   return String(name).trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "A";
 }
 
@@ -6039,7 +5875,7 @@ function instagramCatalogUrl(handle = "") {
 function whatsappCatalogUrl(message, phone) {
   const digits = String(phone || "").replace(/\D/g, "");
   const normalized = digits ? (digits.startsWith("55") ? digits : `55${digits}`) : "";
-  return `https://wa.me/${normalized}?text=${encodeURIComponent(message || "Olá! Vim pelo catálogo online da Aura Clinic.")}`;
+  return `https://wa.me/${normalized}?text=${encodeURIComponent(message || "OlÃ¡! Vim pelo catÃ¡logo online da Aura Clinic.")}`;
 }
 
 function catalogProductUrl(id) {
@@ -6060,10 +5896,10 @@ function catalogCategories(names = []) {
     Surface: Sparkles,
     "Ouro 14k": Gem,
     "Ouro 18k": Gem,
-    Titânio: CircleDollarSign,
+    "TitÃ¢nio": CircleDollarSign,
     Titanio: CircleDollarSign,
     Opalas: Gem,
-    Lançamentos: Star,
+    "LanÃ§amentos": Star,
     Lancamentos: Star
   };
   const safeNames = asArray(names);
@@ -6098,67 +5934,6 @@ function catalogIcon(icon) {
   }[icon] || Gem;
 }
 
-function catalogPromotionForItem(item, promotions = []) {
-  const today = new Date().toISOString().slice(0, 10);
-  return asArray(promotions).find((promotion) => {
-    if (!Boolean(Number(promotion.is_active))) return false;
-    if (promotion.start_date && promotion.start_date > today) return false;
-    if (promotion.end_date && promotion.end_date < today) return false;
-    if (promotion.applies_to === "all") return true;
-    const productIds = String(promotion.product_ids || "").split(",").map((id) => id.trim()).filter(Boolean);
-    const categoryIds = String(promotion.category_ids || "").split(",").map((id) => id.trim().toLowerCase()).filter(Boolean);
-    if (promotion.applies_to === "products") return productIds.includes(String(item.id));
-    if (promotion.applies_to === "categories") return categoryIds.some((category) => `${item.category} ${item.material}`.toLowerCase().includes(category));
-    return false;
-  });
-}
-
-function promotionalPrice(value, promotion) {
-  if (!promotion) return null;
-  const discount = Number(promotion.discount_value || 0);
-  if (promotion.discount_type === "fixed") return Math.max(value - discount, 0);
-  return Math.max(value - (value * discount / 100), 0);
-}
-
-function catalogStockText(item, theme = {}, settings = {}) {
-  const mode = theme.stock_display_mode || "status";
-  if (mode === "hidden") return "";
-  const quantity = Number(item.quantity || 0);
-  if (mode === "quantity" || Boolean(Number(theme.show_stock_quantity))) return `${quantity} em estoque`;
-  if (quantity <= 0) return settings.unavailable_message || "Indisponível";
-  if (quantity <= 2) return settings.low_stock_message || "Poucas unidades";
-  return "Em estoque";
-}
-
-function catalogFilterOptions(items) {
-  const safeItems = asArray(items);
-
-  const variants = safeItems.flatMap((item) =>
-    asArray(item?.variants)
-  );
-
-  const unique = (key, source = safeItems) =>
-    [...new Set(asArray(source).map((item) => cleanDisplayText(item?.[key])).filter(Boolean))].sort();
-
-  return {
-    categories: unique("category"),
-    subcategories: unique("subcategory"),
-    materials: unique("material", variants),
-    colors: [
-      ...new Set(
-        asArray(variants).flatMap((variant) =>
-          splitColorOptions(variant?.color)
-        )
-      ),
-    ].sort(),
-    stones: unique("stone"),
-    sizes: unique("size", variants),
-    thicknesses: unique("thickness", variants),
-    suppliers: unique("supplier", variants),
-    locations: unique("physical_location")
-  };
-}
-
 function catalogContentSections(value) {
   if (Array.isArray(value)) return value.map(normalizeCatalogContentSection);
   if (!value) return [defaultContentSection(1)];
@@ -6182,7 +5957,7 @@ function normalizeCatalogContentSection(section, index = 0) {
 function inventoryStatusLabel(item) {
   const state = inventoryStockState(item);
   if (state === "sold-out") return "Esgotado";
-  if (state === "critical") return "Crítico";
+  if (state === "critical") return "CrÃ­tico";
   return "Ativo";
 }
 
@@ -6198,62 +5973,20 @@ function inventoryStockState(item) {
   return "active";
 }
 
-function cleanDisplayText(value = "") {
-  return String(value || "")
-    .replace(/tit\?nio/gi, "titânio")
-    .replace(/tit�nio/gi, "titânio")
-    .replace(/zirc\?nia/gi, "zircônia")
-    .replace(/a\?o/gi, "aço")
-    .replace(/sem informa\?\?o/gi, "sem informação")
-    .replace(/promo\?\?o/gi, "promoção")
-    .replace(/varia\?\?o/gi, "variação")
-    .replace(/dispon\?vel/gi, "disponível")
-    .replace(/observa\?\?o/gi, "observação")
-    .replace(/Ã¢/g, "â")
-    .replace(/Ã£/g, "ã")
-    .replace(/Ã§/g, "ç")
-    .replace(/Ã©/g, "é")
-    .replace(/Ã­/g, "í")
-    .replace(/Ã³/g, "ó")
-    .replace(/Ãµ/g, "õ")
-    .replace(/Ãº/g, "ú")
-    .replace(/Â·/g, "·")
-    .trim();
-}
-
-function elegantProductName(value = "") {
-  const smallWords = new Set(["de", "da", "do", "das", "dos", "e", "com", "para"]);
-  const normalized = cleanDisplayText(value)
-    .replace(/^Joias Premium\b/i, "Joia Premium")
-    .replace(/\bTitanio\b/gi, "Titânio")
-    .replace(/\bZirconia\b/gi, "Zircônia")
-    .replace(/\s+/g, " ")
-    .trim();
-  return normalized
-    .toLocaleLowerCase("pt-BR")
-    .split(" ")
-    .map((word, index) => {
-      if (/^\d+(?:k|mm)?$/i.test(word)) return word.toLowerCase();
-      if (index > 0 && smallWords.has(word)) return word;
-      return word.charAt(0).toLocaleUpperCase("pt-BR") + word.slice(1);
-    })
-    .join(" ");
-}
-
 function subcategoryOptions(category = "") {
   const normalized = removeAccents(String(category).toLowerCase());
   if (normalized.includes("nariz")) return ["Nostril", "D-Ring", "Segment Clicker", "Argola Clicker", "Screw", "L Shape", "Septo"];
-  if (normalized.includes("orelha")) return ["Hélix", "Tragus", "Conch", "Daith", "Rook", "Flat", "Forward Helix", "Lóbulo", "Anti-Hélix"];
+  if (normalized.includes("orelha")) return ["HÃ©lix", "Tragus", "Conch", "Daith", "Rook", "Flat", "Forward Helix", "LÃ³bulo", "Anti-HÃ©lix"];
   if (normalized.includes("boca")) return ["Labret", "Side Labret", "Medusa", "Monroe", "Ashley", "Vertical Labret"];
   if (normalized.includes("corpo")) return ["Umbigo", "Mamilo", "Surface", "Microdermal", "Sobrancelha"];
-  if (normalized.includes("joias premium")) return ["Ouro 14k", "Ouro 18k", "Titânio ASTM F136", "Cluster", "Trinity", "Opala", "Navete", "Correntes"];
+  if (normalized.includes("joias premium")) return ["Ouro 14k", "Ouro 18k", "TitÃ¢nio ASTM F136", "Cluster", "Trinity", "Opala", "Navete", "Correntes"];
   if (normalized.includes("acessor")) return ["Hastes", "Discos", "Topos", "Bases de Microdermal", "Correntes", "Extensores"];
   return [];
 }
 
 function generateLocalSku(item = {}) {
   const materialCode = {
-    "titânio grau implante": "TIT",
+    "titÃ¢nio grau implante": "TIT",
     "titanio grau implante": "TIT",
     "titanio astm f136": "TIT",
     "ouro 14k": "G14",
@@ -6297,46 +6030,20 @@ function jewelrySkuBase(item = {}) {
   return generateLocalSku({ ...item, ...firstVariant });
 }
 
-function splitColorOptions(value = "") {
-  return [...new Set(
-    String(value)
-      .split(",")
-      .map((item) => elegantProductName(item.trim()))
-      .filter(Boolean)
-  )];
-}
-
 function variantCatalogLabel(variant = {}) {
   const measurement = variant.length
     ? `Comprimento ${variant.length}`
     : variant.diameter
-      ? `Diâmetro ${variant.diameter}`
+      ? `DiÃ¢metro ${variant.diameter}`
       : variant.size
         ? `Tamanho ${variant.size}`
-        : variant.variation_name || variant.sku || "Variação";
+        : variant.variation_name || variant.sku || "VariaÃ§Ã£o";
   return [
     measurement,
     variant.thickness,
     variant.material && elegantProductName(variant.material),
     variant.thread_type && `Rosca ${elegantProductName(variant.thread_type)}`
-  ].filter(Boolean).join(" · ");
-}
-
-function normalizeJewelryMaterial(value = "") {
-  const normalized = removeAccents(String(value).toLowerCase());
-  if (normalized.includes("titanio")) return "Titânio ASTM F136";
-  if (normalized.includes("ouro 14")) return "Ouro 14k";
-  if (normalized.includes("ouro 18")) return "Ouro 18k";
-  if (normalized.includes("aco")) return "Aço";
-  return value ? elegantProductName(value) : "Titânio ASTM F136";
-}
-
-function normalizeJewelryThread(value = "") {
-  const normalized = removeAccents(String(value).toLowerCase());
-  if (normalized === "interna") return "Interna";
-  if (normalized === "externa") return "Externa";
-  if (normalized === "threadless" || normalized === "push pin" || normalized === "pushpin") return "Push Pin";
-  return value ? elegantProductName(value) : "";
+  ].filter(Boolean).join(" Â· ");
 }
 
 function readCatalogStorage(key, fallback) {
@@ -6350,23 +6057,10 @@ function readCatalogStorage(key, fallback) {
   }
 }
 
-function catalogCategoryTerms(category) {
-  return {
-    Labret: ["labret"],
-    Argolas: ["argolas", "argola", "segmento", "clicker", "d-ring", "captive", "hinged ring"],
-    "Barbell Reto": ["barbell reto"],
-    "Barbell Curvo": ["barbell curvo"],
-    Nostril: ["nostril"],
-    Topos: ["topos", "topo"],
-    Microdermal: ["microdermal"],
-    Surface: ["surface"],
-    "Ouro 14k": ["ouro 14k"],
-    "Ouro 18k": ["ouro 18k"],
-  }[category] || [category.toLowerCase()];
-}
-
 function countAlerts(alerts) {
-  return (alerts?.lowStockJewelry?.length || 0) + (alerts?.birthdays?.length || 0) + (alerts?.topClients?.length || 0);
+  const safeAlerts = asObject(alerts);
+  if (Array.isArray(safeAlerts.items)) return safeAlerts.items.length;
+  return [safeAlerts.lowStockJewelry, safeAlerts.birthdays, safeAlerts.topClients].reduce((total, list) => total + asArray(list).length, 0);
 }
 
 function roleLabel(role) {
@@ -6392,40 +6086,6 @@ function saleItemLabel(type = "") {
     produto: "Produto",
     servico: "Serviço"
   }[type] || "Item";
-}
-
-function allowedPagesForRole(role) {
-  return {
-    admin: ["dashboard", "erp", "agenda", "catalog", "catalog-customization", "sales", "finance", "client-center", "clients", "terms", "postcare", "admin"],
-    reception: ["agenda", "sales", "client-center", "clients"],
-    finance: ["finance", "sales"],
-    piercer: ["agenda", "sales", "client-center", "clients", "postcare"]
-  }[role] || ["dashboard", "erp", "agenda", "catalog", "sales", "finance", "client-center", "clients", "terms", "postcare", "admin"];
-}
-
-function canAccessPage(role, page) {
-  return allowedPagesForRole(role).includes(page);
-}
-
-function defaultPageForRole(role) {
-  return allowedPagesForRole(role)[0] || "dashboard";
-}
-
-function pageTitle(page) {
-  return {
-    dashboard: "Dashboard",
-    erp: "Aura Clinic ERP",
-    agenda: "Agenda",
-    catalog: "Catálogo",
-    "catalog-customization": "Personalização do Catálogo",
-    sales: "Vendas e ordens",
-    finance: "Administrativo Financeiro",
-    "client-center": "Clientes",
-    clients: "Clientes",
-    terms: "Termos digitais",
-    postcare: "Pós-atendimento",
-    admin: "Acessos administrativos"
-  }[page];
 }
 
 function buildCalendar(items, mode, currentDate) {
