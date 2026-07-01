@@ -67,7 +67,7 @@ export function DataTable({ columns, rows = [], actions, rowKey = (row) => row.i
     return <div className="data-empty">{empty}</div>;
   }
   return (
-    <div className="table-wrap">
+    <div className="table-wrap data-table-wrap">
       <table className="data-table">
         <thead>
           <tr>
@@ -81,11 +81,11 @@ export function DataTable({ columns, rows = [], actions, rowKey = (row) => row.i
           {rows.map((row) => (
             <tr key={rowKey(row)}>
               {columns.map((col) => (
-                <td key={col.key} style={col.align ? { textAlign: col.align } : undefined}>
+                <td key={col.key} data-label={col.label} style={col.align ? { textAlign: col.align } : undefined}>
                   {col.render ? col.render(row) : row[col.key]}
                 </td>
               ))}
-              {actions && <td className="table-actions">{actions(row)}</td>}
+              {actions && <td className="table-actions" data-label="Ações">{actions(row)}</td>}
             </tr>
           ))}
         </tbody>

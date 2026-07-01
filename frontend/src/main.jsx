@@ -178,7 +178,10 @@ function App() {
           }}
         />
       )}
-      
+      {isAdminAuthenticated && sidebarOpen && (
+        <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} aria-hidden="true" />
+      )}
+
       <main className="main-content">
         <header className="topbar">
           <button className="icon-button mobile-only" onClick={() => setSidebarOpen(true)} aria-label="Abrir menu">
