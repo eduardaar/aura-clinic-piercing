@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "backup": "bash scripts/backup.sh"
+    "backup": "bash scripts/backup.sh",
+    "test": "node tests/run-suite.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

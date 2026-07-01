@@ -23,11 +23,15 @@ import { isProduction } from "../config/index.js";
 const router = Router();
 
 // Rate limit estrito do signup público: 5 cadastros/hora por IP.
+// Desliga rate limit apenas na suíte de testes (nunca em produção).
+const skipRateLimit = () => process.env.DISABLE_RATE_LIMIT === "true";
+
 const signupLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: skipRateLimit,
   message: { error: "Muitos cadastros deste endereço. Tente novamente em uma hora." }
 });
 
@@ -38,6 +42,7 @@ const platformLoginLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: skipRateLimit,
   message: { error: "Muitas tentativas de login. Tente novamente em alguns minutos." }
 });
 

@@ -1,12 +1,18 @@
 // Rate limits da API. Reutiliza express-rate-limit.
 import rateLimit from "express-rate-limit";
 
+// Permite desligar o rate limit apenas na suíte de testes automatizados (muitas
+// requisições do mesmo IP em paralelo). NUNCA definir isso em produção.
+const disabled = process.env.DISABLE_RATE_LIMIT === "true";
+const skip = () => disabled;
+
 // Rate limit do login: protege contra brute-force (10 tentativas / 15 min por IP).
 export const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
+  skip,
   message: { error: "Muitas tentativas de login. Tente novamente em alguns minutos." }
 });
 
@@ -17,5 +23,6 @@ export const apiLimiter = rateLimit({
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,
+  skip,
   message: { error: "Muitas requisições. Aguarde alguns instantes e tente novamente." }
 });

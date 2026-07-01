@@ -79,7 +79,9 @@ export const appointmentCreateSchema = z
   .object({
     professional_id: requiredId("Profissional"),
     appointment_date: nonEmptyString("Data do agendamento"),
-    appointment_time: nonEmptyString("Horário do agendamento")
+    appointment_time: nonEmptyString("Horário do agendamento"),
+    procedure: nonEmptyString("Procedimento"),
+    piercing_region: nonEmptyString("Região do piercing")
   })
   .passthrough();
 

@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS clients (
 CREATE TABLE IF NOT EXISTS jewelry_inventory (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
+  description TEXT,
   photo_url TEXT,
   image_url TEXT,
   gallery_urls TEXT,
@@ -415,3 +416,6 @@ CREATE INDEX IF NOT EXISTS idx_payments_appointment ON payments(appointment_id);
 CREATE INDEX IF NOT EXISTS idx_loyalty_points_client ON loyalty_points(client_id);
 CREATE INDEX IF NOT EXISTS idx_medical_records_client ON client_medical_records(client_id);
 CREATE INDEX IF NOT EXISTS idx_expenses_due ON expenses(due_date);
+
+-- Correções idempotentes aplicadas a clínicas já existentes no boot (applySchemaToAllTenants).
+ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS description TEXT;

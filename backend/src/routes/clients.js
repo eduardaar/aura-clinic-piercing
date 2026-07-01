@@ -35,7 +35,25 @@ router.put("/api/clients/:id", withDb(async (req, res, db) => {
 
 router.delete("/api/clients/:id", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
-  await db.run("DELETE FROM clients WHERE id = ?", [req.params.id]);
+  const id = req.params.id;
+  // Não deixa excluir cliente com histórico vinculado (evita erro de FK / perda de dados).
+  const linked = await db.get(`
+    SELECT
+      (SELECT COUNT(*) FROM appointments WHERE client_id = ?) +
+      (SELECT COUNT(*) FROM payments WHERE client_id = ?) +
+      (SELECT COUNT(*) FROM sales_orders WHERE client_id = ?) +
+      (SELECT COUNT(*) FROM client_medical_records WHERE client_id = ?) +
+      (SELECT COUNT(*) FROM digital_terms WHERE client_id = ?) +
+      (SELECT COUNT(*) FROM loyalty_points WHERE client_id = ?) +
+      (SELECT COUNT(*) FROM loyalty_redemptions WHERE client_id = ?) +
+      (SELECT COUNT(*) FROM post_care_followups WHERE client_id = ?) AS total
+  `, [id, id, id, id, id, id, id, id]);
+  if (Number(linked?.total || 0) > 0) {
+    return res.status(409).json({
+      error: "Este cliente possui histórico (agendamentos, pagamentos, prontuários, termos ou fidelidade) e não pode ser excluído."
+    });
+  }
+  await db.run("DELETE FROM clients WHERE id = ?", [id]);
   res.json({ ok: true });
 }));
 
