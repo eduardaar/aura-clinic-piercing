@@ -76,6 +76,8 @@ const PublicCatalog = lazy(() => import("./pages/PublicExperience").then((m) => 
 const PublicBooking = lazy(() => import("./pages/PublicExperience").then((m) => ({ default: m.PublicBooking })));
 const PublicCheckout = lazy(() => import("./pages/PublicExperience").then((m) => ({ default: m.PublicCheckout })));
 const CatalogCustomization = lazy(() => import("./pages/CatalogCustomization").then((m) => ({ default: m.CatalogCustomization })));
+const Signup = lazy(() => import("./features/platform/Signup").then((m) => ({ default: m.Signup })));
+const PlatformAdmin = lazy(() => import("./features/platform/PlatformAdmin").then((m) => ({ default: m.PlatformAdmin })));
 
 function App() {
   const [session, setSession] = useState(readStoredSession);
@@ -95,6 +97,8 @@ function App() {
   const isPublicCatalog = currentPathname.startsWith("/catalogo");
   const isPublicBooking = currentPathname.startsWith("/agendar");
   const isPublicCheckout = currentPathname.startsWith("/comprar");
+  const isSignup = currentPathname.startsWith("/cadastro");
+  const isPlatform = currentPathname.startsWith("/plataforma");
   
   const normalizedSession = session?.user ? session : session ? { user: session } : null;
 
@@ -131,10 +135,10 @@ function App() {
 
   // Se não tem sessão e não está em rota pública, redirecionar para login
   useEffect(() => {
-    if (!normalizedSession && !isPublicCatalog && !isPublicBooking && !isPublicCheckout && !isLoginPath) {
+    if (!normalizedSession && !isPublicCatalog && !isPublicBooking && !isPublicCheckout && !isSignup && !isPlatform && !isLoginPath) {
       window.location.href = "/login";
     }
-  }, [normalizedSession, isPublicCatalog, isPublicBooking, isPublicCheckout, isLoginPath]);
+  }, [normalizedSession, isPublicCatalog, isPublicBooking, isPublicCheckout, isSignup, isPlatform, isLoginPath]);
 
   // Se está em /login, renderizar APENAS login (sem app shell)
   if (isLoginPath) {
@@ -145,6 +149,8 @@ function App() {
   if (isPublicCatalog) return <Suspense fallback={<Loading />}><PublicCatalog /></Suspense>;
   if (isPublicBooking) return <Suspense fallback={<Loading />}><PublicBooking /></Suspense>;
   if (isPublicCheckout) return <Suspense fallback={<Loading />}><PublicCheckout /></Suspense>;
+  if (isSignup) return <Suspense fallback={<Loading />}><Signup /></Suspense>;
+  if (isPlatform) return <Suspense fallback={<Loading />}><PlatformAdmin /></Suspense>;
   
   // Se não tem sessão, renderizar nada (useEffect acima vai redirecionar)
   if (!normalizedSession) {

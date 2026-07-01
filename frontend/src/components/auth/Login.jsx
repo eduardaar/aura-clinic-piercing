@@ -1,11 +1,12 @@
 import React, { useState } from "react";
 import { AlertTriangle, Calendar, ChevronRight, UserRound, WalletCards } from "lucide-react";
-import { apiFetch } from "../../lib/api";
+import { apiFetch, setTenantSlug, tenantSlug } from "../../lib/api";
 
 const DEFAULT_LOGIN_EMAIL = "admin@auraclinic.com";
 
 export function Login({ onLogin }) {
   const [form, setForm] = useState({
+    slug: tenantSlug(),
     email: localStorage.getItem("aura-last-email") || DEFAULT_LOGIN_EMAIL,
     password: "",
   });
@@ -22,16 +23,26 @@ export function Login({ onLogin }) {
       // Envia e-mail + senha do formulário: o backend suporta contas por usuário
       // com papéis (reception/finance/piercer/admin). Sem checagem de senha no cliente.
       const email = form.email.trim();
+      // Multi-tenant: grava o código da clínica ANTES do apiFetch para o header X-Tenant ir correto.
+      const slug = form.slug.trim().toLowerCase();
+      if (!/^[a-z0-9-]+$/.test(slug)) {
+        setError("Código da clínica inválido: use apenas letras minúsculas, números e hífens.");
+        return;
+      }
+      setTenantSlug(slug);
       const response = await apiFetch("/login", {
         method: "POST",
         body: JSON.stringify({ email, password: form.password }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
+        // 404 clínica não encontrada / 403 suspensa / credenciais inválidas: o backend explica no payload.error.
         setError(payload.error || "E-mail ou senha incorretos. Por favor, tente novamente.");
         return;
       }
-      const session = { token: payload.token, user: payload.user };
+      const session = { token: payload.token, user: payload.user, tenant: payload.tenant };
+      // Persiste o código da clínica confirmado pelo backend.
+      if (payload.tenant?.slug) setTenantSlug(payload.tenant.slug);
       // Guarda o último e-mail usado para pré-preencher no próximo acesso.
       localStorage.setItem("aura-last-email", email);
       localStorage.setItem("aura-admin-authenticated", rememberAccess ? "true" : "");
@@ -63,6 +74,17 @@ export function Login({ onLogin }) {
 
         <form className="login-form" onSubmit={submit}>
           <label>
+            Código da clínica
+            <input
+              type="text"
+              autoComplete="organization"
+              required
+              value={form.slug}
+              onChange={(event) => setForm({ ...form, slug: event.target.value.toLowerCase() })}
+              placeholder="ex.: aura"
+            />
+          </label>
+          <label>
             E-mail
             <input type="email" autoComplete="username" required value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="seu@email.com" />
           </label>
@@ -76,6 +98,7 @@ export function Login({ onLogin }) {
           </label>
           {error && <span className="form-error">{error}</span>}
           <button className="login-submit" disabled={loading}>{loading ? "Entrando…" : "Entrar no sistema"} <ChevronRight size={18} /></button>
+          <a className="remember-access" href="/cadastro">Criar minha clínica</a>
         </form>
 
         <footer className="login-footer">

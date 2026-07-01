@@ -670,6 +670,7 @@ button {
   font-weight: 700;
 }
 
+.login-form input[type="text"],
 .login-form input[type="email"],
 .login-form input[type="password"] {
   width: 100%;
@@ -684,12 +685,14 @@ button {
   transition: border-color .3s ease, box-shadow .3s ease, background .3s ease;
 }
 
+.login-form input[type="text"]:hover,
 .login-form input[type="email"]:hover,
 .login-form input[type="password"]:hover {
   border-color: #c8a96a;
   background: #fff;
 }
 
+.login-form input[type="text"]:focus,
 .login-form input[type="email"]:focus,
 .login-form input[type="password"]:focus {
   border-color: #c8a96a;

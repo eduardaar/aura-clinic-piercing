@@ -16,9 +16,11 @@ router.post("/api/login", loginLimiter, withDb(async (req, res, db) => {
   if (!user || !(await bcrypt.compare(password, user.password_hash))) {
     return res.status(401).json({ error: "Credenciais inválidas." });
   }
+  // Token amarrado à clínica resolvida (multi-tenant); devolve também a clínica.
   res.json({
-    token: createToken(user),
-    user: { id: user.id, name: user.name, email: user.email, role: user.role }
+    token: createToken(user, req.tenant),
+    user: { id: user.id, name: user.name, email: user.email, role: user.role },
+    tenant: { id: req.tenant.id, name: req.tenant.name, slug: req.tenant.slug }
   });
 }));
 

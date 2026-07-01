@@ -12,7 +12,9 @@ if (!connectionString) {
   );
 }
 
-const pool = new Pool({
+// Pool exportado: o middleware withDb pega um client POR REQUISIÇÃO para
+// definir o search_path do tenant (isolamento multi-tenant por schema).
+export const pool = new Pool({
   connectionString,
   ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: false } : false,
 });

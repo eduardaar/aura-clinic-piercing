@@ -8,7 +8,7 @@ import helmet from "helmet";
 import path from "path";
 import { fileURLToPath } from "url";
 import { PORT } from "./config/index.js";
-import { runSchema } from "./db/sqliteCompat.js";
+import { ensurePlatform, applySchemaToAllTenants } from "./services/tenants.js";
 import { apiLimiter } from "./middleware/rateLimit.js";
 
 // Routers por domínio.
@@ -35,6 +35,7 @@ import termsRoutes from "./routes/terms.js";
 import postcareRoutes from "./routes/postcare.js";
 import jewelryRoutes from "./routes/jewelry.js";
 import financeRoutes from "./routes/finance.js";
+import platformRoutes from "./routes/platform.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -83,9 +84,14 @@ app.use(termsRoutes);
 app.use(postcareRoutes);
 app.use(jewelryRoutes);
 app.use(financeRoutes);
+app.use(platformRoutes);
 
 // ---------- Inicialização ----------
-await runSchema();
+// 1) Garante o schema de controle `platform` (tenants + superadmin inicial).
+// 2) Aplica o schema.sql idempotente em TODOS os tenants (runner de migrations
+//    multi-schema: novas tabelas/colunas chegam a todas as clínicas no boot).
+await ensurePlatform();
+await applySchemaToAllTenants();
 app.listen(PORT, () => {
   console.log(`Aura Clinic API em http://localhost:${PORT}`);
 });

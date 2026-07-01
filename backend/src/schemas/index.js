@@ -140,3 +140,30 @@ export const jewelryUpdateSchema = z
     category: z.enum(JEWELRY_CATEGORIES, { message: "Selecione uma categoria principal válida." }).optional()
   })
   .passthrough();
+
+// ---------- Plataforma (multi-tenant) ----------
+// Cadastro público de clínica (signup) e criação via painel de plataforma.
+export const signupSchema = z
+  .object({
+    name: nonEmptyString("Nome da clínica"),
+    slug: nonEmptyString("Identificador (slug)"),
+    admin_name: z.string().optional(),
+    admin_email: nonEmptyString("E-mail do administrador"),
+    admin_password: nonEmptyString("Senha do administrador")
+  })
+  .passthrough();
+
+// Login do painel de plataforma (super-admin).
+export const platformLoginSchema = z
+  .object({
+    email: nonEmptyString("E-mail"),
+    password: nonEmptyString("Senha")
+  })
+  .passthrough();
+
+// Alteração de status de uma clínica (ativo/suspenso).
+export const tenantStatusSchema = z
+  .object({
+    status: z.enum(["ativo", "suspenso"], { message: "Status deve ser 'ativo' ou 'suspenso'." })
+  })
+  .passthrough();
