@@ -7,7 +7,7 @@ import cors from "cors";
 import helmet from "helmet";
 import path from "path";
 import { fileURLToPath } from "url";
-import { PORT } from "./config/index.js";
+import { PORT, isProduction } from "./config/index.js";
 import { ensurePlatform, applySchemaToAllTenants } from "./services/tenants.js";
 import { apiLimiter } from "./middleware/rateLimit.js";
 
@@ -40,6 +40,14 @@ import platformRoutes from "./routes/platform.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
+
+// Em produção a API roda atrás de Cloudflare + nginx (2 hops que preenchem o
+// X-Forwarded-For). Confiar nesse número exato de proxies faz req.ip ser o IP
+// REAL do cliente — sem isso o express-rate-limit agrupa todo mundo no IP do
+// proxy (um balde único) e um pico coletivo derruba o limite pra todos, além de
+// resistir a spoofing (só os 2 hops mais próximos são confiáveis). Em dev o
+// acesso é direto (0 hops). Ajustável via TRUST_PROXY_HOPS se a topologia mudar.
+app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS ?? (isProduction ? 2 : 0)));
 
 // ---------- Middlewares globais ----------
 
