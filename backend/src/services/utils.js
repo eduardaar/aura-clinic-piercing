@@ -199,6 +199,7 @@ export function normalizeSalesOrderItems(items = []) {
     ? items.map((item) => ({
       item_type: item.item_type || (item.service_id ? "servico" : "produto"),
       product_id: item.product_id ? Number(item.product_id) : null,
+      product_variant_id: item.product_variant_id ? Number(item.product_variant_id) : null,
       service_id: item.service_id ? Number(item.service_id) : null,
       item_name: String(item.item_name || item.name || "").trim(),
       quantity: Math.max(1, Number(item.quantity || 1)),

@@ -184,7 +184,7 @@ CREATE TABLE IF NOT EXISTS appointments (
 
 CREATE TABLE IF NOT EXISTS payments (
   id SERIAL PRIMARY KEY,
-  appointment_id INTEGER NOT NULL REFERENCES appointments(id),
+  appointment_id INTEGER REFERENCES appointments(id),
   client_id INTEGER NOT NULL REFERENCES clients(id),
   amount DOUBLE PRECISION NOT NULL,
   payment_type TEXT NOT NULL,
@@ -223,7 +223,7 @@ CREATE TABLE IF NOT EXISTS sales_order_items (
   sales_order_id INTEGER NOT NULL REFERENCES sales_orders(id),
   item_type TEXT NOT NULL DEFAULT 'produto',
   product_id INTEGER REFERENCES jewelry_inventory(id),
-  product_variant_id INTEGER,
+  product_variant_id INTEGER REFERENCES jewelry_variants(id),
   service_id INTEGER REFERENCES services(id),
   item_name TEXT NOT NULL,
   quantity INTEGER NOT NULL DEFAULT 1,
@@ -263,7 +263,7 @@ CREATE TABLE IF NOT EXISTS client_medical_records (
 
 CREATE TABLE IF NOT EXISTS digital_terms (
   id SERIAL PRIMARY KEY,
-  appointment_id INTEGER NOT NULL REFERENCES appointments(id),
+  appointment_id INTEGER REFERENCES appointments(id),
   client_id INTEGER NOT NULL REFERENCES clients(id),
   full_name TEXT NOT NULL,
   social_name TEXT,
@@ -419,3 +419,5 @@ CREATE INDEX IF NOT EXISTS idx_expenses_due ON expenses(due_date);
 
 -- Correções idempotentes aplicadas a clínicas já existentes no boot (applySchemaToAllTenants).
 ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE payments ALTER COLUMN appointment_id DROP NOT NULL;
+ALTER TABLE digital_terms ALTER COLUMN appointment_id DROP NOT NULL;

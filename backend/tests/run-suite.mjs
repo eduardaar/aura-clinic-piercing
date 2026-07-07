@@ -8,10 +8,12 @@
 //   node tests/run-suite.mjs                 → roda todos os tests/*.test.mjs
 //   node tests/run-suite.mjs tests/flow.test.mjs   → roda um arquivo só
 import { spawn } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 import "dotenv/config";
 
 const PORT = process.env.TEST_PORT || 4199;
-const target = process.argv[2] || "tests/";
+const target = process.argv[2];
 const env = {
   ...process.env,
   NODE_ENV: "production",
@@ -49,7 +51,13 @@ if (!ok) {
   shutdown(1);
 }
 
-const tests = spawn("node", ["--test", target], {
+const testTargets = target
+  ? [target]
+  : fs.readdirSync(path.join(process.cwd(), "tests"))
+    .filter((file) => file.endsWith(".test.mjs"))
+    .map((file) => path.join("tests", file));
+
+const tests = spawn("node", ["--test", ...testTargets], {
   env: { ...env, TEST_API_URL: `http://localhost:${PORT}/api` },
   stdio: ["ignore", "inherit", "inherit"],
 });

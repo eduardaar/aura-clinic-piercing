@@ -5,7 +5,7 @@ import { Button, Input, Select, StatusBadge } from "../../components/common/Ui";
 import { asArray, formatDate } from "../../lib/utils";
 import { API_ORIGIN, apiFetch, useFetch } from "../../lib/api";
 import { DIGITAL_TERM_HEALTH_ITEMS, DIGITAL_TERM_LIFESTYLE_ITEMS, defaultDigitalTerm } from "../../lib/defaultForms";
-import { currency } from "../../features/shared/helpers";
+import { currency, personName } from "../../features/shared/helpers";
 
 export function DigitalTerms() {
   const { data: appointments } = useFetch("/appointments");
@@ -23,7 +23,7 @@ export function DigitalTerms() {
     setForm((current) => ({
       ...current,
       client_id: selectedAppointment.client_id,
-      full_name: current.full_name || selectedAppointment.full_name,
+      full_name: current.full_name || personName(selectedAppointment),
       whatsapp: current.whatsapp || selectedAppointment.whatsapp,
       instagram: current.instagram || selectedAppointment.instagram || "",
       procedure: current.procedure || selectedAppointment.procedure,
@@ -98,7 +98,7 @@ export function DigitalTerms() {
           <h3>Agendamento Vinculado</h3>
           <Select label="Agendamento" value={form.appointment_id} onChange={(value) => updateField("appointment_id", value)} required>
             <option value="">Selecione</option>
-            {safeAppointments.map((item) => <option key={item.id} value={item.id}>{formatDate(item.appointment_date)}  {item.appointment_time}  {item.full_name}  {item.procedure}</option>)}
+            {safeAppointments.map((item) => <option key={item.id} value={item.id}>{formatDate(item.appointment_date)}  {item.appointment_time}  {personName(item)}  {item.procedure}</option>)}
           </Select>
         </section>
 

@@ -6,7 +6,7 @@ import { Loading } from "../../components/common/Feedback";
 import { asArray, formatDate } from "../../lib/utils";
 import { apiFetch, useFetch } from "../../lib/api";
 import { defaultSalesLine, defaultSalesOrderForm } from "../../lib/defaultForms";
-import { currency, saleItemLabel, saleOrderTypeLabel } from "../../features/shared/helpers";
+import { currency, personName, saleItemLabel, saleOrderTypeLabel } from "../../features/shared/helpers";
 
 export function SalesWorkspace() {
   const { data: orders, refresh: refreshOrders } = useFetch("/sales-orders");
@@ -78,7 +78,8 @@ export function SalesWorkspace() {
       service_id: line.item_type === "servico" ? Number(entry.id) : null,
       item_name: entry.name,
       quantity,
-      unit_price: Number(line.unit_price || entry.sale_value || entry.price || 0),
+      product_variant_id: line.item_type === "produto" && line.product_variant_id ? Number(line.product_variant_id) : null,
+      unit_price: Number(line.unit_price || entry.sale_value || entry.base_price || entry.price || 0),
       notes: line.notes || ""
     }]);
     setLine((current) => ({ ...current, quantity: 1, notes: "" }));
@@ -206,11 +207,20 @@ export function SalesWorkspace() {
             <Input label="Cliente" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} required />
             <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => setForm({ ...form, whatsapp: value })} required />
             <Input label="Instagram" value={form.instagram} onChange={(value) => setForm({ ...form, instagram: value })} />
-            <Select label="Agendamento vinculado" value={form.appointment_id} onChange={(value) => setForm({ ...form, appointment_id: value })}>
+            <Select label="Agendamento vinculado" value={form.appointment_id} onChange={(value) => {
+              const appointment = safeAppointments.find((item) => String(item.id) === String(value));
+              setForm({
+                ...form,
+                appointment_id: value,
+                full_name: appointment ? personName(appointment) : form.full_name,
+                whatsapp: appointment?.whatsapp || form.whatsapp,
+                instagram: appointment?.instagram || form.instagram
+              });
+            }}>
               <option value="">Sem vínculo</option>
               {safeAppointments.map((appointment) => (
                 <option key={appointment.id} value={appointment.id}>
-                  {appointment.full_name} · {formatDate(appointment.appointment_date)} · {appointment.appointment_time}
+                  {personName(appointment)} · {formatDate(appointment.appointment_date)} · {appointment.appointment_time}
                 </option>
               ))}
             </Select>
@@ -244,7 +254,7 @@ export function SalesWorkspace() {
                     ...line,
                     service_id: value,
                     item_name: selected?.name || "",
-                    unit_price: selected?.price || 0
+                    unit_price: selected?.base_price || selected?.price || 0
                   });
                 }}>
                   {safeServices.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}

@@ -5,6 +5,7 @@ import { Button, Metric, Select, StatusBadge } from "../../components/common/Ui"
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, formatDate } from "../../lib/utils";
 import { API_ORIGIN, apiFetch, useFetch } from "../../lib/api";
+import { personName } from "../../features/shared/helpers";
 
 export function PostCare() {
   const { data, refresh } = useFetch("/post-care");
@@ -14,7 +15,7 @@ export function PostCare() {
   if (data.error) return <ApiError message={data.error} />;
   const followups = asArray(data);
   const items = followups.filter((item) => {
-    const text = `${item.full_name} ${item.whatsapp} ${item.procedure} ${item.piercing_region} ${item.jewelry_name} ${item.healing_status}`.toLowerCase();
+    const text = `${personName(item)} ${item.whatsapp} ${item.procedure} ${item.piercing_region} ${item.jewelry_name} ${item.healing_status}`.toLowerCase();
     return (!search.trim() || text.includes(search.toLowerCase())) && (!status || item.status === status);
   });
   const dueCount = followups.filter((item) => item.status !== "concluido" && item.due_date <= new Date().toISOString().slice(0, 10)).length;
@@ -72,7 +73,7 @@ export function PostCareCard({ item, onChanged }) {
       <header>
         <div>
           <span className="eyebrow">{item.reminder_day} dias</span>
-          <h2>{item.full_name}</h2>
+          <h2>{personName(item)}</h2>
           <p>{item.whatsapp} · {item.instagram || "sem Instagram"}</p>
         </div>
         <StatusBadge tone={isDue ? "warn" : "ok"}>{formatDate(item.due_date)}</StatusBadge>

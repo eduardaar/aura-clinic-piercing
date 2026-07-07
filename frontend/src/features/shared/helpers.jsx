@@ -26,6 +26,11 @@ export function statuses() {
   return ["pendente", "confirmado", "recusado", "atendido", "cancelado", "remarcado"];
 }
 
+export function personName(item = {}) {
+  const safeItem = asObject(item);
+  return safeItem.name || safeItem.client_name || safeItem.full_name || "Cliente";
+}
+
 export function weekdayLabel(day) {
   return ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"][Number(day)] || "Dia";
 }

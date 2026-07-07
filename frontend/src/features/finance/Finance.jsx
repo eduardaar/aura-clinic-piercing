@@ -7,7 +7,7 @@ import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, asNumber, asObject, formatDate, formatLongDate } from "../../lib/utils";
 import { apiFetch, downloadApiFile, useFetch } from "../../lib/api";
 import { defaultExpense } from "../../lib/defaultForms";
-import { currency } from "../../features/shared/helpers";
+import { currency, personName } from "../../features/shared/helpers";
 
 export function Finance() {
   const { data } = useFetch("/finance");
@@ -49,7 +49,7 @@ export function Clients() {
     <section className="client-grid">
       {clients.map((client) => (
         <article className="panel client-card" key={client.id}>
-          <h2>{client.full_name}</h2>
+          <h2>{personName(client)}</h2>
           <p>{client.whatsapp} · {client.instagram}</p>
           {client.birth_date && <small>Aniversário: {formatLongDate(client.birth_date)}</small>}
           <span>{client.notes}</span>

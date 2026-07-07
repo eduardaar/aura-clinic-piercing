@@ -41,14 +41,14 @@ export async function listDigitalTerms(db) {
       c.instagram AS client_instagram,
       p.name AS professional_name
     FROM digital_terms t
-    JOIN appointments a ON a.id = t.appointment_id
-    JOIN clients c ON c.id = t.client_id
-    JOIN professionals p ON p.id = a.professional_id
+    LEFT JOIN appointments a ON a.id = t.appointment_id
+    LEFT JOIN clients c ON c.id = t.client_id
+    LEFT JOIN professionals p ON p.id = a.professional_id
     ORDER BY t.signed_at DESC
   `);
 }
 
-export async function createTermPdf(term, appointment) {
+export async function createTermPdf(term, appointment = {}) {
   const fileName = `termo-digital-${term.id}.pdf`;
   const filePath = path.join(uploadsDir, fileName);
   const signatureBuffer = signatureBufferFromDataUrl(term.signature_data_url);

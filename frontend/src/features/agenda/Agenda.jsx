@@ -8,7 +8,7 @@ import { asArray, asNumber, asObject, formatDate } from "../../lib/utils";
 import { apiFetch, useFetch } from "../../lib/api";
 import { buildCalendar, buildTimeSlots, movePeriod } from "../../lib/calendarUtils";
 import { defaultAppointment, defaultProcedureForm, defaultScheduleBlock, defaultServiceForm } from "../../lib/defaultForms";
-import { calcRemaining, currency, statusClass, statuses, weekdayLabel, whatsappUrl } from "../../features/shared/helpers";
+import { calcRemaining, currency, personName, statusClass, statuses, weekdayLabel, whatsappUrl } from "../../features/shared/helpers";
 import { Toggle } from "../../pages/CatalogCustomization";
 
 export function AgendaWorkspace() {
@@ -96,7 +96,7 @@ export function Appointments() {
     setForm({
       ...form,
       client_id: client.id,
-      full_name: client.full_name || "",
+      full_name: personName(client),
       whatsapp: client.whatsapp || "",
       instagram: client.instagram || "",
       birth_date: client.birth_date || ""
@@ -163,7 +163,7 @@ export function Appointments() {
               <option value="">Novo cliente</option>
               {safeClients.map((client) => (
                 <option key={client.id} value={client.id}>
-                  {client.full_name} - {client.whatsapp}
+                  {personName(client)} - {client.whatsapp}
                 </option>
               ))}
             </Select>
@@ -330,7 +330,7 @@ export function DailyAgenda({ day, refresh }) {
 export function CalendarEvent({ item, refresh }) {
   return (
     <div className={`calendar-event ${statusClass[item.status]}`}>
-      <strong>{item.appointment_time} - {item.full_name}</strong>
+      <strong>{item.appointment_time} - {personName(item)}</strong>
       <span>{item.procedure}</span>
       <small>{item.professional_name}</small>
       <div className="event-actions">
@@ -760,7 +760,7 @@ export function BookingAdmin() {
             {safeAppointments.map((item) => (
               <article className="appointment-row" key={item.id}>
                 <div className="time-box"><strong>{item.appointment_time}</strong><span>{formatDate(item.appointment_date)}</span></div>
-                <div><h3>{item.full_name}</h3><p>{item.procedure} · {currency.format(item.deposit_value || 0)} de sinal</p><small>{item.professional_name} · {item.whatsapp}</small></div>
+                <div><h3>{personName(item)}</h3><p>{item.procedure} · {currency.format(item.deposit_value || 0)} de sinal</p><small>{item.professional_name} · {item.whatsapp}</small></div>
                 <div className="row-actions">
                   <button onClick={() => updateRequest(item.id, "confirmado")}>Confirmar</button>
                   <button onClick={() => updateRequest(item.id, "recusado")}>Recusar</button>
@@ -791,13 +791,13 @@ export function AppointmentList({ appointments = [], onChanged, compact }) {
         <article className="appointment-row" key={item.id}>
           <div className="time-box"><strong>{item.appointment_time}</strong><span>{formatDate(item.appointment_date)}</span></div>
           <div>
-            <h3>{item.full_name}</h3>
+            <h3>{personName(item)}</h3>
             <p>{item.procedure} · {item.piercing_region}</p>
             <small>{item.professional_name} · {item.jewelry_name || "sem joia vinculada"}</small>
           </div>
           <StatusBadge status={item.status} />
           {!compact && <div className="row-actions">
-            <a title="WhatsApp" href={whatsappUrl(item.whatsapp, `Ola ${item.full_name}, tudo bem Aqui e da Aura Clinic sobre seu atendimento de ${formatDate(item.appointment_date)} as ${item.appointment_time}.`)} target="_blank" rel="noreferrer">WhatsApp</a>
+            <a title="WhatsApp" href={whatsappUrl(item.whatsapp, `Ola ${personName(item)}, tudo bem Aqui e da Aura Clinic sobre seu atendimento de ${formatDate(item.appointment_date)} as ${item.appointment_time}.`)} target="_blank" rel="noreferrer">WhatsApp</a>
             <button title="Cancelar" onClick={() => updateAppointment(item.id, { status: "cancelado" }, onChanged)}><XCircle size={16} /></button>
             <button title="Atendido" onClick={() => updateAppointment(item.id, { status: "atendido" }, onChanged)}><CheckCircle2 size={16} /></button>
           </div>}

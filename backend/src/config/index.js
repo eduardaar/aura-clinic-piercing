@@ -1,9 +1,12 @@
 // Configuração central: variáveis de ambiente, constantes de domínio e caminhos.
+import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config();
+dotenv.config({ path: path.join(__dirname, "../../../.env") });
 
 export const PORT = process.env.PORT || 4000;
 export const isProduction = process.env.NODE_ENV === "production";

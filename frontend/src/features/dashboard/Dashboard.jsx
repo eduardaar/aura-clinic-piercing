@@ -5,7 +5,7 @@ import { Button, StatusBadge } from "../../components/common/Ui";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, asNumber, asObject, formatDate, formatLongDate, initials } from "../../lib/utils";
 import { useFetch } from "../../lib/api";
-import { currency, formatRevenueAxisLabel, formatRevenueLabel, statusClass } from "../../features/shared/helpers";
+import { currency, formatRevenueAxisLabel, formatRevenueLabel, personName, statusClass } from "../../features/shared/helpers";
 
 export function Dashboard({ user, setPage, alertsOpen, setAlertsOpen, alertsData, alertsLoading }) {
   const { data } = useFetch("/dashboard");
@@ -97,9 +97,9 @@ export function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpe
             {upcomingAppointments.slice(0, 4).map((item) => (
               <button type="button" className="premium-appointment-row" key={item.id} onClick={() => setPage("agenda")}>
                 <span className="dot-time"><i />{item.appointment_time}</span>
-                <div className="avatar-circle">{initials(item.full_name)}</div>
+                <div className="avatar-circle">{initials(personName(item))}</div>
                 <div>
-                  <strong>{item.full_name || "Cliente"}</strong>
+                  <strong>{personName(item)}</strong>
                   <small>{item.procedure || "Procedimento"}<br />Prof. {item.professional_name || "—"}</small>
                 </div>
                 <em className={statusClass[item.status] || ""}>{item.status || "—"}</em>
@@ -136,9 +136,9 @@ export function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpe
           </div>
           <div className="clean-list birthday-list">
             {birthdaysItems.slice(0, 3).map((item) => (
-              <div key={item.id || `${item.full_name}-${item.birth_date}`}>
-                <div className="avatar-circle">{initials(item.full_name)}</div>
-                <span><strong>{item.full_name || "Cliente"}</strong><small>{formatLongDate(item.birth_date)}</small></span>
+              <div key={item.id || `${personName(item)}-${item.birth_date}`}>
+                <div className="avatar-circle">{initials(personName(item))}</div>
+                <span><strong>{personName(item)}</strong><small>{formatLongDate(item.birth_date)}</small></span>
                 <Cake size={18} />
               </div>
             ))}
@@ -177,7 +177,7 @@ export function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpe
           <div className="panel-heading"><h2>Ranking por categoria</h2><span>Joalherias</span></div>
           <MiniBarChart data={categoryRanking} valueKey="total" labelKey="label" />
         </div>
-        <DashboardList title="Clientes em retorno" items={returnClients} render={(item) => `${formatDate(item.due_date)} · ${item.full_name || "Cliente"} · ${item.reminder_day || 0} dias`} />
+        <DashboardList title="Clientes em retorno" items={returnClients} render={(item) => `${formatDate(item.due_date)} · ${personName(item)} · ${item.reminder_day || 0} dias`} />
       </div>
     </section>
   );

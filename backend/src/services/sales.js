@@ -1,6 +1,47 @@
 // Serviços de vendas (pedidos avulsos e vinculados a atendimentos).
-import { normalizeSalesOrderItems } from "./utils.js";
+import { normalizeSalesOrderItems, variantStatus } from "./utils.js";
 import { upsertClient } from "./appointments.js";
+import { syncProductInventory } from "./inventory.js";
+
+async function deductSoldProductStock(db, item, orderId) {
+  if (item.item_type !== "produto" || !item.product_id) return;
+  const quantity = Number(item.quantity || 1);
+  let variantId = item.product_variant_id;
+  if (!variantId) {
+    const firstAvailable = await db.get(
+      "SELECT id FROM jewelry_variants WHERE jewelry_id = ? AND is_active = 1 AND quantity > 0 ORDER BY id LIMIT 1",
+      [item.product_id]
+    );
+    variantId = firstAvailable?.id;
+  }
+  if (variantId) {
+    const variant = await db.get("SELECT * FROM jewelry_variants WHERE id = ?", [variantId]);
+    if (!variant) return;
+    const nextQuantity = Math.max(0, Number(variant.quantity || 0) - quantity);
+    await db.run(
+      "UPDATE jewelry_variants SET quantity = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+      [nextQuantity, variantStatus(nextQuantity, variant.low_stock_threshold), variantId]
+    );
+    await db.run(
+      "INSERT INTO stock_movements (jewelry_id, variant_id, movement_type, quantity, notes) VALUES (?, ?, 'Saida', ?, ?)",
+      [item.product_id, variantId, quantity, `Baixa automatica da venda #${orderId}`]
+    );
+    await syncProductInventory(db, item.product_id);
+    return;
+  }
+
+  const product = await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [item.product_id]);
+  if (!product) return;
+  const nextQuantity = Math.max(0, Number(product.quantity || 0) - quantity);
+  await db.run(
+    "UPDATE jewelry_inventory SET quantity = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+    [nextQuantity, variantStatus(nextQuantity, product.low_stock_threshold), item.product_id]
+  );
+  await db.run(
+    "INSERT INTO stock_movements (jewelry_id, movement_type, quantity, notes) VALUES (?, 'Saida', ?, ?)",
+    [item.product_id, quantity, `Baixa automatica da venda #${orderId}`]
+  );
+}
 
 export async function createSalesOrder(db, body, user) {
   const items = normalizeSalesOrderItems(body.items || []);
@@ -42,12 +83,13 @@ export async function createSalesOrder(db, body, user) {
 
   for (const item of items) {
     await db.run(
-      `INSERT INTO sales_order_items (sales_order_id, item_type, product_id, service_id, item_name, quantity, unit_price, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO sales_order_items (sales_order_id, item_type, product_id, product_variant_id, service_id, item_name, quantity, unit_price, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         result.lastID,
         item.item_type || "produto",
         item.product_id ? Number(item.product_id) : null,
+        item.product_variant_id ? Number(item.product_variant_id) : null,
         item.service_id ? Number(item.service_id) : null,
         item.item_name,
         Number(item.quantity || 1),
@@ -55,13 +97,14 @@ export async function createSalesOrder(db, body, user) {
         item.notes || ""
       ]
     );
+    if (status !== "cancelada") await deductSoldProductStock(db, item, result.lastID);
   }
 
   if (total > 0) {
     await db.run(
       "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
       [
-        body.appointment_id ? Number(body.appointment_id) : result.lastID,
+        body.appointment_id ? Number(body.appointment_id) : null,
         client.id,
         total,
         orderType,
