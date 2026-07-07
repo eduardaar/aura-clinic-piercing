@@ -144,3 +144,26 @@ export function defaultContentSection(order) {
     order
   };
 }
+
+// Normaliza uma seção de conteúdo do catálogo (merge com o padrão + flags).
+export function normalizeCatalogContentSection(section, index = 0) {
+  return {
+    ...defaultContentSection(index + 1),
+    ...section,
+    active: section.active === undefined ? true : Boolean(section.active),
+    order: Number(section.order || index + 1)
+  };
+}
+
+// Converte o content_sections (array ou JSON string) numa lista normalizada.
+// Compartilhado entre a Personalização (edição) e o Catálogo público (render).
+export function catalogContentSections(value) {
+  if (Array.isArray(value)) return value.map(normalizeCatalogContentSection);
+  if (!value) return [defaultContentSection(1)];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.map(normalizeCatalogContentSection) : [defaultContentSection(1)];
+  } catch {
+    return [defaultContentSection(1)];
+  }
+}

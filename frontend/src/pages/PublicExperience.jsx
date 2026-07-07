@@ -3,6 +3,7 @@ import {
   Calendar,
   CheckCircle2,
   ChevronRight,
+  CircleDollarSign,
   Clock,
   Gem,
   Heart,
@@ -23,15 +24,17 @@ import { Loading, ApiError } from "../components/common/Feedback";
 import { BookingChoiceGrid, Input, Select } from "../components/common/Ui";
 import { API, API_ORIGIN, usePublicFetch } from "../lib/api";
 import { asArray, asNumber, asObject, formatLongDate } from "../lib/utils";
-import { ANODIZATION_COLOR_OPTIONS, JEWELRY_LENGTH_OPTIONS, defaultPublicBooking, nextBookingDates } from "../lib/defaultForms";
+import { ANODIZATION_COLOR_OPTIONS, JEWELRY_CATEGORY_OPTIONS, JEWELRY_LENGTH_OPTIONS, defaultPublicBooking, nextBookingDates } from "../lib/defaultForms";
 import {
   catalogCategoryTerms,
+  catalogContentSections,
   catalogFilterOptions,
   catalogPromotionForItem,
   catalogStockText,
   cleanDisplayText,
   defaultContentSection,
   elegantProductName,
+  normalizeCatalogContentSection,
   promotionalPrice,
   splitColorOptions
 } from "../features/catalog/catalogUtils";
@@ -1095,23 +1098,4 @@ function catalogIcon(icon) {
   }[icon] || Gem;
 }
 
-function catalogContentSections(value) {
-  if (Array.isArray(value)) return value.map(normalizeCatalogContentSection);
-  if (!value) return [defaultContentSection(1)];
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed.map(normalizeCatalogContentSection) : [defaultContentSection(1)];
-  } catch {
-    return [defaultContentSection(1)];
-  }
-}
-
-function normalizeCatalogContentSection(section, index = 0) {
-  return {
-    ...defaultContentSection(index + 1),
-    ...section,
-    active: section.active === undefined ? true : Boolean(section.active),
-    order: Number(section.order || index + 1)
-  };
-}
 
