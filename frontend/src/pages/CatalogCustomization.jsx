@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, ImageIcon, Plus, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Heart, ImageIcon, Plus, Trash2 } from "lucide-react";
 import { Loading, ApiError } from "../components/common/Feedback";
 import { Input, Select } from "../components/common/Ui";
 import { API_ORIGIN, apiFetch, useFetch } from "../lib/api";
 import { asArray, asNumber, asObject } from "../lib/utils";
 import { JEWELRY_CATEGORY_OPTIONS, defaultCatalogSettings } from "../lib/defaultForms";
-import { cleanDisplayText } from "../features/catalog/catalogUtils";
+import { cleanDisplayText, defaultContentSection } from "../features/catalog/catalogUtils";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -508,20 +508,6 @@ function defaultPromotion() {
     product_ids: "",
     category_ids: "",
     is_active: true
-  };
-}
-
-function defaultContentSection(order) {
-  return {
-    kicker: "Guia Aura",
-    title: "Escolha sua joia com orientação profissional",
-    text: "Use este espaço para explicar materiais, cuidados, medidas, anodização, curadoria ou diferenciais da Aura Clinic.",
-    media_type: "image",
-    media_url: "https://images.unsplash.com/photo-1602751584552-8ba73aad10e1?auto=format&fit=crop&w=1200&q=85",
-    button_text: "Agendar atendimento",
-    button_link: "/agendar",
-    active: true,
-    order
   };
 }
 

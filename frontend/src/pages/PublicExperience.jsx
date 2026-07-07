@@ -30,6 +30,7 @@ import {
   catalogPromotionForItem,
   catalogStockText,
   cleanDisplayText,
+  defaultContentSection,
   elegantProductName,
   promotionalPrice,
   splitColorOptions

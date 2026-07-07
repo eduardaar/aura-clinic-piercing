@@ -127,3 +127,20 @@ export function normalizeJewelryThread(value = "") {
   if (["threadless", "push pin", "pushpin"].includes(normalized)) return "Push Pin";
   return value ? elegantProductName(value) : "";
 }
+
+// Seção de conteúdo padrão do catálogo. Compartilhada entre a tela de
+// Personalização (edição) e o Catálogo público (renderização) — antes vivia
+// só no CatalogCustomization e o PublicExperience a usava sem definir.
+export function defaultContentSection(order) {
+  return {
+    kicker: "Guia Aura",
+    title: "Escolha sua joia com orientação profissional",
+    text: "Use este espaço para explicar materiais, cuidados, medidas, anodização, curadoria ou diferenciais da Aura Clinic.",
+    media_type: "image",
+    media_url: "https://images.unsplash.com/photo-1602751584552-8ba73aad10e1?auto=format&fit=crop&w=1200&q=85",
+    button_text: "Agendar atendimento",
+    button_link: "/agendar",
+    active: true,
+    order
+  };
+}
