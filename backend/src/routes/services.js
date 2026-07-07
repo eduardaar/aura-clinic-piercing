@@ -18,7 +18,8 @@ router.post("/api/services", withDb(async (req, res, db) => {
   if (!validateBody(serviceCreateSchema, req, res)) return;
   const result = await db.run(
     "INSERT INTO services (name, description, duration_minutes, price, deposit_value, active_online_booking, pre_service_notes) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    [req.body.name, req.body.description || "", Number(req.body.duration_minutes || 40), Number(req.body.price || 0), Number(req.body.deposit_value || 0), boolNumber(req.body.active_online_booking), req.body.pre_service_notes || ""]
+    // O frontend envia base_price/is_active; aceitamos ambos os nomes (fallback ao legado price/active_online_booking).
+    [req.body.name, req.body.description || "", Number(req.body.duration_minutes || 40), Number(req.body.base_price ?? req.body.price ?? 0), Number(req.body.deposit_value || 0), boolNumber(req.body.is_active ?? req.body.active_online_booking), req.body.pre_service_notes || ""]
   );
   await replaceProfessionalServices(db, result.lastID, req.body.professional_ids || []);
   res.status(201).json(await db.get("SELECT * FROM services WHERE id = ?", [result.lastID]));
@@ -35,9 +36,9 @@ router.patch("/api/services/:id", withDb(async (req, res, db) => {
       req.body.name || service.name,
       req.body.description || service.description,
       Number(req.body.duration_minutes || service.duration_minutes),
-      Number(req.body.price || service.price),
+      Number(req.body.base_price ?? req.body.price ?? service.price),
       Number(req.body.deposit_value || service.deposit_value),
-      boolNumber(req.body.active_online_booking || service.active_online_booking),
+      boolNumber(req.body.is_active ?? req.body.active_online_booking ?? service.active_online_booking),
       req.body.pre_service_notes || service.pre_service_notes,
       req.params.id
     ]

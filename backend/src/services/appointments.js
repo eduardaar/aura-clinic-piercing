@@ -29,6 +29,9 @@ export async function listAppointments(db, where = "", params = []) {
 export async function listServices(db) {
   const services = await db.all("SELECT * FROM services ORDER BY active_online_booking DESC, name");
   for (const service of services) {
+    // O frontend lê base_price/is_active; as colunas reais são price/active_online_booking.
+    service.base_price = service.price;
+    service.is_active = service.active_online_booking;
     service.professional_ids = (await db.all("SELECT professional_id FROM professional_services WHERE service_id = ?", [service.id])).map((item) => item.professional_id);
   }
   return services;
@@ -101,11 +104,18 @@ export async function upsertClient(db, body) {
 
   const existing = await db.get("SELECT * FROM clients WHERE whatsapp = ?", [body.whatsapp]);
   if (existing) {
+    // Só sobrescreve campos que vieram preenchidos — antes um re-save por outro
+    // fluxo (agenda/venda/termo) apagava instagram/notes do cliente existente.
     await db.run(
-      "UPDATE clients SET full_name = ?, instagram = ?, birth_date = COALESCE(?, birth_date), notes = ? WHERE id = ?",
-      [body.full_name, body.instagram, body.birth_date || null, body.client_notes || "", existing.id]
+      `UPDATE clients SET
+        full_name = COALESCE(NULLIF(?, ''), full_name),
+        instagram = COALESCE(NULLIF(?, ''), instagram),
+        birth_date = COALESCE(?, birth_date),
+        notes = COALESCE(NULLIF(?, ''), notes)
+       WHERE id = ?`,
+      [body.full_name ?? "", body.instagram ?? "", body.birth_date || null, body.client_notes ?? "", existing.id]
     );
-    return { ...existing, full_name: body.full_name };
+    return { ...existing, full_name: body.full_name || existing.full_name };
   }
   const result = await db.run(
     "INSERT INTO clients (full_name, whatsapp, instagram, birth_date, notes) VALUES (?, ?, ?, ?, ?)",

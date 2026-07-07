@@ -176,7 +176,7 @@ export function ClientEditForm({ client, onSaved, onCancel, formId }) {
       <div className="form-grid">
         <Input label="Nome" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} required />
         <Input label="Telefone" value={form.phone} onChange={(value) => setForm({ ...form, phone: value })} />
-        <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => setForm({ ...form, whatsapp: value })} />
+        <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => setForm({ ...form, whatsapp: value })} required />
         <Input label="Instagram" value={form.instagram} onChange={(value) => setForm({ ...form, instagram: value })} />
         <Input label="E-mail" value={form.email} onChange={(value) => setForm({ ...form, email: value })} />
         <Input label="CPF" value={form.cpf} onChange={(value) => setForm({ ...form, cpf: value })} />
