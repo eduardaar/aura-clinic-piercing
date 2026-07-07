@@ -7,7 +7,7 @@ import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, dateInputValue, formatDate, formatLongDate } from "../../lib/utils";
 import { API_ORIGIN, apiFetch, useFetch } from "../../lib/api";
 import { defaultMedicalRecord } from "../../lib/defaultForms";
-import { matchesClientSearch, whatsappUrl } from "../../features/shared/helpers";
+import { matchesClientSearch, personName, whatsappUrl } from "../../features/shared/helpers";
 import { DigitalTerms } from "../terms/DigitalTerms";
 import { PostCare } from "../postcare/PostCare";
 
@@ -94,7 +94,7 @@ export function ClientsMedical() {
         <DataTable
           rows={filteredClients}
           columns={[
-            { key: "name", label: "Nome" },
+            { key: "full_name", label: "Nome", render: (client) => personName(client) },
             { key: "whatsapp", label: "WhatsApp", render: (client) => client.whatsapp || "—" },
             { key: "instagram", label: "Instagram", render: (client) => client.instagram || "sem Instagram" },
             { key: "contact", label: "Contato", render: (client) => (
@@ -103,9 +103,9 @@ export function ClientsMedical() {
           ]}
           actions={(client) => (
             <>
-              <a className="secondary-button" href={whatsappUrl(client.whatsapp, `Ola ${client.name}, tudo bem Aqui e da Aura Clinic.`)} target="_blank" rel="noreferrer">WhatsApp</a>
+              <a className="secondary-button" href={whatsappUrl(client.whatsapp, `Ola ${personName(client)}, tudo bem Aqui e da Aura Clinic.`)} target="_blank" rel="noreferrer">WhatsApp</a>
               <button type="button" onClick={() => openEdit(client)}>Editar</button>
-              <button type="button" onClick={() => setDeleting({ message: `Excluir ${client.name}?`, run: () => removeClient(client) })}>Apagar</button>
+              <button type="button" onClick={() => setDeleting({ message: `Excluir ${personName(client)}?`, run: () => removeClient(client) })}>Apagar</button>
             </>
           )}
           empty={clients.length ? "Nenhum cliente encontrado." : "Você ainda não possui clientes cadastrados."}
@@ -148,7 +148,7 @@ export function ClientsMedical() {
 
 export function ClientEditForm({ client, onSaved, onCancel, formId }) {
   const [form, setForm] = useState({
-    name: client?.name || "",
+    full_name: client?.full_name || "",
     phone: client?.phone || "",
     whatsapp: client?.whatsapp || "",
     instagram: client?.instagram || "",
@@ -174,7 +174,7 @@ export function ClientEditForm({ client, onSaved, onCancel, formId }) {
   return (
     <form id={formId} className="client-edit-form" onSubmit={submit}>
       <div className="form-grid">
-        <Input label="Nome" value={form.name} onChange={(value) => setForm({ ...form, name: value })} required />
+        <Input label="Nome" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} required />
         <Input label="Telefone" value={form.phone} onChange={(value) => setForm({ ...form, phone: value })} />
         <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => setForm({ ...form, whatsapp: value })} />
         <Input label="Instagram" value={form.instagram} onChange={(value) => setForm({ ...form, instagram: value })} />

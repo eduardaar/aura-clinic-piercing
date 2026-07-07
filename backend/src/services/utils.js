@@ -299,8 +299,12 @@ export function nextBirthdays(clients, daysAhead) {
   const today = startOfDay(new Date());
   return clients
     .map((client) => {
-      const [, month, day] = client.birth_date.split("-").map(Number);
+      // birth_date pode vir vazio ou inválido ("", null, formato errado): nesses
+      // casos ignoramos o cliente em vez de estourar em toISOString (RangeError).
+      const [, month, day] = String(client.birth_date || "").split("-").map(Number);
+      if (!month || !day || Number.isNaN(month) || Number.isNaN(day)) return null;
       let nextDate = new Date(today.getFullYear(), month - 1, day);
+      if (Number.isNaN(nextDate.getTime())) return null;
       if (nextDate < today) nextDate = new Date(today.getFullYear() + 1, month - 1, day);
       return {
         ...client,
@@ -308,6 +312,7 @@ export function nextBirthdays(clients, daysAhead) {
         days_until: Math.round((nextDate - today) / 86400000)
       };
     })
+    .filter(Boolean)
     .filter((client) => client.days_until <= daysAhead)
     .sort((a, b) => a.days_until - b.days_until);
 }

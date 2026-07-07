@@ -55,7 +55,7 @@ export function matchesClientSearch(client, search) {
   const safeClient = asObject(client);
   const term = String(search || "").trim().toLowerCase();
   if (!term) return true;
-  return `${safeClient.name || ""} ${safeClient.phone || ""} ${safeClient.whatsapp || ""} ${safeClient.instagram || ""} ${safeClient.email || ""} ${safeClient.cpf || ""} ${safeClient.notes || ""}`.toLowerCase().includes(term);
+  return `${safeClient.full_name || safeClient.name || ""} ${safeClient.phone || ""} ${safeClient.whatsapp || ""} ${safeClient.instagram || ""} ${safeClient.email || ""} ${safeClient.cpf || ""} ${safeClient.notes || ""}`.toLowerCase().includes(term);
 }
 
 export function whatsappUrl(phone, message) {
