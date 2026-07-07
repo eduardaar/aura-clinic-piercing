@@ -11,6 +11,9 @@ export function requiresAuth(req) {
   if (!req.path.startsWith("/api")) return false;
   if (["/api/login", "/api/health", "/api/catalog", "/api/sales-orders/public"].includes(req.path)) return false;
   if (req.path.startsWith("/api/booking")) return false;
+  // Ingestão de erros do frontend: pública (captura erros de telas sem sessão).
+  // A leitura/gestão (GET/PATCH/DELETE) continua exigindo auth + papel admin.
+  if (req.method === "POST" && req.path === "/api/error-logs") return false;
   return true;
 }
 

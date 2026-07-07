@@ -9539,3 +9539,28 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--gold); width: 
   background: var(--gold);
   color: var(--brown-dark);
 }
+
+/* ── Monitor de erros (admin) ─────────────────────────────────────────────── */
+.error-logs { display: flex; flex-direction: column; gap: 16px; }
+.error-logs-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.error-logs-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.error-logs-toolbar label { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; color: var(--muted); }
+.error-logs-toolbar .secondary-button { margin-left: auto; }
+.error-logs-empty { text-align: center; color: var(--muted); padding: 40px 20px; }
+.error-logs-empty svg { color: var(--nude-strong); margin-bottom: 8px; }
+.error-logs-list { display: flex; flex-direction: column; gap: 12px; }
+.error-log-card { display: flex; flex-direction: column; gap: 10px; border-left: 4px solid var(--danger); }
+.error-log-card.is-resolved { border-left-color: var(--ok); opacity: .72; }
+.error-log-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.error-log-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.error-log-when { font-size: .8rem; color: var(--muted); white-space: nowrap; }
+.error-log-message { font-family: var(--title-font); font-weight: 600; color: var(--ink); margin: 0; word-break: break-word; }
+.error-log-meta { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 0; font-size: .82rem; }
+.error-log-meta div { display: flex; gap: 6px; }
+.error-log-meta dt { color: var(--muted); }
+.error-log-meta dd { margin: 0; color: var(--ink); word-break: break-word; }
+.error-log-details summary { cursor: pointer; font-size: .82rem; color: var(--nude-strong); }
+.error-log-details pre { margin: 8px 0 0; padding: 10px 12px; background: #2b211b; color: #f3e9dc; border-radius: 8px; font-size: .74rem; line-height: 1.5; overflow-x: auto; max-height: 320px; }
+.error-log-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.error-log-actions .primary-button, .error-log-actions .secondary-button, .error-log-actions .ghost-button, .error-log-actions .danger-button { display: inline-flex; align-items: center; gap: 6px; }
+@media (max-width: 640px) { .error-logs-metrics { grid-template-columns: 1fr; } .error-logs-toolbar .secondary-button { margin-left: 0; } }

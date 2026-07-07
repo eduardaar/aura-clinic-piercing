@@ -13,6 +13,7 @@ import { resolveTenant, TenantError } from "./tenant.js";
 import { normalizeDbValue } from "../text-normalizer.js";
 import { requiresAuth, authenticateRequest } from "./auth.js";
 import { isProduction } from "../config/index.js";
+import { recordError } from "../services/errorLogs.js";
 
 // Defesa em profundidade: o schema vem sempre de "tenant_" + id inteiro do
 // banco, mas validamos o formato antes de interpolar no SET search_path.
@@ -42,9 +43,10 @@ export const withDb = (handler) => async (req, res) => {
 
   // 2) Client dedicado à requisição, com search_path do tenant.
   const client = await pool.connect();
+  let db;
   try {
     await client.query(`SET search_path TO "${tenant.schema}", public`);
-    const db = createDbAdapter(client);
+    db = createDbAdapter(client);
     if (requiresAuth(req)) {
       const user = await authenticateRequest(req, db);
       if (!user) return res.status(401).json({ error: "Sessão inválida ou expirada." });
@@ -53,6 +55,21 @@ export const withDb = (handler) => async (req, res) => {
     await handler(req, res, db);
   } catch (error) {
     console.error(error);
+    // Captura central: grava o erro do backend na tabela de logs (best-effort;
+    // o search_path ainda aponta para o tenant, pois o reset ocorre no finally).
+    if (db) {
+      await recordError(db, {
+        source: "backend",
+        message: error?.message || String(error),
+        stack: error?.stack,
+        url: req.originalUrl || req.url,
+        method: req.method,
+        status_code: 500,
+        user_id: req.user?.id ?? null,
+        user_email: req.user?.email ?? null,
+        user_agent: req.headers["user-agent"]
+      });
+    }
     // Em produção nunca expomos detalhes do erro ao cliente (evita vazamento de
     // stack/SQL/mensagens internas). Em dev mantemos o detalhe para diagnóstico.
     if (!res.headersSent) {

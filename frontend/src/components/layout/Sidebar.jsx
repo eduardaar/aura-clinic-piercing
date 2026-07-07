@@ -1,5 +1,5 @@
 import React from "react";
-import { Calendar, Gem, Home, LogOut, ShieldCheck, ShoppingCart, UsersRound, WalletCards } from "lucide-react";
+import { Bug, Calendar, Gem, Home, LogOut, ShieldCheck, ShoppingCart, UsersRound, WalletCards } from "lucide-react";
 import { canAccessPage } from "../../lib/permissions";
 
 export function Sidebar({ page, role, setPage, open, onLogout }) {
@@ -11,7 +11,8 @@ export function Sidebar({ page, role, setPage, open, onLogout }) {
     ["sales", ShoppingCart, "Vendas"],
     ["finance", WalletCards, "Financeiro"],
     ["client-center", UsersRound, "Clientes"],
-    ["admin", ShieldCheck, "Acessos"]
+    ["admin", ShieldCheck, "Acessos"],
+    ["error-logs", Bug, "Monitor de erros"]
   ].filter(([id]) => canAccessPage(role, id));
 
   return (

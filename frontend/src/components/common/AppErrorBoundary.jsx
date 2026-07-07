@@ -1,4 +1,5 @@
 import React from "react";
+import { reportError } from "../../lib/errorReporter";
 
 export class AppErrorBoundary extends React.Component {
   constructor(props) {
@@ -12,6 +13,11 @@ export class AppErrorBoundary extends React.Component {
 
   componentDidCatch(error, info) {
     console.error("Aura Clinic runtime error:", error, info);
+    reportError({
+      message: error?.message || "Erro de renderização (React)",
+      stack: error?.stack,
+      context: { componentStack: info?.componentStack, boundary: "AppErrorBoundary" }
+    });
   }
 
   render() {

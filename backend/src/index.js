@@ -36,6 +36,7 @@ import postcareRoutes from "./routes/postcare.js";
 import jewelryRoutes from "./routes/jewelry.js";
 import financeRoutes from "./routes/finance.js";
 import platformRoutes from "./routes/platform.js";
+import errorLogsRoutes from "./routes/errorLogs.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -93,6 +94,7 @@ app.use(postcareRoutes);
 app.use(jewelryRoutes);
 app.use(financeRoutes);
 app.use(platformRoutes);
+app.use(errorLogsRoutes);
 
 // ---------- Inicialização ----------
 // 1) Garante o schema de controle `platform` (tenants + superadmin inicial).

@@ -417,6 +417,28 @@ CREATE INDEX IF NOT EXISTS idx_loyalty_points_client ON loyalty_points(client_id
 CREATE INDEX IF NOT EXISTS idx_medical_records_client ON client_medical_records(client_id);
 CREATE INDEX IF NOT EXISTS idx_expenses_due ON expenses(due_date);
 
+-- Log central de erros (backend + frontend) para diagnóstico. Só o admin lê
+-- (via /api/error-logs). Ingestão do frontend é pública para capturar erros de
+-- telas não autenticadas (login/catálogo).
+CREATE TABLE IF NOT EXISTS error_logs (
+  id SERIAL PRIMARY KEY,
+  source TEXT NOT NULL DEFAULT 'backend',
+  level TEXT NOT NULL DEFAULT 'error',
+  message TEXT NOT NULL,
+  stack TEXT,
+  url TEXT,
+  method TEXT,
+  status_code INTEGER,
+  user_id INTEGER,
+  user_email TEXT,
+  user_agent TEXT,
+  context JSONB,
+  resolved BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_error_logs_created ON error_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_error_logs_resolved ON error_logs(resolved, created_at DESC);
+
 -- Correções idempotentes aplicadas a clínicas já existentes no boot (applySchemaToAllTenants).
 ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE payments ALTER COLUMN appointment_id DROP NOT NULL;

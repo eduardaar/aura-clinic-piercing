@@ -1,6 +1,6 @@
 export function allowedPagesForRole(role) {
   return {
-    admin: ["dashboard", "erp", "agenda", "catalog", "catalog-customization", "sales", "finance", "client-center", "clients", "terms", "postcare", "admin"],
+    admin: ["dashboard", "erp", "agenda", "catalog", "catalog-customization", "sales", "finance", "client-center", "clients", "terms", "postcare", "admin", "error-logs"],
     reception: ["agenda", "sales", "client-center", "clients"],
     finance: ["finance", "sales"],
     piercer: ["agenda", "sales", "client-center", "clients", "postcare"]
@@ -28,6 +28,7 @@ export function pageTitle(page) {
     clients: "Clientes",
     terms: "Termos digitais",
     postcare: "Pós-atendimento",
-    admin: "Acessos administrativos"
+    admin: "Acessos administrativos",
+    "error-logs": "Monitor de erros"
   }[page] || "Aura Clinic";
 }

@@ -52,6 +52,7 @@ import { AppErrorBoundary } from "./components/common/AppErrorBoundary";
 import { AlertBlock, BookingChoiceGrid, Input, Metric, PaymentSelect, Select, StatusSelect } from "./components/common/Ui";
 import { asArray, asNumber, asObject, removeAccents, firstName, initials, formatDate, formatLongDate, localDateValue, dateInputValue } from "./lib/utils";
 import { API, API_ORIGIN, apiFetch, downloadApiFile, readStoredSession, useFetch, usePublicFetch } from "./lib/api";
+import { installGlobalErrorReporting } from "./lib/errorReporter";
 import { canAccessPage, defaultPageForRole, pageTitle } from "./lib/permissions";
 import { buildCalendar, buildTimeSlots, dateKey, movePeriod } from "./lib/calendarUtils";
 import { ANODIZATION_COLOR_OPTIONS, DIGITAL_TERM_HEALTH_ITEMS, DIGITAL_TERM_LIFESTYLE_ITEMS, JEWELRY_CATEGORY_OPTIONS, JEWELRY_LENGTH_OPTIONS, JEWELRY_THICKNESS_OPTIONS, JEWELRY_THREAD_OPTIONS, defaultAccessUser, defaultAppointment, defaultCatalogSettings, defaultDigitalTerm, defaultExpense, defaultJewelry, defaultJewelryVariant, defaultMedicalRecord, defaultProcedureForm, defaultSalesLine, defaultSalesOrderForm, defaultScheduleBlock, defaultServiceForm, normalizeJewelryForm, parseGalleryUrls } from "./lib/defaultForms";
@@ -78,6 +79,7 @@ const PublicCheckout = lazy(() => import("./pages/PublicExperience").then((m) =>
 const CatalogCustomization = lazy(() => import("./pages/CatalogCustomization").then((m) => ({ default: m.CatalogCustomization })));
 const Signup = lazy(() => import("./features/platform/Signup").then((m) => ({ default: m.Signup })));
 const PlatformAdmin = lazy(() => import("./features/platform/PlatformAdmin").then((m) => ({ default: m.PlatformAdmin })));
+const ErrorLogs = lazy(() => import("./features/errors/ErrorLogs").then((m) => ({ default: m.ErrorLogs })));
 
 function App() {
   const [session, setSession] = useState(readStoredSession);
@@ -224,12 +226,14 @@ function App() {
           {activePage === "terms" && <DigitalTerms />}
           {activePage === "postcare" && <PostCare />}
           {activePage === "admin" && <AccessAdmin />}
+          {activePage === "error-logs" && <ErrorLogs />}
         </Suspense>
       </main>
     </div>
   );
 }
 
+installGlobalErrorReporting();
 const auraRoot = window.__auraReactRoot || createRoot(document.getElementById("root"));
 window.__auraReactRoot = auraRoot;
 auraRoot.render(<AppErrorBoundary><App /></AppErrorBoundary>);
