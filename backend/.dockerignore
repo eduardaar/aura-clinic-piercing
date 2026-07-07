@@ -1,0 +1,9 @@
+# Mantém a imagem enxuta: nada de deps locais, uploads, segredos ou testes.
+node_modules
+npm-debug.log
+.env
+.env.*
+src/data/uploads
+tests
+*.log
+.DS_Store
