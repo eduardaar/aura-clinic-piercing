@@ -156,8 +156,11 @@ export async function replaceJewelryVariants(db, jewelryId, variants = []) {
   }
   const current = await db.all("SELECT * FROM jewelry_variants WHERE jewelry_id = ?", [jewelryId]);
   const product = await db.get("SELECT sku, material, category, subcategory, name FROM jewelry_inventory WHERE id = ?", [jewelryId]);
-  const suppliedSkus = variants.map((variant) => String(variant?.sku || "").trim()).filter(Boolean);
-  if (new Set(suppliedSkus).size !== suppliedSkus.length) {
+  const manuallyEditedSkus = variants
+    .filter((variant) => Boolean(variant?.sku_manually_edited))
+    .map((variant) => String(variant?.sku || "").trim())
+    .filter(Boolean);
+  if (new Set(manuallyEditedSkus).size !== manuallyEditedSkus.length) {
     throw new SkuConflictError("SKU já cadastrado.");
   }
   const suppliedSku = variants.map((variant) => String(variant?.sku || "").trim()).find(Boolean);
@@ -171,9 +174,11 @@ export async function replaceJewelryVariants(db, jewelryId, variants = []) {
   for (let index = 0; index < variants.length; index += 1) {
     const variant = variants[index] || {};
     const existing = current.find((item) => Number(item.id) === Number(variant.id));
-    const sku = await uniqueVariantSku(db, variant.sku || `${skuBase}-${String(index + 1).padStart(2, "0")}`, {
+    const requestedSku = String(variant.sku || "").trim();
+    const manualSku = Boolean(variant.sku_manually_edited) && requestedSku && requestedSku !== String(existing?.sku || "").trim();
+    const sku = await uniqueVariantSku(db, requestedSku || `${skuBase}-${String(index + 1).padStart(2, "0")}`, {
       excludeId: existing?.id || null,
-      userProvided: Boolean(variant.sku)
+      userProvided: manualSku
     });
     const values = [
       sku,

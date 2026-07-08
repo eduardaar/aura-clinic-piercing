@@ -11,9 +11,57 @@ import {
 
 const router = Router();
 
+async function bookingReadiness(db) {
+  const activeServices = await db.get("SELECT COUNT(*) AS count FROM services WHERE active_online_booking = 1");
+  const activeProcedures = await db.get(`
+    SELECT COUNT(*) AS count
+    FROM procedures p
+    JOIN services s ON s.id = p.service_id
+    WHERE p.is_active = 1 AND s.active_online_booking = 1
+  `);
+  const activeProfessionals = await db.get("SELECT COUNT(*) AS count FROM professionals WHERE active = 1");
+  const weeklyAvailability = await db.get(`
+    SELECT COUNT(*) AS count
+    FROM professional_availability a
+    JOIN professionals p ON p.id = a.professional_id
+    WHERE a.is_active = 1 AND p.active = 1
+  `);
+  const linkedProfessionals = await db.get(`
+    SELECT COUNT(*) AS count
+    FROM professional_services ps
+    JOIN professionals p ON p.id = ps.professional_id
+    JOIN services s ON s.id = ps.service_id
+    WHERE p.active = 1 AND s.active_online_booking = 1
+  `);
+  const checklist = [
+    { key: "services", label: "Serviços cadastrados", done: Number(activeServices.count || 0) > 0 },
+    { key: "procedures", label: "Procedimentos cadastrados", done: Number(activeProcedures.count || 0) > 0 },
+    { key: "professionals", label: "Profissionais cadastrados", done: Number(activeProfessionals.count || 0) > 0 },
+    { key: "weeklySchedule", label: "Agenda semanal configurada", done: Number(weeklyAvailability.count || 0) > 0 },
+    { key: "links", label: "Profissionais vinculados aos serviços", done: Number(linkedProfessionals.count || 0) > 0 }
+  ];
+  const ready = checklist.every((item) => item.done);
+  return {
+    ready,
+    checklist,
+    missing: checklist.filter((item) => !item.done).map((item) => item.label),
+    counts: {
+      activeServices: Number(activeServices.count || 0),
+      activeProcedures: Number(activeProcedures.count || 0),
+      activeProfessionals: Number(activeProfessionals.count || 0),
+      weeklyAvailability: Number(weeklyAvailability.count || 0),
+      linkedProfessionals: Number(linkedProfessionals.count || 0)
+    }
+  };
+}
+
+router.get("/api/booking/readiness", withDb(async (_req, res, db) => {
+  res.json(await bookingReadiness(db));
+}));
+
 router.get("/api/booking/config", withDb(async (_req, res, db) => {
   const services = await db.all("SELECT * FROM services WHERE active_online_booking = 1 ORDER BY name");
-  const professionals = await db.all(`
+  const professionalsRows = await db.all(`
     SELECT DISTINCT p.*
     FROM professionals p
     JOIN professional_services ps ON ps.professional_id = p.id
@@ -21,6 +69,19 @@ router.get("/api/booking/config", withDb(async (_req, res, db) => {
     WHERE p.active = 1 AND s.active_online_booking = 1
     ORDER BY p.name
   `);
+  const links = await db.all(`
+    SELECT ps.professional_id, ps.service_id
+    FROM professional_services ps
+    JOIN professionals p ON p.id = ps.professional_id
+    JOIN services s ON s.id = ps.service_id
+    WHERE p.active = 1 AND s.active_online_booking = 1
+  `);
+  const professionals = professionalsRows.map((professional) => ({
+    ...professional,
+    service_ids: links
+      .filter((link) => Number(link.professional_id) === Number(professional.id))
+      .map((link) => link.service_id)
+  }));
   res.json({
     services,
     professionals,

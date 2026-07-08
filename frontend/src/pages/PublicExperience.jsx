@@ -386,6 +386,11 @@ function CatalogSelect({ label, value, options, onChange }) {
   );
 }
 
+function professionalMatchesService(professional, serviceId) {
+  if (!serviceId) return true;
+  return asArray(professional?.service_ids).some((id) => String(id) === String(serviceId));
+}
+
 function CatalogBookingWidget() {
   const { data } = usePublicFetch("/booking/config");
   const [form, setForm] = useState(() => {
@@ -395,7 +400,8 @@ function CatalogBookingWidget() {
   const [slots, setSlots] = useState([]);
   const safeData = asObject(data);
   const services = asArray(safeData.services);
-  const professionals = asArray(safeData.professionals);
+  const allProfessionals = asArray(safeData.professionals);
+  const professionals = allProfessionals.filter((professional) => professionalMatchesService(professional, form.service_id));
   const bookingDates = nextBookingDates(10);
 
   useEffect(() => {
@@ -404,9 +410,10 @@ function CatalogBookingWidget() {
   }, [services.length]);
 
   useEffect(() => {
-    if (!professionals.length || form.professional_id) return;
+    if (!professionals.length) return;
+    if (professionals.some((professional) => String(professional.id) === String(form.professional_id))) return;
     setForm((current) => ({ ...current, professional_id: String(professionals[0].id) }));
-  }, [professionals.length]);
+  }, [professionals.length, form.service_id, form.professional_id]);
 
   useEffect(() => {
     async function loadSlots() {
@@ -418,7 +425,7 @@ function CatalogBookingWidget() {
     loadSlots();
   }, [form.service_id, form.professional_id, form.appointment_date]);
 
-  if (!data || data.error || !services.length || !professionals.length) return null;
+  if (!data || data.error || !services.length) return null;
   const href = "/agendar?" + new URLSearchParams(Object.fromEntries(Object.entries(form).filter(([, value]) => value))).toString();
 
   return (
@@ -429,19 +436,21 @@ function CatalogBookingWidget() {
         <p>Reserve pelo link público da Aura. A equipe confirma manualmente pelo WhatsApp.</p>
       </div>
       <div className="catalog-booking-controls">
-        <Select label="Serviço" value={form.service_id} onChange={(value) => setForm({ ...form, service_id: value, appointment_time: "" })}>
+        <Select label="Serviço" value={form.service_id} onChange={(value) => setForm({ ...form, service_id: value, professional_id: "", appointment_time: "" })}>
           {services.map((service) => <option value={service.id} key={service.id}>{service.name}</option>)}
         </Select>
-        <Select label="Profissional" value={form.professional_id} onChange={(value) => setForm({ ...form, professional_id: value, appointment_time: "" })}>
-          {professionals.map((professional) => <option value={professional.id} key={professional.id}>{professional.name}</option>)}
-        </Select>
+        {professionals.length ? (
+          <Select label="Profissional" value={form.professional_id} onChange={(value) => setForm({ ...form, professional_id: value, appointment_time: "" })}>
+            {professionals.map((professional) => <option value={professional.id} key={professional.id}>{professional.name}</option>)}
+          </Select>
+        ) : <p className="empty-state">Este serviço ainda não possui profissional vinculado.</p>}
         <Input type="date" label="Data" value={form.appointment_date} onChange={(value) => setForm({ ...form, appointment_date: value, appointment_time: "" })} />
       </div>
       <div className="catalog-slot-row">
           {slots.slice(0, 8).map((slot) => <button type="button" key={slot.time} className={form.appointment_time === slot.time ? "active" : ""} onClick={() => setForm({ ...form, appointment_time: slot.time })}>{slot.time}</button>)}
         {!slots.length && <span>Nenhum horário nesta seleção.</span>}
       </div>
-      <a className="primary-button booking-wide-button" href={href}>Continuar Agendamento</a>
+      <a className={`primary-button booking-wide-button${professionals.length ? "" : " disabled"}`} href={professionals.length ? href : "#catalog-agenda"}>Continuar Agendamento</a>
     </section>
   );
 }
@@ -883,10 +892,17 @@ export function PublicBooking() {
   const [confirmed, setConfirmed] = useState(null);
   const safeData = asObject(data);
   const services = asArray(safeData.services);
-  const professionals = asArray(safeData.professionals);
+  const allProfessionals = asArray(safeData.professionals);
+  const professionals = allProfessionals.filter((professional) => professionalMatchesService(professional, form.service_id));
   const bookingDates = nextBookingDates(10);
   const selectedService = services.find((item) => String(item.id) === String(form.service_id));
-  const selectedProfessional = professionals.find((item) => String(item.id) === String(form.professional_id));
+  const selectedProfessional = allProfessionals.find((item) => String(item.id) === String(form.professional_id));
+
+  useEffect(() => {
+    if (!form.professional_id) return;
+    if (professionals.some((professional) => String(professional.id) === String(form.professional_id))) return;
+    setForm((current) => ({ ...current, professional_id: "", appointment_time: "" }));
+  }, [form.service_id, form.professional_id, professionals.length]);
 
   useEffect(() => {
     async function loadSlots() {
@@ -938,8 +954,12 @@ export function PublicBooking() {
           ))}
         </div>
 
-        {step === 1 && <BookingChoiceGrid title="Escolha O Serviço" items={services} value={form.service_id} onSelect={(id) => { setForm({ ...form, service_id: id, appointment_time: "" }); setStep(2); }} render={(item) => <><strong>{item.name}</strong><p>{item.description}</p><span>{item.duration_minutes} min  {currency.format(item.base_price || item.price || 0)}</span></>} />}
-        {step === 2 && <BookingChoiceGrid title="Escolha A Profissional" items={professionals} value={form.professional_id} onSelect={(id) => { setForm({ ...form, professional_id: id, appointment_time: "" }); setStep(3); }} render={(item) => <><strong>{item.name}</strong><p>{item.specialty || "Body Piercer Aura"}</p></>} />}
+        {step === 1 && <BookingChoiceGrid title="Escolha O Serviço" items={services} value={form.service_id} onSelect={(id) => { setForm({ ...form, service_id: id, professional_id: "", appointment_time: "" }); setStep(2); }} render={(item) => <><strong>{item.name}</strong><p>{item.description}</p><span>{item.duration_minutes} min  {currency.format(item.base_price || item.price || 0)}</span></>} />}
+        {step === 2 && (
+          professionals.length
+            ? <BookingChoiceGrid title="Escolha A Profissional" items={professionals} value={form.professional_id} onSelect={(id) => { setForm({ ...form, professional_id: id, appointment_time: "" }); setStep(3); }} render={(item) => <><strong>{item.name}</strong><p>{item.specialty || "Body Piercer Aura"}</p></>} />
+            : <section className="booking-panel"><h2>Nenhuma Profissional Vinculada</h2><p className="empty-state">Este serviço ainda não possui profissional ativo vinculado. Volte e escolha outro serviço ou fale com a Aura pelo WhatsApp.</p><button type="button" className="secondary-button" onClick={() => setStep(1)}>Escolher Outro Serviço</button></section>
+        )}
         {step === 3 && (
           <section className="booking-panel booking-date-card">
             <span className="booking-section-kicker">Etapa 3 · Data</span>

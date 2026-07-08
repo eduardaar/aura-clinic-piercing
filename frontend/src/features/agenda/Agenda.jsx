@@ -1,4 +1,4 @@
-// Feature extraída de main.jsx durante a modularização. Comportamento preservado.
+﻿// Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import React, { useEffect, useMemo, useState } from "react";
 import { Calendar, CheckCircle2, ChevronLeft, ChevronRight, Clock, ShieldCheck, XCircle } from "lucide-react";
 import { Button, Input, PaymentSelect, Select, StatusBadge, StatusSelect } from "../../components/common/Ui";
@@ -7,7 +7,7 @@ import { Loading } from "../../components/common/Feedback";
 import { asArray, asNumber, asObject, formatDate } from "../../lib/utils";
 import { apiFetch, useFetch } from "../../lib/api";
 import { buildCalendar, buildTimeSlots, movePeriod } from "../../lib/calendarUtils";
-import { defaultAppointment, defaultProcedureForm, defaultScheduleBlock, defaultServiceForm } from "../../lib/defaultForms";
+import { defaultAppointment, defaultProcedureForm, defaultProfessionalForm, defaultScheduleBlock, defaultServiceForm } from "../../lib/defaultForms";
 import { calcRemaining, currency, personName, statusClass, statuses, weekdayLabel, whatsappUrl } from "../../features/shared/helpers";
 import { Toggle } from "../../pages/CatalogCustomization";
 
@@ -345,6 +345,8 @@ export function CalendarEvent({ item, refresh }) {
 export function BookingAdmin() {
   const { data: services, refresh: refreshServices } = useFetch("/services");
   const { data: procedures, refresh: refreshProcedures } = useFetch("/procedures");
+  const { data: professionalsData, refresh: refreshProfessionals } = useFetch("/professionals");
+  const { data: readiness, refresh: refreshReadiness } = useFetch("/booking/readiness");
   const { data: options } = useFetch("/options");
   const { data: availability, refresh: refreshAvailability } = useFetch("/availability");
   const { data: blocks, refresh: refreshBlocks } = useFetch("/schedule-blocks");
@@ -356,20 +358,43 @@ export function BookingAdmin() {
   const [procedureForm, setProcedureForm] = useState(defaultProcedureForm());
   const [editingProcedureId, setEditingProcedureId] = useState(null);
   const [procedureModalOpen, setProcedureModalOpen] = useState(false);
+  const [professionalForm, setProfessionalForm] = useState(defaultProfessionalForm());
+  const [editingProfessionalId, setEditingProfessionalId] = useState(null);
+  const [professionalModalOpen, setProfessionalModalOpen] = useState(false);
   const [serviceError, setServiceError] = useState("");
   const [procedureError, setProcedureError] = useState("");
+  const [professionalError, setProfessionalError] = useState("");
+  const [weeklyForm, setWeeklyForm] = useState({
+    professional_id: "",
+    start_time: "09:00",
+    end_time: "18:00",
+    lunch_start: "12:00",
+    lunch_end: "13:00",
+    duration_minutes: 40,
+    buffer_minutes: 10,
+    weekdays: [1, 2, 3, 4, 5, 6]
+  });
+  const [readinessMessage, setReadinessMessage] = useState("");
   const [blockForm, setBlockForm] = useState(defaultScheduleBlock());
   const [blockModalOpen, setBlockModalOpen] = useState(false);
   const [blockError, setBlockError] = useState("");
   const [deleting, setDeleting] = useState(null);
   const professionals = asArray(asObject(options).professionals);
+  const allProfessionals = asArray(professionalsData);
   const safeServices = asArray(services);
   const safeProcedures = asArray(procedures);
   const safeAvailability = asArray(availability);
   const safeBlocks = asArray(blocks);
   const safeAppointments = asArray(appointments);
 
-  if (services == null || procedures == null || availability == null || blocks == null || appointments == null) return <Loading />;
+  if (services == null || procedures == null || professionalsData == null || readiness == null || availability == null || blocks == null || appointments == null) return <Loading />;
+
+  const readinessData = asObject(readiness);
+  const checklist = asArray(readinessData.checklist);
+  const activeServices = safeServices.filter((service) => Boolean(Number(service.is_active ?? service.active_online_booking)));
+  const activeProcedures = safeProcedures.filter((procedure) => Boolean(Number(procedure.is_active)));
+  const activeProfessionals = allProfessionals.filter((professional) => Boolean(Number(professional.active)));
+  const isBookingReady = Boolean(readinessData.ready);
 
   function validateServiceForm() {
     if (!serviceForm.name.trim()) return "Informe o nome do serviço.";
@@ -505,6 +530,75 @@ export function BookingAdmin() {
       }
     });
   }
+
+  function openNewProfessional() {
+    setEditingProfessionalId(null);
+    setProfessionalForm(defaultProfessionalForm());
+    setProfessionalError("");
+    setProfessionalModalOpen(true);
+  }
+
+  function editProfessional(professional) {
+    setEditingProfessionalId(professional.id);
+    setProfessionalError("");
+    setProfessionalForm({
+      ...defaultProfessionalForm(),
+      name: professional.name || "",
+      specialty: professional.specialty || "",
+      phone: professional.phone || "",
+      email: professional.email || "",
+      calendar_color: professional.calendar_color || "#C8A96A",
+      active: Boolean(Number(professional.active)),
+      service_ids: asArray(professional.service_ids).map(String)
+    });
+    setProfessionalModalOpen(true);
+  }
+
+  function toggleProfessionalService(serviceId) {
+    const id = String(serviceId);
+    const current = asArray(professionalForm.service_ids).map(String);
+    setProfessionalForm({
+      ...professionalForm,
+      service_ids: current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
+    });
+  }
+
+  async function saveProfessional(event) {
+    event.preventDefault();
+    setProfessionalError("");
+    if (!professionalForm.name.trim()) return setProfessionalError("Informe o nome do profissional.");
+    const response = await apiFetch(editingProfessionalId ? `/professionals/${editingProfessionalId}` : "/professionals", {
+      method: editingProfessionalId ? "PATCH" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(professionalForm)
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      return setProfessionalError(payload.error || "NÃ£o foi possÃ­vel salvar o profissional.");
+    }
+    setProfessionalForm(defaultProfessionalForm());
+    setEditingProfessionalId(null);
+    setProfessionalModalOpen(false);
+    refreshProfessionals();
+    refreshReadiness();
+  }
+
+  function removeProfessional(professional) {
+    setDeleting({
+      message: `Excluir ${professional.name}?`,
+      run: async () => {
+        const response = await apiFetch(`/professionals/${professional.id}`, { method: "DELETE" });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          return setProfessionalError(payload.error || "NÃ£o foi possÃ­vel excluir o profissional.");
+        }
+        refreshProfessionals();
+        refreshAvailability();
+        refreshReadiness();
+      }
+    });
+  }
+
   async function updateAvailability(item, patch) {
     await apiFetch(`/availability/${item.id}`, {
       method: "PATCH",
@@ -512,26 +606,56 @@ export function BookingAdmin() {
       body: JSON.stringify({ ...item, ...patch })
     });
     refreshAvailability();
+    refreshReadiness();
   }
 
   async function createDefaultAvailability(professionalId) {
     if (!professionalId) return;
-    await Promise.all([1, 2, 3, 4, 5, 6].map((weekday) => apiFetch("/availability", {
+    await apiFetch("/availability/generate-weekly", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         professional_id: professionalId,
-        weekday,
         is_active: true,
         start_time: "09:00",
         end_time: "18:00",
         lunch_start: "12:00",
         lunch_end: "13:00",
         duration_minutes: 40,
-        buffer_minutes: 10
+        buffer_minutes: 10,
+        weekdays: [1, 2, 3, 4, 5, 6]
       })
-    })));
+    });
     refreshAvailability();
+    refreshReadiness();
+  }
+
+  async function generateWeeklyAvailability(event) {
+    event.preventDefault();
+    setReadinessMessage("");
+    if (!activeProfessionals.length) return setReadinessMessage("Cadastre e ative pelo menos um profissional antes de configurar a agenda semanal.");
+    if (!activeServices.length) return setReadinessMessage("Cadastre e ative pelo menos um serviÃ§o antes de configurar a agenda semanal.");
+    if (!activeProcedures.length) return setReadinessMessage("Cadastre e ative pelo menos um procedimento vinculado ao serviÃ§o.");
+    if (!weeklyForm.professional_id) return setReadinessMessage("Escolha o profissional da agenda semanal.");
+    const response = await apiFetch("/availability/generate-weekly", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(weeklyForm)
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      return setReadinessMessage(payload.error || "NÃ£o foi possÃ­vel gerar a disponibilidade semanal.");
+    }
+    setReadinessMessage("Disponibilidade semanal gerada com sucesso.");
+    refreshAvailability();
+    refreshReadiness();
+  }
+
+  function validatePublicLink(event) {
+    if (isBookingReady) return;
+    event.preventDefault();
+    const missing = asArray(readinessData.missing);
+    setReadinessMessage(`Agendamento online ainda nÃ£o estÃ¡ pronto. Falta: ${missing.join(", ")}.`);
   }
 
   function openNewBlock() {
@@ -579,16 +703,108 @@ export function BookingAdmin() {
           <h2>Disponibilidade</h2>
           <p>Configure serviços, horários, bloqueios e solicitações vindas do link público.</p>
         </div>
-        <a className="primary-button" href="/agendar" target="_blank" rel="noreferrer">Abrir link público</a>
+        <a className="primary-button" href="/agendar" target="_blank" rel="noreferrer" onClick={validatePublicLink}>Abrir link público</a>
       </header>
-      <nav className="customization-tabs">
-        {[
+      <div className="panel">
+        <div className="panel-heading">
+          <h2>Configuração do Agendamento Online</h2>
+          <span>{isBookingReady ? "Link público pronto para uso." : "Seu agendamento online ainda não está pronto."}</span>
+        </div>
+        <div className="metric-grid">
+          {checklist.map((item) => (
+            <article className="metric-card" key={item.key}>
+              {item.done ? <CheckCircle2 size={20} /> : <XCircle size={20} />}
+              <span>{item.label}</span>
+              <strong>{item.done ? "Concluído" : "Pendente"}</strong>
+            </article>
+          ))}
+        </div>
+        {!isBookingReady && (
+          <div className="empty-state">
+            Seu agendamento online ainda não está pronto. Cadastre primeiro os profissionais, serviços, procedimentos e horários semanais.
+            <div className="row-actions">
+              <button type="button" onClick={() => setTab("profissionais")}>Cadastrar profissional</button>
+              <button type="button" onClick={() => setTab("servicos")}>Cadastrar serviço</button>
+              <button type="button" onClick={() => setTab("servicos")}>Cadastrar procedimento</button>
+              <button type="button" onClick={() => setTab("horarios")}>Configurar agenda semanal</button>
+            </div>
+          </div>
+        )}
+        {readinessMessage && <span className="form-error">{readinessMessage}</span>}
+      </div>
+      <nav className="customization-tabs">`r`n        {[
+          ["profissionais", "Profissionais"],
           ["servicos", "Serviços"],
-          ["horarios", "Disponibilidade"],
+          ["horarios", "Agenda semanal"],
           ["bloqueios", "Bloqueios"],
           ["solicitacoes", "Solicitações pendentes"]
         ].map(([id, label]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}</button>)}
       </nav>
+
+      {tab === "profissionais" && (
+        <div className="panel">
+          <CrudHeader
+            title="Profissionais"
+            subtitle="Cadastre quem atende, especialidades, status e serviços realizados."
+            actionLabel="Novo profissional"
+            onAction={openNewProfessional}
+          />
+          <DataTable
+            rows={allProfessionals}
+            columns={[
+              { key: "name", label: "Nome" },
+              { key: "specialty", label: "Especialidade", render: (professional) => professional.specialty || "Body Piercer" },
+              { key: "phone", label: "Contato", render: (professional) => [professional.phone, professional.email].filter(Boolean).join(" · ") || "Sem contato" },
+              { key: "service_ids", label: "Serviços", render: (professional) => asArray(professional.service_ids).length ? `${asArray(professional.service_ids).length} serviço(s)` : "Sem vínculo" },
+              { key: "active", label: "Status", render: (professional) => <StatusBadge status={professional.active ? "Ativo" : "Inativo"} /> },
+            ]}
+            actions={(professional) => (
+              <>
+                <button type="button" onClick={() => editProfessional(professional)}>Editar</button>
+                <button type="button" onClick={() => removeProfessional(professional)}>Excluir</button>
+              </>
+            )}
+            empty="Cadastre pelo menos um profissional para liberar o agendamento online."
+          />
+          <Modal
+            open={professionalModalOpen}
+            title={editingProfessionalId ? "Editar profissional" : "Novo profissional"}
+            subtitle="Defina status, contato, cor da agenda e serviços realizados."
+            onClose={() => setProfessionalModalOpen(false)}
+            footer={(
+              <>
+                <button type="button" className="secondary-button" onClick={() => setProfessionalModalOpen(false)}>Cancelar</button>
+                <button type="submit" form="professional-form" className="primary-button">Salvar profissional</button>
+              </>
+            )}
+          >
+            <form id="professional-form" onSubmit={saveProfessional}>
+              <div className="form-grid">
+                <Input label="Nome" value={professionalForm.name} onChange={(value) => setProfessionalForm({ ...professionalForm, name: value })} required />
+                <Input label="Especialidade" value={professionalForm.specialty} onChange={(value) => setProfessionalForm({ ...professionalForm, specialty: value })} />
+                <Input label="Telefone" value={professionalForm.phone} onChange={(value) => setProfessionalForm({ ...professionalForm, phone: value })} />
+                <Input type="email" label="E-mail" value={professionalForm.email} onChange={(value) => setProfessionalForm({ ...professionalForm, email: value })} />
+                <Input type="color" label="Cor na agenda" value={professionalForm.calendar_color} onChange={(value) => setProfessionalForm({ ...professionalForm, calendar_color: value })} />
+              </div>
+              <Toggle label="Profissional ativo" checked={professionalForm.active} onChange={(value) => setProfessionalForm({ ...professionalForm, active: value })} />
+              <div className="form-section">
+                <h3>Serviços que realiza</h3>
+                <div className="toggle-grid">
+                  {safeServices.map((service) => (
+                    <Toggle
+                      key={service.id}
+                      label={service.name}
+                      checked={asArray(professionalForm.service_ids).map(String).includes(String(service.id))}
+                      onChange={() => toggleProfessionalService(service.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+              {professionalError && <span className="form-error">{professionalError}</span>}
+            </form>
+          </Modal>
+        </div>
+      )}
 
       {tab === "servicos" && (
         <div className="stack">
@@ -700,30 +916,69 @@ export function BookingAdmin() {
         </div>
       )}
       {tab === "horarios" && (
-        <div className="availability-grid">
-          {!safeAvailability.length && (
-            <article className="panel availability-card">
-              <div className="panel-heading"><h2>Sem horários cadastrados</h2><span>Crie a semana padrão para começar.</span></div>
-              <Select label="Profissional" value="" onChange={createDefaultAvailability}>
-                <option value="">Escolha um profissional</option>
-                {professionals.map((professional) => <option value={professional.id} key={professional.id}>{professional.name}</option>)}
-              </Select>
-            </article>
-          )}
-          {safeAvailability.map((item) => (
-            <article className="panel availability-card" key={item.id}>
-              <div className="panel-heading"><h2>{weekdayLabel(item.weekday)}</h2><span>{item.professional_name}</span></div>
-              <Toggle label="Atende neste dia" checked={item.is_active} onChange={(value) => updateAvailability(item, { is_active: value })} />
+        <div className="stack">
+          <article className="panel">
+            <div className="panel-heading">
+              <h2>Agenda semanal</h2>
+              <span>Gere horários fixos antes de liberar o link público.</span>
+            </div>
+            <form onSubmit={generateWeeklyAvailability}>
               <div className="form-grid">
-                <Input label="Início" value={item.start_time} onChange={(value) => updateAvailability(item, { start_time: value })} />
-                <Input label="Final" value={item.end_time} onChange={(value) => updateAvailability(item, { end_time: value })} />
-                <Input label="Almoço início" value={item.lunch_start || ""} onChange={(value) => updateAvailability(item, { lunch_start: value })} />
-                <Input label="Almoço final" value={item.lunch_end || ""} onChange={(value) => updateAvailability(item, { lunch_end: value })} />
-                <Input type="number" label="Duração padrão" value={item.duration_minutes} onChange={(value) => updateAvailability(item, { duration_minutes: value })} />
-                <Input type="number" label="Intervalo" value={item.buffer_minutes} onChange={(value) => updateAvailability(item, { buffer_minutes: value })} />
+                <Select label="Profissional" value={weeklyForm.professional_id} onChange={(value) => setWeeklyForm({ ...weeklyForm, professional_id: value })}>
+                  <option value="">Escolha um profissional</option>
+                  {activeProfessionals.map((professional) => <option value={professional.id} key={professional.id}>{professional.name}</option>)}
+                </Select>
+                <Input label="Horário inicial" value={weeklyForm.start_time} onChange={(value) => setWeeklyForm({ ...weeklyForm, start_time: value })} />
+                <Input label="Horário final" value={weeklyForm.end_time} onChange={(value) => setWeeklyForm({ ...weeklyForm, end_time: value })} />
+                <Input label="Intervalo início" value={weeklyForm.lunch_start} onChange={(value) => setWeeklyForm({ ...weeklyForm, lunch_start: value })} />
+                <Input label="Intervalo final" value={weeklyForm.lunch_end} onChange={(value) => setWeeklyForm({ ...weeklyForm, lunch_end: value })} />
+                <Input type="number" label="Duração padrão" value={weeklyForm.duration_minutes} onChange={(value) => setWeeklyForm({ ...weeklyForm, duration_minutes: value })} />
+                <Input type="number" label="Intervalo entre atendimentos" value={weeklyForm.buffer_minutes} onChange={(value) => setWeeklyForm({ ...weeklyForm, buffer_minutes: value })} />
               </div>
-            </article>
-          ))}
+              <div className="toggle-grid">
+                {[0, 1, 2, 3, 4, 5, 6].map((weekday) => (
+                  <Toggle
+                    key={weekday}
+                    label={weekdayLabel(weekday)}
+                    checked={asArray(weeklyForm.weekdays).includes(weekday)}
+                    onChange={(checked) => setWeeklyForm({
+                      ...weeklyForm,
+                      weekdays: checked
+                        ? [...asArray(weeklyForm.weekdays), weekday].sort()
+                        : asArray(weeklyForm.weekdays).filter((day) => day !== weekday)
+                    })}
+                  />
+                ))}
+              </div>
+              <Button variant="primary" type="submit">Gerar disponibilidade semanal</Button>
+            </form>
+          </article>
+          <div className="availability-grid">
+            {!safeAvailability.length && (
+              <article className="panel availability-card">
+                <div className="panel-heading"><h2>Sem horários cadastrados</h2><span>Seu agendamento online ainda não está pronto.</span></div>
+                <p className="empty-state">Cadastre primeiro os profissionais, serviços e procedimentos. Depois gere a agenda semanal.</p>
+                <Select label="Gerar semana padrão para" value="" onChange={createDefaultAvailability}>
+                  <option value="">Escolha um profissional</option>
+                  {activeProfessionals.map((professional) => <option value={professional.id} key={professional.id}>{professional.name}</option>)}
+                </Select>
+              </article>
+            )}
+            {safeAvailability.map((item) => (
+              <article className="panel availability-card" key={item.id}>
+                <div className="panel-heading"><h2>{weekdayLabel(item.weekday)}</h2><span>{item.professional_name}</span></div>
+                <Toggle label="Atende neste dia" checked={item.is_active} onChange={(value) => updateAvailability(item, { is_active: value })} />
+                <div className="form-grid">
+                  <Input label="Início" value={item.start_time} onChange={(value) => updateAvailability(item, { start_time: value })} />
+                  <Input label="Final" value={item.end_time} onChange={(value) => updateAvailability(item, { end_time: value })} />
+                  <Input label="Almoço início" value={item.lunch_start || ""} onChange={(value) => updateAvailability(item, { lunch_start: value })} />
+                  <Input label="Almoço final" value={item.lunch_end || ""} onChange={(value) => updateAvailability(item, { lunch_end: value })} />
+                  <Input type="number" label="Duração padrão" value={item.duration_minutes} onChange={(value) => updateAvailability(item, { duration_minutes: value })} />
+                  <Input type="number" label="Intervalo" value={item.buffer_minutes} onChange={(value) => updateAvailability(item, { buffer_minutes: value })} />
+                </div>
+              </article>
+            ))}
+          </div>
         </div>
       )}
 

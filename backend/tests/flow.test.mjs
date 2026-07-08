@@ -132,6 +132,61 @@ test("3d. disponibilidade lista vazia e PATCH inexistente dá 404", async () => 
   assert.equal(patch.status, 404, "PATCH em disponibilidade inexistente deve dar 404");
 });
 
+test("3e. readiness exige vinculo e agenda semanal; depois fica pronto", async () => {
+  const initial = await api("/booking/readiness");
+  assert.equal(initial.status, 200);
+  assert.equal(initial.json.ready, false);
+  assert.ok(initial.json.missing.includes("Agenda semanal configurada"));
+  assert.ok(initial.json.missing.includes("Profissionais vinculados aos serviços"));
+
+  const linkProfessional = await api(`/professionals/${ctx.professionalId}`, {
+    method: "PATCH",
+    body: { service_ids: [ctx.serviceId], active: true },
+  });
+  assert.equal(linkProfessional.status, 200, JSON.stringify(linkProfessional.json));
+  assert.deepEqual(linkProfessional.json.service_ids, [ctx.serviceId]);
+
+  const deactivate = await api(`/professionals/${ctx.professionalId}`, {
+    method: "PATCH",
+    body: { active: false },
+  });
+  assert.equal(deactivate.status, 200, JSON.stringify(deactivate.json));
+  assert.equal(deactivate.json.active, 0);
+
+  const reactivate = await api(`/professionals/${ctx.professionalId}`, {
+    method: "PATCH",
+    body: { active: true },
+  });
+  assert.equal(reactivate.status, 200, JSON.stringify(reactivate.json));
+  assert.equal(reactivate.json.active, 1);
+
+  const generated = await api("/availability/generate-weekly", {
+    method: "POST",
+    body: {
+      professional_id: ctx.professionalId,
+      weekdays: [1, 2, 3, 4, 5],
+      start_time: "09:00",
+      end_time: "18:00",
+      lunch_start: "12:00",
+      lunch_end: "13:00",
+      duration_minutes: 40,
+      buffer_minutes: 10,
+    },
+  });
+  assert.equal(generated.status, 201, JSON.stringify(generated.json));
+  assert.equal(generated.json.length, 5);
+
+  const ready = await api("/booking/readiness");
+  assert.equal(ready.status, 200);
+  assert.equal(ready.json.ready, true, JSON.stringify(ready.json));
+
+  const config = await api("/booking/config");
+  assert.equal(config.status, 200, JSON.stringify(config.json));
+  const linkedProfessional = config.json.professionals.find((item) => Number(item.id) === Number(ctx.professionalId));
+  assert.ok(linkedProfessional, "profissional vinculado deve aparecer no agendamento publico");
+  assert.ok(linkedProfessional.service_ids.map(Number).includes(Number(ctx.serviceId)), "config publico deve informar service_ids do profissional");
+});
+
 // 4a) Joia: cadastra com quantidade inicial (POST /jewelry → 201).
 test("4a. cadastra joia com estoque inicial", async () => {
   const create = await api("/jewelry", {
@@ -157,6 +212,29 @@ test("4a. cadastra joia com estoque inicial", async () => {
   const list = await api("/jewelry");
   assert.equal(list.status, 200);
   assert.ok(list.json.some((j) => j.id === ctx.jewelryId), "joia deve aparecer na listagem");
+
+  const duplicateAuto = await api("/jewelry", {
+    method: "POST",
+    body: {
+      name: "Labret Titânio Zircônia Reserva",
+      category: "Labret",
+      material: "Titânio",
+      color: "Prata",
+      variants: [{
+        sku: create.json.variants[0].sku,
+        material: "Titânio",
+        color: "Prata",
+        thickness: "1.2mm",
+        length: "8mm",
+        quantity: 1,
+        sale_value: 65,
+      }],
+    },
+  });
+  assert.equal(duplicateAuto.status, 201, `SKU automatico duplicado deve ser regenerado. Resposta: ${JSON.stringify(duplicateAuto.json)}`);
+  assert.notEqual(duplicateAuto.json.sku, create.json.sku, "SKU principal automatico deve ser unico");
+  assert.notEqual(duplicateAuto.json.variants[0].sku, create.json.variants[0].sku, "SKU da variacao automatica deve ser unico");
+  ctx.extraJewelryId = duplicateAuto.json.id;
 });
 
 // 4b) Movimento de estoque no nível de produto (POST /jewelry/:id/movements).
@@ -385,8 +463,8 @@ test("9b. erp responde 200 com métricas coerentes", async () => {
   assert.equal(erp.status, 200, JSON.stringify(erp.json));
   assert.equal(Number(erp.json.metrics.clients), 1, "deve haver 1 cliente");
   assert.equal(Number(erp.json.metrics.appointments), 1, "deve haver 1 agendamento");
-  // joias: 1 se a criação funcionou, 0 se bloqueada pelo bug de 4a.
-  assert.equal(Number(erp.json.metrics.jewelry), ctx.jewelryId ? 1 : 0, "quantidade de joias coerente com o que foi criado");
+  const expectedJewelryCount = [ctx.jewelryId, ctx.extraJewelryId].filter(Boolean).length;
+  assert.equal(Number(erp.json.metrics.jewelry), expectedJewelryCount, "quantidade de joias coerente com o que foi criado");
   // Receita paga (payments status='pago') = sinal 40 + restante 80 (atendimento)
   // + 120 (a venda concluída também grava um pagamento 'pago') = 240.
   assert.equal(Number(erp.json.metrics.revenue), 240, "receita paga deve ser 240 (40 + 80 + 120 da venda)");

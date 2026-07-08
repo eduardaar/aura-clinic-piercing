@@ -168,6 +168,18 @@ export function defaultProcedureForm() {
   };
 }
 
+export function defaultProfessionalForm() {
+  return {
+    name: "",
+    specialty: "",
+    phone: "",
+    email: "",
+    calendar_color: "#C8A96A",
+    active: true,
+    service_ids: []
+  };
+}
+
 export function defaultSalesOrderForm() {
   return {
     full_name: "",
@@ -273,6 +285,7 @@ export function defaultJewelryVariant(index = 1) {
   return {
     id: null,
     sku: "",
+    sku_manually_edited: false,
     variation_name: `Variação ${index}`,
     material: "Titânio ASTM F136",
     color: "Natural",
@@ -330,6 +343,7 @@ export function normalizeJewelryForm(item = {}) {
           material: normalizeJewelryMaterial(variant.material),
           color: splitColorOptions(variant.color).join(", "),
           thread_type: normalizeJewelryThread(variant.thread_type),
+          sku_manually_edited: false,
           is_active: Boolean(Number(variant.is_active ?? 1))
         }))
       : [defaultJewelryVariant()]

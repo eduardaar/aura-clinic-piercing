@@ -552,7 +552,7 @@ export function JewelryEditor({ options, editing, onSaved, onCancel, onMovementO
       stem_length: form.variants[0]?.length || "",
       thread_type: form.variants[0]?.thread_type || "",
       supplier: form.variants[0]?.supplier || "",
-      sku: form.variants[0]?.sku || "",
+      sku: form.sku || "",
       quantity: form.variants.reduce((sum, variant) => sum + Number(variant.quantity || 0), 0),
       cost_value: Math.min(...form.variants.map((variant) => Number(variant.cost_value || 0))),
       sale_value: Math.min(...form.variants.map((variant) => Number(variant.sale_value || 0))),
@@ -572,7 +572,7 @@ export function JewelryEditor({ options, editing, onSaved, onCancel, onMovementO
       body: JSON.stringify(payload)
     });
     const json = await response.json().catch(() => ({}));
-    if (!response.ok) return setError(json.error || "Não foi possível salvar a joia.");
+    if (!response.ok) return setError(json.message || json.error || "Não foi possível salvar a joia.");
     setForm(defaultJewelry());
     onSaved(json);
   }
@@ -876,7 +876,7 @@ export function VariantEditModal({ category, variant, onChange, onClose }) {
               {JEWELRY_THREAD_OPTIONS.map((option) => <option key={option}>{option}</option>)}
             </Select>
           )}
-          <Input label="SKU" value={variant.sku} onChange={(value) => onChange({ sku: value })} required />
+          <Input label="SKU" value={variant.sku} onChange={(value) => onChange({ sku: value, sku_manually_edited: true })} required />
           <Input label="Fornecedor" value={variant.supplier} onChange={(value) => onChange({ supplier: value })} />
           <div className="form-grid">
             <Input type="number" label="Valor de Custo" value={variant.cost_value} onChange={(value) => onChange({ cost_value: value })} />
