@@ -57,11 +57,13 @@ jobs:
         run: |
           install -m 600 /dev/null "$GITHUB_WORKSPACE/.deploy_key"
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > "$GITHUB_WORKSPACE/.deploy_key"
-          ssh-keyscan -H "$SERVER_HOST" > "$GITHUB_WORKSPACE/.known_hosts" 2>/dev/null
 
+      # Sem ssh-keyscan (que abre 1 conexão por tipo de chave e ajudava a
+      # tropeçar no fail2ban). accept-new confia no host no 1º contato e a
+      # conexão é multiplexada pelo deploy.sh (uma só para todo o deploy).
       - name: Deploy
         env:
-          SSH_OPTS: -i ${{ github.workspace }}/.deploy_key -o UserKnownHostsFile=${{ github.workspace }}/.known_hosts -o StrictHostKeyChecking=yes
+          SSH_OPTS: -i ${{ github.workspace }}/.deploy_key -o UserKnownHostsFile=${{ github.workspace }}/.known_hosts -o StrictHostKeyChecking=accept-new
         run: bash scripts/deploy.sh
 
       - name: Limpar chave

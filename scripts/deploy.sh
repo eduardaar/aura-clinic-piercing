@@ -31,7 +31,15 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 target="${SERVER_USER}@${SERVER_HOST}"
-rsh="ssh ${SSH_OPTS} -o ConnectTimeout=20"
+
+# Multiplexação SSH: TODAS as operações (rsync + comandos remotos) reutilizam
+# UMA única conexão TCP. Sem isso, o deploy abre várias conexões SSH seguidas e
+# tropeça no rate-limit (ufw LIMIT) e no fail2ban do servidor — o que bania o
+# runner do GitHub Actions no meio do deploy (timeout na porta 22).
+CONTROL="$(mktemp -u "${TMPDIR:-/tmp}/aura-deploy-ctl-XXXXXX")"
+rsh="ssh ${SSH_OPTS} -o ConnectTimeout=20 -o ControlMaster=auto -o ControlPath=${CONTROL} -o ControlPersist=180"
+cleanup() { ssh -o ControlPath="${CONTROL}" -O exit "${target}" 2>/dev/null || true; }
+trap cleanup EXIT
 
 echo "==> [1/5] Build do frontend (VITE_API_URL=${API_URL})"
 (
