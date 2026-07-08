@@ -514,6 +514,26 @@ export function BookingAdmin() {
     refreshAvailability();
   }
 
+  async function createDefaultAvailability(professionalId) {
+    if (!professionalId) return;
+    await Promise.all([1, 2, 3, 4, 5, 6].map((weekday) => apiFetch("/availability", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        professional_id: professionalId,
+        weekday,
+        is_active: true,
+        start_time: "09:00",
+        end_time: "18:00",
+        lunch_start: "12:00",
+        lunch_end: "13:00",
+        duration_minutes: 40,
+        buffer_minutes: 10
+      })
+    })));
+    refreshAvailability();
+  }
+
   function openNewBlock() {
     setBlockForm(defaultScheduleBlock());
     setBlockError("");
@@ -681,6 +701,15 @@ export function BookingAdmin() {
       )}
       {tab === "horarios" && (
         <div className="availability-grid">
+          {!safeAvailability.length && (
+            <article className="panel availability-card">
+              <div className="panel-heading"><h2>Sem horários cadastrados</h2><span>Crie a semana padrão para começar.</span></div>
+              <Select label="Profissional" value="" onChange={createDefaultAvailability}>
+                <option value="">Escolha um profissional</option>
+                {professionals.map((professional) => <option value={professional.id} key={professional.id}>{professional.name}</option>)}
+              </Select>
+            </article>
+          )}
           {safeAvailability.map((item) => (
             <article className="panel availability-card" key={item.id}>
               <div className="panel-heading"><h2>{weekdayLabel(item.weekday)}</h2><span>{item.professional_name}</span></div>

@@ -184,6 +184,7 @@ export function defaultSalesLine() {
   return {
     item_type: "produto",
     product_id: "",
+    product_variant_id: "",
     service_id: "",
     quantity: 1,
     unit_price: 0,

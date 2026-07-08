@@ -69,7 +69,7 @@ router.post("/api/booking/requests", upload.fields([{ name: "reference_photo", m
   const result = await db.run(
     `INSERT INTO appointments
     (client_id, professional_id, service_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, total_value, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, status, notes, reference_photo_url, payment_proof_url)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       client.id,
       professionalId,

@@ -441,5 +441,9 @@ CREATE INDEX IF NOT EXISTS idx_error_logs_resolved ON error_logs(resolved, creat
 
 -- Correções idempotentes aplicadas a clínicas já existentes no boot (applySchemaToAllTenants).
 ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS cpf TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS updated_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS');
 ALTER TABLE payments ALTER COLUMN appointment_id DROP NOT NULL;
 ALTER TABLE digital_terms ALTER COLUMN appointment_id DROP NOT NULL;

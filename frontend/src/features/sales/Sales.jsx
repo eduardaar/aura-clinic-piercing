@@ -25,6 +25,12 @@ export function SalesWorkspace() {
   const safeProcedures = asArray(procedures);
   const safeJewelry = asArray(jewelry);
   const safeAppointments = asArray(appointments);
+  const selectedProduct = safeJewelry.find((item) => String(item.id) === String(line.product_id));
+  const selectedVariants = asArray(selectedProduct?.variants).filter((variant) => Number(variant.is_active ?? 1));
+  const selectedVariant = selectedVariants.find((variant) => String(variant.id) === String(line.product_variant_id));
+  const availableQuantity = line.item_type === "produto"
+    ? Number((selectedVariant || selectedProduct)?.quantity || 0)
+    : null;
 
   useEffect(() => {
     setLine((current) => ({ ...current, item_type: tab === "servico" ? "servico" : "produto" }));
@@ -32,7 +38,14 @@ export function SalesWorkspace() {
 
   useEffect(() => {
     if (safeJewelry.length && tab !== "servico" && !line.product_id) {
-      setLine((current) => ({ ...current, product_id: String(safeJewelry[0].id), item_name: safeJewelry[0].name, unit_price: safeJewelry[0].sale_value || 0 }));
+      const firstVariant = asArray(safeJewelry[0].variants).find((variant) => Number(variant.quantity || 0) > 0) || asArray(safeJewelry[0].variants)[0];
+      setLine((current) => ({
+        ...current,
+        product_id: String(safeJewelry[0].id),
+        product_variant_id: firstVariant?.id ? String(firstVariant.id) : "",
+        item_name: safeJewelry[0].name,
+        unit_price: firstVariant?.sale_value || safeJewelry[0].sale_value || 0
+      }));
     }
   }, [safeJewelry.length]);
 
@@ -72,14 +85,21 @@ export function SalesWorkspace() {
        safeServices.find((item) => String(item.id) === String(line.service_id))
       : safeJewelry.find((item) => String(item.id) === String(line.product_id));
     if (!entry) return;
+    const variant = line.item_type === "produto"
+      ? asArray(entry.variants).find((item) => String(item.id) === String(line.product_variant_id))
+      : null;
+    if (line.item_type === "produto" && variant && quantity > Number(variant.quantity || 0)) {
+      setError("Quantidade maior que o estoque disponivel da variacao.");
+      return;
+    }
     setItems((current) => [...current, {
       item_type: line.item_type,
       product_id: line.item_type === "produto" ? Number(entry.id) : null,
       service_id: line.item_type === "servico" ? Number(entry.id) : null,
-      item_name: entry.name,
+      item_name: variant ? `${entry.name} - ${variant.variation_name || variant.sku}` : entry.name,
       quantity,
-      product_variant_id: line.item_type === "produto" && line.product_variant_id ? Number(line.product_variant_id) : null,
-      unit_price: Number(line.unit_price || entry.sale_value || entry.base_price || entry.price || 0),
+      product_variant_id: variant ? Number(variant.id) : null,
+      unit_price: Number(line.unit_price || variant?.sale_value || entry.sale_value || entry.base_price || entry.price || 0),
       notes: line.notes || ""
     }]);
     setLine((current) => ({ ...current, quantity: 1, notes: "" }));
@@ -262,14 +282,33 @@ export function SalesWorkspace() {
               ) : (
                 <Select label="Joia" value={line.product_id} onChange={(value) => {
                   const selected = safeJewelry.find((item) => String(item.id) === String(value));
+                  const firstVariant = asArray(selected?.variants).find((variant) => Number(variant.quantity || 0) > 0) || asArray(selected?.variants)[0];
                   setLine({
                     ...line,
                     product_id: value,
+                    product_variant_id: firstVariant?.id ? String(firstVariant.id) : "",
                     item_name: selected?.name || "",
-                    unit_price: selected?.sale_value || 0
+                    unit_price: firstVariant?.sale_value || selected?.sale_value || 0
                   });
                 }}>
                   {safeJewelry.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </Select>
+              )}
+              {line.item_type === "produto" && (
+                <Select label="Variação" value={line.product_variant_id} onChange={(value) => {
+                  const variant = selectedVariants.find((item) => String(item.id) === String(value));
+                  setLine({
+                    ...line,
+                    product_variant_id: value,
+                    unit_price: variant?.sale_value || selectedProduct?.sale_value || line.unit_price
+                  });
+                }}>
+                  <option value="">Sem variação</option>
+                  {selectedVariants.map((variant) => (
+                    <option key={variant.id} value={variant.id}>
+                      {variant.variation_name || variant.sku} - {variant.quantity || 0} un
+                    </option>
+                  ))}
                 </Select>
               )}
               <Input type="number" label="Quantidade" value={line.quantity} onChange={(value) => setLine({ ...line, quantity: value })} />
