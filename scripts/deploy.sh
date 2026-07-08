@@ -88,14 +88,17 @@ docker image prune -f >/dev/null 2>&1 || true
 docker ps --filter name=aura-api --format 'aura-api: {{.Status}}'
 REMOTE
 
-echo "==> [5/5] Health check em ${SITE_URL}"
+# Health check por DENTRO do servidor (via a conexão SSH já aberta): bate direto
+# no container aura-api e checa o index do front. Não passa pelo Cloudflare, que
+# responde 403 para IPs de datacenter (ex.: runners do GitHub Actions).
+echo "==> [5/5] Health check (via SSH, direto no container)"
 ok=0
 for i in 1 2 3 4 5 6; do
   sleep 3
-  api="$(curl -fsS -o /dev/null -w '%{http_code}' "${SITE_URL}/api/health" || echo 000)"
-  front="$(curl -fsS -o /dev/null -w '%{http_code}' "${SITE_URL}/" || echo 000)"
-  echo "   tentativa ${i}: api=${api} front=${front}"
-  if [ "${api}" = "200" ] && [ "${front}" = "200" ]; then ok=1; break; fi
+  health="$(${rsh} "${target}" 'docker exec aura-api wget -qO- http://127.0.0.1:4000/api/health 2>/dev/null || true')"
+  front="$(${rsh} "${target}" "test -f ${REMOTE_FRONT}/index.html && echo ok || echo missing")"
+  echo "   tentativa ${i}: api=${health:-vazio} | front=${front}"
+  case "${health}" in *'"ok":true'*) [ "${front}" = "ok" ] && { ok=1; break; } ;; esac
 done
 [ "${ok}" = "1" ] || { echo "!! Health check FALHOU"; exit 1; }
 
