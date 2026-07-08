@@ -15,6 +15,7 @@ export function DigitalTerms() {
   const [savedTerm, setSavedTerm] = useState(null);
 
   const safeAppointments = asArray(appointments);
+  const hasAppointments = safeAppointments.length > 0;
   const safeTerms = asArray(terms);
   const selectedAppointment = safeAppointments.find((item) => String(item.id) === String(form.appointment_id));
 
@@ -96,10 +97,11 @@ export function DigitalTerms() {
 
         <section className="term-section">
           <h3>Agendamento Vinculado</h3>
-          <Select label="Agendamento" value={form.appointment_id} onChange={(value) => updateField("appointment_id", value)} required>
-            <option value="">Selecione</option>
+          <Select label="Agendamento" value={form.appointment_id} onChange={(value) => updateField("appointment_id", value)}>
+            <option value="">{hasAppointments ? "Sem vínculo / preencher manualmente" : "Nenhum agendamento disponível"}</option>
             {safeAppointments.map((item) => <option key={item.id} value={item.id}>{formatDate(item.appointment_date)}  {item.appointment_time}  {personName(item)}  {item.procedure}</option>)}
           </Select>
+          {!hasAppointments && <p className="empty-state">Você pode salvar a ficha sem agendamento vinculado. Quando houver agendamentos cadastrados, eles aparecerão aqui para seleção.</p>}
         </section>
 
         <section className="term-section">
@@ -228,8 +230,8 @@ export function DigitalTerms() {
             <article className="term-row" key={term.id}>
               <div>
                 <strong>{term.full_name}</strong>
-                <span>{formatDate(term.appointment_date)}  {term.appointment_time}  {term.procedure}</span>
-                <small>{term.professional_name}  assinado em {new Date(term.signed_at).toLocaleDateString("pt-BR")}</small>
+                <span>{term.appointment_id ? `${formatDate(term.appointment_date)}  ${term.appointment_time || ""}  ${term.procedure || ""}` : term.procedure || "Ficha sem agendamento vinculado"}</span>
+                <small>{term.professional_name || "Sem profissional vinculado"}  assinado em {new Date(term.signed_at).toLocaleDateString("pt-BR")}</small>
               </div>
               {term.pdf_url && <a className="secondary-button" href={`${API_ORIGIN}${term.pdf_url}`} target="_blank" rel="noreferrer">PDF</a>}
             </article>

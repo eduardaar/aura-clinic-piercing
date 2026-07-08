@@ -187,6 +187,27 @@ test("3e. readiness exige vinculo e agenda semanal; depois fica pronto", async (
   assert.ok(linkedProfessional.service_ids.map(Number).includes(Number(ctx.serviceId)), "config publico deve informar service_ids do profissional");
 });
 
+test("3f. cria termo digital sem agendamento vinculado", async () => {
+  const create = await api("/digital-terms", {
+    method: "POST",
+    body: {
+      client_id: ctx.clientId,
+      full_name: "Maria Teste",
+      document_number: "123456789",
+      whatsapp: "11999990001",
+      procedure: "Anamnese avulsa",
+      piercing_region: "Orelha",
+      orientations_confirmed: true,
+      health_declaration: "Sem alergias",
+      signature_data_url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEUlEQVR4nGPgEpHjEpFjgFAABk4A8Z5vd+AAAAAASUVORK5CYII=",
+      form_data: { health_history: { diabetes: false } },
+    },
+  });
+  assert.equal(create.status, 201, JSON.stringify(create.json));
+  assert.ok(create.json.id, "termo sem agendamento deve ter id");
+  assert.equal(create.json.appointment_id, null);
+});
+
 // 4a) Joia: cadastra com quantidade inicial (POST /jewelry → 201).
 test("4a. cadastra joia com estoque inicial", async () => {
   const create = await api("/jewelry", {

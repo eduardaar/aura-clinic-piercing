@@ -387,14 +387,53 @@ export function BookingAdmin() {
   const safeBlocks = asArray(blocks);
   const safeAppointments = asArray(appointments);
 
-  if (services == null || procedures == null || professionalsData == null || readiness == null || availability == null || blocks == null || appointments == null) return <Loading />;
-
   const readinessData = asObject(readiness);
   const checklist = asArray(readinessData.checklist);
   const activeServices = safeServices.filter((service) => Boolean(Number(service.is_active ?? service.active_online_booking)));
   const activeProcedures = safeProcedures.filter((procedure) => Boolean(Number(procedure.is_active)));
   const activeProfessionals = allProfessionals.filter((professional) => Boolean(Number(professional.active)));
   const isBookingReady = Boolean(readinessData.ready);
+  const weeklyWeekdays = [1, 2, 3, 4, 5, 6];
+
+  function weeklyFormForProfessional(professionalId, fallback = weeklyForm) {
+    const savedDays = safeAvailability.filter((item) => String(item.professional_id) === String(professionalId));
+    const firstDay = savedDays[0] || {};
+    return {
+      ...fallback,
+      professional_id: professionalId,
+      start_time: firstDay.start_time || fallback.start_time || "09:00",
+      end_time: firstDay.end_time || fallback.end_time || "18:00",
+      lunch_start: firstDay.lunch_start ?? fallback.lunch_start ?? "12:00",
+      lunch_end: firstDay.lunch_end ?? fallback.lunch_end ?? "13:00",
+      duration_minutes: Number(firstDay.duration_minutes || fallback.duration_minutes || 40),
+      buffer_minutes: Number(firstDay.buffer_minutes || fallback.buffer_minutes || 10),
+      weekdays: savedDays.length
+        ? savedDays.filter((item) => Boolean(Number(item.is_active))).map((item) => Number(item.weekday)).filter((day) => weeklyWeekdays.includes(day)).sort()
+        : weeklyWeekdays
+    };
+  }
+
+  useEffect(() => {
+    if (!weeklyForm.professional_id) return;
+    const savedDays = safeAvailability.filter((item) => String(item.professional_id) === String(weeklyForm.professional_id));
+    if (!savedDays.length) return;
+    setWeeklyForm((current) => {
+      const next = weeklyFormForProfessional(current.professional_id, current);
+      const sameDays = asArray(current.weekdays).join(",") === asArray(next.weekdays).join(",");
+      if (
+        sameDays &&
+        current.start_time === next.start_time &&
+        current.end_time === next.end_time &&
+        current.lunch_start === next.lunch_start &&
+        current.lunch_end === next.lunch_end &&
+        Number(current.duration_minutes) === Number(next.duration_minutes) &&
+        Number(current.buffer_minutes) === Number(next.buffer_minutes)
+      ) return current;
+      return next;
+    });
+  }, [availability, weeklyForm.professional_id]);
+
+  if (services == null || procedures == null || professionalsData == null || readiness == null || availability == null || blocks == null || appointments == null) return <Loading />;
 
   function validateServiceForm() {
     if (!serviceForm.name.trim()) return "Informe o nome do serviço.";
@@ -630,7 +669,7 @@ export function BookingAdmin() {
     refreshReadiness();
   }
 
-  async function generateWeeklyAvailability(event) {
+  async function saveWeeklyAvailability(event) {
     event.preventDefault();
     setReadinessMessage("");
     if (!activeProfessionals.length) return setReadinessMessage("Cadastre e ative pelo menos um profissional antes de configurar a agenda semanal.");
@@ -644,9 +683,9 @@ export function BookingAdmin() {
     });
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
-      return setReadinessMessage(payload.error || "NÃ£o foi possÃ­vel gerar a disponibilidade semanal.");
+      return setReadinessMessage(payload.error || "Não foi possível salvar a disponibilidade semanal.");
     }
-    setReadinessMessage("Disponibilidade semanal gerada com sucesso.");
+    setReadinessMessage("Disponibilidade semanal salva com sucesso.");
     refreshAvailability();
     refreshReadiness();
   }
@@ -920,11 +959,11 @@ export function BookingAdmin() {
           <article className="panel">
             <div className="panel-heading">
               <h2>Agenda semanal</h2>
-              <span>Gere horários fixos antes de liberar o link público.</span>
+              <span>Salve os horários fixos antes de liberar o link público.</span>
             </div>
-            <form onSubmit={generateWeeklyAvailability}>
+            <form onSubmit={saveWeeklyAvailability}>
               <div className="form-grid">
-                <Select label="Profissional" value={weeklyForm.professional_id} onChange={(value) => setWeeklyForm({ ...weeklyForm, professional_id: value })}>
+                <Select label="Profissional" value={weeklyForm.professional_id} onChange={(value) => setWeeklyForm(weeklyFormForProfessional(value))}>
                   <option value="">Escolha um profissional</option>
                   {activeProfessionals.map((professional) => <option value={professional.id} key={professional.id}>{professional.name}</option>)}
                 </Select>
@@ -936,7 +975,7 @@ export function BookingAdmin() {
                 <Input type="number" label="Intervalo entre atendimentos" value={weeklyForm.buffer_minutes} onChange={(value) => setWeeklyForm({ ...weeklyForm, buffer_minutes: value })} />
               </div>
               <div className="toggle-grid">
-                {[0, 1, 2, 3, 4, 5, 6].map((weekday) => (
+                {weeklyWeekdays.map((weekday) => (
                   <Toggle
                     key={weekday}
                     label={weekdayLabel(weekday)}
@@ -950,7 +989,8 @@ export function BookingAdmin() {
                   />
                 ))}
               </div>
-              <Button variant="primary" type="submit">Gerar disponibilidade semanal</Button>
+              <p className="empty-state">Domingo fica indisponível por padrão. Para liberar domingo, use os cards de disponibilidade avançada abaixo.</p>
+              <Button variant="primary" type="submit">Salvar disponibilidade</Button>
             </form>
           </article>
           <div className="availability-grid">
