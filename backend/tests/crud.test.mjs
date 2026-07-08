@@ -116,6 +116,27 @@ test("joia sem name → 400", async () => {
   assert.match(res.json.error, /Nome do produto/i);
 });
 
+test("joia com SKU manual duplicado → 409", async () => {
+  const body = {
+    name: "Labret SKU Unico",
+    category: "Labret",
+    material: "Titanio",
+    color: "Natural",
+    sku: "TEST-SKU-DUP-001",
+    quantity: 1,
+    sale_value: 99
+  };
+  const first = await api("/jewelry", { method: "POST", body });
+  assert.equal(first.status, 201, JSON.stringify(first.json));
+
+  const duplicated = await api("/jewelry", {
+    method: "POST",
+    body: { ...body, name: "Labret SKU Repetido" }
+  });
+  assert.equal(duplicated.status, 409, JSON.stringify(duplicated.json));
+  assert.equal(duplicated.json.message, "Já existe uma joia com este SKU.");
+});
+
 // ---------- Agendamentos ----------
 
 test("agendamento sem professional_id → 400", async () => {

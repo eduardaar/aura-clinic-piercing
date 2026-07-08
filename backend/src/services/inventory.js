@@ -5,6 +5,36 @@ import {
   buildVariationName
 } from "./utils.js";
 
+export class SkuConflictError extends Error {
+  constructor(message = "SKU já cadastrado.") {
+    super(message);
+    this.name = "SkuConflictError";
+    this.statusCode = 409;
+  }
+}
+
+export function isUniqueViolation(error) {
+  return error?.code === "23505";
+}
+
+export async function jewelrySkuExists(db, sku, excludeId = null) {
+  const value = String(sku || "").trim();
+  if (!value) return false;
+  const row = excludeId
+    ? await db.get("SELECT id FROM jewelry_inventory WHERE sku = ? AND id != ?", [value, excludeId])
+    : await db.get("SELECT id FROM jewelry_inventory WHERE sku = ?", [value]);
+  return Boolean(row);
+}
+
+async function variantSkuExists(db, sku, excludeId = null) {
+  const value = String(sku || "").trim();
+  if (!value) return false;
+  const row = excludeId
+    ? await db.get("SELECT id FROM jewelry_variants WHERE sku = ? AND id != ?", [value, excludeId])
+    : await db.get("SELECT id FROM jewelry_variants WHERE sku = ?", [value]);
+  return Boolean(row);
+}
+
 export async function generateSku(db, body = {}) {
   const normalize = (value = "") => String(value)
     .normalize("NFD")
@@ -37,14 +67,34 @@ export async function generateSku(db, body = {}) {
   }[normalize(categorySource)] || "GEN";
 
   const prefix = `${materialCode}-${categoryCode}`;
-  const row = await db.get(
-    "SELECT sku FROM jewelry_inventory WHERE sku LIKE ? ORDER BY id DESC LIMIT 1",
+  const rows = await db.all(
+    "SELECT sku FROM jewelry_inventory WHERE sku LIKE ?",
     [`${prefix}-%`]
   );
-  const nextNumber = row?.sku
-    ? Number(String(row.sku).split("-").pop()) + 1
-    : 1;
-  return `${prefix}-${String(nextNumber).padStart(3, "0")}`;
+  const usedNumbers = rows
+    .map((row) => Number(String(row.sku || "").split("-").pop()))
+    .filter((number) => Number.isInteger(number) && number > 0);
+  let nextNumber = usedNumbers.length ? Math.max(...usedNumbers) + 1 : 1;
+  for (let attempt = 0; attempt < 10000; attempt += 1) {
+    const candidate = `${prefix}-${String(nextNumber).padStart(3, "0")}`;
+    if (!(await jewelrySkuExists(db, candidate))) return candidate;
+    nextNumber += 1;
+  }
+  return `${prefix}-${Date.now()}`;
+}
+
+async function uniqueVariantSku(db, desiredSku, { excludeId = null, userProvided = false } = {}) {
+  const desired = String(desiredSku || "").trim();
+  if (!desired) throw new SkuConflictError();
+  if (!(await variantSkuExists(db, desired, excludeId))) return desired;
+  if (userProvided) throw new SkuConflictError("SKU já cadastrado.");
+
+  const base = desired.replace(/-\d{2,3}$/, "");
+  for (let index = 1; index <= 10000; index += 1) {
+    const candidate = `${base}-${String(index).padStart(2, "0")}`;
+    if (!(await variantSkuExists(db, candidate, excludeId))) return candidate;
+  }
+  throw new SkuConflictError();
 }
 
 export async function countOptionUsage(db, option) {
@@ -106,6 +156,10 @@ export async function replaceJewelryVariants(db, jewelryId, variants = []) {
   }
   const current = await db.all("SELECT * FROM jewelry_variants WHERE jewelry_id = ?", [jewelryId]);
   const product = await db.get("SELECT sku, material, category, subcategory, name FROM jewelry_inventory WHERE id = ?", [jewelryId]);
+  const suppliedSkus = variants.map((variant) => String(variant?.sku || "").trim()).filter(Boolean);
+  if (new Set(suppliedSkus).size !== suppliedSkus.length) {
+    throw new SkuConflictError("SKU já cadastrado.");
+  }
   const suppliedSku = variants.map((variant) => String(variant?.sku || "").trim()).find(Boolean);
   const existingSku = current.map((variant) => String(variant.sku || "").trim()).find(Boolean);
   const productSku = String(product?.sku || "").trim();
@@ -116,7 +170,11 @@ export async function replaceJewelryVariants(db, jewelryId, variants = []) {
   const retainedIds = [];
   for (let index = 0; index < variants.length; index += 1) {
     const variant = variants[index] || {};
-    const sku = String(variant.sku || `${skuBase}-${String(index + 1).padStart(2, "0")}`).trim();
+    const existing = current.find((item) => Number(item.id) === Number(variant.id));
+    const sku = await uniqueVariantSku(db, variant.sku || `${skuBase}-${String(index + 1).padStart(2, "0")}`, {
+      excludeId: existing?.id || null,
+      userProvided: Boolean(variant.sku)
+    });
     const values = [
       sku,
       variant.variation_name || buildVariationName(variant),
@@ -137,7 +195,6 @@ export async function replaceJewelryVariants(db, jewelryId, variants = []) {
       variantStatus(variant.quantity, variant.low_stock_threshold),
       variant.is_active === false ? 0 : 1
     ];
-    const existing = current.find((item) => Number(item.id) === Number(variant.id));
     if (existing) {
       await db.run(
         `UPDATE jewelry_variants
@@ -178,6 +235,7 @@ export async function replaceJewelryVariants(db, jewelryId, variants = []) {
 
 export async function syncProductInventory(db, jewelryId) {
   const variants = await db.all("SELECT * FROM jewelry_variants WHERE jewelry_id = ? AND is_active = 1", [jewelryId]);
+  const product = await db.get("SELECT sku FROM jewelry_inventory WHERE id = ?", [jewelryId]);
   const quantity = variants.reduce((sum, variant) => sum + Number(variant.quantity || 0), 0);
   const saleValues = variants.map((variant) => Number(variant.sale_value || 0)).filter((value) => value > 0);
   const costValues = variants.map((variant) => Number(variant.cost_value || 0)).filter((value) => value > 0);
@@ -198,7 +256,7 @@ export async function syncProductInventory(db, jewelryId) {
       first.length || "",
       first.thread_type || "",
       first.supplier || "",
-      first.sku || `AURA-${jewelryId}`,
+      product?.sku || first.sku || `AURA-${jewelryId}`,
       aggregateVariantStatus(variants),
       jewelryId
     ]
