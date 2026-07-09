@@ -121,7 +121,10 @@ export function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpe
             {criticalStockItems.slice(0, 3).map((item) => (
               <div key={item.id || `${item.name}-${item.quantity}`}>
                 <div className="jewel-thumb"><Gem size={21} /></div>
-                <span><strong>{item.name || "Joia"}</strong><small>{item.color || item.category || "Sem categoria"}</small></span>
+                <span>
+                  <strong>{item.name || "Joia"}</strong>
+                  <small>{item.alert_level || (Number(item.quantity || 0) <= 0 ? "Esgotado" : "Acabando")} · {item.color || item.category || "Sem categoria"}</small>
+                </span>
                 <em>{Number(item.quantity || 0)} unidade{Number(item.quantity || 0) === 1 ? "" : "s"}</em>
               </div>
             ))}

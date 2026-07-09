@@ -388,7 +388,8 @@ test("5a. cria agendamento (com sinal) e ele aparece na listagem", async () => {
   assert.ok(create.json.id, "agendamento deve ter id");
   assert.equal(Number(create.json.professional_id), Number(ctx.professionalId));
   assert.equal(Number(create.json.deposit_value), 40);
-  assert.equal(Number(create.json.remaining_value), 80);
+  assert.equal(Number(create.json.total_value), 180, "total deve somar procedimento 120 + joia 60");
+  assert.equal(Number(create.json.remaining_value), 140);
   ctx.appointmentId = create.json.id;
 
   const list = await api("/appointments");
@@ -436,8 +437,8 @@ test("6a. finance reflete sinal e restante do atendimento", async () => {
   assert.equal(finance.status, 200, JSON.stringify(finance.json));
   // Sinal de 40 recebido neste mês.
   assert.equal(Number(finance.json.deposits.monthTotal), 40, "sinal de 40 deve constar em deposits.monthTotal");
-  // Ao atender, registra o pagamento restante (80). Total do mês = 40 + 80 = 120.
-  assert.equal(Number(finance.json.totals.month_total), 120, "month_total deve somar sinal + restante = 120");
+  // Ao atender, registra o pagamento restante (140). Total do mês = 40 + 140 = 180.
+  assert.equal(Number(finance.json.totals.month_total), 180, "month_total deve somar sinal + restante = 180");
 });
 
 test("6b. cria despesa e ela reflete no finance", async () => {
@@ -452,8 +453,8 @@ test("6b. cria despesa e ela reflete no finance", async () => {
   assert.equal(Number(finance.json.expensesSummary.fixed_total), 500, "despesa fixa de 500 deve constar");
   assert.equal(
     Number(finance.json.profit.estimated),
-    120 - 500,
-    "lucro estimado = receita do mês (120) - despesas (500)"
+    180 - 500,
+    "lucro estimado = receita do mês (180) - despesas (500)"
   );
 });
 
@@ -581,7 +582,7 @@ test("9b. erp responde 200 com métricas coerentes", async () => {
   assert.equal(Number(erp.json.metrics.appointments), 2, "deve haver 2 agendamentos, incluindo o horario ocupado do teste de slots");
   const expectedJewelryCount = [ctx.jewelryId, ctx.extraJewelryId].filter(Boolean).length;
   assert.equal(Number(erp.json.metrics.jewelry), expectedJewelryCount, "quantidade de joias coerente com o que foi criado");
-  // Receita paga (payments status='pago') = sinal 40 + restante 80 (atendimento)
-  // + 120 (a venda concluída também grava um pagamento 'pago') = 240.
-  assert.equal(Number(erp.json.metrics.revenue), 240, "receita paga deve ser 240 (40 + 80 + 120 da venda)");
+  // Receita paga (payments status='pago') = sinal 40 + restante 140 (atendimento com joia)
+  // + 120 (a venda concluída também grava um pagamento 'pago') = 300.
+  assert.equal(Number(erp.json.metrics.revenue), 300, "receita paga deve ser 300 (40 + 140 + 120 da venda)");
 });
