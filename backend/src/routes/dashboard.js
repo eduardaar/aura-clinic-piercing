@@ -19,12 +19,17 @@ router.get("/api/dashboard", withDb(async (_req, res, db) => {
     FROM appointments
   `, [today, `${month}%`]);
   const deposit = await db.get("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE payment_type = 'sinal' AND status = 'pago'");
-  const lowStock = await db.get("SELECT COUNT(*) AS count FROM jewelry_inventory WHERE quantity > 0 AND quantity <= COALESCE(critical_stock_threshold, 3)");
+  const lowStock = await db.get("SELECT COUNT(*) AS count FROM jewelry_inventory WHERE status != 'arquivado' AND quantity <= COALESCE(low_stock_threshold, 5)");
   const todaysAppointments = await listAppointments(db, "WHERE a.appointment_date = ?", [today]);
   const lowStockJewelry = await db.all(`
-    SELECT id, name, category, color, size, thickness, quantity, status, sku
+    SELECT id, name, category, color, size, thickness, quantity, status, sku,
+      CASE
+        WHEN quantity <= 0 THEN 'Esgotado'
+        WHEN quantity <= COALESCE(critical_stock_threshold, 2) THEN 'Crítico'
+        ELSE 'Acabando'
+      END AS alert_level
     FROM jewelry_inventory
-    WHERE quantity > 0 AND quantity <= COALESCE(critical_stock_threshold, 3)
+    WHERE status != 'arquivado' AND quantity <= COALESCE(low_stock_threshold, 5)
     ORDER BY quantity ASC, name
     LIMIT 8
   `);
@@ -91,12 +96,13 @@ router.get("/api/dashboard", withDb(async (_req, res, db) => {
   `);
   res.json({
     stats: {
-      todayCount: stats?.todayCount ?? 0,
-      pendingCount: stats?.pendingCount || 0,
-      confirmedCount: stats?.confirmedCount || 0,
-      lowStockCount: stats?.lowStockCount || 0,
-      depositReceived: stats?.depositReceived || 0,
-      monthForecast: stats?.monthForecast || 0
+      todayCount: stats?.today_count || stats?.todayCount || 0,
+      pendingCount: stats?.pending_count || stats?.pendingCount || 0,
+      confirmedCount: stats?.confirmed_count || stats?.confirmedCount || 0,
+      criticalStock: lowStock?.count || 0,
+      lowStockCount: lowStock?.count || 0,
+      depositReceived: deposit?.total || 0,
+      monthForecast: stats?.month_forecast || stats?.monthForecast || 0
     },
     todaysAppointments,
     alerts: { lowStockJewelry, birthdays, topClients },

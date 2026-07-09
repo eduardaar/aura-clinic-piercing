@@ -120,6 +120,9 @@ router.post("/api/booking/requests", upload.fields([{ name: "reference_photo", m
   const slots = await availableBookingSlots(db, { service, professionalId, date });
   if (!slots.some((slot) => slot.time === time)) return res.status(409).json({ error: "Este horário não está mais disponível." });
   if (!body.full_name?.trim() || !body.whatsapp?.trim()) return res.status(400).json({ error: "Nome e WhatsApp são obrigatórios." });
+  const totalValue = Number(service.price || service.base_price || 0);
+  const depositValue = Number(service.deposit_value || 25);
+  const remainingValue = Math.max(totalValue - depositValue, 0);
   const client = await upsertClient(db, {
     full_name: body.full_name,
     whatsapp: body.whatsapp,
@@ -144,9 +147,9 @@ router.post("/api/booking/requests", upload.fields([{ name: "reference_photo", m
       date,
       time,
       endTime,
-      Number(service.price || 0),
-      Number(service.deposit_value || 0),
-      Math.max(Number(service.price || 0) - Number(service.deposit_value || 0), 0),
+      totalValue,
+      depositValue,
+      remainingValue,
       "Pix",
       "Pix",
       "pendente",
@@ -154,6 +157,10 @@ router.post("/api/booking/requests", upload.fields([{ name: "reference_photo", m
       referencePhoto,
       paymentProof
     ]
+  );
+  await db.run(
+    "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, 'sinal', 'Pix', 'pago', ?)",
+    [result.lastID, client.id, depositValue, `${date}T${time}:00`]
   );
   res.status(201).json(await listAppointments(db, "WHERE a.id = ?", [result.lastID]).then((rows) => rows[0]));
 }));

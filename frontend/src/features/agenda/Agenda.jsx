@@ -6,9 +6,9 @@ import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../componen
 import { Loading } from "../../components/common/Feedback";
 import { asArray, asNumber, asObject, formatDate } from "../../lib/utils";
 import { apiFetch, useFetch } from "../../lib/api";
-import { buildCalendar, buildTimeSlots, movePeriod } from "../../lib/calendarUtils";
+import { buildCalendar, buildTimeSlots, dateKey, movePeriod } from "../../lib/calendarUtils";
 import { defaultAppointment, defaultProcedureForm, defaultProfessionalForm, defaultScheduleBlock, defaultServiceForm } from "../../lib/defaultForms";
-import { calcRemaining, currency, personName, statusClass, statuses, weekdayLabel, whatsappUrl } from "../../features/shared/helpers";
+import { appointmentWhatsAppMessage, calcRemaining, currency, personName, statusClass, statuses, weekdayLabel, whatsappUrl } from "../../features/shared/helpers";
 import { Toggle } from "../../pages/CatalogCustomization";
 
 export function AgendaWorkspace() {
@@ -72,6 +72,10 @@ export function Appointments() {
   const safeProcedures = asArray(procedures);
   const safeJewelry = asArray(safeOptions.jewelry);
   const safeProfessionals = asArray(safeOptions.professionals);
+
+  function updatePricedForm(nextForm) {
+    setForm(priceAppointmentDraft(nextForm, safeServices, safeJewelry));
+  }
 
   useEffect(() => {
     async function loadSlots() {
@@ -178,25 +182,23 @@ export function Appointments() {
           <div className="form-grid">
             <Select label="Tipo de Atendimento" value={form.service_id} onChange={(value) => {
               const service = safeServices.find((item) => String(item.id) === String(value));
-              setForm(calcRemaining({
+              updatePricedForm({
                 ...form,
                 service_id: value,
                 procedure: service?.name || "",
-                total_value: Number(service?.base_price || service?.price || 0),
-                deposit_value: Number(service?.deposit_value || 0),
                 appointment_time: ""
-              }));
+              });
             }} required>
               <option value="">Selecione</option>
               {safeServices.map((service) => <option key={service.id} value={service.id}>{service.name} ({service.duration_minutes} min)</option>)}
             </Select>
             <Input label="Procedimento" value={form.procedure} onChange={(v) => setForm({ ...form, procedure: v })} required />
             <Input label="Região da perfuração" value={form.piercing_region} onChange={(v) => setForm({ ...form, piercing_region: v })} required />
-            <Select label="Joalheria escolhida" value={form.jewelry_id} onChange={(v) => setForm({ ...form, jewelry_id: v })}>
+            <Select label="Joalheria escolhida" value={form.jewelry_id} onChange={(v) => updatePricedForm({ ...form, jewelry_id: v, jewelry_variant_id: "" })}>
               <option value="">Sem joia vinculada</option>
               {safeJewelry.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </Select>
-            <Select label="Variação da Joia" value={form.jewelry_variant_id} onChange={(v) => setForm({ ...form, jewelry_variant_id: v })}>
+            <Select label="Variação da Joia" value={form.jewelry_variant_id} onChange={(v) => updatePricedForm({ ...form, jewelry_variant_id: v })}>
               <option value="">Selecione</option>
               {asArray(safeJewelry.find((item) => String(item.id) === String(form.jewelry_id))?.variants).filter((variant) => asNumber(variant?.quantity) > 0).map((variant) => (
                 <option key={variant.id} value={variant.id}>{variant.variation_name || variant.sku} · {variant.quantity} un</option>
@@ -208,6 +210,7 @@ export function Appointments() {
             </Select>
             <Input type="date" label="Data" value={form.appointment_date} onChange={(v) => setForm({ ...form, appointment_date: v, appointment_time: "" })} required />
           </div>
+          <AppointmentValueSummary form={form} services={safeServices} jewelry={safeJewelry} />
           <div className="manual-slot-field">
             <span>Horários Disponíveis</span>
             <div className="manual-slot-grid">
@@ -252,10 +255,60 @@ export function Appointments() {
   );
 }
 
+function priceAppointmentDraft(draft, services = [], jewelryList = []) {
+  const service = asArray(services).find((item) => String(item.id) === String(draft.service_id));
+  const jewelry = asArray(jewelryList).find((item) => String(item.id) === String(draft.jewelry_id));
+  const variant = asArray(jewelry?.variants).find((item) => String(item.id) === String(draft.jewelry_variant_id));
+  const procedureValue = asNumber(service?.base_price || service?.price || 0);
+  const jewelryValue = draft.jewelry_id ? asNumber(variant?.sale_value || jewelry?.sale_value || 0) : 0;
+  const totalValue = procedureValue + jewelryValue;
+  const depositValue = asNumber(draft.deposit_value || service?.deposit_value || 0);
+  return calcRemaining({
+    ...draft,
+    total_value: totalValue,
+    deposit_value: depositValue
+  });
+}
+
+function appointmentValueParts(form, services = [], jewelryList = []) {
+  const service = asArray(services).find((item) => String(item.id) === String(form.service_id));
+  const jewelry = asArray(jewelryList).find((item) => String(item.id) === String(form.jewelry_id));
+  const variant = asArray(jewelry?.variants).find((item) => String(item.id) === String(form.jewelry_variant_id));
+  const procedureValue = asNumber(service?.base_price || service?.price || 0);
+  const jewelryValue = form.jewelry_id ? asNumber(variant?.sale_value || jewelry?.sale_value || 0) : 0;
+  const totalValue = procedureValue + jewelryValue;
+  const depositValue = asNumber(form.deposit_value || service?.deposit_value || 0);
+  return {
+    procedureValue,
+    jewelryValue,
+    totalValue,
+    depositValue,
+    remainingValue: Math.max(totalValue - depositValue, 0)
+  };
+}
+
+function AppointmentValueSummary({ form, services, jewelry }) {
+  const values = appointmentValueParts(form, services, jewelry);
+  if (!form.service_id && !form.jewelry_id) return null;
+  return (
+    <div className="soft-card appointment-value-summary">
+      <span>Procedimento: <strong>{currency.format(values.procedureValue)}</strong></span>
+      <span>Joalheria: <strong>{currency.format(values.jewelryValue)}</strong></span>
+      <span>Sinal: <strong>{currency.format(values.depositValue)}</strong></span>
+      <span>Restante: <strong>{currency.format(values.remainingValue)}</strong></span>
+      <span>Total: <strong>{currency.format(values.totalValue)}</strong></span>
+    </div>
+  );
+}
+
 export function VisualCalendar() {
   const { data: options } = useFetch("/options");
+  const { data: clients, refresh: refreshClients } = useFetch("/clients");
+  const { data: services } = useFetch("/services");
   const [filters, setFilters] = useState({ mode: "mensal", professional_id: "", status: "" });
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedAppointment, setSelectedAppointment] = useState(null);
+  const [createSeed, setCreateSeed] = useState(null);
   const { data, refresh } = useFetch(`/appointments?${new URLSearchParams(Object.fromEntries(Object.entries(filters).filter(([, v]) => v && !["mensal", "semanal", "diario"].includes(v))))}`);
   const safeOptions = asObject(options);
   const calendar = useMemo(() => buildCalendar(asArray(data), filters.mode, currentDate), [data, filters.mode, currentDate]);
@@ -282,26 +335,46 @@ export function VisualCalendar() {
         </div>
       </div>
       {filters.mode === "diario" ? (
-        <DailyAgenda day={calendar.days[0]} refresh={refresh} />
+        <DailyAgenda day={calendar.days[0]} refresh={refresh} onSelect={setSelectedAppointment} onEmptySlot={setCreateSeed} />
       ) : (
-        <GoogleLikeCalendar days={calendar.days} mode={filters.mode} refresh={refresh} />
+        <GoogleLikeCalendar days={calendar.days} mode={filters.mode} refresh={refresh} onSelect={setSelectedAppointment} onEmptySlot={setCreateSeed} />
       )}
+      <AppointmentCreateModal
+        seed={createSeed}
+        options={safeOptions}
+        clients={clients}
+        services={services}
+        onClose={() => setCreateSeed(null)}
+        onSaved={() => {
+          setCreateSeed(null);
+          refresh();
+          refreshClients();
+        }}
+      />
+      <AppointmentQuickModal
+        appointment={selectedAppointment}
+        onClose={() => setSelectedAppointment(null)}
+        onSaved={() => {
+          setSelectedAppointment(null);
+          refresh();
+        }}
+      />
     </section>
   );
 }
 
-export function GoogleLikeCalendar({ days, mode, refresh }) {
+export function GoogleLikeCalendar({ days, mode, refresh, onSelect, onEmptySlot }) {
   return (
     <div className={`google-calendar ${mode === "semanal" ? "week-view" : ""}`}>
       {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day) => <div className="calendar-weekday" key={day}>{day}</div>)}
       {days.map((day) => (
-        <article className={`calendar-cell ${day.isOutside ? "outside" : ""} ${day.isToday ? "today" : ""}`} key={day.key}>
+        <article className={`calendar-cell ${day.isOutside ? "outside" : ""} ${day.isToday ? "today" : ""}`} key={day.key} onClick={() => onEmptySlot?.({ appointment_date: day.key })}>
           <header>
             <span>{day.date.getDate()}</span>
             {day.isToday && <strong>Hoje</strong>}
           </header>
           <div className="calendar-events">
-            {asArray(day.items).map((item) => <CalendarEvent item={item} key={item.id} refresh={refresh} />)}
+            {asArray(day.items).map((item) => <CalendarEvent item={item} key={item.id} refresh={refresh} onSelect={onSelect} />)}
           </div>
         </article>
       ))}
@@ -309,7 +382,7 @@ export function GoogleLikeCalendar({ days, mode, refresh }) {
   );
 }
 
-export function DailyAgenda({ day, refresh }) {
+export function DailyAgenda({ day, refresh, onSelect, onEmptySlot }) {
   const slots = buildTimeSlots(day.items);
   return (
     <div className="daily-calendar">
@@ -318,27 +391,230 @@ export function DailyAgenda({ day, refresh }) {
         <span>{day.items.length} atendimento(s)</span>
       </div>
       {slots.map((slot) => (
-        <div className="time-slot" key={slot.hour}>
+        <div className="time-slot" key={slot.hour} onClick={() => onEmptySlot?.({ appointment_date: dateKey(day.date), appointment_time: slot.hour })}>
           <span>{slot.hour}</span>
-          <div>{asArray(slot.items).map((item) => <CalendarEvent item={item} key={item.id} refresh={refresh} />)}</div>
+          <div>{asArray(slot.items).map((item) => <CalendarEvent item={item} key={item.id} refresh={refresh} onSelect={onSelect} />)}</div>
         </div>
       ))}
     </div>
   );
 }
 
-export function CalendarEvent({ item, refresh }) {
+export function CalendarEvent({ item, refresh, onSelect }) {
   return (
-    <div className={`calendar-event ${statusClass[item.status]}`}>
+    <div
+      className={`calendar-event ${statusClass[item.status]}`}
+      role="button"
+      tabIndex={0}
+      onClick={(event) => {
+        event.stopPropagation();
+        onSelect?.(item);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.stopPropagation();
+          onSelect?.(item);
+        }
+      }}
+    >
       <strong>{item.appointment_time} - {personName(item)}</strong>
       <span>{item.procedure}</span>
       <small>{item.professional_name}</small>
-      <div className="event-actions">
+      <div className="event-actions" onClick={(event) => event.stopPropagation()}>
         <button onClick={() => updateAppointment(item.id, { status: "remarcado" }, refresh)}>Remarcar</button>
         <button onClick={() => updateAppointment(item.id, { status: "cancelado" }, refresh)}>Cancelar</button>
         <button onClick={() => updateAppointment(item.id, { status: "atendido" }, refresh)}>Atendido</button>
       </div>
     </div>
+  );
+}
+
+export function AppointmentCreateModal({ seed, options, clients, services, onClose, onSaved }) {
+  const safeOptions = asObject(options);
+  const safeClients = asArray(clients);
+  const safeServices = asArray(services);
+  const safeJewelry = asArray(safeOptions.jewelry);
+  const safeProfessionals = asArray(safeOptions.professionals);
+  const [form, setForm] = useState(defaultAppointment());
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!seed) return;
+    setForm({
+      ...defaultAppointment(),
+      appointment_date: seed.appointment_date || defaultAppointment().appointment_date,
+      appointment_time: seed.appointment_time || "",
+      status: "pendente"
+    });
+    setError("");
+  }, [seed]);
+
+  function setClient(clientId) {
+    const client = safeClients.find((item) => String(item.id) === String(clientId));
+    if (!client) {
+      setForm({ ...form, client_id: "", full_name: "", whatsapp: "", instagram: "", birth_date: "" });
+      return;
+    }
+    setForm({
+      ...form,
+      client_id: client.id,
+      full_name: personName(client),
+      whatsapp: client.whatsapp || "",
+      instagram: client.instagram || "",
+      birth_date: client.birth_date || ""
+    });
+  }
+
+  function updatePricedForm(nextForm) {
+    setForm(priceAppointmentDraft(nextForm, safeServices, safeJewelry));
+  }
+
+  async function submit(event) {
+    event.preventDefault();
+    setError("");
+    const response = await apiFetch("/appointments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form)
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      setError(data.error || "Não foi possível criar o agendamento.");
+      return;
+    }
+    onSaved?.();
+  }
+
+  return (
+    <Modal
+      open={!!seed}
+      title="Novo Agendamento"
+      subtitle="Criação rápida pela agenda visual"
+      size="lg"
+      onClose={onClose}
+      footer={(
+        <>
+          <button type="button" className="secondary-button" onClick={onClose}>Cancelar</button>
+          <button type="submit" form="visual-appointment-form" className="primary-button">Salvar Agendamento</button>
+        </>
+      )}
+    >
+      <form id="visual-appointment-form" className="stack" onSubmit={submit}>
+        <div className="form-grid">
+          <Select label="Cliente cadastrado" value={form.client_id} onChange={setClient}>
+            <option value="">Novo cliente</option>
+            {safeClients.map((client) => <option key={client.id} value={client.id}>{personName(client)} - {client.whatsapp}</option>)}
+          </Select>
+          <Input label="Nome completo" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} required />
+          <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => setForm({ ...form, whatsapp: value })} required />
+          <Select label="Serviço" value={form.service_id} onChange={(value) => {
+            const service = safeServices.find((item) => String(item.id) === String(value));
+            updatePricedForm({ ...form, service_id: value, procedure: service?.name || "", piercing_region: service?.name || form.piercing_region });
+          }} required>
+            <option value="">Selecione</option>
+            {safeServices.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
+          </Select>
+          <Input label="Procedimento" value={form.procedure} onChange={(value) => setForm({ ...form, procedure: value })} required />
+          <Input label="Região" value={form.piercing_region} onChange={(value) => setForm({ ...form, piercing_region: value })} required />
+          <Select label="Profissional" value={form.professional_id} onChange={(value) => setForm({ ...form, professional_id: value })} required>
+            <option value="">Selecione</option>
+            {safeProfessionals.map((professional) => <option key={professional.id} value={professional.id}>{professional.name}</option>)}
+          </Select>
+          <Input type="date" label="Data" value={form.appointment_date} onChange={(value) => setForm({ ...form, appointment_date: value })} required />
+          <Input type="time" label="Horário" value={form.appointment_time} onChange={(value) => setForm({ ...form, appointment_time: value })} required />
+          <StatusSelect value={form.status} onChange={(value) => setForm({ ...form, status: value })} />
+          <Select label="Joalheria" value={form.jewelry_id} onChange={(value) => updatePricedForm({ ...form, jewelry_id: value, jewelry_variant_id: "" })}>
+            <option value="">Sem joia</option>
+            {safeJewelry.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </Select>
+          <Select label="Variação" value={form.jewelry_variant_id} onChange={(value) => updatePricedForm({ ...form, jewelry_variant_id: value })}>
+            <option value="">Selecione</option>
+            {asArray(safeJewelry.find((item) => String(item.id) === String(form.jewelry_id))?.variants).filter((variant) => asNumber(variant?.quantity) > 0).map((variant) => (
+              <option key={variant.id} value={variant.id}>{variant.variation_name || variant.sku} · {currency.format(asNumber(variant.sale_value || 0))}</option>
+            ))}
+          </Select>
+        </div>
+        <AppointmentValueSummary form={form} services={safeServices} jewelry={safeJewelry} />
+        <label>Observações
+          <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
+        </label>
+        {error && <span className="form-error">{error}</span>}
+      </form>
+    </Modal>
+  );
+}
+
+export function AppointmentQuickModal({ appointment, onClose, onSaved }) {
+  const [form, setForm] = useState({ appointment_date: "", appointment_time: "", status: "pendente", notes: "" });
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!appointment) return;
+    setForm({
+      appointment_date: appointment.appointment_date || "",
+      appointment_time: appointment.appointment_time || "",
+      status: appointment.status || "pendente",
+      notes: appointment.notes || ""
+    });
+    setError("");
+  }, [appointment]);
+
+  async function saveAppointment(patch = {}) {
+    if (!appointment?.id) return;
+    setError("");
+    const payload = { ...form, ...patch };
+    const response = await apiFetch(`/appointments/${appointment.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      setError(data.error || "Não foi possível atualizar o agendamento.");
+      return;
+    }
+    onSaved?.();
+  }
+
+  return (
+    <Modal
+      open={!!appointment}
+      title="Detalhes do Agendamento"
+      subtitle={appointment ? `${personName(appointment)} · ${appointment.procedure || "Atendimento"}` : ""}
+      size="md"
+      onClose={onClose}
+      footer={(
+        <>
+          <button type="button" className="secondary-button" onClick={onClose}>Fechar</button>
+          <button type="button" className="primary-button" onClick={() => saveAppointment()}>Salvar Alterações</button>
+        </>
+      )}
+    >
+      {appointment && (
+        <div className="stack">
+          <div className="soft-card">
+            <strong>{personName(appointment)}</strong>
+            <p>{appointment.whatsapp || "WhatsApp não informado"}</p>
+            <p>{appointment.service_name || appointment.procedure || "Procedimento não informado"} · {appointment.professional_name || "Sem profissional"}</p>
+          </div>
+          <div className="form-grid">
+            <Input type="date" label="Data" value={form.appointment_date} onChange={(value) => setForm({ ...form, appointment_date: value })} />
+            <Input type="time" label="Horário" value={form.appointment_time} onChange={(value) => setForm({ ...form, appointment_time: value })} />
+            <StatusSelect value={form.status} onChange={(value) => setForm({ ...form, status: value })} />
+          </div>
+          <label>Observação
+            <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
+          </label>
+          <div className="toolbar compact-actions">
+            <button type="button" className="secondary-button" onClick={() => saveAppointment({ status: "confirmado" })}>Confirmar</button>
+            <button type="button" className="secondary-button" onClick={() => saveAppointment({ status: "remarcado" })}>Reagendar</button>
+            <button type="button" className="secondary-button danger" onClick={() => saveAppointment({ status: "cancelado" })}>Cancelar</button>
+            <button type="button" className="primary-button" onClick={() => saveAppointment({ status: "atendido" })}>Finalizar</button>
+          </div>
+          {error && <span className="form-error">{error}</span>}
+        </div>
+      )}
+    </Modal>
   );
 }
 
@@ -489,6 +765,7 @@ export function BookingAdmin() {
       name: service.name || "",
       description: service.description || "",
       base_price: service.base_price || 0,
+      deposit_value: Number(service.deposit_value || 25),
       duration_minutes: service.duration_minutes || 40,
       is_active: Boolean(service.is_active)
     });
@@ -945,6 +1222,7 @@ export function BookingAdmin() {
                 <Input label="Nome" value={serviceForm.name} onChange={(value) => setServiceForm({ ...serviceForm, name: value })} required />
                 <Input type="number" label="Duração em minutos" value={serviceForm.duration_minutes} onChange={(value) => setServiceForm({ ...serviceForm, duration_minutes: value })} />
                 <Input type="number" label="Preço base" value={serviceForm.base_price} onChange={(value) => setServiceForm({ ...serviceForm, base_price: value })} />
+                <Input type="number" label="Sinal obrigatório" value={serviceForm.deposit_value} onChange={(value) => setServiceForm({ ...serviceForm, deposit_value: value })} />
               </div>
               <label>Descrição<textarea value={serviceForm.description} onChange={(event) => setServiceForm({ ...serviceForm, description: event.target.value })} /></label>
               <Toggle label="Serviço ativo" checked={serviceForm.is_active} onChange={(value) => setServiceForm({ ...serviceForm, is_active: value })} />
@@ -1167,7 +1445,7 @@ export function AppointmentList({ appointments = [], onChanged, compact }) {
           </div>
           <StatusBadge status={item.status} />
           {!compact && <div className="row-actions">
-            <a title="WhatsApp" href={whatsappUrl(item.whatsapp, `Ola ${personName(item)}, tudo bem Aqui e da Aura Clinic sobre seu atendimento de ${formatDate(item.appointment_date)} as ${item.appointment_time}.`)} target="_blank" rel="noreferrer">WhatsApp</a>
+            <a title="WhatsApp" href={whatsappUrl(item.whatsapp, appointmentWhatsAppMessage(item))} target="_blank" rel="noreferrer">WhatsApp</a>
             <button title="Cancelar" onClick={() => updateAppointment(item.id, { status: "cancelado" }, onChanged)}><XCircle size={16} /></button>
             <button title="Atendido" onClick={() => updateAppointment(item.id, { status: "atendido" }, onChanged)}><CheckCircle2 size={16} /></button>
           </div>}

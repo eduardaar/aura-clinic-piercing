@@ -35,7 +35,7 @@ router.get("/api/catalog", withDb(async (_req, res, db) => {
       fp.sort_order AS featured_order
     FROM jewelry_inventory j
     LEFT JOIN catalog_featured_products fp ON fp.product_id = j.id AND fp.is_active = 1
-    WHERE j.is_catalog_active = 1 AND j.is_published = 1 AND j.status != 'arquivado'
+    WHERE j.is_catalog_active = 1 AND j.status != 'arquivado'
     ORDER BY COALESCE(fp.sort_order, 9999), j.category, j.name
   `);
   const items = (await attachVariants(db, productRows))

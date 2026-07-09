@@ -64,6 +64,15 @@ export function whatsappUrl(phone, message) {
   return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
 }
 
+export function appointmentWhatsAppMessage(item = {}) {
+  const name = personName(item);
+  const date = item.appointment_date ? formatDate(item.appointment_date) : "data a confirmar";
+  const time = item.appointment_time || "horário a confirmar";
+  const service = item.service_name || item.procedure || "seu atendimento";
+  const professional = item.professional_name ? ` com ${item.professional_name}` : "";
+  return `Olá, ${name}, tudo bem? Aqui é da Aura Clinic. Estamos entrando em contato para confirmar, reagendar ou informar uma atualização sobre ${service}${professional}, marcado para ${date} às ${time}.`;
+}
+
 export function instagramCatalogUrl(handle = "") {
   const username = String(handle).trim().replace(/^@/, "");
   return username ? `https://www.instagram.com/${encodeURIComponent(username)}/` : "https://www.instagram.com/";
