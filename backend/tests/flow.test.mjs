@@ -194,6 +194,10 @@ test("3e. readiness exige vinculo e agenda semanal; depois fica pronto", async (
   const linkedProfessional = config.json.professionals.find((item) => Number(item.id) === Number(ctx.professionalId));
   assert.ok(linkedProfessional, "profissional vinculado deve aparecer no agendamento publico");
   assert.ok(linkedProfessional.service_ids.map(Number).includes(Number(ctx.serviceId)), "config publico deve informar service_ids do profissional");
+
+  const publicConfigByQuery = await req(`/booking/config?t=${ctx.slug}`);
+  assert.equal(publicConfigByQuery.status, 200, JSON.stringify(publicConfigByQuery.json));
+  assert.ok(publicConfigByQuery.json.services.some((item) => Number(item.id) === Number(ctx.serviceId)), "link publico deve resolver tenant por query string");
 });
 
 test("3g. agenda publica gera slots reais, respeita almoco, domingo, bloqueios e ocupados", async () => {
@@ -202,6 +206,10 @@ test("3g. agenda publica gera slots reais, respeita almoco, domingo, bloqueios e
   assert.equal(mondaySlots.status, 200, JSON.stringify(mondaySlots.json));
   assert.ok(mondaySlots.json.slots.some((slot) => slot.time === "09:00"), "deve exibir inicio do expediente");
   assert.ok(!mondaySlots.json.slots.some((slot) => slot.time >= "12:00" && slot.time < "13:00"), "nao deve exibir horarios no almoco");
+
+  const publicMondaySlots = await req(`/booking/slots?t=${ctx.slug}&service_id=${ctx.serviceId}&professional_id=${ctx.professionalId}&date=${monday}`);
+  assert.equal(publicMondaySlots.status, 200, JSON.stringify(publicMondaySlots.json));
+  assert.ok(publicMondaySlots.json.slots.length > 0, "horarios publicos devem carregar sem header X-Tenant quando o link informa ?t=");
 
   const sunday = nextDateForWeekday(0, 8);
   const closedSunday = await api(`/booking/slots?service_id=${ctx.serviceId}&professional_id=${ctx.professionalId}&date=${sunday}`);

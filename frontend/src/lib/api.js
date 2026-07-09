@@ -10,6 +10,12 @@ const TENANT_SLUG_PATTERN = /^[a-z0-9-]+$/;
 
 export function tenantSlug() {
   try {
+    const params = new URLSearchParams(window.location.search);
+    const urlTenant = String(params.get("t") || params.get("tenant") || params.get("clinic") || "").trim().toLowerCase();
+    if (TENANT_SLUG_PATTERN.test(urlTenant)) {
+      setTenantSlug(urlTenant);
+      return urlTenant;
+    }
     const stored = (localStorage.getItem(TENANT_STORAGE_KEY) || "").trim();
     return TENANT_SLUG_PATTERN.test(stored) ? stored : DEFAULT_TENANT_SLUG;
   } catch {
@@ -74,6 +80,12 @@ export function apiFetch(path, options = {}) {
   });
 }
 
+export function publicApiFetch(path, options = {}) {
+  const headers = new Headers(options.headers || {});
+  if (!headers.has("X-Tenant")) headers.set("X-Tenant", tenantSlug());
+  return fetch(`${API}${path}`, { ...options, headers });
+}
+
 export async function downloadApiFile(path, filename) {
   const response = await apiFetch(path);
   if (!response.ok) return;
@@ -111,7 +123,7 @@ export function usePublicFetch(path) {
   useEffect(() => {
     let active = true;
     // Rotas públicas também precisam identificar a clínica via X-Tenant.
-    fetch(`${API}${path}`, { headers: { "X-Tenant": tenantSlug() } })
+    publicApiFetch(path)
       .then(async (res) => {
         const json = await res.json().catch(() => ({}));
         if (!res.ok) return { error: json.error || "Não foi possível carregar os dados." };

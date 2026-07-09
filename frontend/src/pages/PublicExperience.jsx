@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { Loading, ApiError } from "../components/common/Feedback";
 import { BookingChoiceGrid, Input, Select } from "../components/common/Ui";
-import { API, API_ORIGIN, usePublicFetch } from "../lib/api";
+import { API_ORIGIN, publicApiFetch, usePublicFetch } from "../lib/api";
 import { asArray, asNumber, asObject, formatLongDate } from "../lib/utils";
 import { ANODIZATION_COLOR_OPTIONS, JEWELRY_CATEGORY_OPTIONS, JEWELRY_LENGTH_OPTIONS, defaultPublicBooking, nextBookingDates } from "../lib/defaultForms";
 import {
@@ -418,7 +418,7 @@ function CatalogBookingWidget() {
   useEffect(() => {
     async function loadSlots() {
       if (!form.service_id || !form.professional_id || !form.appointment_date) return setSlots([]);
-      const response = await fetch(API + "/booking/slots?service_id=" + form.service_id + "&professional_id=" + form.professional_id + "&date=" + form.appointment_date);
+      const response = await publicApiFetch("/booking/slots?service_id=" + form.service_id + "&professional_id=" + form.professional_id + "&date=" + form.appointment_date);
       const json = await response.json().catch(() => ({}));
       setSlots(response.ok ? asArray(json.slots) : []);
     }
@@ -908,7 +908,7 @@ export function PublicBooking() {
     async function loadSlots() {
       if (!form.service_id || !form.professional_id || !form.appointment_date) return setSlots([]);
       setLoadingSlots(true);
-      const response = await fetch(API + "/booking/slots?service_id=" + form.service_id + "&professional_id=" + form.professional_id + "&date=" + form.appointment_date);
+      const response = await publicApiFetch("/booking/slots?service_id=" + form.service_id + "&professional_id=" + form.professional_id + "&date=" + form.appointment_date);
       const json = await response.json().catch(() => ({}));
       setLoadingSlots(false);
       setSlots(response.ok ? asArray(json.slots) : []);
@@ -926,7 +926,7 @@ export function PublicBooking() {
     Object.entries(form).forEach(([key, value]) => {
       if (value) body.append(key, value);
     });
-    const response = await fetch(API + "/booking/requests", { method: "POST", body });
+    const response = await publicApiFetch("/booking/requests", { method: "POST", body });
     const json = await response.json().catch(() => ({}));
     if (!response.ok) return setError(json.error || "Não foi possível solicitar o agendamento.");
     setConfirmed(json);
