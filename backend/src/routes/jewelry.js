@@ -120,14 +120,15 @@ router.post("/api/jewelry", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   if (!validateBody(jewelryCreateSchema, req, res)) return;
 
-  const manualSku = String(req.body.sku || "").trim();
+  const requestedSku = String(req.body.sku || "").trim();
+  const manualSku = requestedSku;
   if (manualSku && await jewelrySkuExists(db, manualSku)) {
     return skuConflict(res, "Já existe uma joia com este SKU.");
   }
 
   await db.run("BEGIN");
   try {
-    const sku = manualSku || await generateSku(db, req.body);
+    const sku = manualSku || (requestedSku && !(await jewelrySkuExists(db, requestedSku)) ? requestedSku : await generateSku(db, req.body));
     const result = await db.run(
       `INSERT INTO jewelry_inventory
       (name, description, photo_url, gallery_urls, category, subcategory, variant_group, variation_label, material, color, stone, size, thickness, stem_length, thread_type, piercing_type, weight_grams, package_length_cm, package_width_cm, package_height_cm, package_type, virtual_store_active, preparation_days, shipping_info, seo_title, seo_description, freight_notes, quantity, cost_value, sale_value, supplier, physical_location, sku, is_catalog_active, is_featured, is_new, is_most_wanted, is_promotion, is_last_units, notes, status, low_stock_threshold, critical_stock_threshold, image_url, is_published)
@@ -155,9 +156,11 @@ router.patch("/api/jewelry/:id", withDb(async (req, res, db) => {
   const jewelry = await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [req.params.id]);
   if (!jewelry) return res.status(404).json({ error: "Joia não encontrada." });
 
-  const nextSku = req.body.sku !== undefined ? String(req.body.sku || "").trim() : "";
+  let nextSku = req.body.sku !== undefined ? String(req.body.sku || "").trim() : "";
   if (nextSku && await jewelrySkuExists(db, nextSku, jewelry.id)) {
-    return skuConflict(res, "Já existe uma joia com este SKU.");
+    if (req.body.sku_manually_edited === true) return skuConflict(res, "Já existe uma joia com este SKU.");
+    nextSku = await generateSku(db, req.body);
+    req.body.sku = nextSku;
   }
 
   const fields = ["name", "description", "photo_url", "image_url", "gallery_urls", "category", "subcategory", "variant_group", "variation_label", "material", "color", "stone", "size", "thickness", "stem_length", "thread_type", "piercing_type", "weight_grams", "package_length_cm", "package_width_cm", "package_height_cm", "package_type", "virtual_store_active", "preparation_days", "shipping_info", "seo_title", "seo_description", "freight_notes", "quantity", "cost_value", "sale_value", "supplier", "physical_location", "sku", "is_catalog_active", "is_featured", "is_new", "is_most_wanted", "is_promotion", "is_last_units", "is_published", "notes", "status", "low_stock_threshold", "critical_stock_threshold"];

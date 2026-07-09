@@ -168,6 +168,18 @@ export function defaultProcedureForm() {
   };
 }
 
+export function defaultProfessionalForm() {
+  return {
+    name: "",
+    specialty: "",
+    phone: "",
+    email: "",
+    calendar_color: "#C8A96A",
+    active: true,
+    service_ids: []
+  };
+}
+
 export function defaultSalesOrderForm() {
   return {
     full_name: "",
@@ -184,6 +196,7 @@ export function defaultSalesLine() {
   return {
     item_type: "produto",
     product_id: "",
+    product_variant_id: "",
     service_id: "",
     quantity: 1,
     unit_price: 0,
@@ -197,10 +210,15 @@ export function defaultScheduleBlock() {
     professional_id: "",
     start_datetime: `${today}T09:00`,
     end_datetime: `${today}T18:00`,
+    block_type: "block",
     reason: "Bloqueio",
     notes: "",
     is_full_day: false,
-    is_recurring: false
+    is_recurring: false,
+    lunch_start: "",
+    lunch_end: "",
+    duration_minutes: "",
+    buffer_minutes: ""
   };
 }
 
@@ -272,6 +290,7 @@ export function defaultJewelryVariant(index = 1) {
   return {
     id: null,
     sku: "",
+    sku_manually_edited: false,
     variation_name: `Variação ${index}`,
     material: "Titânio ASTM F136",
     color: "Natural",
@@ -329,6 +348,7 @@ export function normalizeJewelryForm(item = {}) {
           material: normalizeJewelryMaterial(variant.material),
           color: splitColorOptions(variant.color).join(", "),
           thread_type: normalizeJewelryThread(variant.thread_type),
+          sku_manually_edited: false,
           is_active: Boolean(Number(variant.is_active ?? 1))
         }))
       : [defaultJewelryVariant()]

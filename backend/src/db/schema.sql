@@ -142,10 +142,15 @@ CREATE TABLE IF NOT EXISTS schedule_blocks (
   professional_id INTEGER NOT NULL REFERENCES professionals(id),
   start_datetime TEXT NOT NULL,
   end_datetime TEXT NOT NULL,
+  block_type TEXT NOT NULL DEFAULT 'block',
   reason TEXT NOT NULL,
   notes TEXT,
   is_full_day INTEGER NOT NULL DEFAULT 0,
-  is_recurring INTEGER NOT NULL DEFAULT 0
+  is_recurring INTEGER NOT NULL DEFAULT 0,
+  lunch_start TEXT,
+  lunch_end TEXT,
+  duration_minutes INTEGER,
+  buffer_minutes INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS inventory_options (
@@ -441,5 +446,17 @@ CREATE INDEX IF NOT EXISTS idx_error_logs_resolved ON error_logs(resolved, creat
 
 -- Correções idempotentes aplicadas a clínicas já existentes no boot (applySchemaToAllTenants).
 ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS cpf TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS updated_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS');
+ALTER TABLE professionals ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE professionals ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE professionals ADD COLUMN IF NOT EXISTS calendar_color TEXT DEFAULT '#C8A96A';
+ALTER TABLE schedule_blocks ADD COLUMN IF NOT EXISTS block_type TEXT NOT NULL DEFAULT 'block';
+ALTER TABLE schedule_blocks ADD COLUMN IF NOT EXISTS lunch_start TEXT;
+ALTER TABLE schedule_blocks ADD COLUMN IF NOT EXISTS lunch_end TEXT;
+ALTER TABLE schedule_blocks ADD COLUMN IF NOT EXISTS duration_minutes INTEGER;
+ALTER TABLE schedule_blocks ADD COLUMN IF NOT EXISTS buffer_minutes INTEGER;
 ALTER TABLE payments ALTER COLUMN appointment_id DROP NOT NULL;
 ALTER TABLE digital_terms ALTER COLUMN appointment_id DROP NOT NULL;

@@ -47,10 +47,24 @@ async function findTenantBySlug(slug) {
   return tenant;
 }
 
+function slugFromHost(host = "") {
+  const hostname = String(host || "").split(":")[0].toLowerCase();
+  if (!hostname || hostname === "localhost" || hostname === "127.0.0.1") return "";
+  const first = hostname.split(".").filter(Boolean)[0] || "";
+  if (["www", "app", "api"].includes(first)) return "";
+  return TENANT_SLUG_REGEX.test(first) ? first : "";
+}
+
+function slugFromQuery(req) {
+  return String(req.query?.t || req.query?.tenant || req.query?.clinic || req.query?.slug || "").trim().toLowerCase();
+}
+
 // Resolve o tenant da requisição e seta req.tenant.
 // Lança TenantError (400/403/404) quando não for possível resolver.
 export async function resolveTenant(req) {
-  const headerSlug = String(req.headers["x-tenant"] || "").trim().toLowerCase();
+  const headerSlug = String(req.headers["x-tenant"] || req.headers["x-clinic"] || "").trim().toLowerCase();
+  const querySlug = slugFromQuery(req);
+  const hostSlug = slugFromHost(req.headers.host);
 
   let slug = "";
   const decoded = decodeToken(extractBearerToken(req));
@@ -62,6 +76,10 @@ export async function resolveTenant(req) {
     slug = String(decoded.tslug);
   } else if (headerSlug) {
     slug = headerSlug;
+  } else if (querySlug) {
+    slug = querySlug;
+  } else if (hostSlug) {
+    slug = hostSlug;
   } else if (process.env.DEFAULT_TENANT) {
     slug = String(process.env.DEFAULT_TENANT).trim().toLowerCase();
   } else {

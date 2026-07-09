@@ -9,6 +9,18 @@ import {
 } from "./utils.js";
 import { syncProductInventory } from "./inventory.js";
 
+function sameDateTimeDate(value, date) {
+  return String(value || "").slice(0, 10) === date;
+}
+
+function blockType(block) {
+  return String(block.block_type || "block");
+}
+
+function bookingDebug(message, payload = {}) {
+  console.info(`[booking-slots] ${message}`, payload);
+}
+
 export async function listAppointments(db, where = "", params = []) {
   return db.all(`
     SELECT a.*, c.full_name, c.whatsapp, c.instagram, p.name AS professional_name,
@@ -51,9 +63,6 @@ export async function availableBookingSlots(db, { service, professionalId, date 
     "SELECT * FROM professional_availability WHERE professional_id = ? AND weekday = ? AND is_active = 1",
     [professionalId, weekday]
   );
-  if (!availability) return [];
-  const duration = Number(service.duration_minutes || availability.duration_minutes || 40);
-  const step = duration + Number(availability.buffer_minutes || 0);
   const appointments = await db.all(
     `SELECT appointment_time, end_time
      FROM appointments
@@ -66,16 +75,60 @@ export async function availableBookingSlots(db, { service, professionalId, date 
      WHERE professional_id = ? AND DATE(start_datetime) <= DATE(?) AND DATE(end_datetime) >= DATE(?)`,
     [professionalId, date, date]
   );
-  const slots = [];
-  for (let cursor = timeToMinutes(availability.start_time); cursor + duration <= timeToMinutes(availability.end_time); cursor += step) {
-    const start = cursor;
-    const end = cursor + duration;
-    if (availability.lunch_start && availability.lunch_end && rangesOverlap(start, end, timeToMinutes(availability.lunch_start), timeToMinutes(availability.lunch_end))) continue;
-    if (appointments.some((item) => rangesOverlap(start, end, timeToMinutes(item.appointment_time), timeToMinutes(item.end_time || addMinutesToTime(item.appointment_time, duration))))) continue;
-    if (blocks.some((block) => block.is_full_day || rangesOverlap(start, end, dateTimeToDayMinutes(block.start_datetime), dateTimeToDayMinutes(block.end_datetime)))) continue;
-    slots.push({ time: minutesToTime(start), end_time: minutesToTime(end) });
+  const fullDayBlocks = blocks.filter((block) => blockType(block) !== "special_hours" && Number(block.is_full_day || 0));
+  if (fullDayBlocks.length) {
+    bookingDebug("data bloqueada por regra de dia inteiro", { professionalId, serviceId: service.id, date, fullDayBlocks: fullDayBlocks.length });
+    return [];
   }
-  return slots;
+
+  const specialHours = blocks.filter((block) => blockType(block) === "special_hours" && sameDateTimeDate(block.start_datetime, date));
+  const availabilityWindows = specialHours.length
+    ? specialHours.map((block) => ({
+      start_time: String(block.start_datetime).slice(11, 16),
+      end_time: String(block.end_datetime).slice(11, 16),
+      lunch_start: block.lunch_start || "",
+      lunch_end: block.lunch_end || "",
+      duration_minutes: Number(block.duration_minutes || availability?.duration_minutes || 40),
+      buffer_minutes: Number(block.buffer_minutes || availability?.buffer_minutes || 0),
+      source: "special_hours"
+    }))
+    : availability
+      ? [{ ...availability, source: "weekly" }]
+      : [];
+
+  if (!availabilityWindows.length) {
+    bookingDebug("sem disponibilidade para a data", { professionalId, serviceId: service.id, date, weekday });
+    return [];
+  }
+
+  const slots = [];
+  for (const window of availabilityWindows) {
+    const duration = Number(service.duration_minutes || window.duration_minutes || 40);
+    const step = duration + Number(window.buffer_minutes || 0);
+    for (let cursor = timeToMinutes(window.start_time); cursor + duration <= timeToMinutes(window.end_time); cursor += step) {
+      const start = cursor;
+      const end = cursor + duration;
+      if (window.lunch_start && window.lunch_end && rangesOverlap(start, end, timeToMinutes(window.lunch_start), timeToMinutes(window.lunch_end))) continue;
+      if (appointments.some((item) => rangesOverlap(start, end, timeToMinutes(item.appointment_time), timeToMinutes(item.end_time || addMinutesToTime(item.appointment_time, duration))))) continue;
+      if (blocks.some((block) => blockType(block) !== "special_hours" && !Number(block.is_full_day || 0) && rangesOverlap(start, end, dateTimeToDayMinutes(block.start_datetime), dateTimeToDayMinutes(block.end_datetime)))) continue;
+      slots.push({ time: minutesToTime(start), end_time: minutesToTime(end), source: window.source });
+    }
+  }
+  const uniqueSlots = Array.from(new Map(slots.map((slot) => [slot.time, slot])).values())
+    .sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
+  bookingDebug("slots gerados", {
+    professionalId,
+    serviceId: service.id,
+    date,
+    weekday,
+    duration: Number(service.duration_minutes || 0),
+    weekly: Boolean(availability),
+    specialHours: specialHours.length,
+    blocks: blocks.filter((block) => blockType(block) !== "special_hours").length,
+    appointments: appointments.length,
+    slots: uniqueSlots.length
+  });
+  return uniqueSlots;
 }
 
 export async function listMedicalRecords(db, clientId) {
