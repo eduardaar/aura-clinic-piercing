@@ -118,6 +118,81 @@ export async function createSalesOrder(db, body, user) {
   return (await listSalesOrders(db)).find((item) => item.id === result.lastID) || null;
 }
 
+export async function ensureSalesOrderForAppointment(db, appointmentId, user) {
+  const existing = await db.get(
+    "SELECT id FROM sales_orders WHERE appointment_id = ? AND order_type = 'ordem_servico' LIMIT 1",
+    [appointmentId]
+  );
+  if (existing) return (await listSalesOrders(db)).find((item) => item.id === existing.id) || null;
+
+  const appointment = await db.get(`
+    SELECT
+      a.*,
+      c.full_name,
+      c.whatsapp,
+      c.instagram,
+      s.name AS service_name,
+      s.price AS service_price,
+      j.name AS jewelry_name,
+      j.sale_value AS jewelry_sale_value,
+      v.variation_name AS variant_name,
+      v.sale_value AS variant_sale_value
+    FROM appointments a
+    JOIN clients c ON c.id = a.client_id
+    LEFT JOIN services s ON s.id = a.service_id
+    LEFT JOIN jewelry_inventory j ON j.id = a.jewelry_id
+    LEFT JOIN jewelry_variants v ON v.id = a.jewelry_variant_id
+    WHERE a.id = ?
+  `, [appointmentId]);
+  if (!appointment) return null;
+
+  const serviceValue = Number(appointment.service_price || appointment.total_value || 0);
+  const productValue = appointment.jewelry_id ? Number(appointment.variant_sale_value || appointment.jewelry_sale_value || 0) : 0;
+  const total = serviceValue + productValue;
+  const result = await db.run(
+    `INSERT INTO sales_orders
+    (client_id, appointment_id, order_type, source, status, payment_method, total_value, notes, created_by_user_id)
+    VALUES (?, ?, 'ordem_servico', 'agenda', 'concluida', ?, ?, ?, ?)`,
+    [
+      appointment.client_id,
+      appointment.id,
+      appointment.remaining_payment_method || appointment.deposit_payment_method || "Pix",
+      total,
+      `Ordem gerada automaticamente ao finalizar o atendimento #${appointment.id}`,
+      user?.id || null
+    ]
+  );
+
+  await db.run(
+    `INSERT INTO sales_order_items (sales_order_id, item_type, service_id, item_name, quantity, unit_price, notes)
+     VALUES (?, 'servico', ?, ?, 1, ?, ?)`,
+    [
+      result.lastID,
+      appointment.service_id || null,
+      appointment.service_name || appointment.procedure || "Atendimento",
+      serviceValue,
+      appointment.piercing_region || ""
+    ]
+  );
+
+  if (appointment.jewelry_id) {
+    await db.run(
+      `INSERT INTO sales_order_items (sales_order_id, item_type, product_id, product_variant_id, item_name, quantity, unit_price, notes)
+       VALUES (?, 'produto', ?, ?, ?, 1, ?, ?)`,
+      [
+        result.lastID,
+        appointment.jewelry_id,
+        appointment.jewelry_variant_id || null,
+        appointment.variant_name ? `${appointment.jewelry_name} - ${appointment.variant_name}` : appointment.jewelry_name,
+        productValue,
+        "Joia vinculada ao atendimento"
+      ]
+    );
+  }
+
+  return (await listSalesOrders(db)).find((item) => item.id === result.lastID) || null;
+}
+
 export async function listSalesOrders(db) {
   const orders = await db.all(`
     SELECT

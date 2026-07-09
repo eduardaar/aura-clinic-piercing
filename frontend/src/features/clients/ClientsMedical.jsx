@@ -103,7 +103,7 @@ export function ClientsMedical() {
           ]}
           actions={(client) => (
             <>
-              <a className="secondary-button" href={whatsappUrl(client.whatsapp, `Ola ${personName(client)}, tudo bem Aqui e da Aura Clinic.`)} target="_blank" rel="noreferrer">WhatsApp</a>
+              <a className="secondary-button" href={whatsappUrl(client.whatsapp, `Olá, ${personName(client)}, tudo bem? Aqui é da Aura Clinic. Estamos entrando em contato para confirmar informações, acompanhar seu atendimento ou informar uma atualização importante.`)} target="_blank" rel="noreferrer">WhatsApp</a>
               <button type="button" onClick={() => openEdit(client)}>Editar</button>
               <button type="button" onClick={() => setDeleting({ message: `Excluir ${personName(client)}?`, run: () => removeClient(client) })}>Apagar</button>
             </>

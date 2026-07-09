@@ -91,12 +91,13 @@ router.get("/api/dashboard", withDb(async (_req, res, db) => {
   `);
   res.json({
     stats: {
-      todayCount: stats?.todayCount ?? 0,
-      pendingCount: stats?.pendingCount || 0,
-      confirmedCount: stats?.confirmedCount || 0,
-      lowStockCount: stats?.lowStockCount || 0,
-      depositReceived: stats?.depositReceived || 0,
-      monthForecast: stats?.monthForecast || 0
+      todayCount: stats?.today_count || stats?.todayCount || 0,
+      pendingCount: stats?.pending_count || stats?.pendingCount || 0,
+      confirmedCount: stats?.confirmed_count || stats?.confirmedCount || 0,
+      criticalStock: lowStock?.count || 0,
+      lowStockCount: lowStock?.count || 0,
+      depositReceived: deposit?.total || 0,
+      monthForecast: stats?.month_forecast || stats?.monthForecast || 0
     },
     todaysAppointments,
     alerts: { lowStockJewelry, birthdays, topClients },

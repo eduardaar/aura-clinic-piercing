@@ -8,7 +8,7 @@ import { asArray, asNumber, asObject, formatDate } from "../../lib/utils";
 import { apiFetch, useFetch } from "../../lib/api";
 import { buildCalendar, buildTimeSlots, movePeriod } from "../../lib/calendarUtils";
 import { defaultAppointment, defaultProcedureForm, defaultProfessionalForm, defaultScheduleBlock, defaultServiceForm } from "../../lib/defaultForms";
-import { calcRemaining, currency, personName, statusClass, statuses, weekdayLabel, whatsappUrl } from "../../features/shared/helpers";
+import { appointmentWhatsAppMessage, calcRemaining, currency, personName, statusClass, statuses, weekdayLabel, whatsappUrl } from "../../features/shared/helpers";
 import { Toggle } from "../../pages/CatalogCustomization";
 
 export function AgendaWorkspace() {
@@ -256,6 +256,7 @@ export function VisualCalendar() {
   const { data: options } = useFetch("/options");
   const [filters, setFilters] = useState({ mode: "mensal", professional_id: "", status: "" });
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedAppointment, setSelectedAppointment] = useState(null);
   const { data, refresh } = useFetch(`/appointments?${new URLSearchParams(Object.fromEntries(Object.entries(filters).filter(([, v]) => v && !["mensal", "semanal", "diario"].includes(v))))}`);
   const safeOptions = asObject(options);
   const calendar = useMemo(() => buildCalendar(asArray(data), filters.mode, currentDate), [data, filters.mode, currentDate]);
@@ -282,15 +283,23 @@ export function VisualCalendar() {
         </div>
       </div>
       {filters.mode === "diario" ? (
-        <DailyAgenda day={calendar.days[0]} refresh={refresh} />
+        <DailyAgenda day={calendar.days[0]} refresh={refresh} onSelect={setSelectedAppointment} />
       ) : (
-        <GoogleLikeCalendar days={calendar.days} mode={filters.mode} refresh={refresh} />
+        <GoogleLikeCalendar days={calendar.days} mode={filters.mode} refresh={refresh} onSelect={setSelectedAppointment} />
       )}
+      <AppointmentQuickModal
+        appointment={selectedAppointment}
+        onClose={() => setSelectedAppointment(null)}
+        onSaved={() => {
+          setSelectedAppointment(null);
+          refresh();
+        }}
+      />
     </section>
   );
 }
 
-export function GoogleLikeCalendar({ days, mode, refresh }) {
+export function GoogleLikeCalendar({ days, mode, refresh, onSelect }) {
   return (
     <div className={`google-calendar ${mode === "semanal" ? "week-view" : ""}`}>
       {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day) => <div className="calendar-weekday" key={day}>{day}</div>)}
@@ -301,7 +310,7 @@ export function GoogleLikeCalendar({ days, mode, refresh }) {
             {day.isToday && <strong>Hoje</strong>}
           </header>
           <div className="calendar-events">
-            {asArray(day.items).map((item) => <CalendarEvent item={item} key={item.id} refresh={refresh} />)}
+            {asArray(day.items).map((item) => <CalendarEvent item={item} key={item.id} refresh={refresh} onSelect={onSelect} />)}
           </div>
         </article>
       ))}
@@ -309,7 +318,7 @@ export function GoogleLikeCalendar({ days, mode, refresh }) {
   );
 }
 
-export function DailyAgenda({ day, refresh }) {
+export function DailyAgenda({ day, refresh, onSelect }) {
   const slots = buildTimeSlots(day.items);
   return (
     <div className="daily-calendar">
@@ -320,25 +329,107 @@ export function DailyAgenda({ day, refresh }) {
       {slots.map((slot) => (
         <div className="time-slot" key={slot.hour}>
           <span>{slot.hour}</span>
-          <div>{asArray(slot.items).map((item) => <CalendarEvent item={item} key={item.id} refresh={refresh} />)}</div>
+          <div>{asArray(slot.items).map((item) => <CalendarEvent item={item} key={item.id} refresh={refresh} onSelect={onSelect} />)}</div>
         </div>
       ))}
     </div>
   );
 }
 
-export function CalendarEvent({ item, refresh }) {
+export function CalendarEvent({ item, refresh, onSelect }) {
   return (
-    <div className={`calendar-event ${statusClass[item.status]}`}>
+    <div
+      className={`calendar-event ${statusClass[item.status]}`}
+      role="button"
+      tabIndex={0}
+      onClick={() => onSelect?.(item)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") onSelect?.(item);
+      }}
+    >
       <strong>{item.appointment_time} - {personName(item)}</strong>
       <span>{item.procedure}</span>
       <small>{item.professional_name}</small>
-      <div className="event-actions">
+      <div className="event-actions" onClick={(event) => event.stopPropagation()}>
         <button onClick={() => updateAppointment(item.id, { status: "remarcado" }, refresh)}>Remarcar</button>
         <button onClick={() => updateAppointment(item.id, { status: "cancelado" }, refresh)}>Cancelar</button>
         <button onClick={() => updateAppointment(item.id, { status: "atendido" }, refresh)}>Atendido</button>
       </div>
     </div>
+  );
+}
+
+export function AppointmentQuickModal({ appointment, onClose, onSaved }) {
+  const [form, setForm] = useState({ appointment_date: "", appointment_time: "", status: "pendente", notes: "" });
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!appointment) return;
+    setForm({
+      appointment_date: appointment.appointment_date || "",
+      appointment_time: appointment.appointment_time || "",
+      status: appointment.status || "pendente",
+      notes: appointment.notes || ""
+    });
+    setError("");
+  }, [appointment]);
+
+  async function saveAppointment(patch = {}) {
+    if (!appointment?.id) return;
+    setError("");
+    const payload = { ...form, ...patch };
+    const response = await apiFetch(`/appointments/${appointment.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      setError(data.error || "Não foi possível atualizar o agendamento.");
+      return;
+    }
+    onSaved?.();
+  }
+
+  return (
+    <Modal
+      open={!!appointment}
+      title="Detalhes do Agendamento"
+      subtitle={appointment ? `${personName(appointment)} · ${appointment.procedure || "Atendimento"}` : ""}
+      size="md"
+      onClose={onClose}
+      footer={(
+        <>
+          <button type="button" className="secondary-button" onClick={onClose}>Fechar</button>
+          <button type="button" className="primary-button" onClick={() => saveAppointment()}>Salvar Alterações</button>
+        </>
+      )}
+    >
+      {appointment && (
+        <div className="stack">
+          <div className="soft-card">
+            <strong>{personName(appointment)}</strong>
+            <p>{appointment.whatsapp || "WhatsApp não informado"}</p>
+            <p>{appointment.service_name || appointment.procedure || "Procedimento não informado"} · {appointment.professional_name || "Sem profissional"}</p>
+          </div>
+          <div className="form-grid">
+            <Input type="date" label="Data" value={form.appointment_date} onChange={(value) => setForm({ ...form, appointment_date: value })} />
+            <Input type="time" label="Horário" value={form.appointment_time} onChange={(value) => setForm({ ...form, appointment_time: value })} />
+            <StatusSelect value={form.status} onChange={(value) => setForm({ ...form, status: value })} />
+          </div>
+          <label>Observação
+            <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
+          </label>
+          <div className="toolbar compact-actions">
+            <button type="button" className="secondary-button" onClick={() => saveAppointment({ status: "confirmado" })}>Confirmar</button>
+            <button type="button" className="secondary-button" onClick={() => saveAppointment({ status: "remarcado" })}>Reagendar</button>
+            <button type="button" className="secondary-button danger" onClick={() => saveAppointment({ status: "cancelado" })}>Cancelar</button>
+            <button type="button" className="primary-button" onClick={() => saveAppointment({ status: "atendido" })}>Finalizar</button>
+          </div>
+          {error && <span className="form-error">{error}</span>}
+        </div>
+      )}
+    </Modal>
   );
 }
 
@@ -489,6 +580,7 @@ export function BookingAdmin() {
       name: service.name || "",
       description: service.description || "",
       base_price: service.base_price || 0,
+      deposit_value: Number(service.deposit_value || 25),
       duration_minutes: service.duration_minutes || 40,
       is_active: Boolean(service.is_active)
     });
@@ -945,6 +1037,7 @@ export function BookingAdmin() {
                 <Input label="Nome" value={serviceForm.name} onChange={(value) => setServiceForm({ ...serviceForm, name: value })} required />
                 <Input type="number" label="Duração em minutos" value={serviceForm.duration_minutes} onChange={(value) => setServiceForm({ ...serviceForm, duration_minutes: value })} />
                 <Input type="number" label="Preço base" value={serviceForm.base_price} onChange={(value) => setServiceForm({ ...serviceForm, base_price: value })} />
+                <Input type="number" label="Sinal obrigatório" value={serviceForm.deposit_value} onChange={(value) => setServiceForm({ ...serviceForm, deposit_value: value })} />
               </div>
               <label>Descrição<textarea value={serviceForm.description} onChange={(event) => setServiceForm({ ...serviceForm, description: event.target.value })} /></label>
               <Toggle label="Serviço ativo" checked={serviceForm.is_active} onChange={(value) => setServiceForm({ ...serviceForm, is_active: value })} />
@@ -1167,7 +1260,7 @@ export function AppointmentList({ appointments = [], onChanged, compact }) {
           </div>
           <StatusBadge status={item.status} />
           {!compact && <div className="row-actions">
-            <a title="WhatsApp" href={whatsappUrl(item.whatsapp, `Ola ${personName(item)}, tudo bem Aqui e da Aura Clinic sobre seu atendimento de ${formatDate(item.appointment_date)} as ${item.appointment_time}.`)} target="_blank" rel="noreferrer">WhatsApp</a>
+            <a title="WhatsApp" href={whatsappUrl(item.whatsapp, appointmentWhatsAppMessage(item))} target="_blank" rel="noreferrer">WhatsApp</a>
             <button title="Cancelar" onClick={() => updateAppointment(item.id, { status: "cancelado" }, onChanged)}><XCircle size={16} /></button>
             <button title="Atendido" onClick={() => updateAppointment(item.id, { status: "atendido" }, onChanged)}><CheckCircle2 size={16} /></button>
           </div>}

@@ -422,6 +422,12 @@ test("5c. muda status do agendamento até 'atendido'", async () => {
   });
   assert.equal(patch.status, 200, JSON.stringify(patch.json));
   assert.equal(patch.json.status, "atendido");
+
+  const orders = await api("/sales-orders");
+  assert.equal(orders.status, 200, JSON.stringify(orders.json));
+  const serviceOrders = orders.json.filter((order) => Number(order.appointment_id) === Number(ctx.appointmentId) && order.order_type === "ordem_servico");
+  assert.equal(serviceOrders.length, 1, "agendamento atendido deve gerar uma unica ordem de servico");
+  assert.ok(serviceOrders[0].items.some((item) => item.item_type === "servico"), "ordem deve conter item de servico");
 });
 
 // 6) Financeiro: o sinal + o restante (registrado ao atender) devem aparecer.

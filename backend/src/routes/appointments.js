@@ -11,6 +11,7 @@ import {
 } from "../services/appointments.js";
 import { ensurePostCareFollowups } from "../services/postcare.js";
 import { awardLoyaltyForAppointment } from "../services/loyalty.js";
+import { ensureSalesOrderForAppointment } from "../services/sales.js";
 import { validateBody } from "../middleware/validate.js";
 import { appointmentCreateSchema } from "../schemas/index.js";
 
@@ -81,6 +82,7 @@ router.patch("/api/appointments/:id", withDb(async (req, res, db) => {
   if (req.body.status === "atendido") {
     await deductJewelryStock(db, req.params.id);
     await registerRemainingPayment(db, req.params.id);
+    await ensureSalesOrderForAppointment(db, req.params.id, req.user);
     await ensurePostCareFollowups(db, req.params.id);
     await awardLoyaltyForAppointment(db, req.params.id);
   }

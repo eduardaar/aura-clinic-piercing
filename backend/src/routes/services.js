@@ -23,7 +23,7 @@ router.post("/api/services", withDb(async (req, res, db) => {
       req.body.description || "",
       Number(req.body.duration_minutes || 40),
       Number(req.body.base_price ?? req.body.price ?? 0),
-      Number(req.body.deposit_value || 0),
+      Number(req.body.deposit_value ?? 25),
       boolNumber(req.body.is_active ?? req.body.active_online_booking ?? 1),
       req.body.pre_service_notes || ""
     ]

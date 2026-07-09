@@ -104,8 +104,8 @@ export function PublicCatalog() {
   const activeBanner = banners[bannerIndex % banners.length] || fallbackBanner;
   const categories = asArray(catalogCategoriesFromCatalog(safeData));
   const catalogItems = asArray(safeData.items);
-  // Filtrar apenas produtos publicados para o catálogo público
-  const publishedItems = catalogItems.filter((item) => Boolean(Number(item.is_published || 0)));
+  // A vitrine pública respeita o controle "Ativo no catálogo" do estoque.
+  const publishedItems = catalogItems.filter((item) => Boolean(Number(item.is_catalog_active ?? item.is_published ?? 1)));
   const selectedProduct = publishedItems.find((item) => asNumber(item?.id) === selectedProductId) || null;
   const filteredItems = publishedItems.filter((item) => {
     const haystack = `${item.name} ${item.category} ${item.material} ${item.color} ${item.stone} ${item.size} ${item.thickness} ${item.notes}`.toLowerCase();
@@ -897,6 +897,9 @@ export function PublicBooking() {
   const bookingDates = nextBookingDates(10);
   const selectedService = services.find((item) => String(item.id) === String(form.service_id));
   const selectedProfessional = allProfessionals.find((item) => String(item.id) === String(form.professional_id));
+  const selectedTotal = asNumber(selectedService?.base_price || selectedService?.price || 0);
+  const selectedDeposit = asNumber(selectedService?.deposit_value || 25);
+  const selectedRemaining = Math.max(selectedTotal - selectedDeposit, 0);
 
   useEffect(() => {
     if (!form.professional_id) return;
@@ -954,7 +957,11 @@ export function PublicBooking() {
           ))}
         </div>
 
-        {step === 1 && <BookingChoiceGrid title="Escolha O Serviço" items={services} value={form.service_id} onSelect={(id) => { setForm({ ...form, service_id: id, professional_id: "", appointment_time: "" }); setStep(2); }} render={(item) => <><strong>{item.name}</strong><p>{item.description}</p><span>{item.duration_minutes} min  {currency.format(item.base_price || item.price || 0)}</span></>} />}
+        {step === 1 && <BookingChoiceGrid title="Escolha O Serviço" items={services} value={form.service_id} onSelect={(id) => { setForm({ ...form, service_id: id, professional_id: "", appointment_time: "" }); setStep(2); }} render={(item) => {
+          const total = asNumber(item.base_price || item.price || 0);
+          const deposit = asNumber(item.deposit_value || 25);
+          return <><strong>{item.name}</strong><p>{item.description}</p><span>{item.duration_minutes} min · Total {currency.format(total)} · Sinal {currency.format(deposit)}</span></>;
+        }} />}
         {step === 2 && (
           professionals.length
             ? <BookingChoiceGrid title="Escolha A Profissional" items={professionals} value={form.professional_id} onSelect={(id) => { setForm({ ...form, professional_id: id, appointment_time: "" }); setStep(3); }} render={(item) => <><strong>{item.name}</strong><p>{item.specialty || "Body Piercer Aura"}</p></>} />
@@ -1018,9 +1025,10 @@ export function PublicBooking() {
             <h2>Resumo Da Solicitação</h2>
             <p><strong>Serviço:</strong> {selectedService?.name}</p>
             <p><strong>Profissional:</strong> {selectedProfessional?.name}</p>
-            <p><strong>Data E Horário:</strong> {formatLongDate(form.appointment_date)} ?s {form.appointment_time}</p>
-            <p><strong>Valor:</strong> {currency.format(selectedService?.base_price || selectedService?.price || 0)}</p>
-            <p><strong>Sinal:</strong> {currency.format(selectedService?.deposit_value || 0)}</p>
+            <p><strong>Data E Horário:</strong> {formatLongDate(form.appointment_date)} às {form.appointment_time}</p>
+            <p><strong>Valor total:</strong> {currency.format(selectedTotal)}</p>
+            <p><strong>Sinal obrigatório:</strong> {currency.format(selectedDeposit)}</p>
+            <p><strong>Valor restante:</strong> {currency.format(selectedRemaining)}</p>
             <p><strong>Regras:</strong> {data.rules?.cancellation}</p>
             <label>Comprovante Do Sinal Pix<input type="file" accept="image/*,.pdf" onChange={(event) => setForm({ ...form, payment_proof: event.target.files?.[0] })} /></label>
             {error && <span className="form-error">{error}</span>}
@@ -1033,7 +1041,7 @@ export function PublicBooking() {
             <span className="booking-section-kicker">Solicitação enviada</span>
             <h2>Solicitação Enviada</h2>
             <p>Seu horário ficou como pendente. A Aura Clinic vai confirmar manualmente pelo WhatsApp.</p>
-            <strong>{confirmed?.procedure}  {formatLongDate(confirmed?.appointment_date)} ?s {confirmed?.appointment_time}</strong>
+            <strong>{confirmed?.procedure}  {formatLongDate(confirmed?.appointment_date)} às {confirmed?.appointment_time}</strong>
             <a className="primary-button booking-wide-button" href="/catalogo">Voltar Ao Catálogo</a>
           </section>
         )}

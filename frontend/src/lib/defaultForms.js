@@ -150,6 +150,7 @@ export function defaultServiceForm() {
     name: "",
     description: "",
     base_price: 0,
+    deposit_value: 25,
     duration_minutes: 40,
     is_active: true
   };
