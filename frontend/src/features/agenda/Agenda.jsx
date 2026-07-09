@@ -364,18 +364,11 @@ export function BookingAdmin() {
   const [serviceError, setServiceError] = useState("");
   const [procedureError, setProcedureError] = useState("");
   const [professionalError, setProfessionalError] = useState("");
-  const [weeklyForm, setWeeklyForm] = useState({
-    professional_id: "",
-    start_time: "09:00",
-    end_time: "18:00",
-    lunch_start: "12:00",
-    lunch_end: "13:00",
-    duration_minutes: 40,
-    buffer_minutes: 10,
-    weekdays: [1, 2, 3, 4, 5, 6]
-  });
+  const [weeklyProfessionalId, setWeeklyProfessionalId] = useState("");
+  const [weeklyDays, setWeeklyDays] = useState([]);
   const [readinessMessage, setReadinessMessage] = useState("");
   const [blockForm, setBlockForm] = useState(defaultScheduleBlock());
+  const [editingBlockId, setEditingBlockId] = useState(null);
   const [blockModalOpen, setBlockModalOpen] = useState(false);
   const [blockError, setBlockError] = useState("");
   const [deleting, setDeleting] = useState(null);
@@ -393,45 +386,57 @@ export function BookingAdmin() {
   const activeProcedures = safeProcedures.filter((procedure) => Boolean(Number(procedure.is_active)));
   const activeProfessionals = allProfessionals.filter((professional) => Boolean(Number(professional.active)));
   const isBookingReady = Boolean(readinessData.ready);
-  const weeklyWeekdays = [1, 2, 3, 4, 5, 6];
+  const weeklyWeekdays = [0, 1, 2, 3, 4, 5, 6];
 
-  function weeklyFormForProfessional(professionalId, fallback = weeklyForm) {
-    const savedDays = safeAvailability.filter((item) => String(item.professional_id) === String(professionalId));
-    const firstDay = savedDays[0] || {};
+  function defaultWeeklyDay(weekday, professionalId = weeklyProfessionalId) {
     return {
-      ...fallback,
       professional_id: professionalId,
-      start_time: firstDay.start_time || fallback.start_time || "09:00",
-      end_time: firstDay.end_time || fallback.end_time || "18:00",
-      lunch_start: firstDay.lunch_start ?? fallback.lunch_start ?? "12:00",
-      lunch_end: firstDay.lunch_end ?? fallback.lunch_end ?? "13:00",
-      duration_minutes: Number(firstDay.duration_minutes || fallback.duration_minutes || 40),
-      buffer_minutes: Number(firstDay.buffer_minutes || fallback.buffer_minutes || 10),
-      weekdays: savedDays.length
-        ? savedDays.filter((item) => Boolean(Number(item.is_active))).map((item) => Number(item.weekday)).filter((day) => weeklyWeekdays.includes(day)).sort()
-        : weeklyWeekdays
+      weekday,
+      is_active: weekday >= 1 && weekday <= 6,
+      start_time: "09:00",
+      end_time: "18:00",
+      lunch_start: "12:00",
+      lunch_end: "13:00",
+      duration_minutes: 40,
+      buffer_minutes: 10
     };
   }
 
-  useEffect(() => {
-    if (!weeklyForm.professional_id) return;
-    const savedDays = safeAvailability.filter((item) => String(item.professional_id) === String(weeklyForm.professional_id));
-    if (!savedDays.length) return;
-    setWeeklyForm((current) => {
-      const next = weeklyFormForProfessional(current.professional_id, current);
-      const sameDays = asArray(current.weekdays).join(",") === asArray(next.weekdays).join(",");
-      if (
-        sameDays &&
-        current.start_time === next.start_time &&
-        current.end_time === next.end_time &&
-        current.lunch_start === next.lunch_start &&
-        current.lunch_end === next.lunch_end &&
-        Number(current.duration_minutes) === Number(next.duration_minutes) &&
-        Number(current.buffer_minutes) === Number(next.buffer_minutes)
-      ) return current;
-      return next;
+  function weeklyDaysForProfessional(professionalId) {
+    const savedDays = safeAvailability.filter((item) => String(item.professional_id) === String(professionalId));
+    return weeklyWeekdays.map((weekday) => {
+      const saved = savedDays.find((item) => Number(item.weekday) === weekday);
+      return saved
+        ? {
+          professional_id: professionalId,
+          weekday,
+          is_active: Boolean(Number(saved.is_active)),
+          start_time: saved.start_time || "09:00",
+          end_time: saved.end_time || "18:00",
+          lunch_start: saved.lunch_start || "",
+          lunch_end: saved.lunch_end || "",
+          duration_minutes: Number(saved.duration_minutes || 40),
+          buffer_minutes: Number(saved.buffer_minutes || 10)
+        }
+        : defaultWeeklyDay(weekday, professionalId);
     });
-  }, [availability, weeklyForm.professional_id]);
+  }
+
+  function updateWeeklyDay(weekday, patch) {
+    setWeeklyDays((current) => {
+      const base = current.length ? current : weeklyDaysForProfessional(weeklyProfessionalId);
+      return base.map((day) => Number(day.weekday) === Number(weekday) ? { ...day, ...patch } : day);
+    });
+  }
+
+  useEffect(() => {
+    if (!weeklyProfessionalId && activeProfessionals[0]?.id) {
+      setWeeklyProfessionalId(String(activeProfessionals[0].id));
+      return;
+    }
+    if (!weeklyProfessionalId) return;
+    setWeeklyDays(weeklyDaysForProfessional(weeklyProfessionalId));
+  }, [availability, weeklyProfessionalId, activeProfessionals.length]);
 
   if (services == null || procedures == null || professionalsData == null || readiness == null || availability == null || blocks == null || appointments == null) return <Loading />;
 
@@ -665,6 +670,7 @@ export function BookingAdmin() {
         weekdays: [1, 2, 3, 4, 5, 6]
       })
     });
+    setWeeklyProfessionalId(String(professionalId));
     refreshAvailability();
     refreshReadiness();
   }
@@ -675,11 +681,18 @@ export function BookingAdmin() {
     if (!activeProfessionals.length) return setReadinessMessage("Cadastre e ative pelo menos um profissional antes de configurar a agenda semanal.");
     if (!activeServices.length) return setReadinessMessage("Cadastre e ative pelo menos um serviÃ§o antes de configurar a agenda semanal.");
     if (!activeProcedures.length) return setReadinessMessage("Cadastre e ative pelo menos um procedimento vinculado ao serviÃ§o.");
-    if (!weeklyForm.professional_id) return setReadinessMessage("Escolha o profissional da agenda semanal.");
+    if (!weeklyProfessionalId) return setReadinessMessage("Escolha o profissional da agenda semanal.");
     const response = await apiFetch("/availability/generate-weekly", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(weeklyForm)
+      body: JSON.stringify({
+        professional_id: weeklyProfessionalId,
+        days: weeklyDays.map((day) => ({
+          ...day,
+          professional_id: weeklyProfessionalId,
+          is_active: Boolean(day.is_active)
+        }))
+      })
     });
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
@@ -699,15 +712,30 @@ export function BookingAdmin() {
 
   function openNewBlock() {
     setBlockForm(defaultScheduleBlock());
+    setEditingBlockId(null);
     setBlockError("");
+    setBlockModalOpen(true);
+  }
+
+  function editBlock(block) {
+    setEditingBlockId(block.id);
+    setBlockError("");
+    setBlockForm({
+      ...defaultScheduleBlock(),
+      ...block,
+      is_full_day: Boolean(Number(block.is_full_day)),
+      is_recurring: Boolean(Number(block.is_recurring)),
+      duration_minutes: block.duration_minutes || "",
+      buffer_minutes: block.buffer_minutes || ""
+    });
     setBlockModalOpen(true);
   }
 
   async function saveBlock(event) {
     event.preventDefault();
     setBlockError("");
-    const response = await apiFetch("/schedule-blocks", {
-      method: "POST",
+    const response = await apiFetch(editingBlockId ? `/schedule-blocks/${editingBlockId}` : "/schedule-blocks", {
+      method: editingBlockId ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(blockForm)
     });
@@ -716,6 +744,7 @@ export function BookingAdmin() {
       return setBlockError(payload.error || "Não foi possível salvar o bloqueio.");
     }
     setBlockForm(defaultScheduleBlock());
+    setEditingBlockId(null);
     setBlockModalOpen(false);
     refreshBlocks();
   }
@@ -775,7 +804,7 @@ export function BookingAdmin() {
           ["profissionais", "Profissionais"],
           ["servicos", "Serviços"],
           ["horarios", "Agenda semanal"],
-          ["bloqueios", "Bloqueios"],
+          ["bloqueios", "Disponibilidade avançada"],
           ["solicitacoes", "Solicitações pendentes"]
         ].map(([id, label]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}</button>)}
       </nav>
@@ -963,34 +992,29 @@ export function BookingAdmin() {
             </div>
             <form onSubmit={saveWeeklyAvailability}>
               <div className="form-grid">
-                <Select label="Profissional" value={weeklyForm.professional_id} onChange={(value) => setWeeklyForm(weeklyFormForProfessional(value))}>
+                <Select label="Profissional" value={weeklyProfessionalId} onChange={(value) => setWeeklyProfessionalId(value)}>
                   <option value="">Escolha um profissional</option>
                   {activeProfessionals.map((professional) => <option value={professional.id} key={professional.id}>{professional.name}</option>)}
                 </Select>
-                <Input label="Horário inicial" value={weeklyForm.start_time} onChange={(value) => setWeeklyForm({ ...weeklyForm, start_time: value })} />
-                <Input label="Horário final" value={weeklyForm.end_time} onChange={(value) => setWeeklyForm({ ...weeklyForm, end_time: value })} />
-                <Input label="Intervalo início" value={weeklyForm.lunch_start} onChange={(value) => setWeeklyForm({ ...weeklyForm, lunch_start: value })} />
-                <Input label="Intervalo final" value={weeklyForm.lunch_end} onChange={(value) => setWeeklyForm({ ...weeklyForm, lunch_end: value })} />
-                <Input type="number" label="Duração padrão" value={weeklyForm.duration_minutes} onChange={(value) => setWeeklyForm({ ...weeklyForm, duration_minutes: value })} />
-                <Input type="number" label="Intervalo entre atendimentos" value={weeklyForm.buffer_minutes} onChange={(value) => setWeeklyForm({ ...weeklyForm, buffer_minutes: value })} />
               </div>
-              <div className="toggle-grid">
+              <div className="availability-grid">
                 {weeklyWeekdays.map((weekday) => (
-                  <Toggle
-                    key={weekday}
-                    label={weekdayLabel(weekday)}
-                    checked={asArray(weeklyForm.weekdays).includes(weekday)}
-                    onChange={(checked) => setWeeklyForm({
-                      ...weeklyForm,
-                      weekdays: checked
-                        ? [...asArray(weeklyForm.weekdays), weekday].sort()
-                        : asArray(weeklyForm.weekdays).filter((day) => day !== weekday)
-                    })}
-                  />
+                  <article className="panel availability-card" key={weekday}>
+                    <div className="panel-heading"><h2>{weekdayLabel(weekday)}</h2><span>{weekday === 0 ? "Indisponível por padrão" : "Horário semanal"}</span></div>
+                    <Toggle label="Atende neste dia" checked={Boolean(weeklyDays.find((day) => day.weekday === weekday)?.is_active)} onChange={(value) => updateWeeklyDay(weekday, { is_active: value })} />
+                    <div className="form-grid">
+                      <Input label="Início" value={weeklyDays.find((day) => day.weekday === weekday)?.start_time || "09:00"} onChange={(value) => updateWeeklyDay(weekday, { start_time: value })} />
+                      <Input label="Final" value={weeklyDays.find((day) => day.weekday === weekday)?.end_time || "18:00"} onChange={(value) => updateWeeklyDay(weekday, { end_time: value })} />
+                      <Input label="Almoço início" value={weeklyDays.find((day) => day.weekday === weekday)?.lunch_start || ""} onChange={(value) => updateWeeklyDay(weekday, { lunch_start: value })} />
+                      <Input label="Almoço final" value={weeklyDays.find((day) => day.weekday === weekday)?.lunch_end || ""} onChange={(value) => updateWeeklyDay(weekday, { lunch_end: value })} />
+                      <Input type="number" label="Duração padrão" value={weeklyDays.find((day) => day.weekday === weekday)?.duration_minutes || 40} onChange={(value) => updateWeeklyDay(weekday, { duration_minutes: value })} />
+                      <Input type="number" label="Intervalo" value={weeklyDays.find((day) => day.weekday === weekday)?.buffer_minutes || 10} onChange={(value) => updateWeeklyDay(weekday, { buffer_minutes: value })} />
+                    </div>
+                  </article>
                 ))}
               </div>
-              <p className="empty-state">Domingo fica indisponível por padrão. Para liberar domingo, use os cards de disponibilidade avançada abaixo.</p>
-              <Button variant="primary" type="submit">Salvar disponibilidade</Button>
+              <p className="empty-state">Domingo fica desligado por padrão. Para liberar apenas uma data específica, crie um horário especial em Disponibilidade avançada.</p>
+              <Button variant="primary" type="submit">Salvar disponibilidade individual</Button>
             </form>
           </article>
           <div className="availability-grid">
@@ -1026,35 +1050,39 @@ export function BookingAdmin() {
         <div className="stack">
           <div className="panel">
             <CrudHeader
-              title="Bloqueios cadastrados"
-              subtitle="Não aparece para o cliente"
-              actionLabel="Novo bloqueio"
+              title="Disponibilidade avançada"
+              subtitle="Bloqueie datas, crie horários especiais e libere domingos específicos."
+              actionLabel="Nova regra"
               onAction={openNewBlock}
             />
             <DataTable
               rows={safeBlocks}
               columns={[
+                { key: "block_type", label: "Tipo", render: (block) => block.block_type === "special_hours" ? "Horário especial" : block.block_type === "unavailable" ? "Data indisponível" : "Bloqueio de intervalo" },
                 { key: "reason", label: "Motivo" },
                 { key: "professional_name", label: "Profissional", render: (block) => block.professional_name || "Todos" },
                 { key: "start_datetime", label: "Início", render: (block) => new Date(block.start_datetime).toLocaleString("pt-BR") },
                 { key: "end_datetime", label: "Final", render: (block) => new Date(block.end_datetime).toLocaleString("pt-BR") },
               ]}
               actions={(block) => (
-                <button type="button" onClick={() => removeBlock(block)}>Apagar</button>
+                <>
+                  <button type="button" onClick={() => editBlock(block)}>Editar</button>
+                  <button type="button" onClick={() => removeBlock(block)}>Apagar</button>
+                </>
               )}
-              empty="Nenhum bloqueio cadastrado ainda."
+              empty="Nenhuma regra avançada cadastrada ainda."
             />
           </div>
 
           <Modal
             open={blockModalOpen}
-            title="Novo bloqueio"
-            subtitle="Não aparece para o cliente"
-            onClose={() => setBlockModalOpen(false)}
+            title={editingBlockId ? "Editar regra" : "Nova regra"}
+            subtitle="Bloqueios removem horários. Horários especiais liberam uma data específica, inclusive domingo."
+            onClose={() => { setBlockModalOpen(false); setEditingBlockId(null); }}
             footer={(
               <>
-                <button type="button" className="secondary-button" onClick={() => setBlockModalOpen(false)}>Cancelar</button>
-                <button type="submit" form="block-form" className="primary-button">Salvar bloqueio</button>
+                <button type="button" className="secondary-button" onClick={() => { setBlockModalOpen(false); setEditingBlockId(null); }}>Cancelar</button>
+                <button type="submit" form="block-form" className="primary-button">Salvar regra</button>
               </>
             )}
           >
@@ -1064,10 +1092,28 @@ export function BookingAdmin() {
                   <option value="">Selecione</option>
                   {professionals.map((professional) => <option value={professional.id} key={professional.id}>{professional.name}</option>)}
                 </Select>
+                <Select label="Tipo de regra" value={blockForm.block_type} onChange={(value) => setBlockForm({
+                  ...blockForm,
+                  block_type: value,
+                  reason: value === "special_hours" ? "Horário especial" : value === "unavailable" ? "Data indisponível" : "Bloqueio",
+                  is_full_day: value === "unavailable"
+                })}>
+                  <option value="block">Bloquear intervalo específico</option>
+                  <option value="unavailable">Adicionar data indisponível</option>
+                  <option value="special_hours">Adicionar horário especial</option>
+                </Select>
                 <Input label="Motivo" value={blockForm.reason} onChange={(value) => setBlockForm({ ...blockForm, reason: value })} />
                 <Input type="datetime-local" label="Início" value={blockForm.start_datetime} onChange={(value) => setBlockForm({ ...blockForm, start_datetime: value })} />
                 <Input type="datetime-local" label="Final" value={blockForm.end_datetime} onChange={(value) => setBlockForm({ ...blockForm, end_datetime: value })} />
               </div>
+              {blockForm.block_type === "special_hours" && (
+                <div className="form-grid">
+                  <Input label="Almoço início" value={blockForm.lunch_start} onChange={(value) => setBlockForm({ ...blockForm, lunch_start: value })} />
+                  <Input label="Almoço final" value={blockForm.lunch_end} onChange={(value) => setBlockForm({ ...blockForm, lunch_end: value })} />
+                  <Input type="number" label="Duração padrão" value={blockForm.duration_minutes} onChange={(value) => setBlockForm({ ...blockForm, duration_minutes: value })} />
+                  <Input type="number" label="Intervalo" value={blockForm.buffer_minutes} onChange={(value) => setBlockForm({ ...blockForm, buffer_minutes: value })} />
+                </div>
+              )}
               <Toggle label="Dia inteiro" checked={blockForm.is_full_day} onChange={(value) => setBlockForm({ ...blockForm, is_full_day: value })} />
               <Toggle label="Recorrente" checked={blockForm.is_recurring} onChange={(value) => setBlockForm({ ...blockForm, is_recurring: value })} />
               <label>Observação<textarea value={blockForm.notes} onChange={(event) => setBlockForm({ ...blockForm, notes: event.target.value })} /></label>

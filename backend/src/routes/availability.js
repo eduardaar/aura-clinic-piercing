@@ -20,6 +20,13 @@ function normalizeAvailabilityBody(body = {}, current = {}) {
   };
 }
 
+function normalizeAvailabilityDays(body = {}, professionalId) {
+  if (!Array.isArray(body.days)) return null;
+  return body.days
+    .map((day) => normalizeAvailabilityBody(day, { professional_id: professionalId }))
+    .filter((day) => day.weekday >= 0 && day.weekday <= 6);
+}
+
 router.get("/api/availability", withDb(async (_req, res, db) => {
   res.json(await db.all(`
     SELECT a.*, p.name AS professional_name
@@ -63,20 +70,25 @@ router.post("/api/availability/generate-weekly", withDb(async (req, res, db) => 
   if (!professionalId) return res.status(400).json({ error: "Profissional e obrigatorio." });
   const professional = await db.get("SELECT id FROM professionals WHERE id = ? AND active = 1", [professionalId]);
   if (!professional) return res.status(404).json({ error: "Profissional ativo nao encontrado." });
-  const weekdays = Array.isArray(req.body.weekdays) && req.body.weekdays.length
-    ? req.body.weekdays.map(Number)
-    : [1, 2, 3, 4, 5, 6];
-  const base = normalizeAvailabilityBody(req.body, {
-    professional_id: professionalId,
-    is_active: 1,
-    start_time: "09:00",
-    end_time: "18:00",
-    lunch_start: "12:00",
-    lunch_end: "13:00",
-    duration_minutes: 40,
-    buffer_minutes: 10
+  const days = normalizeAvailabilityDays(req.body, professionalId);
+  const records = days || [0, 1, 2, 3, 4, 5, 6].map((weekday) => {
+    const weekdays = Array.isArray(req.body.weekdays) && req.body.weekdays.length
+      ? req.body.weekdays.map(Number)
+      : [1, 2, 3, 4, 5, 6];
+    return normalizeAvailabilityBody(
+      { ...req.body, weekday, is_active: weekdays.includes(weekday) ? 1 : 0 },
+      {
+        professional_id: professionalId,
+        start_time: "09:00",
+        end_time: "18:00",
+        lunch_start: "12:00",
+        lunch_end: "13:00",
+        duration_minutes: 40,
+        buffer_minutes: 10
+      }
+    );
   });
-  for (const weekday of weekdays.filter((day) => day >= 0 && day <= 6)) {
+  for (const day of records) {
     await db.run(
       `INSERT INTO professional_availability
        (professional_id, weekday, is_active, start_time, end_time, lunch_start, lunch_end, duration_minutes, buffer_minutes)
@@ -89,7 +101,7 @@ router.post("/api/availability/generate-weekly", withDb(async (req, res, db) => 
          lunch_end = excluded.lunch_end,
          duration_minutes = excluded.duration_minutes,
          buffer_minutes = excluded.buffer_minutes`,
-      [professionalId, weekday, base.is_active, base.start_time, base.end_time, base.lunch_start, base.lunch_end, base.duration_minutes, base.buffer_minutes]
+      [professionalId, day.weekday, day.is_active, day.start_time, day.end_time, day.lunch_start, day.lunch_end, day.duration_minutes, day.buffer_minutes]
     );
   }
   res.status(201).json(await db.all("SELECT * FROM professional_availability WHERE professional_id = ? ORDER BY weekday", [professionalId]));

@@ -24,6 +24,13 @@ const ctx = {
 const HOJE = new Date().toISOString().slice(0, 10);
 const AMANHA = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
 
+function nextDateForWeekday(weekday, offsetDays = 1) {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  while (date.getDay() !== weekday) date.setDate(date.getDate() + 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 // Wrapper que injeta token + tenant automaticamente nas chamadas autenticadas.
 function api(path, opts = {}) {
   return req(path, { token: ctx.token, tenant: ctx.slug, ...opts });
@@ -164,7 +171,7 @@ test("3e. readiness exige vinculo e agenda semanal; depois fica pronto", async (
     method: "POST",
     body: {
       professional_id: ctx.professionalId,
-      weekdays: [1, 2, 3, 4, 5],
+      weekdays: [1, 2, 3, 4, 5, 6],
       start_time: "09:00",
       end_time: "18:00",
       lunch_start: "12:00",
@@ -174,7 +181,9 @@ test("3e. readiness exige vinculo e agenda semanal; depois fica pronto", async (
     },
   });
   assert.equal(generated.status, 201, JSON.stringify(generated.json));
-  assert.equal(generated.json.length, 5);
+  assert.equal(generated.json.length, 7);
+  assert.equal(generated.json.find((day) => Number(day.weekday) === 0)?.is_active, 0);
+  assert.equal(generated.json.find((day) => Number(day.weekday) === 6)?.is_active, 1);
 
   const ready = await api("/booking/readiness");
   assert.equal(ready.status, 200);
@@ -185,6 +194,78 @@ test("3e. readiness exige vinculo e agenda semanal; depois fica pronto", async (
   const linkedProfessional = config.json.professionals.find((item) => Number(item.id) === Number(ctx.professionalId));
   assert.ok(linkedProfessional, "profissional vinculado deve aparecer no agendamento publico");
   assert.ok(linkedProfessional.service_ids.map(Number).includes(Number(ctx.serviceId)), "config publico deve informar service_ids do profissional");
+});
+
+test("3g. agenda publica gera slots reais, respeita almoco, domingo, bloqueios e ocupados", async () => {
+  const monday = nextDateForWeekday(1, 8);
+  const mondaySlots = await api(`/booking/slots?service_id=${ctx.serviceId}&professional_id=${ctx.professionalId}&date=${monday}`);
+  assert.equal(mondaySlots.status, 200, JSON.stringify(mondaySlots.json));
+  assert.ok(mondaySlots.json.slots.some((slot) => slot.time === "09:00"), "deve exibir inicio do expediente");
+  assert.ok(!mondaySlots.json.slots.some((slot) => slot.time >= "12:00" && slot.time < "13:00"), "nao deve exibir horarios no almoco");
+
+  const sunday = nextDateForWeekday(0, 8);
+  const closedSunday = await api(`/booking/slots?service_id=${ctx.serviceId}&professional_id=${ctx.professionalId}&date=${sunday}`);
+  assert.equal(closedSunday.status, 200, JSON.stringify(closedSunday.json));
+  assert.equal(closedSunday.json.slots.length, 0, "domingo deve iniciar indisponivel");
+
+  const specialSunday = await api("/schedule-blocks", {
+    method: "POST",
+    body: {
+      professional_id: ctx.professionalId,
+      block_type: "special_hours",
+      reason: "Domingo especial",
+      start_datetime: `${sunday}T10:00`,
+      end_datetime: `${sunday}T12:00`,
+      duration_minutes: 30,
+      buffer_minutes: 10,
+    },
+  });
+  assert.equal(specialSunday.status, 201, JSON.stringify(specialSunday.json));
+  const openSunday = await api(`/booking/slots?service_id=${ctx.serviceId}&professional_id=${ctx.professionalId}&date=${sunday}`);
+  assert.equal(openSunday.status, 200, JSON.stringify(openSunday.json));
+  assert.ok(openSunday.json.slots.some((slot) => slot.time === "10:00"), "horario especial deve liberar domingo");
+
+  const blockedDate = nextDateForWeekday(1, 15);
+  const blocked = await api("/schedule-blocks", {
+    method: "POST",
+    body: {
+      professional_id: ctx.professionalId,
+      block_type: "unavailable",
+      reason: "Folga",
+      start_datetime: `${blockedDate}T00:00`,
+      end_datetime: `${blockedDate}T23:59`,
+      is_full_day: true,
+    },
+  });
+  assert.equal(blocked.status, 201, JSON.stringify(blocked.json));
+  const blockedSlots = await api(`/booking/slots?service_id=${ctx.serviceId}&professional_id=${ctx.professionalId}&date=${blockedDate}`);
+  assert.equal(blockedSlots.status, 200, JSON.stringify(blockedSlots.json));
+  assert.equal(blockedSlots.json.slots.length, 0, "data bloqueada nao deve gerar horarios");
+
+  const busyDate = nextDateForWeekday(2, 15);
+  const busyAppointment = await api("/appointments", {
+    method: "POST",
+    body: {
+      client_id: ctx.clientId,
+      full_name: "Maria Teste",
+      whatsapp: "11999990001",
+      professional_id: ctx.professionalId,
+      service_id: ctx.serviceId,
+      procedure: "Teste de agenda",
+      piercing_region: "Orelha",
+      appointment_date: busyDate,
+      appointment_time: "09:00",
+      total_value: 120,
+      deposit_value: 0,
+      deposit_payment_method: "Pix",
+      remaining_payment_method: "Pix",
+      status: "confirmado",
+    },
+  });
+  assert.equal(busyAppointment.status, 201, JSON.stringify(busyAppointment.json));
+  const busySlots = await api(`/booking/slots?service_id=${ctx.serviceId}&professional_id=${ctx.professionalId}&date=${busyDate}`);
+  assert.equal(busySlots.status, 200, JSON.stringify(busySlots.json));
+  assert.ok(!busySlots.json.slots.some((slot) => slot.time === "09:00"), "horario ocupado nao deve aparecer");
 });
 
 test("3f. cria termo digital sem agendamento vinculado", async () => {
@@ -483,7 +564,7 @@ test("9b. erp responde 200 com métricas coerentes", async () => {
   const erp = await api("/erp");
   assert.equal(erp.status, 200, JSON.stringify(erp.json));
   assert.equal(Number(erp.json.metrics.clients), 1, "deve haver 1 cliente");
-  assert.equal(Number(erp.json.metrics.appointments), 1, "deve haver 1 agendamento");
+  assert.equal(Number(erp.json.metrics.appointments), 2, "deve haver 2 agendamentos, incluindo o horario ocupado do teste de slots");
   const expectedJewelryCount = [ctx.jewelryId, ctx.extraJewelryId].filter(Boolean).length;
   assert.equal(Number(erp.json.metrics.jewelry), expectedJewelryCount, "quantidade de joias coerente com o que foi criado");
   // Receita paga (payments status='pago') = sinal 40 + restante 80 (atendimento)

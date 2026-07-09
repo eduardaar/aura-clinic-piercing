@@ -912,7 +912,7 @@ export function PublicBooking() {
       const json = await response.json().catch(() => ({}));
       setLoadingSlots(false);
       setSlots(response.ok ? asArray(json.slots) : []);
-      if (!response.ok) setError(json.error || "Não foi possível carregar os horários.");
+      setError(response.ok ? "" : json.error || "Não foi possível carregar os horários.");
     }
     loadSlots();
   }, [form.service_id, form.professional_id, form.appointment_date]);
@@ -993,6 +993,7 @@ export function PublicBooking() {
             <div className="slot-grid">
               {slots.map((slot) => <button key={slot.time} className={form.appointment_time === slot.time ? "active" : ""} onClick={() => setForm({ ...form, appointment_time: slot.time })}>{slot.time}</button>)}
             </div>
+            {error && <span className="form-error">{error}</span>}
             {!loadingSlots && !slots.length && <p className="empty-state">Nenhum horário disponível nesta data.</p>}
             <button className="primary-button booking-wide-button" disabled={!form.appointment_time} onClick={() => setStep(5)}>Continuar</button>
           </section>

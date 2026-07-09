@@ -210,10 +210,15 @@ export function defaultScheduleBlock() {
     professional_id: "",
     start_datetime: `${today}T09:00`,
     end_datetime: `${today}T18:00`,
+    block_type: "block",
     reason: "Bloqueio",
     notes: "",
     is_full_day: false,
-    is_recurring: false
+    is_recurring: false,
+    lunch_start: "",
+    lunch_end: "",
+    duration_minutes: "",
+    buffer_minutes: ""
   };
 }
 
