@@ -8,6 +8,7 @@
 // plataforma e o reset destrutivo bloqueado em produção.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import {
   req,
   createTenant,
@@ -277,6 +278,53 @@ test("reset operacional apaga operação e preserva cadastros estruturais", asyn
   assert.ok(services.json.some((item) => item.id === service.json.id), "serviços devem ser preservados");
   const clients = await req("/clients", { token: ctx.tenantToken });
   assert.ok(clients.json.some((item) => item.id === client.json.id), "clientes devem ser preservados no reset operacional");
+});
+
+test("script restore-admin restaura conta existente sem duplicar usuário", async () => {
+  const reserveEmail = `admin-reserva@${ctx.tenantSlug}.test`;
+  const reservePassword = "SenhaForte123";
+
+  const reserve = await req("/users", {
+    token: ctx.tenantToken,
+    method: "POST",
+    body: { name: "Admin Reserva", email: reserveEmail, password: reservePassword, role: "admin" }
+  });
+  assert.equal(reserve.status, 201, JSON.stringify(reserve.json));
+
+  const reserveLogin = await loginTenant(ctx.tenantSlug, reserveEmail, reservePassword);
+  const usersBefore = await req("/users", { token: reserveLogin.token });
+  const mainAdmin = usersBefore.json.find((user) => user.email === ctx.tenantAdminEmail);
+  assert.ok(mainAdmin?.id, "admin principal deve existir");
+
+  const demote = await req(`/users/${mainAdmin.id}`, {
+    token: reserveLogin.token,
+    method: "PATCH",
+    body: { role: "finance" }
+  });
+  assert.equal(demote.status, 200, JSON.stringify(demote.json));
+  assert.equal(demote.json.role, "finance");
+
+  const output = execFileSync(
+    process.execPath,
+    ["scripts/restore-admin.mjs", "--tenant", ctx.tenantSlug, "--email", ctx.tenantAdminEmail],
+    { cwd: process.cwd(), env: process.env, encoding: "utf8" }
+  );
+  assert.match(output, /Acesso administrativo restaurado com sucesso/);
+
+  const restoredLogin = await loginTenant(ctx.tenantSlug, ctx.tenantAdminEmail, ctx.tenantAdminPassword);
+  assert.equal(restoredLogin.user.role, "admin");
+  ctx.tenantToken = restoredLogin.token;
+
+  const usersAfter = await req("/users", { token: ctx.tenantToken });
+  assert.equal(usersAfter.status, 200, JSON.stringify(usersAfter.json));
+  assert.equal(usersAfter.json.filter((user) => user.email === ctx.tenantAdminEmail).length, 1);
+  assert.ok(usersAfter.json.some((user) => user.email === ctx.tenantAdminEmail && user.role === "admin"));
+
+  const removeReserve = await req(`/users/${reserve.json.id}`, {
+    token: ctx.tenantToken,
+    method: "DELETE"
+  });
+  assert.equal(removeReserve.status, 200, JSON.stringify(removeReserve.json));
 });
 
 test("reset completo preserva login/admin e limpa dados da clínica", async () => {
