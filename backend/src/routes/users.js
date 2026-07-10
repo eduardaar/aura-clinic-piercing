@@ -7,6 +7,14 @@ import { validateBody } from "../middleware/validate.js";
 import { userCreateSchema, userUpdateSchema } from "../schemas/index.js";
 
 const router = Router();
+const LAST_ADMIN_MESSAGE = "Não é possível remover o acesso do último administrador geral. Cadastre ou promova outro administrador antes de alterar esta conta.";
+
+async function assertAdminContinuity(db, targetUser, nextRole) {
+  if (targetUser.role !== "admin" || nextRole === "admin") return null;
+  const admins = await db.get("SELECT COUNT(*) AS count FROM users WHERE role = 'admin'");
+  if (Number(admins?.count || 0) <= 1) return LAST_ADMIN_MESSAGE;
+  return null;
+}
 
 router.get("/api/users", withDb(async (_req, res, db) => {
   if (!requireRole(_req, res, ["admin"])) return;
@@ -33,6 +41,8 @@ router.patch("/api/users/:id", withDb(async (req, res, db) => {
   const user = await db.get("SELECT * FROM users WHERE id = ?", [req.params.id]);
   if (!user) return res.status(404).json({ error: "Usuário não encontrado." });
   const role = req.body.role || user.role;
+  const continuityError = await assertAdminContinuity(db, user, role);
+  if (continuityError) return res.status(409).json({ error: continuityError });
   // Só faz bcrypt hash quando o password vier no body (senão preserva o hash atual).
   const passwordHash = req.body.password ? await bcrypt.hash(req.body.password, 10) : user.password_hash;
   await db.run(
@@ -50,8 +60,8 @@ router.delete("/api/users/:id", withDb(async (req, res, db) => {
   const target = await db.get("SELECT id, role FROM users WHERE id = ?", [req.params.id]);
   if (!target) return res.status(404).json({ error: "Usuário não encontrado." });
   if (target.role === "admin") {
-    const admins = await db.get("SELECT COUNT(*) AS count FROM users WHERE role = 'admin'");
-    if ((admins.count || 0) <= 1) return res.status(409).json({ error: "Mantenha ao menos um administrador ativo." });
+    const continuityError = await assertAdminContinuity(db, target, "deleted");
+    if (continuityError) return res.status(409).json({ error: continuityError });
   }
   await db.run("DELETE FROM users WHERE id = ?", [req.params.id]);
   res.json({ ok: true });

@@ -20,6 +20,8 @@ import {
 const ctx = {
   platformToken: null,
   tenantToken: null, // token de um usuário de clínica (NÃO plataforma)
+  tenantAdminEmail: null,
+  tenantAdminPassword: null,
   managed: [] // tenants criados via painel para limpar no after
 };
 
@@ -29,6 +31,8 @@ before(async () => {
   const t = await createTenant("qasec-tk");
   ctx.tenantSlug = t.slug;
   ctx.tenantId = t.tenant.id;
+  ctx.tenantAdminEmail = t.adminEmail;
+  ctx.tenantAdminPassword = t.adminPassword;
   const login = await loginTenant(t.slug, t.adminEmail, t.adminPassword);
   ctx.tenantToken = login.token;
   ctx.managed.push({ id: t.tenant.id, slug: t.slug });
@@ -207,26 +211,101 @@ test("DELETE em tenant inexistente → 404", async () => {
 });
 
 // ---------------------------------------------------------------------------
-// 6. RESET DESTRUTIVO em produção (o runner NÃO define ALLOW_DEMO_RESET)
+// 6. RESET seguro de dados da clínica
 // ---------------------------------------------------------------------------
 
-test("POST /admin/reset-demo-data em produção sem ALLOW_DEMO_RESET → 403", async () => {
+test("POST /admin/reset-clinic-data exige confirmação literal", async () => {
+  const { status, json } = await req("/admin/reset-clinic-data", {
+    token: ctx.tenantToken,
+    method: "POST",
+    body: { confirmation: "RESETAR", reset_type: "operational" }
+  });
+  assert.equal(status, 400, JSON.stringify(json));
+  assert.match(json.error, /RESETAR DADOS/i);
+});
+
+test("reset operacional apaga operação e preserva cadastros estruturais", async () => {
+  const client = await req("/clients", {
+    token: ctx.tenantToken,
+    method: "POST",
+    body: { full_name: "Cliente Reset", whatsapp: "11999990000" }
+  });
+  assert.equal(client.status, 201, JSON.stringify(client.json));
+  const service = await req("/services", {
+    token: ctx.tenantToken,
+    method: "POST",
+    body: { name: "Servico Reset", price: 80, duration_minutes: 40 }
+  });
+  assert.equal(service.status, 201, JSON.stringify(service.json));
+  const professional = await req("/professionals", {
+    token: ctx.tenantToken,
+    method: "POST",
+    body: { name: "Prof Reset" }
+  });
+  assert.equal(professional.status, 201, JSON.stringify(professional.json));
+  const appointment = await req("/appointments", {
+    token: ctx.tenantToken,
+    method: "POST",
+    body: {
+      client_id: client.json.id,
+      full_name: "Cliente Reset",
+      whatsapp: "11999990000",
+      professional_id: professional.json.id,
+      service_id: service.json.id,
+      procedure: "Servico Reset",
+      piercing_region: "Orelha",
+      appointment_date: "2026-08-01",
+      appointment_time: "10:00",
+      deposit_value: 25
+    }
+  });
+  assert.equal(appointment.status, 201, JSON.stringify(appointment.json));
+
+  const reset = await req("/admin/reset-clinic-data", {
+    token: ctx.tenantToken,
+    method: "POST",
+    body: { confirmation: "RESETAR DADOS", reset_type: "operational" }
+  });
+  assert.equal(reset.status, 200, JSON.stringify(reset.json));
+  assert.equal(reset.json.type, "operational");
+  assert.ok(Number(reset.json.removed.appointments || 0) >= 1);
+
+  const appointments = await req("/appointments", { token: ctx.tenantToken });
+  assert.equal(appointments.status, 200);
+  assert.equal(appointments.json.length, 0, "agenda deve ficar limpa");
+  const services = await req("/services", { token: ctx.tenantToken });
+  assert.ok(services.json.some((item) => item.id === service.json.id), "serviços devem ser preservados");
+  const clients = await req("/clients", { token: ctx.tenantToken });
+  assert.ok(clients.json.some((item) => item.id === client.json.id), "clientes devem ser preservados no reset operacional");
+});
+
+test("reset completo preserva login/admin e limpa dados da clínica", async () => {
+  const reset = await req("/admin/reset-clinic-data", {
+    token: ctx.tenantToken,
+    method: "POST",
+    body: { confirmation: "RESETAR DADOS", reset_type: "complete" }
+  });
+  assert.equal(reset.status, 200, JSON.stringify(reset.json));
+  assert.equal(reset.json.type, "complete");
+
+  const login = await loginTenant(ctx.tenantSlug, ctx.tenantAdminEmail, ctx.tenantAdminPassword);
+  assert.equal(login.user.role, "admin");
+  ctx.tenantToken = login.token;
+
+  const users = await req("/users", { token: ctx.tenantToken });
+  assert.equal(users.status, 200, JSON.stringify(users.json));
+  assert.ok(users.json.some((user) => user.email === ctx.tenantAdminEmail && user.role === "admin"));
+  const clients = await req("/clients", { token: ctx.tenantToken });
+  assert.equal(clients.status, 200);
+  assert.equal(clients.json.length, 0);
+});
+
+test("POST /admin/reset-demo-data mantém compatibilidade com reset operacional", async () => {
   const { status, json } = await req("/admin/reset-demo-data", {
     token: ctx.tenantToken,
     method: "POST",
     body: { confirmation: "RESETAR" }
   });
-  assert.equal(status, 403, JSON.stringify(json));
-  assert.match(json.error, /produção|ALLOW_DEMO_RESET/i);
-});
-
-test("POST /admin/reset-demo-data continua exigindo papel admin (com reception seria 403 de papel)", async () => {
-  // Aqui o admin é usado; o bloqueio de produção (403) precede a confirmação,
-  // então mesmo admin recebe 403 do gate de produção. Documenta a ordem real.
-  const { status } = await req("/admin/reset-demo-data", {
-    token: ctx.tenantToken,
-    method: "POST",
-    body: {}
-  });
-  assert.equal(status, 403);
+  assert.equal(status, 200, JSON.stringify(json));
+  assert.equal(json.type, "operational");
 });

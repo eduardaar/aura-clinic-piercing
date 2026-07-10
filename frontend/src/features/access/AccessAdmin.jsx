@@ -165,12 +165,15 @@ export function AccessAdmin() {
   const [modalOpen, setModalOpen] = useState(false);
   const [error, setError] = useState("");
   const [resetConfirmation, setResetConfirmation] = useState("");
+  const [resetType, setResetType] = useState("operational");
   const [resetMessage, setResetMessage] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
   const [deleting, setDeleting] = useState(null);
   if (!data) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
   const users = asArray(data);
+  const adminCount = users.filter((user) => user.role === "admin").length;
+  const lastAdminMessage = "Não é possível remover o acesso do último administrador geral. Cadastre ou promova outro administrador antes de alterar esta conta.";
 
   function openNew() {
     setEditing(null);
@@ -186,9 +189,17 @@ export function AccessAdmin() {
     setModalOpen(true);
   }
 
+  function isProtectedLastAdmin(user = editing) {
+    return Boolean(user?.role === "admin" && adminCount <= 1);
+  }
+
   async function save(event) {
     event.preventDefault();
     setError("");
+    if (isProtectedLastAdmin() && form.role !== "admin") {
+      setError(lastAdminMessage);
+      return;
+    }
     const response = await apiFetch(`/users${editing ? `/${editing.id}` : ""}`, {
       method: editing ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
@@ -202,17 +213,21 @@ export function AccessAdmin() {
   }
 
   async function remove(user) {
+    if (isProtectedLastAdmin(user)) {
+      setError(lastAdminMessage);
+      return;
+    }
     await apiFetch(`/users/${user.id}`, { method: "DELETE" });
     refresh();
   }
 
-  async function resetDemoData() {
+  async function resetClinicData() {
     setResetLoading(true);
     setResetMessage("");
-    const response = await apiFetch("/admin/reset-demo-data", {
+    const response = await apiFetch("/admin/reset-clinic-data", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ confirmation: resetConfirmation })
+      body: JSON.stringify({ confirmation: resetConfirmation, reset_type: resetType })
     });
     const payload = await response.json().catch(() => ({}));
     setResetLoading(false);
@@ -221,7 +236,7 @@ export function AccessAdmin() {
       return;
     }
     setResetConfirmation("");
-    setResetMessage(payload.message || "Dados de demonstração removidos.");
+    setResetMessage(payload.message || "Reset concluído com segurança.");
   }
 
   return (
@@ -243,7 +258,7 @@ export function AccessAdmin() {
           actions={(user) => (
             <>
               <button type="button" onClick={() => openEdit(user)}>Editar</button>
-              <button type="button" onClick={() => setDeleting({ message: `Remover o acesso de ${user.name}?`, run: () => remove(user) })}>Apagar</button>
+              <button type="button" disabled={isProtectedLastAdmin(user)} onClick={() => setDeleting({ message: `Remover o acesso de ${user.name}?`, run: () => remove(user) })}>Apagar</button>
             </>
           )}
           empty="Nenhum usuário cadastrado ainda."
@@ -269,30 +284,40 @@ export function AccessAdmin() {
             <Input type="password" label={editing ? "Nova senha (opcional)" : "Senha"} value={form.password} onChange={(value) => setForm({ ...form, password: value })} required={!editing} />
             <Select label="Nível de acesso" value={form.role} onChange={(value) => setForm({ ...form, role: value })}>
               <option value="admin">Administrador Geral</option>
-              <option value="piercer">Body Piercer</option>
-              <option value="reception">Recepção</option>
-              <option value="finance">Financeiro</option>
+              <option value="piercer" disabled={isProtectedLastAdmin()}>Body Piercer</option>
+              <option value="reception" disabled={isProtectedLastAdmin()}>Recepção</option>
+              <option value="finance" disabled={isProtectedLastAdmin()}>Financeiro</option>
             </Select>
           </div>
+          {isProtectedLastAdmin() && <span className="form-error">{lastAdminMessage}</span>}
           {error && <span className="form-error">{error}</span>}
         </form>
       </Modal>
 
       <article className="panel admin-reset-panel">
         <div>
-          <span className="eyebrow">Preparação para Uso Real</span>
-          <h2>Limpar Dados de Demonstração</h2>
-          <p>Remove clientes, produtos, variações, agendamentos, vendas, despesas e lançamentos financeiros. Usuários, categorias e configurações permanecem.</p>
+          <span className="eyebrow">Zona de perigo</span>
+          <h2>Resetar dados da clínica</h2>
+          <p>Use apenas quando precisar limpar dados reais de operação. A ação não pode ser desfeita e exige confirmação digitada.</p>
         </div>
         <div className="admin-reset-action">
-          <Input label="Digite RESETAR para confirmar" value={resetConfirmation} onChange={setResetConfirmation} />
+          <Select label="Tipo de reset" value={resetType} onChange={setResetType}>
+            <option value="operational">Reset operacional</option>
+            <option value="complete">Reset completo da clínica</option>
+          </Select>
+          <p className="danger-zone-copy">
+            {resetType === "complete"
+              ? "Apaga clientes, agenda, vendas, financeiro, produtos, serviços, profissionais e configurações operacionais. Preserva a clínica e a conta administradora."
+              : "Apaga agendamentos, vendas, ordens de serviço, financeiro, prontuários, termos, pós-atendimento e histórico operacional. Preserva cadastros estruturais."}
+          </p>
+          <Input label="Digite RESETAR DADOS para confirmar" value={resetConfirmation} onChange={setResetConfirmation} />
           <Button
             type="button"
             variant="danger"
-            disabled={resetConfirmation !== "RESETAR" || resetLoading}
-            onClick={resetDemoData}
+            disabled={resetConfirmation !== "RESETAR DADOS" || resetLoading}
+            onClick={resetClinicData}
           >
-            {resetLoading ? "Limpando..." : "Limpar Dados Fictícios"}
+            {resetLoading ? "Resetando..." : "Confirmar reset"}
           </Button>
         </div>
         {resetMessage && <span className="admin-reset-message">{resetMessage}</span>}

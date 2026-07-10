@@ -76,7 +76,7 @@ router.post("/api/appointments", upload.single("reference_photo"), withDb(async 
   if (depositValue > 0) {
     await db.run(
       "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, 'sinal', ?, 'pago', ?)",
-      [result.lastID, client.id, depositValue, body.deposit_payment_method, `${body.appointment_date}T${body.appointment_time}:00`]
+      [result.lastID, client.id, depositValue, body.deposit_payment_method || "Pix", `${body.appointment_date}T${body.appointment_time}:00`]
     );
   }
   res.status(201).json(await db.get("SELECT * FROM appointments WHERE id = ?", [result.lastID]));

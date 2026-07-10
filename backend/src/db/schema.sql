@@ -12,6 +12,19 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
 
+CREATE TABLE IF NOT EXISTS admin_audit_logs (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER,
+  user_email TEXT,
+  tenant_slug TEXT,
+  action TEXT NOT NULL,
+  reset_type TEXT,
+  result TEXT NOT NULL,
+  removed_counts TEXT,
+  error_message TEXT,
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
 CREATE TABLE IF NOT EXISTS professionals (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,

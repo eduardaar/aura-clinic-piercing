@@ -130,6 +130,31 @@ PostgreSQL (`aura_clinic`), organizado em schemas: `platform` (controle da plata
 
 Para limpar os dados de demonstração preservando usuários e configurações, use o endpoint administrativo `POST /api/admin/reset-demo-data`.
 
+### Recuperação administrativa
+
+Se uma conta administradora geral perder acesso por engano, restaure a função `admin` sem criar usuário duplicado:
+
+```bash
+npm run restore-admin -- --email=email-da-conta
+```
+
+Opcionalmente restrinja a uma clínica:
+
+```bash
+npm run restore-admin -- --email=email-da-conta --tenant=slug-da-clinica
+```
+
+O comando localiza a conta existente no tenant, preserva nome/senha/demais dados e altera somente a função para `admin`.
+
+### Reset seguro de dados
+
+Em **Acessos > Zona de perigo**, administradoras gerais podem executar:
+
+- **Reset operacional**: apaga agenda, vendas, ordens de serviço, pagamentos, despesas, prontuários, termos, pós-atendimento, fidelidade e histórico operacional. Preserva profissionais, serviços, produtos, categorias, disponibilidade, identidade visual e usuários.
+- **Reset completo da clínica**: apaga dados operacionais e estruturais da clínica, preservando a clínica, a conta administradora e o mínimo necessário para login e funcionamento.
+
+O reset exige autenticação, papel `admin`, tenant correto, seleção do tipo de reset e confirmação literal `RESETAR DADOS`. A operação roda em transação e registra auditoria em `admin_audit_logs`.
+
 ## Níveis de acesso
 
 - `admin`: acessa tudo

@@ -8,6 +8,7 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "backup": "bash scripts/backup.sh",
+    "restore-admin": "node scripts/restore-admin.mjs",
     "test": "node tests/run-suite.mjs"
   },
   "dependencies": {

@@ -21,6 +21,8 @@ const ctx = {
   platformToken: null,
   tenant: null,
   adminToken: null,
+  adminId: null,
+  secondAdminId: null,
   tokens: {} // role → token de login
 };
 
@@ -32,6 +34,8 @@ before(async () => {
   ctx.tenant = await createTenant("qasec-perm");
   const admin = await loginTenant(ctx.tenant.slug, ctx.tenant.adminEmail, ctx.tenant.adminPassword);
   ctx.adminToken = admin.token;
+  ctx.adminId = admin.user.id;
+  ctx.adminEmail = admin.user.email;
   ctx.tokens.admin = admin.token;
 
   // Cria um usuário de cada papel não-admin e loga cada um.
@@ -157,6 +161,53 @@ test("admin TEM acesso: GET /users → 200", async () => {
   assert.equal(status, 200);
 });
 
+test("não permite remover ou rebaixar o último administrador geral", async () => {
+  const demote = await req(`/users/${ctx.adminId}`, {
+    token: ctx.adminToken,
+    method: "PATCH",
+    body: { role: "reception" }
+  });
+  assert.equal(demote.status, 409, JSON.stringify(demote.json));
+  assert.match(demote.json.error, /último administrador geral/i);
+
+  const remove = await req(`/users/${ctx.adminId}`, {
+    token: ctx.adminToken,
+    method: "DELETE"
+  });
+  assert.equal(remove.status, 409, JSON.stringify(remove.json));
+});
+
+test("permite alterar administrador quando existe outro administrador geral", async () => {
+  const created = await req("/users", {
+    token: ctx.adminToken,
+    method: "POST",
+    body: { name: "Admin Reserva", email: `admin2@${ctx.tenant.slug}.test`, password: PW, role: "admin" }
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.json));
+  ctx.secondAdminId = created.json.id;
+  const secondLogin = await loginTenant(ctx.tenant.slug, `admin2@${ctx.tenant.slug}.test`, PW);
+  const secondAdminToken = secondLogin.token;
+
+  const demote = await req(`/users/${ctx.adminId}`, {
+    token: ctx.adminToken,
+    method: "PATCH",
+    body: { role: "reception" }
+  });
+  assert.equal(demote.status, 200, JSON.stringify(demote.json));
+  assert.equal(demote.json.role, "reception");
+
+  const restore = await req(`/users/${ctx.adminId}`, {
+    token: secondAdminToken,
+    method: "PATCH",
+    body: { role: "admin" }
+  });
+  assert.equal(restore.status, 200, JSON.stringify(restore.json));
+  assert.equal(restore.json.role, "admin");
+  const relogin = await loginTenant(ctx.tenant.slug, ctx.adminEmail, "SenhaForte123");
+  ctx.adminToken = relogin.token;
+  ctx.tokens.admin = relogin.token;
+});
+
 // -- Profissionais: escrita restrita a admin -----------------------------
 test("POST /professionals com reception → 403", async () => {
   const { status } = await req("/professionals", {
@@ -220,11 +271,11 @@ test("DELETE /clients/:id com reception → permitido (200, mesmo sem existir a 
 });
 
 // -- Reset destrutivo exige admin E gate de produção ---------------------
-test("POST /admin/reset-demo-data com reception → 403", async () => {
-  const { status } = await req("/admin/reset-demo-data", {
+test("POST /admin/reset-clinic-data com reception → 403", async () => {
+  const { status } = await req("/admin/reset-clinic-data", {
     token: ctx.tokens.reception,
     method: "POST",
-    body: { confirmation: "RESETAR" }
+    body: { confirmation: "RESETAR DADOS", reset_type: "operational" }
   });
   assert.equal(status, 403);
 });
