@@ -150,6 +150,48 @@ export async function attachVariants(db, products = []) {
   });
 }
 
+export function stockAlertLevel(item = {}) {
+  const quantity = Number(item.quantity || 0);
+  const criticalThreshold = Number(item.critical_stock_threshold ?? item.low_stock_threshold ?? 2);
+  if (quantity <= 0) return "Esgotado";
+  if (quantity <= criticalThreshold) return "Crítico";
+  return "Acabando";
+}
+
+export function stockAlertPriority(item = {}) {
+  const quantity = Number(item.quantity || 0);
+  const criticalThreshold = Number(item.critical_stock_threshold ?? item.low_stock_threshold ?? 2);
+  if (quantity <= 0 || quantity <= criticalThreshold) return "high";
+  return "medium";
+}
+
+export async function listCriticalStockItems(db, { limit = 12 } = {}) {
+  const rawProducts = await db.all(`
+    SELECT *
+    FROM jewelry_inventory
+    WHERE status != 'arquivado'
+    ORDER BY name
+  `);
+  const rawById = new Map(rawProducts.map((item) => [Number(item.id), item]));
+  const products = await attachVariants(db, rawProducts);
+  return products
+    .map((item) => {
+      const raw = rawById.get(Number(item.id)) || {};
+      const aggregateQuantity = Number(item.quantity || 0);
+      const rawQuantity = Number(raw.quantity || 0);
+      const effectiveQuantity = item.variant_count ? Math.min(aggregateQuantity, rawQuantity) : rawQuantity;
+      return { ...item, quantity: effectiveQuantity };
+    })
+    .filter((item) => Number(item.quantity || 0) <= Number(item.low_stock_threshold ?? 5))
+    .sort((a, b) => Number(a.quantity || 0) - Number(b.quantity || 0) || String(a.name || "").localeCompare(String(b.name || ""), "pt-BR"))
+    .slice(0, limit)
+    .map((item) => ({
+      ...item,
+      alert_level: stockAlertLevel(item),
+      priority: stockAlertPriority(item)
+    }));
+}
+
 export async function replaceJewelryVariants(db, jewelryId, variants = []) {
   if (!Array.isArray(variants) || variants.length === 0) {
     throw new Error("Cadastre ao menos uma variação para o produto.");

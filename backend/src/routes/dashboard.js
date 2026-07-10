@@ -1,9 +1,10 @@
-// Rota do dashboard (indicadores, agenda do dia, rankings e alertas).
+// Rota do dashboard: indicadores, agenda do dia, rankings e alertas.
 import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
 import { nextBirthdays } from "../services/utils.js";
 import { listAppointments } from "../services/appointments.js";
 import { buildFinanceReport } from "../services/finance.js";
+import { listCriticalStockItems } from "../services/inventory.js";
 
 const router = Router();
 
@@ -19,20 +20,8 @@ router.get("/api/dashboard", withDb(async (_req, res, db) => {
     FROM appointments
   `, [today, `${month}%`]);
   const deposit = await db.get("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE payment_type = 'sinal' AND status = 'pago'");
-  const lowStock = await db.get("SELECT COUNT(*) AS count FROM jewelry_inventory WHERE status != 'arquivado' AND quantity <= COALESCE(low_stock_threshold, 5)");
   const todaysAppointments = await listAppointments(db, "WHERE a.appointment_date = ?", [today]);
-  const lowStockJewelry = await db.all(`
-    SELECT id, name, category, color, size, thickness, quantity, status, sku,
-      CASE
-        WHEN quantity <= 0 THEN 'Esgotado'
-        WHEN quantity <= COALESCE(critical_stock_threshold, 2) THEN 'Crítico'
-        ELSE 'Acabando'
-      END AS alert_level
-    FROM jewelry_inventory
-    WHERE status != 'arquivado' AND quantity <= COALESCE(low_stock_threshold, 5)
-    ORDER BY quantity ASC, name
-    LIMIT 8
-  `);
+  const lowStockJewelry = await listCriticalStockItems(db, { limit: 8 });
   const clients = await db.all("SELECT id, full_name, whatsapp, instagram, birth_date FROM clients WHERE birth_date IS NOT NULL");
   const birthdays = nextBirthdays(clients, 30).slice(0, 8);
   const topClients = await db.all(`
@@ -42,7 +31,7 @@ router.get("/api/dashboard", withDb(async (_req, res, db) => {
       c.whatsapp,
       c.instagram,
       COUNT(a.id) AS appointment_count,
-      SUM(CASE WHEN LOWER(a.procedure) LIKE '%retorno%' OR LOWER(a.description) LIKE '%retorno%' THEN 1 ELSE 0 END) AS return_count,
+      SUM(CASE WHEN LOWER(COALESCE(a.procedure, '')) LIKE '%retorno%' OR LOWER(COALESCE(a.description, '')) LIKE '%retorno%' THEN 1 ELSE 0 END) AS return_count,
       MAX(a.appointment_date) AS last_visit
     FROM clients c
     JOIN appointments a ON a.client_id = c.id
@@ -84,7 +73,11 @@ router.get("/api/dashboard", withDb(async (_req, res, db) => {
     ORDER BY SUBSTR(birth_date, 9, 2)
     LIMIT 8
   `, [today.slice(5, 7)]);
-  const upcomingAppointments = await listAppointments(db, "WHERE a.appointment_date >= ? AND a.status IN ('pendente', 'confirmado', 'remarcado')", [today]).then((rows) => rows.slice(0, 8));
+  const upcomingAppointments = await listAppointments(
+    db,
+    "WHERE a.appointment_date >= ? AND a.status IN ('pendente', 'confirmado', 'remarcado')",
+    [today]
+  ).then((rows) => rows.slice(0, 8));
   const returnClients = await db.all(`
     SELECT f.*, c.full_name, c.whatsapp, a.procedure
     FROM post_care_followups f
@@ -94,15 +87,16 @@ router.get("/api/dashboard", withDb(async (_req, res, db) => {
     ORDER BY f.due_date ASC
     LIMIT 8
   `);
+
   res.json({
     stats: {
-      todayCount: stats?.today_count || stats?.todayCount || 0,
-      pendingCount: stats?.pending_count || stats?.pendingCount || 0,
-      confirmedCount: stats?.confirmed_count || stats?.confirmedCount || 0,
-      criticalStock: lowStock?.count || 0,
-      lowStockCount: lowStock?.count || 0,
+      todayCount: stats?.today_count || 0,
+      pendingCount: stats?.pending_count || 0,
+      confirmedCount: stats?.confirmed_count || 0,
+      criticalStock: lowStockJewelry.length,
+      lowStockCount: lowStockJewelry.length,
       depositReceived: deposit?.total || 0,
-      monthForecast: stats?.month_forecast || stats?.monthForecast || 0
+      monthForecast: stats?.month_forecast || 0
     },
     todaysAppointments,
     alerts: { lowStockJewelry, birthdays, topClients },

@@ -363,6 +363,27 @@ test("4b. registra movimento de estoque (Entrada) e confere quantidade", async (
 });
 
 // 5) Agendamento: liga cliente + profissional + serviço, com data/hora/valores.
+test("4c. dashboard e central de alertas usam a mesma regra de estoque crítico", async () => {
+  const movement = await api(`/jewelry/${ctx.jewelryId}/movements`, {
+    method: "POST",
+    body: { movement_type: "Saída", quantity: 14, notes: "Baixa QA para alerta" },
+  });
+  assert.equal(movement.status, 200, JSON.stringify(movement.json));
+  assert.equal(Number(movement.json.jewelry.quantity), 1);
+
+  const dashboard = await api("/dashboard");
+  assert.equal(dashboard.status, 200, JSON.stringify(dashboard.json));
+  const dashboardCritical = dashboard.json.adminDashboard.criticalStock.find((item) => Number(item.id) === Number(ctx.jewelryId));
+  assert.ok(dashboardCritical, "dashboard deve exibir a joia crítica");
+  assert.equal(dashboardCritical.alert_level, "Crítico");
+
+  const alerts = await api("/alerts");
+  assert.equal(alerts.status, 200, JSON.stringify(alerts.json));
+  const stockAlert = alerts.json.items.find((item) => item.id === `stock-${ctx.jewelryId}`);
+  assert.ok(stockAlert, "central de alertas deve exibir a mesma joia crítica");
+  assert.equal(stockAlert.priority, "high");
+});
+
 test("5a. cria agendamento (com sinal) e ele aparece na listagem", async () => {
   // jewelry_id só é enviado se a joia foi realmente criada (bug de 4a).
   const body = {

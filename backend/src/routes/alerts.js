@@ -1,19 +1,14 @@
-// Rota de alertas (estoque, aniversários e clientes frequentes).
+// Rota de alertas: estoque, aniversarios e clientes frequentes.
 import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
 import { nextBirthdays } from "../services/utils.js";
+import { listCriticalStockItems } from "../services/inventory.js";
 
 const router = Router();
 
 router.get("/api/alerts", withDb(async (_req, res, db) => {
   const today = new Date().toISOString().slice(0, 10);
-  const jewelry = await db.all(`
-    SELECT id, name, category, color, size, thickness, quantity, status, sku
-    FROM jewelry_inventory
-    WHERE status != 'arquivado' AND quantity <= COALESCE(low_stock_threshold, 5)
-    ORDER BY quantity ASC, name
-    LIMIT 12
-  `);
+  const jewelry = await listCriticalStockItems(db, { limit: 12 });
   const clients = await db.all("SELECT id, full_name, whatsapp, instagram, birth_date FROM clients WHERE birth_date IS NOT NULL");
   const birthdays = nextBirthdays(clients, 30).slice(0, 10);
   const topClients = await db.all(`
@@ -32,11 +27,11 @@ router.get("/api/alerts", withDb(async (_req, res, db) => {
   const alerts = [
     ...jewelry.map((item) => ({
       id: `stock-${item.id}`,
-      title: item.quantity <= 0 ? "Joia esgotada" : "Joia acabando",
+      title: item.alert_level === "Esgotado" ? "Joia esgotada" : "Joia acabando",
       category: "Estoque",
       subject: item.name,
       description: `${item.name} possui ${Number(item.quantity || 0)} unidade(s) disponível(is).`,
-      priority: item.quantity <= 0 ? "high" : item.quantity <= 2 ? "high" : "medium",
+      priority: item.priority,
       related_date: today,
       action_label: "Ver estoque",
       action_page: "catalog",
