@@ -38,7 +38,11 @@ CREATE TABLE IF NOT EXISTS professionals (
   name TEXT NOT NULL,
   specialty TEXT,
   active INTEGER NOT NULL DEFAULT 1,
-  photo_url TEXT
+  photo_url TEXT,
+  phone TEXT,
+  email TEXT,
+  whatsapp TEXT,
+  notification_opt_in INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS services (
@@ -235,12 +239,34 @@ CREATE TABLE IF NOT EXISTS appointments (
   deposit_payment_method TEXT,
   remaining_payment_method TEXT,
   status TEXT NOT NULL DEFAULT 'pendente',
+  source TEXT NOT NULL DEFAULT 'manual',
+  public_booking_key TEXT,
+  duration_minutes INTEGER,
   notes TEXT,
   reference_photo_url TEXT,
   payment_proof_url TEXT,
   stock_deducted INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
+
+CREATE TABLE IF NOT EXISTS notification_queue (
+  id SERIAL PRIMARY KEY,
+  professional_id INTEGER REFERENCES professionals(id),
+  appointment_id INTEGER REFERENCES appointments(id),
+  channel TEXT NOT NULL DEFAULT 'whatsapp',
+  destination TEXT,
+  template TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  message TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  scheduled_at TEXT,
+  sent_at TEXT,
+  unique_key TEXT,
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_queue_unique_key ON notification_queue(unique_key) WHERE unique_key IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS payments (
   id SERIAL PRIMARY KEY,
@@ -510,6 +536,12 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS updated_at TEXT NOT NULL DEFAULT to
 ALTER TABLE professionals ADD COLUMN IF NOT EXISTS phone TEXT;
 ALTER TABLE professionals ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE professionals ADD COLUMN IF NOT EXISTS calendar_color TEXT DEFAULT '#C8A96A';
+ALTER TABLE professionals ADD COLUMN IF NOT EXISTS whatsapp TEXT;
+ALTER TABLE professionals ADD COLUMN IF NOT EXISTS notification_opt_in INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'manual';
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS public_booking_key TEXT;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS duration_minutes INTEGER;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_appointments_public_booking_key ON appointments(public_booking_key) WHERE public_booking_key IS NOT NULL;
 ALTER TABLE schedule_blocks ADD COLUMN IF NOT EXISTS block_type TEXT NOT NULL DEFAULT 'block';
 ALTER TABLE schedule_blocks ADD COLUMN IF NOT EXISTS lunch_start TEXT;
 ALTER TABLE schedule_blocks ADD COLUMN IF NOT EXISTS lunch_end TEXT;

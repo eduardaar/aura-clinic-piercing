@@ -8,6 +8,53 @@ import { listCriticalStockItems } from "../services/inventory.js";
 
 const router = Router();
 
+function appointmentDateTime(item) {
+  const value = new Date(`${item.appointment_date}T${item.appointment_time || "00:00"}:00`);
+  return Number.isNaN(value.getTime()) ? null : value;
+}
+
+function appointmentCountdown(item, now = new Date()) {
+  const date = appointmentDateTime(item);
+  if (!date) return "";
+  const diffMinutes = Math.round((date.getTime() - now.getTime()) / 60000);
+  if (diffMinutes < 0) return `Atrasado ha ${Math.abs(diffMinutes)} min`;
+  if (diffMinutes < 60) return `Em ${diffMinutes} min`;
+  const hours = Math.floor(diffMinutes / 60);
+  const minutes = diffMinutes % 60;
+  return `Em ${hours}h${String(minutes).padStart(2, "0")}`;
+}
+
+function buildAppointmentAlerts(appointments, now = new Date()) {
+  const seen = new Set();
+  const alerts = [];
+  for (const item of appointments) {
+    const date = appointmentDateTime(item);
+    if (!date) continue;
+    const diffMinutes = Math.round((date.getTime() - now.getTime()) / 60000);
+    const base = {
+      appointment_id: item.id,
+      full_name: item.full_name,
+      service_name: item.service_name || item.procedure,
+      professional_name: item.professional_name,
+      appointment_date: item.appointment_date,
+      appointment_time: item.appointment_time,
+      status: item.status
+    };
+    const add = (type, title, priority) => {
+      const key = `${type}-${item.id}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      alerts.push({ ...base, id: key, type, title, priority, minutes_until: diffMinutes });
+    };
+    if (item.source === "public_booking" && item.status === "pendente") add("public-pending", "Solicitacao publica pendente", "high");
+    if (Number(item.deposit_value || 0) > 0 && Number(item.remaining_value || 0) >= Number(item.total_value || 0)) add("deposit-pending", "Sinal pendente", "medium");
+    if (diffMinutes < 0 && !["cancelado", "recusado", "atendido"].includes(item.status)) add("late", "Agendamento atrasado", "high");
+    if (diffMinutes >= 0 && diffMinutes <= 120 && !["cancelado", "recusado", "atendido"].includes(item.status)) add("next-2h", "Agendamento em ate 2 horas", "high");
+    else if (diffMinutes > 120 && diffMinutes <= 1440 && !["cancelado", "recusado", "atendido"].includes(item.status)) add("next-24h", "Agendamento em ate 24 horas", "medium");
+  }
+  return alerts;
+}
+
 router.get("/api/dashboard", withDb(async (_req, res, db) => {
   const today = new Date().toISOString().slice(0, 10);
   const month = today.slice(0, 7);
@@ -77,7 +124,12 @@ router.get("/api/dashboard", withDb(async (_req, res, db) => {
     db,
     "WHERE a.appointment_date >= ? AND a.status IN ('pendente', 'confirmado', 'remarcado')",
     [today]
-  ).then((rows) => rows.slice(0, 8));
+  );
+  const nextAppointment = upcomingAppointments[0] ? {
+    ...upcomingAppointments[0],
+    countdown: appointmentCountdown(upcomingAppointments[0])
+  } : null;
+  const appointmentAlerts = buildAppointmentAlerts(upcomingAppointments);
   const returnClients = await db.all(`
     SELECT f.*, c.full_name, c.whatsapp, a.procedure
     FROM post_care_followups f
@@ -109,7 +161,9 @@ router.get("/api/dashboard", withDb(async (_req, res, db) => {
       categoryRanking,
       criticalStock: lowStockJewelry,
       birthdaysMonth,
-      upcomingAppointments,
+      upcomingAppointments: upcomingAppointments.slice(0, 8),
+      nextAppointment,
+      appointmentAlerts,
       returnClients
     }
   });

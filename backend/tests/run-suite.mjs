@@ -57,7 +57,7 @@ const testTargets = target
     .filter((file) => file.endsWith(".test.mjs"))
     .map((file) => path.join("tests", file));
 
-const tests = spawn("node", ["--test", ...testTargets], {
+const tests = spawn("node", ["--test", "--test-concurrency=1", ...testTargets], {
   env: { ...env, TEST_API_URL: `http://localhost:${PORT}/api` },
   stdio: ["ignore", "inherit", "inherit"],
 });

@@ -37,6 +37,8 @@ export function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpe
   const jewelryRanking = asArray(adminDashboard.jewelryRanking);
   const categoryRanking = asArray(adminDashboard.categoryRanking);
   const returnClients = asArray(adminDashboard.returnClients);
+  const nextAppointment = asObject(adminDashboard.nextAppointment);
+  const appointmentAlerts = asArray(adminDashboard.appointmentAlerts);
   const todaysAppointments = asArray(safeData.todaysAppointments);
 
   const cards = [
@@ -76,6 +78,25 @@ export function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpe
       </div>
 
       <div className="premium-dashboard-grid">
+        <article className="panel next-appointment-card">
+          <div className="panel-heading">
+            <h2>Próximo agendamento</h2>
+            <Button variant="ghost" onClick={() => setPage("agenda")}>Ver na agenda</Button>
+          </div>
+          {nextAppointment.id ? (
+            <div className="next-appointment-body">
+              <strong>{nextAppointment.countdown || "Em breve"}</strong>
+              <p>{personName(nextAppointment)} — {nextAppointment.service_name || nextAppointment.procedure || "Atendimento"}</p>
+              <span>{formatLongDate(nextAppointment.appointment_date)} · {nextAppointment.appointment_time} · Prof. {nextAppointment.professional_name || "Sem profissional"}</span>
+              <div className="row-actions">
+                <StatusBadge status={nextAppointment.status || "pendente"} />
+                {nextAppointment.whatsapp && <a href={`https://wa.me/${String(nextAppointment.whatsapp).replace(/\D/g, "")}`} target="_blank" rel="noreferrer">Entrar em contato</a>}
+              </div>
+            </div>
+          ) : <p className="empty-state">Não há atendimentos futuros agendados.</p>}
+          {!!appointmentAlerts.length && <small className="dashboard-alert-hint">{appointmentAlerts.length} aviso(s) de agenda precisam de atenção.</small>}
+        </article>
+
         <article className="panel revenue-card">
           <div className="panel-heading">
             <h2>Faturamento</h2>

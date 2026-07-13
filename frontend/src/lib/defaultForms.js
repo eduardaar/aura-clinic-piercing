@@ -204,6 +204,7 @@ export function defaultPublicBooking() {
     whatsapp: "",
     instagram: "",
     notes: "",
+    idempotency_key: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
     reference_photo: null,
     payment_proof: null
   };
@@ -255,7 +256,9 @@ export function defaultProfessionalForm() {
     name: "",
     specialty: "",
     phone: "",
+    whatsapp: "",
     email: "",
+    notification_opt_in: true,
     calendar_color: "#C8A96A",
     active: true,
     service_ids: []

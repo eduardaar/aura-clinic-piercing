@@ -898,6 +898,7 @@ export function PublicBooking() {
   const [form, setForm] = useState(defaultPublicBooking());
   const [slots, setSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [confirmed, setConfirmed] = useState(null);
   const safeData = asObject(data);
@@ -934,13 +935,16 @@ export function PublicBooking() {
   if (data.error) return <ApiError message={data.error} />;
 
   async function submit() {
+    if (submitting) return;
     setError("");
+    setSubmitting(true);
     const body = new FormData();
     Object.entries(form).forEach(([key, value]) => {
       if (value) body.append(key, value);
     });
     const response = await publicApiFetch("/booking/requests", { method: "POST", body });
     const json = await response.json().catch(() => ({}));
+    setSubmitting(false);
     if (!response.ok) return setError(json.error || "Não foi possível solicitar o agendamento.");
     setConfirmed(json);
     setStep(7);
@@ -1042,7 +1046,7 @@ export function PublicBooking() {
             <p><strong>Regras:</strong> {data.rules?.cancellation}</p>
             <label>Comprovante Do Sinal Pix<input type="file" accept="image/*,.pdf" onChange={(event) => setForm({ ...form, payment_proof: event.target.files?.[0] })} /></label>
             {error && <span className="form-error">{error}</span>}
-            <button className="primary-button booking-wide-button" onClick={submit}>Confirmar Solicitação</button>
+            <button className="primary-button booking-wide-button" disabled={submitting} onClick={submit}>{submitting ? "Enviando..." : "Confirmar Solicitação"}</button>
           </section>
         )}
         {step === 7 && (

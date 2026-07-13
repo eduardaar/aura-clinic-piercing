@@ -14,6 +14,7 @@ import { awardLoyaltyForAppointment } from "../services/loyalty.js";
 import { ensureSalesOrderForAppointment } from "../services/sales.js";
 import { validateBody } from "../middleware/validate.js";
 import { appointmentCreateSchema } from "../schemas/index.js";
+import { queueAppointmentReminderNotifications } from "../services/notifications.js";
 
 const router = Router();
 
@@ -102,7 +103,11 @@ router.patch("/api/appointments/:id", withDb(async (req, res, db) => {
     await ensurePostCareFollowups(db, req.params.id);
     await awardLoyaltyForAppointment(db, req.params.id);
   }
-  res.json(await listAppointments(db, "WHERE a.id = ?", [req.params.id]).then((rows) => rows[0]));
+  const updated = await listAppointments(db, "WHERE a.id = ?", [req.params.id]).then((rows) => rows[0]);
+  if (["confirmado", "remarcado"].includes(updated?.status) || req.body.appointment_date || req.body.appointment_time) {
+    await queueAppointmentReminderNotifications(db, updated);
+  }
+  res.json(updated);
 }));
 
 export default router;

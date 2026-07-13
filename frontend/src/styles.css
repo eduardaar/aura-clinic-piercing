@@ -6270,6 +6270,33 @@ body {
   gap: 24px;
 }
 
+.next-appointment-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.next-appointment-body {
+  display: grid;
+  gap: 8px;
+}
+
+.next-appointment-body > strong {
+  color: var(--gold);
+  font-family: var(--font-serif);
+  font-size: 1.65rem;
+}
+
+.next-appointment-body p {
+  margin: 0;
+  font-weight: 800;
+}
+
+.next-appointment-body span,
+.dashboard-alert-hint {
+  color: var(--muted);
+}
+
 .revenue-card,
 .upcoming-card {
   min-height: 340px;
