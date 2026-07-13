@@ -5,7 +5,7 @@ import { Button, Input, Metric, Select, StatusBadge } from "../../components/com
 import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../components/common/Crud";
 import { asArray, asObject, formatDate, removeAccents } from "../../lib/utils";
 import { apiFetch, useFetch } from "../../lib/api";
-import { ANODIZATION_COLOR_OPTIONS, JEWELRY_CATEGORY_OPTIONS, JEWELRY_LENGTH_OPTIONS, JEWELRY_THICKNESS_OPTIONS, JEWELRY_THREAD_OPTIONS, defaultJewelry, defaultJewelryVariant, normalizeJewelryForm, parseGalleryUrls } from "../../lib/defaultForms";
+import { ANODIZATION_COLOR_OPTIONS, JEWELRY_CATEGORY_OPTIONS, JEWELRY_LENGTH_OPTIONS, JEWELRY_THICKNESS_OPTIONS, JEWELRY_THREAD_OPTIONS, PRICE_MULTIPLIER_OPTIONS, PRICE_ROUNDING_OPTIONS, calculateVariantPricing, centsToMoney, defaultJewelry, defaultJewelryVariant, normalizeJewelryForm, parseGalleryUrls } from "../../lib/defaultForms";
 import { catalogFilterOptions, cleanDisplayText, elegantProductName, splitColorOptions } from "../../features/catalog/catalogUtils";
 import { catalogImageUrl, currency, inventoryStatusClass, inventoryStatusLabel, inventoryStockState, jewelrySkuBase } from "../../features/shared/helpers";
 import { CatalogCustomization, ImageUploadField, Toggle } from "../../pages/CatalogCustomization";
@@ -132,6 +132,7 @@ export function Inventory2() {
   const [showEditor, setShowEditor] = useState(false);
   const [showManagement, setShowManagement] = useState(false);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [pricingSaving, setPricingSaving] = useState(false);
   const { data: options, refresh: refreshOptions } = useFetch("/options");
   const { status: _statusFilter, ...queryFilters } = filters;
   const query = new URLSearchParams(Object.fromEntries(Object.entries(queryFilters).filter(([, value]) => value))).toString();
@@ -140,6 +141,7 @@ export function Inventory2() {
   const items = apiItems;
   const safeOptions = asObject(options);
   const rawInventoryOptions = asObject(safeOptions.inventoryOptions);
+  const pricingSettings = asObject(safeOptions.pricingSettings);
   const inventoryOptions = {
     category: asArray(rawInventoryOptions.category),
     size: asArray(rawInventoryOptions.size),
@@ -163,6 +165,16 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
   asArray(item?.variants)
 );
   const variantOptions = (field) => [...new Set(allVariants.map((variant) => variant[field]).filter(Boolean))].sort();
+  async function savePricingSettings(patch) {
+    setPricingSaving(true);
+    const response = await apiFetch("/pricing-settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...pricingSettings, ...patch })
+    });
+    setPricingSaving(false);
+    if (response.ok) refreshOptions();
+  }
   const filteredItems = items.filter((item) => {
     if (inventoryMode === "virtual") {
       if (badgeTab === "todos") return true;
@@ -289,6 +301,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
 
           <JewelryEditor
             options={inventoryOptions}
+            pricingSettings={safeOptions.pricingSettings}
             editing={editingJewelry}
             onMovementOpen={openMovement}
             onCancel={() => closeProduct({ keepCategory: Boolean(productCategory) })}
@@ -358,6 +371,20 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
                   </button>
                 ))}
               </div>
+
+              <section className="panel pricing-settings-panel">
+                <div>
+                  <strong>Precificação padrão</strong>
+                  <small>Usada como base para novas joias e variações. O preço final ainda pode ser ajustado manualmente.</small>
+                </div>
+                <Select label="Multiplicador padrão" value={pricingSettings.default_price_multiplier || 3} onChange={(value) => savePricingSettings({ default_price_multiplier: Number(value) })}>
+                  {PRICE_MULTIPLIER_OPTIONS.map((option) => <option key={option} value={option}>{option}x</option>)}
+                </Select>
+                <Select label="Arredondamento" value={pricingSettings.price_rounding_mode || "exact"} onChange={(value) => savePricingSettings({ price_rounding_mode: value })}>
+                  {PRICE_ROUNDING_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </Select>
+                {pricingSaving && <span className="form-success">Salvando...</span>}
+              </section>
 
               <div className="inventory-filter-row simplified">
                 <label className="search-field">
@@ -516,7 +543,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
   );
 }
 
-export function JewelryEditor({ options, editing, onSaved, onCancel, onMovementOpen }) {
+export function JewelryEditor({ options, pricingSettings = {}, editing, onSaved, onCancel, onMovementOpen }) {
   const [form, setForm] = useState(defaultJewelry());
   const [error, setError] = useState("");
   const [editorTab, setEditorTab] = useState("dados");
@@ -542,20 +569,26 @@ export function JewelryEditor({ options, editing, onSaved, onCancel, onMovementO
   async function submit(event) {
     event.preventDefault();
     setError("");
+    const pricedVariants = form.variants.map((variant) => ({
+      ...variant,
+      ...calculateVariantPricing(variant, pricingSettings)
+    }));
+    const saleValues = pricedVariants.map((variant) => Number(variant.sale_value || 0)).filter((value) => value > 0);
     const payload = {
       ...form,
+      variants: pricedVariants,
       gallery_urls: parseGalleryUrls(form.gallery_urls),
-      material: form.variants[0]?.material || "",
-      color: form.variants[0]?.color || "",
-      size: form.variants[0]?.size || "",
-      thickness: form.variants[0]?.thickness || "",
-      stem_length: form.variants[0]?.length || "",
-      thread_type: form.variants[0]?.thread_type || "",
-      supplier: form.variants[0]?.supplier || "",
+      material: pricedVariants[0]?.material || "",
+      color: pricedVariants[0]?.color || "",
+      size: pricedVariants[0]?.size || "",
+      thickness: pricedVariants[0]?.thickness || "",
+      stem_length: pricedVariants[0]?.length || "",
+      thread_type: pricedVariants[0]?.thread_type || "",
+      supplier: pricedVariants[0]?.supplier || "",
       sku: form.sku || "",
-      quantity: form.variants.reduce((sum, variant) => sum + Number(variant.quantity || 0), 0),
-      cost_value: Math.min(...form.variants.map((variant) => Number(variant.cost_value || 0))),
-      sale_value: Math.min(...form.variants.map((variant) => Number(variant.sale_value || 0))),
+      quantity: pricedVariants.reduce((sum, variant) => sum + Number(variant.quantity || 0), 0),
+      cost_value: Math.min(...pricedVariants.map((variant) => Number(variant.cost_value || 0))),
+      sale_value: saleValues.length ? Math.min(...saleValues) : 0,
       virtual_store_active: Boolean(form.virtual_store_active),
       is_catalog_active: Boolean(form.is_catalog_active),
       is_published: Boolean(form.is_published),
@@ -583,9 +616,37 @@ export function JewelryEditor({ options, editing, onSaved, onCancel, onMovementO
   );
 
   function updateVariant(index, patch) {
+    const pricingFields = ["cost_value", "purchase_cost", "allocated_freight", "additional_cost", "price_multiplier", "price_rounding_mode", "price_manually_overridden", "sale_value"];
     setForm((current) => ({
       ...current,
-      variants: current.variants.map((variant, variantIndex) => variantIndex === index ? { ...variant, ...patch } : variant)
+      variants: current.variants.map((variant, variantIndex) => {
+        if (variantIndex !== index) return variant;
+        const nextVariant = { ...variant, ...patch };
+        return pricingFields.some((field) => Object.prototype.hasOwnProperty.call(patch, field))
+          ? { ...nextVariant, ...calculateVariantPricing(nextVariant, pricingSettings) }
+          : nextVariant;
+      })
+    }));
+  }
+
+  function applyPricingToAll() {
+    if (!form.variants.length) return;
+    if (!window.confirm("Aplicar custo, frete, multiplicador e arredondamento da primeira variação para todas as variações? Preços finais manuais serão recalculados.")) return;
+    const source = form.variants[0];
+    setForm((current) => ({
+      ...current,
+      variants: current.variants.map((variant) => {
+        const nextVariant = {
+          ...variant,
+          purchase_cost: source.purchase_cost,
+          allocated_freight: source.allocated_freight,
+          additional_cost: source.additional_cost,
+          price_multiplier: source.price_multiplier,
+          price_rounding_mode: source.price_rounding_mode,
+          price_manually_overridden: false
+        };
+        return { ...nextVariant, ...calculateVariantPricing(nextVariant, pricingSettings) };
+      })
     }));
   }
 
@@ -673,7 +734,10 @@ export function JewelryEditor({ options, editing, onSaved, onCancel, onMovementO
               <h3>Variações do Produto</h3>
               <p>Cada combinação possui SKU, preço e estoque próprios.</p>
             </div>
-            <Button variant="primary" onClick={addVariant}>+ Nova Variação</Button>
+            <div className="product-movement-actions">
+              <Button variant="secondary" onClick={applyPricingToAll}>Aplicar custo e multiplicador a todas</Button>
+              <Button variant="primary" onClick={addVariant}>+ Nova Variação</Button>
+            </div>
           </div>
           <div className="variant-editor-list">
             {form.variants.map((variant, index) => {
@@ -717,6 +781,7 @@ export function JewelryEditor({ options, editing, onSaved, onCancel, onMovementO
             <VariantEditModal
               category={form.category}
               variant={form.variants[editingVariantIndex]}
+              pricingSettings={pricingSettings}
               onChange={(patch) => updateVariant(editingVariantIndex, patch)}
               onClose={() => setEditingVariantIndex(null)}
             />
@@ -806,7 +871,7 @@ export function JewelryEditor({ options, editing, onSaved, onCancel, onMovementO
   );
 }
 
-export function VariantEditModal({ category, variant, onChange, onClose }) {
+export function VariantEditModal({ category, variant, pricingSettings = {}, onChange, onClose }) {
   const normalizedCategory = removeAccents(String(category || "").toLowerCase());
   const usesDiameter = normalizedCategory.includes("argola");
   const usesLength = ["labret", "barbell reto", "barbell curvo", "nostril", "surface"].some((name) => normalizedCategory.includes(name));
@@ -814,6 +879,13 @@ export function VariantEditModal({ category, variant, onChange, onClose }) {
   const usesThickness = !normalizedCategory.includes("topos") && !normalizedCategory.includes("microdermal");
   const usesThread = ["labret", "barbell", "nostril", "topos", "ouro"].some((name) => normalizedCategory.includes(name));
   const selectedColors = splitColorOptions(variant.color);
+  const pricing = calculateVariantPricing(variant, pricingSettings);
+  const priceAdjusted = Math.abs(Number(variant.sale_value || 0) - Number(pricing.suggested_sale_value || 0)) > 0.009;
+
+  function updatePricing(patch) {
+    const nextVariant = { ...variant, ...patch };
+    onChange({ ...patch, ...calculateVariantPricing(nextVariant, pricingSettings) });
+  }
 
   function toggleColor(color) {
     const nextColors = selectedColors.includes(color)
@@ -878,9 +950,34 @@ export function VariantEditModal({ category, variant, onChange, onClose }) {
           )}
           <Input label="SKU" value={variant.sku} onChange={(value) => onChange({ sku: value, sku_manually_edited: true })} required />
           <Input label="Fornecedor" value={variant.supplier} onChange={(value) => onChange({ supplier: value })} />
+          <section className="pricing-builder">
+            <div>
+              <h3>Precificação automática</h3>
+              <p>Informe o custo real da variação e revise o preço sugerido antes de publicar.</p>
+            </div>
+            <div className="form-grid">
+              <Input type="number" label="Custo da Joia" value={variant.purchase_cost || variant.cost_value} onChange={(value) => updatePricing({ purchase_cost: value, cost_value: value, price_manually_overridden: false })} />
+              <Input type="number" label="Frete Rateado" value={variant.allocated_freight} onChange={(value) => updatePricing({ allocated_freight: value, price_manually_overridden: false })} />
+              <Input type="number" label="Outros Custos" value={variant.additional_cost} onChange={(value) => updatePricing({ additional_cost: value, price_manually_overridden: false })} />
+              <Select label="Multiplicador" value={variant.price_multiplier || pricingSettings.default_price_multiplier || 3} onChange={(value) => updatePricing({ price_multiplier: Number(value), price_manually_overridden: false })}>
+                {PRICE_MULTIPLIER_OPTIONS.map((option) => <option key={option} value={option}>{option}x</option>)}
+              </Select>
+              <Select label="Arredondamento" value={variant.price_rounding_mode || pricingSettings.price_rounding_mode || "exact"} onChange={(value) => updatePricing({ price_rounding_mode: value, price_manually_overridden: false })}>
+                {PRICE_ROUNDING_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </Select>
+            </div>
+            <div className="pricing-preview">
+              <span><small>Custo Total</small><strong>{currency.format(centsToMoney(pricing.total_cost_cents))}</strong></span>
+              <span><small>Preço Sugerido</small><strong>{currency.format(centsToMoney(pricing.suggested_price_cents))}</strong></span>
+              <span><small>Preço Final</small><strong>{currency.format(centsToMoney(pricing.sale_price_cents))}</strong></span>
+              {priceAdjusted && <em>Preço ajustado manualmente</em>}
+            </div>
+            <div className="form-grid">
+              <Input type="number" label="Preço Final de Venda" value={variant.sale_value} onChange={(value) => updatePricing({ sale_value: value, price_manually_overridden: true })} required />
+              <Button variant="secondary" onClick={() => updatePricing({ sale_value: centsToMoney(pricing.suggested_price_cents), price_manually_overridden: false })}>Usar preço sugerido</Button>
+            </div>
+          </section>
           <div className="form-grid">
-            <Input type="number" label="Valor de Custo" value={variant.cost_value} onChange={(value) => onChange({ cost_value: value })} />
-            <Input type="number" label="Valor de Venda" value={variant.sale_value} onChange={(value) => onChange({ sale_value: value })} required />
             <Input type="number" label="Estoque Atual" value={variant.quantity} onChange={(value) => onChange({ quantity: value })} required />
             <Input type="number" label="Estoque Mínimo" value={variant.low_stock_threshold} onChange={(value) => onChange({ low_stock_threshold: value })} />
           </div>

@@ -25,6 +25,14 @@ CREATE TABLE IF NOT EXISTS admin_audit_logs (
   created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
 
+CREATE TABLE IF NOT EXISTS clinic_settings (
+  id INTEGER PRIMARY KEY DEFAULT 1,
+  default_price_multiplier DOUBLE PRECISION NOT NULL DEFAULT 3,
+  price_rounding_mode TEXT NOT NULL DEFAULT 'exact',
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS'),
+  updated_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
 CREATE TABLE IF NOT EXISTS professionals (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
@@ -88,6 +96,15 @@ CREATE TABLE IF NOT EXISTS jewelry_inventory (
   quantity INTEGER NOT NULL DEFAULT 0,
   cost_value DOUBLE PRECISION NOT NULL DEFAULT 0,
   sale_value DOUBLE PRECISION NOT NULL DEFAULT 0,
+  purchase_cost_cents INTEGER NOT NULL DEFAULT 0,
+  allocated_freight_cents INTEGER NOT NULL DEFAULT 0,
+  additional_cost_cents INTEGER NOT NULL DEFAULT 0,
+  total_cost_cents INTEGER NOT NULL DEFAULT 0,
+  price_multiplier DOUBLE PRECISION NOT NULL DEFAULT 3,
+  price_rounding_mode TEXT NOT NULL DEFAULT 'exact',
+  suggested_price_cents INTEGER NOT NULL DEFAULT 0,
+  sale_price_cents INTEGER NOT NULL DEFAULT 0,
+  price_manually_overridden INTEGER NOT NULL DEFAULT 0,
   supplier TEXT,
   physical_location TEXT,
   sku TEXT UNIQUE,
@@ -116,11 +133,21 @@ CREATE TABLE IF NOT EXISTS jewelry_variants (
   size TEXT,
   thickness TEXT,
   length TEXT,
+  length_mm DOUBLE PRECISION,
   diameter TEXT,
   thread_type TEXT,
   supplier TEXT,
   cost_value DOUBLE PRECISION NOT NULL DEFAULT 0,
   sale_value DOUBLE PRECISION NOT NULL DEFAULT 0,
+  purchase_cost_cents INTEGER NOT NULL DEFAULT 0,
+  allocated_freight_cents INTEGER NOT NULL DEFAULT 0,
+  additional_cost_cents INTEGER NOT NULL DEFAULT 0,
+  total_cost_cents INTEGER NOT NULL DEFAULT 0,
+  price_multiplier DOUBLE PRECISION NOT NULL DEFAULT 3,
+  price_rounding_mode TEXT NOT NULL DEFAULT 'exact',
+  suggested_price_cents INTEGER NOT NULL DEFAULT 0,
+  sale_price_cents INTEGER NOT NULL DEFAULT 0,
+  price_manually_overridden INTEGER NOT NULL DEFAULT 0,
   quantity INTEGER NOT NULL DEFAULT 0,
   low_stock_threshold INTEGER NOT NULL DEFAULT 5,
   status TEXT NOT NULL DEFAULT 'disponível',
@@ -473,3 +500,41 @@ ALTER TABLE schedule_blocks ADD COLUMN IF NOT EXISTS duration_minutes INTEGER;
 ALTER TABLE schedule_blocks ADD COLUMN IF NOT EXISTS buffer_minutes INTEGER;
 ALTER TABLE payments ALTER COLUMN appointment_id DROP NOT NULL;
 ALTER TABLE digital_terms ALTER COLUMN appointment_id DROP NOT NULL;
+ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS purchase_cost_cents INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS allocated_freight_cents INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS additional_cost_cents INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS total_cost_cents INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS price_multiplier DOUBLE PRECISION NOT NULL DEFAULT 3;
+ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS price_rounding_mode TEXT NOT NULL DEFAULT 'exact';
+ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS suggested_price_cents INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS sale_price_cents INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS price_manually_overridden INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jewelry_variants ADD COLUMN IF NOT EXISTS length_mm DOUBLE PRECISION;
+ALTER TABLE jewelry_variants ADD COLUMN IF NOT EXISTS purchase_cost_cents INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jewelry_variants ADD COLUMN IF NOT EXISTS allocated_freight_cents INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jewelry_variants ADD COLUMN IF NOT EXISTS additional_cost_cents INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jewelry_variants ADD COLUMN IF NOT EXISTS total_cost_cents INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jewelry_variants ADD COLUMN IF NOT EXISTS price_multiplier DOUBLE PRECISION NOT NULL DEFAULT 3;
+ALTER TABLE jewelry_variants ADD COLUMN IF NOT EXISTS price_rounding_mode TEXT NOT NULL DEFAULT 'exact';
+ALTER TABLE jewelry_variants ADD COLUMN IF NOT EXISTS suggested_price_cents INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jewelry_variants ADD COLUMN IF NOT EXISTS sale_price_cents INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jewelry_variants ADD COLUMN IF NOT EXISTS price_manually_overridden INTEGER NOT NULL DEFAULT 0;
+INSERT INTO clinic_settings (id, default_price_multiplier, price_rounding_mode)
+VALUES (1, 3, 'exact')
+ON CONFLICT (id) DO NOTHING;
+UPDATE jewelry_inventory
+SET
+  purchase_cost_cents = CASE WHEN purchase_cost_cents = 0 AND cost_value > 0 THEN ROUND(cost_value * 100)::int ELSE purchase_cost_cents END,
+  total_cost_cents = CASE WHEN total_cost_cents = 0 AND cost_value > 0 THEN ROUND(cost_value * 100)::int ELSE total_cost_cents END,
+  suggested_price_cents = CASE WHEN suggested_price_cents = 0 AND cost_value > 0 THEN ROUND(cost_value * 100 * price_multiplier)::int ELSE suggested_price_cents END,
+  sale_price_cents = CASE WHEN sale_price_cents = 0 AND sale_value > 0 THEN ROUND(sale_value * 100)::int ELSE sale_price_cents END,
+  price_manually_overridden = CASE WHEN sale_value > 0 AND cost_value > 0 AND ROUND(sale_value * 100)::int != ROUND(cost_value * 100 * price_multiplier)::int THEN 1 ELSE price_manually_overridden END
+WHERE cost_value > 0 OR sale_value > 0;
+UPDATE jewelry_variants
+SET
+  purchase_cost_cents = CASE WHEN purchase_cost_cents = 0 AND cost_value > 0 THEN ROUND(cost_value * 100)::int ELSE purchase_cost_cents END,
+  total_cost_cents = CASE WHEN total_cost_cents = 0 AND cost_value > 0 THEN ROUND(cost_value * 100)::int ELSE total_cost_cents END,
+  suggested_price_cents = CASE WHEN suggested_price_cents = 0 AND cost_value > 0 THEN ROUND(cost_value * 100 * price_multiplier)::int ELSE suggested_price_cents END,
+  sale_price_cents = CASE WHEN sale_price_cents = 0 AND sale_value > 0 THEN ROUND(sale_value * 100)::int ELSE sale_price_cents END,
+  price_manually_overridden = CASE WHEN sale_value > 0 AND cost_value > 0 AND ROUND(sale_value * 100)::int != ROUND(cost_value * 100 * price_multiplier)::int THEN 1 ELSE price_manually_overridden END
+WHERE cost_value > 0 OR sale_value > 0;

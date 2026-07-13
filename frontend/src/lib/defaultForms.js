@@ -18,9 +18,80 @@ export const ANODIZATION_COLOR_OPTIONS = [
   { name: "Verde Petróleo", color: "#397A75" },
   { name: "Preto", color: "#252525" }
 ];
-export const JEWELRY_LENGTH_OPTIONS = Array.from({ length: 11 }, (_, index) => `${index + 4}mm`);
+export const JEWELRY_LENGTH_OPTIONS = Array.from({ length: 39 }, (_, index) => `${index + 2}mm`);
 export const JEWELRY_THICKNESS_OPTIONS = ["0.8mm", "1.0mm", "1.2mm", "1.6mm", "2.0mm", "2.5mm"];
 export const JEWELRY_THREAD_OPTIONS = ["Interna", "Externa", "Push Pin"];
+export const PRICE_MULTIPLIER_OPTIONS = [3, 4];
+export const PRICE_ROUNDING_OPTIONS = [
+  { value: "exact", label: "Exato" },
+  { value: "end_90", label: "Final ,90" },
+  { value: "end_99", label: "Final ,99" },
+  { value: "next_5", label: "Próximo múltiplo de R$5,00" }
+];
+
+export function moneyToCents(value) {
+  if (value === null || value === undefined || value === "") return 0;
+  if (typeof value === "number") return Math.max(0, Math.round(value * 100));
+  const text = String(value).trim().replace(/[^\d,.-]/g, "");
+  const normalized = text.includes(",") ? text.replace(/\./g, "").replace(",", ".") : text;
+  const number = Number(normalized);
+  return Number.isFinite(number) ? Math.max(0, Math.round(number * 100)) : 0;
+}
+
+export function centsToMoney(cents) {
+  return Math.max(0, Math.round(Number(cents || 0))) / 100;
+}
+
+export function normalizeLengthOption(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const match = raw.match(/\d+(?:[,.]\d+)?/);
+  if (!match) return raw;
+  const number = Number(match[0].replace(",", "."));
+  if (!Number.isFinite(number) || number <= 0) return "";
+  return Number.isInteger(number) ? `${number}mm` : `${String(number).replace(".", ",")}mm`;
+}
+
+export function applyPriceRounding(cents, mode = "exact") {
+  const value = Math.max(0, Math.round(Number(cents || 0)));
+  if (mode === "end_90") {
+    const reais = Math.floor(value / 100);
+    const candidate = reais * 100 + 90;
+    return candidate >= value ? candidate : (reais + 1) * 100 + 90;
+  }
+  if (mode === "end_99") {
+    const reais = Math.floor(value / 100);
+    const candidate = reais * 100 + 99;
+    return candidate >= value ? candidate : (reais + 1) * 100 + 99;
+  }
+  if (mode === "next_5") return Math.ceil(value / 500) * 500;
+  return value;
+}
+
+export function calculateVariantPricing(variant = {}, settings = {}) {
+  const purchase = moneyToCents(variant.purchase_cost ?? variant.cost_value);
+  const freight = moneyToCents(variant.allocated_freight ?? centsToMoney(variant.allocated_freight_cents));
+  const additional = moneyToCents(variant.additional_cost ?? centsToMoney(variant.additional_cost_cents));
+  const total = purchase + freight + additional;
+  const multiplier = [3, 4].includes(Number(variant.price_multiplier)) ? Number(variant.price_multiplier) : Number(settings.default_price_multiplier || 3);
+  const rounding = variant.price_rounding_mode || settings.price_rounding_mode || "exact";
+  const suggested = applyPriceRounding(Math.round(total * multiplier), rounding);
+  const manual = Boolean(variant.price_manually_overridden);
+  const sale = manual ? moneyToCents(variant.sale_value) : suggested;
+  return {
+    cost_value: centsToMoney(purchase),
+    purchase_cost_cents: purchase,
+    allocated_freight_cents: freight,
+    additional_cost_cents: additional,
+    total_cost_cents: total,
+    price_multiplier: multiplier,
+    price_rounding_mode: rounding,
+    suggested_price_cents: suggested,
+    sale_price_cents: sale,
+    sale_value: centsToMoney(sale),
+    price_manually_overridden: manual
+  };
+}
 
 export const DIGITAL_TERM_HEALTH_ITEMS = [
   { key: "epilepsia", label: "Epilepsia" },
@@ -271,6 +342,15 @@ export function defaultJewelry() {
     critical_stock_threshold: 3,
     cost_value: 0,
     sale_value: 0,
+    purchase_cost_cents: 0,
+    allocated_freight_cents: 0,
+    additional_cost_cents: 0,
+    total_cost_cents: 0,
+    price_multiplier: 3,
+    price_rounding_mode: "exact",
+    suggested_price_cents: 0,
+    sale_price_cents: 0,
+    price_manually_overridden: false,
     supplier: "",
     physical_location: "",
     sku: "",
@@ -305,6 +385,18 @@ export function defaultJewelryVariant(index = 1) {
     supplier: "",
     cost_value: 0,
     sale_value: 0,
+    purchase_cost: 0,
+    allocated_freight: 0,
+    additional_cost: 0,
+    purchase_cost_cents: 0,
+    allocated_freight_cents: 0,
+    additional_cost_cents: 0,
+    total_cost_cents: 0,
+    price_multiplier: 3,
+    price_rounding_mode: "exact",
+    suggested_price_cents: 0,
+    sale_price_cents: 0,
+    price_manually_overridden: false,
     quantity: 0,
     low_stock_threshold: 5,
     status: "disponível",
@@ -348,7 +440,15 @@ export function normalizeJewelryForm(item = {}) {
           ...variant,
           material: normalizeJewelryMaterial(variant.material),
           color: splitColorOptions(variant.color).join(", "),
+          length: normalizeLengthOption(variant.length),
           thread_type: normalizeJewelryThread(variant.thread_type),
+          purchase_cost: centsToMoney(variant.purchase_cost_cents || moneyToCents(variant.cost_value)),
+          allocated_freight: centsToMoney(variant.allocated_freight_cents),
+          additional_cost: centsToMoney(variant.additional_cost_cents),
+          price_multiplier: Number(variant.price_multiplier || 3),
+          price_rounding_mode: variant.price_rounding_mode || "exact",
+          price_manually_overridden: Boolean(Number(variant.price_manually_overridden)),
+          sale_value: centsToMoney(variant.sale_price_cents || moneyToCents(variant.sale_value)),
           sku_manually_edited: false,
           is_active: Boolean(Number(variant.is_active ?? 1))
         }))

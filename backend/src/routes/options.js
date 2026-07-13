@@ -5,6 +5,7 @@ import { requireRole } from "../middleware/auth.js";
 import { JEWELRY_CATEGORIES, ARGOLA_SUBCATEGORIES } from "../config/index.js";
 import { groupInventoryOptions } from "../services/utils.js";
 import { attachVariants, countOptionUsage } from "../services/inventory.js";
+import { getPricingSettings, savePricingSettings } from "../services/pricing.js";
 
 const router = Router();
 
@@ -12,13 +13,20 @@ router.get("/api/options", withDb(async (_req, res, db) => {
   const professionals = await db.all("SELECT * FROM professionals WHERE active = 1 ORDER BY name");
   const jewelry = await attachVariants(db, await db.all("SELECT * FROM jewelry_inventory ORDER BY name"));
   const inventoryOptions = await db.all("SELECT * FROM inventory_options ORDER BY type, name");
+  const pricingSettings = await getPricingSettings(db);
   res.json({
     professionals,
     jewelry,
     jewelryCategories: JEWELRY_CATEGORIES,
     jewelrySubcategories: { Argolas: ARGOLA_SUBCATEGORIES },
-    inventoryOptions: groupInventoryOptions(inventoryOptions)
+    inventoryOptions: groupInventoryOptions(inventoryOptions),
+    pricingSettings
   });
+}));
+
+router.patch("/api/pricing-settings", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin"])) return;
+  res.json(await savePricingSettings(db, req.body));
 }));
 
 router.post("/api/inventory-options", withDb(async (req, res, db) => {
