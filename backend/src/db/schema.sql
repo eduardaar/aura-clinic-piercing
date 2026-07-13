@@ -216,6 +216,8 @@ CREATE TABLE IF NOT EXISTS inventory_options (
   id SERIAL PRIMARY KEY,
   type TEXT NOT NULL,
   name TEXT NOT NULL,
+  description TEXT,
+  is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS'),
   UNIQUE(type, name)
 );
@@ -542,6 +544,8 @@ ALTER TABLE appointments ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT '
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS public_booking_key TEXT;
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS duration_minutes INTEGER;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_appointments_public_booking_key ON appointments(public_booking_key) WHERE public_booking_key IS NOT NULL;
+ALTER TABLE inventory_options ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE inventory_options ADD COLUMN IF NOT EXISTS is_active INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE schedule_blocks ADD COLUMN IF NOT EXISTS block_type TEXT NOT NULL DEFAULT 'block';
 ALTER TABLE schedule_blocks ADD COLUMN IF NOT EXISTS lunch_start TEXT;
 ALTER TABLE schedule_blocks ADD COLUMN IF NOT EXISTS lunch_end TEXT;

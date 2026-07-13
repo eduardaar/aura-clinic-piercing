@@ -141,6 +141,14 @@ export function Inventory2() {
   const items = apiItems;
   const safeOptions = asObject(options);
   const rawInventoryOptions = asObject(safeOptions.inventoryOptions);
+  const categoryManagement = asArray(safeOptions.categoryManagement);
+  const categoryOptions = [
+    ...new Set([
+      ...categoryManagement.filter((item) => Number(item.is_active ?? 1)).map((item) => item.name),
+      ...asArray(rawInventoryOptions.category).map((item) => item.name),
+      ...JEWELRY_CATEGORY_OPTIONS
+    ].filter(Boolean))
+  ];
   const pricingSettings = asObject(safeOptions.pricingSettings);
   const inventoryOptions = {
     category: asArray(rawInventoryOptions.category),
@@ -301,6 +309,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
 
           <JewelryEditor
             options={inventoryOptions}
+            categoryOptions={categoryOptions}
             pricingSettings={safeOptions.pricingSettings}
             editing={editingJewelry}
             onMovementOpen={openMovement}
@@ -360,7 +369,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
               </nav>
 
               <div className="inventory-category-strip" aria-label="Categorias principais">
-                {JEWELRY_CATEGORY_OPTIONS.map((category) => (
+                {categoryOptions.map((category) => (
                   <button
                     key={category}
                     type="button"
@@ -474,7 +483,14 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
                 <Metric label="Espessuras" value={String(inventoryOptions.thickness?.length || 0)} />
                 <Metric label="Profissionais" value={String(asArray(safeOptions.professionals).length)} />
               </div>
-              {showManagement && <InventoryManagement options={inventoryOptions} professionals={asArray(safeOptions.professionals)} onChanged={refreshOptions} />}
+              {showManagement && (
+                <InventoryManagement
+                  options={inventoryOptions}
+                  categories={categoryManagement}
+                  professionals={asArray(safeOptions.professionals)}
+                  onChanged={() => { refreshOptions(); refreshJewelry(); }}
+                />
+              )}
             </div>
           )}
 
@@ -667,7 +683,7 @@ function ProductGalleryManager({ images = [], productName = "", onChange }) {
   );
 }
 
-export function JewelryEditor({ options, pricingSettings = {}, editing, onSaved, onCancel, onMovementOpen }) {
+export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTIONS, pricingSettings = {}, editing, onSaved, onCancel, onMovementOpen }) {
   const [form, setForm] = useState(defaultJewelry());
   const [error, setError] = useState("");
   const [editorTab, setEditorTab] = useState("dados");
@@ -826,7 +842,7 @@ export function JewelryEditor({ options, pricingSettings = {}, editing, onSaved,
             <Input label="Nome do Produto" value={form.name} onChange={(value) => setForm({ ...form, name: value })} required />
             <Select label="Categoria" value={form.category} onChange={(value) => setForm({ ...form, category: value })} required>
               <option value="">Selecione</option>
-              {JEWELRY_CATEGORY_OPTIONS.map((item) => <option key={item}>{item}</option>)}
+              {categoryOptions.map((item) => <option key={item}>{item}</option>)}
             </Select>
             {form.category === "Argolas" && (
               <Select label="Subcategoria" value={form.subcategory} onChange={(value) => setForm({ ...form, subcategory: value })}>
@@ -1244,16 +1260,10 @@ export function StockMovementModal({ item, initialType = "Entrada", onClose, onS
   );
 }
 
-export function InventoryManagement({ options, professionals, onChanged }) {
+export function InventoryManagement({ options, categories = [], professionals, onChanged }) {
   return (
     <div className="management-grid">
-      <article className="manager-card">
-        <h3>Categorias Principais</h3>
-        <p className="manager-help">Estrutura fixa para evitar produtos duplicados e manter o catÃ¡logo organizado.</p>
-        <div className="manager-list fixed-category-list">
-          {JEWELRY_CATEGORY_OPTIONS.map((category) => <div key={category}><span>{category}</span></div>)}
-        </div>
-      </article>
+      <CategoryManager categories={categories} onChanged={onChanged} />
       <OptionManager title="Tamanhos" type="size" items={options.size} onChanged={onChanged} placeholder="Ex.: 12mm" />
       <OptionManager title="Espessuras" type="thickness" items={options.thickness} onChanged={onChanged} placeholder="Ex.: 2.0mm" />
       <ProfessionalManager professionals={professionals} onChanged={onChanged} />
@@ -1261,6 +1271,153 @@ export function InventoryManagement({ options, professionals, onChanged }) {
   );
 }
 
+export function CategoryManager({ categories = [], onChanged }) {
+  const [form, setForm] = useState({ name: "", description: "", is_active: true });
+  const [editing, setEditing] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteMode, setDeleteMode] = useState("move");
+  const [targetCategory, setTargetCategory] = useState("");
+  const [error, setError] = useState("");
+  const rows = asArray(categories);
+  const activeTargets = rows.filter((item) => Number(item.is_active ?? 1));
+
+  function openNew() {
+    setEditing(null);
+    setForm({ name: "", description: "", is_active: true });
+    setError("");
+    setModalOpen(true);
+  }
+
+  function openEdit(category) {
+    setEditing(category);
+    setForm({ name: category.name || "", description: category.description || "", is_active: Boolean(Number(category.is_active ?? 1)) });
+    setError("");
+    setModalOpen(true);
+  }
+
+  async function save(event) {
+    event.preventDefault();
+    setError("");
+    const response = await apiFetch(`/inventory-categories${editing?.id ? `/${editing.id}` : ""}`, {
+      method: editing?.id ? "PATCH" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form)
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return setError(payload.error || "Não foi possível salvar a categoria.");
+    setModalOpen(false);
+    setEditing(null);
+    onChanged?.();
+  }
+
+  function openDelete(category) {
+    setDeleteTarget(category);
+    setDeleteMode(Number(category.product_count || 0) > 0 ? "move" : "delete");
+    setTargetCategory(activeTargets.find((item) => item.name !== category.name)?.name || "");
+    setError("");
+  }
+
+  async function confirmCategoryAction() {
+    if (!deleteTarget) return;
+    setError("");
+    let response;
+    if (deleteMode === "move") {
+      response = await apiFetch(`/inventory-categories/${deleteTarget.id}/move-products`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target_category: targetCategory })
+      });
+      if (response.ok) response = await apiFetch(`/inventory-categories/${deleteTarget.id}`, { method: "DELETE" });
+    } else if (deleteMode === "deactivate") {
+      response = await apiFetch(`/inventory-categories/${deleteTarget.id}?action=deactivate`, { method: "DELETE" });
+    } else {
+      response = await apiFetch(`/inventory-categories/${deleteTarget.id}`, { method: "DELETE" });
+    }
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return setError(payload.error || "Não foi possível concluir a ação.");
+    setDeleteTarget(null);
+    onChanged?.();
+  }
+
+  return (
+    <article className="manager-card category-manager-card">
+      <CrudHeader title="Categorias" actionLabel="Nova Categoria" onAction={openNew} />
+      {error && !modalOpen && !deleteTarget && <span className="form-error">{error}</span>}
+      <DataTable
+        rows={rows}
+        columns={[
+          { key: "name", label: "Categoria", render: (item) => <strong>{item.name}</strong> },
+          { key: "product_count", label: "Produtos", render: (item) => Number(item.product_count || 0) },
+          { key: "variant_count", label: "Variações", render: (item) => Number(item.variant_count || 0) },
+          { key: "is_active", label: "Status", render: (item) => Number(item.is_active ?? 1) ? "Ativa" : "Inativa" }
+        ]}
+        actions={(category) => (
+          <>
+            {category.id && <button type="button" onClick={() => openEdit(category)}>Editar</button>}
+            {category.id && <button type="button" onClick={() => openDelete(category)}>{Number(category.product_count || 0) ? "Tratar" : "Excluir"}</button>}
+          </>
+        )}
+        empty="Nenhuma categoria cadastrada ainda."
+      />
+      <Modal
+        open={modalOpen}
+        title={editing ? "Editar Categoria" : "Nova Categoria"}
+        onClose={() => setModalOpen(false)}
+        footer={(
+          <>
+            <button type="button" className="secondary-button" onClick={() => setModalOpen(false)}>Cancelar</button>
+            <button type="submit" form="category-form" className="primary-button">Salvar</button>
+          </>
+        )}
+      >
+        <form id="category-form" onSubmit={save} className="stack">
+          <Input label="Nome" value={form.name} onChange={(value) => setForm({ ...form, name: value })} required />
+          <label>Descrição
+            <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
+          </label>
+          <Toggle label="Categoria Ativa" checked={form.is_active} onChange={(value) => setForm({ ...form, is_active: value })} />
+          {error && <span className="form-error">{error}</span>}
+        </form>
+      </Modal>
+      <Modal
+        open={!!deleteTarget}
+        title="Excluir ou Tratar Categoria"
+        onClose={() => setDeleteTarget(null)}
+        footer={(
+          <>
+            <button type="button" className="secondary-button" onClick={() => setDeleteTarget(null)}>Cancelar</button>
+            <button type="button" className="primary-button" onClick={confirmCategoryAction}>Confirmar</button>
+          </>
+        )}
+      >
+        {deleteTarget && (
+          <div className="stack">
+            <p><strong>{deleteTarget.name}</strong></p>
+            <p>{Number(deleteTarget.product_count || 0)} produtos e {Number(deleteTarget.variant_count || 0)} variações relacionadas.</p>
+            {Number(deleteTarget.product_count || 0) > 0 ? (
+              <>
+                <Select label="Ação" value={deleteMode} onChange={setDeleteMode}>
+                  <option value="move">Mover produtos e excluir categoria</option>
+                  <option value="deactivate">Manter categoria inativa</option>
+                </Select>
+                {deleteMode === "move" && (
+                  <Select label="Categoria de destino" value={targetCategory} onChange={setTargetCategory}>
+                    <option value="">Selecione</option>
+                    {activeTargets.filter((item) => item.name !== deleteTarget.name).map((item) => <option key={item.name}>{item.name}</option>)}
+                  </Select>
+                )}
+              </>
+            ) : (
+              <p>Esta categoria está vazia e pode ser excluída com segurança.</p>
+            )}
+            {error && <span className="form-error">{error}</span>}
+          </div>
+        )}
+      </Modal>
+    </article>
+  );
+}
 export function OptionManager({ title, type, items = [], onChanged, placeholder }) {
   const [name, setName] = useState("");
   const [editing, setEditing] = useState(null);
