@@ -4,6 +4,7 @@ import {
   variantStatus,
   buildVariationName
 } from "./utils.js";
+import { calculatePricing, getPricingSettings, normalizeLengthValue } from "./pricing.js";
 
 export class SkuConflictError extends Error {
   constructor(message = "SKU já cadastrado.") {
@@ -198,6 +199,7 @@ export async function replaceJewelryVariants(db, jewelryId, variants = []) {
   }
   const current = await db.all("SELECT * FROM jewelry_variants WHERE jewelry_id = ?", [jewelryId]);
   const product = await db.get("SELECT sku, material, category, subcategory, name FROM jewelry_inventory WHERE id = ?", [jewelryId]);
+  const pricingSettings = await getPricingSettings(db);
   const manuallyEditedSkus = variants
     .filter((variant) => Boolean(variant?.sku_manually_edited))
     .map((variant) => String(variant?.sku || "").trim())
@@ -222,6 +224,8 @@ export async function replaceJewelryVariants(db, jewelryId, variants = []) {
       excludeId: existing?.id || null,
       userProvided: manualSku
     });
+    const normalizedLength = normalizeLengthValue(variant.length);
+    const pricing = calculatePricing(variant, pricingSettings);
     const values = [
       sku,
       variant.variation_name || buildVariationName(variant),
@@ -231,12 +235,22 @@ export async function replaceJewelryVariants(db, jewelryId, variants = []) {
       variant.side || "",
       variant.size || "",
       variant.thickness || "",
-      variant.length || "",
+      normalizedLength.length,
+      normalizedLength.length_mm,
       variant.diameter || "",
       variant.thread_type || "",
       variant.supplier || "",
-      Number(variant.cost_value || 0),
-      Number(variant.sale_value || 0),
+      pricing.cost_value,
+      pricing.sale_value,
+      pricing.purchase_cost_cents,
+      pricing.allocated_freight_cents,
+      pricing.additional_cost_cents,
+      pricing.total_cost_cents,
+      pricing.price_multiplier,
+      pricing.price_rounding_mode,
+      pricing.suggested_price_cents,
+      pricing.sale_price_cents,
+      pricing.price_manually_overridden,
       Number(variant.quantity || 0),
       Number(variant.low_stock_threshold || 5),
       variantStatus(variant.quantity, variant.low_stock_threshold),
@@ -245,8 +259,10 @@ export async function replaceJewelryVariants(db, jewelryId, variants = []) {
     if (existing) {
       await db.run(
         `UPDATE jewelry_variants
-         SET sku = ?, variation_name = ?, material = ?, color = ?, stone_color = ?, side = ?, size = ?, thickness = ?, length = ?, diameter = ?,
-             thread_type = ?, supplier = ?, cost_value = ?, sale_value = ?, quantity = ?, low_stock_threshold = ?,
+         SET sku = ?, variation_name = ?, material = ?, color = ?, stone_color = ?, side = ?, size = ?, thickness = ?, length = ?, length_mm = ?, diameter = ?,
+             thread_type = ?, supplier = ?, cost_value = ?, sale_value = ?, purchase_cost_cents = ?, allocated_freight_cents = ?,
+             additional_cost_cents = ?, total_cost_cents = ?, price_multiplier = ?, price_rounding_mode = ?, suggested_price_cents = ?,
+             sale_price_cents = ?, price_manually_overridden = ?, quantity = ?, low_stock_threshold = ?,
              status = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP
          WHERE id = ? AND jewelry_id = ?`,
         [...values, existing.id, jewelryId]
@@ -255,9 +271,10 @@ export async function replaceJewelryVariants(db, jewelryId, variants = []) {
     } else {
       const result = await db.run(
         `INSERT INTO jewelry_variants
-         (jewelry_id, sku, variation_name, material, color, stone_color, side, size, thickness, length, diameter, thread_type, supplier,
-          cost_value, sale_value, quantity, low_stock_threshold, status, is_active)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (jewelry_id, sku, variation_name, material, color, stone_color, side, size, thickness, length, length_mm, diameter, thread_type, supplier,
+          cost_value, sale_value, purchase_cost_cents, allocated_freight_cents, additional_cost_cents, total_cost_cents, price_multiplier,
+          price_rounding_mode, suggested_price_cents, sale_price_cents, price_manually_overridden, quantity, low_stock_threshold, status, is_active)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [jewelryId, ...values]
       );
       retainedIds.push(result.lastID);
@@ -287,10 +304,15 @@ export async function syncProductInventory(db, jewelryId) {
   const saleValues = variants.map((variant) => Number(variant.sale_value || 0)).filter((value) => value > 0);
   const costValues = variants.map((variant) => Number(variant.cost_value || 0)).filter((value) => value > 0);
   const first = variants[0] || {};
+  const cheapest = variants
+    .filter((variant) => Number(variant.sale_price_cents || variant.sale_value || 0) > 0)
+    .sort((a, b) => Number(a.sale_price_cents || Math.round(Number(a.sale_value || 0) * 100) || 0) - Number(b.sale_price_cents || Math.round(Number(b.sale_value || 0) * 100) || 0))[0] || first;
   await db.run(
     `UPDATE jewelry_inventory
      SET quantity = ?, sale_value = ?, cost_value = ?, material = ?, color = ?, size = ?, thickness = ?,
-         stem_length = ?, thread_type = ?, supplier = ?, sku = ?, status = ?
+         stem_length = ?, thread_type = ?, supplier = ?, sku = ?, status = ?, purchase_cost_cents = ?,
+         allocated_freight_cents = ?, additional_cost_cents = ?, total_cost_cents = ?, price_multiplier = ?,
+         price_rounding_mode = ?, suggested_price_cents = ?, sale_price_cents = ?, price_manually_overridden = ?
      WHERE id = ?`,
     [
       quantity,
@@ -305,6 +327,15 @@ export async function syncProductInventory(db, jewelryId) {
       first.supplier || "",
       product?.sku || first.sku || `AURA-${jewelryId}`,
       aggregateVariantStatus(variants),
+      Number(cheapest.purchase_cost_cents || 0),
+      Number(cheapest.allocated_freight_cents || 0),
+      Number(cheapest.additional_cost_cents || 0),
+      Number(cheapest.total_cost_cents || 0),
+      Number(cheapest.price_multiplier || 3),
+      cheapest.price_rounding_mode || "exact",
+      Number(cheapest.suggested_price_cents || 0),
+      Number(cheapest.sale_price_cents || 0),
+      Number(cheapest.price_manually_overridden || 0),
       jewelryId
     ]
   );

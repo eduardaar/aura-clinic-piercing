@@ -363,7 +363,46 @@ test("4b. registra movimento de estoque (Entrada) e confere quantidade", async (
 });
 
 // 5) Agendamento: liga cliente + profissional + serviço, com data/hora/valores.
-test("4c. dashboard e central de alertas usam a mesma regra de estoque crítico", async () => {
+test("4c. calcula preços de variações em centavos e normaliza comprimento", async () => {
+  const create = await api("/jewelry", {
+    method: "POST",
+    body: {
+      name: "Labret Precificacao QA",
+      category: "Labret",
+      material: "Titânio",
+      color: "Natural",
+      variants: [
+        { material: "Titânio ASTM F136", color: "Natural", length: "08 mm", thickness: "1.2mm", cost_value: 50, allocated_freight: 5, additional_cost: 0, price_multiplier: 3, price_rounding_mode: "exact", quantity: 2 },
+        { material: "Titânio ASTM F136", color: "Natural", length: "40mm", thickness: "1.2mm", cost_value: 69.9, price_multiplier: 4, price_rounding_mode: "exact", quantity: 1 },
+        { material: "Titânio ASTM F136", color: "Natural", length: "", thickness: "1.2mm", cost_value: 50, price_multiplier: 3, price_rounding_mode: "end_90", sale_value: 169.9, price_manually_overridden: true, quantity: 1 }
+      ]
+    }
+  });
+  assert.equal(create.status, 201, JSON.stringify(create.json));
+  ctx.pricingJewelryId = create.json.id;
+  const [v1, v2, v3] = create.json.variants;
+  assert.equal(v1.length, "8mm");
+  assert.equal(Number(v1.length_mm), 8);
+  assert.equal(Number(v1.total_cost_cents), 5500);
+  assert.equal(Number(v1.suggested_price_cents), 16500);
+  assert.equal(Number(v1.sale_price_cents), 16500);
+  assert.equal(Number(v2.length_mm), 40);
+  assert.equal(Number(v2.suggested_price_cents), 27960);
+  assert.equal(v3.length, "");
+  assert.equal(Number(v3.suggested_price_cents), 15090);
+  assert.equal(Number(v3.sale_price_cents), 16990);
+  assert.equal(Number(v3.price_manually_overridden), 1);
+
+  const catalog = await req(`/catalog?t=${ctx.slug}`);
+  assert.equal(catalog.status, 200, JSON.stringify(catalog.json));
+  const publicItem = catalog.json.items.find((item) => Number(item.id) === Number(create.json.id));
+  assert.ok(publicItem, "produto precificado deve aparecer no catálogo público");
+  assert.equal(publicItem.variants[0].sale_value, 165);
+  assert.equal(publicItem.variants[0].purchase_cost_cents, undefined, "catálogo público não deve expor custo");
+  assert.equal(publicItem.variants[0].price_multiplier, undefined, "catálogo público não deve expor multiplicador");
+});
+
+test("4d. dashboard e central de alertas usam a mesma regra de estoque crítico", async () => {
   const movement = await api(`/jewelry/${ctx.jewelryId}/movements`, {
     method: "POST",
     body: { movement_type: "Saída", quantity: 14, notes: "Baixa QA para alerta" },
@@ -601,7 +640,7 @@ test("9b. erp responde 200 com métricas coerentes", async () => {
   assert.equal(erp.status, 200, JSON.stringify(erp.json));
   assert.equal(Number(erp.json.metrics.clients), 1, "deve haver 1 cliente");
   assert.equal(Number(erp.json.metrics.appointments), 2, "deve haver 2 agendamentos, incluindo o horario ocupado do teste de slots");
-  const expectedJewelryCount = [ctx.jewelryId, ctx.extraJewelryId].filter(Boolean).length;
+  const expectedJewelryCount = [ctx.jewelryId, ctx.extraJewelryId, ctx.pricingJewelryId].filter(Boolean).length;
   assert.equal(Number(erp.json.metrics.jewelry), expectedJewelryCount, "quantidade de joias coerente com o que foi criado");
   // Receita paga (payments status='pago') = sinal 40 + restante 140 (atendimento com joia)
   // + 120 (a venda concluída também grava um pagamento 'pago') = 300.
