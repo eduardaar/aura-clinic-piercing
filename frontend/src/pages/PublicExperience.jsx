@@ -24,7 +24,7 @@ import { Loading, ApiError } from "../components/common/Feedback";
 import { BookingChoiceGrid, Input, Select } from "../components/common/Ui";
 import { API_ORIGIN, publicApiFetch, usePublicFetch } from "../lib/api";
 import { asArray, asNumber, asObject, formatLongDate } from "../lib/utils";
-import { ANODIZATION_COLOR_OPTIONS, JEWELRY_CATEGORY_OPTIONS, JEWELRY_LENGTH_OPTIONS, defaultPublicBooking, nextBookingDates } from "../lib/defaultForms";
+import { ANODIZATION_COLOR_OPTIONS, JEWELRY_CATEGORY_OPTIONS, JEWELRY_LENGTH_OPTIONS, defaultPublicBooking, nextBookingDates, parseGalleryUrls } from "../lib/defaultForms";
 import {
   catalogCategoryTerms,
   catalogContentSections,
@@ -563,10 +563,18 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
   const selectedVariant = availableVariants.find((variant) => Number(variant.id) === Number(selectedVariantId)) || availableVariants[0] || {};
   const colorOptions = splitColorOptions(selectedVariant.color);
   const [selectedColor, setSelectedColor] = useState(colorOptions[0] || "");
+  const galleryImages = [
+    ...asArray(selectedVariant.images),
+    ...asArray(item.images),
+    ...(parseGalleryUrls(item.gallery_urls).map((image_url) => ({ image_url })))
+  ].filter((image) => image?.image_url);
+  const uniqueGalleryImages = galleryImages.filter((image, index, list) => list.findIndex((entry) => entry.image_url === image.image_url) === index);
+  const [activeImage, setActiveImage] = useState(uniqueGalleryImages[0]?.image_url || item.photo_url || item.image_url);
 
   useEffect(() => {
     const nextColors = splitColorOptions(selectedVariant.color);
     setSelectedColor((current) => nextColors.includes(current) ? current : nextColors[0] || "");
+    setActiveImage((current) => current || uniqueGalleryImages[0]?.image_url || item.photo_url || item.image_url);
   }, [selectedVariantId, selectedVariant.color]);
 
   const description = item.description || "Joia selecionada da curadoria Aura Clinic.";
@@ -607,10 +615,12 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
 
         <section className="catalog-product-detail">
           <div className="catalog-product-gallery">
-            <img className="catalog-product-hero-image" src={catalogImageUrl(item.photo_url)} alt={productName} />
+            <img className="catalog-product-hero-image" src={catalogImageUrl(activeImage || item.photo_url)} alt={productName} />
             <div className="catalog-product-mini-gallery">
-              {[item.photo_url, item.photo_url, item.photo_url].map((photo, index) => (
-                <img key={`${item.id}-${index}`} src={catalogImageUrl(photo)} alt={`${productName} ${index + 1}`} />
+              {(uniqueGalleryImages.length ? uniqueGalleryImages : [{ image_url: item.photo_url }]).map((photo, index) => (
+                <button key={`${photo.image_url}-${index}`} type="button" className={activeImage === photo.image_url ? "active" : ""} onClick={() => setActiveImage(photo.image_url)}>
+                  <img src={catalogImageUrl(photo.image_url)} alt={`${productName} ${index + 1}`} />
+                </button>
               ))}
             </div>
           </div>
@@ -888,6 +898,7 @@ export function PublicBooking() {
   const [form, setForm] = useState(defaultPublicBooking());
   const [slots, setSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [confirmed, setConfirmed] = useState(null);
   const safeData = asObject(data);
@@ -924,13 +935,16 @@ export function PublicBooking() {
   if (data.error) return <ApiError message={data.error} />;
 
   async function submit() {
+    if (submitting) return;
     setError("");
+    setSubmitting(true);
     const body = new FormData();
     Object.entries(form).forEach(([key, value]) => {
       if (value) body.append(key, value);
     });
     const response = await publicApiFetch("/booking/requests", { method: "POST", body });
     const json = await response.json().catch(() => ({}));
+    setSubmitting(false);
     if (!response.ok) return setError(json.error || "Não foi possível solicitar o agendamento.");
     setConfirmed(json);
     setStep(7);
@@ -1032,7 +1046,7 @@ export function PublicBooking() {
             <p><strong>Regras:</strong> {data.rules?.cancellation}</p>
             <label>Comprovante Do Sinal Pix<input type="file" accept="image/*,.pdf" onChange={(event) => setForm({ ...form, payment_proof: event.target.files?.[0] })} /></label>
             {error && <span className="form-error">{error}</span>}
-            <button className="primary-button booking-wide-button" onClick={submit}>Confirmar Solicitação</button>
+            <button className="primary-button booking-wide-button" disabled={submitting} onClick={submit}>{submitting ? "Enviando..." : "Confirmar Solicitação"}</button>
           </section>
         )}
         {step === 7 && (

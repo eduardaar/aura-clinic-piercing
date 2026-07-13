@@ -125,14 +125,47 @@ export async function attachVariants(db, products = []) {
     map.get(variant.jewelry_id).push(variant);
     return map;
   }, new Map());
+  const images = await db.all(
+    `SELECT * FROM product_images
+     WHERE product_id IN (${placeholders})
+     ORDER BY product_id, variation_id NULLS FIRST, sort_order, id`,
+    ids
+  ).catch(() => []);
+  const imagesByProduct = images.reduce((map, image) => {
+    if (!image.variation_id) {
+      if (!map.has(image.product_id)) map.set(image.product_id, []);
+      map.get(image.product_id).push(image);
+    }
+    return map;
+  }, new Map());
+  const imagesByVariant = images.reduce((map, image) => {
+    if (image.variation_id) {
+      if (!map.has(image.variation_id)) map.set(image.variation_id, []);
+      map.get(image.variation_id).push(image);
+    }
+    return map;
+  }, new Map());
   return products.map((product) => {
-    const productVariants = byProduct.get(product.id) || [];
+    const productImages = imagesByProduct.get(product.id) || [];
+    const primaryImage = productImages.find((image) => Number(image.is_primary)) || productImages[0] || null;
+    const productVariants = (byProduct.get(product.id) || []).map((variant) => {
+      const variantImages = imagesByVariant.get(variant.id) || [];
+      return {
+        ...variant,
+        images: variantImages,
+        image_url: variantImages.find((image) => Number(image.is_primary))?.image_url || variantImages[0]?.image_url || primaryImage?.image_url || product.image_url || product.photo_url
+      };
+    });
     const quantity = productVariants.reduce((sum, variant) => sum + Number(variant.quantity || 0), 0);
     const saleValues = productVariants.map((variant) => Number(variant.sale_value || 0)).filter((value) => value > 0);
     const costValue = productVariants.reduce((sum, variant) => sum + Number(variant.cost_value || 0) * Number(variant.quantity || 0), 0);
     const unique = (field) => [...new Set(productVariants.map((variant) => variant[field]).filter(Boolean))].join(", ");
     return {
       ...product,
+      images: productImages,
+      image_url: primaryImage?.image_url || product.image_url || product.photo_url,
+      photo_url: primaryImage?.image_url || product.photo_url || product.image_url,
+      gallery_urls: productImages.length ? JSON.stringify(productImages.map((image) => image.image_url)) : product.gallery_urls,
       variants: productVariants,
       variant_count: productVariants.length,
       quantity,
@@ -149,6 +182,55 @@ export async function attachVariants(db, products = []) {
       status: product.status === "arquivado" ? "arquivado" : aggregateVariantStatus(productVariants)
     };
   });
+}
+
+function normalizeImageInput(input) {
+  if (Array.isArray(input)) return input;
+  if (typeof input === "string") {
+    try {
+      const parsed = JSON.parse(input);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      return input.split(/\n|,/).map((item) => item.trim()).filter(Boolean);
+    }
+  }
+  return [];
+}
+
+export async function syncProductImages(db, productId, imagesInput = [], { variationId = null } = {}) {
+  const seen = new Set();
+  const images = normalizeImageInput(imagesInput)
+    .map((item, index) => typeof item === "string" ? { image_url: item, sort_order: index + 1, is_primary: index === 0 } : item)
+    .filter((item) => {
+      const url = String(item?.image_url || item?.url || "").trim();
+      if (!url || seen.has(url)) return false;
+      seen.add(url);
+      return true;
+    })
+    .map((item, index) => ({
+      image_url: String(item.image_url || item.url).trim(),
+      storage_key: item.storage_key || "",
+      alt_text: item.alt_text || "",
+      sort_order: Number(item.sort_order || index + 1),
+      is_primary: index === 0 ? 1 : Number(item.is_primary || 0)
+    }));
+
+  if (!images.some((image) => Number(image.is_primary)) && images[0]) images[0].is_primary = 1;
+
+  await db.run(
+    variationId
+      ? "DELETE FROM product_images WHERE product_id = ? AND variation_id = ?"
+      : "DELETE FROM product_images WHERE product_id = ? AND variation_id IS NULL",
+    variationId ? [productId, variationId] : [productId]
+  );
+  for (const image of images) {
+    await db.run(
+      `INSERT INTO product_images (product_id, variation_id, image_url, storage_key, alt_text, sort_order, is_primary)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [productId, variationId, image.image_url, image.storage_key, image.alt_text, image.sort_order, image.is_primary]
+    );
+  }
+  return images;
 }
 
 export function stockAlertLevel(item = {}) {
@@ -251,6 +333,7 @@ export async function replaceJewelryVariants(db, jewelryId, variants = []) {
       pricing.suggested_price_cents,
       pricing.sale_price_cents,
       pricing.price_manually_overridden,
+      pricing.cost_estimated,
       Number(variant.quantity || 0),
       Number(variant.low_stock_threshold || 5),
       variantStatus(variant.quantity, variant.low_stock_threshold),
@@ -262,22 +345,26 @@ export async function replaceJewelryVariants(db, jewelryId, variants = []) {
          SET sku = ?, variation_name = ?, material = ?, color = ?, stone_color = ?, side = ?, size = ?, thickness = ?, length = ?, length_mm = ?, diameter = ?,
              thread_type = ?, supplier = ?, cost_value = ?, sale_value = ?, purchase_cost_cents = ?, allocated_freight_cents = ?,
              additional_cost_cents = ?, total_cost_cents = ?, price_multiplier = ?, price_rounding_mode = ?, suggested_price_cents = ?,
-             sale_price_cents = ?, price_manually_overridden = ?, quantity = ?, low_stock_threshold = ?,
+             sale_price_cents = ?, price_manually_overridden = ?, cost_estimated = ?, quantity = ?, low_stock_threshold = ?,
              status = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP
          WHERE id = ? AND jewelry_id = ?`,
         [...values, existing.id, jewelryId]
       );
       retainedIds.push(existing.id);
+      if ("images" in variant || "gallery_urls" in variant || "image_url" in variant || "photo_url" in variant) {
+        await syncProductImages(db, jewelryId, variant.images || variant.gallery_urls || [variant.image_url || variant.photo_url].filter(Boolean), { variationId: existing.id });
+      }
     } else {
       const result = await db.run(
         `INSERT INTO jewelry_variants
          (jewelry_id, sku, variation_name, material, color, stone_color, side, size, thickness, length, length_mm, diameter, thread_type, supplier,
           cost_value, sale_value, purchase_cost_cents, allocated_freight_cents, additional_cost_cents, total_cost_cents, price_multiplier,
-          price_rounding_mode, suggested_price_cents, sale_price_cents, price_manually_overridden, quantity, low_stock_threshold, status, is_active)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          price_rounding_mode, suggested_price_cents, sale_price_cents, price_manually_overridden, cost_estimated, quantity, low_stock_threshold, status, is_active)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [jewelryId, ...values]
       );
       retainedIds.push(result.lastID);
+      await syncProductImages(db, jewelryId, variant.images || variant.gallery_urls || [variant.image_url || variant.photo_url].filter(Boolean), { variationId: result.lastID });
     }
   }
   for (const variant of current.filter((item) => !retainedIds.includes(item.id))) {
@@ -312,7 +399,7 @@ export async function syncProductInventory(db, jewelryId) {
      SET quantity = ?, sale_value = ?, cost_value = ?, material = ?, color = ?, size = ?, thickness = ?,
          stem_length = ?, thread_type = ?, supplier = ?, sku = ?, status = ?, purchase_cost_cents = ?,
          allocated_freight_cents = ?, additional_cost_cents = ?, total_cost_cents = ?, price_multiplier = ?,
-         price_rounding_mode = ?, suggested_price_cents = ?, sale_price_cents = ?, price_manually_overridden = ?
+         price_rounding_mode = ?, suggested_price_cents = ?, sale_price_cents = ?, price_manually_overridden = ?, cost_estimated = ?
      WHERE id = ?`,
     [
       quantity,
@@ -336,6 +423,7 @@ export async function syncProductInventory(db, jewelryId) {
       Number(cheapest.suggested_price_cents || 0),
       Number(cheapest.sale_price_cents || 0),
       Number(cheapest.price_manually_overridden || 0),
+      Number(cheapest.cost_estimated || 0),
       jewelryId
     ]
   );

@@ -38,7 +38,11 @@ CREATE TABLE IF NOT EXISTS professionals (
   name TEXT NOT NULL,
   specialty TEXT,
   active INTEGER NOT NULL DEFAULT 1,
-  photo_url TEXT
+  photo_url TEXT,
+  phone TEXT,
+  email TEXT,
+  whatsapp TEXT,
+  notification_opt_in INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS services (
@@ -102,9 +106,10 @@ CREATE TABLE IF NOT EXISTS jewelry_inventory (
   total_cost_cents INTEGER NOT NULL DEFAULT 0,
   price_multiplier DOUBLE PRECISION NOT NULL DEFAULT 3,
   price_rounding_mode TEXT NOT NULL DEFAULT 'exact',
-  suggested_price_cents INTEGER NOT NULL DEFAULT 0,
-  sale_price_cents INTEGER NOT NULL DEFAULT 0,
-  price_manually_overridden INTEGER NOT NULL DEFAULT 0,
+    suggested_price_cents INTEGER NOT NULL DEFAULT 0,
+    sale_price_cents INTEGER NOT NULL DEFAULT 0,
+    price_manually_overridden INTEGER NOT NULL DEFAULT 0,
+    cost_estimated INTEGER NOT NULL DEFAULT 0,
   supplier TEXT,
   physical_location TEXT,
   sku TEXT UNIQUE,
@@ -121,7 +126,7 @@ CREATE TABLE IF NOT EXISTS jewelry_inventory (
   is_published INTEGER NOT NULL DEFAULT 0
 );
 
-CREATE TABLE IF NOT EXISTS jewelry_variants (
+  CREATE TABLE IF NOT EXISTS jewelry_variants (
   id SERIAL PRIMARY KEY,
   jewelry_id INTEGER NOT NULL REFERENCES jewelry_inventory(id) ON DELETE CASCADE,
   sku TEXT NOT NULL UNIQUE,
@@ -145,16 +150,30 @@ CREATE TABLE IF NOT EXISTS jewelry_variants (
   total_cost_cents INTEGER NOT NULL DEFAULT 0,
   price_multiplier DOUBLE PRECISION NOT NULL DEFAULT 3,
   price_rounding_mode TEXT NOT NULL DEFAULT 'exact',
-  suggested_price_cents INTEGER NOT NULL DEFAULT 0,
-  sale_price_cents INTEGER NOT NULL DEFAULT 0,
-  price_manually_overridden INTEGER NOT NULL DEFAULT 0,
+    suggested_price_cents INTEGER NOT NULL DEFAULT 0,
+    sale_price_cents INTEGER NOT NULL DEFAULT 0,
+    price_manually_overridden INTEGER NOT NULL DEFAULT 0,
+    cost_estimated INTEGER NOT NULL DEFAULT 0,
   quantity INTEGER NOT NULL DEFAULT 0,
   low_stock_threshold INTEGER NOT NULL DEFAULT 5,
   status TEXT NOT NULL DEFAULT 'disponível',
   is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS'),
   updated_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
-);
+  );
+
+  CREATE TABLE IF NOT EXISTS product_images (
+    id SERIAL PRIMARY KEY,
+    product_id INTEGER NOT NULL REFERENCES jewelry_inventory(id) ON DELETE CASCADE,
+    variation_id INTEGER REFERENCES jewelry_variants(id) ON DELETE CASCADE,
+    image_url TEXT NOT NULL,
+    storage_key TEXT,
+    alt_text TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    is_primary INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS'),
+    updated_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+  );
 
 CREATE TABLE IF NOT EXISTS professional_services (
   id SERIAL PRIMARY KEY,
@@ -220,12 +239,34 @@ CREATE TABLE IF NOT EXISTS appointments (
   deposit_payment_method TEXT,
   remaining_payment_method TEXT,
   status TEXT NOT NULL DEFAULT 'pendente',
+  source TEXT NOT NULL DEFAULT 'manual',
+  public_booking_key TEXT,
+  duration_minutes INTEGER,
   notes TEXT,
   reference_photo_url TEXT,
   payment_proof_url TEXT,
   stock_deducted INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
+
+CREATE TABLE IF NOT EXISTS notification_queue (
+  id SERIAL PRIMARY KEY,
+  professional_id INTEGER REFERENCES professionals(id),
+  appointment_id INTEGER REFERENCES appointments(id),
+  channel TEXT NOT NULL DEFAULT 'whatsapp',
+  destination TEXT,
+  template TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  message TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  scheduled_at TEXT,
+  sent_at TEXT,
+  unique_key TEXT,
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_queue_unique_key ON notification_queue(unique_key) WHERE unique_key IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS payments (
   id SERIAL PRIMARY KEY,
@@ -456,6 +497,8 @@ CREATE INDEX IF NOT EXISTS idx_appointments_date ON appointments(appointment_dat
 CREATE INDEX IF NOT EXISTS idx_appointments_client ON appointments(client_id);
 CREATE INDEX IF NOT EXISTS idx_jewelry_catalog ON jewelry_inventory(is_catalog_active, is_published);
 CREATE INDEX IF NOT EXISTS idx_jewelry_variants_jewelry ON jewelry_variants(jewelry_id);
+CREATE INDEX IF NOT EXISTS idx_product_images_product ON product_images(product_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_product_images_variation ON product_images(variation_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_stock_movements_jewelry ON stock_movements(jewelry_id);
 CREATE INDEX IF NOT EXISTS idx_payments_appointment ON payments(appointment_id);
 CREATE INDEX IF NOT EXISTS idx_loyalty_points_client ON loyalty_points(client_id);
@@ -493,6 +536,12 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS updated_at TEXT NOT NULL DEFAULT to
 ALTER TABLE professionals ADD COLUMN IF NOT EXISTS phone TEXT;
 ALTER TABLE professionals ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE professionals ADD COLUMN IF NOT EXISTS calendar_color TEXT DEFAULT '#C8A96A';
+ALTER TABLE professionals ADD COLUMN IF NOT EXISTS whatsapp TEXT;
+ALTER TABLE professionals ADD COLUMN IF NOT EXISTS notification_opt_in INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'manual';
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS public_booking_key TEXT;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS duration_minutes INTEGER;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_appointments_public_booking_key ON appointments(public_booking_key) WHERE public_booking_key IS NOT NULL;
 ALTER TABLE schedule_blocks ADD COLUMN IF NOT EXISTS block_type TEXT NOT NULL DEFAULT 'block';
 ALTER TABLE schedule_blocks ADD COLUMN IF NOT EXISTS lunch_start TEXT;
 ALTER TABLE schedule_blocks ADD COLUMN IF NOT EXISTS lunch_end TEXT;
@@ -509,6 +558,7 @@ ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS price_rounding_mode TEXT 
 ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS suggested_price_cents INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS sale_price_cents INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS price_manually_overridden INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS cost_estimated INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE jewelry_variants ADD COLUMN IF NOT EXISTS length_mm DOUBLE PRECISION;
 ALTER TABLE jewelry_variants ADD COLUMN IF NOT EXISTS purchase_cost_cents INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE jewelry_variants ADD COLUMN IF NOT EXISTS allocated_freight_cents INTEGER NOT NULL DEFAULT 0;
@@ -519,6 +569,12 @@ ALTER TABLE jewelry_variants ADD COLUMN IF NOT EXISTS price_rounding_mode TEXT N
 ALTER TABLE jewelry_variants ADD COLUMN IF NOT EXISTS suggested_price_cents INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE jewelry_variants ADD COLUMN IF NOT EXISTS sale_price_cents INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE jewelry_variants ADD COLUMN IF NOT EXISTS price_manually_overridden INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jewelry_variants ADD COLUMN IF NOT EXISTS cost_estimated INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE product_images ADD COLUMN IF NOT EXISTS variation_id INTEGER REFERENCES jewelry_variants(id) ON DELETE CASCADE;
+ALTER TABLE product_images ADD COLUMN IF NOT EXISTS storage_key TEXT;
+ALTER TABLE product_images ADD COLUMN IF NOT EXISTS alt_text TEXT;
+ALTER TABLE product_images ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE product_images ADD COLUMN IF NOT EXISTS is_primary INTEGER NOT NULL DEFAULT 0;
 INSERT INTO clinic_settings (id, default_price_multiplier, price_rounding_mode)
 VALUES (1, 3, 'exact')
 ON CONFLICT (id) DO NOTHING;

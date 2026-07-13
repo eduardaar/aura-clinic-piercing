@@ -504,7 +504,8 @@ button {
 }
 
 .variant-edit-modal {
-  width: min(620px, 100%);
+  width: min(1040px, 100%);
+  max-height: calc(100vh - 44px);
   margin: auto;
   padding: 0;
   overflow: hidden;
@@ -542,10 +543,11 @@ button {
 
 .variant-modal-fields {
   display: grid;
-  gap: 14px;
-  max-height: 66vh;
-  padding: 20px 22px;
+  gap: 18px;
+  max-height: calc(100vh - 180px);
+  padding: 22px;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .variant-edit-modal > footer {
@@ -554,12 +556,274 @@ button {
   background: #fbf8f3;
 }
 
+.price-formation {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid rgba(200, 169, 106, .34);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .96), rgba(248, 245, 240, .78));
+}
+
+.price-formation-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.price-formation-head h3,
+.price-formation-head p {
+  margin: 0;
+}
+
+.price-formation-head p {
+  margin-top: 4px;
+  color: #746b61;
+}
+
+.price-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.price-state.auto { background: rgba(95, 141, 78, .14); color: #456d3a; }
+.price-state.manual { background: rgba(200, 169, 106, .18); color: #8c6422; }
+.price-state.estimated { background: rgba(184, 92, 92, .12); color: #9f4d4d; }
+
+.price-formation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.price-box {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgba(216, 195, 165, .56);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.price-box > strong {
+  font-family: var(--title-font);
+  font-size: 17px;
+}
+
+.money-readout,
+.pricing-preview span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(248, 245, 240, .92);
+  border: 1px solid rgba(216, 195, 165, .4);
+}
+
+.money-readout small,
+.pricing-preview small {
+  color: #746b61;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.money-readout b,
+.pricing-preview strong {
+  color: #1c1c1c;
+  font-size: 18px;
+}
+
+.pricing-actions-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: end;
+}
+
+.pricing-actions-inline button {
+  min-height: 42px;
+  white-space: normal;
+}
+
+.price-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.pricing-note {
+  display: block;
+  color: #8c6422;
+  font-weight: 700;
+}
+
+.product-gallery-manager {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(216, 195, 165, .56);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, .86);
+}
+
+.product-gallery-head,
+.gallery-url-row {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.product-gallery-head strong {
+  display: block;
+  font-family: var(--title-font);
+  font-size: 18px;
+}
+
+.product-gallery-head small {
+  color: #746b61;
+}
+
+.gallery-upload-button {
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.gallery-upload-button input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.gallery-url-row label {
+  flex: 1;
+}
+
+.product-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.product-gallery-grid article {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(216, 195, 165, .45);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.product-gallery-grid article.primary {
+  border-color: #c8a96a;
+  box-shadow: 0 10px 28px rgba(125, 93, 50, .12);
+}
+
+.gallery-thumb {
+  width: 100%;
+  aspect-ratio: 1 / .78;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #f8f5f0;
+  cursor: zoom-in;
+}
+
+.gallery-thumb img,
+.gallery-preview-modal img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.product-gallery-grid strong {
+  display: block;
+}
+
+.product-gallery-grid small {
+  display: block;
+  max-width: 100%;
+  color: #746b61;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gallery-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+
+.gallery-actions button {
+  min-height: 34px;
+  border: 1px solid rgba(216, 195, 165, .7);
+  border-radius: 10px;
+  background: rgba(248, 245, 240, .8);
+  color: #4a3427;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.gallery-preview-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(28, 28, 28, .72);
+}
+
+.gallery-preview-modal img {
+  max-width: min(920px, 96vw);
+  max-height: 88vh;
+  border-radius: 18px;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, .35);
+}
+
 @media (max-width: 760px) {
   .manual-slot-grid { grid-template-columns: repeat(3, 1fr); }
   .booking-date-strip { grid-template-columns: repeat(10, 66px); }
   .appointment-modal-backdrop,
   .variant-modal-backdrop { padding: 10px; }
   .manual-appointment-modal { max-height: calc(100vh - 20px); }
+  .variant-edit-modal {
+    max-height: calc(100vh - 20px);
+  }
+  .variant-modal-fields {
+    max-height: calc(100vh - 158px);
+    padding: 16px;
+  }
+  .price-formation-head,
+  .pricing-actions-inline {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .price-formation-grid,
+  .price-summary-cards,
+  .product-gallery-grid {
+    grid-template-columns: 1fr;
+  }
+  .product-gallery-head,
+  .gallery-url-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 /* Premium Aura Clinic login */
@@ -6006,6 +6270,33 @@ body {
   gap: 24px;
 }
 
+.next-appointment-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.next-appointment-body {
+  display: grid;
+  gap: 8px;
+}
+
+.next-appointment-body > strong {
+  color: var(--gold);
+  font-family: var(--font-serif);
+  font-size: 1.65rem;
+}
+
+.next-appointment-body p {
+  margin: 0;
+  font-weight: 800;
+}
+
+.next-appointment-body span,
+.dashboard-alert-hint {
+  color: var(--muted);
+}
+
 .revenue-card,
 .upcoming-card {
   min-height: 340px;
@@ -8151,12 +8442,25 @@ body {
   gap: 10px;
 }
 
+.catalog-product-mini-gallery button {
+  padding: 0;
+  border: 1px solid rgba(216, 195, 165, .55);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.catalog-product-mini-gallery button.active {
+  border-color: var(--catalog-primary, #C8A96A);
+  box-shadow: 0 0 0 3px rgba(200, 169, 106, .18);
+}
+
 .catalog-product-mini-gallery img {
   width: 100%;
   aspect-ratio: 1 / 1;
   object-fit: cover;
-  border-radius: 12px;
-  border: 1px solid rgba(216, 195, 165, .55);
+  display: block;
 }
 
 .catalog-product-sidebar {
@@ -9538,6 +9842,156 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--gold); width: 
 .login-signup-button:hover {
   background: var(--gold);
   color: var(--brown-dark);
+}
+
+.signup-screen {
+  grid-template-columns: minmax(320px, 980px);
+  justify-content: center;
+  overflow-y: auto;
+}
+
+.signup-panel {
+  width: min(980px, 100%);
+}
+
+.signup-steps {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 18px 0;
+}
+
+.signup-steps button {
+  min-height: 38px;
+  border: 1px solid rgba(216, 195, 165, .65);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .78);
+  color: var(--muted);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.signup-steps button.active,
+.signup-steps button.done {
+  background: var(--gold);
+  color: var(--brown-dark);
+}
+
+.signup-inline {
+  display: grid;
+  grid-template-columns: 1fr 120px;
+  gap: 12px;
+}
+
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+
+.plan-card {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  text-align: left;
+  padding: 16px;
+  border: 1px solid rgba(216, 195, 165, .65);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, .82);
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.plan-card.active {
+  border-color: var(--gold);
+  box-shadow: 0 16px 36px rgba(125, 93, 50, .14);
+}
+
+.plan-card.recommended {
+  background: linear-gradient(180deg, #fff, rgba(248, 245, 240, .96));
+}
+
+.plan-card strong {
+  font-family: var(--title-font);
+  font-size: 18px;
+}
+
+.plan-card b {
+  font-size: 22px;
+}
+
+.plan-card b small,
+.plan-card em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.plan-card ul {
+  display: grid;
+  gap: 5px;
+  padding-left: 18px;
+  margin: 0;
+  color: #4A3427;
+  font-size: 12px;
+}
+
+.plan-card > span:last-child {
+  justify-self: start;
+  padding: 8px 11px;
+  border-radius: 999px;
+  background: rgba(201, 168, 106, .14);
+  color: var(--gold-dark);
+  font-weight: 800;
+  font-size: 12px;
+}
+
+.plan-badge {
+  justify-self: start;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #1C1C1C;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.signup-review {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid rgba(216, 195, 165, .55);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .78);
+}
+
+.signup-review p {
+  margin: 0;
+}
+
+.signup-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.signup-actions .login-submit {
+  flex: 1;
+}
+
+@media (max-width: 680px) {
+  .signup-screen {
+    display: block;
+  }
+  .signup-panel {
+    min-height: 100svh;
+  }
+  .signup-steps,
+  .signup-inline {
+    grid-template-columns: 1fr;
+  }
+  .signup-actions {
+    flex-direction: column-reverse;
+  }
 }
 
 /* ── Monitor de erros (admin) ─────────────────────────────────────────────── */

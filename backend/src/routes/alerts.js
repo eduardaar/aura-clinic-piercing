@@ -3,12 +3,18 @@ import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
 import { nextBirthdays } from "../services/utils.js";
 import { listCriticalStockItems } from "../services/inventory.js";
+import { listAppointments } from "../services/appointments.js";
 
 const router = Router();
 
 router.get("/api/alerts", withDb(async (_req, res, db) => {
   const today = new Date().toISOString().slice(0, 10);
   const jewelry = await listCriticalStockItems(db, { limit: 12 });
+  const upcomingAppointments = await listAppointments(
+    db,
+    "WHERE a.appointment_date >= ? AND a.status IN ('pendente', 'confirmado', 'remarcado')",
+    [today]
+  );
   const clients = await db.all("SELECT id, full_name, whatsapp, instagram, birth_date FROM clients WHERE birth_date IS NOT NULL");
   const birthdays = nextBirthdays(clients, 30).slice(0, 10);
   const topClients = await db.all(`
@@ -37,6 +43,40 @@ router.get("/api/alerts", withDb(async (_req, res, db) => {
       action_page: "catalog",
       created_at: today
     })),
+    ...upcomingAppointments.flatMap((item) => {
+      const date = new Date(`${item.appointment_date}T${item.appointment_time || "00:00"}:00`);
+      const diffMinutes = Number.isNaN(date.getTime()) ? null : Math.round((date.getTime() - Date.now()) / 60000);
+      const result = [];
+      if (item.source === "public_booking" && item.status === "pendente") {
+        result.push({
+          id: `appointment-public-${item.id}`,
+          title: "Solicitação pública pendente",
+          category: "Agenda",
+          subject: item.full_name,
+          description: `${item.full_name} solicitou ${item.service_name || item.procedure} para ${item.appointment_date} às ${item.appointment_time}.`,
+          priority: "high",
+          related_date: item.appointment_date,
+          action_label: "Ver solicitações",
+          action_page: "agenda",
+          created_at: today
+        });
+      }
+      if (diffMinutes !== null && diffMinutes >= 0 && diffMinutes <= 120) {
+        result.push({
+          id: `appointment-2h-${item.id}`,
+          title: "Agendamento em até 2 horas",
+          category: "Agenda",
+          subject: item.full_name,
+          description: `${item.full_name} tem atendimento às ${item.appointment_time}.`,
+          priority: "high",
+          related_date: item.appointment_date,
+          action_label: "Ver agenda",
+          action_page: "agenda",
+          created_at: today
+        });
+      }
+      return result;
+    }),
     ...birthdays.map((item) => ({
       id: `birthday-${item.id}`,
       title: item.days_until === 0 ? "Aniversário hoje" : "Aniversário próximo",

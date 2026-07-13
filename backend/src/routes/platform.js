@@ -19,6 +19,7 @@ import {
 import { validateBody } from "../middleware/validate.js";
 import { signupSchema, platformLoginSchema, tenantStatusSchema } from "../schemas/index.js";
 import { isProduction } from "../config/index.js";
+import { SUBSCRIPTION_PLANS, normalizePlanCode } from "../services/plans.js";
 
 const router = Router();
 
@@ -80,9 +81,14 @@ router.post("/api/signup", signupLimiter, async (req, res) => {
       slug: b.slug,
       adminName: b.admin_name,
       adminEmail: b.admin_email,
-      adminPassword: b.admin_password
+      adminPassword: b.admin_password,
+      phone: b.phone,
+      city: b.city,
+      state: b.state,
+      logoUrl: b.logo_url,
+      plan: normalizePlanCode(b.plan_code || b.plan)
     });
-    res.status(201).json({ tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug } });
+    res.status(201).json({ tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, plan: tenant.plan } });
   } catch (error) {
     handleServiceError(res, error);
   }
@@ -110,6 +116,10 @@ router.post("/api/platform/login", platformLoginLimiter, async (req, res) => {
   }
 });
 
+router.get("/api/plans", async (_req, res) => {
+  res.json({ trial_days: 7, plans: SUBSCRIPTION_PLANS });
+});
+
 // ---------- Painel (protegido) ----------
 router.get("/api/platform/tenants", requirePlatform, async (_req, res) => {
   try {
@@ -131,9 +141,14 @@ router.post("/api/platform/tenants", requirePlatform, async (req, res) => {
       slug: b.slug,
       adminName: b.admin_name,
       adminEmail: b.admin_email,
-      adminPassword: b.admin_password
+      adminPassword: b.admin_password,
+      phone: b.phone,
+      city: b.city,
+      state: b.state,
+      logoUrl: b.logo_url,
+      plan: normalizePlanCode(b.plan_code || b.plan)
     });
-    res.status(201).json({ tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug } });
+    res.status(201).json({ tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, plan: tenant.plan } });
   } catch (error) {
     handleServiceError(res, error);
   }

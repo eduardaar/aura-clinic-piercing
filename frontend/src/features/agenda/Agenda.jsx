@@ -867,7 +867,9 @@ export function BookingAdmin() {
       name: professional.name || "",
       specialty: professional.specialty || "",
       phone: professional.phone || "",
+      whatsapp: professional.whatsapp || professional.phone || "",
       email: professional.email || "",
+      notification_opt_in: Boolean(Number(professional.notification_opt_in ?? 1)),
       calendar_color: professional.calendar_color || "#C8A96A",
       active: Boolean(Number(professional.active)),
       service_ids: asArray(professional.service_ids).map(String)
@@ -1128,10 +1130,12 @@ export function BookingAdmin() {
                 <Input label="Nome" value={professionalForm.name} onChange={(value) => setProfessionalForm({ ...professionalForm, name: value })} required />
                 <Input label="Especialidade" value={professionalForm.specialty} onChange={(value) => setProfessionalForm({ ...professionalForm, specialty: value })} />
                 <Input label="Telefone" value={professionalForm.phone} onChange={(value) => setProfessionalForm({ ...professionalForm, phone: value })} />
+                <Input label="WhatsApp profissional" value={professionalForm.whatsapp} onChange={(value) => setProfessionalForm({ ...professionalForm, whatsapp: value })} />
                 <Input type="email" label="E-mail" value={professionalForm.email} onChange={(value) => setProfessionalForm({ ...professionalForm, email: value })} />
                 <Input type="color" label="Cor na agenda" value={professionalForm.calendar_color} onChange={(value) => setProfessionalForm({ ...professionalForm, calendar_color: value })} />
               </div>
               <Toggle label="Profissional ativo" checked={professionalForm.active} onChange={(value) => setProfessionalForm({ ...professionalForm, active: value })} />
+              <Toggle label="Receber notificações automáticas" checked={professionalForm.notification_opt_in} onChange={(value) => setProfessionalForm({ ...professionalForm, notification_opt_in: value })} />
               <div className="form-section">
                 <h3>Serviços que realiza</h3>
                 <div className="toggle-grid">

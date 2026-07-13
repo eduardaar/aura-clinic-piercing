@@ -1,6 +1,6 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import React, { useEffect, useState } from "react";
-import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Gem, LayoutGrid, ListFilter, Pencil, Search, ShoppingCart, SlidersHorizontal, Sparkles, Table2, Trash2, X } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Gem, ImageIcon, LayoutGrid, ListFilter, Pencil, Search, ShoppingCart, SlidersHorizontal, Sparkles, Table2, Trash2, X } from "lucide-react";
 import { Button, Input, Metric, Select, StatusBadge } from "../../components/common/Ui";
 import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../components/common/Crud";
 import { asArray, asObject, formatDate, removeAccents } from "../../lib/utils";
@@ -8,7 +8,7 @@ import { apiFetch, useFetch } from "../../lib/api";
 import { ANODIZATION_COLOR_OPTIONS, JEWELRY_CATEGORY_OPTIONS, JEWELRY_LENGTH_OPTIONS, JEWELRY_THICKNESS_OPTIONS, JEWELRY_THREAD_OPTIONS, PRICE_MULTIPLIER_OPTIONS, PRICE_ROUNDING_OPTIONS, calculateVariantPricing, centsToMoney, defaultJewelry, defaultJewelryVariant, normalizeJewelryForm, parseGalleryUrls } from "../../lib/defaultForms";
 import { catalogFilterOptions, cleanDisplayText, elegantProductName, splitColorOptions } from "../../features/catalog/catalogUtils";
 import { catalogImageUrl, currency, inventoryStatusClass, inventoryStatusLabel, inventoryStockState, jewelrySkuBase } from "../../features/shared/helpers";
-import { CatalogCustomization, ImageUploadField, Toggle } from "../../pages/CatalogCustomization";
+import { CatalogCustomization, Toggle } from "../../pages/CatalogCustomization";
 
 export function CatalogWorkspace() {
   const [tab, setTab] = useState("inicio");
@@ -543,6 +543,130 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
   );
 }
 
+function ProductGalleryManager({ images = [], productName = "", onChange }) {
+  const [uploading, setUploading] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const [url, setUrl] = useState("");
+  const safeImages = asArray(images);
+
+  function normalizeList(list) {
+    const seen = new Set();
+    const normalized = asArray(list)
+      .map((image, index) => ({
+        image_url: image.image_url || image.url || "",
+        alt_text: image.alt_text || productName || "",
+        sort_order: index + 1,
+        is_primary: Boolean(image.is_primary)
+      }))
+      .filter((image) => {
+        if (!image.image_url || seen.has(image.image_url)) return false;
+        seen.add(image.image_url);
+        return true;
+      })
+      .map((image, index) => ({ ...image, sort_order: index + 1 }));
+    const primaryIndex = Math.max(0, normalized.findIndex((image) => image.is_primary));
+    return normalized.map((image, index) => ({ ...image, is_primary: index === primaryIndex }));
+  }
+
+  function emit(list) {
+    const normalized = normalizeList(list);
+    onChange(normalized.map((image, index) => ({ ...image, sort_order: index + 1 })));
+  }
+
+  async function uploadFiles(event) {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+    setUploading(true);
+    try {
+      const uploaded = [];
+      for (const file of files) {
+        if (!file.type.startsWith("image/")) continue;
+        if (file.size > 6 * 1024 * 1024) continue;
+        const body = new FormData();
+        body.append("file", file);
+        const response = await apiFetch("/uploads", { method: "POST", body });
+        const payload = await response.json().catch(() => ({}));
+        if (response.ok && payload.url) uploaded.push({ image_url: payload.url, alt_text: productName });
+      }
+      emit([...safeImages, ...uploaded]);
+    } finally {
+      setUploading(false);
+      event.target.value = "";
+    }
+  }
+
+  function move(index, direction) {
+    const next = [...safeImages];
+    const target = index + direction;
+    if (target < 0 || target >= next.length) return;
+    const [item] = next.splice(index, 1);
+    next.splice(target, 0, item);
+    emit(next);
+  }
+
+  function remove(index) {
+    if (!window.confirm("Remover esta imagem da galeria?")) return;
+    emit(safeImages.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  function setPrimary(index) {
+    emit(safeImages.map((image, itemIndex) => ({ ...image, is_primary: itemIndex === index })));
+  }
+
+  function addUrl() {
+    const clean = url.trim();
+    if (!clean) return;
+    emit([...safeImages, { image_url: clean, alt_text: productName }]);
+    setUrl("");
+  }
+
+  return (
+    <section className="product-gallery-manager">
+      <div className="product-gallery-head">
+        <div>
+          <strong>Galeria do produto</strong>
+          <small>Adicione várias fotos, escolha a principal e organize a ordem do catálogo.</small>
+        </div>
+        <label className="secondary-button gallery-upload-button">
+          <ImageIcon size={16} />
+          Enviar imagens
+          <input type="file" accept="image/*" multiple onChange={uploadFiles} />
+        </label>
+      </div>
+      <div className="gallery-url-row">
+        <Input label="URL da imagem" value={url} onChange={setUrl} placeholder="https://..." />
+        <Button variant="secondary" onClick={addUrl}>Adicionar URL</Button>
+      </div>
+      {uploading && <small className="form-success">Enviando imagens...</small>}
+      <div className="product-gallery-grid">
+        {safeImages.map((image, index) => (
+          <article key={`${image.image_url}-${index}`} className={image.is_primary ? "primary" : ""}>
+            <button type="button" className="gallery-thumb" onClick={() => setPreview(image.image_url)}>
+              <img src={catalogImageUrl(image.image_url)} alt={image.alt_text || productName || "Joia"} />
+            </button>
+            <div>
+              <strong>{image.is_primary ? "Principal" : `Imagem ${index + 1}`}</strong>
+              <small>{image.image_url}</small>
+            </div>
+            <div className="gallery-actions">
+              <button type="button" onClick={() => setPrimary(index)}>Principal</button>
+              <button type="button" onClick={() => move(index, -1)}>Subir</button>
+              <button type="button" onClick={() => move(index, 1)}>Descer</button>
+              <button type="button" onClick={() => remove(index)}>Remover</button>
+            </div>
+          </article>
+        ))}
+        {!safeImages.length && <p className="empty-state">Nenhuma imagem cadastrada. O catálogo usará a imagem padrão até você enviar uma foto.</p>}
+      </div>
+      {preview && (
+        <div className="gallery-preview-modal" onClick={() => setPreview(null)}>
+          <img src={catalogImageUrl(preview)} alt="Pré-visualização" />
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function JewelryEditor({ options, pricingSettings = {}, editing, onSaved, onCancel, onMovementOpen }) {
   const [form, setForm] = useState(defaultJewelry());
   const [error, setError] = useState("");
@@ -577,7 +701,8 @@ export function JewelryEditor({ options, pricingSettings = {}, editing, onSaved,
     const payload = {
       ...form,
       variants: pricedVariants,
-      gallery_urls: parseGalleryUrls(form.gallery_urls),
+      images: form.images,
+      gallery_urls: form.images?.length ? form.images.map((image) => image.image_url) : parseGalleryUrls(form.gallery_urls),
       material: pricedVariants[0]?.material || "",
       color: pricedVariants[0]?.color || "",
       size: pricedVariants[0]?.size || "",
@@ -597,7 +722,7 @@ export function JewelryEditor({ options, pricingSettings = {}, editing, onSaved,
       is_most_wanted: Boolean(form.is_most_wanted),
       is_promotion: Boolean(form.is_promotion),
       is_last_units: Boolean(form.is_last_units),
-      image_url: form.image_url
+      image_url: form.images?.find((image) => image.is_primary)?.image_url || form.images?.[0]?.image_url || form.image_url
     };
     const response = await apiFetch(`/jewelry${editing ? `/${editing.id}` : ""}`, {
       method: editing ? "PATCH" : "POST",
@@ -709,11 +834,17 @@ export function JewelryEditor({ options, pricingSettings = {}, editing, onSaved,
                 {["Segmento", "Clicker", "D-Ring", "Captive", "Hinged Ring"].map((item) => <option key={item}>{item}</option>)}
               </Select>
             )}
-            <ImageUploadField label="Foto principal" value={form.photo_url} onChange={(value) => setForm({ ...form, photo_url: value })} />
+            <ProductGalleryManager
+              images={form.images}
+              productName={form.name}
+              onChange={(images) => setForm({
+                ...form,
+                images,
+                photo_url: images.find((image) => image.is_primary)?.image_url || images[0]?.image_url || form.photo_url,
+                image_url: images.find((image) => image.is_primary)?.image_url || images[0]?.image_url || form.image_url
+              })}
+            />
           </div>
-          <label>Galeria de fotos
-            <textarea value={form.gallery_urls} onChange={(event) => setForm({ ...form, gallery_urls: event.target.value })} placeholder={"Cole uma URL por linha.\nCada imagem aparece no catálogo como galeria."} />
-          </label>
           <div className="form-grid">
             <Input label="Pedra" value={form.stone} onChange={(value) => setForm({ ...form, stone: value })} />
             <Input label="Indicação de Uso" value={form.piercing_type} onChange={(value) => setForm({ ...form, piercing_type: value })} />
@@ -880,11 +1011,16 @@ export function VariantEditModal({ category, variant, pricingSettings = {}, onCh
   const usesThread = ["labret", "barbell", "nostril", "topos", "ouro"].some((name) => normalizedCategory.includes(name));
   const selectedColors = splitColorOptions(variant.color);
   const pricing = calculateVariantPricing(variant, pricingSettings);
-  const priceAdjusted = Math.abs(Number(variant.sale_value || 0) - Number(pricing.suggested_sale_value || 0)) > 0.009;
+  const priceAdjusted = Math.abs(Number(variant.sale_value || 0) - centsToMoney(pricing.suggested_price_cents)) > 0.009;
+  const margin = pricing.sale_price_cents ? Math.max(0, Math.round(((pricing.sale_price_cents - pricing.total_cost_cents) / pricing.sale_price_cents) * 100)) : 0;
 
   function updatePricing(patch) {
     const nextVariant = { ...variant, ...patch };
     onChange({ ...patch, ...calculateVariantPricing(nextVariant, pricingSettings) });
+  }
+
+  function estimateCostFromSale() {
+    updatePricing({ estimate_cost_from_sale: true, price_manually_overridden: true });
   }
 
   function toggleColor(color) {
@@ -950,32 +1086,58 @@ export function VariantEditModal({ category, variant, pricingSettings = {}, onCh
           )}
           <Input label="SKU" value={variant.sku} onChange={(value) => onChange({ sku: value, sku_manually_edited: true })} required />
           <Input label="Fornecedor" value={variant.supplier} onChange={(value) => onChange({ supplier: value })} />
-          <section className="pricing-builder">
-            <div>
-              <h3>Precificação automática</h3>
-              <p>Informe o custo real da variação e revise o preço sugerido antes de publicar.</p>
+          <ProductGalleryManager
+            images={variant.images || []}
+            productName={variant.variation_name || variant.sku || "VariaÃ§Ã£o"}
+            onChange={(images) => onChange({ images })}
+          />
+          {!(variant.images || []).length && <small className="pricing-note">Sem imagens prÃ³prias: esta variaÃ§Ã£o herdarÃ¡ a galeria do produto principal no catÃ¡logo.</small>}
+          <section className="pricing-builder price-formation">
+            <div className="price-formation-head">
+              <div>
+                <span className="eyebrow">Formação de preço</span>
+                <h3>Custos, estratégia e preço final</h3>
+                <p>Calcule do custo para o preço ou estime o custo a partir do preço final informado.</p>
+              </div>
+              <span className={`price-state ${variant.cost_estimated || pricing.cost_estimated ? "estimated" : priceAdjusted ? "manual" : "auto"}`}>
+                {variant.cost_estimated || pricing.cost_estimated ? "Custo estimado" : priceAdjusted ? "Preço ajustado manualmente" : "Preço automático"}
+              </span>
             </div>
-            <div className="form-grid">
-              <Input type="number" label="Custo da Joia" value={variant.purchase_cost || variant.cost_value} onChange={(value) => updatePricing({ purchase_cost: value, cost_value: value, price_manually_overridden: false })} />
-              <Input type="number" label="Frete Rateado" value={variant.allocated_freight} onChange={(value) => updatePricing({ allocated_freight: value, price_manually_overridden: false })} />
-              <Input type="number" label="Outros Custos" value={variant.additional_cost} onChange={(value) => updatePricing({ additional_cost: value, price_manually_overridden: false })} />
-              <Select label="Multiplicador" value={variant.price_multiplier || pricingSettings.default_price_multiplier || 3} onChange={(value) => updatePricing({ price_multiplier: Number(value), price_manually_overridden: false })}>
-                {PRICE_MULTIPLIER_OPTIONS.map((option) => <option key={option} value={option}>{option}x</option>)}
-              </Select>
-              <Select label="Arredondamento" value={variant.price_rounding_mode || pricingSettings.price_rounding_mode || "exact"} onChange={(value) => updatePricing({ price_rounding_mode: value, price_manually_overridden: false })}>
-                {PRICE_ROUNDING_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </Select>
+            <div className="price-formation-grid">
+              <div className="price-box">
+                <strong>Custos</strong>
+                <div className="form-grid">
+                  <Input type="number" label="Custo da Joia" value={variant.purchase_cost || variant.cost_value} onChange={(value) => updatePricing({ purchase_cost: value, cost_value: value, price_manually_overridden: false, cost_estimated: false })} />
+                  <Input type="number" label="Frete Rateado" value={variant.allocated_freight} onChange={(value) => updatePricing({ allocated_freight: value, price_manually_overridden: false })} />
+                  <Input type="number" label="Outros Custos" value={variant.additional_cost} onChange={(value) => updatePricing({ additional_cost: value, price_manually_overridden: false })} />
+                  <div className="money-readout"><small>Custo total</small><b>{currency.format(centsToMoney(pricing.total_cost_cents))}</b></div>
+                </div>
+              </div>
+              <div className="price-box">
+                <strong>Estratégia de preço</strong>
+                <div className="form-grid">
+                  <Select label="Multiplicador" value={variant.price_multiplier || pricingSettings.default_price_multiplier || 3} onChange={(value) => updatePricing({ price_multiplier: Number(value), price_manually_overridden: false })}>
+                    {PRICE_MULTIPLIER_OPTIONS.map((option) => <option key={option} value={option}>{option}x</option>)}
+                  </Select>
+                  <Select label="Arredondamento" value={variant.price_rounding_mode || pricingSettings.price_rounding_mode || "exact"} onChange={(value) => updatePricing({ price_rounding_mode: value, price_manually_overridden: false })}>
+                    {PRICE_ROUNDING_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </Select>
+                  <Input type="number" label="Preço Final de Venda" value={variant.sale_value} onChange={(value) => updatePricing({ sale_value: value, price_manually_overridden: true })} required />
+                  <div className="pricing-actions-inline">
+                    <Button variant="secondary" onClick={() => updatePricing({ sale_value: centsToMoney(pricing.suggested_price_cents), price_manually_overridden: false, cost_estimated: false })}>Usar preço sugerido</Button>
+                    <Button variant="secondary" onClick={estimateCostFromSale}>Calcular custo pelo preço final</Button>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="pricing-preview">
+            <div className="pricing-preview price-summary-cards">
               <span><small>Custo Total</small><strong>{currency.format(centsToMoney(pricing.total_cost_cents))}</strong></span>
+              <span><small>Multiplicador</small><strong>{pricing.price_multiplier}x</strong></span>
               <span><small>Preço Sugerido</small><strong>{currency.format(centsToMoney(pricing.suggested_price_cents))}</strong></span>
               <span><small>Preço Final</small><strong>{currency.format(centsToMoney(pricing.sale_price_cents))}</strong></span>
-              {priceAdjusted && <em>Preço ajustado manualmente</em>}
+              <span><small>Margem estimada</small><strong>{margin}%</strong></span>
             </div>
-            <div className="form-grid">
-              <Input type="number" label="Preço Final de Venda" value={variant.sale_value} onChange={(value) => updatePricing({ sale_value: value, price_manually_overridden: true })} required />
-              <Button variant="secondary" onClick={() => updatePricing({ sale_value: centsToMoney(pricing.suggested_price_cents), price_manually_overridden: false })}>Usar preço sugerido</Button>
-            </div>
+            {(variant.cost_estimated || pricing.cost_estimated) && <small className="pricing-note">Custo estimado a partir do preço final. Revise o custo real quando tiver a nota ou custo de compra.</small>}
           </section>
           <div className="form-grid">
             <Input type="number" label="Estoque Atual" value={variant.quantity} onChange={(value) => onChange({ quantity: value })} required />

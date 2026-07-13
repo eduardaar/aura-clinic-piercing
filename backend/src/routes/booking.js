@@ -1,15 +1,29 @@
-// Rotas públicas de agendamento online (booking).
+// Rotas publicas de agendamento online.
 import { Router } from "express";
+import { createHash } from "crypto";
 import { withDb } from "../middleware/withDb.js";
 import { upload } from "../middleware/upload.js";
 import { addMinutesToTime } from "../services/utils.js";
-import {
-  availableBookingSlots,
-  upsertClient,
-  listAppointments
-} from "../services/appointments.js";
+import { availableBookingSlots, upsertClient, listAppointments } from "../services/appointments.js";
+import { getStoreName, queueProfessionalBookingNotification } from "../services/notifications.js";
 
 const router = Router();
+
+function publicBookingKey(req, body) {
+  const provided = String(req.get("Idempotency-Key") || body.idempotency_key || body.public_booking_token || "").trim();
+  if (provided) return provided.slice(0, 180);
+  return createHash("sha256")
+    .update([
+      req.tenant?.slug || "",
+      body.service_id || "",
+      body.professional_id || "",
+      body.appointment_date || "",
+      body.appointment_time || "",
+      String(body.whatsapp || "").replace(/\D/g, ""),
+      String(body.full_name || "").trim().toLowerCase()
+    ].join("|"))
+    .digest("hex");
+}
 
 async function bookingReadiness(db) {
   const activeServices = await db.get("SELECT COUNT(*) AS count FROM services WHERE active_online_booking = 1");
@@ -40,9 +54,8 @@ async function bookingReadiness(db) {
     { key: "weeklySchedule", label: "Agenda semanal configurada", done: Number(weeklyAvailability.count || 0) > 0 },
     { key: "links", label: "Profissionais vinculados aos serviços", done: Number(linkedProfessionals.count || 0) > 0 }
   ];
-  const ready = checklist.every((item) => item.done);
   return {
-    ready,
+    ready: checklist.every((item) => item.done),
     checklist,
     missing: checklist.filter((item) => !item.done).map((item) => item.label),
     counts: {
@@ -59,8 +72,8 @@ router.get("/api/booking/readiness", withDb(async (_req, res, db) => {
   res.json(await bookingReadiness(db));
 }));
 
-router.get("/api/booking/config", withDb(async (_req, res, db) => {
-  console.info("[booking-config] tenant recebido", _req.tenant);
+router.get("/api/booking/config", withDb(async (req, res, db) => {
+  console.info("[booking-config] tenant recebido", req.tenant);
   const services = await db.all("SELECT * FROM services WHERE active_online_booking = 1 ORDER BY name");
   const professionalsRows = await db.all(`
     SELECT DISTINCT p.*
@@ -87,8 +100,8 @@ router.get("/api/booking/config", withDb(async (_req, res, db) => {
     services,
     professionals,
     rules: {
-      cancellation: "Remarcações e cancelamentos devem ser solicitados com antecedência.",
-      payment: "O sinal reserva o horário; a confirmação é feita manualmente pela Aura Clinic."
+      cancellation: "Remarcacoes e cancelamentos devem ser solicitados com antecedencia.",
+      payment: "O sinal reserva o horario; a confirmacao e feita manualmente pela equipe."
     }
   });
 }));
@@ -99,27 +112,40 @@ router.get("/api/booking/slots", withDb(async (req, res, db) => {
   const date = String(req.query.date || "");
   console.info("[booking-slots] request recebido", { tenant: req.tenant, serviceId, professionalId, date });
   if (!serviceId || !professionalId || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return res.status(400).json({ error: "Serviço, profissional e data são obrigatórios." });
+    return res.status(400).json({ error: "Servico, profissional e data sao obrigatorios." });
   }
   const service = await db.get("SELECT * FROM services WHERE id = ? AND active_online_booking = 1", [serviceId]);
-  if (!service) return res.status(404).json({ error: "Serviço não encontrado." });
+  if (!service) return res.status(404).json({ error: "Servico nao encontrado." });
   const linked = await db.get("SELECT id FROM professional_services WHERE professional_id = ? AND service_id = ?", [professionalId, serviceId]);
-  if (!linked) return res.status(409).json({ error: "Este profissional não realiza o serviço selecionado." });
+  if (!linked) return res.status(409).json({ error: "Este profissional nao realiza o servico selecionado." });
   const slots = await availableBookingSlots(db, { service, professionalId, date });
   res.json({ date, slots });
 }));
 
 router.post("/api/booking/requests", upload.fields([{ name: "reference_photo", maxCount: 1 }, { name: "payment_proof", maxCount: 1 }]), withDb(async (req, res, db) => {
-  const body = req.body;
+  const body = req.body || {};
   console.info("[booking-request] request recebido", { tenant: req.tenant, service_id: body.service_id, professional_id: body.professional_id, appointment_date: body.appointment_date, appointment_time: body.appointment_time });
+
+  const bookingKey = publicBookingKey(req, body);
+  const existing = await listAppointments(db, "WHERE a.public_booking_key = ?", [bookingKey]).then((rows) => rows[0]);
+  if (existing) return res.status(200).json({ ...existing, idempotent: true });
+
   const service = await db.get("SELECT * FROM services WHERE id = ? AND active_online_booking = 1", [body.service_id]);
-  if (!service) return res.status(404).json({ error: "Serviço não encontrado." });
+  if (!service) return res.status(404).json({ error: "Servico nao encontrado." });
+
   const professionalId = Number(body.professional_id || 0);
+  const professional = await db.get("SELECT * FROM professionals WHERE id = ? AND active = 1", [professionalId]);
+  if (!professional) return res.status(404).json({ error: "Profissional nao encontrado ou inativo." });
+
+  const linked = await db.get("SELECT id FROM professional_services WHERE professional_id = ? AND service_id = ?", [professionalId, service.id]);
+  if (!linked) return res.status(409).json({ error: "Este profissional nao realiza o servico selecionado." });
+
   const date = String(body.appointment_date || "");
   const time = String(body.appointment_time || "");
   const slots = await availableBookingSlots(db, { service, professionalId, date });
-  if (!slots.some((slot) => slot.time === time)) return res.status(409).json({ error: "Este horário não está mais disponível." });
-  if (!body.full_name?.trim() || !body.whatsapp?.trim()) return res.status(400).json({ error: "Nome e WhatsApp são obrigatórios." });
+  if (!slots.some((slot) => slot.time === time)) return res.status(409).json({ error: "Este horario nao esta mais disponivel." });
+  if (!body.full_name?.trim() || !body.whatsapp?.trim()) return res.status(400).json({ error: "Nome e WhatsApp sao obrigatorios." });
+
   const totalValue = Number(service.price || service.base_price || 0);
   const depositValue = Number(service.deposit_value || 25);
   const remainingValue = Math.max(totalValue - depositValue, 0);
@@ -128,15 +154,16 @@ router.post("/api/booking/requests", upload.fields([{ name: "reference_photo", m
     whatsapp: body.whatsapp,
     instagram: body.instagram || "",
     birth_date: "",
-    notes: body.notes || ""
+    client_notes: body.notes || ""
   });
   const referencePhoto = req.files?.reference_photo?.[0] ? `/uploads/${req.files.reference_photo[0].filename}` : "";
   const paymentProof = req.files?.payment_proof?.[0] ? `/uploads/${req.files.payment_proof[0].filename}` : "";
-  const endTime = addMinutesToTime(time, Number(service.duration_minutes || 40));
+  const durationMinutes = Number(service.duration_minutes || 40);
+  const endTime = addMinutesToTime(time, durationMinutes);
   const result = await db.run(
     `INSERT INTO appointments
-    (client_id, professional_id, service_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, total_value, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, status, notes, reference_photo_url, payment_proof_url)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (client_id, professional_id, service_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, duration_minutes, total_value, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, status, source, public_booking_key, notes, reference_photo_url, payment_proof_url)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       client.id,
       professionalId,
@@ -147,22 +174,36 @@ router.post("/api/booking/requests", upload.fields([{ name: "reference_photo", m
       date,
       time,
       endTime,
+      durationMinutes,
       totalValue,
       depositValue,
       remainingValue,
       "Pix",
       "Pix",
       "pendente",
+      "public_booking",
+      bookingKey,
       body.notes || "",
       referencePhoto,
       paymentProof
     ]
   );
-  await db.run(
-    "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, 'sinal', 'Pix', 'pago', ?)",
-    [result.lastID, client.id, depositValue, `${date}T${time}:00`]
-  );
-  res.status(201).json(await listAppointments(db, "WHERE a.id = ?", [result.lastID]).then((rows) => rows[0]));
+  if (depositValue > 0) {
+    await db.run(
+      "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, 'sinal', 'Pix', 'pago', ?)",
+      [result.lastID, client.id, depositValue, `${date}T${time}:00`]
+    );
+  }
+  const appointment = await listAppointments(db, "WHERE a.id = ?", [result.lastID]).then((rows) => rows[0]);
+  await queueProfessionalBookingNotification(db, {
+    appointmentId: result.lastID,
+    professionalId,
+    client,
+    service,
+    appointment,
+    storeName: await getStoreName(db, req.tenant?.name)
+  });
+  res.status(201).json(appointment);
 }));
 
 export default router;

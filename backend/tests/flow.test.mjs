@@ -18,6 +18,7 @@ const ctx = {
   professionalId: null,
   jewelryId: null,
   appointmentId: null,
+  publicAppointmentId: null,
 };
 
 // Datas: usa amanhã para o agendamento (evita conflito com "hoje" em rankings).
@@ -34,6 +35,26 @@ function nextDateForWeekday(weekday, offsetDays = 1) {
 // Wrapper que injeta token + tenant automaticamente nas chamadas autenticadas.
 function api(path, opts = {}) {
   return req(path, { token: ctx.token, tenant: ctx.slug, ...opts });
+}
+
+async function ensureBookingReadyForTests() {
+  await api(`/professionals/${ctx.professionalId}`, {
+    method: "PATCH",
+    body: { service_ids: [ctx.serviceId], active: true },
+  });
+  await api("/availability/generate-weekly", {
+    method: "POST",
+    body: {
+      professional_id: ctx.professionalId,
+      weekdays: [1, 2, 3, 4, 5, 6],
+      start_time: "09:00",
+      end_time: "18:00",
+      lunch_start: "12:00",
+      lunch_end: "13:00",
+      duration_minutes: 40,
+      buffer_minutes: 10,
+    },
+  });
 }
 
 before(async () => {
@@ -57,6 +78,21 @@ test("1. login do admin retorna token e role admin", async () => {
   const login = await loginTenant(ctx.slug, `admin@${ctx.slug}.test`, "SenhaForte123");
   assert.equal(login.user.role, "admin");
   assert.equal(login.tenant.slug, ctx.slug);
+});
+
+test("1b. planos e identidade da loja carregam tenant proprio", async () => {
+  const plans = await req("/plans");
+  assert.equal(plans.status, 200, JSON.stringify(plans.json));
+  assert.ok(plans.json.plans.some((plan) => plan.code === "profissional" && Number(plan.price_cents) === 6990), "plano profissional deve existir com preco correto");
+
+  const identity = await api("/store-identity");
+  assert.equal(identity.status, 200, JSON.stringify(identity.json));
+  assert.equal(identity.json.tenant.slug, ctx.slug);
+  assert.equal(identity.json.identity.store_name, `Clinica ${ctx.slug}`);
+  assert.equal(identity.json.subscription.plan_code, "profissional");
+  assert.equal(identity.json.subscription.status, "trial_active");
+  assert.ok(identity.json.subscription.trial_ends_at, "trial deve ter data final");
+  assert.notEqual(identity.json.identity.store_name, "Aura Clinic", "novo tenant nao deve usar Aura Clinic como nome da loja");
 });
 
 // 2) Cliente: cadastra e confere na listagem.
@@ -116,7 +152,7 @@ test("3b. cadastra procedimento vinculado ao serviço", async () => {
 test("3c. cadastra profissional", async () => {
   const create = await api("/professionals", {
     method: "POST",
-    body: { name: "Ana Piercer", specialty: "Body piercing" },
+    body: { name: "Ana Piercer", specialty: "Body piercing", phone: "11977776666", whatsapp: "+5511977776666" },
   });
   assert.equal(create.status, 201, JSON.stringify(create.json));
   assert.equal(create.json.name, "Ana Piercer");
@@ -201,6 +237,7 @@ test("3e. readiness exige vinculo e agenda semanal; depois fica pronto", async (
 });
 
 test("3g. agenda publica gera slots reais, respeita almoco, domingo, bloqueios e ocupados", async () => {
+  await ensureBookingReadyForTests();
   const monday = nextDateForWeekday(1, 8);
   const mondaySlots = await api(`/booking/slots?service_id=${ctx.serviceId}&professional_id=${ctx.professionalId}&date=${monday}`);
   assert.equal(mondaySlots.status, 200, JSON.stringify(mondaySlots.json));
@@ -274,6 +311,69 @@ test("3g. agenda publica gera slots reais, respeita almoco, domingo, bloqueios e
   const busySlots = await api(`/booking/slots?service_id=${ctx.serviceId}&professional_id=${ctx.professionalId}&date=${busyDate}`);
   assert.equal(busySlots.status, 200, JSON.stringify(busySlots.json));
   assert.ok(!busySlots.json.slots.some((slot) => slot.time === "09:00"), "horario ocupado nao deve aparecer");
+});
+
+test("3h. agendamento publico cria solicitacao pendente, evita duplicidade e gera notificacao", async () => {
+  await ensureBookingReadyForTests();
+  const sunday = nextDateForWeekday(0, 8);
+  await api("/schedule-blocks", {
+    method: "POST",
+    body: {
+      professional_id: ctx.professionalId,
+      block_type: "special_hours",
+      reason: "Domingo especial para agendamento publico",
+      start_datetime: `${sunday}T10:00`,
+      end_datetime: `${sunday}T12:00`,
+      duration_minutes: 30,
+      buffer_minutes: 10,
+    },
+  });
+  const idempotency = `qa-public-${ctx.slug}`;
+  const body = {
+    service_id: ctx.serviceId,
+    professional_id: ctx.professionalId,
+    appointment_date: sunday,
+    appointment_time: "10:40",
+    full_name: "Cliente Publico QA",
+    whatsapp: "11988887777",
+    instagram: "@publicoqa",
+    notes: "Solicitacao criada pelo link publico",
+    idempotency_key: idempotency
+  };
+  const create = await req(`/booking/requests?t=${ctx.slug}`, { method: "POST", body });
+  assert.equal(create.status, 201, JSON.stringify(create.json));
+  assert.equal(create.json.status, "pendente");
+  assert.equal(create.json.source, "public_booking");
+  assert.equal(Number(create.json.deposit_value), 40);
+  ctx.publicAppointmentId = create.json.id;
+
+  const duplicate = await req(`/booking/requests?t=${ctx.slug}`, { method: "POST", body });
+  assert.equal(duplicate.status, 200, JSON.stringify(duplicate.json));
+  assert.equal(duplicate.json.id, ctx.publicAppointmentId);
+  assert.equal(duplicate.json.idempotent, true);
+
+  const pending = await api("/appointments?status=pendente");
+  assert.equal(pending.status, 200, JSON.stringify(pending.json));
+  assert.ok(pending.json.some((item) => Number(item.id) === Number(ctx.publicAppointmentId)), "solicitacao publica deve aparecer como pendente");
+
+  const allAppointments = await api("/appointments");
+  assert.equal(allAppointments.status, 200, JSON.stringify(allAppointments.json));
+  assert.ok(allAppointments.json.some((item) => Number(item.id) === Number(ctx.publicAppointmentId)), "solicitacao publica deve aparecer na agenda/listagem");
+
+  const notifications = await api("/notifications");
+  assert.equal(notifications.status, 200, JSON.stringify(notifications.json));
+  const notification = notifications.json.find((item) => Number(item.appointment_id) === Number(ctx.publicAppointmentId) && item.template === "professional_new_public_booking");
+  assert.ok(notification, "deve criar notificacao para profissional");
+  assert.ok(notification.message.includes("Cliente Publico QA"));
+  assert.ok(notification.whatsapp_link.includes("wa.me"));
+
+  const dashboard = await api("/dashboard");
+  assert.equal(dashboard.status, 200, JSON.stringify(dashboard.json));
+  assert.ok(dashboard.json.adminDashboard.appointmentAlerts.some((item) => item.appointment_id === ctx.publicAppointmentId && item.type === "public-pending"), "dashboard deve listar alerta de solicitacao publica");
+
+  const alerts = await api("/alerts");
+  assert.equal(alerts.status, 200, JSON.stringify(alerts.json));
+  assert.ok(alerts.json.items.some((item) => item.id === `appointment-public-${ctx.publicAppointmentId}`), "central de alertas deve listar solicitacao publica");
 });
 
 test("3f. cria termo digital sem agendamento vinculado", async () => {
@@ -371,16 +471,21 @@ test("4c. calcula preços de variações em centavos e normaliza comprimento", a
       category: "Labret",
       material: "Titânio",
       color: "Natural",
+      images: [
+        { image_url: "/uploads/labret-principal.png", alt_text: "Labret principal", is_primary: true, sort_order: 1 },
+        { image_url: "/uploads/labret-detalhe.png", alt_text: "Labret detalhe", sort_order: 2 }
+      ],
       variants: [
         { material: "Titânio ASTM F136", color: "Natural", length: "08 mm", thickness: "1.2mm", cost_value: 50, allocated_freight: 5, additional_cost: 0, price_multiplier: 3, price_rounding_mode: "exact", quantity: 2 },
         { material: "Titânio ASTM F136", color: "Natural", length: "40mm", thickness: "1.2mm", cost_value: 69.9, price_multiplier: 4, price_rounding_mode: "exact", quantity: 1 },
-        { material: "Titânio ASTM F136", color: "Natural", length: "", thickness: "1.2mm", cost_value: 50, price_multiplier: 3, price_rounding_mode: "end_90", sale_value: 169.9, price_manually_overridden: true, quantity: 1 }
+        { material: "Titânio ASTM F136", color: "Natural", length: "", thickness: "1.2mm", cost_value: 50, price_multiplier: 3, price_rounding_mode: "end_90", sale_value: 169.9, price_manually_overridden: true, quantity: 1 },
+        { material: "Titânio ASTM F136", color: "Natural", length: "10mm", thickness: "1.2mm", sale_value: 209.7, price_multiplier: 3, price_rounding_mode: "exact", price_manually_overridden: true, estimate_cost_from_sale: true, quantity: 1, images: [{ image_url: "/uploads/labret-10mm.png", is_primary: true }] }
       ]
     }
   });
   assert.equal(create.status, 201, JSON.stringify(create.json));
   ctx.pricingJewelryId = create.json.id;
-  const [v1, v2, v3] = create.json.variants;
+  const [v1, v2, v3, v4] = create.json.variants;
   assert.equal(v1.length, "8mm");
   assert.equal(Number(v1.length_mm), 8);
   assert.equal(Number(v1.total_cost_cents), 5500);
@@ -392,11 +497,19 @@ test("4c. calcula preços de variações em centavos e normaliza comprimento", a
   assert.equal(Number(v3.suggested_price_cents), 15090);
   assert.equal(Number(v3.sale_price_cents), 16990);
   assert.equal(Number(v3.price_manually_overridden), 1);
+  assert.equal(Number(v4.purchase_cost_cents), 6990);
+  assert.equal(Number(v4.cost_estimated), 1);
+  assert.equal(Number(v4.sale_price_cents), 20970);
+  assert.equal(create.json.images.length, 2, "produto deve salvar varias imagens");
+  assert.equal(create.json.images.filter((image) => Number(image.is_primary) === 1).length, 1, "apenas uma imagem deve ser principal");
 
   const catalog = await req(`/catalog?t=${ctx.slug}`);
   assert.equal(catalog.status, 200, JSON.stringify(catalog.json));
   const publicItem = catalog.json.items.find((item) => Number(item.id) === Number(create.json.id));
   assert.ok(publicItem, "produto precificado deve aparecer no catálogo público");
+  assert.equal(publicItem.images.length, 2, "catalogo publico deve exibir galeria");
+  assert.equal(publicItem.image_url, "/uploads/labret-principal.png");
+  assert.equal(publicItem.variants.find((variant) => variant.length === "10mm").images[0].image_url, "/uploads/labret-10mm.png");
   assert.equal(publicItem.variants[0].sale_value, 165);
   assert.equal(publicItem.variants[0].purchase_cost_cents, undefined, "catálogo público não deve expor custo");
   assert.equal(publicItem.variants[0].price_multiplier, undefined, "catálogo público não deve expor multiplicador");
@@ -495,10 +608,10 @@ test("5c. muda status do agendamento até 'atendido'", async () => {
 test("6a. finance reflete sinal e restante do atendimento", async () => {
   const finance = await api("/finance");
   assert.equal(finance.status, 200, JSON.stringify(finance.json));
-  // Sinal de 40 recebido neste mês.
-  assert.equal(Number(finance.json.deposits.monthTotal), 40, "sinal de 40 deve constar em deposits.monthTotal");
-  // Ao atender, registra o pagamento restante (140). Total do mês = 40 + 140 = 180.
-  assert.equal(Number(finance.json.totals.month_total), 180, "month_total deve somar sinal + restante = 180");
+  // Sinais: 40 do link publico + 40 do atendimento interno.
+  assert.equal(Number(finance.json.deposits.monthTotal), 80, "sinais de 80 devem constar em deposits.monthTotal");
+  // Ao atender, registra o pagamento restante (140). Total do mês = 40 publico + 40 sinal interno + 140 restante = 220.
+  assert.equal(Number(finance.json.totals.month_total), 220, "month_total deve somar sinais + restante = 220");
 });
 
 test("6b. cria despesa e ela reflete no finance", async () => {
@@ -513,8 +626,8 @@ test("6b. cria despesa e ela reflete no finance", async () => {
   assert.equal(Number(finance.json.expensesSummary.fixed_total), 500, "despesa fixa de 500 deve constar");
   assert.equal(
     Number(finance.json.profit.estimated),
-    180 - 500,
-    "lucro estimado = receita do mês (180) - despesas (500)"
+    220 - 500,
+    "lucro estimado = receita do mês (220) - despesas (500)"
   );
 });
 
@@ -638,11 +751,10 @@ test("9a. dashboard responde 200 com estrutura esperada", async () => {
 test("9b. erp responde 200 com métricas coerentes", async () => {
   const erp = await api("/erp");
   assert.equal(erp.status, 200, JSON.stringify(erp.json));
-  assert.equal(Number(erp.json.metrics.clients), 1, "deve haver 1 cliente");
-  assert.equal(Number(erp.json.metrics.appointments), 2, "deve haver 2 agendamentos, incluindo o horario ocupado do teste de slots");
+  assert.equal(Number(erp.json.metrics.clients), 2, "deve haver 2 clientes, incluindo o cliente do link publico");
+  assert.equal(Number(erp.json.metrics.appointments), 3, "deve haver 3 agendamentos, incluindo solicitacao publica e horario ocupado do teste de slots");
   const expectedJewelryCount = [ctx.jewelryId, ctx.extraJewelryId, ctx.pricingJewelryId].filter(Boolean).length;
   assert.equal(Number(erp.json.metrics.jewelry), expectedJewelryCount, "quantidade de joias coerente com o que foi criado");
-  // Receita paga (payments status='pago') = sinal 40 + restante 140 (atendimento com joia)
-  // + 120 (a venda concluída também grava um pagamento 'pago') = 300.
-  assert.equal(Number(erp.json.metrics.revenue), 300, "receita paga deve ser 300 (40 + 140 + 120 da venda)");
+  // Receita paga = 40 sinal publico + 40 sinal interno + 140 restante + 120 da venda.
+  assert.equal(Number(erp.json.metrics.revenue), 340, "receita paga deve ser 340 (80 de sinais + 140 restante + 120 da venda)");
 });
