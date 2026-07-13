@@ -221,14 +221,17 @@ export function groupInventoryOptions(rows) {
 
 export function aggregateVariantStatus(variants = []) {
   if (!variants.length || variants.every((variant) => Number(variant.quantity || 0) <= 0)) return "esgotado";
+  if (variants.some((variant) => variantStatus(variant.quantity, variant.low_stock_threshold) === "crítico")) return "crítico";
   if (variants.some((variant) => variantStatus(variant.quantity, variant.low_stock_threshold) === "baixo estoque")) return "baixo estoque";
   return "disponível";
 }
 
 export function variantStatus(quantity, lowStockThreshold = 5) {
   const stock = Number(quantity || 0);
+  const minimum = Number(lowStockThreshold || 5);
   if (stock <= 0) return "esgotado";
-  if (stock <= Number(lowStockThreshold || 5)) return "baixo estoque";
+  if (stock <= minimum) return "crítico";
+  if (stock <= minimum * 2) return "baixo estoque";
   return "disponível";
 }
 

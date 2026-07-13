@@ -117,12 +117,17 @@ export const procedureUpdateSchema = z
 // ---------- Joalherias ----------
 const JEWELRY_CATEGORIES = [
   "Labret",
+  "Segmento",
+  "Argola",
+  "Conector",
   "Argolas",
   "Barbell Reto",
   "Barbell Curvo",
   "Nostril",
+  "Topo",
   "Topos",
   "Microdermal",
+  "Transversal",
   "Surface",
   "Ouro 14k",
   "Ouro 18k"

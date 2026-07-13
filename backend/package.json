@@ -9,6 +9,7 @@
     "dev": "node --watch src/index.js",
     "backup": "bash scripts/backup.sh",
     "restore-admin": "node scripts/restore-admin.mjs",
+    "import:aura-jewelry": "node scripts/import-aura-jewelry.mjs",
     "test": "node tests/run-suite.mjs"
   },
   "dependencies": {
