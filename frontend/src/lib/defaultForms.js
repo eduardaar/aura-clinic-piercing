@@ -69,17 +69,25 @@ export function applyPriceRounding(cents, mode = "exact") {
 }
 
 export function calculateVariantPricing(variant = {}, settings = {}) {
-  const purchase = moneyToCents(variant.purchase_cost ?? variant.cost_value);
+  let purchase = moneyToCents(variant.purchase_cost ?? variant.cost_value);
   const freight = moneyToCents(variant.allocated_freight ?? centsToMoney(variant.allocated_freight_cents));
   const additional = moneyToCents(variant.additional_cost ?? centsToMoney(variant.additional_cost_cents));
-  const total = purchase + freight + additional;
   const multiplier = [3, 4].includes(Number(variant.price_multiplier)) ? Number(variant.price_multiplier) : Number(settings.default_price_multiplier || 3);
   const rounding = variant.price_rounding_mode || settings.price_rounding_mode || "exact";
+  const saleInput = moneyToCents(variant.sale_value);
+  const estimateRequested = Boolean(variant.estimate_cost_from_sale);
+  const hasRealCost = purchase > 0 && !estimateRequested;
+  const costEstimated = Boolean(saleInput > 0 && (!hasRealCost || estimateRequested));
+  if (costEstimated) {
+    purchase = Math.max(0, Math.round(saleInput / multiplier) - freight - additional);
+  }
+  const total = purchase + freight + additional;
   const suggested = applyPriceRounding(Math.round(total * multiplier), rounding);
   const manual = Boolean(variant.price_manually_overridden);
-  const sale = manual ? moneyToCents(variant.sale_value) : suggested;
+  const sale = manual ? saleInput : suggested;
   return {
     cost_value: centsToMoney(purchase),
+    purchase_cost: centsToMoney(purchase),
     purchase_cost_cents: purchase,
     allocated_freight_cents: freight,
     additional_cost_cents: additional,
@@ -89,7 +97,9 @@ export function calculateVariantPricing(variant = {}, settings = {}) {
     suggested_price_cents: suggested,
     sale_price_cents: sale,
     sale_value: centsToMoney(sale),
-    price_manually_overridden: manual
+    price_manually_overridden: manual,
+    cost_estimated: costEstimated,
+    estimate_cost_from_sale: false
   };
 }
 
@@ -313,6 +323,7 @@ export function defaultJewelry() {
     description: "",
     photo_url: "https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=900&q=80",
     image_url: "",
+    images: [],
     gallery_urls: "",
     category: "",
     subcategory: "",
@@ -351,6 +362,7 @@ export function defaultJewelry() {
     suggested_price_cents: 0,
     sale_price_cents: 0,
     price_manually_overridden: false,
+    cost_estimated: false,
     supplier: "",
     physical_location: "",
     sku: "",
@@ -372,6 +384,7 @@ export function defaultJewelryVariant(index = 1) {
     id: null,
     sku: "",
     sku_manually_edited: false,
+    images: [],
     variation_name: `Variação ${index}`,
     material: "Titânio ASTM F136",
     color: "Natural",
@@ -397,6 +410,7 @@ export function defaultJewelryVariant(index = 1) {
     suggested_price_cents: 0,
     sale_price_cents: 0,
     price_manually_overridden: false,
+    cost_estimated: false,
     quantity: 0,
     low_stock_threshold: 5,
     status: "disponível",
@@ -419,6 +433,7 @@ export function normalizeJewelryForm(item = {}) {
   return {
     ...defaultJewelry(),
     ...item,
+    images: normalizeJewelryImages(item),
     gallery_urls: galleryUrls,
     virtual_store_active: Boolean(Number(item.virtual_store_active ?? 1)),
     is_catalog_active: Boolean(Number(item.is_catalog_active ?? 1)),
@@ -448,12 +463,34 @@ export function normalizeJewelryForm(item = {}) {
           price_multiplier: Number(variant.price_multiplier || 3),
           price_rounding_mode: variant.price_rounding_mode || "exact",
           price_manually_overridden: Boolean(Number(variant.price_manually_overridden)),
+          cost_estimated: Boolean(Number(variant.cost_estimated)),
           sale_value: centsToMoney(variant.sale_price_cents || moneyToCents(variant.sale_value)),
           sku_manually_edited: false,
+          images: normalizeJewelryImages(variant),
           is_active: Boolean(Number(variant.is_active ?? 1))
         }))
       : [defaultJewelryVariant()]
   };
+}
+
+function normalizeJewelryImages(item = {}) {
+  const images = Array.isArray(item.images) ? item.images : [];
+  if (images.length) {
+    return images.map((image, index) => ({
+      image_url: image.image_url || image.url || "",
+      alt_text: image.alt_text || "",
+      sort_order: Number(image.sort_order || index + 1),
+      is_primary: Boolean(Number(image.is_primary ?? index === 0))
+    })).filter((image) => image.image_url);
+  }
+  const urls = parseGalleryUrls(item.gallery_urls);
+  const fallback = [item.image_url || item.photo_url, ...urls].filter(Boolean);
+  return [...new Set(fallback)].map((url, index) => ({
+    image_url: url,
+    alt_text: item.name || "",
+    sort_order: index + 1,
+    is_primary: index === 0
+  }));
 }
 
 export function parseGalleryUrls(value = "") {

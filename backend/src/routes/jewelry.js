@@ -9,6 +9,7 @@ import {
   isUniqueViolation,
   jewelrySkuExists,
   replaceJewelryVariants,
+  syncProductImages,
   syncProductInventory,
   SkuConflictError
 } from "../services/inventory.js";
@@ -67,6 +68,7 @@ function jewelryPayload(body, sku, pricing) {
     pricing.suggested_price_cents,
     pricing.sale_price_cents,
     pricing.price_manually_overridden,
+    pricing.cost_estimated,
     body.supplier,
     body.physical_location || "",
     sku,
@@ -86,7 +88,7 @@ function jewelryPayload(body, sku, pricing) {
 }
 
 function updateValue(field, body) {
-  if (["quantity", "cost_value", "sale_value", "purchase_cost_cents", "allocated_freight_cents", "additional_cost_cents", "total_cost_cents", "price_multiplier", "suggested_price_cents", "sale_price_cents", "price_manually_overridden", "low_stock_threshold", "critical_stock_threshold", "weight_grams", "package_length_cm", "package_width_cm", "package_height_cm", "preparation_days", "is_catalog_active", "is_featured", "is_new", "is_most_wanted", "is_promotion", "is_last_units", "virtual_store_active", "is_published"].includes(field)) {
+  if (["quantity", "cost_value", "sale_value", "purchase_cost_cents", "allocated_freight_cents", "additional_cost_cents", "total_cost_cents", "price_multiplier", "suggested_price_cents", "sale_price_cents", "price_manually_overridden", "cost_estimated", "low_stock_threshold", "critical_stock_threshold", "weight_grams", "package_length_cm", "package_width_cm", "package_height_cm", "preparation_days", "is_catalog_active", "is_featured", "is_new", "is_most_wanted", "is_promotion", "is_last_units", "virtual_store_active", "is_published"].includes(field)) {
     return Number(body[field] || 0);
   }
   if (field === "gallery_urls") {
@@ -143,11 +145,12 @@ router.post("/api/jewelry", withDb(async (req, res, db) => {
     const pricing = calculatePricing(req.body, pricingSettings);
     const result = await db.run(
       `INSERT INTO jewelry_inventory
-      (name, description, photo_url, gallery_urls, category, subcategory, variant_group, variation_label, material, color, stone, size, thickness, stem_length, thread_type, piercing_type, weight_grams, package_length_cm, package_width_cm, package_height_cm, package_type, virtual_store_active, preparation_days, shipping_info, seo_title, seo_description, freight_notes, quantity, cost_value, sale_value, purchase_cost_cents, allocated_freight_cents, additional_cost_cents, total_cost_cents, price_multiplier, price_rounding_mode, suggested_price_cents, sale_price_cents, price_manually_overridden, supplier, physical_location, sku, is_catalog_active, is_featured, is_new, is_most_wanted, is_promotion, is_last_units, notes, status, low_stock_threshold, critical_stock_threshold, image_url, is_published)
-      VALUES (${Array(54).fill("?").join(", ")})`,
+      (name, description, photo_url, gallery_urls, category, subcategory, variant_group, variation_label, material, color, stone, size, thickness, stem_length, thread_type, piercing_type, weight_grams, package_length_cm, package_width_cm, package_height_cm, package_type, virtual_store_active, preparation_days, shipping_info, seo_title, seo_description, freight_notes, quantity, cost_value, sale_value, purchase_cost_cents, allocated_freight_cents, additional_cost_cents, total_cost_cents, price_multiplier, price_rounding_mode, suggested_price_cents, sale_price_cents, price_manually_overridden, cost_estimated, supplier, physical_location, sku, is_catalog_active, is_featured, is_new, is_most_wanted, is_promotion, is_last_units, notes, status, low_stock_threshold, critical_stock_threshold, image_url, is_published)
+      VALUES (${Array(55).fill("?").join(", ")})`,
       jewelryPayload(req.body, sku, pricing)
     );
     await replaceJewelryVariants(db, result.lastID, req.body.variants || [variantFromLegacy({ ...req.body, sku: "" })]);
+    await syncProductImages(db, result.lastID, req.body.images || req.body.gallery_urls || [req.body.image_url || req.body.photo_url].filter(Boolean));
     const product = (await attachVariants(db, [await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [result.lastID])]))[0];
     await db.run("COMMIT");
     return res.status(201).json(product);
@@ -179,7 +182,7 @@ router.patch("/api/jewelry/:id", withDb(async (req, res, db) => {
   const pricing = calculatePricing(req.body, pricingSettings);
   Object.assign(req.body, pricing);
 
-  const fields = ["name", "description", "photo_url", "image_url", "gallery_urls", "category", "subcategory", "variant_group", "variation_label", "material", "color", "stone", "size", "thickness", "stem_length", "thread_type", "piercing_type", "weight_grams", "package_length_cm", "package_width_cm", "package_height_cm", "package_type", "virtual_store_active", "preparation_days", "shipping_info", "seo_title", "seo_description", "freight_notes", "quantity", "cost_value", "sale_value", "purchase_cost_cents", "allocated_freight_cents", "additional_cost_cents", "total_cost_cents", "price_multiplier", "price_rounding_mode", "suggested_price_cents", "sale_price_cents", "price_manually_overridden", "supplier", "physical_location", "sku", "is_catalog_active", "is_featured", "is_new", "is_most_wanted", "is_promotion", "is_last_units", "is_published", "notes", "status", "low_stock_threshold", "critical_stock_threshold"];
+  const fields = ["name", "description", "photo_url", "image_url", "gallery_urls", "category", "subcategory", "variant_group", "variation_label", "material", "color", "stone", "size", "thickness", "stem_length", "thread_type", "piercing_type", "weight_grams", "package_length_cm", "package_width_cm", "package_height_cm", "package_type", "virtual_store_active", "preparation_days", "shipping_info", "seo_title", "seo_description", "freight_notes", "quantity", "cost_value", "sale_value", "purchase_cost_cents", "allocated_freight_cents", "additional_cost_cents", "total_cost_cents", "price_multiplier", "price_rounding_mode", "suggested_price_cents", "sale_price_cents", "price_manually_overridden", "cost_estimated", "supplier", "physical_location", "sku", "is_catalog_active", "is_featured", "is_new", "is_most_wanted", "is_promotion", "is_last_units", "is_published", "notes", "status", "low_stock_threshold", "critical_stock_threshold"];
   const updates = fields.filter((field) => req.body[field] !== undefined);
 
   await db.run("BEGIN");
@@ -191,6 +194,9 @@ router.patch("/api/jewelry/:id", withDb(async (req, res, db) => {
       );
     }
     if (Array.isArray(req.body.variants)) await replaceJewelryVariants(db, jewelry.id, req.body.variants);
+    if (req.body.images !== undefined || req.body.gallery_urls !== undefined || req.body.image_url !== undefined || req.body.photo_url !== undefined) {
+      await syncProductImages(db, jewelry.id, req.body.images || req.body.gallery_urls || [req.body.image_url || req.body.photo_url].filter(Boolean));
+    }
     const product = (await attachVariants(db, [await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [req.params.id])]))[0];
     await db.run("COMMIT");
     return res.json(product);

@@ -33,7 +33,18 @@ export async function createTenant(prefix = "qa") {
   const adminPassword = "SenhaForte123";
   const { status, json } = await req("/signup", {
     method: "POST",
-    body: { name: `Clinica ${slug}`, slug, admin_email: adminEmail, admin_password: adminPassword },
+    body: {
+      name: `Clinica ${slug}`,
+      slug,
+      admin_name: "Administrador QA",
+      admin_email: adminEmail,
+      admin_password: adminPassword,
+      phone: "11999990000",
+      city: "Sao Paulo",
+      state: "SP",
+      logo_url: "/uploads/logo-qa.png",
+      plan: "profissional",
+    },
   });
   if (status !== 201) throw new Error(`Falha ao criar tenant ${slug}: ${status} ${JSON.stringify(json)}`);
   return { slug, adminEmail, adminPassword, tenant: json.tenant };

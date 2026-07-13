@@ -98,18 +98,27 @@ export async function savePricingSettings(db, body = {}) {
 export function calculatePricing(body = {}, settings = {}) {
   const fallbackMultiplier = normalizeMultiplier(settings.default_price_multiplier, 3);
   const roundingMode = normalizeRoundingMode(body.price_rounding_mode || settings.price_rounding_mode, "exact");
-  const purchaseCostCents = body.purchase_cost_cents !== undefined ? centsInputToCents(body.purchase_cost_cents) : moneyToCents(body.purchase_cost ?? body.cost_value);
+  let purchaseCostCents = body.purchase_cost_cents !== undefined ? centsInputToCents(body.purchase_cost_cents) : moneyToCents(body.purchase_cost ?? body.cost_value);
   const allocatedFreightCents = body.allocated_freight_cents !== undefined ? centsInputToCents(body.allocated_freight_cents) : moneyToCents(body.allocated_freight ?? body.freight_value);
   const additionalCostCents = body.additional_cost_cents !== undefined ? centsInputToCents(body.additional_cost_cents) : moneyToCents(body.additional_cost);
-  const totalCostCents = purchaseCostCents + allocatedFreightCents + additionalCostCents;
   const multiplier = normalizeMultiplier(body.price_multiplier, fallbackMultiplier);
-  const suggestedPriceCents = applyPriceRounding(Math.round(totalCostCents * multiplier), roundingMode);
   const saleWasProvided = body.sale_price_cents !== undefined || body.sale_value !== undefined;
   const explicitSaleCents = body.sale_price_cents !== undefined
     ? centsInputToCents(body.sale_price_cents)
     : body.sale_value !== undefined
       ? moneyToCents(body.sale_value)
       : 0;
+  const estimateRequested = body.estimate_cost_from_sale === true ||
+    body.estimate_cost_from_sale === 1 ||
+    body.estimate_cost_from_sale === "1" ||
+    body.estimate_cost_from_sale === "true";
+  const hasRealCost = purchaseCostCents > 0 && !estimateRequested;
+  const costEstimated = Boolean(saleWasProvided && explicitSaleCents > 0 && (!hasRealCost || estimateRequested));
+  if (costEstimated) {
+    purchaseCostCents = Math.max(0, Math.round(explicitSaleCents / multiplier) - allocatedFreightCents - additionalCostCents);
+  }
+  const totalCostCents = purchaseCostCents + allocatedFreightCents + additionalCostCents;
+  const suggestedPriceCents = applyPriceRounding(Math.round(totalCostCents * multiplier), roundingMode);
   const explicitManualFlag = body.price_manually_overridden === true ||
     body.price_manually_overridden === 1 ||
     body.price_manually_overridden === "1" ||
@@ -127,6 +136,7 @@ export function calculatePricing(body = {}, settings = {}) {
     suggested_price_cents: suggestedPriceCents,
     sale_price_cents: salePriceCents,
     price_manually_overridden: manuallyOverridden ? 1 : 0,
+    cost_estimated: costEstimated ? 1 : 0,
     cost_value: centsToMoney(purchaseCostCents),
     sale_value: centsToMoney(salePriceCents)
   };

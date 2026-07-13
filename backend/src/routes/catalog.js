@@ -45,6 +45,14 @@ router.get("/api/catalog", withDb(async (_req, res, db) => {
       id: item.id,
       name: item.name,
       photo_url: item.photo_url || item.image_url,
+      image_url: item.image_url || item.photo_url,
+      images: asArray(item.images).map((image) => ({
+        id: image.id,
+        image_url: image.image_url,
+        alt_text: image.alt_text,
+        sort_order: image.sort_order,
+        is_primary: image.is_primary
+      })),
       gallery_urls: item.gallery_urls,
       category: item.category,
       subcategory: item.subcategory,
@@ -64,6 +72,14 @@ router.get("/api/catalog", withDb(async (_req, res, db) => {
         thickness: v.thickness,
         material: v.material,
         color: v.color,
+        image_url: v.image_url,
+        images: asArray(v.images).map((image) => ({
+          id: image.id,
+          image_url: image.image_url,
+          alt_text: image.alt_text,
+          sort_order: image.sort_order,
+          is_primary: image.is_primary
+        })),
         thread_type: v.thread_type,
         sale_value: v.sale_value || item.sale_value,
         quantity: v.quantity || item.quantity

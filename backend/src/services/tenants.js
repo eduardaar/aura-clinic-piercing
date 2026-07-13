@@ -9,6 +9,7 @@ import { pool, query } from "../database/connection.js";
 import { applySchemaSql } from "../db/sqliteCompat.js";
 import { TENANT_SLUG_REGEX, invalidateTenantCache } from "../middleware/tenant.js";
 import { isProduction } from "../config/index.js";
+import { normalizePlanCode, planByCode, trialWindow } from "./plans.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -60,9 +61,10 @@ function validateProvisionInput({ name, slug, adminEmail, adminPassword }) {
 // Cria a clínica: registro em platform.tenants + schema "tenant_<id>" com as
 // tabelas do app, o admin inicial e o tema padrão do catálogo.
 // Em erro, desfaz tudo (DROP SCHEMA + DELETE do registro) e propaga.
-export async function provisionTenant({ name, slug, adminName, adminEmail, adminPassword }) {
+export async function provisionTenant({ name, slug, adminName, adminEmail, adminPassword, phone = "", city = "", state = "", logoUrl = "", plan = "profissional" }) {
   const normalizedSlug = String(slug || "").trim().toLowerCase();
   validateProvisionInput({ name, slug: normalizedSlug, adminEmail, adminPassword });
+  const planCode = normalizePlanCode(plan);
 
   const existing = await query("SELECT id FROM platform.tenants WHERE slug = $1", [normalizedSlug]);
   if (existing.rows[0]) {
@@ -70,11 +72,15 @@ export async function provisionTenant({ name, slug, adminName, adminEmail, admin
   }
 
   const inserted = await query(
-    "INSERT INTO platform.tenants (name, slug) VALUES ($1, $2) RETURNING id, name, slug, status, plan, created_at",
-    [String(name).trim(), normalizedSlug]
+    `INSERT INTO platform.tenants (name, slug, plan, store_short_name, responsible_name, phone, city, state, logo_url)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     RETURNING id, name, slug, status, plan, created_at`,
+    [String(name).trim(), normalizedSlug, planCode, String(name).trim(), String(adminName || "").trim(), String(phone || "").trim(), String(city || "").trim(), String(state || "").trim(), String(logoUrl || "").trim()]
   );
   const tenant = inserted.rows[0];
   const schema = `tenant_${tenant.id}`;
+  const selectedPlan = planByCode(planCode);
+  const trial = trialWindow(selectedPlan.trial_days);
 
   const client = await pool.connect();
   try {
@@ -91,6 +97,15 @@ export async function provisionTenant({ name, slug, adminName, adminEmail, admin
     );
     // Tema padrão do catálogo (linha única id=1) para o catálogo não quebrar.
     await client.query("INSERT INTO catalog_theme (id) VALUES (1) ON CONFLICT (id) DO NOTHING");
+    await client.query("UPDATE catalog_theme SET brand_name = $1, slogan = $2, logo_url = $3 WHERE id = 1", [String(name).trim(), "Catálogo e agendamento online", String(logoUrl || "").trim()]);
+    await client.query(
+      `INSERT INTO catalog_settings (key, value) VALUES
+        ('brand_name', $1),
+        ('whatsapp_phone', $2),
+        ('company_address', $3)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      [String(name).trim(), String(phone || "").trim(), [city, state].filter(Boolean).join(" - ")]
+    );
   } catch (error) {
     // Rollback do provisionamento: nada de clínica meio-criada.
     try {
@@ -113,6 +128,13 @@ export async function provisionTenant({ name, slug, adminName, adminEmail, admin
       client.release(true);
     }
   }
+
+  await query(
+    `INSERT INTO platform.tenant_subscriptions (tenant_id, plan_code, status, trial_started_at, trial_ends_at, current_period_ends_at)
+     VALUES ($1, $2, 'trial_active', $3, $4, $4)
+     ON CONFLICT (tenant_id) DO UPDATE SET updated_at = now()`,
+    [tenant.id, planCode, trial.trial_started_at, trial.trial_ends_at]
+  );
 
   invalidateTenantCache(normalizedSlug);
   return tenant;
