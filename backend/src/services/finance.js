@@ -18,7 +18,7 @@ export async function buildFinanceReport(db) {
     WHERE status != 'cancelada' AND appointment_id IS NULL
   `, [today, today, `${month}%`]);
   const deposits = await db.get("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE payment_type = 'sinal' AND status = 'pago' AND paid_at LIKE ?", [`${month}%`]);
-  const forecast = await db.get("SELECT COALESCE(SUM(total_value), 0) AS total, COALESCE(SUM(remaining_value), 0) AS pending FROM appointments WHERE status IN ('pendente', 'confirmado')");
+  const forecast = await db.get("SELECT COALESCE(SUM(total_value), 0) AS total, COALESCE(SUM(remaining_value), 0) AS pending FROM appointments WHERE status IN ('pendente', 'awaiting_deposit_proof', 'confirmado')");
   const methods = await db.all("SELECT method, COUNT(*) AS total, COALESCE(SUM(amount), 0) AS amount FROM payments GROUP BY method ORDER BY total DESC");
   const orderMethods = await db.all("SELECT payment_method AS method, COUNT(*) AS total, COALESCE(SUM(total_value), 0) AS amount FROM sales_orders WHERE status != 'cancelada' AND appointment_id IS NULL GROUP BY payment_method ORDER BY total DESC");
   const expensesSummary = await db.get(`

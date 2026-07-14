@@ -12,6 +12,7 @@ export const currency = new Intl.NumberFormat("pt-BR", { style: "currency", curr
 // Mapa de status de agendamento para classes de estilo.
 export const statusClass = {
   pendente: "status-pendente",
+  awaiting_deposit_proof: "status-pendente",
   confirmado: "status-confirmado",
   atendido: "status-atendido",
   cancelado: "status-cancelado",
@@ -23,7 +24,7 @@ export function calcRemaining(form) {
 }
 
 export function statuses() {
-  return ["pendente", "confirmado", "recusado", "atendido", "cancelado", "remarcado"];
+  return ["pendente", "awaiting_deposit_proof", "confirmado", "recusado", "atendido", "cancelado", "remarcado"];
 }
 
 export function personName(item = {}) {

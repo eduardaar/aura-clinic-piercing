@@ -5,7 +5,7 @@ import { withDb } from "../middleware/withDb.js";
 import { upload } from "../middleware/upload.js";
 import { addMinutesToTime } from "../services/utils.js";
 import { availableBookingSlots, upsertClient, listAppointments } from "../services/appointments.js";
-import { getStoreName, queueProfessionalBookingNotification } from "../services/notifications.js";
+import { getStoreName, queueProfessionalBookingNotification, whatsappLink } from "../services/notifications.js";
 
 const router = Router();
 
@@ -100,8 +100,8 @@ router.get("/api/booking/config", withDb(async (req, res, db) => {
     services,
     professionals,
     rules: {
-      cancellation: "Remarcacoes e cancelamentos devem ser solicitados com antecedencia.",
-      payment: "O sinal reserva o horario; a confirmacao e feita manualmente pela equipe."
+      cancellation: "Remarcações e cancelamentos devem ser solicitados com antecedência.",
+      payment: "O sinal obrigatório reserva o horário após conferência manual do comprovante pela equipe."
     }
   });
 }));
@@ -146,7 +146,15 @@ router.post("/api/booking/requests", upload.fields([{ name: "reference_photo", m
   if (!slots.some((slot) => slot.time === time)) return res.status(409).json({ error: "Este horario nao esta mais disponivel." });
   if (!body.full_name?.trim() || !body.whatsapp?.trim()) return res.status(400).json({ error: "Nome e WhatsApp sao obrigatorios." });
 
-  const totalValue = Number(service.price || service.base_price || 0);
+  const jewelryId = Number(body.jewelry_id || 0) || null;
+  const variantId = Number(body.jewelry_variant_id || 0) || null;
+  const jewelry = jewelryId ? await db.get("SELECT * FROM jewelry_inventory WHERE id = ? AND is_catalog_active = 1 AND status != 'arquivado'", [jewelryId]) : null;
+  if (jewelryId && !jewelry) return res.status(404).json({ error: "Joia selecionada não encontrada no catálogo." });
+  const variant = variantId ? await db.get("SELECT * FROM jewelry_variants WHERE id = ? AND jewelry_id = ? AND is_active = 1", [variantId, jewelryId]) : null;
+  if (variantId && !variant) return res.status(404).json({ error: "Variação selecionada não encontrada." });
+  const serviceValue = Number(service.price || service.base_price || 0);
+  const jewelryValue = jewelryId ? Number(variant?.sale_value || jewelry?.sale_value || 0) : 0;
+  const totalValue = serviceValue + jewelryValue;
   const depositValue = Number(service.deposit_value || 25);
   const remainingValue = Math.max(totalValue - depositValue, 0);
   const client = await upsertClient(db, {
@@ -162,12 +170,14 @@ router.post("/api/booking/requests", upload.fields([{ name: "reference_photo", m
   const endTime = addMinutesToTime(time, durationMinutes);
   const result = await db.run(
     `INSERT INTO appointments
-      (client_id, professional_id, service_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, duration_minutes, total_value, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, status, source, public_booking_key, notes, reference_photo_url, payment_proof_url)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (client_id, professional_id, service_id, jewelry_id, jewelry_variant_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, duration_minutes, total_value, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, status, source, public_booking_key, notes, reference_photo_url, payment_proof_url)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       client.id,
       professionalId,
       service.id,
+      jewelryId,
+      variantId,
       service.name,
       service.description || "",
       service.name,
@@ -180,21 +190,31 @@ router.post("/api/booking/requests", upload.fields([{ name: "reference_photo", m
       remainingValue,
       "Pix",
       "Pix",
-      "pendente",
+      "awaiting_deposit_proof",
       "public_booking",
       bookingKey,
-      body.notes || "",
+      [body.notes || "", body.selected_color ? `Observação de cor: ${body.selected_color}` : ""].filter(Boolean).join("\n"),
       referencePhoto,
       paymentProof
     ]
   );
   if (depositValue > 0) {
     await db.run(
-      "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, 'sinal', 'Pix', 'pago', ?)",
+      "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, 'sinal', 'Pix', 'pendente', ?)",
       [result.lastID, client.id, depositValue, `${date}T${time}:00`]
     );
   }
   const appointment = await listAppointments(db, "WHERE a.id = ?", [result.lastID]).then((rows) => rows[0]);
+  const proofMessage = [
+    `Olá, ${professional.name}. Tudo bem?`,
+    `Sou ${client.full_name || body.full_name} e acabei de solicitar meu agendamento na Aura Clinic.`,
+    `Serviço: ${service.name}`,
+    jewelry ? `Joia: ${jewelry.name}${variant ? ` - ${variant.variation_name}` : ""}` : "",
+    `Data: ${date} às ${time}`,
+    `Sinal: R$ ${depositValue.toFixed(2).replace(".", ",")}`,
+    "Segue o comprovante do sinal para conferência."
+  ].filter(Boolean).join("\n");
+  const professionalWhatsappUrl = whatsappLink(professional.whatsapp || professional.phone, proofMessage);
   await queueProfessionalBookingNotification(db, {
     appointmentId: result.lastID,
     professionalId,
@@ -203,7 +223,13 @@ router.post("/api/booking/requests", upload.fields([{ name: "reference_photo", m
     appointment,
     storeName: await getStoreName(db, req.tenant?.name)
   });
-  res.status(201).json(appointment);
+  res.status(201).json({
+    ...appointment,
+    service_value: serviceValue,
+    jewelry_value: jewelryValue,
+    professional_whatsapp_url: professionalWhatsappUrl,
+    payment_instructions: "Envie o comprovante do sinal pelo WhatsApp. A Aura confirma o horário após conferência manual."
+  });
 }));
 
 export default router;

@@ -88,13 +88,13 @@ export function Button({ variant = "primary", type = "button", className = "", c
 const STATUS_TONE = {
   disponivel: "ok", ativo: "ok", ativa: "ok", pago: "ok", paga: "ok", concluida: "ok",
   concluido: "ok", confirmado: "ok", atendido: "ok", aprovado: "ok",
-  "baixo estoque": "warn", pendente: "warn", "aguardando retorno": "warn", aguardando: "warn",
+  "baixo estoque": "warn", pendente: "warn", awaiting_deposit_proof: "warn", "aguardando retorno": "warn", aguardando: "warn",
   remarcado: "warn", planejado: "warn", novo: "info",
   esgotado: "danger", "sem estoque": "danger", cancelado: "danger", cancelada: "danger",
   suspenso: "danger", suspensa: "danger", recusado: "danger", critico: "danger", inativo: "danger",
 };
 export function StatusBadge({ status, tone, children, className = "" }) {
-  const label = children ?? status ?? "";
+  const label = children ?? (status === "awaiting_deposit_proof" ? "Aguardando sinal" : status) ?? "";
   const key = String(status ?? label).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
   const resolved = tone || STATUS_TONE[key] || "neutral";
   return <span className={`status-badge tone-${resolved}${className ? ` ${className}` : ""}`}>{label}</span>;

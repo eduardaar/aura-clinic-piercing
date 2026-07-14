@@ -46,7 +46,7 @@ function buildAppointmentAlerts(appointments, now = new Date()) {
       seen.add(key);
       alerts.push({ ...base, id: key, type, title, priority, minutes_until: diffMinutes });
     };
-    if (item.source === "public_booking" && item.status === "pendente") add("public-pending", "Solicitacao publica pendente", "high");
+    if (item.source === "public_booking" && ["pendente", "awaiting_deposit_proof"].includes(item.status)) add("public-pending", "Solicitação pública aguardando sinal", "high");
     if (Number(item.deposit_value || 0) > 0 && Number(item.remaining_value || 0) >= Number(item.total_value || 0)) add("deposit-pending", "Sinal pendente", "medium");
     if (diffMinutes < 0 && !["cancelado", "recusado", "atendido"].includes(item.status)) add("late", "Agendamento atrasado", "high");
     if (diffMinutes >= 0 && diffMinutes <= 120 && !["cancelado", "recusado", "atendido"].includes(item.status)) add("next-2h", "Agendamento em ate 2 horas", "high");
@@ -61,9 +61,9 @@ router.get("/api/dashboard", withDb(async (_req, res, db) => {
   const stats = await db.get(`
     SELECT
       SUM(CASE WHEN appointment_date = ? THEN 1 ELSE 0 END) AS today_count,
-      SUM(CASE WHEN status = 'pendente' THEN 1 ELSE 0 END) AS pending_count,
+      SUM(CASE WHEN status IN ('pendente', 'awaiting_deposit_proof') THEN 1 ELSE 0 END) AS pending_count,
       SUM(CASE WHEN status = 'confirmado' THEN 1 ELSE 0 END) AS confirmed_count,
-      SUM(CASE WHEN appointment_date LIKE ? THEN total_value ELSE 0 END) AS month_forecast
+      SUM(CASE WHEN appointment_date LIKE ? AND status NOT IN ('cancelado', 'recusado') THEN total_value ELSE 0 END) AS month_forecast
     FROM appointments
   `, [today, `${month}%`]);
   const deposit = await db.get("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE payment_type = 'sinal' AND status = 'pago'");
@@ -122,7 +122,7 @@ router.get("/api/dashboard", withDb(async (_req, res, db) => {
   `, [today.slice(5, 7)]);
   const upcomingAppointments = await listAppointments(
     db,
-    "WHERE a.appointment_date >= ? AND a.status IN ('pendente', 'confirmado', 'remarcado')",
+    "WHERE a.appointment_date >= ? AND a.status IN ('pendente', 'awaiting_deposit_proof', 'confirmado', 'remarcado')",
     [today]
   );
   const nextAppointment = upcomingAppointments[0] ? {

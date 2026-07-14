@@ -12,7 +12,7 @@ router.get("/api/alerts", withDb(async (_req, res, db) => {
   const jewelry = await listCriticalStockItems(db, { limit: 12 });
   const upcomingAppointments = await listAppointments(
     db,
-    "WHERE a.appointment_date >= ? AND a.status IN ('pendente', 'confirmado', 'remarcado')",
+    "WHERE a.appointment_date >= ? AND a.status IN ('pendente', 'awaiting_deposit_proof', 'confirmado', 'remarcado')",
     [today]
   );
   const clients = await db.all("SELECT id, full_name, whatsapp, instagram, birth_date FROM clients WHERE birth_date IS NOT NULL");
@@ -47,10 +47,10 @@ router.get("/api/alerts", withDb(async (_req, res, db) => {
       const date = new Date(`${item.appointment_date}T${item.appointment_time || "00:00"}:00`);
       const diffMinutes = Number.isNaN(date.getTime()) ? null : Math.round((date.getTime() - Date.now()) / 60000);
       const result = [];
-      if (item.source === "public_booking" && item.status === "pendente") {
+      if (item.source === "public_booking" && ["pendente", "awaiting_deposit_proof"].includes(item.status)) {
         result.push({
           id: `appointment-public-${item.id}`,
-          title: "Solicitação pública pendente",
+          title: "Solicitação pública aguardando sinal",
           category: "Agenda",
           subject: item.full_name,
           description: `${item.full_name} solicitou ${item.service_name || item.procedure} para ${item.appointment_date} às ${item.appointment_time}.`,
