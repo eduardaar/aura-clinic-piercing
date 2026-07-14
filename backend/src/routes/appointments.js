@@ -31,8 +31,12 @@ router.get("/api/appointments", withDb(async (req, res, db) => {
     params.push(req.query.professional_id);
   }
   if (req.query.status) {
-    clauses.push("a.status = ?");
-    params.push(req.query.status);
+    if (req.query.status === "pendente") {
+      clauses.push("a.status IN ('pendente', 'awaiting_deposit_proof')");
+    } else {
+      clauses.push("a.status = ?");
+      params.push(req.query.status);
+    }
   }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   res.json(await listAppointments(db, where, params));
@@ -87,6 +91,10 @@ router.patch("/api/appointments/:id", withDb(async (req, res, db) => {
   const appointment = await db.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
   if (!appointment) return res.status(404).json({ error: "Agendamento não encontrado." });
 
+  if (req.body.status === "cancelado") {
+    req.body.remaining_value = 0;
+  }
+
   const fields = ["status", "appointment_date", "appointment_time", "end_time", "professional_id", "service_id", "jewelry_id", "jewelry_variant_id", "procedure", "description", "piercing_region", "total_value", "deposit_value", "remaining_value", "deposit_payment_method", "remaining_payment_method", "notes"];
   const updates = fields.filter((field) => req.body[field] !== undefined);
   if (updates.length) {
@@ -102,6 +110,9 @@ router.patch("/api/appointments/:id", withDb(async (req, res, db) => {
     await ensureSalesOrderForAppointment(db, req.params.id, req.user);
     await ensurePostCareFollowups(db, req.params.id);
     await awardLoyaltyForAppointment(db, req.params.id);
+  }
+  if (req.body.status === "cancelado") {
+    await db.run("UPDATE payments SET status = 'cancelado' WHERE appointment_id = ? AND status != 'pago'", [req.params.id]);
   }
   const updated = await listAppointments(db, "WHERE a.id = ?", [req.params.id]).then((rows) => rows[0]);
   if (["confirmado", "remarcado"].includes(updated?.status) || req.body.appointment_date || req.body.appointment_time) {

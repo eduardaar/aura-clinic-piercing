@@ -17,8 +17,10 @@ const ctx = {
   procedureId: null,
   professionalId: null,
   jewelryId: null,
+  publicJewelryId: null,
   appointmentId: null,
   publicAppointmentId: null,
+  busyAppointmentId: null,
 };
 
 // Datas: usa amanhã para o agendamento (evita conflito com "hoje" em rankings).
@@ -308,13 +310,40 @@ test("3g. agenda publica gera slots reais, respeita almoco, domingo, bloqueios e
     },
   });
   assert.equal(busyAppointment.status, 201, JSON.stringify(busyAppointment.json));
+  ctx.busyAppointmentId = busyAppointment.json.id;
   const busySlots = await api(`/booking/slots?service_id=${ctx.serviceId}&professional_id=${ctx.professionalId}&date=${busyDate}`);
   assert.equal(busySlots.status, 200, JSON.stringify(busySlots.json));
   assert.ok(!busySlots.json.slots.some((slot) => slot.time === "09:00"), "horario ocupado nao deve aparecer");
+
+  const canceled = await api(`/appointments/${ctx.busyAppointmentId}`, {
+    method: "PATCH",
+    body: { status: "cancelado" },
+  });
+  assert.equal(canceled.status, 200, JSON.stringify(canceled.json));
+  assert.equal(canceled.json.status, "cancelado");
+  assert.equal(Number(canceled.json.remaining_value), 0);
+  const releasedSlots = await api(`/booking/slots?service_id=${ctx.serviceId}&professional_id=${ctx.professionalId}&date=${busyDate}`);
+  assert.equal(releasedSlots.status, 200, JSON.stringify(releasedSlots.json));
+  assert.ok(releasedSlots.json.slots.some((slot) => slot.time === "09:00"), "cancelamento deve liberar o horario publico");
 });
 
-test("3h. agendamento publico cria solicitacao pendente, evita duplicidade e gera notificacao", async () => {
+test("3h. agendamento publico cria solicitacao aguardando sinal, evita duplicidade e gera notificacao", async () => {
   await ensureBookingReadyForTests();
+  const publicJewelry = await api("/jewelry", {
+    method: "POST",
+    body: {
+      name: "Argola Publica QA",
+      category: "Argolas",
+      material: "Titânio",
+      color: "Natural",
+      quantity: 3,
+      sale_value: 90,
+      is_catalog_active: true,
+    },
+  });
+  assert.equal(publicJewelry.status, 201, JSON.stringify(publicJewelry.json));
+  ctx.publicJewelryId = publicJewelry.json.id;
+  const publicVariantId = publicJewelry.json.variants[0].id;
   const sunday = nextDateForWeekday(0, 8);
   await api("/schedule-blocks", {
     method: "POST",
@@ -337,14 +366,21 @@ test("3h. agendamento publico cria solicitacao pendente, evita duplicidade e ger
     full_name: "Cliente Publico QA",
     whatsapp: "11988887777",
     instagram: "@publicoqa",
+    jewelry_id: ctx.publicJewelryId,
+    jewelry_variant_id: publicVariantId,
+    selected_color: "Natural",
     notes: "Solicitacao criada pelo link publico",
     idempotency_key: idempotency
   };
   const create = await req(`/booking/requests?t=${ctx.slug}`, { method: "POST", body });
   assert.equal(create.status, 201, JSON.stringify(create.json));
-  assert.equal(create.json.status, "pendente");
+  assert.equal(create.json.status, "awaiting_deposit_proof");
   assert.equal(create.json.source, "public_booking");
   assert.equal(Number(create.json.deposit_value), 40);
+  assert.equal(Number(create.json.jewelry_id), Number(ctx.publicJewelryId));
+  assert.equal(Number(create.json.jewelry_variant_id), Number(publicVariantId));
+  assert.equal(Number(create.json.total_value), 210, "total publico deve somar servico 120 + joia 90");
+  assert.ok(create.json.professional_whatsapp_url.includes("wa.me"), "retorno deve trazer link para enviar comprovante");
   ctx.publicAppointmentId = create.json.id;
 
   const duplicate = await req(`/booking/requests?t=${ctx.slug}`, { method: "POST", body });
@@ -608,10 +644,10 @@ test("5c. muda status do agendamento até 'atendido'", async () => {
 test("6a. finance reflete sinal e restante do atendimento", async () => {
   const finance = await api("/finance");
   assert.equal(finance.status, 200, JSON.stringify(finance.json));
-  // Sinais: 40 do link publico + 40 do atendimento interno.
-  assert.equal(Number(finance.json.deposits.monthTotal), 80, "sinais de 80 devem constar em deposits.monthTotal");
-  // Ao atender, registra o pagamento restante (140). Total do mês = 40 publico + 40 sinal interno + 140 restante = 220.
-  assert.equal(Number(finance.json.totals.month_total), 220, "month_total deve somar sinais + restante = 220");
+  // O sinal publico fica pendente ate conferencia; recebido agora = 40 sinal interno.
+  assert.equal(Number(finance.json.deposits.monthTotal), 40, "apenas o sinal interno pago deve constar em deposits.monthTotal");
+  // Ao atender, registra o pagamento restante (140). Total do mes = 40 sinal interno + 140 restante = 180.
+  assert.equal(Number(finance.json.totals.month_total), 180, "month_total deve somar sinal interno + restante = 180");
 });
 
 test("6b. cria despesa e ela reflete no finance", async () => {
@@ -626,8 +662,8 @@ test("6b. cria despesa e ela reflete no finance", async () => {
   assert.equal(Number(finance.json.expensesSummary.fixed_total), 500, "despesa fixa de 500 deve constar");
   assert.equal(
     Number(finance.json.profit.estimated),
-    220 - 500,
-    "lucro estimado = receita do mês (220) - despesas (500)"
+    180 - 500,
+    "lucro estimado = receita do mes (180) - despesas (500)"
   );
 });
 
@@ -753,8 +789,8 @@ test("9b. erp responde 200 com métricas coerentes", async () => {
   assert.equal(erp.status, 200, JSON.stringify(erp.json));
   assert.equal(Number(erp.json.metrics.clients), 2, "deve haver 2 clientes, incluindo o cliente do link publico");
   assert.equal(Number(erp.json.metrics.appointments), 3, "deve haver 3 agendamentos, incluindo solicitacao publica e horario ocupado do teste de slots");
-  const expectedJewelryCount = [ctx.jewelryId, ctx.extraJewelryId, ctx.pricingJewelryId].filter(Boolean).length;
+  const expectedJewelryCount = [ctx.publicJewelryId, ctx.jewelryId, ctx.extraJewelryId, ctx.pricingJewelryId].filter(Boolean).length;
   assert.equal(Number(erp.json.metrics.jewelry), expectedJewelryCount, "quantidade de joias coerente com o que foi criado");
-  // Receita paga = 40 sinal publico + 40 sinal interno + 140 restante + 120 da venda.
-  assert.equal(Number(erp.json.metrics.revenue), 340, "receita paga deve ser 340 (80 de sinais + 140 restante + 120 da venda)");
+  // Receita paga = 40 sinal interno + 140 restante + 120 da venda.
+  assert.equal(Number(erp.json.metrics.revenue), 300, "receita paga deve ser 300 (40 de sinal + 140 restante + 120 da venda)");
 });

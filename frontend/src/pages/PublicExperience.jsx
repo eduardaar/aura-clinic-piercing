@@ -170,6 +170,9 @@ function addToOrder(item) {
         settings={settings}
         favorite={favoriteIds.includes(selectedProduct.id)}
         onToggleFavorite={() => toggleFavorite(selectedProduct)}
+        onScheduleWithJewelry={(variant) => {
+          window.location.href = bookingJewelryUrl(selectedProduct, variant);
+        }}
         onAddToOrder={(variant) => {
           addToOrder(variant ? {
             ...selectedProduct,
@@ -556,7 +559,7 @@ function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, th
   );
 }
 
-function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite, onToggleFavorite, onAddToOrder }) {
+function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite, onToggleFavorite, onAddToOrder, onScheduleWithJewelry }) {
   const productName = elegantProductName(item.name);
   const availableVariants = asArray(item?.variants).filter((variant) => Boolean(asNumber(variant?.is_active, 1)));
   const [selectedVariantId, setSelectedVariantId] = useState(availableVariants.find((variant) => Number(variant.quantity || 0) > 0)?.id || availableVariants[0]?.id || "");
@@ -664,7 +667,7 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
               ))}
             </div>
             <div className="catalog-detail-actions">
-              {available && Boolean(Number(theme.show_schedule_button || 1)) && <button className="primary-button" type="button" onClick={() => onAddToOrder({ ...selectedVariant, selected_color: selectedColor })}>Agendar com esta Joia</button>}
+              {available && Boolean(Number(theme.show_schedule_button || 1)) && <button className="primary-button" type="button" onClick={() => onScheduleWithJewelry({ ...selectedVariant, selected_color: selectedColor })}>Quero Agendar Com Essa Joia</button>}
               {available && Boolean(Number(theme.show_buy_button)) && <button className="secondary-button" type="button" onClick={() => onAddToOrder({ ...selectedVariant, selected_color: selectedColor })}>Comprar Agora</button>}
               {settings.whatsapp_phone && <a className="secondary-button" href={whatsappCatalogUrl(`Olá! Quero informações sobre ${productName}, ${variantCatalogLabel(selectedVariant)}${selectedColor ? `, na cor ${selectedColor}` : ""}.`, settings.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Falar com a Aura</a>}
               <a className="secondary-button" href={whatsappShareUrl(`${settings.product_share_text || "Olha essa joia da Aura Clinic:"} ${item.name} - ${currency.format(saleValue)}.`)} target="_blank" rel="noreferrer">Compartilhar</a>
@@ -891,6 +894,7 @@ export function PublicCheckout() {
 
 export function PublicBooking() {
   const { data } = usePublicFetch("/booking/config");
+  const { data: catalogData } = usePublicFetch("/catalog");
   const [step, setStep] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get("appointment_time") ? 5 : params.get("appointment_date") ? 4 : params.get("professional_id") ? 3 : params.get("service_id") ? 2 : 1;
@@ -903,12 +907,17 @@ export function PublicBooking() {
   const [confirmed, setConfirmed] = useState(null);
   const safeData = asObject(data);
   const services = asArray(safeData.services);
+  const catalogItems = asArray(catalogData?.items);
   const allProfessionals = asArray(safeData.professionals);
   const professionals = allProfessionals.filter((professional) => professionalMatchesService(professional, form.service_id));
   const bookingDates = nextBookingDates(10);
   const selectedService = services.find((item) => String(item.id) === String(form.service_id));
   const selectedProfessional = allProfessionals.find((item) => String(item.id) === String(form.professional_id));
-  const selectedTotal = asNumber(selectedService?.base_price || selectedService?.price || 0);
+  const selectedJewelry = catalogItems.find((item) => String(item.id) === String(form.jewelry_id));
+  const selectedJewelryVariant = asArray(selectedJewelry?.variants).find((variant) => String(variant.id) === String(form.jewelry_variant_id));
+  const selectedJewelryValue = form.jewelry_id ? asNumber(selectedJewelryVariant?.sale_value || selectedJewelry?.sale_value || 0) : 0;
+  const selectedServiceValue = asNumber(selectedService?.base_price || selectedService?.price || 0);
+  const selectedTotal = selectedServiceValue + selectedJewelryValue;
   const selectedDeposit = asNumber(selectedService?.deposit_value || 25);
   const selectedRemaining = Math.max(selectedTotal - selectedDeposit, 0);
 
@@ -1038,13 +1047,16 @@ export function PublicBooking() {
             <span className="booking-section-kicker">Etapa 6  Resumo</span>
             <h2>Resumo Da Solicitação</h2>
             <p><strong>Serviço:</strong> {selectedService?.name}</p>
+            {selectedJewelry && <p><strong>Joia escolhida:</strong> {elegantProductName(selectedJewelry.name)}{selectedJewelryVariant ? ` · ${variantCatalogLabel(selectedJewelryVariant)}` : ""}{form.selected_color ? ` · ${form.selected_color}` : ""}</p>}
             <p><strong>Profissional:</strong> {selectedProfessional?.name}</p>
             <p><strong>Data E Horário:</strong> {formatLongDate(form.appointment_date)} às {form.appointment_time}</p>
+            <p><strong>Valor do procedimento:</strong> {currency.format(selectedServiceValue)}</p>
+            {selectedJewelry && <p><strong>Valor da joia:</strong> {currency.format(selectedJewelryValue)}</p>}
             <p><strong>Valor total:</strong> {currency.format(selectedTotal)}</p>
             <p><strong>Sinal obrigatório:</strong> {currency.format(selectedDeposit)}</p>
             <p><strong>Valor restante:</strong> {currency.format(selectedRemaining)}</p>
             <p><strong>Regras:</strong> {data.rules?.cancellation}</p>
-            <label>Comprovante Do Sinal Pix<input type="file" accept="image/*,.pdf" onChange={(event) => setForm({ ...form, payment_proof: event.target.files?.[0] })} /></label>
+            <label>Comprovante Do Sinal Pix (opcional)<input type="file" accept="image/*,.pdf" onChange={(event) => setForm({ ...form, payment_proof: event.target.files?.[0] })} /></label>
             {error && <span className="form-error">{error}</span>}
             <button className="primary-button booking-wide-button" disabled={submitting} onClick={submit}>{submitting ? "Enviando..." : "Confirmar Solicitação"}</button>
           </section>
@@ -1054,8 +1066,10 @@ export function PublicBooking() {
             <CheckCircle2 size={42} />
             <span className="booking-section-kicker">Solicitação enviada</span>
             <h2>Solicitação Enviada</h2>
-            <p>Seu horário ficou como pendente. A Aura Clinic vai confirmar manualmente pelo WhatsApp.</p>
+            <p>Seu horário ficou aguardando o comprovante do sinal. Envie o comprovante pelo WhatsApp da profissional para a Aura confirmar manualmente.</p>
             <strong>{confirmed?.procedure}  {formatLongDate(confirmed?.appointment_date)} às {confirmed?.appointment_time}</strong>
+            <p><strong>Sinal:</strong> {currency.format(asNumber(confirmed?.deposit_value || selectedDeposit))} · <strong>Restante:</strong> {currency.format(asNumber(confirmed?.remaining_value || selectedRemaining))}</p>
+            {confirmed?.professional_whatsapp_url && <a className="primary-button booking-wide-button" href={confirmed.professional_whatsapp_url} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Enviar comprovante pelo WhatsApp</a>}
             <a className="primary-button booking-wide-button" href="/catalogo">Voltar Ao Catálogo</a>
           </section>
         )}
@@ -1087,6 +1101,17 @@ function whatsappCatalogUrl(message, phone) {
 
 function catalogProductUrl(id) {
   return `/catalogo/produto/${id}`;
+}
+
+function bookingJewelryUrl(item = {}, variant = {}) {
+  const current = new URLSearchParams(window.location.search);
+  const params = new URLSearchParams();
+  const tenant = current.get("t") || current.get("tenant") || current.get("clinic");
+  if (tenant) params.set("t", tenant);
+  if (item.id) params.set("jewelry_id", item.id);
+  if (variant.id) params.set("jewelry_variant_id", variant.id);
+  if (variant.selected_color) params.set("selected_color", variant.selected_color);
+  return `/agendar?${params.toString()}`;
 }
 
 function catalogImageUrl(url) {
