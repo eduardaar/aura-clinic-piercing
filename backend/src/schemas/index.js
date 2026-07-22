@@ -153,7 +153,9 @@ export const jewelryUpdateSchema = z
 export const signupSchema = z
   .object({
     name: nonEmptyString("Nome da clínica"),
-    slug: nonEmptyString("Identificador (slug)"),
+    // Slug agora é OPCIONAL: o cadastro público deriva do nome automaticamente.
+    // O painel de plataforma continua podendo enviar um slug explícito.
+    slug: z.string().optional(),
     admin_name: z.string().optional(),
     admin_email: nonEmptyString("E-mail do administrador"),
     admin_password: nonEmptyString("Senha do administrador")

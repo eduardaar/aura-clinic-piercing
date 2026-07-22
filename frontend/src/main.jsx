@@ -79,6 +79,8 @@ const PublicCheckout = lazy(() => import("./pages/PublicExperience").then((m) =>
 const CatalogCustomization = lazy(() => import("./pages/CatalogCustomization").then((m) => ({ default: m.CatalogCustomization })));
 const Signup = lazy(() => import("./features/platform/Signup").then((m) => ({ default: m.Signup })));
 const PlatformAdmin = lazy(() => import("./features/platform/PlatformAdmin").then((m) => ({ default: m.PlatformAdmin })));
+const MyPlan = lazy(() => import("./features/platform/MyPlan").then((m) => ({ default: m.MyPlan })));
+const Landing = lazy(() => import("./pages/Landing").then((m) => ({ default: m.Landing })));
 const ErrorLogs = lazy(() => import("./features/errors/ErrorLogs").then((m) => ({ default: m.ErrorLogs })));
 
 function App() {
@@ -88,9 +90,27 @@ function App() {
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [alertsData, setAlertsData] = useState({ count: 0, items: [] });
   const [alertsLoading, setAlertsLoading] = useState(false);
-  
+  // Identidade da clínica logada (nome + logo), para o app exibir a marca do
+  // tenant atual em vez de "Aura" fixo. Vem de GET /api/store-identity.
+  const [identity, setIdentity] = useState(null);
+  // Assinatura (plano/features/dias de trial) e catálogo de planos — para o
+  // gating por plano, o banner de trial e a tela "Meu plano".
+  const [subscription, setSubscription] = useState(null);
+  const [plans, setPlans] = useState([]);
+
   // Verificação de autenticação administrativa
   const isAdminAuthenticated = session?.user?.id ? true : false;
+  const planFeatures = Array.isArray(subscription?.features) ? subscription.features : [];
+  const trialDays = subscription?.status === "trial_active" ? Number(subscription?.days_left ?? 0) : null;
+  const subscriptionInactive = !!subscription
+    && subscription.status !== "active"
+    && !(subscription.status === "trial_active" && Number(subscription?.days_left ?? 0) > 0);
+
+  // Monta a URL do logo do tenant (arquivos em /uploads são servidos pelo backend).
+  const brandLogoUrl = identity?.logo_url
+    ? (identity.logo_url.startsWith("/uploads") ? `${API_ORIGIN}${identity.logo_url}` : identity.logo_url)
+    : "";
+  const brandName = identity?.store_name || "Aura Clinic Piercing";
   
   // Verificar pathname atual (para renderizar apenas login em /login)
   const currentPathname = window.location.pathname;
@@ -101,6 +121,8 @@ function App() {
   const isPublicCheckout = currentPathname.startsWith("/comprar");
   const isSignup = currentPathname.startsWith("/cadastro");
   const isPlatform = currentPathname.startsWith("/plataforma");
+  // Landing de marketing: raiz "/" sem sessão. Com sessão, "/" é o app.
+  const isLanding = currentPathname === "/";
   
   const normalizedSession = session?.user ? session : session ? { user: session } : null;
 
@@ -128,6 +150,28 @@ function App() {
     }
   }, [normalizedSession, page]);
 
+  // Carrega identidade (nome/logo) + assinatura (plano/trial) + catálogo de
+  // planos da clínica logada. Reutilizável para recarregar após troca de plano.
+  const loadStoreIdentity = React.useCallback(async () => {
+    try {
+      const response = await apiFetch("/store-identity");
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) return;
+      setIdentity(payload.identity || null);
+      setSubscription(payload.subscription || null);
+      setPlans(Array.isArray(payload.plans) ? payload.plans : []);
+    } catch { /* mantém fallback "Aura" */ }
+  }, []);
+
+  useEffect(() => {
+    if (!isAdminAuthenticated) {
+      setIdentity(null);
+      setSubscription(null);
+      return;
+    }
+    loadStoreIdentity();
+  }, [isAdminAuthenticated, loadStoreIdentity]);
+
   // Se está em /login mas já autenticado, redirecionar para home
   useEffect(() => {
     if (isLoginPath && isAdminAuthenticated) {
@@ -135,12 +179,18 @@ function App() {
     }
   }, [isLoginPath, isAdminAuthenticated]);
 
-  // Se não tem sessão e não está em rota pública, redirecionar para login
+  // Se não tem sessão e não está em rota pública (nem na landing "/"),
+  // redireciona para login.
   useEffect(() => {
-    if (!normalizedSession && !isPublicCatalog && !isPublicBooking && !isPublicCheckout && !isSignup && !isPlatform && !isLoginPath) {
+    if (!normalizedSession && !isLanding && !isPublicCatalog && !isPublicBooking && !isPublicCheckout && !isSignup && !isPlatform && !isLoginPath) {
       window.location.href = "/login";
     }
-  }, [normalizedSession, isPublicCatalog, isPublicBooking, isPublicCheckout, isSignup, isPlatform, isLoginPath]);
+  }, [normalizedSession, isLanding, isPublicCatalog, isPublicBooking, isPublicCheckout, isSignup, isPlatform, isLoginPath]);
+
+  // Landing pública na raiz "/" quando não há sessão.
+  if (isLanding && !normalizedSession) {
+    return <Suspense fallback={<Loading />}><Landing /></Suspense>;
+  }
 
   // Se está em /login, renderizar APENAS login (sem app shell)
   if (isLoginPath) {
@@ -168,6 +218,9 @@ function App() {
         <Sidebar
           page={activePage}
           role={normalizedSession.user?.role}
+          brand={{ name: identity?.store_name || "", short: identity?.short_name || identity?.slogan || "", logoUrl: brandLogoUrl }}
+          features={planFeatures}
+          trialDays={trialDays}
           setPage={(next) => {
             setPage(next);
             setSidebarOpen(false);
@@ -190,9 +243,9 @@ function App() {
             <Menu size={20} />
           </button>
           <div className="topbar-title">
-            <span className="eyebrow">Aura Clinic Piercing</span>
+            <span className="eyebrow">{brandName}</span>
             <h1>{activePage === "dashboard" ? `Olá, ${firstName(normalizedSession.user?.name || "Usuário")}!` : pageTitle(activePage)}</h1>
-            {activePage === "dashboard" && <p>Bem-vinda ao painel administrativo da Aura Clinic.</p>}
+            {activePage === "dashboard" && <p>Bem-vindo(a) ao painel administrativo{identity?.store_name ? ` da ${identity.store_name}` : ""}.</p>}
           </div>
           <div className="topbar-actions">
             <button className="notification-button" aria-label="Notificações" onClick={openAlerts}>
@@ -212,7 +265,18 @@ function App() {
           </div>
           </div>
         </header>
+        {(trialDays !== null || subscriptionInactive) && activePage !== "meu-plano" && (
+          <div className={`plan-banner ${subscriptionInactive ? "danger" : "warn"}`}>
+            <span>
+              {subscriptionInactive
+                ? "Seu período de teste terminou. Escolha um plano para continuar usando todos os recursos."
+                : `Teste grátis: ${trialDays} dia(s) restante(s).`}
+            </span>
+            <button type="button" onClick={() => setPage("meu-plano")}>Ver planos</button>
+          </div>
+        )}
         <Suspense fallback={<Loading />}>
+          {activePage === "meu-plano" && <MyPlan subscription={subscription} plans={plans} onChanged={loadStoreIdentity} />}
           {activePage === "dashboard" && <Dashboard user={normalizedSession.user} setPage={setPage} alertsOpen={alertsOpen} setAlertsOpen={setAlertsOpen} alertsData={alertsData} alertsLoading={alertsLoading} />}
           {activePage !== "dashboard" && alertsOpen && <AlertsPopup alerts={alertsData} loading={alertsLoading} onClose={() => setAlertsOpen(false)} onAction={(nextPage) => { setAlertsOpen(false); setPage(nextPage); }} />}
           {activePage === "erp" && <AuraERP setPage={setPage} />}

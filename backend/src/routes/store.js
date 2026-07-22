@@ -2,32 +2,10 @@ import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { query } from "../database/connection.js";
-import { SUBSCRIPTION_PLANS, planByCode } from "../services/plans.js";
+import { SUBSCRIPTION_PLANS, planByCode, normalizePlanCode } from "../services/plans.js";
+import { tenantSubscription, invalidateSubscriptionCache } from "../services/subscriptions.js";
 
 const router = Router();
-
-function daysUntil(dateValue) {
-  const end = new Date(dateValue);
-  if (Number.isNaN(end.getTime())) return 0;
-  return Math.max(0, Math.ceil((end.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
-}
-
-async function tenantSubscription(tenantId) {
-  const result = await query(
-    `SELECT s.*, p.name AS plan_name, p.price_cents, p.features
-     FROM platform.tenant_subscriptions s
-     JOIN platform.subscription_plans p ON p.code = s.plan_code
-     WHERE s.tenant_id = $1`,
-    [tenantId]
-  );
-  const subscription = result.rows[0] || null;
-  if (!subscription) return null;
-  return {
-    ...subscription,
-    days_left: daysUntil(subscription.trial_ends_at || subscription.current_period_ends_at),
-    features: Array.isArray(subscription.features) ? subscription.features : []
-  };
-}
 
 router.get("/api/store-identity", withDb(async (req, res, db) => {
   const theme = await db.get("SELECT * FROM catalog_theme WHERE id = 1") || {};
@@ -103,7 +81,22 @@ router.patch("/api/store-identity", withDb(async (req, res, db) => {
     if (value === undefined) continue;
     await db.run("INSERT INTO catalog_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [key, String(value || "")]);
   }
-  res.json({ ok: true, ...(await tenantSubscription(req.tenant.id)), plan: planByCode(body.plan_code) });
+  res.json({ ok: true, subscription: await tenantSubscription(req.tenant.id) });
+}));
+
+// Troca de plano self-service (admin da clínica). Não altera trial/status —
+// apenas troca o plano; o gating passa a refletir as features do novo plano.
+router.patch("/api/subscription", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin"])) return;
+  const planCode = normalizePlanCode(req.body?.plan_code, "");
+  if (!planCode) return res.status(400).json({ error: "Plano inválido." });
+  await query(
+    "UPDATE platform.tenant_subscriptions SET plan_code = $1, updated_at = now() WHERE tenant_id = $2",
+    [planCode, req.tenant.id]
+  );
+  await query("UPDATE platform.tenants SET plan = $1 WHERE id = $2", [planCode, req.tenant.id]);
+  invalidateSubscriptionCache(req.tenant.id);
+  res.json({ ok: true, subscription: await tenantSubscription(req.tenant.id), plan: planByCode(planCode) });
 }));
 
 export default router;

@@ -57,6 +57,24 @@ export const SUBSCRIPTION_PLANS = [
   }
 ];
 
+// Mapa PÁGINA (do app) -> feature exigida. Páginas ausentes daqui são sempre
+// liberadas (base de todo plano: dashboard, agenda, clientes, catálogo/estoque).
+// Usado tanto pelo gating de menu no frontend quanto como referência do backend.
+export const PAGE_FEATURE = {
+  finance: "basic_finance",
+  terms: "digital_terms",
+  postcare: "automatic_followup",
+  "catalog-customization": "public_catalog_customization",
+  sales: "basic_catalog"
+};
+
+// A página é acessível para este conjunto de features do plano?
+export function pageAllowedByPlan(features, page) {
+  const required = PAGE_FEATURE[page];
+  if (!required) return true;
+  return Array.isArray(features) && features.includes(required);
+}
+
 export function normalizePlanCode(code, fallback = "profissional") {
   const normalized = String(code || "").trim().toLowerCase();
   return SUBSCRIPTION_PLANS.some((plan) => plan.code === normalized) ? normalized : fallback;

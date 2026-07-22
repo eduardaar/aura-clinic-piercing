@@ -9,17 +9,19 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import { pool, query } from "../database/connection.js";
-import { createPlatformToken, verifyPlatformToken } from "../middleware/auth.js";
+import { createPlatformToken, verifyPlatformToken, createToken } from "../middleware/auth.js";
 import { invalidateTenantCache } from "../middleware/tenant.js";
 import {
   provisionTenant,
   deprovisionTenant,
+  generateUniqueSlug,
   TenantServiceError
 } from "../services/tenants.js";
 import { validateBody } from "../middleware/validate.js";
 import { signupSchema, platformLoginSchema, tenantStatusSchema } from "../schemas/index.js";
 import { isProduction } from "../config/index.js";
 import { SUBSCRIPTION_PLANS, normalizePlanCode } from "../services/plans.js";
+import { invalidateSubscriptionCache } from "../services/subscriptions.js";
 
 const router = Router();
 
@@ -76,9 +78,13 @@ router.post("/api/signup", signupLimiter, async (req, res) => {
     }
     if (!validateBody(signupSchema, req, res)) return;
     const b = req.body;
+    // Cadastro público: o slug não é digitado — deriva-se do nome da clínica.
+    const slug = String(b.slug || "").trim()
+      ? String(b.slug).trim().toLowerCase()
+      : await generateUniqueSlug(b.name);
     const tenant = await provisionTenant({
       name: b.name,
-      slug: b.slug,
+      slug,
       adminName: b.admin_name,
       adminEmail: b.admin_email,
       adminPassword: b.admin_password,
@@ -88,7 +94,16 @@ router.post("/api/signup", signupLimiter, async (req, res) => {
       logoUrl: b.logo_url,
       plan: normalizePlanCode(b.plan_code || b.plan)
     });
-    res.status(201).json({ tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, plan: tenant.plan } });
+    // Login automático: emite um token de clínica para o admin recém-criado,
+    // evitando que o usuário tenha de fazer login de novo digitando o slug.
+    const token = tenant.admin ? createToken(tenant.admin, tenant) : null;
+    res.status(201).json({
+      tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, plan: tenant.plan },
+      token,
+      user: tenant.admin
+        ? { id: tenant.admin.id, name: tenant.admin.name, email: tenant.admin.email, role: tenant.admin.role }
+        : null
+    });
   } catch (error) {
     handleServiceError(res, error);
   }
@@ -136,9 +151,12 @@ router.post("/api/platform/tenants", requirePlatform, async (req, res) => {
   try {
     if (!validateBody(signupSchema, req, res)) return;
     const b = req.body;
+    const slug = String(b.slug || "").trim()
+      ? String(b.slug).trim().toLowerCase()
+      : await generateUniqueSlug(b.name);
     const tenant = await provisionTenant({
       name: b.name,
-      slug: b.slug,
+      slug,
       adminName: b.admin_name,
       adminEmail: b.admin_email,
       adminPassword: b.admin_password,
@@ -165,6 +183,32 @@ router.patch("/api/platform/tenants/:id", requirePlatform, async (req, res) => {
     if (!tenant) return res.status(404).json({ error: "Clínica não encontrada." });
     invalidateTenantCache(tenant.slug);
     res.json(tenant);
+  } catch (error) {
+    handleServiceError(res, error);
+  }
+});
+
+// Troca de plano pelo super-admin. Além de trocar o plano, ATIVA a assinatura
+// (status 'active' + período de 30 dias) — é a forma de liberar/renovar uma
+// clínica cujo trial expirou, já que ainda não há gateway de pagamento.
+router.patch("/api/platform/tenants/:id/plan", requirePlatform, async (req, res) => {
+  try {
+    const planCode = normalizePlanCode(req.body?.plan_code, "");
+    if (!planCode) return res.status(400).json({ error: "Plano inválido." });
+    const found = await query("SELECT id, slug FROM platform.tenants WHERE id = $1", [req.params.id]);
+    const tenant = found.rows[0];
+    if (!tenant) return res.status(404).json({ error: "Clínica não encontrada." });
+    const periodEnds = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    await query("UPDATE platform.tenants SET plan = $1 WHERE id = $2", [planCode, tenant.id]);
+    await query(
+      `UPDATE platform.tenant_subscriptions
+       SET plan_code = $1, status = 'active', current_period_ends_at = $2, updated_at = now()
+       WHERE tenant_id = $3`,
+      [planCode, periodEnds, tenant.id]
+    );
+    invalidateSubscriptionCache(tenant.id);
+    invalidateTenantCache(tenant.slug);
+    res.json({ ok: true, id: tenant.id, plan: planCode, status: "active" });
   } catch (error) {
     handleServiceError(res, error);
   }

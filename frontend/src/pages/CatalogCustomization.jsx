@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Heart, ImageIcon, Plus, Trash2 } from "lucide-react";
 import { Loading, ApiError } from "../components/common/Feedback";
 import { Input, Select } from "../components/common/Ui";
-import { API_ORIGIN, apiFetch, useFetch } from "../lib/api";
+import { API_ORIGIN, apiFetch, tenantSlug, useFetch } from "../lib/api";
 import { asArray, asNumber, asObject } from "../lib/utils";
 import { JEWELRY_CATEGORY_OPTIONS, defaultCatalogSettings } from "../lib/defaultForms";
 import { catalogContentSections, cleanDisplayText, defaultContentSection } from "../features/catalog/catalogUtils";
@@ -13,6 +13,49 @@ function catalogImageUrl(url) {
   if (!url) return "https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=900&q=80";
   if (String(url).startsWith("/uploads/")) return `${API_ORIGIN}${url}`;
   return url;
+}
+
+// Links públicos ÚNICOS desta clínica (multi-tenant por ?t=<slug>). Cada
+// catálogo/agendamento tem seu próprio endereço compartilhável.
+function CatalogPublicLinks() {
+  const slug = tenantSlug();
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const links = [
+    { label: "Catálogo online", url: `${origin}/catalogo?t=${slug}` },
+    { label: "Agendamento online", url: `${origin}/agendar?t=${slug}` }
+  ];
+  const [copied, setCopied] = useState("");
+
+  async function copy(url) {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(url);
+      setTimeout(() => setCopied(""), 1800);
+    } catch { /* clipboard indisponível: o usuário copia manualmente */ }
+  }
+
+  return (
+    <section className="catalog-links">
+      <div className="catalog-links-title">
+        <strong>Seus links exclusivos</strong>
+        <span>Código da clínica: <b>{slug}</b> — compartilhe estes endereços com seus clientes.</span>
+      </div>
+      <div className="catalog-links-grid">
+        {links.map((item) => (
+          <div key={item.url} className="catalog-link-row">
+            <div>
+              <span className="catalog-link-label">{item.label}</span>
+              <code>{item.url}</code>
+            </div>
+            <div className="catalog-link-actions">
+              <button type="button" className="secondary-button" onClick={() => copy(item.url)}>{copied === item.url ? "Copiado!" : "Copiar"}</button>
+              <a className="primary-button" href={item.url} target="_blank" rel="noreferrer">Abrir</a>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 export function CatalogCustomization() {
@@ -59,7 +102,7 @@ export function CatalogCustomization() {
       <div className="catalog-customization-panel">
         <header className="customization-header">
           <div>
-            <span className="eyebrow">Aura Clinic</span>
+            <span className="eyebrow">Catálogo</span>
             <h2>Personalização do Catálogo</h2>
             <p>Edite aparência, banners, categorias, produtos, promoções e textos sem mexer no código.</p>
           </div>
@@ -68,6 +111,8 @@ export function CatalogCustomization() {
             <button className="primary-button" type="button" onClick={() => save("/catalog-customization/publish", "Catálogo publicado.")}>Publicar</button>
           </div>
         </header>
+
+        <CatalogPublicLinks />
 
         <nav className="customization-tabs">
           {[
@@ -369,7 +414,7 @@ function CatalogCustomizationPreview({ form, products }) {
       <div className="preview-browser-bar">
         <span />
         <strong>Pré-visualização em tempo real</strong>
-        <a href="/catalogo" target="_blank" rel="noreferrer">Abrir</a>
+        <a href={`/catalogo?t=${tenantSlug()}`} target="_blank" rel="noreferrer">Abrir</a>
       </div>
       <div className="preview-storefront">
         <header>
