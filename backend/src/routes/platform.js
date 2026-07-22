@@ -135,6 +135,22 @@ router.get("/api/plans", async (_req, res) => {
   res.json({ trial_days: 7, plans: SUBSCRIPTION_PLANS });
 });
 
+// Diretório público de clínicas (para /catalogo sem ?t): lista as clínicas
+// ativas e marcadas como listáveis. Público (sem auth), como /api/plans.
+router.get("/api/clinics", async (_req, res) => {
+  try {
+    const result = await query(
+      `SELECT name, slug, store_short_name, city, state, logo_url
+       FROM platform.tenants
+       WHERE status = 'ativo' AND listed = true
+       ORDER BY name`
+    );
+    res.json({ clinics: result.rows });
+  } catch (error) {
+    handleServiceError(res, error);
+  }
+});
+
 // ---------- Painel (protegido) ----------
 router.get("/api/platform/tenants", requirePlatform, async (_req, res) => {
   try {
