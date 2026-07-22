@@ -10251,3 +10251,39 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--gold); width: 
   max-width: 1140px; margin: 0 auto; padding: 26px 24px; border-top: 1px solid #efe6d3; color: #8a8078; font-size: 14px;
 }
 .landing-footer a { font-weight: 600; color: var(--gold-dark, #A87A34); }
+
+/* ============================ DIRETÓRIO PÚBLICO DE CATÁLOGOS (/catalogo sem ?t) ============================ */
+.directory {
+  min-height: 100vh;
+  background: radial-gradient(1000px 500px at 80% -10%, rgba(230,201,140,.20), transparent 60%), var(--paper, #FCFBF8);
+  color: var(--ink, #1A1A1A);
+  font-family: var(--body-font, "Inter", sans-serif);
+}
+.directory a { text-decoration: none; color: inherit; }
+.directory-nav { display: flex; align-items: center; justify-content: space-between; max-width: 1080px; margin: 0 auto; padding: 20px 24px; }
+.directory-brand { display: inline-flex; align-items: center; gap: 10px; }
+.directory-brand strong { font-family: var(--title-font, "Outfit", sans-serif); font-size: 22px; }
+.directory-monogram { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 9px; background: linear-gradient(135deg, var(--gold, #C9A86A), var(--gold-dark, #A87A34)); color: #fff; font-family: var(--title-font, "Outfit", sans-serif); font-weight: 700; }
+.directory-login { font-weight: 600; }
+.directory-hero { max-width: 720px; margin: 0 auto; padding: 30px 24px 10px; text-align: center; }
+.directory-kicker { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--gold-dark, #A87A34); }
+.directory-hero h1 { font-family: var(--title-font, "Outfit", sans-serif); font-size: clamp(28px, 4.5vw, 42px); margin: 12px 0 8px; }
+.directory-hero p { color: #4b463f; font-size: 16px; }
+.directory-search { display: flex; align-items: center; gap: 10px; max-width: 520px; margin: 22px auto 0; padding: 12px 16px; background: #fff; border: 1px solid #e9ddc6; border-radius: 999px; box-shadow: 0 8px 24px rgba(74,52,39,.06); }
+.directory-search svg { color: #9c948a; flex: none; }
+.directory-search input { border: none; outline: none; width: 100%; font: inherit; background: transparent; }
+.directory-results { max-width: 1080px; margin: 0 auto; padding: 26px 24px 40px; }
+.directory-empty { text-align: center; color: #8a8078; padding: 30px 0; }
+.directory-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+@media (max-width: 900px) { .directory-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .directory-grid { grid-template-columns: 1fr; } }
+.directory-card { display: flex; align-items: center; gap: 14px; padding: 16px; background: #fff; border: 1px solid #efe6d3; border-radius: 16px; box-shadow: 0 8px 22px rgba(74,52,39,.05); transition: transform .12s ease, box-shadow .12s ease; }
+.directory-card:hover { transform: translateY(-3px); box-shadow: 0 14px 32px rgba(74,52,39,.12); }
+.directory-card-logo { flex: none; width: 54px; height: 54px; border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: rgba(201,168,106,.15); color: var(--gold-dark, #A87A34); font-family: var(--title-font, "Outfit", sans-serif); font-weight: 700; }
+.directory-card-logo img { width: 100%; height: 100%; object-fit: cover; }
+.directory-card-body { flex: 1; min-width: 0; }
+.directory-card-body strong { display: block; font-size: 16px; font-family: var(--title-font, "Outfit", sans-serif); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.directory-card-place { display: inline-flex; align-items: center; gap: 4px; color: #8a8078; font-size: 13px; margin-top: 2px; }
+.directory-card-cta { flex: none; font-size: 13px; font-weight: 600; color: var(--gold-dark, #A87A34); }
+.directory-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; max-width: 1080px; margin: 0 auto; padding: 24px; border-top: 1px solid #efe6d3; color: #8a8078; font-size: 14px; }
+.directory-footer a { font-weight: 600; color: var(--gold-dark, #A87A34); }

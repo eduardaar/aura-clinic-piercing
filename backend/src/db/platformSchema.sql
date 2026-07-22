@@ -63,6 +63,8 @@ ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS phone TEXT;
 ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS city TEXT;
 ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS state TEXT;
 ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS logo_url TEXT;
+-- Listar (ou não) a clínica no diretório público de catálogos (/catalogo sem ?t).
+ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS listed BOOLEAN NOT NULL DEFAULT true;
 
 INSERT INTO platform.subscription_plans (code, name, price_cents, audience, trial_days, features, is_recommended)
 VALUES
