@@ -2,20 +2,20 @@
 import { Router } from "express";
 import PDFDocument from "pdfkit";
 import ExcelJS from "exceljs";
-import { withDb } from "../middleware/withDb.js";
+import { withDb, withFeature } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { csvEscape, writePdfMetric, formatCurrency } from "../services/utils.js";
 import { buildFinanceReport } from "../services/finance.js";
 
 const router = Router();
 
-router.get("/api/finance", withDb(async (_req, res, db) => {
+router.get("/api/finance", withFeature("basic_finance", async (_req, res, db) => {
   if (!requireRole(_req, res, ["admin", "finance"])) return;
   const finance = await buildFinanceReport(db);
   res.json(finance);
 }));
 
-router.post("/api/expenses", withDb(async (req, res, db) => {
+router.post("/api/expenses", withFeature("basic_finance", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "finance"])) return;
   const { description, expense_type, category, amount, due_date, status, payment_method, notes } = req.body;
   if (!description?.trim() || !["fixa", "variavel"].includes(expense_type) || !due_date) {
@@ -29,13 +29,13 @@ router.post("/api/expenses", withDb(async (req, res, db) => {
   res.status(201).json(await db.get("SELECT * FROM expenses WHERE id = ?", [result.lastID]));
 }));
 
-router.delete("/api/expenses/:id", withDb(async (req, res, db) => {
+router.delete("/api/expenses/:id", withFeature("basic_finance", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "finance"])) return;
   await db.run("DELETE FROM expenses WHERE id = ?", [req.params.id]);
   res.json({ ok: true });
 }));
 
-router.get("/api/finance/export.csv", withDb(async (_req, res, db) => {
+router.get("/api/finance/export.csv", withFeature("basic_finance", async (_req, res, db) => {
   if (!requireRole(_req, res, ["admin", "finance"])) return;
   const rows = await db.all(`
     SELECT p.id, c.full_name AS cliente, p.amount AS valor, p.payment_type AS tipo, p.method AS metodo, p.status, p.paid_at AS data, 'pagamento' AS origem
@@ -52,7 +52,7 @@ router.get("/api/finance/export.csv", withDb(async (_req, res, db) => {
   res.send(csv);
 }));
 
-router.get("/api/finance/export.pdf", withDb(async (_req, res, db) => {
+router.get("/api/finance/export.pdf", withFeature("basic_finance", async (_req, res, db) => {
   if (!requireRole(_req, res, ["admin", "finance"])) return;
   const report = await buildFinanceReport(db);
   const doc = new PDFDocument({ margin: 42, size: "A4" });
@@ -77,7 +77,7 @@ router.get("/api/finance/export.pdf", withDb(async (_req, res, db) => {
   doc.end();
 }));
 
-router.get("/api/finance/export.xlsx", withDb(async (_req, res, db) => {
+router.get("/api/finance/export.xlsx", withFeature("basic_finance", async (_req, res, db) => {
   if (!requireRole(_req, res, ["admin", "finance"])) return;
   const report = await buildFinanceReport(db);
   const workbook = new ExcelJS.Workbook();

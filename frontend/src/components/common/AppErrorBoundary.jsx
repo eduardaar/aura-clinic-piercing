@@ -25,7 +25,7 @@ export class AppErrorBoundary extends React.Component {
       return (
         <main className="runtime-error-page">
           <section className="panel">
-            <span className="eyebrow">Aura Clinic</span>
+            <span className="eyebrow">Aura</span>
             <h1>Erro ao carregar esta área</h1>
             <p>Os dados ainda podem estar sendo preparados. Volte ao início e tente novamente.</p>
             <button type="button" className="primary-button" onClick={() => { window.location.href = "/"; }}>Voltar ao início</button>

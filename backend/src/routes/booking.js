@@ -1,7 +1,7 @@
 // Rotas publicas de agendamento online.
 import { Router } from "express";
 import { createHash } from "crypto";
-import { withDb } from "../middleware/withDb.js";
+import { withDb, withFeature } from "../middleware/withDb.js";
 import { upload } from "../middleware/upload.js";
 import { addMinutesToTime } from "../services/utils.js";
 import { availableBookingSlots, upsertClient, listAppointments } from "../services/appointments.js";
@@ -72,7 +72,7 @@ router.get("/api/booking/readiness", withDb(async (_req, res, db) => {
   res.json(await bookingReadiness(db));
 }));
 
-router.get("/api/booking/config", withDb(async (req, res, db) => {
+router.get("/api/booking/config", withFeature("online_booking", async (req, res, db) => {
   console.info("[booking-config] tenant recebido", req.tenant);
   const services = await db.all("SELECT * FROM services WHERE active_online_booking = 1 ORDER BY name");
   const professionalsRows = await db.all(`
@@ -106,7 +106,7 @@ router.get("/api/booking/config", withDb(async (req, res, db) => {
   });
 }));
 
-router.get("/api/booking/slots", withDb(async (req, res, db) => {
+router.get("/api/booking/slots", withFeature("online_booking", async (req, res, db) => {
   const serviceId = Number(req.query.service_id || 0);
   const professionalId = Number(req.query.professional_id || 0);
   const date = String(req.query.date || "");
@@ -122,7 +122,7 @@ router.get("/api/booking/slots", withDb(async (req, res, db) => {
   res.json({ date, slots });
 }));
 
-router.post("/api/booking/requests", upload.fields([{ name: "reference_photo", maxCount: 1 }, { name: "payment_proof", maxCount: 1 }]), withDb(async (req, res, db) => {
+router.post("/api/booking/requests", upload.fields([{ name: "reference_photo", maxCount: 1 }, { name: "payment_proof", maxCount: 1 }]), withFeature("online_booking", async (req, res, db) => {
   const body = req.body || {};
   console.info("[booking-request] request recebido", { tenant: req.tenant, service_id: body.service_id, professional_id: body.professional_id, appointment_date: body.appointment_date, appointment_time: body.appointment_time });
 

@@ -14,6 +14,7 @@ import { normalizeDbValue } from "../text-normalizer.js";
 import { requiresAuth, authenticateRequest } from "./auth.js";
 import { isProduction } from "../config/index.js";
 import { recordError } from "../services/errorLogs.js";
+import { requireFeature } from "../services/subscriptions.js";
 
 // Defesa em profundidade: o schema vem sempre de "tenant_" + id inteiro do
 // banco, mas validamos o formato antes de interpolar no SET search_path.
@@ -88,3 +89,11 @@ export const withDb = (handler) => async (req, res) => {
     }
   }
 };
+
+// Igual a withDb, mas antes de chamar o handler exige que o plano do tenant
+// inclua `feature` (e que a assinatura esteja ativa). Bloqueia com 402/403.
+// Uso: router.post(path, withFeature("online_booking", async (req,res,db)=>{...}))
+export const withFeature = (feature, handler) => withDb(async (req, res, db) => {
+  if (!(await requireFeature(req, res, feature))) return;
+  return handler(req, res, db);
+});

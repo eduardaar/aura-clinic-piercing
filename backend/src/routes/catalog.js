@@ -1,6 +1,6 @@
 // Rotas do catálogo online e sua personalização/administração.
 import { Router } from "express";
-import { withDb } from "../middleware/withDb.js";
+import { withDb, withFeature } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { attachVariants } from "../services/inventory.js";
 import { groupInventoryOptions, splitCatalogCategories } from "../services/utils.js";
@@ -103,7 +103,7 @@ router.get("/api/catalog", withDb(async (_req, res, db) => {
   });
 }));
 
-router.get("/api/catalog-customization", withDb(async (req, res, db) => {
+router.get("/api/catalog-customization", withFeature("public_catalog_customization", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   const customization = await getCatalogCustomization(db);
   const products = await attachVariants(db, await db.all("SELECT * FROM jewelry_inventory ORDER BY name"));
@@ -111,19 +111,19 @@ router.get("/api/catalog-customization", withDb(async (req, res, db) => {
   res.json({ ...customization, products, inventoryOptions: groupInventoryOptions(options) });
 }));
 
-router.patch("/api/catalog-customization", withDb(async (req, res, db) => {
+router.patch("/api/catalog-customization", withFeature("public_catalog_customization", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   await saveCatalogCustomization(db, req.body || {});
   res.json(await getCatalogCustomization(db));
 }));
 
-router.post("/api/catalog-customization/publish", withDb(async (req, res, db) => {
+router.post("/api/catalog-customization/publish", withFeature("public_catalog_customization", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   await saveCatalogCustomization(db, req.body || {});
   res.json({ ok: true, published_at: new Date().toISOString(), ...(await getCatalogCustomization(db)) });
 }));
 
-router.post("/api/catalog-customization/reset", withDb(async (req, res, db) => {
+router.post("/api/catalog-customization/reset", withFeature("public_catalog_customization", async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   await resetCatalogCustomization(db);
   res.json(await getCatalogCustomization(db));
