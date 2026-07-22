@@ -36,6 +36,36 @@ export class TenantServiceError extends Error {
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Gera um slug "url-safe" a partir de um texto livre (nome da clínica):
+// remove acentos, troca não-alfanuméricos por hífen e limita a 30 chars.
+export function slugify(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 30)
+    .replace(/-+$/g, "");
+}
+
+// Deriva um slug ÚNICO a partir do nome da clínica (para o cadastro público,
+// onde o slug não é digitado). Garante 3-30 chars, evita reservados e resolve
+// colisões acrescentando -2, -3, ... até achar um livre.
+export async function generateUniqueSlug(name) {
+  let base = slugify(name);
+  if (base.length < 3) base = `${base || "clinica"}-app`.slice(0, 30);
+  if (RESERVED_SLUGS.includes(base)) base = `${base}-clinica`.slice(0, 30);
+  let candidate = base;
+  for (let n = 2; n < 1000; n += 1) {
+    const existing = await query("SELECT id FROM platform.tenants WHERE slug = $1", [candidate]);
+    if (!existing.rows[0]) return candidate;
+    const suffix = `-${n}`;
+    candidate = `${base.slice(0, 30 - suffix.length)}${suffix}`;
+  }
+  throw new TenantServiceError(409, "Não foi possível gerar um identificador único. Tente outro nome.");
+}
+
 // Valida os dados de criação de uma clínica. Lança TenantServiceError (400/409).
 function validateProvisionInput({ name, slug, adminEmail, adminPassword }) {
   if (!name || !String(name).trim()) {
@@ -81,6 +111,7 @@ export async function provisionTenant({ name, slug, adminName, adminEmail, admin
   const schema = `tenant_${tenant.id}`;
   const selectedPlan = planByCode(planCode);
   const trial = trialWindow(selectedPlan.trial_days);
+  let admin = null;
 
   const client = await pool.connect();
   try {
@@ -91,10 +122,11 @@ export async function provisionTenant({ name, slug, adminName, adminEmail, admin
     await client.query(`SET search_path TO "${schema}"`);
     await applySchemaSql(client);
     const passwordHash = await bcrypt.hash(String(adminPassword), 10);
-    await client.query(
-      "INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, 'admin')",
+    const adminInsert = await client.query(
+      "INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, 'admin') RETURNING id, name, email, role",
       [String(adminName || "Administrador").trim() || "Administrador", String(adminEmail).trim().toLowerCase(), passwordHash]
     );
+    admin = adminInsert.rows[0];
     // Tema padrão do catálogo (linha única id=1) para o catálogo não quebrar.
     await client.query("INSERT INTO catalog_theme (id) VALUES (1) ON CONFLICT (id) DO NOTHING");
     await client.query("UPDATE catalog_theme SET brand_name = $1, slogan = $2, logo_url = $3 WHERE id = 1", [String(name).trim(), "Catálogo e agendamento online", String(logoUrl || "").trim()]);
@@ -137,7 +169,9 @@ export async function provisionTenant({ name, slug, adminName, adminEmail, admin
   );
 
   invalidateTenantCache(normalizedSlug);
-  return tenant;
+  // Devolve o admin recém-criado para que o cadastro público possa emitir um
+  // token e logar automaticamente (sem obrigar re-login digitando o slug).
+  return { ...tenant, admin };
 }
 
 // Remove a clínica por completo: schema (com todos os dados) + registro.

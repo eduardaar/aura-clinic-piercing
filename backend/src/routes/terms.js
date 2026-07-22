@@ -1,16 +1,16 @@
 // Rotas de termos digitais (anamnese): criacao, listagem e PDF.
 import { Router } from "express";
-import { withDb } from "../middleware/withDb.js";
+import { withDb, withFeature } from "../middleware/withDb.js";
 import { listAppointments, upsertClient } from "../services/appointments.js";
 import { listDigitalTerms, createTermPdf } from "../services/terms.js";
 
 const router = Router();
 
-router.get("/api/digital-terms", withDb(async (_req, res, db) => {
+router.get("/api/digital-terms", withFeature("digital_terms", async (_req, res, db) => {
   res.json(await listDigitalTerms(db));
 }));
 
-router.post("/api/digital-terms", withDb(async (req, res, db) => {
+router.post("/api/digital-terms", withFeature("digital_terms", async (req, res, db) => {
   const body = req.body || {};
   if (!body.full_name?.trim() || !body.signature_data_url) {
     return res.status(400).json({ error: "Dados obrigatorios do termo nao foram preenchidos." });

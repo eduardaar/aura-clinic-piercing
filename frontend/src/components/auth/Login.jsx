@@ -2,12 +2,12 @@ import React, { useState } from "react";
 import { AlertTriangle, Calendar, ChevronRight, Plus, UserRound, WalletCards } from "lucide-react";
 import { apiFetch, setTenantSlug, tenantSlug } from "../../lib/api";
 
-const DEFAULT_LOGIN_EMAIL = "admin@auraclinic.com";
-
 export function Login({ onLogin }) {
   const [form, setForm] = useState({
     slug: tenantSlug(),
-    email: localStorage.getItem("aura-last-email") || DEFAULT_LOGIN_EMAIL,
+    // Pré-preenche só o último e-mail usado NESTE dispositivo. Nunca sugerimos
+    // credenciais de super-admin (isso é conta de plataforma, não de clínica).
+    email: localStorage.getItem("aura-last-email") || "",
     password: "",
   });
   const [rememberAccess, setRememberAccess] = useState(Boolean(localStorage.getItem("aura-admin-authenticated")));
@@ -90,7 +90,7 @@ export function Login({ onLogin }) {
           </label>
           <label>
             Senha da Central Administrativa
-            <input type="password" autoComplete="current-password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder="Digite a senha" />
+            <input type="password" autoComplete="current-password" required value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder="Digite a senha" />
           </label>
           <label className="remember-access">
             <input type="checkbox" checked={rememberAccess} onChange={(event) => setRememberAccess(event.target.checked)} />

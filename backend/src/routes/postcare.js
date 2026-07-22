@@ -1,6 +1,6 @@
 // Rotas de pós-atendimento (acompanhamentos de cicatrização).
 import { Router } from "express";
-import { withDb } from "../middleware/withDb.js";
+import { withDb, withFeature } from "../middleware/withDb.js";
 import { upload } from "../middleware/upload.js";
 import {
   ensureFollowupsForCompletedAppointments,
@@ -9,12 +9,12 @@ import {
 
 const router = Router();
 
-router.get("/api/post-care", withDb(async (_req, res, db) => {
+router.get("/api/post-care", withFeature("automatic_followup", async (_req, res, db) => {
   await ensureFollowupsForCompletedAppointments(db);
   res.json(await listPostCareFollowups(db));
 }));
 
-router.patch("/api/post-care/:id", upload.single("client_photo"), withDb(async (req, res, db) => {
+router.patch("/api/post-care/:id", upload.single("client_photo"), withFeature("automatic_followup", async (req, res, db) => {
   const existing = await db.get("SELECT * FROM post_care_followups WHERE id = ?", [req.params.id]);
   if (!existing) return res.status(404).json({ error: "Acompanhamento não encontrado." });
   const photoUrl = req.file ? `/uploads/${req.file.filename}` : existing.client_photo_url;
