@@ -146,9 +146,22 @@ export async function ensureSalesOrderForAppointment(db, appointmentId, user) {
   `, [appointmentId]);
   if (!appointment) return null;
 
-  const serviceValue = Number(appointment.service_price || appointment.total_value || 0);
-  const productValue = appointment.jewelry_id ? Number(appointment.variant_sale_value || appointment.jewelry_sale_value || 0) : 0;
-  const total = serviceValue + productValue;
+  const appointmentItems = await db.all(`
+    SELECT ai.*, s.name AS service_name, p.name AS procedure_name,
+      j.name AS jewelry_name, v.variation_name AS variant_name
+    FROM appointment_items ai
+    LEFT JOIN services s ON s.id = ai.service_id
+    LEFT JOIN procedures p ON p.id = ai.procedure_id
+    LEFT JOIN jewelry_inventory j ON j.id = ai.jewelry_id
+    LEFT JOIN jewelry_variants v ON v.id = ai.jewelry_variant_id
+    WHERE ai.appointment_id = ?
+    ORDER BY ai.id
+  `, [appointmentId]);
+  const fallbackServiceValue = Number(appointment.service_price || 0);
+  const fallbackProductValue = appointment.jewelry_id ? Number(appointment.variant_sale_value || appointment.jewelry_sale_value || 0) : 0;
+  const total = appointmentItems.length
+    ? appointmentItems.reduce((sum, item) => sum + Number(item.procedure_price || 0) + Number(item.jewelry_unit_price || 0) * Number(item.quantity || 1), 0)
+    : fallbackServiceValue + fallbackProductValue;
   const result = await db.run(
     `INSERT INTO sales_orders
     (client_id, appointment_id, order_type, source, status, payment_method, total_value, notes, created_by_user_id)
@@ -163,31 +176,64 @@ export async function ensureSalesOrderForAppointment(db, appointmentId, user) {
     ]
   );
 
-  await db.run(
-    `INSERT INTO sales_order_items (sales_order_id, item_type, service_id, item_name, quantity, unit_price, notes)
-     VALUES (?, 'servico', ?, ?, 1, ?, ?)`,
-    [
-      result.lastID,
-      appointment.service_id || null,
-      appointment.service_name || appointment.procedure || "Atendimento",
-      serviceValue,
-      appointment.piercing_region || ""
-    ]
-  );
-
-  if (appointment.jewelry_id) {
+  if (appointmentItems.length) {
+    for (const item of appointmentItems) {
+      if (Number(item.procedure_price || 0) > 0 || item.service_id || item.procedure_id) {
+        await db.run(
+          `INSERT INTO sales_order_items (sales_order_id, item_type, service_id, item_name, quantity, unit_price, notes)
+           VALUES (?, 'servico', ?, ?, 1, ?, ?)`,
+          [
+            result.lastID,
+            item.service_id || null,
+            item.procedure_name || item.service_name || appointment.procedure || "Atendimento",
+            Number(item.procedure_price || 0),
+            item.region || ""
+          ]
+        );
+      }
+      if (item.jewelry_id) {
+        await db.run(
+          `INSERT INTO sales_order_items (sales_order_id, item_type, product_id, product_variant_id, item_name, quantity, unit_price, notes)
+           VALUES (?, 'produto', ?, ?, ?, ?, ?, ?)`,
+          [
+            result.lastID,
+            item.jewelry_id,
+            item.jewelry_variant_id || null,
+            item.variant_name ? `${item.jewelry_name} - ${item.variant_name}` : item.jewelry_name,
+            Number(item.quantity || 1),
+            Number(item.jewelry_unit_price || 0),
+            "Joia vinculada ao atendimento"
+          ]
+        );
+      }
+    }
+  } else {
     await db.run(
-      `INSERT INTO sales_order_items (sales_order_id, item_type, product_id, product_variant_id, item_name, quantity, unit_price, notes)
-       VALUES (?, 'produto', ?, ?, ?, 1, ?, ?)`,
+      `INSERT INTO sales_order_items (sales_order_id, item_type, service_id, item_name, quantity, unit_price, notes)
+       VALUES (?, 'servico', ?, ?, 1, ?, ?)`,
       [
         result.lastID,
-        appointment.jewelry_id,
-        appointment.jewelry_variant_id || null,
-        appointment.variant_name ? `${appointment.jewelry_name} - ${appointment.variant_name}` : appointment.jewelry_name,
-        productValue,
-        "Joia vinculada ao atendimento"
+        appointment.service_id || null,
+        appointment.service_name || appointment.procedure || "Atendimento",
+        fallbackServiceValue,
+        appointment.piercing_region || ""
       ]
     );
+
+    if (appointment.jewelry_id) {
+      await db.run(
+      `INSERT INTO sales_order_items (sales_order_id, item_type, product_id, product_variant_id, item_name, quantity, unit_price, notes)
+       VALUES (?, 'produto', ?, ?, ?, 1, ?, ?)`,
+        [
+          result.lastID,
+          appointment.jewelry_id,
+          appointment.jewelry_variant_id || null,
+          appointment.variant_name ? `${appointment.jewelry_name} - ${appointment.variant_name}` : appointment.jewelry_name,
+          fallbackProductValue,
+          "Joia vinculada ao atendimento"
+        ]
+      );
+    }
   }
 
   return (await listSalesOrders(db)).find((item) => item.id === result.lastID) || null;

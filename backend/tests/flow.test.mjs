@@ -599,6 +599,8 @@ test("5a. cria agendamento (com sinal) e ele aparece na listagem", async () => {
   assert.equal(Number(create.json.deposit_value), 40);
   assert.equal(Number(create.json.total_value), 180, "total deve somar procedimento 120 + joia 60");
   assert.equal(Number(create.json.remaining_value), 140);
+  assert.equal(create.json.items.length, 1, "agendamento legado deve criar um item estruturado");
+  assert.equal(Number(create.json.items[0].jewelry_id), Number(ctx.jewelryId), "item deve preservar a joia vinculada");
   ctx.appointmentId = create.json.id;
 
   const list = await api("/appointments");

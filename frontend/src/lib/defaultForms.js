@@ -178,6 +178,18 @@ export function defaultAppointment() {
     service_id: "",
     jewelry_id: "",
     jewelry_variant_id: "",
+    appointment_items: [{
+      service_id: "",
+      procedure_id: "",
+      region: "",
+      jewelry_id: "",
+      jewelry_variant_id: "",
+      quantity: 1,
+      procedure_price: 0,
+      jewelry_unit_price: 0,
+      duration_minutes: 40,
+      notes: ""
+    }],
     appointment_kind: "Atendimento",
     reference_photo: null,
     appointment_date: today,

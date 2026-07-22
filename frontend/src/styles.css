@@ -2315,6 +2315,37 @@ button {
   text-transform: uppercase;
 }
 
+.appointment-items-editor {
+  display: grid;
+  gap: 14px;
+}
+
+.section-inline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.appointment-item-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr)) 110px auto;
+  gap: 12px;
+  align-items: end;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.appointment-item-row.compact {
+  grid-template-columns: repeat(2, minmax(150px, 1fr)) 90px auto;
+}
+
+.appointment-item-row .secondary-button.danger {
+  color: var(--danger);
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -155,7 +155,14 @@ router.get("/api/clinics", async (_req, res) => {
 router.get("/api/platform/tenants", requirePlatform, async (_req, res) => {
   try {
     const result = await query(
-      "SELECT id, name, slug, status, plan, created_at FROM platform.tenants ORDER BY id"
+      `SELECT t.id, t.name, t.slug, t.status, t.plan, t.created_at,
+        s.status AS subscription_status,
+        s.trial_ends_at,
+        s.current_period_ends_at,
+        GREATEST(0, CEIL(EXTRACT(EPOCH FROM ((COALESCE(s.trial_ends_at, s.current_period_ends_at)) - NOW())) / 86400))::int AS subscription_days_left
+       FROM platform.tenants t
+       LEFT JOIN platform.tenant_subscriptions s ON s.tenant_id = t.id
+       ORDER BY t.id`
     );
     res.json(result.rows);
   } catch (error) {

@@ -119,6 +119,10 @@ export function Appointments() {
     setError("");
     const body = new FormData();
     Object.entries(form).forEach(([key, value]) => {
+      if (key === "appointment_items") {
+        body.append(key, JSON.stringify(normalizeAppointmentFormItems(form, safeServices, safeJewelry)));
+        return;
+      }
       if (value !== "" && value !== null && value !== undefined) body.append(key, value);
     });
     const response = await apiFetch(`/appointments`, {
@@ -179,31 +183,14 @@ export function Appointments() {
         </div>
         <div className="form-section">
           <h3>Procedimento</h3>
+          <AppointmentItemsEditor
+            form={form}
+            services={safeServices}
+            procedures={safeProcedures}
+            jewelry={safeJewelry}
+            onChange={updatePricedForm}
+          />
           <div className="form-grid">
-            <Select label="Tipo de Atendimento" value={form.service_id} onChange={(value) => {
-              const service = safeServices.find((item) => String(item.id) === String(value));
-              updatePricedForm({
-                ...form,
-                service_id: value,
-                procedure: service?.name || "",
-                appointment_time: ""
-              });
-            }} required>
-              <option value="">Selecione</option>
-              {safeServices.map((service) => <option key={service.id} value={service.id}>{service.name} ({service.duration_minutes} min)</option>)}
-            </Select>
-            <Input label="Procedimento" value={form.procedure} onChange={(v) => setForm({ ...form, procedure: v })} required />
-            <Input label="Região da perfuração" value={form.piercing_region} onChange={(v) => setForm({ ...form, piercing_region: v })} required />
-            <Select label="Joalheria escolhida" value={form.jewelry_id} onChange={(v) => updatePricedForm({ ...form, jewelry_id: v, jewelry_variant_id: "" })}>
-              <option value="">Sem joia vinculada</option>
-              {safeJewelry.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </Select>
-            <Select label="Variação da Joia" value={form.jewelry_variant_id} onChange={(v) => updatePricedForm({ ...form, jewelry_variant_id: v })}>
-              <option value="">Selecione</option>
-              {asArray(safeJewelry.find((item) => String(item.id) === String(form.jewelry_id))?.variants).filter((variant) => asNumber(variant?.quantity) > 0).map((variant) => (
-                <option key={variant.id} value={variant.id}>{variant.variation_name || variant.sku} · {variant.quantity} un</option>
-              ))}
-            </Select>
             <Select label="Profissional" value={form.professional_id} onChange={(v) => setForm({ ...form, professional_id: v })} required>
               <option value="">Selecione</option>
               {safeProfessionals.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
@@ -256,28 +243,33 @@ export function Appointments() {
 }
 
 function priceAppointmentDraft(draft, services = [], jewelryList = []) {
-  const service = asArray(services).find((item) => String(item.id) === String(draft.service_id));
-  const jewelry = asArray(jewelryList).find((item) => String(item.id) === String(draft.jewelry_id));
-  const variant = asArray(jewelry?.variants).find((item) => String(item.id) === String(draft.jewelry_variant_id));
-  const procedureValue = asNumber(service?.base_price || service?.price || 0);
-  const jewelryValue = draft.jewelry_id ? asNumber(variant?.sale_value || jewelry?.sale_value || 0) : 0;
+  const items = normalizeAppointmentFormItems(draft, services, jewelryList);
+  const firstItem = items[0] || {};
+  const procedureValue = items.reduce((sum, item) => sum + asNumber(item.procedure_price), 0);
+  const jewelryValue = items.reduce((sum, item) => sum + asNumber(item.jewelry_unit_price) * Math.max(1, asNumber(item.quantity, 1)), 0);
   const totalValue = procedureValue + jewelryValue;
-  const depositValue = asNumber(draft.deposit_value || service?.deposit_value || 0);
+  const firstService = asArray(services).find((item) => String(item.id) === String(firstItem.service_id));
+  const depositValue = asNumber(draft.deposit_value || firstService?.deposit_value || 0);
   return calcRemaining({
     ...draft,
+    service_id: firstItem.service_id || draft.service_id,
+    jewelry_id: firstItem.jewelry_id || "",
+    jewelry_variant_id: firstItem.jewelry_variant_id || "",
+    procedure: firstService?.name || draft.procedure,
+    piercing_region: firstItem.region || draft.piercing_region,
+    appointment_items: items,
     total_value: totalValue,
     deposit_value: depositValue
   });
 }
 
 function appointmentValueParts(form, services = [], jewelryList = []) {
-  const service = asArray(services).find((item) => String(item.id) === String(form.service_id));
-  const jewelry = asArray(jewelryList).find((item) => String(item.id) === String(form.jewelry_id));
-  const variant = asArray(jewelry?.variants).find((item) => String(item.id) === String(form.jewelry_variant_id));
-  const procedureValue = asNumber(service?.base_price || service?.price || 0);
-  const jewelryValue = form.jewelry_id ? asNumber(variant?.sale_value || jewelry?.sale_value || 0) : 0;
+  const items = normalizeAppointmentFormItems(form, services, jewelryList);
+  const procedureValue = items.reduce((sum, item) => sum + asNumber(item.procedure_price), 0);
+  const jewelryValue = items.reduce((sum, item) => sum + asNumber(item.jewelry_unit_price) * Math.max(1, asNumber(item.quantity, 1)), 0);
   const totalValue = procedureValue + jewelryValue;
-  const depositValue = asNumber(form.deposit_value || service?.deposit_value || 0);
+  const firstService = asArray(services).find((item) => String(item.id) === String(items[0]?.service_id));
+  const depositValue = asNumber(form.deposit_value || firstService?.deposit_value || 0);
   return {
     procedureValue,
     jewelryValue,
@@ -285,6 +277,128 @@ function appointmentValueParts(form, services = [], jewelryList = []) {
     depositValue,
     remainingValue: Math.max(totalValue - depositValue, 0)
   };
+}
+
+function emptyAppointmentItem(seed = {}) {
+  return {
+    service_id: seed.service_id || "",
+    procedure_id: seed.procedure_id || "",
+    region: seed.region || seed.piercing_region || "",
+    jewelry_id: seed.jewelry_id || "",
+    jewelry_variant_id: seed.jewelry_variant_id || "",
+    quantity: seed.quantity || 1,
+    procedure_price: seed.procedure_price || 0,
+    jewelry_unit_price: seed.jewelry_unit_price || 0,
+    duration_minutes: seed.duration_minutes || 40,
+    notes: seed.notes || ""
+  };
+}
+
+function rawAppointmentItems(form) {
+  const items = asArray(form.appointment_items);
+  if (items.length) return items;
+  if (form.service_id || form.jewelry_id || form.piercing_region) return [emptyAppointmentItem(form)];
+  return [emptyAppointmentItem()];
+}
+
+function normalizeAppointmentFormItems(form, services = [], jewelryList = []) {
+  return rawAppointmentItems(form).map((raw) => {
+    const service = asArray(services).find((item) => String(item.id) === String(raw.service_id || form.service_id));
+    const jewelry = asArray(jewelryList).find((item) => String(item.id) === String(raw.jewelry_id));
+    const variant = asArray(jewelry?.variants).find((item) => String(item.id) === String(raw.jewelry_variant_id));
+    return {
+      ...emptyAppointmentItem(raw),
+      service_id: raw.service_id || form.service_id || "",
+      region: raw.region || form.piercing_region || "",
+      quantity: Math.max(1, asNumber(raw.quantity, 1)),
+      procedure_price: asNumber(raw.procedure_price || service?.base_price || service?.price || 0),
+      jewelry_unit_price: raw.jewelry_id ? asNumber(raw.jewelry_unit_price || variant?.sale_value || jewelry?.sale_value || 0) : 0,
+      duration_minutes: asNumber(raw.duration_minutes || service?.duration_minutes || 40)
+    };
+  });
+}
+
+function withAppointmentItems(form, items, services = [], jewelry = []) {
+  const normalized = normalizeAppointmentFormItems({ ...form, appointment_items: items }, services, jewelry);
+  const first = normalized[0] || emptyAppointmentItem();
+  const firstService = asArray(services).find((service) => String(service.id) === String(first.service_id));
+  return {
+    ...form,
+    appointment_items: normalized,
+    service_id: first.service_id || "",
+    jewelry_id: first.jewelry_id || "",
+    jewelry_variant_id: first.jewelry_variant_id || "",
+    procedure: firstService?.name || form.procedure || "",
+    piercing_region: first.region || form.piercing_region || ""
+  };
+}
+
+function AppointmentItemsEditor({ form, services, procedures = [], jewelry, onChange, compact = false }) {
+  const items = rawAppointmentItems(form);
+  function updateItem(index, patch) {
+    const nextItems = items.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item);
+    onChange(withAppointmentItems(form, nextItems, services, jewelry));
+  }
+  function removeItem(index) {
+    const nextItems = items.filter((_, itemIndex) => itemIndex !== index);
+    onChange(withAppointmentItems(form, nextItems.length ? nextItems : [emptyAppointmentItem()], services, jewelry));
+  }
+  return (
+    <div className="appointment-items-editor">
+      <div className="section-inline-header">
+        <strong>Procedimentos E Joias</strong>
+        <button type="button" className="secondary-button" onClick={() => onChange(withAppointmentItems(form, [...items, emptyAppointmentItem()], services, jewelry))}>Adicionar Item</button>
+      </div>
+      {items.map((item, index) => {
+        const selectedJewelry = asArray(jewelry).find((product) => String(product.id) === String(item.jewelry_id));
+        const selectedService = asArray(services).find((service) => String(service.id) === String(item.service_id));
+        return (
+          <div className={`appointment-item-row ${compact ? "compact" : ""}`} key={`${index}-${item.service_id}-${item.jewelry_id}`}>
+            <Select label="Serviço" value={item.service_id} onChange={(value) => {
+              const service = asArray(services).find((option) => String(option.id) === String(value));
+              updateItem(index, {
+                service_id: value,
+                procedure_price: asNumber(service?.base_price || service?.price || 0),
+                duration_minutes: asNumber(service?.duration_minutes || 40)
+              });
+            }} required={index === 0}>
+              <option value="">Selecione</option>
+              {asArray(services).map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
+            </Select>
+            <Select label="Procedimento" value={item.procedure_id} onChange={(value) => {
+              const procedure = asArray(procedures).find((option) => String(option.id) === String(value));
+              updateItem(index, {
+                procedure_id: value,
+                service_id: procedure?.service_id || item.service_id,
+                region: procedure?.body_area || item.region,
+                procedure_price: asNumber(procedure?.price || selectedService?.base_price || selectedService?.price || item.procedure_price),
+                duration_minutes: asNumber(procedure?.duration_minutes || selectedService?.duration_minutes || item.duration_minutes)
+              });
+            }}>
+              <option value="">Sem procedimento específico</option>
+              {asArray(procedures).filter((procedure) => !item.service_id || String(procedure.service_id) === String(item.service_id)).map((procedure) => <option key={procedure.id} value={procedure.id}>{procedure.name}</option>)}
+            </Select>
+            <Input label="Região" value={item.region} onChange={(value) => updateItem(index, { region: value })} required={index === 0} />
+            <Select label="Joia" value={item.jewelry_id} onChange={(value) => updateItem(index, { jewelry_id: value, jewelry_variant_id: "", jewelry_unit_price: 0 })}>
+              <option value="">Sem Joia</option>
+              {asArray(jewelry).map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
+            </Select>
+            <Select label="Variação" value={item.jewelry_variant_id} onChange={(value) => {
+              const variant = asArray(selectedJewelry?.variants).find((option) => String(option.id) === String(value));
+              updateItem(index, { jewelry_variant_id: value, jewelry_unit_price: asNumber(variant?.sale_value || selectedJewelry?.sale_value || 0) });
+            }}>
+              <option value="">Selecione</option>
+              {asArray(selectedJewelry?.variants).filter((variant) => asNumber(variant?.quantity) > 0).map((variant) => (
+                <option key={variant.id} value={variant.id}>{variant.variation_name || variant.sku} · {variant.quantity} un</option>
+              ))}
+            </Select>
+            <Input type="number" label="Qtd." value={item.quantity} onChange={(value) => updateItem(index, { quantity: value })} />
+            <button type="button" className="secondary-button danger" onClick={() => removeItem(index)} disabled={items.length === 1}>Remover</button>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function AppointmentValueSummary({ form, services, jewelry }) {
@@ -305,6 +419,7 @@ export function VisualCalendar() {
   const { data: options } = useFetch("/options");
   const { data: clients, refresh: refreshClients } = useFetch("/clients");
   const { data: services } = useFetch("/services");
+  const { data: procedures } = useFetch("/procedures");
   const [filters, setFilters] = useState({ mode: "mensal", professional_id: "", status: "" });
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedAppointment, setSelectedAppointment] = useState(null);
@@ -344,6 +459,7 @@ export function VisualCalendar() {
         options={safeOptions}
         clients={clients}
         services={services}
+        procedures={procedures}
         onClose={() => setCreateSeed(null)}
         onSaved={() => {
           setCreateSeed(null);
@@ -429,10 +545,11 @@ export function CalendarEvent({ item, refresh, onSelect }) {
   );
 }
 
-export function AppointmentCreateModal({ seed, options, clients, services, onClose, onSaved }) {
+export function AppointmentCreateModal({ seed, options, clients, services, procedures, onClose, onSaved }) {
   const safeOptions = asObject(options);
   const safeClients = asArray(clients);
   const safeServices = asArray(services);
+  const safeProcedures = asArray(procedures);
   const safeJewelry = asArray(safeOptions.jewelry);
   const safeProfessionals = asArray(safeOptions.professionals);
   const [form, setForm] = useState(defaultAppointment());
@@ -475,7 +592,7 @@ export function AppointmentCreateModal({ seed, options, clients, services, onClo
     const response = await apiFetch("/appointments", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form)
+      body: JSON.stringify({ ...priceAppointmentDraft(form, safeServices, safeJewelry), appointment_items: normalizeAppointmentFormItems(form, safeServices, safeJewelry) })
     });
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
@@ -507,15 +624,6 @@ export function AppointmentCreateModal({ seed, options, clients, services, onClo
           </Select>
           <Input label="Nome completo" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} required />
           <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => setForm({ ...form, whatsapp: value })} required />
-          <Select label="Serviço" value={form.service_id} onChange={(value) => {
-            const service = safeServices.find((item) => String(item.id) === String(value));
-            updatePricedForm({ ...form, service_id: value, procedure: service?.name || "", piercing_region: service?.name || form.piercing_region });
-          }} required>
-            <option value="">Selecione</option>
-            {safeServices.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
-          </Select>
-          <Input label="Procedimento" value={form.procedure} onChange={(value) => setForm({ ...form, procedure: value })} required />
-          <Input label="Região" value={form.piercing_region} onChange={(value) => setForm({ ...form, piercing_region: value })} required />
           <Select label="Profissional" value={form.professional_id} onChange={(value) => setForm({ ...form, professional_id: value })} required>
             <option value="">Selecione</option>
             {safeProfessionals.map((professional) => <option key={professional.id} value={professional.id}>{professional.name}</option>)}
@@ -523,17 +631,15 @@ export function AppointmentCreateModal({ seed, options, clients, services, onClo
           <Input type="date" label="Data" value={form.appointment_date} onChange={(value) => setForm({ ...form, appointment_date: value })} required />
           <Input type="time" label="Horário" value={form.appointment_time} onChange={(value) => setForm({ ...form, appointment_time: value })} required />
           <StatusSelect value={form.status} onChange={(value) => setForm({ ...form, status: value })} />
-          <Select label="Joalheria" value={form.jewelry_id} onChange={(value) => updatePricedForm({ ...form, jewelry_id: value, jewelry_variant_id: "" })}>
-            <option value="">Sem joia</option>
-            {safeJewelry.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </Select>
-          <Select label="Variação" value={form.jewelry_variant_id} onChange={(value) => updatePricedForm({ ...form, jewelry_variant_id: value })}>
-            <option value="">Selecione</option>
-            {asArray(safeJewelry.find((item) => String(item.id) === String(form.jewelry_id))?.variants).filter((variant) => asNumber(variant?.quantity) > 0).map((variant) => (
-              <option key={variant.id} value={variant.id}>{variant.variation_name || variant.sku} · {currency.format(asNumber(variant.sale_value || 0))}</option>
-            ))}
-          </Select>
         </div>
+        <AppointmentItemsEditor
+          form={form}
+          services={safeServices}
+          procedures={safeProcedures}
+          jewelry={safeJewelry}
+          onChange={updatePricedForm}
+          compact
+        />
         <AppointmentValueSummary form={form} services={safeServices} jewelry={safeJewelry} />
         <label>Observações
           <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />

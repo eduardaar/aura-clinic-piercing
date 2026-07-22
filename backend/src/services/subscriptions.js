@@ -31,9 +31,17 @@ export async function tenantSubscription(tenantId) {
     "SELECT * FROM platform.tenant_subscriptions WHERE tenant_id = $1",
     [key]
   );
-  const row = result.rows[0] || null;
+  let row = result.rows[0] || null;
   let value = null;
   if (row) {
+    const initialDaysLeft = daysUntil(row.trial_ends_at || row.current_period_ends_at);
+    if (row.status === "trial_active" && initialDaysLeft <= 0) {
+      await query(
+        "UPDATE platform.tenant_subscriptions SET status = 'trial_expired', updated_at = NOW() WHERE tenant_id = $1 AND status = 'trial_active'",
+        [key]
+      );
+      row = { ...row, status: "trial_expired" };
+    }
     const plan = planByCode(row.plan_code);
     value = {
       ...row,

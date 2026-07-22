@@ -253,6 +253,27 @@ CREATE TABLE IF NOT EXISTS appointments (
   created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
 
+CREATE TABLE IF NOT EXISTS appointment_items (
+  id SERIAL PRIMARY KEY,
+  appointment_id INTEGER NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
+  procedure_id INTEGER,
+  service_id INTEGER,
+  region TEXT,
+  jewelry_id INTEGER REFERENCES jewelry_inventory(id),
+  jewelry_variant_id INTEGER,
+  quantity INTEGER NOT NULL DEFAULT 1,
+  procedure_price DOUBLE PRECISION NOT NULL DEFAULT 0,
+  jewelry_unit_price DOUBLE PRECISION NOT NULL DEFAULT 0,
+  duration_minutes INTEGER NOT NULL DEFAULT 0,
+  subtotal DOUBLE PRECISION NOT NULL DEFAULT 0,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS'),
+  updated_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE INDEX IF NOT EXISTS idx_appointment_items_appointment ON appointment_items(appointment_id);
+CREATE INDEX IF NOT EXISTS idx_appointment_items_jewelry ON appointment_items(jewelry_id, jewelry_variant_id);
+
 CREATE TABLE IF NOT EXISTS notification_queue (
   id SERIAL PRIMARY KEY,
   professional_id INTEGER REFERENCES professionals(id),

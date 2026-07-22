@@ -194,6 +194,24 @@ export function PlatformAdmin() {
     }
   }
 
+  async function activateOrRenewTenant(tenant) {
+    setActionError("");
+    try {
+      const response = await platformFetch(`/platform/tenants/${tenant.id}/plan`, {
+        method: "PATCH",
+        body: JSON.stringify({ plan_code: tenant.plan || "profissional" }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (response.status !== 401) setActionError(payload.error || "Não foi possível ativar ou renovar a clínica.");
+        return;
+      }
+      loadTenants();
+    } catch {
+      setActionError("Não foi possível conectar ao servidor.");
+    }
+  }
+
   function removeTenant(tenant) {
     setActionError("");
     setDeleting({
@@ -313,10 +331,17 @@ export function PlatformAdmin() {
                   <StatusBadge status={tenant.status || "ativo"} tone={tenant.status === "suspenso" ? "danger" : "ok"} />
                 ) },
                 { key: "plan", label: "Plano", render: (tenant) => tenant.plan || "—" },
+                { key: "subscription", label: "Assinatura", render: (tenant) => (
+                  <span>
+                    {tenant.subscription_status || "trial_active"}
+                    {tenant.subscription_status === "trial_active" ? ` · ${tenant.subscription_days_left ?? 0} dia(s)` : ""}
+                  </span>
+                ) },
                 { key: "created_at", label: "Criada em", render: (tenant) => tenantCreatedAt(tenant.created_at) },
               ]}
               actions={(tenant) => (
                 <>
+                  <button className="primary-button" onClick={() => activateOrRenewTenant(tenant)}>Ativar/Renovar</button>
                   <button className="secondary-button" onClick={() => toggleStatus(tenant)}>
                     {tenant.status === "suspenso" ? "Reativar" : "Suspender"}
                   </button>

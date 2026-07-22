@@ -66,7 +66,10 @@ router.get("/api/catalog", withDb(async (_req, res, db) => {
       description: item.description,
       sale_value: item.sale_value,
       quantity: item.quantity,
-      variants: asArray(item.variants).map((v) => ({
+      status: item.status,
+      is_catalog_active: item.is_catalog_active,
+      is_published: item.is_published,
+      variants: asArray(item.variants).filter((v) => Number(v.is_active ?? 1) === 1).map((v) => ({
         id: v.id,
         variation_name: v.variation_name,
         diameter: v.diameter,
@@ -88,7 +91,9 @@ router.get("/api/catalog", withDb(async (_req, res, db) => {
         })),
         thread_type: v.thread_type,
         sale_value: v.sale_value || item.sale_value,
-        quantity: v.quantity || item.quantity
+        quantity: v.quantity || item.quantity,
+        status: v.status,
+        is_active: v.is_active
       })),
       badge: item.badge,
       is_featured: item.is_featured,
