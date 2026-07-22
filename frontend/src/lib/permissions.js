@@ -4,7 +4,9 @@ export function allowedPagesForRole(role) {
     reception: ["agenda", "sales", "client-center", "clients"],
     finance: ["finance", "sales"],
     piercer: ["agenda", "sales", "client-center", "clients", "postcare"]
-  }[role] || ["dashboard", "erp", "agenda", "catalog", "sales", "finance", "client-center", "clients", "terms", "postcare", "admin"];
+    // Fallback SEGURO para papéis desconhecidos: acesso mínimo, sem áreas
+    // administrativas (erp/admin/finance). O "Aura ERP" só aparece para admin.
+  }[role] || ["dashboard", "agenda", "client-center", "clients"];
 }
 
 // Espelha PAGE_FEATURE do backend (backend/src/services/plans.js): página -> feature
