@@ -59,6 +59,7 @@ export function catalogFilterOptions(items) {
     colors: [...new Set(asArray(variants).flatMap((variant) => splitColorOptions(variant?.color)))].sort(),
     stones: unique("stone"),
     sizes: unique("size", variants),
+    topSizes: [...new Set(variants.map((item) => Number(item?.top_size_mm)).filter((value) => value > 0))].sort((a, b) => a - b),
     thicknesses: unique("thickness", variants),
     suppliers: unique("supplier", variants),
     locations: unique("physical_location")

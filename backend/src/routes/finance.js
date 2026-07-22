@@ -17,16 +17,40 @@ router.get("/api/finance", withFeature("basic_finance", async (_req, res, db) =>
 
 router.post("/api/expenses", withFeature("basic_finance", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "finance"])) return;
-  const { description, expense_type, category, amount, due_date, status, payment_method, notes } = req.body;
+  const { description, expense_type, category, amount, due_date, status, payment_method, payment_account, notes } = req.body;
   if (!description?.trim() || !["fixa", "variavel"].includes(expense_type) || !due_date) {
     return res.status(400).json({ error: "Dados da despesa inválidos." });
   }
   const result = await db.run(
-    `INSERT INTO expenses (description, expense_type, category, amount, due_date, status, payment_method, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [description.trim(), expense_type, category || "", Number(amount || 0), due_date, status || "paga", payment_method || "", notes || ""]
+    `INSERT INTO expenses (description, expense_type, category, amount, due_date, status, payment_method, payment_account, paid_at, paid_by_user_id, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [description.trim(), expense_type, category || "", Number(amount || 0), due_date, status || "pendente", payment_method || "", payment_account || "", status === "paga" ? new Date().toISOString() : null, status === "paga" ? req.user?.id || null : null, notes || ""]
   );
   res.status(201).json(await db.get("SELECT * FROM expenses WHERE id = ?", [result.lastID]));
+}));
+
+router.patch("/api/expenses/:id", withFeature("basic_finance", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "finance"])) return;
+  const expense = await db.get("SELECT * FROM expenses WHERE id = ?", [req.params.id]);
+  if (!expense) return res.status(404).json({ error: "Despesa nao encontrada." });
+  const status = req.body.status ?? expense.status;
+  if (!["pendente", "paga", "vencida", "cancelada"].includes(status)) return res.status(400).json({ error: "Status invalido." });
+  const paidAt = status === "paga" ? (req.body.paid_at || expense.paid_at || new Date().toISOString()) : null;
+  const paidBy = status === "paga" ? (expense.paid_by_user_id || req.user?.id || null) : null;
+  await db.run("BEGIN");
+  try {
+    await db.run(`UPDATE expenses SET description = ?, expense_type = ?, category = ?, amount = ?, due_date = ?, status = ?, payment_method = ?, payment_account = ?, paid_at = ?, paid_by_user_id = ?, notes = ? WHERE id = ?`, [
+      req.body.description ?? expense.description, req.body.expense_type ?? expense.expense_type, req.body.category ?? expense.category,
+      Number(req.body.amount ?? expense.amount), req.body.due_date ?? expense.due_date, status, req.body.payment_method ?? expense.payment_method,
+      req.body.payment_account ?? expense.payment_account, paidAt, paidBy, req.body.notes ?? expense.notes, expense.id
+    ]);
+    await db.run("INSERT INTO expense_audit_logs (expense_id, user_id, action, previous_status, next_status, details) VALUES (?, ?, ?, ?, ?, ?)", [expense.id, req.user?.id || null, status === "paga" ? "mark_paid" : "update", expense.status, status, req.body.notes || ""]);
+    await db.run("COMMIT");
+    res.json(await db.get("SELECT * FROM expenses WHERE id = ?", [expense.id]));
+  } catch (error) {
+    await db.run("ROLLBACK").catch(() => {});
+    throw error;
+  }
 }));
 
 router.delete("/api/expenses/:id", withFeature("basic_finance", async (req, res, db) => {

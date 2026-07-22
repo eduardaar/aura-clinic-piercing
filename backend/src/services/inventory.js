@@ -316,6 +316,7 @@ export async function replaceJewelryVariants(db, jewelryId, variants = []) {
       variant.stone_color || "",
       variant.side || "",
       variant.size || "",
+      variant.top_size_mm === "" || variant.top_size_mm == null ? null : Number(variant.top_size_mm),
       variant.thickness || "",
       normalizedLength.length,
       normalizedLength.length_mm,
@@ -342,7 +343,7 @@ export async function replaceJewelryVariants(db, jewelryId, variants = []) {
     if (existing) {
       await db.run(
         `UPDATE jewelry_variants
-         SET sku = ?, variation_name = ?, material = ?, color = ?, stone_color = ?, side = ?, size = ?, thickness = ?, length = ?, length_mm = ?, diameter = ?,
+         SET sku = ?, variation_name = ?, material = ?, color = ?, stone_color = ?, side = ?, size = ?, top_size_mm = ?, thickness = ?, length = ?, length_mm = ?, diameter = ?,
              thread_type = ?, supplier = ?, cost_value = ?, sale_value = ?, purchase_cost_cents = ?, allocated_freight_cents = ?,
              additional_cost_cents = ?, total_cost_cents = ?, price_multiplier = ?, price_rounding_mode = ?, suggested_price_cents = ?,
              sale_price_cents = ?, price_manually_overridden = ?, cost_estimated = ?, quantity = ?, low_stock_threshold = ?,
@@ -357,10 +358,10 @@ export async function replaceJewelryVariants(db, jewelryId, variants = []) {
     } else {
       const result = await db.run(
         `INSERT INTO jewelry_variants
-         (jewelry_id, sku, variation_name, material, color, stone_color, side, size, thickness, length, length_mm, diameter, thread_type, supplier,
+         (jewelry_id, sku, variation_name, material, color, stone_color, side, size, top_size_mm, thickness, length, length_mm, diameter, thread_type, supplier,
           cost_value, sale_value, purchase_cost_cents, allocated_freight_cents, additional_cost_cents, total_cost_cents, price_multiplier,
           price_rounding_mode, suggested_price_cents, sale_price_cents, price_manually_overridden, cost_estimated, quantity, low_stock_threshold, status, is_active)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
         [jewelryId, ...values]
       );
       retainedIds.push(result.lastID);
