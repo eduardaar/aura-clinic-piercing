@@ -23,7 +23,7 @@ import {
 import { Loading, ApiError } from "../components/common/Feedback";
 import { BookingChoiceGrid, Input, Select } from "../components/common/Ui";
 import { API_ORIGIN, publicApiFetch, usePublicFetch } from "../lib/api";
-import { asArray, asNumber, asObject, formatLongDate } from "../lib/utils";
+import { asArray, asNumber, asObject, formatLongDate, removeAccents } from "../lib/utils";
 import { ANODIZATION_COLOR_OPTIONS, JEWELRY_CATEGORY_OPTIONS, JEWELRY_LENGTH_OPTIONS, defaultPublicBooking, nextBookingDates, parseGalleryUrls } from "../lib/defaultForms";
 import {
   catalogCategoryTerms,
@@ -56,10 +56,11 @@ function readCatalogStorage(key, fallback = []) {
 
 export function PublicCatalog() {
   const { data } = usePublicFetch("/catalog");
-  const [activeCategory, setActiveCategory] = useState("Todos");
-  const [search, setSearch] = useState("");
-  const [filters, setFilters] = useState({ material: "", color: "", stone: "", size: "" });
-  const [sort, setSort] = useState("recentes");
+  const initialQuery = new URLSearchParams(window.location.search);
+  const [activeCategory, setActiveCategory] = useState(initialQuery.get("category") || "Todos");
+  const [search, setSearch] = useState(initialQuery.get("q") || "");
+  const [filters, setFilters] = useState({ material: initialQuery.get("material") || "", color: initialQuery.get("color") || "", stone: initialQuery.get("stone") || "", size: initialQuery.get("size") || "", topSize: initialQuery.get("topSize") || "", availability: initialQuery.get("available") || "" });
+  const [sort, setSort] = useState(initialQuery.get("sort") || "recentes");
   const [favoriteIds, setFavoriteIds] = useState(() => readCatalogStorage("aura-catalog-favorites", []));
   const [orderItems, setOrderItems] = useState(() => readCatalogStorage("aura-catalog-order", []));
   const [drawer, setDrawer] = useState(null);
@@ -74,6 +75,15 @@ export function PublicCatalog() {
   useEffect(() => {
     localStorage.setItem("aura-catalog-order", JSON.stringify(orderItems));
   }, [orderItems]);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (activeCategory !== "Todos") params.set("category", activeCategory);
+    if (search.trim()) params.set("q", search.trim());
+    Object.entries({ material: filters.material, color: filters.color, stone: filters.stone, size: filters.size, topSize: filters.topSize, available: filters.availability }).forEach(([key, value]) => value && params.set(key, value));
+    if (sort !== "recentes") params.set("sort", sort);
+    window.history.replaceState(null, "", `${window.location.pathname}${params.size ? `?${params}` : ""}`);
+  }, [activeCategory, search, filters, sort]);
 
   useEffect(() => {
     const activeCount = asArray(data?.banners).filter((banner) => Boolean(asNumber(banner?.is_active))).length;
@@ -108,17 +118,22 @@ export function PublicCatalog() {
   const publishedItems = catalogItems.filter((item) => Boolean(Number(item.is_catalog_active ?? item.is_published ?? 1)));
   const selectedProduct = publishedItems.find((item) => asNumber(item?.id) === selectedProductId) || null;
   const filteredItems = publishedItems.filter((item) => {
-    const haystack = `${item.name} ${item.category} ${item.material} ${item.color} ${item.stone} ${item.size} ${item.thickness} ${item.notes}`.toLowerCase();
+    const variants = asArray(item.variants);
+    const haystack = removeAccents(`${item.name} ${item.description} ${item.category} ${item.subcategory} ${item.material} ${item.color} ${item.stone} ${item.size} ${item.thickness} ${item.sku} ${variants.map((variant) => Object.values(variant).join(" ")).join(" ")}`.toLowerCase());
     const activeCategoryConfig = categories.find((category) => category.name === activeCategory);
     const categoryMatch = activeCategory === "Todos" || catalogCategoryTerms(activeCategoryConfig?.match || activeCategory).some((term) => haystack.includes(term));
-    const searchMatch = !search.trim() || haystack.includes(search.trim().toLowerCase());
-    const materialMatch = !filters.material || item.material === filters.material;
-    const colorMatch = !filters.color || String(item.color || "").toLowerCase().includes(filters.color.toLowerCase());
-    const stoneMatch = !filters.stone || String(item.stone || "").toLowerCase().includes(filters.stone.toLowerCase());
-    const sizeMatch = !filters.size || item.size === filters.size;
-    return categoryMatch && searchMatch && materialMatch && colorMatch && stoneMatch && sizeMatch;
+    const searchMatch = !search.trim() || haystack.includes(removeAccents(search.trim().toLowerCase()));
+    const matchesVariant = (key, value) => !value || variants.some((variant) => String(variant[key] ?? "").toLowerCase().includes(String(value).toLowerCase()));
+    const materialMatch = !filters.material || item.material === filters.material || matchesVariant("material", filters.material);
+    const colorMatch = !filters.color || String(item.color || "").toLowerCase().includes(filters.color.toLowerCase()) || matchesVariant("color", filters.color);
+    const stoneMatch = !filters.stone || String(item.stone || "").toLowerCase().includes(filters.stone.toLowerCase()) || matchesVariant("stone_color", filters.stone);
+    const sizeMatch = !filters.size || item.size === filters.size || matchesVariant("size", filters.size);
+    const topSizeMatch = !filters.topSize || Number(item.top_size_mm) === Number(filters.topSize) || variants.some((variant) => Number(variant.top_size_mm) === Number(filters.topSize));
+    const available = variants.length ? variants.some((variant) => Number(variant.quantity) > 0) : Number(item.quantity) > 0;
+    const availabilityMatch = !filters.availability || (filters.availability === "true" ? available : !available);
+    return categoryMatch && searchMatch && materialMatch && colorMatch && stoneMatch && sizeMatch && topSizeMatch && availabilityMatch;
   });
-    const items = [...filteredItems].sort((a, b) => sort === "menor-preco" ? a.sale_value - b.sale_value : sort === "maior-preco" ? b.sale_value - a.sale_value : b.id - a.id);
+  const items = [...filteredItems].sort((a, b) => sort === "menor-preco" ? a.sale_value - b.sale_value : sort === "maior-preco" ? b.sale_value - a.sale_value : sort === "nome-az" ? a.name.localeCompare(b.name) : sort === "nome-za" ? b.name.localeCompare(a.name) : sort === "estoque" ? Number(b.quantity) - Number(a.quantity) : b.id - a.id);
   const options = catalogFilterOptions(publishedItems);
   const latestItems = publishedItems.filter((item) => Number(item.quantity || 0) > 0).sort((a, b) => b.id - a.id).slice(0, 8);
   const bestSellerItems = publishedItems.filter((item) => Number(item.quantity || 0) > 0).sort((a, b) => Number(b.sale_value || 0) - Number(a.sale_value || 0)).slice(0, 8);
@@ -253,12 +268,17 @@ function addToOrder(item) {
           <CatalogSelect label="Observação de cor" value={filters.color} options={options.colors} onChange={(value) => setFilters({ ...filters, color: value })} />
           <CatalogSelect label="Pedra" value={filters.stone} options={options.stones} onChange={(value) => setFilters({ ...filters, stone: value })} />
           <CatalogSelect label="Tamanho" value={filters.size} options={options.sizes} onChange={(value) => setFilters({ ...filters, size: value })} />
+          <CatalogSelect label="Tamanho do topo" value={filters.topSize} options={options.topSizes.map((number) => ({ value: String(number), label: `${number.toLocaleString("pt-BR", { minimumFractionDigits: 1 })} mm` }))} onChange={(value) => setFilters({ ...filters, topSize: value })} />
+          <CatalogSelect label="Disponibilidade" value={filters.availability} options={[{ value: "true", label: "Em estoque" }, { value: "false", label: "Esgotados" }]} onChange={(value) => setFilters({ ...filters, availability: value })} />
           <label className="catalog-sort">
             <SlidersHorizontal size={16} />
             <select value={sort} onChange={(event) => setSort(event.target.value)}>
               <option value="recentes">Mais recentes</option>
               <option value="menor-preco">Menor preço</option>
               <option value="maior-preco">Maior preço</option>
+              <option value="nome-az">Nome de A a Z</option>
+              <option value="nome-za">Nome de Z a A</option>
+              <option value="estoque">Em estoque primeiro</option>
             </select>
           </label>
         </section>
@@ -383,7 +403,11 @@ function CatalogSelect({ label, value, options, onChange }) {
     <label className="catalog-filter-select">
       <select value={value} onChange={(event) => onChange(event.target.value)}>
         <option value="">{label}</option>
-        {safeOptions.map((option) => <option key={option} value={option}>{elegantProductName(option)}</option>)}
+        {safeOptions.map((option) => {
+          const optionValue = typeof option === "object" ? option.value : option;
+          const optionLabel = typeof option === "object" ? option.label : elegantProductName(option);
+          return <option key={optionValue} value={optionValue}>{optionLabel}</option>;
+        })}
       </select>
     </label>
   );
@@ -586,6 +610,7 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
     selectedColor && { label: "Observação de Cor", value: elegantProductName(selectedColor) },
     item.stone && { label: "Pedra", value: elegantProductName(item.stone) },
     selectedVariant.size && { label: "Tamanho", value: selectedVariant.size },
+    Number(selectedVariant.top_size_mm) > 0 && { label: "Tamanho do topo", value: `${Number(selectedVariant.top_size_mm).toLocaleString("pt-BR", { minimumFractionDigits: 1 })} mm` },
     selectedVariant.thickness && { label: "Espessura", value: selectedVariant.thickness },
     selectedVariant.length && { label: "Comprimento", value: selectedVariant.length },
     selectedVariant.diameter && { label: "Diâmetro", value: selectedVariant.diameter },
@@ -669,6 +694,8 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
             <div className="catalog-detail-actions">
               {available && Boolean(Number(theme.show_schedule_button || 1)) && <button className="primary-button" type="button" onClick={() => onScheduleWithJewelry({ ...selectedVariant, selected_color: selectedColor })}>Quero Agendar Com Essa Joia</button>}
               {available && Boolean(Number(theme.show_buy_button)) && <button className="secondary-button" type="button" onClick={() => onAddToOrder({ ...selectedVariant, selected_color: selectedColor })}>Comprar Agora</button>}
+              {!available && settings.whatsapp_phone && <a className="primary-button" href={whatsappCatalogUrl(`Ola! Gostaria de consultar a disponibilidade desta joia:\n\nProduto: ${productName}\nVariacao: ${variantCatalogLabel(selectedVariant)}\nMaterial: ${selectedVariant.material || item.material || "nao informado"}\nCor: ${selectedColor || selectedVariant.color || item.color || "nao informada"}\nTamanho: ${variantCatalogLabel(selectedVariant)}\nLink: ${window.location.href}\n\nPodem me informar prazo e valor?`, settings.whatsapp_phone)} target="_blank" rel="noreferrer">Pedir pelo WhatsApp</a>}
+              {!available && !settings.whatsapp_phone && <span className="form-error">WhatsApp de vendas nao configurado. Avise a administracao.</span>}
               {settings.whatsapp_phone && <a className="secondary-button" href={whatsappCatalogUrl(`Olá! Quero informações sobre ${productName}, ${variantCatalogLabel(selectedVariant)}${selectedColor ? `, na cor ${selectedColor}` : ""}.`, settings.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Falar com a Aura</a>}
               <a className="secondary-button" href={whatsappShareUrl(`${settings.product_share_text || "Olha essa joia da Aura Clinic:"} ${item.name} - ${currency.format(saleValue)}.`)} target="_blank" rel="noreferrer">Compartilhar</a>
             </div>

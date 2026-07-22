@@ -202,9 +202,11 @@ export function jewelrySkuBase(item = {}) {
 }
 
 export function variantCatalogLabel(variant = {}) {
-  const measurement = variant.length
-    ? `Comprimento ${variant.length}`
-    : variant.diameter
+  const measurement = Number(variant.top_size_mm) > 0
+    ? `Topo ${Number(variant.top_size_mm).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 2 })} mm`
+    : variant.length
+      ? `Comprimento ${variant.length}`
+      : variant.diameter
       ? `Diâmetro ${variant.diameter}`
       : variant.size
         ? `Tamanho ${variant.size}`

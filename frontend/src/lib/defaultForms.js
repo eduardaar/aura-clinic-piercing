@@ -344,6 +344,7 @@ export function defaultJewelry() {
     color: "",
     stone: "",
     size: "",
+    top_size_mm: "",
     thickness: "",
     stem_length: "",
     thread_type: "",
@@ -402,6 +403,7 @@ export function defaultJewelryVariant(index = 1) {
     stone_color: "",
     side: "",
     size: "",
+    top_size_mm: "",
     thickness: "1.2mm",
     length: "",
     diameter: "",
@@ -536,8 +538,10 @@ export function defaultExpense() {
     category: "",
     amount: 0,
     due_date: new Date().toISOString().slice(0, 10),
-    status: "paga",
+    status: "pendente",
     payment_method: "Pix",
+    payment_account: "",
+    paid_at: "",
     notes: ""
   };
 }

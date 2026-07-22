@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS jewelry_inventory (
   color TEXT NOT NULL,
   stone TEXT,
   size TEXT,
+  top_size_mm DOUBLE PRECISION,
   thickness TEXT,
   stem_length TEXT,
   thread_type TEXT,
@@ -136,6 +137,7 @@ CREATE TABLE IF NOT EXISTS jewelry_inventory (
   stone_color TEXT,
   side TEXT,
   size TEXT,
+  top_size_mm DOUBLE PRECISION,
   thickness TEXT,
   length TEXT,
   length_mm DOUBLE PRECISION,
@@ -328,7 +330,21 @@ CREATE TABLE IF NOT EXISTS expenses (
   due_date TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'paga',
   payment_method TEXT,
+  paid_at TEXT,
+  paid_by_user_id INTEGER REFERENCES users(id),
+  payment_account TEXT,
   notes TEXT,
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE TABLE IF NOT EXISTS expense_audit_logs (
+  id SERIAL PRIMARY KEY,
+  expense_id INTEGER NOT NULL REFERENCES expenses(id) ON DELETE RESTRICT,
+  user_id INTEGER REFERENCES users(id),
+  action TEXT NOT NULL,
+  previous_status TEXT,
+  next_status TEXT,
+  details TEXT,
   created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
 
@@ -531,6 +547,7 @@ CREATE INDEX IF NOT EXISTS idx_error_logs_resolved ON error_logs(resolved, creat
 
 -- Correções idempotentes aplicadas a clínicas já existentes no boot (applySchemaToAllTenants).
 ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS top_size_mm DOUBLE PRECISION;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS phone TEXT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS cpf TEXT;
@@ -564,6 +581,13 @@ ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS sale_price_cents INTEGER 
 ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS price_manually_overridden INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS cost_estimated INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE jewelry_variants ADD COLUMN IF NOT EXISTS length_mm DOUBLE PRECISION;
+ALTER TABLE jewelry_variants ADD COLUMN IF NOT EXISTS top_size_mm DOUBLE PRECISION;
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS paid_at TEXT;
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS paid_by_user_id INTEGER REFERENCES users(id);
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS payment_account TEXT;
+CREATE INDEX IF NOT EXISTS idx_expenses_status_due ON expenses(status, due_date);
+CREATE INDEX IF NOT EXISTS idx_jewelry_top_size ON jewelry_inventory(top_size_mm);
+CREATE INDEX IF NOT EXISTS idx_jewelry_variants_top_size ON jewelry_variants(top_size_mm);
 ALTER TABLE jewelry_variants ADD COLUMN IF NOT EXISTS purchase_cost_cents INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE jewelry_variants ADD COLUMN IF NOT EXISTS allocated_freight_cents INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE jewelry_variants ADD COLUMN IF NOT EXISTS additional_cost_cents INTEGER NOT NULL DEFAULT 0;

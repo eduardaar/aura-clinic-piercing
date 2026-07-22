@@ -41,6 +41,7 @@ function jewelryPayload(body, sku, pricing) {
     body.color || "",
     body.stone,
     body.size,
+    body.top_size_mm === "" || body.top_size_mm == null ? null : Number(body.top_size_mm),
     body.thickness,
     body.stem_length,
     body.thread_type,
@@ -88,7 +89,7 @@ function jewelryPayload(body, sku, pricing) {
 }
 
 function updateValue(field, body) {
-  if (["quantity", "cost_value", "sale_value", "purchase_cost_cents", "allocated_freight_cents", "additional_cost_cents", "total_cost_cents", "price_multiplier", "suggested_price_cents", "sale_price_cents", "price_manually_overridden", "cost_estimated", "low_stock_threshold", "critical_stock_threshold", "weight_grams", "package_length_cm", "package_width_cm", "package_height_cm", "preparation_days", "is_catalog_active", "is_featured", "is_new", "is_most_wanted", "is_promotion", "is_last_units", "virtual_store_active", "is_published"].includes(field)) {
+  if (["quantity", "top_size_mm", "cost_value", "sale_value", "purchase_cost_cents", "allocated_freight_cents", "additional_cost_cents", "total_cost_cents", "price_multiplier", "suggested_price_cents", "sale_price_cents", "price_manually_overridden", "cost_estimated", "low_stock_threshold", "critical_stock_threshold", "weight_grams", "package_length_cm", "package_width_cm", "package_height_cm", "preparation_days", "is_catalog_active", "is_featured", "is_new", "is_most_wanted", "is_promotion", "is_last_units", "virtual_store_active", "is_published"].includes(field)) {
     return Number(body[field] || 0);
   }
   if (field === "gallery_urls") {
@@ -106,10 +107,10 @@ router.get("/api/jewelry", withDb(async (req, res, db) => {
       OR EXISTS (
         SELECT 1 FROM jewelry_variants v
         WHERE v.jewelry_id = j.id
-          AND (v.sku LIKE ? OR v.material LIKE ? OR v.color LIKE ? OR v.size LIKE ? OR v.thickness LIKE ? OR v.length LIKE ? OR v.diameter LIKE ? OR v.thread_type LIKE ? OR v.supplier LIKE ?)
+          AND (v.sku LIKE ? OR v.material LIKE ? OR v.color LIKE ? OR v.size LIKE ? OR v.thickness LIKE ? OR v.length LIKE ? OR v.diameter LIKE ? OR CAST(v.top_size_mm AS TEXT) LIKE ? OR v.thread_type LIKE ? OR v.supplier LIKE ?)
       )
     )`);
-    params.push(...Array(13).fill(`%${req.query.search}%`));
+    params.push(...Array(14).fill(`%${req.query.search}%`));
   }
   for (const field of ["category", "subcategory", "status", "physical_location"]) {
     if (req.query[field]) {
@@ -117,7 +118,7 @@ router.get("/api/jewelry", withDb(async (req, res, db) => {
       params.push(req.query[field]);
     }
   }
-  for (const field of ["material", "color", "size", "thickness", "length", "diameter", "thread_type", "supplier"]) {
+  for (const field of ["material", "color", "size", "thickness", "length", "diameter", "top_size_mm", "thread_type", "supplier"]) {
     if (req.query[field]) {
       clauses.push(`EXISTS (SELECT 1 FROM jewelry_variants v WHERE v.jewelry_id = j.id AND v.${field} LIKE ?)`);
       params.push(`%${req.query[field]}%`);
@@ -145,8 +146,8 @@ router.post("/api/jewelry", withDb(async (req, res, db) => {
     const pricing = calculatePricing(req.body, pricingSettings);
     const result = await db.run(
       `INSERT INTO jewelry_inventory
-      (name, description, photo_url, gallery_urls, category, subcategory, variant_group, variation_label, material, color, stone, size, thickness, stem_length, thread_type, piercing_type, weight_grams, package_length_cm, package_width_cm, package_height_cm, package_type, virtual_store_active, preparation_days, shipping_info, seo_title, seo_description, freight_notes, quantity, cost_value, sale_value, purchase_cost_cents, allocated_freight_cents, additional_cost_cents, total_cost_cents, price_multiplier, price_rounding_mode, suggested_price_cents, sale_price_cents, price_manually_overridden, cost_estimated, supplier, physical_location, sku, is_catalog_active, is_featured, is_new, is_most_wanted, is_promotion, is_last_units, notes, status, low_stock_threshold, critical_stock_threshold, image_url, is_published)
-      VALUES (${Array(55).fill("?").join(", ")})`,
+      (name, description, photo_url, gallery_urls, category, subcategory, variant_group, variation_label, material, color, stone, size, top_size_mm, thickness, stem_length, thread_type, piercing_type, weight_grams, package_length_cm, package_width_cm, package_height_cm, package_type, virtual_store_active, preparation_days, shipping_info, seo_title, seo_description, freight_notes, quantity, cost_value, sale_value, purchase_cost_cents, allocated_freight_cents, additional_cost_cents, total_cost_cents, price_multiplier, price_rounding_mode, suggested_price_cents, sale_price_cents, price_manually_overridden, cost_estimated, supplier, physical_location, sku, is_catalog_active, is_featured, is_new, is_most_wanted, is_promotion, is_last_units, notes, status, low_stock_threshold, critical_stock_threshold, image_url, is_published)
+      VALUES (${Array(56).fill("?").join(", ")})`,
       jewelryPayload(req.body, sku, pricing)
     );
     await replaceJewelryVariants(db, result.lastID, req.body.variants || [variantFromLegacy({ ...req.body, sku: "" })]);
@@ -182,7 +183,7 @@ router.patch("/api/jewelry/:id", withDb(async (req, res, db) => {
   const pricing = calculatePricing(req.body, pricingSettings);
   Object.assign(req.body, pricing);
 
-  const fields = ["name", "description", "photo_url", "image_url", "gallery_urls", "category", "subcategory", "variant_group", "variation_label", "material", "color", "stone", "size", "thickness", "stem_length", "thread_type", "piercing_type", "weight_grams", "package_length_cm", "package_width_cm", "package_height_cm", "package_type", "virtual_store_active", "preparation_days", "shipping_info", "seo_title", "seo_description", "freight_notes", "quantity", "cost_value", "sale_value", "purchase_cost_cents", "allocated_freight_cents", "additional_cost_cents", "total_cost_cents", "price_multiplier", "price_rounding_mode", "suggested_price_cents", "sale_price_cents", "price_manually_overridden", "cost_estimated", "supplier", "physical_location", "sku", "is_catalog_active", "is_featured", "is_new", "is_most_wanted", "is_promotion", "is_last_units", "is_published", "notes", "status", "low_stock_threshold", "critical_stock_threshold"];
+  const fields = ["name", "description", "photo_url", "image_url", "gallery_urls", "category", "subcategory", "variant_group", "variation_label", "material", "color", "stone", "size", "top_size_mm", "thickness", "stem_length", "thread_type", "piercing_type", "weight_grams", "package_length_cm", "package_width_cm", "package_height_cm", "package_type", "virtual_store_active", "preparation_days", "shipping_info", "seo_title", "seo_description", "freight_notes", "quantity", "cost_value", "sale_value", "purchase_cost_cents", "allocated_freight_cents", "additional_cost_cents", "total_cost_cents", "price_multiplier", "price_rounding_mode", "suggested_price_cents", "sale_price_cents", "price_manually_overridden", "cost_estimated", "supplier", "physical_location", "sku", "is_catalog_active", "is_featured", "is_new", "is_most_wanted", "is_promotion", "is_last_units", "is_published", "notes", "status", "low_stock_threshold", "critical_stock_threshold"];
   const updates = fields.filter((field) => req.body[field] !== undefined);
 
   await db.run("BEGIN");

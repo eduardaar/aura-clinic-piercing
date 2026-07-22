@@ -67,6 +67,7 @@ export function FinanceAdmin() {
   const [modalOpen, setModalOpen] = useState(false);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState(null);
+  const [editingId, setEditingId] = useState(null);
   if (!data) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
   const safeData = asObject(data);
@@ -81,6 +82,14 @@ export function FinanceAdmin() {
 
   function openNew() {
     setExpense(defaultExpense());
+    setEditingId(null);
+    setError("");
+    setModalOpen(true);
+  }
+
+  function openEdit(item) {
+    setExpense({ ...defaultExpense(), ...item, paid_at: item.paid_at ? String(item.paid_at).slice(0, 10) : "" });
+    setEditingId(item.id);
     setError("");
     setModalOpen(true);
   }
@@ -92,13 +101,14 @@ export function FinanceAdmin() {
   async function saveExpense(event) {
     event.preventDefault();
     setError("");
-    const response = await apiFetch(`/expenses`, {
-      method: "POST",
+    const response = await apiFetch(editingId ? `/expenses/${editingId}` : `/expenses`, {
+      method: editingId ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(expense)
     });
     if (!response.ok) return setError((await response.json()).error || "Não foi possível salvar a despesa.");
     setExpense(defaultExpense());
+    setEditingId(null);
     setModalOpen(false);
     refresh();
   }
@@ -170,7 +180,12 @@ export function FinanceAdmin() {
             { key: "status", label: "Status", render: (item) => <StatusBadge status={item.status} tone={item.status === "paga" ? "ok" : "warn"} /> }
           ]}
           actions={(item) => (
-            <button type="button" onClick={() => setDeleting({ message: `Apagar esta despesa?`, run: () => removeExpense(item.id) })}>Apagar</button>
+            <>
+              <button type="button" onClick={() => openEdit(item)}>Editar</button>
+              {item.status !== "paga" && <button type="button" onClick={async () => { await apiFetch(`/expenses/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "paga", paid_at: new Date().toISOString() }) }); refresh(); }}>Marcar como paga</button>}
+              {item.status === "paga" && <button type="button" onClick={async () => { await apiFetch(`/expenses/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "pendente" }) }); refresh(); }}>Desfazer pagamento</button>}
+              <button type="button" onClick={() => setDeleting({ message: `Apagar esta despesa?`, run: () => removeExpense(item.id) })}>Apagar</button>
+            </>
           )}
           empty="Nenhuma despesa lançada ainda."
         />
@@ -178,7 +193,7 @@ export function FinanceAdmin() {
 
       <Modal
         open={modalOpen}
-        title="Nova despesa"
+        title={editingId ? "Editar despesa" : "Nova despesa"}
         subtitle="Fixa ou variável"
         onClose={closeModal}
         footer={(
@@ -201,8 +216,12 @@ export function FinanceAdmin() {
             <Select label="Status" value={expense.status} onChange={(value) => setExpense({ ...expense, status: value })}>
               <option value="paga">paga</option>
               <option value="pendente">pendente</option>
+              <option value="vencida">vencida</option>
+              <option value="cancelada">cancelada</option>
             </Select>
             <PaymentSelect label="Forma de pagamento" value={expense.payment_method} onChange={(value) => setExpense({ ...expense, payment_method: value })} />
+            <Input label="Conta ou caixa" value={expense.payment_account} onChange={(value) => setExpense({ ...expense, payment_account: value })} />
+            {expense.status === "paga" && <Input type="date" label="Data do pagamento" value={expense.paid_at} onChange={(value) => setExpense({ ...expense, paid_at: value })} />}
           </div>
           <label>Observações
             <textarea value={expense.notes} onChange={(event) => setExpense({ ...expense, notes: event.target.value })} />
