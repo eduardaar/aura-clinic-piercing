@@ -5,7 +5,10 @@ export const API_ORIGIN = API.replace(/\/api$/, "");
 
 // --- Multi-tenant: identificação da clínica (slug) ---------------------------
 const TENANT_STORAGE_KEY = "aura-tenant";
-const DEFAULT_TENANT_SLUG = "aura";
+// Tenant padrão do domínio quando nenhum ?t=<slug> é informado. Aponta para a
+// clínica real (aura-clinic), não para a clínica-semente do início do projeto.
+// Cada cliente sempre tem seu próprio link explícito: /catalogo?t=<slug>.
+const DEFAULT_TENANT_SLUG = "aura-clinic";
 const TENANT_SLUG_PATTERN = /^[a-z0-9-]+$/;
 
 export function tenantSlug() {
