@@ -2716,8 +2716,9 @@ small {
 
 .management-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
   gap: 14px;
+  align-items: start;
 }
 
 .manager-card {
@@ -2739,6 +2740,184 @@ small {
 
 .professionals-manager {
   grid-column: span 2;
+}
+
+.category-manager-card {
+  grid-column: span 2;
+}
+
+.category-management-table {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.category-management-head,
+.category-management-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.4fr) minmax(90px, .7fr) minmax(90px, .7fr) minmax(210px, auto);
+  gap: 10px;
+  align-items: center;
+}
+
+.category-management-head {
+  padding: 0 10px 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.category-management-row {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .82);
+}
+
+.category-management-name {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.category-management-name strong {
+  overflow-wrap: anywhere;
+}
+
+.category-management-row small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.category-management-actions,
+.manager-card .table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 0;
+}
+
+.category-management-actions button,
+.manager-card .table-actions button {
+  border: 1px solid rgba(200, 169, 106, .35);
+  background: #fff;
+  color: #1C1C1C;
+  border-radius: 999px;
+  padding: .55rem .75rem;
+  font-size: .78rem;
+  font-weight: 700;
+}
+
+.manager-card .data-table-wrap {
+  overflow: visible;
+  border: 0;
+  background: transparent;
+}
+
+.manager-card .data-table {
+  min-width: 0;
+}
+
+.manager-card .data-table thead {
+  display: none;
+}
+
+.manager-card .data-table,
+.manager-card .data-table tbody,
+.manager-card .data-table tr,
+.manager-card .data-table td {
+  display: block;
+  width: 100%;
+}
+
+.manager-card .data-table tr {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .82);
+}
+
+.manager-card .data-table tr + tr {
+  margin-top: 8px;
+}
+
+.manager-card .data-table td {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(216, 195, 165, .28);
+}
+
+.manager-card .data-table td::before {
+  content: attr(data-label);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.manager-card .data-table td:last-child {
+  border-bottom: 0;
+}
+
+.manager-card .data-table td.table-actions {
+  justify-content: flex-end;
+}
+
+.manager-card .data-table td.table-actions::before {
+  content: "";
+}
+
+@media (max-width: 980px) {
+  .category-manager-card,
+  .professionals-manager {
+    grid-column: auto;
+  }
+
+  .category-management-head {
+    display: none;
+  }
+
+  .category-management-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .category-management-row > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(216, 195, 165, .28);
+  }
+
+  .category-management-row > div::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+
+  .category-management-row > div:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  .category-management-actions {
+    justify-content: flex-end;
+  }
+
+  .category-management-actions::before {
+    content: "";
+  }
 }
 
 .inline-form {

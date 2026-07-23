@@ -10,6 +10,27 @@ import { catalogFilterOptions, cleanDisplayText, elegantProductName, splitColorO
 import { catalogImageUrl, currency, inventoryStatusClass, inventoryStatusLabel, inventoryStockState, jewelrySkuBase } from "../../features/shared/helpers";
 import { CatalogCustomization, Toggle } from "../../pages/CatalogCustomization";
 
+function normalizeManagedCategory(item = {}, index = 0) {
+  const name = String(item.name ?? item.nome ?? item.category_name ?? item.category ?? "").trim();
+  const statusText = String(item.status || "").toLowerCase();
+  const isActive = item.is_active ?? item.active ?? (statusText === "inativa" ? 0 : 1);
+  const productCount = item.product_count ?? item.productsCount ?? item.total_products ?? item.products_count ?? 0;
+  const variantCount = item.variant_count ?? item.variantsCount ?? item.total_variants ?? 0;
+  return {
+    ...item,
+    id: item.id ?? null,
+    row_key: item.id ? `category-${item.id}` : `category-name-${removeAccents(name.toLowerCase())}-${index}`,
+    type: item.type || "category",
+    name,
+    description: item.description || "",
+    is_active: Number(isActive ?? 1) ? 1 : 0,
+    status_label: Number(isActive ?? 1) ? "Ativa" : "Inativa",
+    product_count: Number(productCount || 0),
+    variant_count: Number(variantCount || 0),
+    virtual: Boolean(item.virtual || !item.id)
+  };
+}
+
 export function CatalogWorkspace() {
   const [tab, setTab] = useState("inicio");
   const tabs = [
@@ -141,7 +162,7 @@ export function Inventory2() {
   const items = apiItems;
   const safeOptions = asObject(options);
   const rawInventoryOptions = asObject(safeOptions.inventoryOptions);
-  const categoryManagement = asArray(safeOptions.categoryManagement);
+  const categoryManagement = asArray(safeOptions.categoryManagement).map(normalizeManagedCategory).filter((item) => item.name);
   const categoryOptions = [
     ...new Set([
       ...categoryManagement.filter((item) => Number(item.is_active ?? 1)).map((item) => item.name),
@@ -478,7 +499,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
                 </Button>
               </div>
               <div className="inventory-summary-grid compact">
-                <Metric label="Categorias" value={String(inventoryOptions.category?.length || 0)} />
+                <Metric label="Categorias" value={String(categoryManagement.length)} />
                 <Metric label="Tamanhos" value={String(inventoryOptions.size?.length || 0)} />
                 <Metric label="Espessuras" value={String(inventoryOptions.thickness?.length || 0)} />
                 <Metric label="Profissionais" value={String(asArray(safeOptions.professionals).length)} />
@@ -1104,10 +1125,10 @@ export function VariantEditModal({ category, variant, pricingSettings = {}, onCh
           <Input label="Fornecedor" value={variant.supplier} onChange={(value) => onChange({ supplier: value })} />
           <ProductGalleryManager
             images={variant.images || []}
-            productName={variant.variation_name || variant.sku || "VariaÃ§Ã£o"}
+            productName={variant.variation_name || variant.sku || "Variação"}
             onChange={(images) => onChange({ images })}
           />
-          {!(variant.images || []).length && <small className="pricing-note">Sem imagens prÃ³prias: esta variaÃ§Ã£o herdarÃ¡ a galeria do produto principal no catÃ¡logo.</small>}
+          {!(variant.images || []).length && <small className="pricing-note">Sem imagens próprias: esta variação herdará a galeria do produto principal no catálogo.</small>}
           <section className="pricing-builder price-formation">
             <div className="price-formation-head">
               <div>
@@ -1279,7 +1300,7 @@ export function CategoryManager({ categories = [], onChanged }) {
   const [deleteMode, setDeleteMode] = useState("move");
   const [targetCategory, setTargetCategory] = useState("");
   const [error, setError] = useState("");
-  const rows = asArray(categories);
+  const rows = asArray(categories).map(normalizeManagedCategory).filter((item) => item.name);
   const activeTargets = rows.filter((item) => Number(item.is_active ?? 1));
 
   function openNew() {
@@ -1305,13 +1326,17 @@ export function CategoryManager({ categories = [], onChanged }) {
       body: JSON.stringify(form)
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) return setError(payload.error || "N�o foi poss�vel salvar a categoria.");
+    if (!response.ok) return setError(payload.error || "Não foi possível salvar a categoria.");
     setModalOpen(false);
     setEditing(null);
     onChanged?.();
   }
 
   function openDelete(category) {
+    if (!category.id) {
+      openEdit(category);
+      return;
+    }
     setDeleteTarget(category);
     setDeleteMode(Number(category.product_count || 0) > 0 ? "move" : "delete");
     setTargetCategory(activeTargets.find((item) => item.name !== category.name)?.name || "");
@@ -1335,8 +1360,25 @@ export function CategoryManager({ categories = [], onChanged }) {
       response = await apiFetch(`/inventory-categories/${deleteTarget.id}`, { method: "DELETE" });
     }
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) return setError(payload.error || "N�o foi poss�vel concluir a a��o.");
+    if (!response.ok) return setError(payload.error || "Não foi possível concluir a ação.");
     setDeleteTarget(null);
+    onChanged?.();
+  }
+
+  async function toggleCategoryStatus(category) {
+    if (!category.id) return openEdit(category);
+    setError("");
+    const response = await apiFetch(`/inventory-categories/${category.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: category.name,
+        description: category.description || "",
+        is_active: !Number(category.is_active ?? 1)
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return setError(payload.error || "Não foi possível atualizar a categoria.");
     onChanged?.();
   }
 
@@ -1344,21 +1386,11 @@ export function CategoryManager({ categories = [], onChanged }) {
     <article className="manager-card category-manager-card">
       <CrudHeader title="Categorias" actionLabel="Nova Categoria" onAction={openNew} />
       {error && !modalOpen && !deleteTarget && <span className="form-error">{error}</span>}
-      <DataTable
+      <CategoryManagementTable
         rows={rows}
-        columns={[
-          { key: "name", label: "Categoria", render: (item) => <strong>{item.name}</strong> },
-          { key: "product_count", label: "Produtos", render: (item) => Number(item.product_count || 0) },
-          { key: "variant_count", label: "Varia��es", render: (item) => Number(item.variant_count || 0) },
-          { key: "is_active", label: "Status", render: (item) => Number(item.is_active ?? 1) ? "Ativa" : "Inativa" }
-        ]}
-        actions={(category) => (
-          <>
-            {category.id && <button type="button" onClick={() => openEdit(category)}>Editar</button>}
-            {category.id && <button type="button" onClick={() => openDelete(category)}>{Number(category.product_count || 0) ? "Tratar" : "Excluir"}</button>}
-          </>
-        )}
-        empty="Nenhuma categoria cadastrada ainda."
+        onEdit={openEdit}
+        onToggleStatus={toggleCategoryStatus}
+        onDelete={openDelete}
       />
       <Modal
         open={modalOpen}
@@ -1373,7 +1405,7 @@ export function CategoryManager({ categories = [], onChanged }) {
       >
         <form id="category-form" onSubmit={save} className="stack">
           <Input label="Nome" value={form.name} onChange={(value) => setForm({ ...form, name: value })} required />
-          <label>Descri��o
+          <label>Descrição
             <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
           </label>
           <Toggle label="Categoria Ativa" checked={form.is_active} onChange={(value) => setForm({ ...form, is_active: value })} />
@@ -1394,10 +1426,10 @@ export function CategoryManager({ categories = [], onChanged }) {
         {deleteTarget && (
           <div className="stack">
             <p><strong>{deleteTarget.name}</strong></p>
-            <p>{Number(deleteTarget.product_count || 0)} produtos e {Number(deleteTarget.variant_count || 0)} varia��es relacionadas.</p>
+            <p>{Number(deleteTarget.product_count || 0)} produtos e {Number(deleteTarget.variant_count || 0)} variações relacionadas.</p>
             {Number(deleteTarget.product_count || 0) > 0 ? (
               <>
-                <Select label="A��o" value={deleteMode} onChange={setDeleteMode}>
+                <Select label="Ação" value={deleteMode} onChange={setDeleteMode}>
                   <option value="move">Mover produtos e excluir categoria</option>
                   <option value="deactivate">Manter categoria inativa</option>
                 </Select>
@@ -1409,13 +1441,52 @@ export function CategoryManager({ categories = [], onChanged }) {
                 )}
               </>
             ) : (
-              <p>Esta categoria est� vazia e pode ser exclu�da com seguran�a.</p>
+              <p>Esta categoria está vazia e pode ser excluída com segurança.</p>
             )}
             {error && <span className="form-error">{error}</span>}
           </div>
         )}
       </Modal>
     </article>
+  );
+}
+
+function CategoryManagementTable({ rows = [], onEdit, onToggleStatus, onDelete }) {
+  const safeRows = asArray(rows);
+  if (!safeRows.length) return <div className="data-empty">Nenhuma categoria cadastrada ainda.</div>;
+  return (
+    <div className="category-management-table" data-testid="inventory-category-management-table">
+      <div className="category-management-head" aria-hidden="true">
+        <span>Categoria</span>
+        <span>Produtos</span>
+        <span>Status</span>
+        <span>Ações</span>
+      </div>
+      {safeRows.map((category) => (
+        <div className="category-management-row" key={category.row_key}>
+          <div className="category-management-name" data-label="Categoria">
+            <strong>{category.name}</strong>
+            {category.description && <small>{category.description}</small>}
+          </div>
+          <div data-label="Produtos">
+            <strong>{Number(category.product_count || 0)}</strong>
+            <small>{Number(category.variant_count || 0)} variações</small>
+          </div>
+          <div data-label="Status">
+            <StatusBadge status={category.status_label} tone={Number(category.is_active ?? 1) ? "ok" : "neutral"} />
+          </div>
+          <div className="category-management-actions" data-label="Ações">
+            <button type="button" onClick={() => onEdit(category)}>Editar</button>
+            <button type="button" onClick={() => onToggleStatus(category)}>
+              {Number(category.is_active ?? 1) ? "Desativar" : "Ativar"}
+            </button>
+            <button type="button" onClick={() => onDelete(category)}>
+              Apagar
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 export function OptionManager({ title, type, items = [], onChanged, placeholder }) {
