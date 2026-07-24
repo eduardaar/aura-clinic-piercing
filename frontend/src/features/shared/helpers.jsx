@@ -85,10 +85,6 @@ export function whatsappCatalogUrl(message, phone) {
   return `https://wa.me/${normalized}?text=${encodeURIComponent(message || "Olá! Vim pelo catálogo online da Aura Clinic.")}`;
 }
 
-export function catalogProductUrl(id) {
-  return `/catalogo/produto/${id}`;
-}
-
 export function catalogImageUrl(url) {
   if (!url) return "https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=900&q=80";
   return url.startsWith("/uploads") ? `${API_ORIGIN}${url}` : url;

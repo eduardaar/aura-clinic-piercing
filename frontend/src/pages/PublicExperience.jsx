@@ -39,13 +39,14 @@ import {
   splitColorOptions
 } from "../features/catalog/catalogUtils";
 import { variantCatalogLabel } from "../features/shared/helpers";
+import { catalogUrl, publicTenant, publicUrl, replaceCatalogState } from "../lib/publicRoutes";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
 // Leitura resiliente do localStorage do catálogo público (favoritos / itens do pedido).
 function readCatalogStorage(key, fallback = []) {
   try {
-    const raw = localStorage.getItem(key);
+    const raw = localStorage.getItem(`${key}:${publicTenant() || "default"}`) || localStorage.getItem(key);
     if (!raw) return fallback;
     const parsed = JSON.parse(raw);
     return parsed ?? fallback;
@@ -69,20 +70,25 @@ export function PublicCatalog() {
   const selectedProductId = Number((catalogRoute.match(/^\/catalogo\/produto\/(\d+)/) || [])[1] || 0);
 
   useEffect(() => {
-    localStorage.setItem("aura-catalog-favorites", JSON.stringify(favoriteIds));
+    writeCatalogStorage("aura-catalog-favorites", favoriteIds);
   }, [favoriteIds]);
 
   useEffect(() => {
-    localStorage.setItem("aura-catalog-order", JSON.stringify(orderItems));
+    writeCatalogStorage("aura-catalog-order", orderItems);
   }, [orderItems]);
 
   useEffect(() => {
-    const params = new URLSearchParams();
-    if (activeCategory !== "Todos") params.set("category", activeCategory);
-    if (search.trim()) params.set("q", search.trim());
-    Object.entries({ material: filters.material, color: filters.color, stone: filters.stone, size: filters.size, topSize: filters.topSize, available: filters.availability }).forEach(([key, value]) => value && params.set(key, value));
-    if (sort !== "recentes") params.set("sort", sort);
-    window.history.replaceState(null, "", `${window.location.pathname}${params.size ? `?${params}` : ""}`);
+    replaceCatalogState({
+      category: activeCategory !== "Todos" ? activeCategory : "",
+      q: search.trim(),
+      material: filters.material,
+      color: filters.color,
+      stone: filters.stone,
+      size: filters.size,
+      topSize: filters.topSize,
+      available: filters.availability,
+      sort: sort !== "recentes" ? sort : ""
+    });
   }, [activeCategory, search, filters, sort]);
 
   useEffect(() => {
@@ -210,7 +216,7 @@ function addToOrder(item) {
     <main className={`catalog-page theme-${theme.theme || "premium"}`} style={catalogStyle}>
       <section className="catalog-main">
         <header className="catalog-topbar">
-          <a className="catalog-client-brand" href="/catalogo">
+          <a className="catalog-client-brand" href={catalogUrl()}>
             {theme.logo_url && <img src={catalogImageUrl(theme.logo_url)} alt={theme.brand_name || "Aura Clinic"} />}
             <strong>{theme.brand_name || data.brand_name || "Aura Clinic"}</strong>
             <span>{theme.slogan || data.slogan || "Clinic Piercing"}</span>
@@ -453,7 +459,7 @@ function CatalogBookingWidget() {
   }, [form.service_id, form.professional_id, form.appointment_date]);
 
   if (!data || data.error || !services.length) return null;
-  const href = "/agendar?" + new URLSearchParams(Object.fromEntries(Object.entries(form).filter(([, value]) => value))).toString();
+  const href = publicUrl("/agendar", Object.fromEntries(Object.entries(form).filter(([, value]) => value)));
 
   return (
     <section className="catalog-booking-widget" id="catalog-agenda">
@@ -493,7 +499,7 @@ function CatalogContentSections({ sections }) {
             <span className="eyebrow">{section.kicker || "Aura Clinic"}</span>
             <h2>{section.title}</h2>
             <p>{section.text}</p>
-            {section.button_text && section.button_link && <a className="secondary-button" href={section.button_link}>{section.button_text}</a>}
+            {section.button_text && section.button_link && <a className="secondary-button" href={tenantAwareContentUrl(section.button_link)}>{section.button_text}</a>}
           </div>
           {section.media_url && section.media_type === "video" ? (
             <iframe title={section.title} src={section.media_url} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
@@ -630,13 +636,13 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
     <main className="catalog-page theme-detail" style={{ "--catalog-primary": theme.primary_color || "#C8A96A", "--catalog-secondary": theme.secondary_color || "#D8C3A5", "--catalog-bg": theme.background_color || "#F8F5F0", "--catalog-button": theme.button_color || "#C8A96A", fontFamily: theme.body_font || "Inter" }}>
       <section className="catalog-main catalog-product-detail-page">
         <header className="catalog-topbar">
-          <a className="catalog-client-brand" href="/catalogo">
+          <a className="catalog-client-brand" href={catalogUrl()}>
             {theme.logo_url && <img src={catalogImageUrl(theme.logo_url)} alt={theme.brand_name || "Aura Clinic"} />}
             <strong>{theme.brand_name || data.brand_name || "Aura Clinic"}</strong>
             <span>{theme.slogan || data.slogan || "Clinic Piercing"}</span>
           </a>
           <div className="catalog-top-actions">
-            <a className="secondary-button" href="/catalogo">Voltar ao catálogo</a>
+            <a className="secondary-button" href={catalogUrl()}>Voltar ao catálogo</a>
             {Boolean(Number(theme.show_favorites || 1)) && <button className="catalog-icon-action" onClick={onToggleFavorite} aria-label={favorite ? "Remover dos favoritos" : "Favoritar"}><Heart size={18} /></button>}
           </div>
         </header>
@@ -707,7 +713,7 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
           <section className="catalog-related-section">
             <div className="panel-heading">
               <h2>Mais opções parecidas</h2>
-              <a className="secondary-button" href="/catalogo">Ver catálogo</a>
+              <a className="secondary-button" href={catalogUrl()}>Ver catálogo</a>
             </div>
             <div className="catalog-grid catalog-related-grid">
               {related.map((relatedItem) => (
@@ -769,7 +775,7 @@ function CatalogDrawer({ type, favorites, orderItems, orderTotal, whatsappPhone,
         {!isFavorites && (
           <footer>
             <div><span>Total aproximado</span><strong>{currency.format(orderTotal)}</strong></div>
-            <a className="secondary-button" href="/comprar">Finalizar no site</a>
+            <a className="secondary-button" href={publicUrl("/comprar")}>Finalizar no site</a>
             <a className="primary-button whatsapp-checkout" href={whatsappCatalogUrl(message, whatsappPhone)} target="_blank" rel="noreferrer"><MessageCircle size={17} /> Finalizar pelo WhatsApp</a>
             {safeOrderItems.length > 0 && <button className="secondary-button" onClick={onClearOrder}>Limpar pedido</button>}
           </footer>
@@ -809,7 +815,7 @@ export function PublicCheckout() {
       setError("Seu pedido está vazio.");
       return;
     }
-    const response = await fetch(`${API}/sales-orders/public`, {
+    const response = await publicApiFetch("/sales-orders/public", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -836,7 +842,7 @@ export function PublicCheckout() {
       setError(json.error || "Não foi possível concluir a compra.");
       return;
     }
-    localStorage.removeItem("aura-catalog-order");
+    localStorage.removeItem(`aura-catalog-order:${publicTenant() || "default"}`);
     setOrderItems([]);
     setSuccess(json);
   }
@@ -853,8 +859,8 @@ export function PublicCheckout() {
           </div>
           <p>Pedido #{success.id} confirmado para {success.full_name}.</p>
           <div className="checkout-actions">
-            <a className="primary-button" href="/catalogo">Voltar ao catálogo</a>
-            <a className="secondary-button" href="/catalogo">Continuar comprando</a>
+            <a className="primary-button" href={catalogUrl()}>Voltar ao catálogo</a>
+            <a className="secondary-button" href={catalogUrl()}>Continuar comprando</a>
           </div>
         </section>
       </main>
@@ -865,8 +871,8 @@ export function PublicCheckout() {
     <main className="public-checkout-page">
       <section className="booking-shell">
         <header className="booking-public-header">
-          <a className="catalog-client-brand" href="/catalogo"><strong>{data.theme?.brand_name || "Aura Clinic"}</strong><span>Checkout direto</span></a>
-          <a className="secondary-button" href="/catalogo">Voltar ao catálogo</a>
+          <a className="catalog-client-brand" href={catalogUrl()}><strong>{data.theme?.brand_name || "Aura Clinic"}</strong><span>Checkout direto</span></a>
+          <a className="secondary-button" href={catalogUrl()}>Voltar ao catálogo</a>
         </header>
         <div className="checkout-grid">
           <form className="panel appointment-form" onSubmit={submit}>
@@ -1097,7 +1103,7 @@ export function PublicBooking() {
             <strong>{confirmed?.procedure}  {formatLongDate(confirmed?.appointment_date)} às {confirmed?.appointment_time}</strong>
             <p><strong>Sinal:</strong> {currency.format(asNumber(confirmed?.deposit_value || selectedDeposit))} · <strong>Restante:</strong> {currency.format(asNumber(confirmed?.remaining_value || selectedRemaining))}</p>
             {confirmed?.professional_whatsapp_url && <a className="primary-button booking-wide-button" href={confirmed.professional_whatsapp_url} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Enviar comprovante pelo WhatsApp</a>}
-            <a className="primary-button booking-wide-button" href="/catalogo">Voltar Ao Catálogo</a>
+            <a className="primary-button booking-wide-button" href={catalogUrl()}>Voltar Ao Catálogo</a>
           </section>
         )}
       </section>
@@ -1127,18 +1133,26 @@ function whatsappCatalogUrl(message, phone) {
 }
 
 function catalogProductUrl(id) {
-  return `/catalogo/produto/${id}`;
+  return catalogUrl(`/catalogo/produto/${id}`);
+}
+
+function writeCatalogStorage(key, value) {
+  localStorage.setItem(`${key}:${publicTenant() || "default"}`, JSON.stringify(value));
 }
 
 function bookingJewelryUrl(item = {}, variant = {}) {
-  const current = new URLSearchParams(window.location.search);
-  const params = new URLSearchParams();
-  const tenant = current.get("t") || current.get("tenant") || current.get("clinic");
-  if (tenant) params.set("t", tenant);
-  if (item.id) params.set("jewelry_id", item.id);
-  if (variant.id) params.set("jewelry_variant_id", variant.id);
-  if (variant.selected_color) params.set("selected_color", variant.selected_color);
-  return `/agendar?${params.toString()}`;
+  return publicUrl("/agendar", {
+    jewelry_id: item.id,
+    jewelry_variant_id: variant.id,
+    selected_color: variant.selected_color
+  });
+}
+
+function tenantAwareContentUrl(url = "") {
+  const value = String(url).trim();
+  if (value.startsWith("/catalogo")) return catalogUrl(value.split("?")[0]);
+  if (value.startsWith("/agendar") || value.startsWith("/comprar")) return publicUrl(value.split("?")[0]);
+  return value;
 }
 
 function catalogImageUrl(url) {
