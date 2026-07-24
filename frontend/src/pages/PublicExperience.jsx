@@ -996,8 +996,8 @@ export function PublicBooking() {
     <main className="public-booking-page">
       <section className="booking-shell">
         <header className="booking-public-header">
-          <a className="catalog-client-brand" href="/catalogo"><strong>Aura Clinic</strong><span>Piercing</span></a>
-          <a className="secondary-button" href="/catalogo">Ver Catálogo</a>
+          <a className="catalog-client-brand" href={catalogUrl()}><strong>Aura Clinic</strong><span>Piercing</span></a>
+          <a className="secondary-button" href={catalogUrl()}>Ver Catálogo</a>
         </header>
         <div className="booking-hero">
           <span className="eyebrow">Agendamento online</span>
