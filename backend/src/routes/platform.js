@@ -20,7 +20,7 @@ import {
 import { validateBody } from "../middleware/validate.js";
 import { signupSchema, platformLoginSchema, tenantStatusSchema } from "../schemas/index.js";
 import { isProduction } from "../config/index.js";
-import { SUBSCRIPTION_PLANS, normalizePlanCode } from "../services/plans.js";
+import { PLAN_FEATURES, SUBSCRIPTION_PLANS, normalizePlanCode } from "../services/plans.js";
 import { invalidateSubscriptionCache } from "../services/subscriptions.js";
 
 const router = Router();
@@ -135,17 +135,25 @@ router.get("/api/plans", async (_req, res) => {
   res.json({ trial_days: 7, plans: SUBSCRIPTION_PLANS });
 });
 
-// Diretório público de clínicas (para /catalogo sem ?t): lista as clínicas
-// ativas e marcadas como listáveis. Público (sem auth), como /api/plans.
+// Diretório público de clínicas (/catalogo e /agendar sem ?t): lista as
+// clínicas ativas e marcadas como listáveis. Público (sem auth), como /api/plans.
+//
+// `has_booking` é derivado do plano — só quem tem a feature `online_booking`
+// aparece no diretório de agendamento. O cálculo fica aqui, e não no frontend,
+// para não expor o mapa de features por plano numa rota pública.
 router.get("/api/clinics", async (_req, res) => {
   try {
     const result = await query(
-      `SELECT name, slug, store_short_name, city, state, logo_url
+      `SELECT name, slug, store_short_name, city, state, logo_url, plan, created_at
        FROM platform.tenants
        WHERE status = 'ativo' AND listed = true
        ORDER BY name`
     );
-    res.json({ clinics: result.rows });
+    const clinics = result.rows.map(({ plan, ...clinic }) => ({
+      ...clinic,
+      has_booking: (PLAN_FEATURES[normalizePlanCode(plan)] || []).includes("online_booking")
+    }));
+    res.json({ clinics });
   } catch (error) {
     handleServiceError(res, error);
   }

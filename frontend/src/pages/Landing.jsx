@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ChevronRight, Sparkles } from "lucide-react";
+import { CalendarCheck, ChevronRight, Gem, Sparkles } from "lucide-react";
 import { API } from "../lib/api";
 import { asArray } from "../lib/utils";
 import { featureLabel } from "../lib/planFeatures";
@@ -138,8 +138,29 @@ export function Landing() {
               ))}
             </div>
           </div>
+
+          {/* Vitrines públicas da plataforma: quem chega pela landing pode ver as
+              clínicas já usando o sistema antes de decidir criar a própria. */}
+          <div className="au-l-links">
+            <a className="au-l-link-card" href="/catalogo">
+              <span className="au-l-link-icon" aria-hidden="true"><Gem size={20} /></span>
+              <span className="au-l-link-body">
+                <strong>Catálogo online</strong>
+                <span>Veja as clínicas usando e abra a vitrine de joias de cada uma.</span>
+              </span>
+              <ChevronRight size={18} aria-hidden="true" />
+            </a>
+            <a className="au-l-link-card" href="/agendar">
+              <span className="au-l-link-icon" aria-hidden="true"><CalendarCheck size={20} /></span>
+              <span className="au-l-link-body">
+                <strong>Agendamento online</strong>
+                <span>Encontre um estúdio e marque horário direto na agenda dele.</span>
+              </span>
+              <ChevronRight size={18} aria-hidden="true" />
+            </a>
+          </div>
         </section>
-  
+
         <section className="au-l-close">
           <div className="au-l-close-inner">
             <div className="au-l-close-copy">

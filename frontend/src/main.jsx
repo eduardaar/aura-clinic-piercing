@@ -48,6 +48,7 @@ import "./styles.css";
 import "./styles/topnav.css";
 import "./styles/landing.css";
 import "./styles/auth.css";
+import "./styles/directory.css";
 import { Login } from "./components/auth/Login";
 import { Sidebar } from "./components/layout/Sidebar";
 import { Loading, ApiError } from "./components/common/Feedback";
@@ -88,7 +89,8 @@ const Signup = lazy(() => import("./features/platform/Signup").then((m) => ({ de
 const PlatformAdmin = lazy(() => import("./features/platform/PlatformAdmin").then((m) => ({ default: m.PlatformAdmin })));
 const MyPlan = lazy(() => import("./features/platform/MyPlan").then((m) => ({ default: m.MyPlan })));
 const Landing = lazy(() => import("./pages/Landing").then((m) => ({ default: m.Landing })));
-const CatalogDirectory = lazy(() => import("./pages/CatalogDirectory").then((m) => ({ default: m.CatalogDirectory })));
+const CatalogDirectory = lazy(() => import("./pages/PublicDirectory").then((m) => ({ default: m.CatalogDirectory })));
+const BookingDirectory = lazy(() => import("./pages/PublicDirectory").then((m) => ({ default: m.BookingDirectory })));
 const ErrorLogs = lazy(() => import("./features/errors/ErrorLogs").then((m) => ({ default: m.ErrorLogs })));
 
 function App() {
@@ -214,7 +216,15 @@ function App() {
       ? <Suspense fallback={<Loading />}><PublicCatalog /></Suspense>
       : <Suspense fallback={<Loading />}><CatalogDirectory /></Suspense>;
   }
-  if (isPublicBooking) return <Suspense fallback={<Loading />}><PublicBooking /></Suspense>;
+  // /agendar SEM ?t=<slug> → diretório de clínicas com agendamento online;
+  // com ?t → a agenda daquela clínica.
+  if (isPublicBooking) {
+    const params = new URLSearchParams(window.location.search);
+    const hasTenant = ["t", "tenant", "clinic"].some((key) => params.get(key));
+    return hasTenant
+      ? <Suspense fallback={<Loading />}><PublicBooking /></Suspense>
+      : <Suspense fallback={<Loading />}><BookingDirectory /></Suspense>;
+  }
   if (isPublicCheckout) return <Suspense fallback={<Loading />}><PublicCheckout /></Suspense>;
   if (isSignup) return <Suspense fallback={<Loading />}><Signup /></Suspense>;
   if (isPlatform) return <Suspense fallback={<Loading />}><PlatformAdmin /></Suspense>;
