@@ -322,6 +322,19 @@ function App() {
   );
 }
 
+// Bloqueia indexação da tela de acesso restrito antes de qualquer render.
+// Deliberadamente NÃO usamos robots.txt: aquele arquivo é público, então listar
+// o caminho lá teria o efeito contrário — anunciaria a URL a quem procura.
+// O ideal é o header X-Robots-Tag no nginx (vale sem JS); isto aqui é a rede de
+// segurança para quando o header não estiver configurado.
+if (window.location.pathname.startsWith("/plataforma")) {
+  const robots = document.createElement("meta");
+  robots.name = "robots";
+  robots.content = "noindex, nofollow, noarchive, nosnippet";
+  document.head.appendChild(robots);
+  document.title = "Acesso restrito";
+}
+
 installGlobalErrorReporting();
 const auraRoot = window.__auraReactRoot || createRoot(document.getElementById("root"));
 window.__auraReactRoot = auraRoot;

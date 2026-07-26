@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ChevronRight, LogOut } from "lucide-react";
+import { ChevronRight, Eye, EyeOff, LogOut } from "lucide-react";
 import { Button, StatusBadge } from "../../components/common/Ui";
 import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../components/common/Crud";
 import { API } from "../../lib/api";
+import { BrandMark } from "../../components/common/BrandMark";
 import { asArray } from "../../lib/utils";
 
 // Painel do super-admin da plataforma (/plataforma).
@@ -32,6 +33,7 @@ export function PlatformAdmin() {
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const [tenants, setTenants] = useState(null);
   const [metrics, setMetrics] = useState(null);
@@ -236,53 +238,72 @@ export function PlatformAdmin() {
     });
   }
 
-  // Sem sessão de plataforma: formulário de login do super-admin.
+  // Sem sessão: formulário de acesso.
+  //
+  // A tela é deliberadamente muda sobre o que existe atrás dela. Nada de
+  // "super-admin", "plataforma" ou "administração do SaaS": quem cair aqui por
+  // acaso não deve descobrir que achou o painel de controle do sistema. Sem
+  // link para cadastro/login de clínica também — não interligar as telas evita
+  // que uma leve à outra. A proteção real é a senha forte + o limite de 10
+  // tentativas a cada 15 min no backend; o silêncio aqui é só uma camada a mais.
   if (!token) {
     return (
-      <main className="login-screen">
-        <section className="login-panel">
-          <header className="login-brand">
-            <div className="login-monogram" aria-hidden="true">AC</div>
-            <div>
-              <strong>Aura Clinic</strong>
-              <span>Plataforma</span>
-            </div>
-          </header>
+      <main className="au-a-root au-a-restricted">
+        <section className="au-a-panel">
+          <div className="au-a-inner">
+            <header className="au-a-restricted-brand">
+              <BrandMark size={40} title="" />
+            </header>
 
-          <div className="login-copy">
-            <span className="login-kicker">Super-admin</span>
-            <h1>Painel da plataforma</h1>
-            <p>Acesso restrito à administração do SaaS: clínicas, planos e métricas.</p>
+            <h1 className="au-a-title">Acesso restrito</h1>
+
+            <form className="au-a-form" onSubmit={submitLogin}>
+              <div className="au-a-field">
+                <label htmlFor="au-p-email">E-mail</label>
+                <input
+                  id="au-p-email"
+                  className="au-a-input"
+                  type="email"
+                  autoComplete="username"
+                  required
+                  value={loginForm.email}
+                  onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })}
+                  placeholder="seu@email.com"
+                />
+              </div>
+
+              <div className="au-a-field">
+                <label htmlFor="au-p-password">Senha</label>
+                <div className="au-a-pass">
+                  <input
+                    id="au-p-password"
+                    className="au-a-input"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="current-password"
+                    required
+                    value={loginForm.password}
+                    onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })}
+                    placeholder="Digite a senha"
+                  />
+                  <button
+                    type="button"
+                    className="au-a-eye"
+                    onClick={() => setShowPassword((current) => !current)}
+                    aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                    aria-pressed={showPassword}
+                  >
+                    {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                  </button>
+                </div>
+              </div>
+
+              {loginError && <p className="au-a-error" role="alert">{loginError}</p>}
+
+              <button type="submit" className="au-a-submit" disabled={loginLoading}>
+                {loginLoading ? "Entrando…" : "Entrar"} <ChevronRight size={18} aria-hidden="true" />
+              </button>
+            </form>
           </div>
-
-          <form className="login-form" onSubmit={submitLogin}>
-            <label>
-              E-mail
-              <input
-                type="email"
-                autoComplete="username"
-                required
-                value={loginForm.email}
-                onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })}
-                placeholder="admin@plataforma.com"
-              />
-            </label>
-            <label>
-              Senha
-              <input
-                type="password"
-                autoComplete="current-password"
-                required
-                value={loginForm.password}
-                onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })}
-                placeholder="Digite a senha"
-              />
-            </label>
-            {loginError && <span className="form-error">{loginError}</span>}
-            <button className="login-submit" disabled={loginLoading}>
-              {loginLoading ? "Entrando…" : "Entrar na plataforma"} <ChevronRight size={18} />
-            </button>
-          </form>
         </section>
       </main>
     );

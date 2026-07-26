@@ -766,3 +766,36 @@
     transform: none;
   }
 }
+
+/* ---------- Acesso restrito (/plataforma) ---------- */
+
+/* Mesma linguagem visual do login da clínica, em coluna única: sem painel
+   lateral de marketing, sem link para cadastro e sem rodapé. Quanto menos a
+   tela conta sobre si, melhor — ela não deve se anunciar a quem chegou por
+   acaso. */
+.au-a-root.au-a-restricted {
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
+}
+
+.au-a-root.au-a-restricted .au-a-panel {
+  width: 100%;
+  /* Um pouco acima do centro óptico: centralizado exato "afunda" numa tela alta. */
+  padding: 32px 20px 15vh;
+}
+
+.au-a-root.au-a-restricted .au-a-restricted-brand {
+  display: flex;
+  justify-content: center;
+  margin: 0 0 22px;
+}
+
+.au-a-root.au-a-restricted .au-a-title {
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+@media (min-width: 900px) {
+  /* Não vira split em tela grande: a coluna única é o próprio disfarce. */
+  .au-a-root.au-a-restricted { grid-template-columns: minmax(0, 1fr); }
+}
