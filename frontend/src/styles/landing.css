@@ -639,11 +639,10 @@
 
 /* ---------- vitrines públicas (catálogo / agendamento) --------------- */
 
+/* Seção própria, com o mesmo container das outras — dentro do bloco de planos
+   os cards herdavam a largura do scroller e ficavam recuados em relação à
+   grade de planos logo acima. */
 .au-l-root .au-l-links {
-  width: 100%;
-  max-width: var(--au-l-max);
-  margin: 0 auto;
-  padding: 0 var(--au-l-pad);
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--au-l-gap);
@@ -651,10 +650,10 @@
 
 .au-l-root .au-l-link-card {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 14px;
-  padding: 16px 18px;
+  padding: 20px;
   border: 1px solid var(--line, #e7ddce);
   border-radius: var(--au-l-radius);
   background: #fff;
@@ -673,31 +672,21 @@
   outline-offset: 3px;
 }
 
-.au-l-root .au-l-link-icon {
-  width: 44px;
-  height: 44px;
-  display: grid;
-  place-items: center;
-  border-radius: 13px;
-  background: rgba(201, 168, 106, .14);
-  color: var(--gold-dark, #A87A34);
-}
-
 .au-l-root .au-l-link-body {
   display: grid;
-  gap: 3px;
+  gap: 5px;
   min-width: 0;
 }
 
 .au-l-root .au-l-link-body strong {
   font-family: var(--title-font);
-  font-size: 16.5px;
+  font-size: 17.5px;
   font-weight: 600;
 }
 
 .au-l-root .au-l-link-body span {
   color: var(--au-l-body);
-  font-size: 14px;
+  font-size: 14.5px;
   line-height: 1.45;
 }
 

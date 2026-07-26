@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { CalendarCheck, Gem, MapPin, Search, SlidersHorizontal, X } from "lucide-react";
+import { MapPin, Search, SlidersHorizontal, X } from "lucide-react";
 import { API, API_ORIGIN } from "../lib/api";
 import { asArray, initials, removeAccents } from "../lib/utils";
 import { PublicTopNav } from "../components/layout/PublicTopNav";
@@ -14,7 +14,6 @@ function logoUrl(url) {
 const MODES = {
   catalog: {
     kicker: "Catálogos de piercing",
-    icon: Gem,
     title: "Encontre um estúdio e veja o catálogo",
     subtitle: "Busque por nome ou cidade e abra a vitrine de joias da clínica.",
     cta: "Ver catálogo",
@@ -23,7 +22,6 @@ const MODES = {
   },
   booking: {
     kicker: "Agendamento online",
-    icon: CalendarCheck,
     title: "Encontre um estúdio e agende seu horário",
     subtitle: "Busque por nome ou cidade e marque direto na agenda da clínica.",
     cta: "Agendar horário",
@@ -43,7 +41,6 @@ function clinicLabel(clinic) {
 
 export function PublicDirectory({ mode = "catalog" }) {
   const config = MODES[mode] || MODES.catalog;
-  const Icon = config.icon;
 
   const [clinics, setClinics] = useState(null);
   const [query, setQuery] = useState("");
@@ -115,7 +112,7 @@ export function PublicDirectory({ mode = "catalog" }) {
 
       <main className="au-dir">
         <section className="au-dir-head">
-          <span className="au-dir-kicker"><Icon size={14} aria-hidden="true" /> {config.kicker}</span>
+          <span className="au-dir-kicker">{config.kicker}</span>
           <h1>{config.title}</h1>
           <p>{config.subtitle}</p>
         </section>
@@ -234,7 +231,7 @@ export function PublicDirectory({ mode = "catalog" }) {
                       <strong>{clinicLabel(clinic)}</strong>
                       {place && <span className="au-dir-card-place"><MapPin size={13} aria-hidden="true" /> {place}</span>}
                       {mode === "catalog" && clinic.has_booking && (
-                        <span className="au-dir-card-tag"><CalendarCheck size={12} aria-hidden="true" /> Agenda online</span>
+                        <span className="au-dir-card-tag">Agenda online</span>
                       )}
                     </span>
                     <span className="au-dir-card-cta">{config.cta}</span>

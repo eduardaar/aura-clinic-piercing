@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { CalendarCheck, ChevronRight, Gem, Sparkles } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { API } from "../lib/api";
 import { asArray } from "../lib/utils";
 import { featureLabel } from "../lib/planFeatures";
@@ -65,7 +65,7 @@ export function Landing() {
         <section className="au-l-hero">
           <div className="au-l-hero-inner">
             <div className="au-l-hero-copy">
-              <span className="au-l-kicker"><Sparkles size={14} aria-hidden="true" /> Para estúdios de piercing</span>
+              <span className="au-l-kicker">Para estúdios de piercing</span>
               <h1>Gestão premium para quem vive da perfuração.</h1>
               <p>Agenda, catálogo de joias, ficha digital e financeiro — num sistema só.</p>
               <div className="au-l-hero-actions">
@@ -87,7 +87,6 @@ export function Landing() {
                 decoding="async"
               />
               <figcaption className="au-l-hero-strip">
-                <Sparkles size={14} aria-hidden="true" />
                 Agenda, catálogo e ficha digital num link só seu
               </figcaption>
             </figure>
@@ -139,11 +138,19 @@ export function Landing() {
             </div>
           </div>
 
-          {/* Vitrines públicas da plataforma: quem chega pela landing pode ver as
-              clínicas já usando o sistema antes de decidir criar a própria. */}
+        </section>
+
+        {/* Vitrines públicas da plataforma: quem chega pela landing pode ver as
+            clínicas já usando o sistema antes de decidir criar a própria.
+            Seção própria — dentro do bloco de planos os cards não alinhavam
+            com a grade e ficavam espremidos contra ela. */}
+        <section className="au-l-sec au-l-sec-links">
+          <div className="au-l-sec-head">
+            <h2>Veja quem já usa</h2>
+            <p>Explore as vitrines públicas das clínicas na plataforma.</p>
+          </div>
           <div className="au-l-links">
             <a className="au-l-link-card" href="/catalogo">
-              <span className="au-l-link-icon" aria-hidden="true"><Gem size={20} /></span>
               <span className="au-l-link-body">
                 <strong>Catálogo online</strong>
                 <span>Veja as clínicas usando e abra a vitrine de joias de cada uma.</span>
@@ -151,7 +158,6 @@ export function Landing() {
               <ChevronRight size={18} aria-hidden="true" />
             </a>
             <a className="au-l-link-card" href="/agendar">
-              <span className="au-l-link-icon" aria-hidden="true"><CalendarCheck size={20} /></span>
               <span className="au-l-link-body">
                 <strong>Agendamento online</strong>
                 <span>Encontre um estúdio e marque horário direto na agenda dele.</span>
