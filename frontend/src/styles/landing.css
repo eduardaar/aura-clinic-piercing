@@ -138,56 +138,6 @@
   outline-offset: 3px;
 }
 
-/* ---------- navbar --------------------------------------------------- */
-
-.au-l-root .au-l-nav {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  width: 100%;
-  background: rgba(252, 251, 248, .92);
-  background: color-mix(in srgb, var(--paper, #FCFBF8) 88%, transparent);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid rgba(231, 221, 206, .8);
-  border-bottom-color: color-mix(in srgb, var(--line, #e7ddce) 70%, transparent);
-}
-
-.au-l-root .au-l-nav-inner {
-  width: 100%;
-  max-width: var(--au-l-max);
-  margin: 0 auto;
-  padding: 10px var(--au-l-pad);
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
-
-.au-l-root .au-l-nav-links {
-  display: none;                 /* mobile: só marca + CTA */
-  margin-left: auto;
-  align-items: center;
-  gap: 26px;
-  min-width: 0;
-}
-
-.au-l-root .au-l-nav-link,
-.au-l-root .au-l-nav-login {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  font-size: 15px;
-  color: var(--au-l-body);
-  white-space: nowrap;
-}
-
-.au-l-root .au-l-nav-login { font-weight: 600; color: var(--ink, #1A1A1A); }
-
-.au-l-root .au-l-nav-link:hover,
-.au-l-root .au-l-nav-login:hover { color: var(--gold-dark, #A87A34); }
-
-.au-l-root .au-l-nav .au-l-btn { margin-left: auto; }
-
 /* ---------- hero ----------------------------------------------------- */
 
 .au-l-root .au-l-hero {
@@ -581,8 +531,6 @@
     --au-l-gap: 18px;
   }
 
-  .au-l-root .au-l-nav-links { display: flex; }
-  .au-l-root .au-l-nav .au-l-nav-links + .au-l-btn { margin-left: 22px; }
 
   .au-l-root .au-l-hero-inner { padding: 48px var(--au-l-pad) 56px; }
   .au-l-root .au-l-hero-actions .au-l-btn { flex: 0 0 auto; }

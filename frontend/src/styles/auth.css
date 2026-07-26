@@ -50,30 +50,6 @@
   min-width: 0;
 }
 
-/* ---------- Marca ---------- */
-
-.au-a-root .au-a-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0 0 26px;
-}
-
-.au-a-root .au-a-mark {
-  width: 40px;
-  height: 40px;
-  flex: 0 0 auto;
-  display: block;
-}
-
-.au-a-root .au-a-brand-name {
-  font-family: var(--title-font);
-  font-size: 17px;
-  font-weight: 600;
-  letter-spacing: .01em;
-  color: var(--ink);
-}
-
 /* ---------- Títulos ---------- */
 
 .au-a-root .au-a-title {

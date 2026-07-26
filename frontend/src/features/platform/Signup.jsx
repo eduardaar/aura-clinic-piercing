@@ -3,7 +3,7 @@ import { ArrowLeft, Check, CheckCircle2, ChevronRight } from "lucide-react";
 import { API, setTenantSlug } from "../../lib/api";
 import { asArray } from "../../lib/utils";
 import { featureLabel } from "../../lib/planFeatures";
-import { BrandMark } from "../../components/common/BrandMark";
+import { PublicTopNav } from "../../components/layout/PublicTopNav";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -119,14 +119,12 @@ export function Signup() {
 
   if (createdTenant) {
     return (
-      <main className="au-a-root au-a-signup">
+      <div className="au-shell">
+        <PublicTopNav current="signup" />
+
+        <main className="au-a-root au-a-signup">
         <section className="au-a-panel">
           <div className="au-a-inner">
-            <header className="au-a-brand">
-              <BrandMark className="au-a-mark" size={40} />
-              <span className="au-a-brand-name">Aura Clinic</span>
-            </header>
-
             <span className="au-a-success-icon" aria-hidden="true"><CheckCircle2 size={26} /></span>
             <h1 className="au-a-title">{createdTenant.name} está pronta.</h1>
             <p className="au-a-subtitle">Seu teste grátis de 7 dias começou. Use o código abaixo para acessar sua loja.</p>
@@ -137,20 +135,19 @@ export function Signup() {
               Ir para o login <ChevronRight size={18} aria-hidden="true" />
             </button>
           </div>
-        </section>
-      </main>
+          </section>
+        </main>
+      </div>
     );
   }
 
   return (
-    <main className={`au-a-root au-a-signup${step === 2 ? " is-wide" : ""}`}>
+    <div className="au-shell">
+      <PublicTopNav current="signup" />
+
+      <main className={`au-a-root au-a-signup${step === 2 ? " is-wide" : ""}`}>
       <section className="au-a-panel">
         <div className="au-a-inner">
-          <header className="au-a-brand">
-            <BrandMark className="au-a-mark" size={40} />
-            <span className="au-a-brand-name">Aura Clinic</span>
-          </header>
-
           <nav className="au-a-steps" aria-label="Etapas do cadastro">
             {STEP_LABELS.map((label, index) => {
               const number = index + 1;
@@ -303,7 +300,8 @@ export function Signup() {
 
           <p className="au-a-alt">Já tem uma loja? <a href="/login">Fazer login</a></p>
         </div>
-      </section>
-    </main>
+        </section>
+      </main>
+    </div>
   );
 }

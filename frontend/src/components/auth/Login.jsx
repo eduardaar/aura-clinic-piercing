@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { ChevronRight, Eye, EyeOff } from "lucide-react";
 import { apiFetch, setTenantSlug, tenantSlug } from "../../lib/api";
-import { BrandMark } from "../common/BrandMark";
+import { PublicTopNav } from "../layout/PublicTopNav";
 
 export function Login({ onLogin }) {
   const [form, setForm] = useState({
@@ -58,94 +58,94 @@ export function Login({ onLogin }) {
   }
 
   return (
-    <main className="au-a-root au-a-login">
-      <section className="au-a-panel">
-        <div className="au-a-inner">
-          <header className="au-a-brand">
-            <BrandMark className="au-a-mark" size={40} />
-            <span className="au-a-brand-name">Aura Clinic</span>
-          </header>
+    <div className="au-shell">
+      <PublicTopNav current="login" />
 
-          <h1 className="au-a-title">Entrar na sua conta</h1>
+      <main className="au-a-root au-a-login">
+        <section className="au-a-panel">
+          <div className="au-a-inner">
+            {/* A marca vive no menu de topo agora — repeti-la aqui seria duplicata. */}
+            <h1 className="au-a-title">Entrar na sua conta</h1>
 
-          <form className="au-a-form" onSubmit={submit}>
-            <div className="au-a-field">
-              <label htmlFor="au-a-slug">Código da clínica</label>
-              <input
-                id="au-a-slug"
-                className="au-a-input"
-                type="text"
-                autoComplete="organization"
-                required
-                value={form.slug}
-                onChange={(event) => setForm({ ...form, slug: event.target.value.toLowerCase() })}
-                placeholder="ex.: aura"
-              />
-            </div>
-
-            <div className="au-a-field">
-              <label htmlFor="au-a-email">E-mail</label>
-              <input
-                id="au-a-email"
-                className="au-a-input"
-                type="email"
-                autoComplete="username"
-                required
-                value={form.email}
-                onChange={(event) => setForm({ ...form, email: event.target.value })}
-                placeholder="seu@email.com"
-              />
-            </div>
-
-            <div className="au-a-field">
-              <label htmlFor="au-a-password">Senha</label>
-              <div className="au-a-pass">
+            <form className="au-a-form" onSubmit={submit}>
+              <div className="au-a-field">
+                <label htmlFor="au-a-slug">Código da clínica</label>
                 <input
-                  id="au-a-password"
+                  id="au-a-slug"
                   className="au-a-input"
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="current-password"
+                  type="text"
+                  autoComplete="organization"
                   required
-                  value={form.password}
-                  onChange={(event) => setForm({ ...form, password: event.target.value })}
-                  placeholder="Digite a senha"
+                  value={form.slug}
+                  onChange={(event) => setForm({ ...form, slug: event.target.value.toLowerCase() })}
+                  placeholder="ex.: aura"
                 />
-                <button
-                  type="button"
-                  className="au-a-eye"
-                  onClick={() => setShowPassword((current) => !current)}
-                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
-                  aria-pressed={showPassword}
-                >
-                  {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
-                </button>
               </div>
-            </div>
 
-            <label className="au-a-check">
-              <input type="checkbox" checked={rememberAccess} onChange={(event) => setRememberAccess(event.target.checked)} />
-              <span>Manter conectado</span>
-            </label>
+              <div className="au-a-field">
+                <label htmlFor="au-a-email">E-mail</label>
+                <input
+                  id="au-a-email"
+                  className="au-a-input"
+                  type="email"
+                  autoComplete="username"
+                  required
+                  value={form.email}
+                  onChange={(event) => setForm({ ...form, email: event.target.value })}
+                  placeholder="seu@email.com"
+                />
+              </div>
 
-            {error && <p className="au-a-error" role="alert">{error}</p>}
+              <div className="au-a-field">
+                <label htmlFor="au-a-password">Senha</label>
+                <div className="au-a-pass">
+                  <input
+                    id="au-a-password"
+                    className="au-a-input"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="current-password"
+                    required
+                    value={form.password}
+                    onChange={(event) => setForm({ ...form, password: event.target.value })}
+                    placeholder="Digite a senha"
+                  />
+                  <button
+                    type="button"
+                    className="au-a-eye"
+                    onClick={() => setShowPassword((current) => !current)}
+                    aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                    aria-pressed={showPassword}
+                  >
+                    {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                  </button>
+                </div>
+              </div>
 
-            <button className="au-a-submit" disabled={loading}>
-              {loading ? "Entrando…" : "Entrar"} <ChevronRight size={18} aria-hidden="true" />
-            </button>
-          </form>
+              <label className="au-a-check">
+                <input type="checkbox" checked={rememberAccess} onChange={(event) => setRememberAccess(event.target.checked)} />
+                <span>Manter conectado</span>
+              </label>
 
-          <p className="au-a-alt">
-            Ainda não tem uma clínica? <a href="/cadastro">Criar minha clínica</a>
-          </p>
+              {error && <p className="au-a-error" role="alert">{error}</p>}
 
-          <p className="au-a-legal">Aura Clinic® · Sistema proprietário</p>
-        </div>
-      </section>
+              <button className="au-a-submit" disabled={loading}>
+                {loading ? "Entrando…" : "Entrar"} <ChevronRight size={18} aria-hidden="true" />
+              </button>
+            </form>
 
-      <aside className="au-a-aside" aria-hidden="true">
-        <span className="au-a-aside-rule" />
-        <p className="au-a-aside-quote">Gestão inteligente para quem vive da perfuração.</p>
-      </aside>
-    </main>
+            <p className="au-a-alt">
+              Ainda não tem uma clínica? <a href="/cadastro">Criar minha clínica</a>
+            </p>
+
+            <p className="au-a-legal">Aura Clinic® · Sistema proprietário</p>
+          </div>
+        </section>
+
+        <aside className="au-a-aside" aria-hidden="true">
+          <span className="au-a-aside-rule" />
+          <p className="au-a-aside-quote">Gestão inteligente para quem vive da perfuração.</p>
+        </aside>
+      </main>
+    </div>
   );
 }
