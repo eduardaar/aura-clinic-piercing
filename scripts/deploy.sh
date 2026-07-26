@@ -82,7 +82,10 @@ docker tag aura-api:latest aura-api:rollback 2>/dev/null || true
 
 # Rebuild + restart. As migrations idempotentes rodam no boot do container.
 docker compose build aura-api
-docker compose up -d aura-api
+# `redis` explícito: guarda os contadores do loginGuard e precisa estar de pé
+# antes da API. Sem ele a API sobe do mesmo jeito (cai para contadores em
+# memória), mas a proteção fica mais fraca.
+docker compose up -d redis aura-api
 docker image prune -f >/dev/null 2>&1 || true
 
 docker ps --filter name=aura-api --format 'aura-api: {{.Status}}'

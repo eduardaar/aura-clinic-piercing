@@ -80,3 +80,16 @@ ON CONFLICT (code) DO UPDATE SET
   trial_days = excluded.trial_days,
   features = excluded.features,
   is_recommended = excluded.is_recommended;
+
+-- IPs banidos permanentemente do login de plataforma. O ban só sai daqui por
+-- remoção manual, de propósito: é a válvula de escape consciente.
+--   Desbloquear:  DELETE FROM platform.blocked_ips WHERE ip = '203.0.113.9';
+--   Listar:       SELECT ip, strikes, blocked_at, reason FROM platform.blocked_ips ORDER BY blocked_at DESC;
+CREATE TABLE IF NOT EXISTS platform.blocked_ips (
+  ip TEXT PRIMARY KEY,
+  reason TEXT,
+  strikes INTEGER NOT NULL DEFAULT 0,
+  user_agent TEXT,
+  last_email TEXT,
+  blocked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

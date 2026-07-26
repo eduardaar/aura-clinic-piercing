@@ -164,3 +164,53 @@ frontend/src/
 - **RBAC no frontend**: a navegação e a página inicial por papel vêm de `frontend/src/lib/permissions.js` (`canAccessPage`, `defaultPageForRole`).
 - **Cliente de API**: use `apiFetch`/`useFetch` de `frontend/src/lib/api.js` (injetam `X-Tenant` e `Authorization` automaticamente); não faça `fetch` cru para a API.
 - **Segurança em produção**: `NODE_ENV=production`, `AUTH_SECRET` forte, `PLATFORM_ADMIN_*` definidos, `CORS_ORIGIN` restrito, HTTPS via proxy reverso, e trocar a senha padrão do admin da clínica migrada. Rode `test-isolation.mjs` como sanidade.
+
+## Bloqueio de IP no login de plataforma
+
+O login de `/plataforma` tem, além do rate limit por janela, uma escalada de bloqueio
+por IP (`backend/src/services/loginGuard.js`):
+
+| evento | efeito |
+| --- | --- |
+| 5 falhas em 15 min | IP bloqueado por 15 min (`429`, com `Retry-After`) |
+| 2º bloqueio (novo ciclo de 5 falhas) | IP **banido permanentemente** (`403`) |
+| login correto | zera a contagem daquele IP |
+
+Os *strikes* expiram em 24 h de bom comportamento — dois erros com meses de
+distância não banem ninguém.
+
+**Contadores** ficam no Redis (`REDIS_URL`), sem persistência: são efêmeros de
+propósito. **Bans permanentes** ficam no Postgres, em `platform.blocked_ips`.
+Sem `REDIS_URL`, o guard cai para contadores em memória do processo — mais fraco
+(não é compartilhado entre réplicas e zera no restart), mas o login continua
+funcionando. Falhar fechado derrubaria o acesso ao painel junto com o Redis.
+
+### Desbloquear um IP
+
+O ban só sai por remoção manual — é a válvula de escape consciente:
+
+```sql
+-- listar
+SELECT ip, strikes, blocked_at, reason, last_email FROM platform.blocked_ips ORDER BY blocked_at DESC;
+
+-- desbloquear
+DELETE FROM platform.blocked_ips WHERE ip = '203.0.113.9';
+```
+
+Em produção (container):
+
+```bash
+docker exec monitence-postgres psql -U aura -d aura_clinic \
+  -c "DELETE FROM platform.blocked_ips WHERE ip = '203.0.113.9';"
+```
+
+Para limpar também o bloqueio temporário de 15 min do mesmo IP:
+
+```bash
+docker exec aura-redis redis-cli DEL "plat:block:203.0.113.9" "plat:fail:203.0.113.9" "plat:strike:203.0.113.9"
+```
+
+> **Atenção:** o IP considerado é o do cliente real (`CF-Connecting-IP` atrás do
+> Cloudflare). Se o seu acesso sair de um IP compartilhado (NAT corporativo,
+> operadora móvel), o ban atinge todo mundo que compartilha aquele IP — inclusive
+> você. Por isso o desbloqueio exige acesso ao banco, não à interface.

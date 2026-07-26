@@ -7,6 +7,8 @@
 // dedicado com SET search_path + reset.
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
+import { clientIp } from "../middleware/rateLimit.js";
+import { checkAccess, registerFailure, registerSuccess } from "../services/loginGuard.js";
 import bcrypt from "bcryptjs";
 import { pool, query } from "../database/connection.js";
 import { createPlatformToken, verifyPlatformToken, createToken } from "../middleware/auth.js";
@@ -110,8 +112,18 @@ router.post("/api/signup", signupLimiter, async (req, res) => {
 });
 
 // ---------- Login do super-admin ----------
+// Além do rate limit por janela, passa pelo loginGuard: 5 falhas bloqueiam o IP
+// por 15 min; dois bloqueios viram ban permanente em platform.blocked_ips, que
+// só sai por remoção manual (ver backend/src/services/loginGuard.js).
 router.post("/api/platform/login", platformLoginLimiter, async (req, res) => {
+  const ip = clientIp(req);
   try {
+    const access = await checkAccess(ip);
+    if (!access.allowed) {
+      if (access.retryAfterSeconds) res.set("Retry-After", String(access.retryAfterSeconds));
+      return res.status(access.status).json({ error: access.error });
+    }
+
     if (!validateBody(platformLoginSchema, req, res)) return;
     const { email, password } = req.body;
     const result = await query(
@@ -120,8 +132,12 @@ router.post("/api/platform/login", platformLoginLimiter, async (req, res) => {
     );
     const user = result.rows[0];
     if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+      // Conta a falha DEPOIS de responder o mesmo erro genérico de sempre — a
+      // resposta não muda conforme o IP se aproxima do bloqueio.
+      await registerFailure(ip, { userAgent: req.headers["user-agent"], email });
       return res.status(401).json({ error: "Credenciais inválidas." });
     }
+    await registerSuccess(ip);
     res.json({
       token: createPlatformToken(user),
       user: { id: user.id, name: user.name, email: user.email, role: user.role }
