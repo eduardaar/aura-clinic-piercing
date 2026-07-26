@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { AlertTriangle, Calendar, ChevronRight, Plus, UserRound, WalletCards } from "lucide-react";
+import { ChevronRight, Eye, EyeOff } from "lucide-react";
 import { apiFetch, setTenantSlug, tenantSlug } from "../../lib/api";
 
 export function Login({ onLogin }) {
@@ -11,6 +11,7 @@ export function Login({ onLogin }) {
     password: "",
   });
   const [rememberAccess, setRememberAccess] = useState(Boolean(localStorage.getItem("aura-admin-authenticated")));
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -56,83 +57,94 @@ export function Login({ onLogin }) {
   }
 
   return (
-    <main className="login-screen">
-      <section className="login-panel">
-        <header className="login-brand">
-          <div className="login-monogram" aria-hidden="true">AC</div>
-          <div>
-            <strong>Aura Clinic</strong>
-            <span>Gestão Premium</span>
-          </div>
-        </header>
+    <main className="au-a-root au-a-login">
+      <section className="au-a-panel">
+        <div className="au-a-inner">
+          <header className="au-a-brand">
+            <span className="au-a-mono" aria-hidden="true">AC</span>
+            <span className="au-a-brand-name">Aura Clinic</span>
+          </header>
 
-        <div className="login-copy">
-          <span className="login-kicker">Central Administrativa</span>
-          <h1>Acesse sua central administrativa</h1>
-          <p>Controle estoque, agenda, clientes, biossegurança e financeiro em um único lugar.</p>
+          <h1 className="au-a-title">Entrar na sua conta</h1>
+
+          <form className="au-a-form" onSubmit={submit}>
+            <div className="au-a-field">
+              <label htmlFor="au-a-slug">Código da clínica</label>
+              <input
+                id="au-a-slug"
+                className="au-a-input"
+                type="text"
+                autoComplete="organization"
+                required
+                value={form.slug}
+                onChange={(event) => setForm({ ...form, slug: event.target.value.toLowerCase() })}
+                placeholder="ex.: aura"
+              />
+            </div>
+
+            <div className="au-a-field">
+              <label htmlFor="au-a-email">E-mail</label>
+              <input
+                id="au-a-email"
+                className="au-a-input"
+                type="email"
+                autoComplete="username"
+                required
+                value={form.email}
+                onChange={(event) => setForm({ ...form, email: event.target.value })}
+                placeholder="seu@email.com"
+              />
+            </div>
+
+            <div className="au-a-field">
+              <label htmlFor="au-a-password">Senha</label>
+              <div className="au-a-pass">
+                <input
+                  id="au-a-password"
+                  className="au-a-input"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  required
+                  value={form.password}
+                  onChange={(event) => setForm({ ...form, password: event.target.value })}
+                  placeholder="Digite a senha"
+                />
+                <button
+                  type="button"
+                  className="au-a-eye"
+                  onClick={() => setShowPassword((current) => !current)}
+                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                  aria-pressed={showPassword}
+                >
+                  {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                </button>
+              </div>
+            </div>
+
+            <label className="au-a-check">
+              <input type="checkbox" checked={rememberAccess} onChange={(event) => setRememberAccess(event.target.checked)} />
+              <span>Manter conectado</span>
+            </label>
+
+            {error && <p className="au-a-error" role="alert">{error}</p>}
+
+            <button className="au-a-submit" disabled={loading}>
+              {loading ? "Entrando…" : "Entrar"} <ChevronRight size={18} aria-hidden="true" />
+            </button>
+          </form>
+
+          <p className="au-a-alt">
+            Ainda não tem uma clínica? <a href="/cadastro">Criar minha clínica</a>
+          </p>
+
+          <p className="au-a-legal">Aura Clinic® · Sistema proprietário</p>
         </div>
-
-        <form className="login-form" onSubmit={submit}>
-          <label>
-            Código da clínica
-            <input
-              type="text"
-              autoComplete="organization"
-              required
-              value={form.slug}
-              onChange={(event) => setForm({ ...form, slug: event.target.value.toLowerCase() })}
-              placeholder="ex.: aura"
-            />
-          </label>
-          <label>
-            E-mail
-            <input type="email" autoComplete="username" required value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="seu@email.com" />
-          </label>
-          <label>
-            Senha da Central Administrativa
-            <input type="password" autoComplete="current-password" required value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder="Digite a senha" />
-          </label>
-          <label className="remember-access">
-            <input type="checkbox" checked={rememberAccess} onChange={(event) => setRememberAccess(event.target.checked)} />
-            <span>Manter conectado</span>
-          </label>
-          {error && <span className="form-error">{error}</span>}
-          <button className="login-submit" disabled={loading}>{loading ? "Entrando…" : "Entrar no sistema"} <ChevronRight size={18} /></button>
-          <div className="login-signup-cta">
-            <span>Ainda não tem uma clínica cadastrada?</span>
-            <a className="login-signup-button" href="/cadastro">
-              <Plus size={18} /> Criar minha clínica
-            </a>
-          </div>
-        </form>
-
-        <footer className="login-footer">
-          <strong>Sistema proprietário Aura Clinic®</strong>
-          <span>Desenvolvido por Eduarda Santos</span>
-        </footer>
       </section>
 
-      <section className="login-visual" aria-label="Aura Clinic">
-        <div className="login-visual-content">
-          <div className="gold-line" />
-          <span className="login-visual-kicker">Aura Clinic Piercing</span>
-          <h2>Gestão inteligente para quem vive da perfuração.</h2>
-          <p>Desenvolvido por body piercer para body piercers.</p>
-
-          <div className="login-metrics" aria-label="Indicadores Aura Clinic">
-            <div><strong>+3500</strong><span>Perfurações registradas</span></div>
-            <div><strong>+1200</strong><span>Joias cadastradas</span></div>
-            <div><strong>+800</strong><span>Clientes atendidos</span></div>
-          </div>
-        </div>
-
-        <div className="login-floating-cards" aria-hidden="true">
-          <article><Calendar size={18} /><span>Agenda do Dia</span><strong>08 atendimentos</strong></article>
-          <article><AlertTriangle size={18} /><span>Estoque Crítico</span><strong>03 peças</strong></article>
-          <article><UserRound size={18} /><span>Último Atendimento</span><strong>Hélix · 16:30</strong></article>
-          <article><WalletCards size={18} /><span>Financeiro do Mês</span><strong>R$ 18.420</strong></article>
-        </div>
-      </section>
+      <aside className="au-a-aside" aria-hidden="true">
+        <span className="au-a-aside-rule" />
+        <p className="au-a-aside-quote">Gestão inteligente para quem vive da perfuração.</p>
+      </aside>
     </main>
   );
 }

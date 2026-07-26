@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, ChevronRight, Sparkles } from "lucide-react";
+import { ArrowLeft, Check, CheckCircle2, ChevronRight } from "lucide-react";
 import { API, setTenantSlug } from "../../lib/api";
 import { asArray } from "../../lib/utils";
+import { featureLabel } from "../../lib/planFeatures";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -27,31 +28,7 @@ const fallbackPlans = [
   { code: "premium", name: "Pacote Premium", price_cents: 14990, audience: "Operações completas", features: ["advanced_catalog", "campaigns", "advanced_finance", "priority_support"] }
 ];
 
-const featureLabels = {
-  clients: "Clientes",
-  agenda: "Agenda",
-  procedures: "Procedimentos",
-  manual_reminders: "Lembretes manuais",
-  basic_inventory: "Estoque simples",
-  basic_catalog: "Catálogo simples",
-  whatsapp_link: "Link WhatsApp",
-  basic_reports: "Relatórios básicos",
-  online_booking: "Agendamento online",
-  anamnesis: "Anamnese digital",
-  digital_terms: "Termo digital",
-  basic_finance: "Financeiro básico",
-  stock_alerts: "Alertas de estoque",
-  automatic_followup: "Pós-atendimento automático",
-  public_catalog_customization: "Catálogo personalizado",
-  multi_user: "Multiusuários",
-  commissions: "Comissões",
-  monthly_reports: "Relatórios mensais",
-  coupons: "Cupons",
-  advanced_catalog: "Catálogo avançado",
-  campaigns: "Campanhas",
-  advanced_finance: "Financeiro avançado",
-  priority_support: "Suporte prioritário"
-};
+const STEP_LABELS = ["Sua clínica", "Plano"];
 
 export function Signup() {
   const [step, setStep] = useState(1);
@@ -141,78 +118,190 @@ export function Signup() {
 
   if (createdTenant) {
     return (
-      <main className="login-screen signup-screen">
-        <section className="login-panel signup-panel">
-          <header className="login-brand">
-            <div className="login-monogram" aria-hidden="true">AC</div>
-            <div><strong>Aura</strong><span>Plataforma para studios</span></div>
-          </header>
-          <div className="login-copy">
-            <span className="login-kicker"><CheckCircle2 size={14} /> Teste grátis iniciado</span>
-            <h1>{createdTenant.name} está pronta.</h1>
-            <p>Seu período gratuito de 7 dias começou. Use o código abaixo no login para acessar sua loja.</p>
-            <p><strong>Código da loja: {createdTenant.slug}</strong></p>
+      <main className="au-a-root au-a-signup">
+        <section className="au-a-panel">
+          <div className="au-a-inner">
+            <header className="au-a-brand">
+              <span className="au-a-mono" aria-hidden="true">AC</span>
+              <span className="au-a-brand-name">Aura Clinic</span>
+            </header>
+
+            <span className="au-a-success-icon" aria-hidden="true"><CheckCircle2 size={26} /></span>
+            <h1 className="au-a-title">{createdTenant.name} está pronta.</h1>
+            <p className="au-a-subtitle">Seu teste grátis de 7 dias começou. Use o código abaixo para acessar sua loja.</p>
+
+            <p className="au-a-code">Código da loja: <strong>{createdTenant.slug}</strong></p>
+
+            <button type="button" className="au-a-submit" onClick={goToLogin}>
+              Ir para o login <ChevronRight size={18} aria-hidden="true" />
+            </button>
           </div>
-          <button type="button" className="login-submit" onClick={goToLogin}>Ir para o login <ChevronRight size={18} /></button>
         </section>
       </main>
     );
   }
 
   return (
-    <main className="login-screen signup-screen">
-      <section className="login-panel signup-panel">
-        <header className="login-brand">
-          <div className="login-monogram" aria-hidden="true">AC</div>
-          <div><strong>Aura</strong><span>Teste grátis por 7 dias</span></div>
-        </header>
-        <div className="signup-steps">
-          {["Sua clínica", "Plano"].map((label, index) => (
-            <button key={label} type="button" className={step === index + 1 ? "active" : step > index + 1 ? "done" : ""} onClick={() => step > index + 1 && setStep(index + 1)}>
-              {index + 1}. {label}
-            </button>
-          ))}
+    <main className={`au-a-root au-a-signup${step === 2 ? " is-wide" : ""}`}>
+      <section className="au-a-panel">
+        <div className="au-a-inner">
+          <header className="au-a-brand">
+            <span className="au-a-mono" aria-hidden="true">AC</span>
+            <span className="au-a-brand-name">Aura Clinic</span>
+          </header>
+
+          <nav className="au-a-steps" aria-label="Etapas do cadastro">
+            {STEP_LABELS.map((label, index) => {
+              const number = index + 1;
+              const state = step === number ? "is-active" : step > number ? "is-done" : "";
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  className={`au-a-step ${state}`.trim()}
+                  aria-current={step === number ? "step" : undefined}
+                  onClick={() => step > number && setStep(number)}
+                >
+                  {number}. {label}
+                </button>
+              );
+            })}
+          </nav>
+
+          <form className="au-a-form" onSubmit={submit}>
+            {step === 1 && (
+              <>
+                <div className="au-a-head">
+                  <h1 className="au-a-title">Crie sua clínica</h1>
+                  <p className="au-a-subtitle">Teste grátis por 7 dias. Só o essencial — o resto você ajusta depois.</p>
+                </div>
+
+                <div className="au-a-field">
+                  <label htmlFor="au-a-name">Nome da clínica ou studio</label>
+                  <input
+                    id="au-a-name"
+                    className="au-a-input"
+                    required
+                    autoFocus
+                    value={form.name}
+                    onChange={(event) => setForm({ ...form, name: event.target.value })}
+                    placeholder="ex.: Studio Lua Piercing"
+                  />
+                  {slug.length >= 3 && <small className="au-a-hint">Endereço da sua loja: <strong>/{slug}</strong></small>}
+                </div>
+
+                <div className="au-a-field">
+                  <label htmlFor="au-a-admin-name">Seu nome <span className="au-a-optional">(opcional)</span></label>
+                  <input
+                    id="au-a-admin-name"
+                    className="au-a-input"
+                    value={form.admin_name}
+                    onChange={(event) => setForm({ ...form, admin_name: event.target.value })}
+                    placeholder="ex.: Ana Souza"
+                  />
+                </div>
+
+                <div className="au-a-field">
+                  <label htmlFor="au-a-admin-email">E-mail de acesso</label>
+                  <input
+                    id="au-a-admin-email"
+                    className="au-a-input"
+                    type="email"
+                    required
+                    value={form.admin_email}
+                    onChange={(event) => setForm({ ...form, admin_email: event.target.value })}
+                    placeholder="seu@email.com"
+                  />
+                </div>
+
+                <div className="au-a-field">
+                  <label htmlFor="au-a-admin-password">Senha</label>
+                  <input
+                    id="au-a-admin-password"
+                    className="au-a-input"
+                    type="password"
+                    minLength={8}
+                    required
+                    value={form.admin_password}
+                    onChange={(event) => setForm({ ...form, admin_password: event.target.value })}
+                    placeholder="Mínimo 8 caracteres"
+                  />
+                </div>
+              </>
+            )}
+
+            {step === 2 && (
+              <>
+                <div className="au-a-head">
+                  <h1 className="au-a-title">Escolha seu plano</h1>
+                  <p className="au-a-subtitle">Sem cobrança agora. Você pode trocar quando quiser.</p>
+                </div>
+
+                <div className="au-a-plans" role="radiogroup" aria-label="Planos disponíveis">
+                  {plans.map((plan) => {
+                    const active = form.plan_code === plan.code;
+                    const badge = plan.badge || (plan.is_recommended ? "Mais recomendado" : "");
+                    return (
+                      <button
+                        key={plan.code}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        className={`au-a-plan${active ? " is-active" : ""}${badge ? " has-badge" : ""}`}
+                        onClick={() => setForm({ ...form, plan_code: plan.code })}
+                      >
+                        {badge && <span className="au-a-plan-badge">{badge}</span>}
+                        {active && <span className="au-a-plan-check" aria-hidden="true"><Check size={13} strokeWidth={3} /></span>}
+                        <span className="au-a-plan-top">
+                          <span className="au-a-plan-name">{plan.name}</span>
+                          <span className="au-a-plan-price">{currency.format(Number(plan.price_cents || 0) / 100)}<span>/mês</span></span>
+                        </span>
+                        <span className="au-a-plan-audience">{plan.audience}</span>
+                        <span className="au-a-plan-features">
+                          {asArray(plan.features).slice(0, 3).map((feature) => (
+                            <span key={feature}>{featureLabel(feature)}</span>
+                          ))}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <p className="au-a-review">
+                  <span><strong>{form.name}</strong> · /{slug}</span>
+                  <span><strong>{selectedPlan?.name}</strong> · 7 dias grátis</span>
+                </p>
+              </>
+            )}
+
+            {error && <p className="au-a-error" role="alert">{error}</p>}
+
+            <div className="au-a-actions">
+              {step > 1 && (
+                <button type="button" className="au-a-ghost" onClick={() => setStep((current) => current - 1)}>
+                  <ArrowLeft size={16} aria-hidden="true" /> Voltar
+                </button>
+              )}
+              {/* As `key` distintas são obrigatórias, não cosméticas: sem elas o React
+                  reaproveita o MESMO nó DOM entre os dois ramos do ternário e só troca o
+                  atributo type de "button" para "submit". Como isso acontece durante o
+                  próprio clique em "Continuar" (setStep é síncrono para eventos discretos),
+                  o browser executa a ação padrão já com o elemento virado em submit e envia
+                  o formulário — criando a clínica no passo 1 e pulando a escolha de plano. */}
+              {step < 2 ? (
+                <button key="signup-next" type="button" className="au-a-submit" onClick={next}>
+                  Continuar <ChevronRight size={18} aria-hidden="true" />
+                </button>
+              ) : (
+                <button key="signup-submit" type="submit" className="au-a-submit" disabled={loading}>
+                  {loading ? "Criando…" : "Criar conta"} <ChevronRight size={18} aria-hidden="true" />
+                </button>
+              )}
+            </div>
+          </form>
+
+          <p className="au-a-alt">Já tem uma loja? <a href="/login">Fazer login</a></p>
         </div>
-        <form className="login-form signup-form" onSubmit={submit}>
-          {step === 1 && (
-            <>
-              <div className="login-copy"><span className="login-kicker">Comece em 1 minuto</span><h1>Crie sua clínica.</h1><p>Só o essencial — o resto você ajusta depois, já dentro do sistema.</p></div>
-              <label>Nome da clínica ou studio<input required autoFocus value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="ex.: Studio Lua Piercing" />
-                {slug.length >= 3 && <small>Endereço da sua loja: <strong>/{slug}</strong></small>}
-              </label>
-              <label>Seu nome <span className="field-optional">(opcional)</span><input value={form.admin_name} onChange={(event) => setForm({ ...form, admin_name: event.target.value })} placeholder="ex.: Ana Souza" /></label>
-              <label>E-mail de acesso<input type="email" required value={form.admin_email} onChange={(event) => setForm({ ...form, admin_email: event.target.value })} placeholder="seu@email.com" /></label>
-              <label>Senha<input type="password" minLength={8} required value={form.admin_password} onChange={(event) => setForm({ ...form, admin_password: event.target.value })} placeholder="Mínimo 8 caracteres" /></label>
-            </>
-          )}
-          {step === 2 && (
-            <>
-              <div className="login-copy"><span className="login-kicker"><Sparkles size={14} /> Escolha seu plano</span><h1>Teste grátis por 7 dias</h1><p>Sem cobrança agora. Você pode trocar de plano quando quiser.</p></div>
-              <div className="plan-grid">
-                {plans.map((plan) => (
-                  <button key={plan.code} type="button" className={`plan-card ${form.plan_code === plan.code ? "active" : ""} ${plan.highlight || plan.is_recommended ? "recommended" : ""}`} onClick={() => setForm({ ...form, plan_code: plan.code })}>
-                    {(plan.badge || plan.is_recommended) && <span className="plan-badge">{plan.badge || "Mais recomendado"}</span>}
-                    <strong>{plan.name}</strong>
-                    <b>{currency.format(Number(plan.price_cents || 0) / 100)}<small>/mês</small></b>
-                    <em>{plan.audience}</em>
-                    <ul>{asArray(plan.features).slice(0, 6).map((feature) => <li key={feature}>{featureLabels[feature] || feature}</li>)}</ul>
-                    <span>{form.plan_code === plan.code ? "Selecionado" : "Escolher plano"}</span>
-                  </button>
-                ))}
-              </div>
-              <div className="signup-review">
-                <p><strong>Clínica:</strong> {form.name} <span className="field-optional">(/{slug})</span></p>
-                <p><strong>Plano:</strong> {selectedPlan?.name} · 7 dias grátis</p>
-              </div>
-            </>
-          )}
-          {error && <span className="form-error">{error}</span>}
-          <div className="signup-actions">
-            {step > 1 && <button type="button" className="secondary-button" onClick={() => setStep((current) => current - 1)}>Voltar</button>}
-            {step < 2 ? <button type="button" className="login-submit" onClick={next}>Continuar <ChevronRight size={18} /></button> : <button className="login-submit" disabled={loading}>{loading ? "Criando..." : "Criar conta e começar"} <ChevronRight size={18} /></button>}
-          </div>
-          <a className="remember-access" href="/login">Já tenho uma loja - fazer login</a>
-        </form>
       </section>
     </main>
   );

@@ -1,0 +1,800 @@
+/* =============================================================
+   Aura Clinic — telas de autenticação (login + cadastro)
+
+   Namespace isolado `au-a-` (Aura Auth). O CSS legado de
+   `.login-*`, `.signup-*` e `.plan-*` continua em styles.css
+   porque MyPlan.jsx / PlatformAdmin.jsx ainda dependem dele —
+   nada aqui usa aquelas classes, então não há sobreposição.
+
+   Regras: mobile-first, breakpoints min-width 640 / 900 / 1200,
+   alvos de toque >= 44px, inputs em 16px (evita zoom no iOS),
+   altura em 100svh com fallback 100vh.
+   Todo seletor é ancorado em `.au-a-root` para vencer as regras
+   globais de elemento (label/input/button) de styles.css.
+   ============================================================= */
+
+.au-a-root {
+  --au-a-radius: 14px;
+  --au-a-control: 52px;
+  --au-a-max: 400px;
+
+  min-height: 100vh;          /* fallback */
+  min-height: 100svh;         /* barra do navegador mobile não corta */
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: stretch;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--body-font);
+}
+
+.au-a-root *,
+.au-a-root *::before,
+.au-a-root *::after {
+  box-sizing: border-box;
+}
+
+/* ---------- Coluna do formulário ---------- */
+
+.au-a-root .au-a-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 28px 20px 36px;
+}
+
+.au-a-root .au-a-inner {
+  width: 100%;
+  max-width: var(--au-a-max);
+  min-width: 0;
+}
+
+/* ---------- Marca ---------- */
+
+.au-a-root .au-a-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 26px;
+}
+
+.au-a-root .au-a-mono {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  background: linear-gradient(135deg, var(--gold-light), var(--gold-dark));
+  color: #fff;
+  font-family: var(--title-font);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: .06em;
+}
+
+.au-a-root .au-a-brand-name {
+  font-family: var(--title-font);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: .01em;
+  color: var(--ink);
+}
+
+/* ---------- Títulos ---------- */
+
+.au-a-root .au-a-title {
+  margin: 0 0 20px;
+  font-family: var(--title-font);
+  font-size: 26px;
+  line-height: 1.18;
+  font-weight: 600;
+  letter-spacing: -.01em;
+  color: var(--ink);
+}
+
+.au-a-root .au-a-subtitle {
+  margin: -12px 0 20px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* Bloco título + subtítulo dentro do formulário (wizard) */
+.au-a-root .au-a-head {
+  display: grid;
+  gap: 8px;
+}
+
+.au-a-root .au-a-head .au-a-title,
+.au-a-root .au-a-head .au-a-subtitle {
+  margin: 0;
+}
+
+/* ---------- Formulário ---------- */
+
+.au-a-root .au-a-form {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+}
+
+.au-a-root .au-a-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.au-a-root .au-a-field > label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--muted);
+}
+
+.au-a-root .au-a-optional {
+  font-weight: 500;
+  color: #b7a894;
+}
+
+.au-a-root .au-a-input {
+  display: block;
+  width: 100%;
+  min-height: var(--au-a-control);
+  padding: 0 14px;
+  font-family: var(--body-font);
+  font-size: 16px;             /* < 16px faz o iOS dar zoom no foco */
+  line-height: 1.3;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--au-a-radius);
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+  transition: border-color .16s ease, box-shadow .16s ease;
+}
+
+.au-a-root .au-a-input::placeholder {
+  color: #b5a695;
+}
+
+.au-a-root .au-a-input:hover {
+  border-color: #dccdb5;
+}
+
+.au-a-root .au-a-input:focus,
+.au-a-root .au-a-input:focus-visible {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(201, 168, 106, .26);
+}
+
+.au-a-root .au-a-hint {
+  display: block;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.au-a-root .au-a-hint strong {
+  color: var(--gold-dark);
+  font-weight: 600;
+}
+
+/* Campo de senha com botão mostrar/ocultar */
+
+.au-a-root .au-a-pass {
+  position: relative;
+  min-width: 0;
+}
+
+.au-a-root .au-a-pass .au-a-input {
+  padding-right: 52px;
+}
+
+.au-a-root .au-a-eye {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color .16s ease, background .16s ease;
+}
+
+.au-a-root .au-a-eye:hover {
+  transform: translateY(-50%);
+  color: var(--gold-dark);
+  background: rgba(201, 168, 106, .12);
+}
+
+.au-a-root .au-a-eye:focus-visible {
+  outline: 2px solid var(--gold-dark);
+  outline-offset: 2px;
+}
+
+/* Checkbox "manter conectado" */
+
+.au-a-root .au-a-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  margin: -4px 0;
+  font-size: 14.5px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--ink);
+  cursor: pointer;
+  user-select: none;
+}
+
+.au-a-root .au-a-check input[type="checkbox"] {
+  width: 19px;
+  height: 19px;
+  min-height: 0;
+  min-width: 0;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  border-radius: 5px;
+  accent-color: var(--gold-dark);
+  cursor: pointer;
+}
+
+.au-a-root .au-a-check input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--gold-dark);
+  outline-offset: 2px;
+}
+
+/* ---------- Erro ---------- */
+
+.au-a-root .au-a-error {
+  margin: 0;
+  padding: 11px 13px;
+  border: 1px solid rgba(184, 92, 92, .3);
+  border-radius: 12px;
+  background: rgba(184, 92, 92, .09);
+  color: #8f4040;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+/* ---------- Botões ---------- */
+
+.au-a-root .au-a-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: var(--au-a-control);
+  padding: 0 18px;
+  border: 0;
+  border-radius: var(--au-a-radius);
+  background: linear-gradient(135deg, var(--gold), var(--gold-dark));
+  color: #fff;
+  font-family: var(--title-font);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: .01em;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(168, 122, 52, .22);
+  transition: filter .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+
+.au-a-root .au-a-submit:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+}
+
+.au-a-root .au-a-submit:focus-visible {
+  outline: 2px solid var(--brown-dark);
+  outline-offset: 2px;
+}
+
+.au-a-root .au-a-submit:disabled,
+.au-a-root .au-a-submit[disabled] {
+  opacity: .58;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.au-a-root .au-a-submit:disabled:hover {
+  transform: none;
+  filter: none;
+}
+
+.au-a-root .au-a-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: var(--au-a-control);
+  padding: 0 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--au-a-radius);
+  background: #fff;
+  color: var(--brown-dark);
+  font-family: var(--title-font);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color .16s ease, background .16s ease, transform .16s ease;
+}
+
+.au-a-root .au-a-ghost:hover {
+  transform: translateY(-1px);
+  border-color: var(--gold);
+  background: rgba(201, 168, 106, .08);
+}
+
+.au-a-root .au-a-ghost:focus-visible {
+  outline: 2px solid var(--gold-dark);
+  outline-offset: 2px;
+}
+
+/* ---------- Rodapé do painel ---------- */
+
+.au-a-root .au-a-alt {
+  margin: 22px 0 0;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  text-align: center;
+}
+
+.au-a-root .au-a-alt a {
+  color: var(--gold-dark);
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(168, 122, 52, .35);
+  padding-bottom: 1px;
+}
+
+.au-a-root .au-a-alt a:hover {
+  border-bottom-color: var(--gold-dark);
+}
+
+.au-a-root .au-a-alt a:focus-visible {
+  outline: 2px solid var(--gold-dark);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+.au-a-root .au-a-legal {
+  margin: 26px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #a1907f;
+  text-align: center;
+  letter-spacing: .01em;
+}
+
+/* ---------- Painel visual (só imagem + uma frase) ---------- */
+
+.au-a-root .au-a-aside {
+  display: none;             /* mobile: some por completo */
+}
+
+/* =============================================================
+   Cadastro
+   ============================================================= */
+
+.au-a-signup .au-a-inner {
+  max-width: 460px;
+}
+
+.au-a-signup.is-wide .au-a-inner {
+  max-width: 900px;
+}
+
+/* Indicador de passos */
+
+.au-a-root .au-a-steps {
+  display: flex;
+  gap: 10px;
+  margin: 0 0 24px;
+  padding: 0;
+  list-style: none;
+}
+
+.au-a-root .au-a-step {
+  flex: 1 1 0;
+  display: grid;
+  align-content: center;
+  gap: 7px;
+  min-width: 0;
+  /* Voltar a um passo concluído é clicável — precisa de alvo de toque de 44px. */
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-family: var(--body-font);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: .01em;
+  color: #b0a191;
+  cursor: default;
+}
+
+.au-a-root .au-a-step::before {
+  content: "";
+  display: block;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--line);
+  transition: background .2s ease;
+}
+
+.au-a-root .au-a-step:hover {
+  transform: none;
+}
+
+.au-a-root .au-a-step.is-done {
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.au-a-root .au-a-step.is-done::before {
+  background: var(--gold-light);
+}
+
+.au-a-root .au-a-step.is-active {
+  color: var(--gold-dark);
+}
+
+.au-a-root .au-a-step.is-active::before {
+  background: linear-gradient(90deg, var(--gold), var(--gold-dark));
+}
+
+.au-a-root .au-a-step:focus-visible {
+  outline: 2px solid var(--gold-dark);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* Cartões de plano — compactos */
+
+.au-a-root .au-a-plans {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+.au-a-root .au-a-plan {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 16px;
+  border: 1.5px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .16s ease, background .16s ease, box-shadow .16s ease;
+}
+
+.au-a-root .au-a-plan:hover {
+  transform: none;
+  border-color: var(--gold-light);
+}
+
+.au-a-root .au-a-plan:focus-visible {
+  outline: 2px solid var(--gold-dark);
+  outline-offset: 2px;
+}
+
+.au-a-root .au-a-plan.is-active {
+  border-color: var(--gold-dark);
+  background: rgba(201, 168, 106, .08);
+  box-shadow: 0 0 0 3px rgba(201, 168, 106, .18);
+}
+
+.au-a-root .au-a-plan.has-badge {
+  margin-top: 9px;
+}
+
+.au-a-root .au-a-plan-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding-right: 26px;       /* espaço do selo de selecionado */
+}
+
+.au-a-root .au-a-plan-name {
+  font-family: var(--title-font);
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--ink);
+  min-width: 0;
+}
+
+.au-a-root .au-a-plan-price {
+  flex: 0 0 auto;
+  font-family: var(--title-font);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--gold-dark);
+  white-space: nowrap;
+}
+
+.au-a-root .au-a-plan-price span {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.au-a-root .au-a-plan-audience {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.au-a-root .au-a-plan-features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.au-a-root .au-a-plan-features > span {
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(198, 162, 122, .14);
+  color: var(--brown-dark);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.au-a-root .au-a-plan-badge {
+  position: absolute;
+  top: -9px;
+  left: 14px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--brown-dark);
+  color: var(--gold-light);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.au-a-root .au-a-plan-check {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--gold-dark);
+  color: #fff;
+}
+
+/* Revisão em uma linha */
+
+.au-a-root .au-a-review {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .7);
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.au-a-root .au-a-review strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Ações do wizard */
+
+.au-a-root .au-a-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.au-a-root .au-a-actions > * {
+  width: 100%;
+}
+
+/* Tela de sucesso */
+
+.au-a-root .au-a-success-icon {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  margin: 0 0 18px;
+  border-radius: 999px;
+  background: rgba(79, 143, 91, .12);
+  color: var(--ok);
+}
+
+.au-a-root .au-a-code {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 22px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.au-a-root .au-a-code strong {
+  font-family: var(--title-font);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--gold-dark);
+  letter-spacing: .01em;
+  word-break: break-all;
+}
+
+/* =============================================================
+   Breakpoints
+   ============================================================= */
+
+@media (min-width: 640px) {
+  .au-a-root .au-a-panel {
+    padding: 40px 32px;
+  }
+
+  .au-a-root .au-a-title {
+    font-size: 30px;
+  }
+
+  .au-a-root .au-a-plans {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .au-a-root .au-a-actions {
+    flex-direction: row;
+    align-items: stretch;
+  }
+
+  .au-a-root .au-a-actions .au-a-ghost {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 128px;
+  }
+
+  .au-a-root .au-a-actions .au-a-submit {
+    flex: 1 1 auto;
+    width: auto;
+  }
+}
+
+@media (min-width: 900px) {
+  /* Login ganha a coluna visual; o cadastro segue em coluna única centralizada. */
+  .au-a-login {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .au-a-root .au-a-aside {
+    position: relative;
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    /* Camadas, de cima para baixo: véu -> foto -> gradiente da paleta.
+       Se auth-side.jpg faltar, o gradiente de baixo assume e a tela
+       continua íntegra (nunca fica um bloco vazio). */
+    background-color: var(--brown-dark);
+    background-image:
+      linear-gradient(200deg, rgba(74, 52, 39, .3) 0%, rgba(26, 26, 26, .62) 100%),
+      url("/assets/landing/auth-side.jpg"),
+      linear-gradient(140deg, var(--nude) 0%, var(--brown-dark) 55%, var(--ink) 100%);
+    background-size: cover, cover, cover;
+    background-position: center, center, center;
+    background-repeat: no-repeat;
+  }
+
+  .au-a-root .au-a-aside::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 45%;
+    background: linear-gradient(to top, rgba(26, 26, 26, .55), transparent);
+    pointer-events: none;
+  }
+
+  .au-a-root .au-a-aside-rule {
+    position: absolute;
+    left: 44px;
+    bottom: 150px;
+    z-index: 1;
+    width: 52px;
+    height: 2px;
+    background: linear-gradient(90deg, var(--gold-light), transparent);
+  }
+
+  .au-a-root .au-a-aside-quote {
+    position: absolute;
+    left: 44px;
+    right: 44px;
+    bottom: 52px;
+    z-index: 1;
+    margin: 0;
+    max-width: 22ch;
+    font-family: var(--title-font);
+    font-size: 26px;
+    line-height: 1.28;
+    font-weight: 500;
+    letter-spacing: -.01em;
+    color: #fff;
+    text-shadow: 0 2px 18px rgba(0, 0, 0, .35);
+  }
+
+  .au-a-signup .au-a-panel {
+    padding: 56px 32px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .au-a-root {
+    --au-a-max: 420px;
+  }
+
+  .au-a-login {
+    grid-template-columns: minmax(0, 520px) minmax(0, 1fr);
+  }
+
+  .au-a-root .au-a-aside-quote {
+    left: 60px;
+    right: 60px;
+    font-size: 30px;
+  }
+
+  .au-a-root .au-a-aside-rule {
+    left: 60px;
+  }
+
+  .au-a-root .au-a-plans {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .au-a-root *,
+  .au-a-root *::before,
+  .au-a-root *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .au-a-root .au-a-submit:hover:not(:disabled),
+  .au-a-root .au-a-ghost:hover {
+    transform: none;
+  }
+}

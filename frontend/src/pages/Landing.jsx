@@ -1,27 +1,45 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { CalendarCheck, ChevronRight, Gem, HeartPulse, LayoutGrid, ShieldCheck, Sparkles, Store, WalletCards } from "lucide-react";
+import { CalendarCheck, ChevronRight, Gem, HeartPulse, Sparkles, WalletCards } from "lucide-react";
 import { API } from "../lib/api";
 import { asArray } from "../lib/utils";
+import { featureLabel } from "../lib/planFeatures";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
-const featureLabels = {
-  clients: "Clientes", agenda: "Agenda", procedures: "Procedimentos", basic_inventory: "Estoque",
-  basic_catalog: "Catálogo", whatsapp_link: "WhatsApp", online_booking: "Agendamento online",
-  anamnesis: "Anamnese digital", digital_terms: "Termo digital", basic_finance: "Financeiro",
-  stock_alerts: "Alertas de estoque", public_catalog_customization: "Catálogo personalizado",
-  multi_user: "Multiusuários", commissions: "Comissões", monthly_reports: "Relatórios mensais",
-  coupons: "Cupons", advanced_catalog: "Catálogo avançado", campaigns: "Campanhas",
-  advanced_finance: "Financeiro avançado", priority_support: "Suporte prioritário"
-};
-
-const BENEFITS = [
-  { icon: CalendarCheck, title: "Agenda e agendamento online", text: "Seus clientes marcam horário sozinhos por um link só seu; você confirma com um toque." },
-  { icon: Gem, title: "Catálogo de joias com link próprio", text: "Uma vitrine online personalizada por estúdio, pronta pra compartilhar no Instagram e WhatsApp." },
-  { icon: HeartPulse, title: "Ficha e anamnese digital", text: "Prontuário, anamnese e termo de consentimento assinados digitalmente — sem papel." },
-  { icon: WalletCards, title: "Financeiro e vendas", text: "Controle de caixa, vendas de joias, sinais de agendamento e relatórios no mesmo lugar." },
-  { icon: LayoutGrid, title: "Estoque de joias", text: "Cadastro por medidas, variações, alertas de estoque baixo e importação em massa." },
-  { icon: ShieldCheck, title: "Cada clínica isolada", text: "Multi-tenant de verdade: seus dados ficam separados dos de qualquer outro estúdio." }
+// 4 recursos — os mais fortes do produto, uma linha de texto cada.
+const FEATURES = [
+  {
+    icon: CalendarCheck,
+    title: "Agendamento online",
+    text: "Seus clientes marcam horário sozinhos por um link só seu.",
+    img: "/assets/landing/feature-agenda.jpg",
+    alt: "Recepcionista de estúdio atendendo com um tablet em uma recepção clara",
+    w: 1200, h: 900
+  },
+  {
+    icon: Gem,
+    title: "Catálogo de joias",
+    text: "Uma vitrine online da sua marca, pronta pra compartilhar.",
+    img: "/assets/landing/feature-jewelry.jpg",
+    alt: "Argolas douradas de piercing sobre uma base de pedra clara",
+    w: 1200, h: 900
+  },
+  {
+    icon: HeartPulse,
+    title: "Ficha digital",
+    text: "Anamnese e termo de consentimento assinados sem papel.",
+    img: "/assets/landing/feature-care.jpg",
+    alt: "Orelha com vários piercings cicatrizados no hélix e no lóbulo",
+    w: 1200, h: 900
+  },
+  {
+    icon: WalletCards,
+    title: "Financeiro e estoque",
+    text: "Caixa, vendas e alertas de estoque baixo no mesmo lugar.",
+    img: "/assets/landing/showcase-1.jpg",
+    alt: "Brinco dourado texturizado em close-up",
+    w: 900, h: 900
+  }
 ];
 
 export function Landing() {
@@ -40,85 +58,124 @@ export function Landing() {
   );
 
   return (
-    <main className="landing">
-      <header className="landing-nav">
-        <div className="landing-brand">
-          <span className="landing-monogram">A</span>
-          <strong>Aura</strong>
+    <main className="au-l-root">
+      <header className="au-l-nav">
+        <div className="au-l-nav-inner">
+          <a className="au-l-brand" href="/" aria-label="Aura — página inicial">
+            <span className="au-l-monogram" aria-hidden="true">A</span>
+            <strong>Aura</strong>
+          </a>
+          <nav className="au-l-nav-links" aria-label="Navegação principal">
+            <a className="au-l-nav-link" href="#recursos">Recursos</a>
+            <a className="au-l-nav-link" href="#planos">Planos</a>
+            <a className="au-l-nav-login" href="/login">Entrar</a>
+          </nav>
+          <a className="au-l-btn au-l-btn-primary au-l-btn-sm" href="/cadastro">Começar grátis</a>
         </div>
-        <nav>
-          <a href="#recursos">Recursos</a>
-          <a href="#planos">Planos</a>
-          <a className="landing-login" href="/login">Entrar</a>
-          <a className="landing-cta-sm" href="/cadastro">Começar grátis</a>
-        </nav>
       </header>
 
-      <section className="landing-hero">
-        <div className="landing-hero-copy">
-          <span className="landing-kicker"><Sparkles size={14} /> Plataforma para estúdios de piercing</span>
-          <h1>Gestão premium para quem vive da perfuração.</h1>
-          <p>Agenda, catálogo de joias com link próprio, ficha digital, financeiro e biossegurança — tudo num sistema só, feito por body piercer para body piercers.</p>
-          <div className="landing-hero-actions">
-            <a className="landing-cta" href="/cadastro">Criar minha clínica grátis <ChevronRight size={18} /></a>
-            <a className="landing-ghost" href="/login">Já tenho conta</a>
+      <section className="au-l-hero">
+        <div className="au-l-hero-inner">
+          <div className="au-l-hero-copy">
+            <span className="au-l-kicker"><Sparkles size={14} aria-hidden="true" /> Para estúdios de piercing</span>
+            <h1>Gestão premium para quem vive da perfuração.</h1>
+            <p>Agenda, catálogo de joias, ficha digital e financeiro — num sistema só.</p>
+            <div className="au-l-hero-actions">
+              <a className="au-l-btn au-l-btn-primary" href="/cadastro">
+                Criar minha clínica <ChevronRight size={18} aria-hidden="true" />
+              </a>
+              <a className="au-l-btn au-l-btn-ghost" href="/login">Já tenho conta</a>
+            </div>
+            <span className="au-l-note">7 dias grátis · sem cartão de crédito</span>
           </div>
-          <span className="landing-note">7 dias grátis · sem cartão de crédito</span>
-        </div>
-        <div className="landing-hero-cards" aria-hidden="true">
-          <article><CalendarCheck size={18} /><span>Agenda do dia</span><strong>08 atendimentos</strong></article>
-          <article><Gem size={18} /><span>Catálogo online</span><strong>link exclusivo</strong></article>
-          <article><Store size={18} /><span>Vendas do mês</span><strong>R$ 18.420</strong></article>
+
+          <figure className="au-l-hero-media">
+            <img
+              src="/assets/landing/hero-studio.jpg"
+              alt="Close de orelha com piercings de joias douradas no lóbulo"
+              width="1600"
+              height="1000"
+              fetchpriority="high"
+              decoding="async"
+            />
+            <figcaption className="au-l-hero-strip">
+              <Sparkles size={14} aria-hidden="true" />
+              Agenda, catálogo e ficha digital num link só seu
+            </figcaption>
+          </figure>
         </div>
       </section>
 
-      <section className="landing-section" id="recursos">
-        <div className="landing-section-head">
-          <span className="landing-kicker">Tudo que seu estúdio precisa</span>
-          <h2>Um sistema completo, sem gambiarra</h2>
+      <section className="au-l-sec" id="recursos">
+        <div className="au-l-sec-head">
+          <h2>Tudo que o estúdio precisa</h2>
         </div>
-        <div className="landing-benefits">
-          {BENEFITS.map(({ icon: Icon, title, text }) => (
-            <div key={title} className="landing-benefit">
-              <div className="landing-benefit-icon"><Icon size={22} /></div>
-              <strong>{title}</strong>
-              <p>{text}</p>
-            </div>
+        <div className="au-l-features">
+          {FEATURES.map(({ icon: Icon, title, text, img, alt, w, h }) => (
+            <article key={title} className="au-l-feature">
+              <div className="au-l-feature-media">
+                <img src={img} alt={alt} width={w} height={h} loading="lazy" decoding="async" />
+              </div>
+              <div className="au-l-feature-body">
+                <h3><Icon size={18} aria-hidden="true" /> {title}</h3>
+                <p>{text}</p>
+              </div>
+            </article>
           ))}
         </div>
       </section>
 
-      <section className="landing-section landing-pricing" id="planos">
-        <div className="landing-section-head">
-          <span className="landing-kicker"><Sparkles size={14} /> Planos para cada fase</span>
-          <h2>Comece grátis, cresça no seu ritmo</h2>
-          <p>Todos os planos começam com 7 dias grátis. Troque de plano quando quiser.</p>
+      <section className="au-l-sec au-l-sec-plans" id="planos">
+        <div className="au-l-sec-head">
+          <h2>Planos para cada fase</h2>
+          <p>Todos começam com 7 dias grátis. Troque quando quiser.</p>
         </div>
-        <div className="landing-plan-grid">
-          {orderedPlans.map((plan) => (
-            <div key={plan.code} className={`landing-plan ${plan.highlight || plan.is_recommended ? "featured" : ""}`}>
-              {(plan.badge || plan.is_recommended) && <span className="landing-plan-badge">{plan.badge || "Mais recomendado"}</span>}
-              <h3>{plan.name}</h3>
-              <div className="landing-plan-price">{currency.format(Number(plan.price_cents || 0) / 100)}<small>/mês</small></div>
-              <p className="landing-plan-aud">{plan.audience}</p>
-              <ul>{asArray(plan.features).slice(0, 7).map((f) => <li key={f}>{featureLabels[f] || f}</li>)}</ul>
-              <a className="landing-plan-cta" href="/cadastro">Começar grátis</a>
-            </div>
-          ))}
+        <div className="au-l-plan-scroller">
+          <div className="au-l-plan-grid">
+            {orderedPlans.map((plan) => (
+              <article key={plan.code} className={`au-l-plan ${plan.highlight || plan.is_recommended ? "is-featured" : ""}`}>
+                {(plan.badge || plan.is_recommended) && (
+                  <span className="au-l-plan-badge">{plan.badge || "Recomendado"}</span>
+                )}
+                <h3>{plan.name}</h3>
+                <p className="au-l-plan-price">
+                  {currency.format(Number(plan.price_cents || 0) / 100)}<small>/mês</small>
+                </p>
+                <p className="au-l-plan-aud">{plan.audience}</p>
+                <ul className="au-l-plan-list">
+                  {asArray(plan.features).slice(0, 4).map((f) => <li key={f}>{featureLabel(f)}</li>)}
+                </ul>
+                <a className="au-l-btn au-l-btn-plan" href="/cadastro">Começar grátis</a>
+              </article>
+            ))}
+          </div>
         </div>
       </section>
 
-      <section className="landing-final">
-        <h2>Pronto para profissionalizar seu estúdio?</h2>
-        <p>Crie sua conta em menos de um minuto e comece o teste grátis hoje.</p>
-        <a className="landing-cta" href="/cadastro">Criar minha clínica grátis <ChevronRight size={18} /></a>
-      </section>
+      <section className="au-l-close">
+        <div className="au-l-close-inner">
+          <div className="au-l-close-copy">
+            <h2>Pronto para profissionalizar seu estúdio?</h2>
+            <a className="au-l-btn au-l-btn-primary" href="/cadastro">
+              Criar minha clínica <ChevronRight size={18} aria-hidden="true" />
+            </a>
+            <span className="au-l-note">7 dias grátis · sem cartão de crédito</span>
+          </div>
+          <div className="au-l-shots" aria-hidden="true">
+            <img src="/assets/landing/showcase-2.jpg" alt="" width="900" height="900" loading="lazy" decoding="async" />
+            <img src="/assets/landing/showcase-3.jpg" alt="" width="900" height="900" loading="lazy" decoding="async" />
+          </div>
+        </div>
 
-      <footer className="landing-footer">
-        <div className="landing-brand"><span className="landing-monogram">A</span><strong>Aura</strong></div>
-        <span>Plataforma de gestão para estúdios de piercing.</span>
-        <a href="/login">Entrar na minha conta</a>
-      </footer>
+        <footer className="au-l-foot">
+          <div className="au-l-brand">
+            <span className="au-l-monogram" aria-hidden="true">A</span>
+            <strong>Aura</strong>
+          </div>
+          <span className="au-l-foot-text">Plataforma de gestão para estúdios de piercing.</span>
+          <a className="au-l-foot-link" href="/login">Entrar na minha conta</a>
+        </footer>
+      </section>
     </main>
   );
 }

@@ -45,6 +45,8 @@ import {
   XCircle
 } from "lucide-react";
 import "./styles.css";
+import "./styles/landing.css";
+import "./styles/auth.css";
 import { Login } from "./components/auth/Login";
 import { Sidebar } from "./components/layout/Sidebar";
 import { Loading, ApiError } from "./components/common/Feedback";
