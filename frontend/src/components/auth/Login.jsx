@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { ChevronRight, Eye, EyeOff } from "lucide-react";
 import { apiFetch, setTenantSlug, tenantSlug } from "../../lib/api";
+import { BrandMark } from "../common/BrandMark";
 
 export function Login({ onLogin }) {
   const [form, setForm] = useState({
@@ -61,7 +62,7 @@ export function Login({ onLogin }) {
       <section className="au-a-panel">
         <div className="au-a-inner">
           <header className="au-a-brand">
-            <span className="au-a-mono" aria-hidden="true">AC</span>
+            <BrandMark className="au-a-mark" size={40} />
             <span className="au-a-brand-name">Aura Clinic</span>
           </header>
 

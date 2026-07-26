@@ -3,6 +3,7 @@ import { ArrowLeft, Check, CheckCircle2, ChevronRight } from "lucide-react";
 import { API, setTenantSlug } from "../../lib/api";
 import { asArray } from "../../lib/utils";
 import { featureLabel } from "../../lib/planFeatures";
+import { BrandMark } from "../../components/common/BrandMark";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -122,7 +123,7 @@ export function Signup() {
         <section className="au-a-panel">
           <div className="au-a-inner">
             <header className="au-a-brand">
-              <span className="au-a-mono" aria-hidden="true">AC</span>
+              <BrandMark className="au-a-mark" size={40} />
               <span className="au-a-brand-name">Aura Clinic</span>
             </header>
 
@@ -146,7 +147,7 @@ export function Signup() {
       <section className="au-a-panel">
         <div className="au-a-inner">
           <header className="au-a-brand">
-            <span className="au-a-mono" aria-hidden="true">AC</span>
+            <BrandMark className="au-a-mark" size={40} />
             <span className="au-a-brand-name">Aura Clinic</span>
           </header>
 

@@ -1,15 +1,17 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { CalendarCheck, ChevronRight, Gem, HeartPulse, Sparkles, WalletCards } from "lucide-react";
+import { ChevronRight, Sparkles } from "lucide-react";
 import { API } from "../lib/api";
 import { asArray } from "../lib/utils";
 import { featureLabel } from "../lib/planFeatures";
+import { BrandMark } from "../components/common/BrandMark";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
 // 4 recursos — os mais fortes do produto, uma linha de texto cada.
+// Sem ícone: cada card já tem foto própria, e o ícone genérico ao lado do título
+// só competia com ela.
 const FEATURES = [
   {
-    icon: CalendarCheck,
     title: "Agendamento online",
     text: "Seus clientes marcam horário sozinhos por um link só seu.",
     img: "/assets/landing/feature-agenda.jpg",
@@ -17,7 +19,6 @@ const FEATURES = [
     w: 1200, h: 900
   },
   {
-    icon: Gem,
     title: "Catálogo de joias",
     text: "Uma vitrine online da sua marca, pronta pra compartilhar.",
     img: "/assets/landing/feature-jewelry.jpg",
@@ -25,7 +26,6 @@ const FEATURES = [
     w: 1200, h: 900
   },
   {
-    icon: HeartPulse,
     title: "Ficha digital",
     text: "Anamnese e termo de consentimento assinados sem papel.",
     img: "/assets/landing/feature-care.jpg",
@@ -33,7 +33,6 @@ const FEATURES = [
     w: 1200, h: 900
   },
   {
-    icon: WalletCards,
     title: "Financeiro e estoque",
     text: "Caixa, vendas e alertas de estoque baixo no mesmo lugar.",
     img: "/assets/landing/showcase-1.jpg",
@@ -62,7 +61,7 @@ export function Landing() {
       <header className="au-l-nav">
         <div className="au-l-nav-inner">
           <a className="au-l-brand" href="/" aria-label="Aura — página inicial">
-            <span className="au-l-monogram" aria-hidden="true">A</span>
+            <BrandMark className="au-l-mark" size={34} />
             <strong>Aura</strong>
           </a>
           <nav className="au-l-nav-links" aria-label="Navegação principal">
@@ -111,13 +110,13 @@ export function Landing() {
           <h2>Tudo que o estúdio precisa</h2>
         </div>
         <div className="au-l-features">
-          {FEATURES.map(({ icon: Icon, title, text, img, alt, w, h }) => (
+          {FEATURES.map(({ title, text, img, alt, w, h }) => (
             <article key={title} className="au-l-feature">
               <div className="au-l-feature-media">
                 <img src={img} alt={alt} width={w} height={h} loading="lazy" decoding="async" />
               </div>
               <div className="au-l-feature-body">
-                <h3><Icon size={18} aria-hidden="true" /> {title}</h3>
+                <h3>{title}</h3>
                 <p>{text}</p>
               </div>
             </article>
@@ -169,7 +168,7 @@ export function Landing() {
 
         <footer className="au-l-foot">
           <div className="au-l-brand">
-            <span className="au-l-monogram" aria-hidden="true">A</span>
+            <BrandMark className="au-l-mark" size={34} />
             <strong>Aura</strong>
           </div>
           <span className="au-l-foot-text">Plataforma de gestão para estúdios de piercing.</span>

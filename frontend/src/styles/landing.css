@@ -75,18 +75,11 @@
   letter-spacing: .04em;
 }
 
-.au-l-root .au-l-monogram {
+.au-l-root .au-l-mark {
   flex: 0 0 auto;
+  display: block;
   width: 34px;
   height: 34px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--gold, #C9A86A);
-  color: var(--gold-dark, #A87A34);
-  font-family: var(--title-font);
-  font-weight: 700;
-  font-size: 16px;
-  border-radius: 10px;
 }
 
 /* ---------- botões --------------------------------------------------- */
