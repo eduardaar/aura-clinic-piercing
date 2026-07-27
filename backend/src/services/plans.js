@@ -64,6 +64,7 @@ export const PAGE_FEATURE = {
   finance: "basic_finance",
   terms: "digital_terms",
   postcare: "automatic_followup",
+  communications: "message_templates",
   "catalog-customization": "public_catalog_customization",
   sales: "basic_catalog"
 };

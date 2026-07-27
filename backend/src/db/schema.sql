@@ -311,6 +311,72 @@ CREATE TABLE IF NOT EXISTS notification_queue (
   created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_queue_unique_key ON notification_queue(unique_key) WHERE unique_key IS NOT NULL;
+ALTER TABLE notification_queue ADD COLUMN IF NOT EXISTS client_id INTEGER REFERENCES clients(id);
+ALTER TABLE notification_queue ADD COLUMN IF NOT EXISTS automation_rule_id INTEGER;
+
+CREATE TABLE IF NOT EXISTS communication_templates (
+  id SERIAL PRIMARY KEY,
+  template_key TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  channel TEXT NOT NULL DEFAULT 'whatsapp',
+  subject TEXT,
+  body TEXT NOT NULL,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS automation_rules (
+  id SERIAL PRIMARY KEY,
+  rule_key TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  template_key TEXT REFERENCES communication_templates(template_key),
+  channel TEXT NOT NULL DEFAULT 'whatsapp',
+  offset_minutes INTEGER NOT NULL DEFAULT 0,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS automation_runs (
+  id SERIAL PRIMARY KEY,
+  rule_id INTEGER REFERENCES automation_rules(id),
+  entity_type TEXT,
+  entity_id INTEGER,
+  status TEXT NOT NULL,
+  details JSONB,
+  executed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO communication_templates (template_key, name, body) VALUES
+  ('booking_received', 'Solicitação recebida', 'Olá, {{cliente}}. Recebemos sua solicitação no {{estudio}} para {{data}} às {{horario}}. Protocolo: {{protocolo}}.'),
+  ('booking_confirmed', 'Agendamento confirmado', 'Olá, {{cliente}}. Seu agendamento no {{estudio}} está confirmado para {{data}} às {{horario}} com {{profissional}}.'),
+  ('booking_rescheduled', 'Reagendamento', 'Olá, {{cliente}}. Seu atendimento foi reagendado para {{data}} às {{horario}}.'),
+  ('booking_cancelled', 'Cancelamento', 'Olá, {{cliente}}. Seu agendamento de {{data}} às {{horario}} foi cancelado.'),
+  ('reminder_24h', 'Lembrete de 24 horas', 'Olá, {{cliente}}. Lembrete do seu atendimento amanhã, {{data}}, às {{horario}}, no {{estudio}}.'),
+  ('reminder_2h', 'Lembrete de 2 horas', 'Olá, {{cliente}}. Seu atendimento no {{estudio}} será às {{horario}}. Endereço: {{endereco}}.'),
+  ('postcare', 'Pós-atendimento', 'Olá, {{cliente}}. Como está sua evolução após o atendimento? Se precisar, fale com o {{estudio}}.'),
+  ('payment_pending', 'Pagamento pendente', 'Olá, {{cliente}}. O sinal de {{sinal}} do protocolo {{protocolo}} ainda está pendente.'),
+  ('stock_available', 'Produto disponível', 'Olá, {{cliente}}. A joia {{joias}} está disponível novamente no {{estudio}}.'),
+  ('promotion', 'Promoção', 'Olá, {{cliente}}. Confira a promoção {{promocao}} no catálogo do {{estudio}}.'),
+  ('coupon', 'Cupom', 'Olá, {{cliente}}. Use o cupom {{cupom}} no catálogo do {{estudio}}.'),
+  ('birthday', 'Aniversário', 'Feliz aniversário, {{cliente}}! O {{estudio}} deseja um dia especial para você.')
+ON CONFLICT (template_key) DO NOTHING;
+
+INSERT INTO automation_rules (rule_key, name, event_type, template_key, offset_minutes, is_active) VALUES
+  ('booking_received', 'Solicitação recebida', 'booking_created', 'booking_received', 0, 1),
+  ('reminder_24h', 'Lembrete 24h', 'appointment_upcoming', 'reminder_24h', -1440, 1),
+  ('reminder_2h', 'Lembrete 2h', 'appointment_upcoming', 'reminder_2h', -120, 1),
+  ('payment_pending', 'Pagamento pendente', 'payment_pending', 'payment_pending', 60, 1),
+  ('reservation_expired', 'Reserva expirada', 'reservation_expired', 'payment_pending', 0, 1),
+  ('postcare', 'Pós-atendimento', 'appointment_completed', 'postcare', 10080, 1),
+  ('birthday', 'Aniversariantes', 'client_birthday', 'birthday', 0, 0)
+ON CONFLICT (rule_key) DO NOTHING;
+
+CREATE INDEX IF NOT EXISTS idx_automation_rules_event ON automation_rules(event_type, is_active);
+CREATE INDEX IF NOT EXISTS idx_automation_runs_entity ON automation_runs(entity_type, entity_id, executed_at);
 
 CREATE TABLE IF NOT EXISTS payments (
   id SERIAL PRIMARY KEY,

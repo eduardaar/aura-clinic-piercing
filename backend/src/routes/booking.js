@@ -10,6 +10,7 @@ import { quotePromotions } from "../services/promotions.js";
 import { validateCoupon } from "../services/discounts.js";
 import { reserveAppointmentItems } from "../services/reservations.js";
 import { createPaymentIntent } from "../services/payments.js";
+import { scheduleAppointmentClientAutomations } from "../services/communications.js";
 
 const router = Router();
 
@@ -307,6 +308,7 @@ router.post("/api/booking/requests", upload.fields([{ name: "reference_photo", m
     appointment,
     storeName: await getStoreName(db, req.tenant?.name)
   });
+  await scheduleAppointmentClientAutomations(db, result.lastID);
   res.status(201).json({
     ...appointment,
     service_value: serviceValue,

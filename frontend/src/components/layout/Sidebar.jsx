@@ -1,5 +1,5 @@
 import React from "react";
-import { Bug, Calendar, Gem, Home, Lock, LogOut, ShieldCheck, ShoppingCart, Sparkles, UsersRound, WalletCards } from "lucide-react";
+import { Bug, Calendar, Gem, Home, Lock, LogOut, MessageCircle, ShieldCheck, ShoppingCart, Sparkles, UsersRound, WalletCards } from "lucide-react";
 import { canAccessPage, planAllowsPage } from "../../lib/permissions";
 
 export function Sidebar({ page, role, brand, features, trialDays, setPage, open, onLogout }) {
@@ -13,6 +13,7 @@ export function Sidebar({ page, role, brand, features, trialDays, setPage, open,
     ["erp", ShieldCheck, "Aura ERP"],
     ["catalog", Gem, "Catálogo"],
     ["agenda", Calendar, "Agenda"],
+    ["communications", MessageCircle, "Comunicações"],
     ["sales", ShoppingCart, "Vendas"],
     ["finance", WalletCards, "Financeiro"],
     ["client-center", UsersRound, "Clientes"],

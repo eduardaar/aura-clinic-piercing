@@ -129,6 +129,24 @@ entrada.
 - Confirmação de pagamento confirma reservas; falha, cancelamento ou expiração
   libera o estoque.
 
+### Comunicações e automações
+
+- A central existente de notificações foi ampliada, sem criar um fluxo paralelo.
+- Modelos por tenant aceitam somente variáveis documentadas e preservam
+  marcadores desconhecidos para evitar substituições silenciosas.
+- Regras de confirmação imediata e lembrete antes do atendimento são
+  configuráveis, ativáveis e registram execuções.
+- O agendamento público cria comunicações idempotentes para o cliente, além da
+  notificação operacional já existente.
+- A fila distingue mensagens pendentes, prontas e falhas; sem um provedor
+  oficial configurado, nenhuma mensagem é declarada como enviada.
+- A interface permite editar modelos, ativar regras, processar vencimentos,
+  consultar o histórico e abrir a mensagem pronta no WhatsApp.
+- O acesso é controlado pela feature `message_templates` e pelos papéis de
+  administrador e recepção.
+- Testes unitários cobrem a renderização segura das variáveis; a suíte completa
+  do backend permanece verde com 142 testes preexistentes.
+
 ## Segurança e decisões
 
 - Valores calculados pelo navegador são apenas estimativas visuais; o backend
@@ -141,8 +159,9 @@ entrada.
 
 ## Fases seguintes
 
-1. Templates de comunicação e provedores externos de pagamento.
-2. Relatórios, indicadores, exportações e medições de performance.
+1. Inteligência de estoque, previsões e sugestões de compra.
+2. Financeiro 2.0, relatórios, exportações e medições de performance.
+3. Integrações oficiais de WhatsApp e pagamento, dependentes de credenciais.
 
 Este documento deve ser atualizado a cada fase com migrations, testes,
 medições, riscos, commits e estado de deploy reais.

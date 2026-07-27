@@ -68,6 +68,7 @@ if (typeof __AURA_BUILD__ !== "undefined") {
 const Dashboard = lazy(() => import("./features/dashboard/Dashboard").then((m) => ({ default: m.Dashboard })));
 const AlertsPopup = lazy(() => import("./features/dashboard/Dashboard").then((m) => ({ default: m.AlertsPopup })));
 const AgendaWorkspace = lazy(() => import("./features/agenda/Agenda").then((m) => ({ default: m.AgendaWorkspace })));
+const Communications = lazy(() => import("./features/communications/Communications").then((m) => ({ default: m.Communications })));
 const CatalogWorkspace = lazy(() => import("./features/inventory/Inventory").then((m) => ({ default: m.CatalogWorkspace })));
 const SalesWorkspace = lazy(() => import("./features/sales/Sales").then((m) => ({ default: m.SalesWorkspace })));
 const FinanceAdmin = lazy(() => import("./features/finance/Finance").then((m) => ({ default: m.FinanceAdmin })));
@@ -293,6 +294,7 @@ function App() {
           {activePage !== "dashboard" && alertsOpen && <AlertsPopup alerts={alertsData} loading={alertsLoading} onClose={() => setAlertsOpen(false)} onAction={(nextPage) => { setAlertsOpen(false); setPage(nextPage); }} />}
           {activePage === "erp" && <AuraERP setPage={setPage} />}
           {activePage === "agenda" && <AgendaWorkspace />}
+          {activePage === "communications" && <Communications />}
           {activePage === "catalog" && <CatalogWorkspace />}
           {activePage === "client-center" && <ClientWorkspace />}
           {activePage === "catalog-customization" && <CatalogCustomization />}
