@@ -578,6 +578,81 @@ CREATE TABLE IF NOT EXISTS catalog_promotions (
   is_active INTEGER NOT NULL DEFAULT 1
 );
 
+CREATE TABLE IF NOT EXISTS financial_cost_centers (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE TABLE IF NOT EXISTS financial_entries (
+  id SERIAL PRIMARY KEY,
+  entry_type TEXT NOT NULL CHECK (entry_type IN ('payable', 'receivable', 'income', 'expense')),
+  description TEXT NOT NULL,
+  category TEXT,
+  amount DOUBLE PRECISION NOT NULL CHECK (amount >= 0),
+  paid_amount DOUBLE PRECISION NOT NULL DEFAULT 0 CHECK (paid_amount >= 0),
+  due_date TEXT NOT NULL,
+  competence_date TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid', 'overdue', 'canceled', 'partially_paid', 'refunded')),
+  payment_method TEXT,
+  payment_account TEXT,
+  paid_at TEXT,
+  cost_center_id INTEGER REFERENCES financial_cost_centers(id),
+  responsible_user_id INTEGER REFERENCES users(id),
+  attachment_url TEXT,
+  notes TEXT,
+  recurrence TEXT,
+  recurrence_end_date TEXT,
+  installment_number INTEGER,
+  installment_count INTEGER,
+  parent_entry_id INTEGER REFERENCES financial_entries(id),
+  source_type TEXT,
+  source_id INTEGER,
+  source_key TEXT UNIQUE,
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS'),
+  updated_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE TABLE IF NOT EXISTS financial_entry_audit (
+  id SERIAL PRIMARY KEY,
+  entry_id INTEGER NOT NULL REFERENCES financial_entries(id) ON DELETE RESTRICT,
+  user_id INTEGER REFERENCES users(id),
+  action TEXT NOT NULL,
+  before_data TEXT,
+  after_data TEXT,
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE TABLE IF NOT EXISTS financial_goals (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  period_start TEXT NOT NULL,
+  period_end TEXT NOT NULL,
+  target_amount DOUBLE PRECISION NOT NULL CHECK (target_amount >= 0),
+  goal_type TEXT NOT NULL DEFAULT 'revenue',
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE TABLE IF NOT EXISTS financial_reconciliations (
+  id SERIAL PRIMARY KEY,
+  entry_id INTEGER NOT NULL REFERENCES financial_entries(id),
+  external_reference TEXT,
+  statement_amount DOUBLE PRECISION NOT NULL,
+  statement_date TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'matched' CHECK (status IN ('matched', 'divergent', 'ignored')),
+  reconciled_by INTEGER REFERENCES users(id),
+  reconciled_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS'),
+  UNIQUE(entry_id, external_reference)
+);
+
+CREATE INDEX IF NOT EXISTS idx_financial_entries_due ON financial_entries(status, due_date, entry_type);
+CREATE INDEX IF NOT EXISTS idx_financial_entries_period ON financial_entries(competence_date, entry_type, status);
+CREATE INDEX IF NOT EXISTS idx_financial_entries_source ON financial_entries(source_type, source_id);
+CREATE INDEX IF NOT EXISTS idx_financial_audit_entry ON financial_entry_audit(entry_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_financial_goals_period ON financial_goals(period_start, period_end);
+
 CREATE TABLE IF NOT EXISTS inventory_suggestions (
   id SERIAL PRIMARY KEY,
   jewelry_id INTEGER NOT NULL REFERENCES jewelry_inventory(id) ON DELETE CASCADE,

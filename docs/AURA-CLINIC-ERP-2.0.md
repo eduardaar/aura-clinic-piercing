@@ -174,6 +174,25 @@ entrada.
   `inventory_count_items` e `inventory_audit_log`.
 - A suíte passou a 146 testes de backend e 8 de frontend.
 
+### Financeiro 2.0
+
+- O financeiro básico e suas despesas foram preservados; um razão financeiro
+  avançado foi adicionado sem duplicar pagamentos e despesas de origem.
+- Contas a pagar, contas a receber, receitas e despesas aceitam baixa parcial,
+  cancelamento, estorno, comprovante, conta/caixa, responsável e observações.
+- Parcelamentos criam competências mensais e lançamentos recorrentes são
+  gerados de forma idempotente para horizontes configuráveis.
+- Centros de custo, metas, conciliação e auditoria possuem persistência própria
+  no schema de cada tenant.
+- Fluxo de caixa, DRE, inadimplência e saldos a pagar/receber são calculados
+  no backend para o período solicitado.
+- Pagamentos e despesas antigas são sincronizados por `source_key` único,
+  evitando lançamentos duplicados.
+- A interface Premium permite criar lançamentos e parcelas, registrar baixas,
+  gerar recorrências, cadastrar centros de custo e acompanhar indicadores.
+- Teste de integração comprova parcelamento, baixa parcial, razão e
+  idempotência das recorrências.
+
 ## Segurança e decisões
 
 - Valores calculados pelo navegador são apenas estimativas visuais; o backend
