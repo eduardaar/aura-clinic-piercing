@@ -10,7 +10,9 @@ import {
   getCatalogCustomization,
   getCatalogSettings,
   saveCatalogCustomization,
-  resetCatalogCustomization
+  resetCatalogCustomization,
+  saveCatalogLayoutDraft,
+  publishCatalogLayout
 } from "../services/catalog.js";
 
 const router = Router();
@@ -18,7 +20,7 @@ const router = Router();
 const asArray = (value) => (Array.isArray(value) ? value : []);
 
 router.get("/api/catalog", withDb(async (_req, res, db) => {
-  const customization = await getCatalogCustomization(db);
+  const customization = await getCatalogCustomization(db, { published: true });
   const productRows = await db.all(`
     SELECT
       j.*,
@@ -125,13 +127,16 @@ router.get("/api/catalog-customization", withFeature("public_catalog_customizati
 router.patch("/api/catalog-customization", withFeature("public_catalog_customization", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   await saveCatalogCustomization(db, req.body || {});
+  if (Array.isArray(req.body?.catalogSections)) await saveCatalogLayoutDraft(db, req.body.catalogSections, req.user?.id);
   res.json(await getCatalogCustomization(db));
 }));
 
 router.post("/api/catalog-customization/publish", withFeature("public_catalog_customization", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   await saveCatalogCustomization(db, req.body || {});
-  res.json({ ok: true, published_at: new Date().toISOString(), ...(await getCatalogCustomization(db)) });
+  if (Array.isArray(req.body?.catalogSections)) await saveCatalogLayoutDraft(db, req.body.catalogSections, req.user?.id);
+  const catalogSections = await publishCatalogLayout(db, req.user?.id);
+  res.json({ ok: true, published_at: new Date().toISOString(), ...(await getCatalogCustomization(db)), catalogSections });
 }));
 
 router.post("/api/catalog-customization/reset", withFeature("public_catalog_customization", async (req, res, db) => {

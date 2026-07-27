@@ -493,6 +493,62 @@ CREATE TABLE IF NOT EXISTS catalog_promotions (
   is_active INTEGER NOT NULL DEFAULT 1
 );
 
+CREATE TABLE IF NOT EXISTS catalog_layouts (
+  id SERIAL PRIMARY KEY,
+  status TEXT NOT NULL CHECK (status IN ('draft', 'published')),
+  version INTEGER NOT NULL DEFAULT 1,
+  published_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(status)
+);
+
+CREATE TABLE IF NOT EXISTS catalog_sections (
+  id SERIAL PRIMARY KEY,
+  layout_id INTEGER NOT NULL REFERENCES catalog_layouts(id) ON DELETE CASCADE,
+  section_key TEXT NOT NULL,
+  section_type TEXT NOT NULL,
+  title TEXT,
+  subtitle TEXT,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  alignment TEXT NOT NULL DEFAULT 'left',
+  background TEXT,
+  spacing INTEGER NOT NULL DEFAULT 24,
+  item_limit INTEGER NOT NULL DEFAULT 8,
+  display_mode TEXT NOT NULL DEFAULT 'grid',
+  width_mode TEXT NOT NULL DEFAULT 'contained',
+  height INTEGER,
+  columns_count INTEGER NOT NULL DEFAULT 4,
+  image_ratio TEXT NOT NULL DEFAULT '1:1',
+  card_size TEXT NOT NULL DEFAULT 'medium',
+  product_sort TEXT NOT NULL DEFAULT 'recent',
+  category_filter TEXT,
+  media_url TEXT,
+  button_text TEXT,
+  button_link TEXT,
+  body_text TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(layout_id, section_key)
+);
+
+CREATE TABLE IF NOT EXISTS catalog_layout_history (
+  id SERIAL PRIMARY KEY,
+  version INTEGER NOT NULL,
+  action TEXT NOT NULL,
+  user_id INTEGER REFERENCES users(id),
+  snapshot JSONB NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE catalog_featured_categories ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE catalog_featured_categories ADD COLUMN IF NOT EXISTS display_mode TEXT NOT NULL DEFAULT 'grid';
+ALTER TABLE catalog_featured_categories ADD COLUMN IF NOT EXISTS product_limit INTEGER NOT NULL DEFAULT 12;
+ALTER TABLE catalog_featured_categories ADD COLUMN IF NOT EXISTS color TEXT;
+ALTER TABLE catalog_featured_categories ADD COLUMN IF NOT EXISTS banner_url TEXT;
+ALTER TABLE catalog_featured_categories ADD COLUMN IF NOT EXISTS is_featured INTEGER NOT NULL DEFAULT 0;
+
 ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
 ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS priority INTEGER NOT NULL DEFAULT 0;
@@ -636,6 +692,8 @@ CREATE INDEX IF NOT EXISTS idx_loyalty_points_client ON loyalty_points(client_id
 CREATE INDEX IF NOT EXISTS idx_medical_records_client ON client_medical_records(client_id);
 CREATE INDEX IF NOT EXISTS idx_expenses_due ON expenses(due_date);
 CREATE INDEX IF NOT EXISTS idx_catalog_promotions_active_dates ON catalog_promotions(is_active, start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_catalog_sections_layout_order ON catalog_sections(layout_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_catalog_categories_public_order ON catalog_featured_categories(is_active, sort_order);
 CREATE INDEX IF NOT EXISTS idx_catalog_promotions_rules ON catalog_promotions(status, priority DESC, start_date, end_date) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_promotion_usages_promotion ON promotion_usages(promotion_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_promotion_audit_promotion ON promotion_audit_logs(promotion_id, created_at DESC);

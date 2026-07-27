@@ -89,6 +89,19 @@ entrada.
   e materiais foram incorporados às configurações existentes.
 - O fluxo público de agendamento usa a identidade do tenant quando disponível.
 
+### Construtor e categorias
+
+- Seções persistidas em layouts separados de rascunho e publicação.
+- Versionamento e histórico mínimo de salvamento/publicação.
+- Tipos para banners, categorias, vitrines, serviços, profissionais, localização,
+  políticas, biossegurança, materiais, depoimentos, Instagram, agenda e rodapé.
+- Ordenação, ativação, duplicação, modo visual, largura, colunas, espaçamento,
+  alinhamento, limite e regra de produtos.
+- Prévia em desktop, tablet e celular.
+- Catálogo público respeita ordem e visibilidade publicadas.
+- Categorias mantêm nome interno separado do nome público, com descrição,
+  imagem, banner, cor, destaque, limite e modo de exibição.
+
 ## Segurança e decisões
 
 - Valores calculados pelo navegador são apenas estimativas visuais; o backend
@@ -101,11 +114,10 @@ entrada.
 
 ## Fases seguintes
 
-1. Separar rascunho/publicação do construtor.
-2. Busca visual fase 1 e limpeza de arquivos temporários.
-3. Agenda com múltiplos serviços/joias e reserva de estoque.
-4. Templates de comunicação e provedores de pagamento.
-5. Relatórios, indicadores, exportações e medições de performance.
+1. Busca visual fase 1 e limpeza de arquivos temporários.
+2. Agenda com múltiplos serviços/joias e reserva de estoque.
+3. Templates de comunicação e provedores de pagamento.
+4. Relatórios, indicadores, exportações e medições de performance.
 
 Este documento deve ser atualizado a cada fase com migrations, testes,
 medições, riscos, commits e estado de deploy reais.

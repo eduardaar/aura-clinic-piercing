@@ -9079,6 +9079,37 @@ body {
   max-width: 1240px;
   margin: 0 auto;
   gap: 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.catalog-grid {
+  grid-template-columns: repeat(var(--catalog-section-columns, 4), minmax(0, 1fr));
+}
+
+.preview-device-switcher {
+  display: flex;
+  gap: 4px;
+}
+
+.preview-device-switcher button {
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 7px;
+  font-size: 10px;
+}
+
+.preview-device-switcher button.active {
+  background: var(--preview-primary);
+  color: white;
+}
+
+.catalog-live-preview.preview-tablet {
+  max-width: 768px;
+}
+
+.catalog-live-preview.preview-mobile {
+  max-width: 390px;
 }
 
 .catalog-topbar {

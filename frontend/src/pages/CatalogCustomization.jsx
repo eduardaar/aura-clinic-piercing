@@ -62,6 +62,7 @@ export function CatalogCustomization() {
   const { data, refresh } = useFetch("/catalog-customization");
   const [form, setForm] = useState(defaultCatalogCustomization());
   const [activeSection, setActiveSection] = useState("aparencia");
+  const [previewDevice, setPreviewDevice] = useState("desktop");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -117,6 +118,7 @@ export function CatalogCustomization() {
         <nav className="customization-tabs">
           {[
             ["aparencia", "Aparência"],
+            ["layout", "Construtor"],
             ["banners", "Banners"],
             ["componentes", "Componentes"],
             ["categorias", "Categorias"],
@@ -131,6 +133,8 @@ export function CatalogCustomization() {
             <button key={id} type="button" className={activeSection === id ? "active" : ""} onClick={() => setActiveSection(id)}>{label}</button>
           ))}
         </nav>
+
+        {activeSection === "layout" && <CatalogLayoutBuilder form={form} setForm={setForm} />}
 
         {activeSection === "aparencia" && (
           <CustomizationCard title="Aparência do catálogo">
@@ -233,6 +237,10 @@ export function CatalogCustomization() {
             <div className="custom-list">
               {form.featuredCategories.map((category, index) => (
                 <article key={index}>
+                  <div className="customization-actions">
+                    <button type="button" disabled={!index} onClick={() => setForm({ ...form, featuredCategories: moveListItem(form.featuredCategories, index, -1) })}>Subir</button>
+                    <button type="button" disabled={index === form.featuredCategories.length - 1} onClick={() => setForm({ ...form, featuredCategories: moveListItem(form.featuredCategories, index, 1) })}>Descer</button>
+                  </div>
                   <div className="form-grid">
                     <Select label="Categoria do estoque" value={category.category_id} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { category_id: value }))}>
                       <option value="">Selecione</option>
@@ -243,9 +251,15 @@ export function CatalogCustomization() {
                       <option value="gem">diamante</option><option value="heart">coração</option><option value="star">estrela</option><option value="sparkles">brilho</option><option value="shield">escudo</option>
                     </Select>
                     <Input type="number" label="Ordem" value={category.sort_order} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { sort_order: value }))} />
+                    <Input type="number" label="Quantidade de produtos" value={category.product_limit || 12} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { product_limit: value }))} />
+                    <Select label="Exibição" value={category.display_mode || "grid"} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { display_mode: value }))}><option value="grid">Grade</option><option value="carousel">Carrossel</option><option value="list">Lista</option></Select>
+                    <Input type="color" label="Cor" value={category.color || "#C8A96A"} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { color: value }))} />
                     <Toggle label="Ativa" checked={category.is_active} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { is_active: value }))} />
+                    <Toggle label="Destaque" checked={category.is_featured} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { is_featured: value }))} />
                   </div>
+                  <label>Descrição<textarea value={category.description || ""} onChange={(event) => setForm(updateList(form, "featuredCategories", index, { description: event.target.value }))} /></label>
                   <ImageUploadField label="Imagem da categoria" value={category.image_url} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { image_url: value }))} />
+                  <ImageUploadField label="Banner da categoria" value={category.banner_url} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { banner_url: value }))} />
                   <button type="button" className="danger-link" onClick={() => setForm(removeListItem(form, "featuredCategories", index))}>Remover categoria</button>
                 </article>
               ))}
@@ -394,7 +408,7 @@ export function CatalogCustomization() {
         <button className="primary-button customization-save" type="button" onClick={() => save()}>Salvar alterações</button>
       </div>
 
-      <CatalogCustomizationPreview form={form} products={products} />
+      <CatalogCustomizationPreview form={form} products={products} device={previewDevice} onDeviceChange={setPreviewDevice} />
     </section>
   );
 }
@@ -408,6 +422,61 @@ function CustomizationCard({ title, action, children }) {
       </div>
       {children}
     </article>
+  );
+}
+
+function CatalogLayoutBuilder({ form, setForm }) {
+  const sections = asArray(form.catalogSections);
+  function update(index, patch) {
+    setForm({ ...form, catalogSections: sections.map((section, itemIndex) => itemIndex === index ? { ...section, ...patch } : section) });
+  }
+  function add(type = "custom_content") {
+    setForm({ ...form, catalogSections: [...sections, defaultCatalogSection(type, sections.length + 1)] });
+  }
+  function duplicate(index) {
+    const copy = { ...sections[index], id: undefined, section_key: `${sections[index].section_type}-${Date.now()}`, title: `${sections[index].title || "Seção"} (cópia)` };
+    const next = [...sections];
+    next.splice(index + 1, 0, copy);
+    setForm({ ...form, catalogSections: next.map((item, itemIndex) => ({ ...item, sort_order: itemIndex + 1 })) });
+  }
+  return (
+    <CustomizationCard title="Construtor visual" action={
+      <Select value="" onChange={(value) => value && add(value)}>
+        <option value="">Adicionar seção</option>
+        {CATALOG_SECTION_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+      </Select>
+    }>
+      <p className="customization-help">A ordem abaixo é a ordem da página pública. Salvar mantém rascunho; Publicar atualiza a vitrine.</p>
+      <div className="custom-list">
+        {sections.map((section, index) => (
+          <article key={section.section_key}>
+            <div className="panel-heading">
+              <div><strong>{CATALOG_SECTION_TYPES.find(([value]) => value === section.section_type)?.[1] || section.section_type}</strong><small>Posição {index + 1}</small></div>
+              <div className="customization-actions">
+                <button type="button" disabled={!index} onClick={() => setForm({ ...form, catalogSections: moveListItem(sections, index, -1) })}>Subir</button>
+                <button type="button" disabled={index === sections.length - 1} onClick={() => setForm({ ...form, catalogSections: moveListItem(sections, index, 1) })}>Descer</button>
+                <button type="button" onClick={() => duplicate(index)}>Duplicar</button>
+                <button type="button" className="danger-link" onClick={() => setForm({ ...form, catalogSections: sections.filter((_, itemIndex) => itemIndex !== index) })}>Excluir</button>
+              </div>
+            </div>
+            <div className="form-grid">
+              <Input label="Título" value={section.title} onChange={(value) => update(index, { title: value })} />
+              <Input label="Subtítulo" value={section.subtitle} onChange={(value) => update(index, { subtitle: value })} />
+              <Select label="Exibição" value={section.display_mode} onChange={(value) => update(index, { display_mode: value })}><option value="grid">Grade</option><option value="carousel">Carrossel</option><option value="list">Lista</option></Select>
+              <Select label="Largura" value={section.width_mode} onChange={(value) => update(index, { width_mode: value })}><option value="contained">Limitada</option><option value="full">Total</option></Select>
+              <Select label="Alinhamento" value={section.alignment} onChange={(value) => update(index, { alignment: value })}><option value="left">Esquerda</option><option value="center">Centro</option><option value="right">Direita</option></Select>
+              <Input type="number" label="Colunas" value={section.columns_count} onChange={(value) => update(index, { columns_count: value })} />
+              <Input type="number" label="Quantidade de itens" value={section.item_limit} onChange={(value) => update(index, { item_limit: value })} />
+              <Input type="number" label="Espaçamento" value={section.spacing} onChange={(value) => update(index, { spacing: value })} />
+              <Input label="Fundo" value={section.background} onChange={(value) => update(index, { background: value })} />
+              <Select label="Ordenação" value={section.product_sort} onChange={(value) => update(index, { product_sort: value })}><option value="recent">Recentes</option><option value="best_sellers">Mais vendidos</option><option value="price_asc">Menor preço</option><option value="price_desc">Maior preço</option><option value="stock">Estoque</option><option value="manual">Manual</option></Select>
+              <Input label="Filtro de categoria" value={section.category_filter} onChange={(value) => update(index, { category_filter: value })} />
+              <Toggle label="Seção ativa" checked={section.is_active} onChange={(value) => update(index, { is_active: value })} />
+            </div>
+          </article>
+        ))}
+      </div>
+    </CustomizationCard>
   );
 }
 
@@ -636,7 +705,7 @@ export function Toggle({ label, checked, onChange }) {
   );
 }
 
-function CatalogCustomizationPreview({ form, products }) {
+function CatalogCustomizationPreview({ form, products, device = "desktop", onDeviceChange }) {
   const safeForm = asObject(form);
   const theme = { ...defaultCatalogCustomization().theme, ...asObject(safeForm.theme) };
   const activeBanner = [...asArray(safeForm.banners)].sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0)).find((banner) => Boolean(Number(banner.is_active))) || defaultCatalogBanner(1);
@@ -649,10 +718,13 @@ function CatalogCustomizationPreview({ form, products }) {
     fontFamily: theme.body_font
   };
   return (
-    <aside className={`catalog-live-preview theme-${theme.theme}`} style={style}>
+    <aside className={`catalog-live-preview theme-${theme.theme} preview-${device}`} style={style}>
       <div className="preview-browser-bar">
         <span />
         <strong>Pré-visualização em tempo real</strong>
+        <div className="preview-device-switcher">
+          {["desktop", "tablet", "mobile"].map((item) => <button type="button" className={device === item ? "active" : ""} onClick={() => onDeviceChange(item)} key={item}>{item}</button>)}
+        </div>
         <a href={`/catalogo?t=${tenantSlug()}`} target="_blank" rel="noreferrer">Abrir</a>
       </div>
       <div className="preview-storefront">
@@ -705,6 +777,8 @@ function normalizeCatalogCustomization(data) {
     featuredCategories: (asArray(safeData.featuredCategories).length ? asArray(safeData.featuredCategories) : defaults.featuredCategories).map(normalizeBooleanRecord),
     featuredProducts: asArray(safeData.featuredProducts).map(normalizeBooleanRecord),
     promotions: asArray(safeData.promotions).map(normalizeBooleanRecord)
+    ,
+    catalogSections: (asArray(safeData.catalogSections).length ? asArray(safeData.catalogSections) : defaultCatalogSections()).map(normalizeBooleanRecord)
   };
 }
 
@@ -775,7 +849,7 @@ function defaultCatalogBanner(order) {
 }
 
 function defaultFeaturedCategory(order) {
-  return { category_id: "", public_name: "Nova categoria", icon: "gem", image_url: "", is_active: true, sort_order: order };
+  return { category_id: "", public_name: "Nova categoria", icon: "gem", image_url: "", banner_url: "", description: "", display_mode: "grid", product_limit: 12, color: "#C8A96A", is_featured: false, is_active: true, sort_order: order };
 }
 
 function defaultFeaturedProduct() {
@@ -894,7 +968,35 @@ function defaultCatalogCustomization() {
     featuredCategories: JEWELRY_CATEGORY_OPTIONS.map((name, index) => ({ category_id: name, public_name: name, icon: "gem", image_url: "", is_active: true, sort_order: index + 1 })),
     featuredProducts: [],
     promotions: []
+    ,
+    catalogSections: defaultCatalogSections()
   };
+}
+
+const CATALOG_SECTION_TYPES = [
+  ["hero", "Banner principal"], ["secondary_banners", "Banners secundários"], ["categories", "Categorias"],
+  ["featured_products", "Produtos em destaque"], ["best_sellers", "Mais vendidos"], ["new_products", "Novidades"],
+  ["promotions", "Promoções"], ["premium_products", "Joias premium"], ["in_stock", "Em estoque"],
+  ["out_of_stock", "Esgotados"], ["category_products", "Produtos por categoria"], ["services", "Serviços"],
+  ["professionals", "Profissionais"], ["location", "Localização"], ["contact", "Contato"], ["policies", "Políticas"],
+  ["biosafety", "Biossegurança"], ["materials", "Materiais"], ["testimonials", "Depoimentos"],
+  ["instagram", "Instagram"], ["booking_cta", "Chamada para agendamento"], ["footer", "Rodapé"],
+  ["custom_content", "Conteúdo personalizado"]
+];
+
+function defaultCatalogSection(sectionType, order) {
+  const label = CATALOG_SECTION_TYPES.find(([value]) => value === sectionType)?.[1] || "Seção";
+  return {
+    section_key: `${sectionType}-${order}`, section_type: sectionType, title: label, subtitle: "", is_active: true,
+    sort_order: order, alignment: "left", background: "", spacing: 24, item_limit: 8, display_mode: "grid",
+    width_mode: "contained", height: "", columns_count: 4, image_ratio: "1:1", card_size: "medium",
+    product_sort: sectionType === "best_sellers" ? "best_sellers" : "recent", category_filter: ""
+  };
+}
+
+function defaultCatalogSections() {
+  return ["hero", "categories", "featured_products", "best_sellers", "new_products", "promotions", "booking_cta", "location", "footer"]
+    .map((type, index) => defaultCatalogSection(type, index + 1));
 }
 
 export function ImageUploadField({ label, value, onChange }) {

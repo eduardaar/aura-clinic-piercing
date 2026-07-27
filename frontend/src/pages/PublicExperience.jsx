@@ -105,6 +105,19 @@ export function PublicCatalog() {
   const safeData = asObject(data);
   const theme = asObject(safeData.theme);
   const settings = safeData;
+  const layoutSections = asArray(safeData.catalogSections);
+  const layoutStyle = (type, fallbackOrder) => {
+    const section = layoutSections.find((item) => item.section_type === type);
+    if (!section) return { order: fallbackOrder };
+    return {
+      order: Number(section.sort_order || fallbackOrder),
+      display: Boolean(Number(section.is_active)) ? undefined : "none",
+      background: section.background || undefined,
+      padding: section.spacing ? `${Number(section.spacing)}px` : undefined,
+      textAlign: section.alignment || undefined,
+      "--catalog-section-columns": Number(section.columns_count || 4)
+    };
+  };
   const contentSections = catalogContentSections(settings.content_sections);
   const activeBanners = asArray(safeData.banners).filter((banner) => Boolean(asNumber(banner?.is_active))).sort((a, b) => asNumber(a?.sort_order) - asNumber(b?.sort_order));
   const fallbackBanner = {
@@ -215,7 +228,7 @@ function addToOrder(item) {
   return (
     <main className={`catalog-page theme-${theme.theme || "premium"}`} style={catalogStyle}>
       <section className="catalog-main">
-        <header className="catalog-topbar">
+        <header className="catalog-topbar" style={{ order: -30 }}>
           <a className="catalog-client-brand" href={catalogUrl()}>
             {theme.logo_url && <img src={catalogImageUrl(theme.logo_url)} alt={theme.brand_name || "Aura Clinic"} />}
             <strong>{theme.brand_name || data.brand_name || "Aura Clinic"}</strong>
@@ -231,7 +244,7 @@ function addToOrder(item) {
           </div>
         </header>
 
-        <div className="catalog-title">
+        <div className="catalog-title" style={{ order: -20 }}>
           <span className="eyebrow">Catálogo online</span>
           <h1 style={{ fontFamily: theme.title_font || "Georgia" }}>{settings.page_title || "Catálogo Online"} <Sparkles size={26} /></h1>
           <p>{data.title || "Escolha a joia perfeita para você"}</p>
@@ -241,6 +254,7 @@ function addToOrder(item) {
         <section
           className={`catalog-premium-hero catalog-carousel-hero catalog-layout-${data.layout_style || "premium"}`}
           style={{
+            ...layoutStyle("hero", 1),
             backgroundImage: `linear-gradient(90deg, rgba(255, 253, 249, .08), rgba(255, 253, 249, .04), rgba(28, 28, 28, .14)), url(${catalogImageUrl(activeBanner.image_url || data.hero_image_url)})`,
             minHeight: `${Number(activeBanner.banner_height || 340)}px`,
             maxWidth: activeBanner.banner_width ? `${Number(activeBanner.banner_width)}px` : "none",
@@ -259,7 +273,7 @@ function addToOrder(item) {
           )}
         </section>
 
-        <section className="catalog-category-strip">
+        <section className="catalog-category-strip" style={layoutStyle("categories", 2)}>
           {categories.map(({ name, icon: Icon }) => (
             <button key={name} className={activeCategory === name ? "active" : ""} onClick={() => setActiveCategory(name)}>
               <Icon size={25} />
@@ -268,7 +282,7 @@ function addToOrder(item) {
           ))}
         </section>
 
-        <section className="catalog-filters">
+        <section className="catalog-filters" style={{ order: 3 }}>
           <span className="catalog-filter-label">Refinar</span>
           <CatalogSelect label="Material" value={filters.material} options={options.materials} onChange={(value) => setFilters({ ...filters, material: value })} />
           <CatalogSelect label="Observação de cor" value={filters.color} options={options.colors} onChange={(value) => setFilters({ ...filters, color: value })} />
@@ -289,22 +303,22 @@ function addToOrder(item) {
           </label>
         </section>
 
-        <section className="catalog-trust-strip" aria-label="Diferenciais Aura">
+        <section className="catalog-trust-strip" aria-label="Diferenciais do estúdio" style={{ order: 4 }}>
           <span><ShieldCheck size={20} /><strong>Curadoria profissional</strong><small>Joias selecionadas pela Aura</small></span>
           <span><Gem size={20} /><strong>Materiais premium</strong><small>Titânio, ouro e peças seguras</small></span>
           <span><Truck size={20} /><strong>Envio orientado</strong><small>Pedido finalizado pelo WhatsApp</small></span>
           <span><Heart size={20} /><strong>Composição personalizada</strong><small>Favoritos e observações no pedido</small></span>
         </section>
 
-        <CatalogProductRail title="Lançamentos" subtitle="Novidades recém-adicionadas à curadoria." items={latestItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} />
-        <CatalogProductRail title="Mais desejadas" subtitle="Peças premium em destaque para composições especiais." items={bestSellerItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} />
-        {promoItems.length > 0 && <CatalogProductRail title="Promoções" subtitle="Ofertas ativas com preço especial." items={promoItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} />}
-        {lastUnitsItems.length > 0 && <CatalogProductRail title="Últimas unidades" subtitle="Joias com poucas peças disponíveis." items={lastUnitsItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} />}
+        <div style={layoutStyle("new_products", 6)}><CatalogProductRail title="Lançamentos" subtitle="Novidades recém-adicionadas à curadoria." items={latestItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} /></div>
+        <div style={layoutStyle("best_sellers", 7)}><CatalogProductRail title="Mais desejadas" subtitle="Peças premium em destaque para composições especiais." items={bestSellerItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} /></div>
+        {promoItems.length > 0 && <div style={layoutStyle("promotions", 8)}><CatalogProductRail title="Promoções" subtitle="Ofertas ativas com preço especial." items={promoItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} /></div>}
+        {lastUnitsItems.length > 0 && <div style={layoutStyle("in_stock", 9)}><CatalogProductRail title="Últimas unidades" subtitle="Joias com poucas peças disponíveis." items={lastUnitsItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} /></div>}
 
-        <CatalogBookingWidget />
-        <CatalogContentSections sections={contentSections} />
+        <div style={layoutStyle("booking_cta", 10)}><CatalogBookingWidget /></div>
+        <div style={layoutStyle("custom_content", 11)}><CatalogContentSections sections={contentSections} /></div>
 
-        <section className="catalog-grid" id="catalog-products">
+        <section className="catalog-grid" id="catalog-products" style={layoutStyle("featured_products", 12)}>
           {items.map((item) => (
             <CatalogProductCard
               item={item}
@@ -342,7 +356,7 @@ function addToOrder(item) {
           </div>
         </section>
 
-        <footer className="catalog-footer-benefits catalog-dynamic-footer">
+        <footer className="catalog-footer-benefits catalog-dynamic-footer" style={layoutStyle("footer", 20)}>
           <div className="catalog-contact-heading">
             <span className="eyebrow">Atendimento Aura</span>
             <h2>Fale com a nossa equipe</h2>
