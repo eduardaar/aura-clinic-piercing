@@ -24,6 +24,7 @@ import { Loading, ApiError } from "../components/common/Feedback";
 import { BookingChoiceGrid, Input, Select } from "../components/common/Ui";
 import { API_ORIGIN, publicApiFetch, usePublicFetch } from "../lib/api";
 import { asArray, asNumber, asObject, formatLongDate, removeAccents } from "../lib/utils";
+import { readRecentSearches, saveRecentSearch, smartSearchMatches, useDebouncedValue } from "../lib/smartSearch";
 import { ANODIZATION_COLOR_OPTIONS, JEWELRY_CATEGORY_OPTIONS, JEWELRY_LENGTH_OPTIONS, defaultPublicBooking, nextBookingDates, parseGalleryUrls } from "../lib/defaultForms";
 import {
   catalogAvailabilityMatches,
@@ -61,6 +62,8 @@ export function PublicCatalog() {
   const initialQuery = new URLSearchParams(window.location.search);
   const [activeCategory, setActiveCategory] = useState(initialQuery.get("category") || "Todos");
   const [search, setSearch] = useState(initialQuery.get("q") || "");
+  const debouncedSearch = useDebouncedValue(search);
+  const [recentSearches, setRecentSearches] = useState(() => readRecentSearches("aura-catalog-recent-searches"));
   const [filters, setFilters] = useState({ material: initialQuery.get("material") || "", color: initialQuery.get("color") || "", stone: initialQuery.get("stone") || "", size: initialQuery.get("size") || "", topSize: initialQuery.get("topSize") || "", availability: initialQuery.get("available") || "" });
   const [sort, setSort] = useState(initialQuery.get("sort") || "recentes");
   const [favoriteIds, setFavoriteIds] = useState(() => readCatalogStorage("aura-catalog-favorites", []));
@@ -81,7 +84,7 @@ export function PublicCatalog() {
   useEffect(() => {
     replaceCatalogState({
       category: activeCategory !== "Todos" ? activeCategory : "",
-      q: search.trim(),
+      q: debouncedSearch.trim(),
       material: filters.material,
       color: filters.color,
       stone: filters.stone,
@@ -90,7 +93,7 @@ export function PublicCatalog() {
       available: filters.availability,
       sort: sort !== "recentes" ? sort : ""
     });
-  }, [activeCategory, search, filters, sort]);
+  }, [activeCategory, debouncedSearch, filters, sort]);
 
   useEffect(() => {
     const activeCount = asArray(data?.banners).filter((banner) => Boolean(asNumber(banner?.is_active))).length;
@@ -142,7 +145,7 @@ export function PublicCatalog() {
     const haystack = removeAccents(`${item.name} ${item.description} ${item.category} ${item.subcategory} ${item.material} ${item.color} ${item.stone} ${item.size} ${item.thickness} ${item.sku} ${variants.map((variant) => Object.values(variant).join(" ")).join(" ")}`.toLowerCase());
     const activeCategoryConfig = categories.find((category) => category.name === activeCategory);
     const categoryMatch = activeCategory === "Todos" || catalogCategoryTerms(activeCategoryConfig?.match || activeCategory).some((term) => haystack.includes(term));
-    const searchMatch = !search.trim() || haystack.includes(removeAccents(search.trim().toLowerCase()));
+    const searchMatch = smartSearchMatches(haystack, debouncedSearch);
     const matchesVariant = (key, value) => !value || variants.some((variant) => String(variant[key] ?? "").toLowerCase().includes(String(value).toLowerCase()));
     const materialMatch = !filters.material || item.material === filters.material || matchesVariant("material", filters.material);
     const colorMatch = !filters.color || String(item.color || "").toLowerCase().includes(filters.color.toLowerCase()) || matchesVariant("color", filters.color);
@@ -237,7 +240,16 @@ function addToOrder(item) {
           <div className="catalog-top-actions">
             <label className="catalog-search">
               <Search size={17} />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar joia, material ou tamanho" />
+              <input
+                value={search}
+                list="catalog-search-history"
+                onChange={(event) => setSearch(event.target.value)}
+                onBlur={() => setRecentSearches(saveRecentSearch("aura-catalog-recent-searches", search))}
+                placeholder="Buscar joia, SKU, material, pedra ou tamanho"
+              />
+              <datalist id="catalog-search-history">
+                {recentSearches.map((item) => <option key={item} value={item} />)}
+              </datalist>
             </label>
             {Boolean(Number(theme.show_favorites || 1)) && <button className="catalog-icon-action" onClick={() => setDrawer("favorites")} aria-label="Favoritos"><Heart size={18} /><span>{favoriteIds.length}</span></button>}
             <button className="catalog-icon-action primary-cart" onClick={() => setDrawer("order")}><ShoppingCart size={19} /> Pedido <span>{orderItems.reduce((sum, item) => sum + Number(item.qty || 1), 0)}</span></button>

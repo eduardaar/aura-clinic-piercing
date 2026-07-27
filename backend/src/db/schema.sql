@@ -578,6 +578,58 @@ CREATE TABLE IF NOT EXISTS catalog_promotions (
   is_active INTEGER NOT NULL DEFAULT 1
 );
 
+CREATE TABLE IF NOT EXISTS inventory_suggestions (
+  id SERIAL PRIMARY KEY,
+  jewelry_id INTEGER NOT NULL REFERENCES jewelry_inventory(id) ON DELETE CASCADE,
+  suggestion_type TEXT NOT NULL,
+  current_value TEXT,
+  suggested_value TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  confidence DOUBLE PRECISION NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected')),
+  reviewed_by INTEGER REFERENCES users(id),
+  reviewed_at TEXT,
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS'),
+  updated_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE TABLE IF NOT EXISTS inventory_counts (
+  id SERIAL PRIMARY KEY,
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'completed', 'canceled')),
+  notes TEXT,
+  created_by INTEGER REFERENCES users(id),
+  completed_by INTEGER REFERENCES users(id),
+  completed_at TEXT,
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE TABLE IF NOT EXISTS inventory_count_items (
+  id SERIAL PRIMARY KEY,
+  count_id INTEGER NOT NULL REFERENCES inventory_counts(id) ON DELETE CASCADE,
+  jewelry_id INTEGER NOT NULL REFERENCES jewelry_inventory(id),
+  variant_id INTEGER REFERENCES jewelry_variants(id),
+  expected_quantity INTEGER NOT NULL DEFAULT 0,
+  counted_quantity INTEGER,
+  difference INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(count_id, jewelry_id, variant_id)
+);
+
+CREATE TABLE IF NOT EXISTS inventory_audit_log (
+  id SERIAL PRIMARY KEY,
+  jewelry_id INTEGER REFERENCES jewelry_inventory(id),
+  action TEXT NOT NULL,
+  before_data TEXT,
+  after_data TEXT,
+  user_id INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE INDEX IF NOT EXISTS idx_inventory_suggestions_status ON inventory_suggestions(status, suggestion_type, jewelry_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_counts_status ON inventory_counts(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_inventory_count_items_count ON inventory_count_items(count_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_audit_product ON inventory_audit_log(jewelry_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_stock_movements_date_type ON stock_movements(movement_date, movement_type, jewelry_id);
+
 CREATE TABLE IF NOT EXISTS payment_intents (
   id SERIAL PRIMARY KEY,
   appointment_id INTEGER REFERENCES appointments(id),

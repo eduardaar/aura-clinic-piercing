@@ -147,6 +147,33 @@ entrada.
 - Testes unitários cobrem a renderização segura das variáveis; a suíte completa
   do backend permanece verde com 142 testes preexistentes.
 
+### Busca e filtros inteligentes
+
+- Busca compartilhada normaliza acentos, caixa e pontuação e tolera erros
+  simples de digitação por distância de edição.
+- O catálogo mantém histórico recente local, sugestões nativas e estado na URL.
+- A consulta de estoque usa debounce para não realizar uma requisição a cada
+  tecla; vendas e clientes pesquisam também itens, SKU, status e contatos.
+- Filtros existentes de variação, material, cor, pedra, medidas, rosca,
+  fornecedor, disponibilidade e ordenação continuam ligados aos dados reais.
+
+### Estoque inteligente
+
+- Giro, demanda diária e previsão de ruptura são calculados sobre saídas,
+  vendas e perdas reais em uma janela configurável.
+- Curva ABC usa valor efetivamente movimentado, em vez de valor parado em
+  estoque.
+- Sugestões de reposição e de metadados ausentes são persistidas, revisáveis e
+  nunca aplicadas sem aprovação.
+- Inventário físico possui rascunho, contagem por SKU/variação, bloqueio de
+  conclusão incompleta, ajuste transacional, movimentação e auditoria.
+- Reservas temporárias permanecem descontadas da disponibilidade comercial.
+- Etiquetas são geradas localmente com QR Code e código de barras Code 128,
+  limitadas a 100 produtos por impressão.
+- Novas tabelas por tenant: `inventory_suggestions`, `inventory_counts`,
+  `inventory_count_items` e `inventory_audit_log`.
+- A suíte passou a 146 testes de backend e 8 de frontend.
+
 ## Segurança e decisões
 
 - Valores calculados pelo navegador são apenas estimativas visuais; o backend
@@ -156,6 +183,11 @@ entrada.
 - Cupons usados não são apagados fisicamente.
 - Uploads, pagamentos e webhooks continuarão exigindo validação no servidor.
 - Nenhuma remoção de código antigo foi feita sem prova de ausência de uso.
+- `sharp` foi atualizado para 0.35.3 após auditoria. O `npm audit` ainda aponta
+  10 achados transitivos (9 altos e 1 moderado) na cadeia de exportação do
+  `exceljs`; o único reparo automático oferecido é downgrade major para 3.4.0,
+  portanto não foi aplicado sem validar primeiro as exportações na fase de
+  relatórios.
 
 ## Fases seguintes
 

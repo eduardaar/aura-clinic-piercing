@@ -5,6 +5,7 @@ import { Button, Input, Metric, Select, StatusBadge } from "../../components/com
 import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../components/common/Crud";
 import { asArray, asObject, formatDate, removeAccents } from "../../lib/utils";
 import { apiFetch, useFetch } from "../../lib/api";
+import { useDebouncedValue } from "../../lib/smartSearch";
 import { ANODIZATION_COLOR_OPTIONS, JEWELRY_CATEGORY_OPTIONS, JEWELRY_LENGTH_OPTIONS, JEWELRY_THICKNESS_OPTIONS, JEWELRY_THREAD_OPTIONS, PRICE_MULTIPLIER_OPTIONS, PRICE_ROUNDING_OPTIONS, calculateVariantPricing, centsToMoney, defaultJewelry, defaultJewelryVariant, normalizeJewelryForm, parseGalleryUrls } from "../../lib/defaultForms";
 import { catalogFilterOptions, cleanDisplayText, elegantProductName, splitColorOptions } from "../../features/catalog/catalogUtils";
 import { catalogImageUrl, currency, inventoryStatusClass, inventoryStatusLabel, inventoryStockState, jewelrySkuBase } from "../../features/shared/helpers";
@@ -156,7 +157,11 @@ export function Inventory2() {
   const [showVisualSearch, setShowVisualSearch] = useState(false);
   const [pricingSaving, setPricingSaving] = useState(false);
   const { data: options, refresh: refreshOptions } = useFetch("/options");
+  const { data: intelligence, refresh: refreshIntelligence } = useFetch("/inventory/intelligence?days=90");
+  const { data: inventorySuggestions, refresh: refreshSuggestions } = useFetch("/inventory/suggestions");
+  const debouncedSearch = useDebouncedValue(filters.search);
   const { status: _statusFilter, ...queryFilters } = filters;
+  queryFilters.search = debouncedSearch;
   const query = new URLSearchParams(Object.fromEntries(Object.entries(queryFilters).filter(([, value]) => value))).toString();
   const { data, refresh: refreshJewelry } = useFetch(`/jewelry?${query}`);
   const apiItems = asArray(data);
@@ -239,7 +244,10 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
   const topValueItems = [...allJewelry].sort((a, b) => (Number(b.sale_value || 0) * Number(b.quantity || 0)) - (Number(a.sale_value || 0) * Number(a.quantity || 0))).slice(0, 8);
   const mainTabs = [
     { id: "produtos", label: "Lista de Produtos", icon: LayoutGrid },
-    { id: "categorias", label: "Categorias", icon: ListFilter }
+    { id: "categorias", label: "Categorias", icon: ListFilter },
+    { id: "unidades", label: "Resumo", icon: Table2 },
+    { id: "abc", label: "Curva ABC", icon: Sparkles },
+    { id: "inteligencia", label: "Inteligência", icon: SlidersHorizontal }
   ];
 
   useEffect(() => {
@@ -359,6 +367,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
           </div>
           <div className="inventory-hero-actions">
             <Button variant="secondary" onClick={() => setShowVisualSearch(true)}><ImageIcon size={16} /> Buscar por foto</Button>
+            <Button variant="secondary" onClick={printLabels}><Table2 size={16} /> Imprimir etiquetas</Button>
             <Button variant="primary" onClick={openNewProduct}><Gem size={16} /> Nova Joia</Button>
           </div>
         </header>
@@ -575,11 +584,174 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
               </div>
             </div>
           )}
+
+          {sectionTab === "inteligencia" && (
+            <InventoryIntelligence
+              data={intelligence}
+              suggestions={inventorySuggestions}
+              onRefresh={async () => {
+                await apiFetch("/inventory/suggestions/refresh", { method: "POST", body: JSON.stringify({}) });
+                refreshIntelligence();
+                refreshSuggestions();
+              }}
+              onReview={async (id, status) => {
+                await apiFetch(`/inventory/suggestions/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
+                refreshSuggestions();
+              }}
+            />
+          )}
         </div>
       </div>
       {movementTarget && <StockMovementModal item={movementTarget} initialType={movementTarget.movement_type} onClose={() => setMovementTarget(null)} onSave={handleMovementSave} />}
       {showVisualSearch && <VisualSearchModal onClose={() => setShowVisualSearch(false)} onOpenProduct={(item) => { setShowVisualSearch(false); openProduct(item); }} />}
     </section>
+  );
+}
+
+function InventoryIntelligence({ data, suggestions, onRefresh, onReview }) {
+  const summary = asObject(data?.summary);
+  const items = asArray(data?.items);
+  const reviews = asArray(suggestions);
+  const [count, setCount] = useState(null);
+  const [countBusy, setCountBusy] = useState(false);
+  const [countError, setCountError] = useState("");
+
+  async function createCount() {
+    setCountBusy(true);
+    setCountError("");
+    const response = await apiFetch("/inventory/counts", { method: "POST", body: JSON.stringify({ notes: "Inventário manual" }) });
+    const created = await response.json().catch(() => ({}));
+    if (response.ok) {
+      const detail = await apiFetch(`/inventory/counts/${created.id}`);
+      setCount(await detail.json());
+    } else {
+      setCountError(created.error || "Não foi possível iniciar o inventário.");
+    }
+    setCountBusy(false);
+  }
+
+  async function printLabels() {
+    const ids = displayItems.map((item) => item.id).slice(0, 100);
+    if (!ids.length) return;
+    const popup = window.open("", "_blank");
+    const response = await apiFetch(`/inventory/labels?ids=${ids.join(",")}`);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !popup) return;
+    popup.opener = null;
+    popup.document.title = "Etiquetas de estoque";
+    const style = popup.document.createElement("style");
+    style.textContent = "body{font-family:Arial;display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.label{border:1px solid #bbb;padding:10px;text-align:center;break-inside:avoid}.label strong{display:block;font-size:13px}.barcode{width:100%;height:55px;object-fit:contain}.qr{width:72px;height:72px}@media print{body{margin:4mm}.label{page-break-inside:avoid}}";
+    popup.document.head.appendChild(style);
+    asArray(payload.labels).forEach((label) => {
+      const card = popup.document.createElement("article");
+      card.className = "label";
+      const title = popup.document.createElement("strong");
+      title.textContent = label.name;
+      const barcode = popup.document.createElement("img");
+      barcode.className = "barcode";
+      barcode.src = label.barcode_data_url;
+      barcode.alt = `Código de barras ${label.code}`;
+      const qr = popup.document.createElement("img");
+      qr.className = "qr";
+      qr.src = label.qr_data_url;
+      qr.alt = `QR Code ${label.code}`;
+      card.append(title, barcode, qr);
+      popup.document.body.appendChild(card);
+    });
+    window.setTimeout(() => { popup.focus(); popup.print(); }, 300);
+  }
+
+  function updateCountItem(id, value) {
+    setCount((current) => ({
+      ...current,
+      items: asArray(current?.items).map((item) => item.id === id ? { ...item, counted_quantity: value } : item)
+    }));
+  }
+
+  async function saveCount(complete = false) {
+    setCountBusy(true);
+    setCountError("");
+    const itemsPayload = asArray(count?.items).map((item) => ({ id: item.id, counted_quantity: item.counted_quantity }));
+    let response = await apiFetch(`/inventory/counts/${count.id}/items`, { method: "PATCH", body: JSON.stringify({ items: itemsPayload }) });
+    if (response.ok && complete) response = await apiFetch(`/inventory/counts/${count.id}/complete`, { method: "POST", body: JSON.stringify({}) });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) setCountError(payload.error || "Não foi possível salvar o inventário.");
+    else if (complete) setCount(null);
+    setCountBusy(false);
+  }
+  return (
+    <div className="inventory-section-card stack">
+      <div className="panel-heading">
+        <div>
+          <h2>Previsão e reposição</h2>
+          <span>Projeções baseadas nas saídas reais dos últimos {data?.period_days || 90} dias. Nenhum dado é alterado automaticamente.</span>
+        </div>
+        <div className="form-actions">
+          <Button variant="secondary" onClick={createCount} disabled={countBusy}>Iniciar inventário</Button>
+          <Button variant="secondary" onClick={onRefresh}>Atualizar sugestões</Button>
+        </div>
+      </div>
+      {countError && <span className="form-error">{countError}</span>}
+      <div className="inventory-summary-grid compact">
+        <Metric label="Rupturas em até 30 dias" value={String(summary.predicted_stockouts || 0)} />
+        <Metric label="Unidades sugeridas" value={String(summary.suggested_units || 0)} />
+        <Metric label="Produtos classe A" value={String(summary.class_a || 0)} />
+      </div>
+      <div className="table-wrap">
+        <table>
+          <thead><tr><th>Produto</th><th>Curva</th><th>Saídas</th><th>Giro/dia</th><th>Ruptura</th><th>Compra sugerida</th></tr></thead>
+          <tbody>
+            {items.slice(0, 100).map((item) => (
+              <tr key={item.id}>
+                <td><strong>{item.name}</strong><br /><small>{item.sku || "Sem SKU"}</small></td>
+                <td><StatusBadge status={item.abc_class}>{item.abc_class}</StatusBadge></td>
+                <td>{item.units_out}</td>
+                <td>{Number(item.daily_demand || 0).toLocaleString("pt-BR")}</td>
+                <td>{item.days_to_stockout === null ? "Sem consumo" : `${item.days_to_stockout} dias`}</td>
+                <td>{item.suggested_purchase} un.</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="panel-heading"><h3>Sugestões para revisão</h3><span>Aceitar registra a decisão de compra; não movimenta o estoque.</span></div>
+      <div className="cards-grid">
+        {reviews.map((item) => (
+          <article className="detail-card" key={item.id}>
+            <strong>{item.jewelry_name}</strong>
+            <span>{item.reason}</span>
+            <small>Atual: {item.quantity} un. · sugerido: {item.suggested_value} un. · confiança: {Math.round(Number(item.confidence || 0) * 100)}%</small>
+            <div className="form-actions">
+              <Button variant="primary" onClick={() => onReview(item.id, "accepted")}>Aprovar</Button>
+              <Button variant="secondary" onClick={() => onReview(item.id, "rejected")}>Descartar</Button>
+            </div>
+          </article>
+        ))}
+        {!reviews.length && <p className="empty-state">Atualize as sugestões para analisar a necessidade de reposição.</p>}
+      </div>
+      {count && (
+        <Modal open title={`Inventário #${count.id}`} subtitle="Informe a quantidade física de cada SKU." size="lg" onClose={() => setCount(null)}
+          footer={(
+            <>
+              <Button variant="secondary" onClick={() => saveCount(false)} disabled={countBusy}>Salvar rascunho</Button>
+              <Button variant="primary" onClick={() => saveCount(true)} disabled={countBusy}>Concluir e ajustar</Button>
+            </>
+          )}>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Produto/SKU</th><th>Esperado</th><th>Contado</th></tr></thead>
+              <tbody>{asArray(count.items).map((item) => (
+                <tr key={item.id}>
+                  <td><strong>{item.name}</strong><br /><small>{item.variation_name || item.sku}</small></td>
+                  <td>{item.expected_quantity}</td>
+                  <td><input type="number" min="0" value={item.counted_quantity ?? ""} onChange={(event) => updateCountItem(item.id, event.target.value)} /></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </Modal>
+      )}
+    </div>
   );
 }
 

@@ -1,6 +1,8 @@
 // Rotas de estoque de joalherias: produtos, variacoes e movimentacoes.
 import { Router } from "express";
 import multer from "multer";
+import bwipjs from "bwip-js";
+import QRCode from "qrcode";
 import { withDb, withFeature } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { boolNumber, elegantProductName, variantStatus, variantFromLegacy } from "../services/utils.js";
@@ -18,6 +20,7 @@ import { validateBody } from "../middleware/validate.js";
 import { jewelryCreateSchema, jewelryUpdateSchema } from "../schemas/index.js";
 import { calculatePricing, getPricingSettings } from "../services/pricing.js";
 import { visualSearch } from "../services/visualSearch.js";
+import { inventoryIntelligence, refreshInventorySuggestions } from "../services/inventoryIntelligence.js";
 
 const router = Router();
 const visualUpload = multer({
@@ -25,6 +28,195 @@ const visualUpload = multer({
   limits: { fileSize: 5 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, callback) => callback(null, ["image/jpeg", "image/png", "image/webp"].includes(file.mimetype))
 });
+
+router.get("/api/inventory/intelligence", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
+  const days = Math.min(Math.max(Number(req.query.days || 90), 30), 365);
+  const items = await inventoryIntelligence(db, days);
+  res.json({
+    period_days: days,
+    generated_at: new Date().toISOString(),
+    items,
+    summary: {
+      predicted_stockouts: items.filter((item) => item.days_to_stockout !== null && item.days_to_stockout <= 30).length,
+      suggested_units: items.reduce((sum, item) => sum + item.suggested_purchase, 0),
+      class_a: items.filter((item) => item.abc_class === "A").length
+    }
+  });
+}));
+
+router.post("/api/inventory/suggestions/refresh", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
+  await refreshInventorySuggestions(db, req.user?.id);
+  res.json(await db.all(`
+    SELECT s.*, j.name AS jewelry_name, j.sku, j.quantity
+    FROM inventory_suggestions s JOIN jewelry_inventory j ON j.id=s.jewelry_id
+    WHERE s.status='pending' ORDER BY s.confidence DESC, s.id DESC
+  `));
+}));
+
+router.get("/api/inventory/suggestions", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
+  const status = ["pending", "accepted", "rejected"].includes(req.query.status) ? req.query.status : "pending";
+  res.json(await db.all(`
+    SELECT s.*, j.name AS jewelry_name, j.sku, j.quantity
+    FROM inventory_suggestions s JOIN jewelry_inventory j ON j.id=s.jewelry_id
+    WHERE s.status=? ORDER BY s.confidence DESC, s.id DESC
+  `, [status]));
+}));
+
+router.patch("/api/inventory/suggestions/:id", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
+  const status = String(req.body?.status || "");
+  if (!["accepted", "rejected"].includes(status)) return res.status(400).json({ error: "Decisão inválida." });
+  const suggestion = await db.get("SELECT * FROM inventory_suggestions WHERE id=? AND status='pending'", [req.params.id]);
+  if (!suggestion) return res.status(404).json({ error: "Sugestão pendente não encontrada." });
+  const metadataFields = new Set(["material", "color", "stone"]);
+  if (status === "accepted" && metadataFields.has(suggestion.suggestion_type)) {
+    await db.run(`UPDATE jewelry_inventory SET ${suggestion.suggestion_type}=? WHERE id=?`, [suggestion.suggested_value, suggestion.jewelry_id]);
+  }
+  await db.run("UPDATE inventory_suggestions SET status=?, reviewed_by=?, reviewed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?", [status, req.user?.id || null, suggestion.id]);
+  await db.run(
+    "INSERT INTO inventory_audit_log (jewelry_id, action, before_data, after_data, user_id) VALUES (?, ?, ?, ?, ?)",
+    [suggestion.jewelry_id, `suggestion_${status}`, JSON.stringify(suggestion), JSON.stringify({ status }), req.user?.id || null]
+  );
+  res.json(await db.get("SELECT * FROM inventory_suggestions WHERE id=?", [suggestion.id]));
+}));
+
+router.get("/api/inventory/counts", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
+  res.json(await db.all(`
+    SELECT c.*, COUNT(i.id) AS item_count,
+      COALESCE(SUM(CASE WHEN i.counted_quantity IS NOT NULL AND i.difference != 0 THEN 1 ELSE 0 END), 0) AS divergent_count
+    FROM inventory_counts c LEFT JOIN inventory_count_items i ON i.count_id=c.id
+    GROUP BY c.id ORDER BY c.created_at DESC, c.id DESC LIMIT 100
+  `));
+}));
+
+router.post("/api/inventory/counts", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
+  await db.run("BEGIN");
+  try {
+    const created = await db.run("INSERT INTO inventory_counts (notes, created_by) VALUES (?, ?)", [String(req.body?.notes || ""), req.user?.id || null]);
+    await db.run(`
+      INSERT INTO inventory_count_items (count_id, jewelry_id, variant_id, expected_quantity)
+      SELECT ?, j.id, v.id, v.quantity
+      FROM jewelry_inventory j JOIN jewelry_variants v ON v.jewelry_id=j.id AND v.is_active=1
+      WHERE j.status != 'arquivado'
+    `, [created.lastID]);
+    await db.run(`
+      INSERT INTO inventory_count_items (count_id, jewelry_id, variant_id, expected_quantity)
+      SELECT ?, j.id, NULL, j.quantity FROM jewelry_inventory j
+      WHERE j.status != 'arquivado'
+        AND NOT EXISTS (SELECT 1 FROM jewelry_variants v WHERE v.jewelry_id=j.id AND v.is_active=1)
+    `, [created.lastID]);
+    await db.run("COMMIT");
+    res.status(201).json(await db.get("SELECT * FROM inventory_counts WHERE id=?", [created.lastID]));
+  } catch (error) {
+    await db.run("ROLLBACK").catch(() => {});
+    throw error;
+  }
+}));
+
+router.get("/api/inventory/counts/:id", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
+  const count = await db.get("SELECT * FROM inventory_counts WHERE id=?", [req.params.id]);
+  if (!count) return res.status(404).json({ error: "Inventário não encontrado." });
+  count.items = await db.all(`
+    SELECT i.*, j.name, COALESCE(v.sku, j.sku) AS sku, j.category, v.variation_name
+    FROM inventory_count_items i JOIN jewelry_inventory j ON j.id=i.jewelry_id
+    LEFT JOIN jewelry_variants v ON v.id=i.variant_id
+    WHERE i.count_id=? ORDER BY j.category, j.name
+  `, [count.id]);
+  res.json(count);
+}));
+
+router.patch("/api/inventory/counts/:id/items", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
+  const count = await db.get("SELECT * FROM inventory_counts WHERE id=? AND status='draft'", [req.params.id]);
+  if (!count) return res.status(404).json({ error: "Inventário em aberto não encontrado." });
+  const items = Array.isArray(req.body?.items) ? req.body.items : [];
+  await db.run("BEGIN");
+  try {
+    for (const item of items) {
+      if (item.counted_quantity === null || item.counted_quantity === undefined || item.counted_quantity === "") continue;
+      const quantity = Math.max(0, Number(item.counted_quantity || 0));
+      await db.run(
+        "UPDATE inventory_count_items SET counted_quantity=?, difference=?-expected_quantity WHERE id=? AND count_id=?",
+        [quantity, quantity, item.id, count.id]
+      );
+    }
+    await db.run("COMMIT");
+    res.json({ ok: true });
+  } catch (error) {
+    await db.run("ROLLBACK").catch(() => {});
+    throw error;
+  }
+}));
+
+router.post("/api/inventory/counts/:id/complete", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin"])) return;
+  const count = await db.get("SELECT * FROM inventory_counts WHERE id=? AND status='draft'", [req.params.id]);
+  if (!count) return res.status(404).json({ error: "Inventário em aberto não encontrado." });
+  const missing = await db.get("SELECT COUNT(*) AS count FROM inventory_count_items WHERE count_id=? AND counted_quantity IS NULL", [count.id]);
+  if (Number(missing.count) > 0) return res.status(400).json({ error: "Informe a contagem de todos os produtos antes de concluir." });
+  const items = await db.all("SELECT * FROM inventory_count_items WHERE count_id=? AND difference != 0", [count.id]);
+  await db.run("BEGIN");
+  try {
+    for (const item of items) {
+      const product = await db.get("SELECT * FROM jewelry_inventory WHERE id=? FOR UPDATE", [item.jewelry_id]);
+      if (item.variant_id) {
+        const variant = await db.get("SELECT * FROM jewelry_variants WHERE id=? FOR UPDATE", [item.variant_id]);
+        await db.run("UPDATE jewelry_variants SET quantity=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", [
+          item.counted_quantity,
+          variantStatus(item.counted_quantity, variant?.low_stock_threshold || 5),
+          item.variant_id
+        ]);
+        await syncProductInventory(db, item.jewelry_id);
+      } else {
+        await db.run("UPDATE jewelry_inventory SET quantity=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", [
+          item.counted_quantity,
+          Number(item.counted_quantity) <= 0 ? "esgotado" : Number(item.counted_quantity) <= Number(product.critical_stock_threshold || 3) ? "crítico" : "disponível",
+          item.jewelry_id
+        ]);
+      }
+      await db.run(
+        "INSERT INTO stock_movements (jewelry_id, variant_id, movement_type, quantity, notes) VALUES (?, ?, 'Inventário', ?, ?)",
+        [item.jewelry_id, item.variant_id || null, Math.abs(Number(item.difference)), `Inventário #${count.id}: ${item.expected_quantity} → ${item.counted_quantity}`]
+      );
+      await db.run(
+        "INSERT INTO inventory_audit_log (jewelry_id, action, before_data, after_data, user_id) VALUES (?, 'inventory_count', ?, ?, ?)",
+        [item.jewelry_id, JSON.stringify({ quantity: product.quantity }), JSON.stringify({ quantity: item.counted_quantity, count_id: count.id }), req.user?.id || null]
+      );
+    }
+    await db.run("UPDATE inventory_counts SET status='completed', completed_by=?, completed_at=CURRENT_TIMESTAMP WHERE id=?", [req.user?.id || null, count.id]);
+    await db.run("COMMIT");
+    res.json({ ok: true, adjusted_items: items.length });
+  } catch (error) {
+    await db.run("ROLLBACK").catch(() => {});
+    throw error;
+  }
+}));
+
+router.get("/api/inventory/labels", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
+  const ids = String(req.query.ids || "").split(",").map(Number).filter((id) => Number.isInteger(id) && id > 0).slice(0, 100);
+  if (!ids.length) return res.status(400).json({ error: "Selecione ao menos um produto." });
+  const placeholders = ids.map(() => "?").join(",");
+  const products = await db.all(`SELECT id, name, sku, category, sale_value FROM jewelry_inventory WHERE id IN (${placeholders})`, ids);
+  const labels = await Promise.all(products.map(async (product) => {
+    const code = product.sku || `AURA-${product.id}`;
+    const barcode = await bwipjs.toBuffer({ bcid: "code128", text: code, scale: 2, height: 10, includetext: true, textxalign: "center" });
+    const qr = await QRCode.toDataURL(JSON.stringify({ type: "aura_product", id: product.id, sku: code }), { width: 180, margin: 1 });
+    return {
+      ...product,
+      code,
+      barcode_data_url: `data:image/png;base64,${barcode.toString("base64")}`,
+      qr_data_url: qr
+    };
+  }));
+  res.json({ labels });
+}));
 
 router.post("/api/jewelry/visual-search", visualUpload.single("image"), withFeature("visual_search", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;

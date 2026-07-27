@@ -10,6 +10,7 @@ import { defaultMedicalRecord } from "../../lib/defaultForms";
 import { matchesClientSearch, personName, whatsappUrl } from "../../features/shared/helpers";
 import { DigitalTerms } from "../terms/DigitalTerms";
 import { PostCare } from "../postcare/PostCare";
+import { smartSearchMatches } from "../../lib/smartSearch";
 
 export function ClientWorkspace() {
   const [tab, setTab] = useState("clientes");
@@ -48,7 +49,10 @@ export function ClientsMedical() {
   if (!data) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
   const clients = asArray(data);
-  const filteredClients = clients.filter((client) => matchesClientSearch(client, search));
+  const filteredClients = clients.filter((client) => matchesClientSearch(client, search) || smartSearchMatches(
+    `${client.full_name} ${client.whatsapp} ${client.instagram} ${client.email} ${client.phone}`,
+    search
+  ));
 
   function openNew() {
     setEditing(null);
