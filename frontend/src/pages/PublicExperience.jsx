@@ -1020,19 +1020,24 @@ export function PublicBooking() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [confirmed, setConfirmed] = useState(null);
+  const [serviceIds, setServiceIds] = useState([]);
   const safeData = asObject(data);
   const services = asArray(safeData.services);
   const catalogItems = asArray(catalogData?.items);
   const allProfessionals = asArray(safeData.professionals);
-  const professionals = allProfessionals.filter((professional) => professionalMatchesService(professional, form.service_id));
+  const effectiveServiceIds = serviceIds.length ? serviceIds : form.service_id ? [form.service_id] : [];
+  const professionals = allProfessionals.filter((professional) => effectiveServiceIds.every((serviceId) => professionalMatchesService(professional, serviceId)));
   const bookingDates = nextBookingDates(10);
   const selectedService = services.find((item) => String(item.id) === String(form.service_id));
   const selectedProfessional = allProfessionals.find((item) => String(item.id) === String(form.professional_id));
   const selectedJewelry = catalogItems.find((item) => String(item.id) === String(form.jewelry_id));
   const selectedJewelryVariant = asArray(selectedJewelry?.variants).find((variant) => String(variant.id) === String(form.jewelry_variant_id));
   const selectedJewelryValue = form.jewelry_id ? asNumber(selectedJewelryVariant?.sale_value || selectedJewelry?.sale_value || 0) : 0;
-  const selectedServiceValue = asNumber(selectedService?.base_price || selectedService?.price || 0);
-  const selectedTotal = selectedServiceValue + selectedJewelryValue;
+  const selectedServices = services.filter((item) => effectiveServiceIds.some((id) => String(id) === String(item.id)));
+  const selectedServiceValue = selectedServices.reduce((sum, item) => sum + asNumber(item.base_price || item.price || 0), 0);
+  const bookingOrderItems = readCatalogStorage("aura-catalog-order", []);
+  const orderJewelryValue = asArray(bookingOrderItems).reduce((sum, item) => sum + asNumber(item.sale_value) * asNumber(item.qty, 1), 0);
+  const selectedTotal = selectedServiceValue + (bookingOrderItems.length ? orderJewelryValue : selectedJewelryValue);
   const selectedDeposit = asNumber(selectedService?.deposit_value || 25);
   const selectedRemaining = Math.max(selectedTotal - selectedDeposit, 0);
 
@@ -1066,6 +1071,18 @@ export function PublicBooking() {
     Object.entries(form).forEach(([key, value]) => {
       if (value) body.append(key, value);
     });
+    body.set("service_id", String(effectiveServiceIds[0] || form.service_id));
+    body.append("items", JSON.stringify([
+      ...selectedServices.map((item) => ({ item_type: "service", service_id: item.id, quantity: 1 })),
+      ...asArray(bookingOrderItems).map((item) => ({
+        item_type: "jewelry",
+        jewelry_id: item.id,
+        jewelry_variant_id: item.selected_variant_id || null,
+        quantity: item.qty || 1,
+        selected_color: item.selected_color || item.color || "",
+        notes: item.customer_notes || ""
+      }))
+    ]));
     const response = await publicApiFetch("/booking/requests", { method: "POST", body });
     const json = await response.json().catch(() => ({}));
     setSubmitting(false);
@@ -1095,11 +1112,26 @@ export function PublicBooking() {
           ))}
         </div>
 
-        {step === 1 && <BookingChoiceGrid title="Escolha O Serviço" items={services} value={form.service_id} onSelect={(id) => { setForm({ ...form, service_id: id, professional_id: "", appointment_time: "" }); setStep(2); }} render={(item) => {
-          const total = asNumber(item.base_price || item.price || 0);
-          const deposit = asNumber(item.deposit_value || 25);
-          return <><strong>{item.name}</strong><p>{item.description}</p><span>{item.duration_minutes} min · Total {currency.format(total)} · Sinal {currency.format(deposit)}</span></>;
-        }} />}
+        {step === 1 && (
+          <section className="booking-panel">
+            <h2>Escolha um ou mais serviços</h2>
+            <div className="booking-choice-grid">
+              {services.map((item) => {
+                const selected = effectiveServiceIds.some((id) => String(id) === String(item.id));
+                return (
+                  <button type="button" key={item.id} className={selected ? "active" : ""} onClick={() => {
+                    const next = selected ? effectiveServiceIds.filter((id) => String(id) !== String(item.id)) : [...effectiveServiceIds, item.id];
+                    setServiceIds(next);
+                    setForm({ ...form, service_id: next[0] || "", professional_id: "", appointment_time: "" });
+                  }}>
+                    <strong>{item.name}</strong><p>{item.description}</p><span>{item.duration_minutes} min · {currency.format(item.base_price || item.price || 0)}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <button type="button" className="primary-button booking-wide-button" disabled={!effectiveServiceIds.length} onClick={() => setStep(2)}>Continuar com {effectiveServiceIds.length} serviço(s)</button>
+          </section>
+        )}
         {step === 2 && (
           professionals.length
             ? <BookingChoiceGrid title="Escolha A Profissional" items={professionals} value={form.professional_id} onSelect={(id) => { setForm({ ...form, professional_id: id, appointment_time: "" }); setStep(3); }} render={(item) => <><strong>{item.name}</strong><p>{item.specialty || "Body Piercer Aura"}</p></>} />
@@ -1161,16 +1193,19 @@ export function PublicBooking() {
           <section className="booking-panel booking-summary">
             <span className="booking-section-kicker">Etapa 6  Resumo</span>
             <h2>Resumo Da Solicitação</h2>
-            <p><strong>Serviço:</strong> {selectedService?.name}</p>
-            {selectedJewelry && <p><strong>Joia escolhida:</strong> {elegantProductName(selectedJewelry.name)}{selectedJewelryVariant ? ` · ${variantCatalogLabel(selectedJewelryVariant)}` : ""}{form.selected_color ? ` · ${form.selected_color}` : ""}</p>}
+            <p><strong>Serviços:</strong> {selectedServices.map((item) => item.name).join(", ")}</p>
+            {bookingOrderItems.length > 0
+              ? <p><strong>Joias:</strong> {bookingOrderItems.map((item) => `${item.qty || 1}x ${elegantProductName(item.name)}`).join(", ")}</p>
+              : selectedJewelry && <p><strong>Joia escolhida:</strong> {elegantProductName(selectedJewelry.name)}{selectedJewelryVariant ? ` · ${variantCatalogLabel(selectedJewelryVariant)}` : ""}{form.selected_color ? ` · ${form.selected_color}` : ""}</p>}
             <p><strong>Profissional:</strong> {selectedProfessional?.name}</p>
             <p><strong>Data E Horário:</strong> {formatLongDate(form.appointment_date)} às {form.appointment_time}</p>
             <p><strong>Valor do procedimento:</strong> {currency.format(selectedServiceValue)}</p>
-            {selectedJewelry && <p><strong>Valor da joia:</strong> {currency.format(selectedJewelryValue)}</p>}
+            {(selectedJewelry || bookingOrderItems.length > 0) && <p><strong>Valor das joias:</strong> {currency.format(bookingOrderItems.length ? orderJewelryValue : selectedJewelryValue)}</p>}
             <p><strong>Valor total:</strong> {currency.format(selectedTotal)}</p>
             <p><strong>Sinal obrigatório:</strong> {currency.format(selectedDeposit)}</p>
             <p><strong>Valor restante:</strong> {currency.format(selectedRemaining)}</p>
             <p><strong>Regras:</strong> {data.rules?.cancellation}</p>
+            <Input label="Cupom (opcional)" value={form.coupon_code || ""} onChange={(value) => setForm({ ...form, coupon_code: value.toUpperCase() })} />
             <label>Comprovante Do Sinal Pix (opcional)<input type="file" accept="image/*,.pdf" onChange={(event) => setForm({ ...form, payment_proof: event.target.files?.[0] })} /></label>
             {error && <span className="form-error">{error}</span>}
             <button className="primary-button booking-wide-button" disabled={submitting} onClick={submit}>{submitting ? "Enviando..." : "Confirmar Solicitação"}</button>

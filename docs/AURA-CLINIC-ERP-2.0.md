@@ -114,6 +114,21 @@ entrada.
   preço e percentual de similaridade.
 - Recurso protegido por plano no backend.
 
+### Agenda, reservas e sinal
+
+- Agenda pública aceita múltiplos serviços e as múltiplas joias do pedido.
+- Itens são persistidos em `appointment_items`, com produto, variação,
+  quantidade, preço, duração, subtotal e observações.
+- Preços, promoções e cupons são recalculados pelo backend.
+- Duração agregada é validada contra os horários reais do profissional.
+- Reservas temporárias usam bloqueio de linha e transação, com expiração,
+  confirmação, liberação e prevenção de estoque negativo.
+- Intenções e eventos de pagamento possuem idempotência e estados explícitos.
+- Comprovante manual está estruturado; Asaas, Mercado Pago e Stripe permanecem
+  dependentes de credenciais externas e não são simulados em produção.
+- Confirmação de pagamento confirma reservas; falha, cancelamento ou expiração
+  libera o estoque.
+
 ## Segurança e decisões
 
 - Valores calculados pelo navegador são apenas estimativas visuais; o backend
@@ -126,9 +141,8 @@ entrada.
 
 ## Fases seguintes
 
-1. Agenda com múltiplos serviços/joias e reserva de estoque.
-2. Templates de comunicação e provedores de pagamento.
-3. Relatórios, indicadores, exportações e medições de performance.
+1. Templates de comunicação e provedores externos de pagamento.
+2. Relatórios, indicadores, exportações e medições de performance.
 
 Este documento deve ser atualizado a cada fase com migrations, testes,
 medições, riscos, commits e estado de deploy reais.

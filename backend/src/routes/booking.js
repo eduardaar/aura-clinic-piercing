@@ -6,6 +6,10 @@ import { upload } from "../middleware/upload.js";
 import { addMinutesToTime } from "../services/utils.js";
 import { availableBookingSlots, upsertClient, listAppointments } from "../services/appointments.js";
 import { getStoreName, queueProfessionalBookingNotification, whatsappLink } from "../services/notifications.js";
+import { quotePromotions } from "../services/promotions.js";
+import { validateCoupon } from "../services/discounts.js";
+import { reserveAppointmentItems } from "../services/reservations.js";
+import { createPaymentIntent } from "../services/payments.js";
 
 const router = Router();
 
@@ -23,6 +27,17 @@ function publicBookingKey(req, body) {
       String(body.full_name || "").trim().toLowerCase()
     ].join("|"))
     .digest("hex");
+}
+
+function parseItems(value) {
+  if (Array.isArray(value)) return value;
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 async function bookingReadiness(db) {
@@ -152,10 +167,44 @@ router.post("/api/booking/requests", upload.fields([{ name: "reference_photo", m
   if (jewelryId && !jewelry) return res.status(404).json({ error: "Joia selecionada não encontrada no catálogo." });
   const variant = variantId ? await db.get("SELECT * FROM jewelry_variants WHERE id = ? AND jewelry_id = ? AND is_active = 1", [variantId, jewelryId]) : null;
   if (variantId && !variant) return res.status(404).json({ error: "Variação selecionada não encontrada." });
-  const serviceValue = Number(service.price || service.base_price || 0);
-  const jewelryValue = jewelryId ? Number(variant?.sale_value || jewelry?.sale_value || 0) : 0;
-  const totalValue = serviceValue + jewelryValue;
-  const depositValue = Number(service.deposit_value || 25);
+  const requestedItems = parseItems(body.items);
+  const bookingItems = [];
+  if (!requestedItems.length || !requestedItems.some((item) => item.item_type === "service")) {
+    bookingItems.push({ item_type: "service", service_id: service.id, name: service.name, quantity: 1, unit_price: Number(service.price || service.base_price || 0), duration_minutes: Number(service.duration_minutes || 40), deposit_value: Number(service.deposit_value || 25) });
+  }
+  for (const requested of requestedItems) {
+    const quantity = Math.max(Number(requested.quantity || requested.qty || 1), 1);
+    if (requested.item_type === "service" || requested.service_id) {
+      const itemService = await db.get("SELECT * FROM services WHERE id=? AND active_online_booking=1", [requested.service_id]);
+      if (!itemService) return res.status(404).json({ error: "Um dos serviços selecionados não está disponível." });
+      const itemLinked = await db.get("SELECT id FROM professional_services WHERE professional_id=? AND service_id=?", [professionalId, itemService.id]);
+      if (!itemLinked) return res.status(409).json({ error: "O profissional selecionado não realiza todos os serviços escolhidos." });
+      bookingItems.push({ item_type: "service", service_id: itemService.id, name: itemService.name, quantity, unit_price: Number(itemService.price || itemService.base_price || 0), duration_minutes: Number(itemService.duration_minutes || 40), deposit_value: Number(itemService.deposit_value || 25), notes: requested.notes || "" });
+    } else if (requested.jewelry_id || requested.product_id) {
+      const itemJewelryId = Number(requested.jewelry_id || requested.product_id);
+      const itemVariantId = Number(requested.jewelry_variant_id || requested.variation_id || 0) || null;
+      const itemJewelry = await db.get("SELECT * FROM jewelry_inventory WHERE id=? AND is_catalog_active=1 AND status!='arquivado'", [itemJewelryId]);
+      if (!itemJewelry) return res.status(404).json({ error: "Uma das joias selecionadas não está disponível." });
+      const itemVariant = itemVariantId ? await db.get("SELECT * FROM jewelry_variants WHERE id=? AND jewelry_id=? AND is_active=1", [itemVariantId, itemJewelryId]) : null;
+      if (itemVariantId && !itemVariant) return res.status(404).json({ error: "Uma das variações selecionadas não está disponível." });
+      bookingItems.push({ item_type: "jewelry", jewelry_id: itemJewelryId, jewelry_variant_id: itemVariantId, product_id: itemJewelryId, variation_id: itemVariantId, name: itemJewelry.name, category: itemJewelry.category, color: requested.selected_color || itemVariant?.color || itemJewelry.color, material: itemVariant?.material || itemJewelry.material, stone: itemJewelry.stone, quantity, unit_price: Number(itemVariant?.sale_value || itemJewelry.sale_value || 0), notes: requested.notes || "" });
+    }
+  }
+  if (!requestedItems.length && jewelry) bookingItems.push({ item_type: "jewelry", jewelry_id: jewelry.id, jewelry_variant_id: variant?.id || null, product_id: jewelry.id, variation_id: variant?.id || null, name: jewelry.name, category: jewelry.category, color: body.selected_color || variant?.color || jewelry.color, material: variant?.material || jewelry.material, stone: jewelry.stone, quantity: 1, unit_price: Number(variant?.sale_value || jewelry.sale_value || 0), notes: body.notes || "" });
+  const serviceValue = bookingItems.filter((item) => item.item_type === "service").reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
+  const jewelryValue = bookingItems.filter((item) => item.item_type === "jewelry").reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
+  const promotionQuote = await quotePromotions(db, { items: bookingItems });
+  let totalValue = promotionQuote.final_amount;
+  let couponQuote = null;
+  if (body.coupon_code) {
+    couponQuote = await validateCoupon(db, body.coupon_code, { amount: totalValue, items: bookingItems });
+    if (!couponQuote.valid) return res.status(400).json(couponQuote);
+    const canStack = promotionQuote.promotions.every((promotion) => promotion.stackable_with_coupon);
+    totalValue = promotionQuote.promotions.length && !canStack
+      ? Math.min(promotionQuote.final_amount, couponQuote.final_amount)
+      : couponQuote.final_amount;
+  }
+  const depositValue = Math.min(bookingItems.filter((item) => item.item_type === "service").reduce((sum, item) => sum + Number(item.deposit_value || 0), 0), totalValue);
   const remainingValue = Math.max(totalValue - depositValue, 0);
   const client = await upsertClient(db, {
     full_name: body.full_name,
@@ -166,7 +215,9 @@ router.post("/api/booking/requests", upload.fields([{ name: "reference_photo", m
   });
   const referencePhoto = req.files?.reference_photo?.[0] ? `/uploads/${req.files.reference_photo[0].filename}` : "";
   const paymentProof = req.files?.payment_proof?.[0] ? `/uploads/${req.files.payment_proof[0].filename}` : "";
-  const durationMinutes = Number(service.duration_minutes || 40);
+  const durationMinutes = bookingItems.filter((item) => item.item_type === "service").reduce((sum, item) => sum + Number(item.duration_minutes || 0) * Number(item.quantity || 1), 0) || Number(service.duration_minutes || 40);
+  const multiItemSlots = await availableBookingSlots(db, { service: { ...service, duration_minutes: durationMinutes }, professionalId, date });
+  if (!multiItemSlots.some((slot) => slot.time === time)) return res.status(409).json({ error: "O horário não comporta a duração total dos serviços selecionados." });
   const endTime = addMinutesToTime(time, durationMinutes);
   const result = await db.run(
     `INSERT INTO appointments
@@ -204,6 +255,39 @@ router.post("/api/booking/requests", upload.fields([{ name: "reference_photo", m
       [result.lastID, client.id, depositValue, `${date}T${time}:00`]
     );
   }
+  for (const item of bookingItems) {
+    await db.run(
+      `INSERT INTO appointment_items
+        (appointment_id, service_id, jewelry_id, jewelry_variant_id, quantity, procedure_price, jewelry_unit_price, duration_minutes, subtotal, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        result.lastID, item.service_id || null, item.jewelry_id || null, item.jewelry_variant_id || null,
+        item.quantity, item.item_type === "service" ? item.unit_price : 0,
+        item.item_type === "jewelry" ? item.unit_price : 0, item.duration_minutes || 0,
+        item.unit_price * item.quantity, item.notes || ""
+      ]
+    );
+  }
+  try {
+    await reserveAppointmentItems(db, {
+      appointmentId: result.lastID,
+      clientId: client.id,
+      reservationKey: bookingKey,
+      items: bookingItems,
+      minutes: 30
+    });
+  } catch (error) {
+    await db.run("DELETE FROM payments WHERE appointment_id=?", [result.lastID]);
+    await db.run("DELETE FROM appointments WHERE id=?", [result.lastID]);
+    return res.status(409).json({ error: error.message });
+  }
+  const paymentIntent = depositValue > 0 ? await createPaymentIntent(db, {
+    appointmentId: result.lastID,
+    clientId: client.id,
+    amount: depositValue,
+    provider: "manual",
+    idempotencyKey: `booking:${bookingKey}:deposit`
+  }) : null;
   const appointment = await listAppointments(db, "WHERE a.id = ?", [result.lastID]).then((rows) => rows[0]);
   const proofMessage = [
     `Olá, ${professional.name}. Tudo bem?`,
@@ -227,6 +311,9 @@ router.post("/api/booking/requests", upload.fields([{ name: "reference_photo", m
     ...appointment,
     service_value: serviceValue,
     jewelry_value: jewelryValue,
+    discount_value: Number((serviceValue + jewelryValue - totalValue).toFixed(2)),
+    items: bookingItems,
+    payment_intent: paymentIntent,
     professional_whatsapp_url: professionalWhatsappUrl,
     payment_instructions: "Envie o comprovante do sinal pelo WhatsApp. A Aura confirma o horário após conferência manual."
   });

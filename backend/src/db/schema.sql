@@ -274,6 +274,25 @@ CREATE TABLE IF NOT EXISTS appointment_items (
 CREATE INDEX IF NOT EXISTS idx_appointment_items_appointment ON appointment_items(appointment_id);
 CREATE INDEX IF NOT EXISTS idx_appointment_items_jewelry ON appointment_items(jewelry_id, jewelry_variant_id);
 
+CREATE TABLE IF NOT EXISTS inventory_reservations (
+  id SERIAL PRIMARY KEY,
+  reservation_key TEXT NOT NULL,
+  appointment_id INTEGER REFERENCES appointments(id) ON DELETE CASCADE,
+  client_id INTEGER REFERENCES clients(id),
+  jewelry_id INTEGER NOT NULL REFERENCES jewelry_inventory(id),
+  jewelry_variant_id INTEGER REFERENCES jewelry_variants(id),
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'confirmed', 'released', 'expired', 'cancelled')),
+  expires_at TIMESTAMP NOT NULL,
+  confirmed_at TIMESTAMP,
+  released_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(reservation_key, jewelry_id, jewelry_variant_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_inventory_reservations_stock ON inventory_reservations(jewelry_id, jewelry_variant_id, status, expires_at);
+CREATE INDEX IF NOT EXISTS idx_inventory_reservations_expiry ON inventory_reservations(status, expires_at);
+
 CREATE TABLE IF NOT EXISTS notification_queue (
   id SERIAL PRIMARY KEY,
   professional_id INTEGER REFERENCES professionals(id),
@@ -492,6 +511,38 @@ CREATE TABLE IF NOT EXISTS catalog_promotions (
   category_ids TEXT,
   is_active INTEGER NOT NULL DEFAULT 1
 );
+
+CREATE TABLE IF NOT EXISTS payment_intents (
+  id SERIAL PRIMARY KEY,
+  appointment_id INTEGER REFERENCES appointments(id),
+  client_id INTEGER NOT NULL REFERENCES clients(id),
+  provider TEXT NOT NULL DEFAULT 'manual',
+  external_id TEXT,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  amount DOUBLE PRECISION NOT NULL CHECK (amount >= 0),
+  currency TEXT NOT NULL DEFAULT 'BRL',
+  payment_type TEXT NOT NULL DEFAULT 'deposit',
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'awaiting_payment', 'under_review', 'confirmed', 'failed', 'cancelled', 'refunded', 'expired')),
+  pix_copy_paste TEXT,
+  qr_code_url TEXT,
+  expires_at TIMESTAMP,
+  metadata JSONB,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS payment_events (
+  id SERIAL PRIMARY KEY,
+  payment_intent_id INTEGER NOT NULL REFERENCES payment_intents(id) ON DELETE CASCADE,
+  provider_event_id TEXT,
+  event_type TEXT NOT NULL,
+  payload JSONB,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(payment_intent_id, provider_event_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_payment_intents_appointment ON payment_intents(appointment_id, status);
+CREATE INDEX IF NOT EXISTS idx_payment_events_intent ON payment_events(payment_intent_id, created_at);
 
 CREATE TABLE IF NOT EXISTS catalog_layouts (
   id SERIAL PRIMARY KEY,

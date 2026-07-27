@@ -39,6 +39,7 @@ import platformRoutes from "./routes/platform.js";
 import errorLogsRoutes from "./routes/errorLogs.js";
 import storeRoutes from "./routes/store.js";
 import notificationsRoutes from "./routes/notifications.js";
+import paymentsRoutes from "./routes/payments.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -99,6 +100,7 @@ app.use(platformRoutes);
 app.use(errorLogsRoutes);
 app.use(storeRoutes);
 app.use(notificationsRoutes);
+app.use(paymentsRoutes);
 
 // ---------- Inicialização ----------
 // 1) Garante o schema de controle `platform` (tenants + superadmin inicial).
