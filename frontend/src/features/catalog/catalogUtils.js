@@ -1,4 +1,4 @@
-import { asArray, asNumber, removeAccents } from "../../lib/utils";
+import { asArray, asNumber, removeAccents } from "../../lib/utils.js";
 
 export function catalogCategoryTerms(category) {
   return {
@@ -45,6 +45,20 @@ export function catalogStockText(item, theme = {}, settings = {}) {
   if (quantity <= 0) return settings.unavailable_message || "Indisponível";
   if (quantity <= 2) return settings.low_stock_message || "Poucas unidades";
   return "Em estoque";
+}
+
+export function catalogItemIsAvailable(item = {}) {
+  const variants = asArray(item.variants).filter((variant) => Number(variant.is_active ?? 1) === 1);
+  return variants.length
+    ? variants.some((variant) => Number(variant.quantity || 0) > 0)
+    : Number(item.quantity || 0) > 0;
+}
+
+export function catalogAvailabilityMatches(item, availability = "", showOutOfStock = false) {
+  const available = catalogItemIsAvailable(item);
+  if (availability === "true") return available;
+  if (availability === "false") return !available;
+  return Boolean(showOutOfStock) || available;
 }
 
 export function catalogFilterOptions(items) {

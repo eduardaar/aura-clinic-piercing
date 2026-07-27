@@ -31,6 +31,8 @@ if (isProduction && AUTH_SECRET === DEV_AUTH_SECRET) {
 // __dirname aqui é src/config, então subimos um nível para src/data/uploads.
 export const uploadsDir = path.join(__dirname, "..", "data", "uploads");
 fs.mkdirSync(uploadsDir, { recursive: true });
+export const privateUploadsDir = path.join(__dirname, "..", "data", "private-uploads");
+fs.mkdirSync(privateUploadsDir, { recursive: true });
 
 // Categorias principais de joalherias (usadas no catálogo e validações).
 export const JEWELRY_CATEGORIES = [

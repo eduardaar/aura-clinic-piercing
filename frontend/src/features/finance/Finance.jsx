@@ -236,7 +236,142 @@ export function FinanceAdmin() {
         onClose={() => setDeleting(null)}
         onConfirm={async () => { await deleting.run(); setDeleting(null); }}
       />
+      <AdvancedFinance />
     </section>
+  );
+}
+
+function AdvancedFinance() {
+  const today = new Date().toISOString().slice(0, 10);
+  const monthStart = `${today.slice(0, 7)}-01`;
+  const [period, setPeriod] = useState({ from: monthStart, to: today });
+  const query = new URLSearchParams(period).toString();
+  const { data, refresh } = useFetch(`/finance/ledger?${query}`);
+  const { data: centers, refresh: refreshCenters } = useFetch("/finance/cost-centers");
+  const { data: goals, refresh: refreshGoals } = useFetch("/finance/goals");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [error, setError] = useState("");
+  const [form, setForm] = useState({
+    entry_type: "payable", description: "", category: "", amount: "", paid_amount: 0,
+    due_date: today, status: "pending", payment_method: "Pix", payment_account: "",
+    cost_center_id: "", installment_count: 1, recurrence: "", notes: ""
+  });
+
+  if (!data) return <Loading />;
+  if (data.error) {
+    return <section className="panel"><div className="panel-heading"><h2>Financeiro 2.0</h2><span>Fluxo de caixa, DRE e conciliação estão disponíveis no plano Premium.</span></div></section>;
+  }
+  const ledger = asObject(data);
+  const cashflow = asObject(ledger.cashflow);
+  const dre = asObject(ledger.dre);
+  const entries = asArray(ledger.entries);
+
+  async function save(event) {
+    event.preventDefault();
+    setError("");
+    const response = await apiFetch("/finance/entries", { method: "POST", body: JSON.stringify(form) });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return setError(payload.error || "Não foi possível salvar o lançamento.");
+    setModalOpen(false);
+    refresh();
+  }
+
+  async function registerPayment(item) {
+    const value = window.prompt("Valor pago/recebido:", String(Math.max(0, Number(item.amount) - Number(item.paid_amount))));
+    if (value === null) return;
+    await apiFetch(`/finance/entries/${item.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ paid_amount: Number(item.paid_amount || 0) + Number(value), payment_method: item.payment_method || "Pix" })
+    });
+    refresh();
+  }
+
+  async function createCenter() {
+    const name = window.prompt("Nome do centro de custo:");
+    if (!name) return;
+    await apiFetch("/finance/cost-centers", { method: "POST", body: JSON.stringify({ name }) });
+    refreshCenters();
+  }
+
+  async function createGoal() {
+    const name = window.prompt("Nome da meta:");
+    if (!name) return;
+    const target = window.prompt("Valor da meta:", "10000");
+    if (target === null) return;
+    await apiFetch("/finance/goals", { method: "POST", body: JSON.stringify({ name, target_amount: Number(target), period_start: period.from, period_end: period.to, goal_type: "revenue" }) });
+    refreshGoals();
+  }
+
+  async function processRecurrences() {
+    await apiFetch("/finance/recurrences/process", { method: "POST", body: JSON.stringify({ horizon_days: 90 }) });
+    refresh();
+  }
+
+  return (
+    <>
+      <section className="panel stack">
+        <div className="panel-heading">
+          <div><h2>Financeiro 2.0</h2><span>Contas a pagar e receber, fluxo de caixa, DRE e inadimplência.</span></div>
+          <div className="export-actions">
+            <Button variant="secondary" onClick={processRecurrences}>Gerar recorrências</Button>
+            <Button variant="secondary" onClick={createGoal}>Nova meta</Button>
+            <Button variant="secondary" onClick={createCenter}>Novo centro de custo</Button>
+            <Button variant="primary" onClick={() => setModalOpen(true)}>Novo lançamento</Button>
+          </div>
+        </div>
+        <div className="form-grid">
+          <Input type="date" label="De" value={period.from} onChange={(value) => setPeriod({ ...period, from: value })} />
+          <Input type="date" label="Até" value={period.to} onChange={(value) => setPeriod({ ...period, to: value })} />
+        </div>
+        <div className="metric-grid">
+          <Metric label="Recebido" value={currency.format(asNumber(cashflow.received))} />
+          <Metric label="Pago" value={currency.format(asNumber(cashflow.paid))} />
+          <Metric label="Saldo de caixa" value={currency.format(asNumber(cashflow.balance))} />
+          <Metric label="Contas a receber" value={currency.format(asNumber(ledger.receivable))} />
+          <Metric label="Contas a pagar" value={currency.format(asNumber(ledger.payable))} />
+          <Metric label="Inadimplência" value={currency.format(asNumber(ledger.delinquency))} />
+          <Metric label="Resultado DRE" value={currency.format(asNumber(dre.result))} />
+          <Metric label="Metas do período" value={String(asArray(goals).filter((goal) => goal.period_start <= period.to && goal.period_end >= period.from).length)} />
+        </div>
+        <DataTable rows={entries} columns={[
+          { key: "description", label: "Lançamento" },
+          { key: "entry_type", label: "Tipo" },
+          { key: "cost_center_name", label: "Centro", render: (item) => item.cost_center_name || "—" },
+          { key: "due_date", label: "Vencimento", render: (item) => formatDate(item.due_date) },
+          { key: "amount", label: "Valor", align: "right", render: (item) => currency.format(item.amount) },
+          { key: "paid_amount", label: "Liquidado", align: "right", render: (item) => currency.format(item.paid_amount) },
+          { key: "status", label: "Status", render: (item) => <StatusBadge status={item.status}>{item.status}</StatusBadge> }
+        ]} actions={(item) => (
+          <>{!["paid", "canceled", "refunded"].includes(item.status) && <button type="button" onClick={() => registerPayment(item)}>Baixar valor</button>}</>
+        )} empty="Nenhum lançamento no período." />
+      </section>
+      <Modal open={modalOpen} title="Novo lançamento financeiro" subtitle="Parcelas são criadas mês a mês." onClose={() => setModalOpen(false)}
+        footer={<><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button><Button type="submit" form="ledger-form">Salvar</Button></>}>
+        <form id="ledger-form" onSubmit={save} className="stack">
+          <div className="form-grid">
+            <Select label="Tipo" value={form.entry_type} onChange={(value) => setForm({ ...form, entry_type: value })}>
+              <option value="payable">Conta a pagar</option><option value="receivable">Conta a receber</option>
+              <option value="expense">Despesa</option><option value="income">Receita</option>
+            </Select>
+            <Input label="Descrição" value={form.description} onChange={(value) => setForm({ ...form, description: value })} required />
+            <Input label="Categoria" value={form.category} onChange={(value) => setForm({ ...form, category: value })} />
+            <Input type="number" label="Valor total" value={form.amount} onChange={(value) => setForm({ ...form, amount: value })} required />
+            <Input type="date" label="Primeiro vencimento" value={form.due_date} onChange={(value) => setForm({ ...form, due_date: value })} required />
+            <Input type="number" label="Parcelas" value={form.installment_count} onChange={(value) => setForm({ ...form, installment_count: value })} />
+            <Select label="Recorrência" value={form.recurrence} onChange={(value) => setForm({ ...form, recurrence: value })}>
+              <option value="">Sem recorrência</option><option value="weekly">Semanal</option><option value="monthly">Mensal</option><option value="yearly">Anual</option>
+            </Select>
+            <Select label="Centro de custo" value={form.cost_center_id} onChange={(value) => setForm({ ...form, cost_center_id: value })}>
+              <option value="">Sem centro</option>{asArray(centers).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}
+            </Select>
+            <PaymentSelect label="Forma" value={form.payment_method} onChange={(value) => setForm({ ...form, payment_method: value })} />
+            <Input label="Conta/caixa" value={form.payment_account} onChange={(value) => setForm({ ...form, payment_account: value })} />
+          </div>
+          <label>Observações<textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
+          {error && <span className="form-error">{error}</span>}
+        </form>
+      </Modal>
+    </>
   );
 }
 

@@ -17,9 +17,24 @@ export async function getCatalogSettings(db) {
     whatsapp_phone: "",
     whatsapp_message: "Olá! Vim pelo catálogo online da Aura Clinic e quero ajuda para escolher uma joia.",
     company_instagram: "",
+    company_legal_name: "",
+    company_display_name: "",
+    company_short_description: "",
+    company_phone: "",
+    company_whatsapp: "",
     company_email: "",
+    company_support_email: "",
     company_address: "",
     company_hours: "",
+    company_service_days: "",
+    company_website: "",
+    company_maps_url: "",
+    service_policy: "",
+    deposit_policy: "",
+    cancellation_policy: "",
+    exchange_policy: "",
+    biosafety_text: "",
+    materials_text: "",
     layout_style: "premium",
     page_title: "Catálogo Online",
     unavailable_message: "Produto indisponível no momento.",
@@ -46,7 +61,7 @@ export async function getCatalogSettings(db) {
   return rows.reduce((acc, row) => ({ ...acc, [row.key]: row.value }), defaults);
 }
 
-export async function getCatalogCustomization(db) {
+export async function getCatalogCustomization(db, { published = false } = {}) {
   const settings = await getCatalogSettings(db);
   const theme = await db.get("SELECT * FROM catalog_theme WHERE id = 1") || defaultCatalogTheme();
   const banners = await db.all("SELECT * FROM catalog_banners ORDER BY sort_order, id");
@@ -58,6 +73,7 @@ export async function getCatalogCustomization(db) {
     ORDER BY fp.sort_order, fp.id
   `);
   const promotions = await db.all("SELECT * FROM catalog_promotions ORDER BY start_date DESC, id DESC");
+  const catalogSections = await getCatalogSections(db, published ? "published" : "draft");
   return {
     settings: {
       ...settings,
@@ -71,15 +87,99 @@ export async function getCatalogCustomization(db) {
     banners,
     featuredCategories,
     featuredProducts,
-    promotions
+    promotions,
+    catalogSections
   };
+}
+
+export async function getCatalogSections(db, status = "draft") {
+  const layout = await db.get("SELECT * FROM catalog_layouts WHERE status = ?", [status]);
+  if (!layout) return [];
+  return db.all("SELECT * FROM catalog_sections WHERE layout_id = ? ORDER BY sort_order, id", [layout.id]);
+}
+
+export async function saveCatalogLayoutDraft(db, sections = [], userId = null) {
+  if (!Array.isArray(sections)) return [];
+  let layout = await db.get("SELECT * FROM catalog_layouts WHERE status = 'draft'");
+  if (!layout) {
+    const result = await db.run("INSERT INTO catalog_layouts (status, version) VALUES ('draft', 1)");
+    layout = await db.get("SELECT * FROM catalog_layouts WHERE id = ?", [result.lastID]);
+  }
+  await db.run("BEGIN");
+  try {
+    await db.run("DELETE FROM catalog_sections WHERE layout_id = ?", [layout.id]);
+    for (const [index, section] of sections.entries()) {
+      await db.run(
+        `INSERT INTO catalog_sections
+          (layout_id, section_key, section_type, title, subtitle, is_active, sort_order, alignment, background,
+           spacing, item_limit, display_mode, width_mode, height, columns_count, image_ratio, card_size,
+           product_sort, category_filter, media_url, button_text, button_link, body_text)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          layout.id, section.section_key || `section-${index + 1}`, section.section_type || "custom_content",
+          section.title || "", section.subtitle || section.kicker || "", boolNumber(section.is_active ?? section.active ?? 1),
+          Number(section.sort_order ?? section.order ?? index + 1), section.alignment || "left", section.background || "",
+          Number(section.spacing ?? 24), Number(section.item_limit ?? 8), section.display_mode || "grid",
+          section.width_mode || "contained", section.height || null, Number(section.columns_count ?? 4),
+          section.image_ratio || "1:1", section.card_size || "medium", section.product_sort || "recent",
+          section.category_filter || "", section.media_url || "", section.button_text || "", section.button_link || "",
+          section.body_text || section.text || ""
+        ]
+      );
+    }
+    await db.run("UPDATE catalog_layouts SET updated_at=CURRENT_TIMESTAMP WHERE id=?", [layout.id]);
+    const snapshot = await getCatalogSections(db, "draft");
+    await db.run("INSERT INTO catalog_layout_history (version, action, user_id, snapshot) VALUES (?, 'save_draft', ?, ?)", [layout.version, userId, JSON.stringify(snapshot)]);
+    await db.run("COMMIT");
+    return snapshot;
+  } catch (error) {
+    await db.run("ROLLBACK");
+    throw error;
+  }
+}
+
+export async function publishCatalogLayout(db, userId = null) {
+  const draft = await db.get("SELECT * FROM catalog_layouts WHERE status = 'draft'");
+  if (!draft) return [];
+  let published = await db.get("SELECT * FROM catalog_layouts WHERE status = 'published'");
+  if (!published) {
+    const result = await db.run("INSERT INTO catalog_layouts (status, version, published_at) VALUES ('published', 1, CURRENT_TIMESTAMP)");
+    published = await db.get("SELECT * FROM catalog_layouts WHERE id = ?", [result.lastID]);
+  }
+  const nextVersion = Number(published.version || 0) + 1;
+  await db.run("BEGIN");
+  try {
+    await db.run("DELETE FROM catalog_sections WHERE layout_id = ?", [published.id]);
+    await db.run(
+      `INSERT INTO catalog_sections
+        (layout_id, section_key, section_type, title, subtitle, is_active, sort_order, alignment, background,
+         spacing, item_limit, display_mode, width_mode, height, columns_count, image_ratio, card_size,
+         product_sort, category_filter, media_url, button_text, button_link, body_text)
+       SELECT ?, section_key, section_type, title, subtitle, is_active, sort_order, alignment, background,
+         spacing, item_limit, display_mode, width_mode, height, columns_count, image_ratio, card_size,
+         product_sort, category_filter, media_url, button_text, button_link, body_text
+       FROM catalog_sections WHERE layout_id=?`,
+      [published.id, draft.id]
+    );
+    await db.run("UPDATE catalog_layouts SET version=?, published_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?", [nextVersion, published.id]);
+    const snapshot = await getCatalogSections(db, "published");
+    await db.run("INSERT INTO catalog_layout_history (version, action, user_id, snapshot) VALUES (?, 'publish', ?, ?)", [nextVersion, userId, JSON.stringify(snapshot)]);
+    await db.run("COMMIT");
+    return snapshot;
+  } catch (error) {
+    await db.run("ROLLBACK");
+    throw error;
+  }
 }
 
 export async function saveCatalogCustomization(db, body) {
   if (body.settings) {
     const allowed = [
       "title", "subtitle", "hero_title", "hero_subtitle", "hero_image_url", "categories", "whatsapp_phone", "whatsapp_message", "layout_style",
-      "company_instagram", "company_email", "company_address", "company_hours",
+      "company_instagram", "company_legal_name", "company_display_name", "company_short_description", "company_phone", "company_whatsapp",
+      "company_email", "company_support_email", "company_address", "company_hours", "company_service_days",
+      "company_website", "company_maps_url", "service_policy", "deposit_policy", "cancellation_policy",
+      "exchange_policy", "biosafety_text", "materials_text",
       "page_title", "unavailable_message", "low_stock_message", "institutional_text", "footer_text", "seo_title", "seo_description", "share_image_url", "product_share_text", "content_sections"
     ];
     for (const [key, value] of Object.entries(body.settings).filter(([key]) => allowed.includes(key))) {
@@ -165,9 +265,15 @@ export async function saveCatalogCustomization(db, body) {
     await db.run("DELETE FROM catalog_featured_categories");
     for (const category of body.featuredCategories) {
       await db.run(
-        `INSERT INTO catalog_featured_categories (category_id, public_name, icon, image_url, is_active, sort_order)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [category.category_id || category.public_name || "categoria", category.public_name || category.category_id || "Categoria", category.icon || "gem", category.image_url || "", boolNumber(category.is_active), Number(category.sort_order || 0)]
+        `INSERT INTO catalog_featured_categories
+          (category_id, public_name, icon, image_url, is_active, sort_order, description, display_mode, product_limit, color, banner_url, is_featured)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          category.category_id || category.public_name || "categoria", category.public_name || category.category_id || "Categoria",
+          category.icon || "gem", category.image_url || "", boolNumber(category.is_active), Number(category.sort_order || 0),
+          category.description || "", category.display_mode || "grid", Number(category.product_limit || 12),
+          category.color || "", category.banner_url || "", boolNumber(category.is_featured)
+        ]
       );
     }
   }
@@ -206,6 +312,8 @@ export async function saveCatalogCustomization(db, body) {
 }
 
 export async function resetCatalogCustomization(db) {
+  await db.run("DELETE FROM catalog_layout_history");
+  await db.run("DELETE FROM catalog_layouts");
   await db.run("DELETE FROM catalog_banners");
   await db.run("DELETE FROM catalog_featured_categories");
   await db.run("DELETE FROM catalog_featured_products");

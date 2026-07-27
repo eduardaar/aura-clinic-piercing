@@ -5,7 +5,7 @@ export const PLAN_FEATURES = {
   start: ["clients", "agenda", "procedures", "manual_reminders", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports"],
   profissional: ["clients", "agenda", "procedures", "manual_reminders", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports", "online_booking", "anamnesis", "digital_terms", "basic_finance", "deposits", "stock_alerts", "automatic_followup", "message_templates", "public_catalog_customization"],
   studio: ["clients", "agenda", "procedures", "manual_reminders", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports", "online_booking", "anamnesis", "digital_terms", "basic_finance", "deposits", "stock_alerts", "automatic_followup", "message_templates", "public_catalog_customization", "multi_user", "commissions", "monthly_reports", "coupons", "returns", "full_client_history", "jewelry_sales_report"],
-  premium: ["clients", "agenda", "procedures", "manual_reminders", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports", "online_booking", "anamnesis", "digital_terms", "basic_finance", "deposits", "stock_alerts", "automatic_followup", "message_templates", "public_catalog_customization", "multi_user", "commissions", "monthly_reports", "coupons", "returns", "full_client_history", "jewelry_sales_report", "advanced_catalog", "featured_products", "promotional_banner", "campaigns", "advanced_finance", "variation_inventory", "alert_center", "courses", "priority_support"]
+  premium: ["clients", "agenda", "procedures", "manual_reminders", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports", "online_booking", "anamnesis", "digital_terms", "basic_finance", "deposits", "stock_alerts", "automatic_followup", "message_templates", "public_catalog_customization", "multi_user", "commissions", "monthly_reports", "coupons", "returns", "full_client_history", "jewelry_sales_report", "advanced_catalog", "featured_products", "promotional_banner", "campaigns", "advanced_finance", "variation_inventory", "visual_search", "alert_center", "courses", "priority_support"]
 };
 
 export const SUBSCRIPTION_PLANS = [
@@ -64,6 +64,8 @@ export const PAGE_FEATURE = {
   finance: "basic_finance",
   terms: "digital_terms",
   postcare: "automatic_followup",
+  communications: "message_templates",
+  reports: "basic_reports",
   "catalog-customization": "public_catalog_customization",
   sales: "basic_catalog"
 };

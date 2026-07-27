@@ -274,6 +274,26 @@ CREATE TABLE IF NOT EXISTS appointment_items (
 CREATE INDEX IF NOT EXISTS idx_appointment_items_appointment ON appointment_items(appointment_id);
 CREATE INDEX IF NOT EXISTS idx_appointment_items_jewelry ON appointment_items(jewelry_id, jewelry_variant_id);
 
+CREATE TABLE IF NOT EXISTS inventory_reservations (
+  id SERIAL PRIMARY KEY,
+  reservation_key TEXT NOT NULL,
+  appointment_id INTEGER REFERENCES appointments(id) ON DELETE CASCADE,
+  client_id INTEGER REFERENCES clients(id),
+  jewelry_id INTEGER NOT NULL REFERENCES jewelry_inventory(id),
+  jewelry_variant_id INTEGER REFERENCES jewelry_variants(id),
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'confirmed', 'released', 'expired', 'cancelled')),
+  expires_at TIMESTAMP NOT NULL,
+  confirmed_at TIMESTAMP,
+  released_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(reservation_key, jewelry_id, jewelry_variant_id)
+);
+ALTER TABLE professionals ADD COLUMN IF NOT EXISTS commission_percentage DOUBLE PRECISION NOT NULL DEFAULT 0;
+
+CREATE INDEX IF NOT EXISTS idx_inventory_reservations_stock ON inventory_reservations(jewelry_id, jewelry_variant_id, status, expires_at);
+CREATE INDEX IF NOT EXISTS idx_inventory_reservations_expiry ON inventory_reservations(status, expires_at);
+
 CREATE TABLE IF NOT EXISTS notification_queue (
   id SERIAL PRIMARY KEY,
   professional_id INTEGER REFERENCES professionals(id),
@@ -292,6 +312,72 @@ CREATE TABLE IF NOT EXISTS notification_queue (
   created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_queue_unique_key ON notification_queue(unique_key) WHERE unique_key IS NOT NULL;
+ALTER TABLE notification_queue ADD COLUMN IF NOT EXISTS client_id INTEGER REFERENCES clients(id);
+ALTER TABLE notification_queue ADD COLUMN IF NOT EXISTS automation_rule_id INTEGER;
+
+CREATE TABLE IF NOT EXISTS communication_templates (
+  id SERIAL PRIMARY KEY,
+  template_key TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  channel TEXT NOT NULL DEFAULT 'whatsapp',
+  subject TEXT,
+  body TEXT NOT NULL,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS automation_rules (
+  id SERIAL PRIMARY KEY,
+  rule_key TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  template_key TEXT REFERENCES communication_templates(template_key),
+  channel TEXT NOT NULL DEFAULT 'whatsapp',
+  offset_minutes INTEGER NOT NULL DEFAULT 0,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS automation_runs (
+  id SERIAL PRIMARY KEY,
+  rule_id INTEGER REFERENCES automation_rules(id),
+  entity_type TEXT,
+  entity_id INTEGER,
+  status TEXT NOT NULL,
+  details JSONB,
+  executed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO communication_templates (template_key, name, body) VALUES
+  ('booking_received', 'Solicitação recebida', 'Olá, {{cliente}}. Recebemos sua solicitação no {{estudio}} para {{data}} às {{horario}}. Protocolo: {{protocolo}}.'),
+  ('booking_confirmed', 'Agendamento confirmado', 'Olá, {{cliente}}. Seu agendamento no {{estudio}} está confirmado para {{data}} às {{horario}} com {{profissional}}.'),
+  ('booking_rescheduled', 'Reagendamento', 'Olá, {{cliente}}. Seu atendimento foi reagendado para {{data}} às {{horario}}.'),
+  ('booking_cancelled', 'Cancelamento', 'Olá, {{cliente}}. Seu agendamento de {{data}} às {{horario}} foi cancelado.'),
+  ('reminder_24h', 'Lembrete de 24 horas', 'Olá, {{cliente}}. Lembrete do seu atendimento amanhã, {{data}}, às {{horario}}, no {{estudio}}.'),
+  ('reminder_2h', 'Lembrete de 2 horas', 'Olá, {{cliente}}. Seu atendimento no {{estudio}} será às {{horario}}. Endereço: {{endereco}}.'),
+  ('postcare', 'Pós-atendimento', 'Olá, {{cliente}}. Como está sua evolução após o atendimento? Se precisar, fale com o {{estudio}}.'),
+  ('payment_pending', 'Pagamento pendente', 'Olá, {{cliente}}. O sinal de {{sinal}} do protocolo {{protocolo}} ainda está pendente.'),
+  ('stock_available', 'Produto disponível', 'Olá, {{cliente}}. A joia {{joias}} está disponível novamente no {{estudio}}.'),
+  ('promotion', 'Promoção', 'Olá, {{cliente}}. Confira a promoção {{promocao}} no catálogo do {{estudio}}.'),
+  ('coupon', 'Cupom', 'Olá, {{cliente}}. Use o cupom {{cupom}} no catálogo do {{estudio}}.'),
+  ('birthday', 'Aniversário', 'Feliz aniversário, {{cliente}}! O {{estudio}} deseja um dia especial para você.')
+ON CONFLICT (template_key) DO NOTHING;
+
+INSERT INTO automation_rules (rule_key, name, event_type, template_key, offset_minutes, is_active) VALUES
+  ('booking_received', 'Solicitação recebida', 'booking_created', 'booking_received', 0, 1),
+  ('reminder_24h', 'Lembrete 24h', 'appointment_upcoming', 'reminder_24h', -1440, 1),
+  ('reminder_2h', 'Lembrete 2h', 'appointment_upcoming', 'reminder_2h', -120, 1),
+  ('payment_pending', 'Pagamento pendente', 'payment_pending', 'payment_pending', 60, 1),
+  ('reservation_expired', 'Reserva expirada', 'reservation_expired', 'payment_pending', 0, 1),
+  ('postcare', 'Pós-atendimento', 'appointment_completed', 'postcare', 10080, 1),
+  ('birthday', 'Aniversariantes', 'client_birthday', 'birthday', 0, 0)
+ON CONFLICT (rule_key) DO NOTHING;
+
+CREATE INDEX IF NOT EXISTS idx_automation_rules_event ON automation_rules(event_type, is_active);
+CREATE INDEX IF NOT EXISTS idx_automation_runs_entity ON automation_runs(entity_type, entity_id, executed_at);
 
 CREATE TABLE IF NOT EXISTS payments (
   id SERIAL PRIMARY KEY,
@@ -493,6 +579,349 @@ CREATE TABLE IF NOT EXISTS catalog_promotions (
   is_active INTEGER NOT NULL DEFAULT 1
 );
 
+CREATE TABLE IF NOT EXISTS financial_cost_centers (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE TABLE IF NOT EXISTS financial_entries (
+  id SERIAL PRIMARY KEY,
+  entry_type TEXT NOT NULL CHECK (entry_type IN ('payable', 'receivable', 'income', 'expense')),
+  description TEXT NOT NULL,
+  category TEXT,
+  amount DOUBLE PRECISION NOT NULL CHECK (amount >= 0),
+  paid_amount DOUBLE PRECISION NOT NULL DEFAULT 0 CHECK (paid_amount >= 0),
+  due_date TEXT NOT NULL,
+  competence_date TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid', 'overdue', 'canceled', 'partially_paid', 'refunded')),
+  payment_method TEXT,
+  payment_account TEXT,
+  paid_at TEXT,
+  cost_center_id INTEGER REFERENCES financial_cost_centers(id),
+  responsible_user_id INTEGER REFERENCES users(id),
+  attachment_url TEXT,
+  notes TEXT,
+  recurrence TEXT,
+  recurrence_end_date TEXT,
+  installment_number INTEGER,
+  installment_count INTEGER,
+  parent_entry_id INTEGER REFERENCES financial_entries(id),
+  source_type TEXT,
+  source_id INTEGER,
+  source_key TEXT UNIQUE,
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS'),
+  updated_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE TABLE IF NOT EXISTS financial_entry_audit (
+  id SERIAL PRIMARY KEY,
+  entry_id INTEGER NOT NULL REFERENCES financial_entries(id) ON DELETE RESTRICT,
+  user_id INTEGER REFERENCES users(id),
+  action TEXT NOT NULL,
+  before_data TEXT,
+  after_data TEXT,
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE TABLE IF NOT EXISTS financial_goals (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  period_start TEXT NOT NULL,
+  period_end TEXT NOT NULL,
+  target_amount DOUBLE PRECISION NOT NULL CHECK (target_amount >= 0),
+  goal_type TEXT NOT NULL DEFAULT 'revenue',
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE TABLE IF NOT EXISTS financial_reconciliations (
+  id SERIAL PRIMARY KEY,
+  entry_id INTEGER NOT NULL REFERENCES financial_entries(id),
+  external_reference TEXT,
+  statement_amount DOUBLE PRECISION NOT NULL,
+  statement_date TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'matched' CHECK (status IN ('matched', 'divergent', 'ignored')),
+  reconciled_by INTEGER REFERENCES users(id),
+  reconciled_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS'),
+  UNIQUE(entry_id, external_reference)
+);
+
+CREATE INDEX IF NOT EXISTS idx_financial_entries_due ON financial_entries(status, due_date, entry_type);
+CREATE INDEX IF NOT EXISTS idx_financial_entries_period ON financial_entries(competence_date, entry_type, status);
+CREATE INDEX IF NOT EXISTS idx_financial_entries_source ON financial_entries(source_type, source_id);
+CREATE INDEX IF NOT EXISTS idx_financial_audit_entry ON financial_entry_audit(entry_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_financial_goals_period ON financial_goals(period_start, period_end);
+
+CREATE TABLE IF NOT EXISTS inventory_suggestions (
+  id SERIAL PRIMARY KEY,
+  jewelry_id INTEGER NOT NULL REFERENCES jewelry_inventory(id) ON DELETE CASCADE,
+  suggestion_type TEXT NOT NULL,
+  current_value TEXT,
+  suggested_value TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  confidence DOUBLE PRECISION NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected')),
+  reviewed_by INTEGER REFERENCES users(id),
+  reviewed_at TEXT,
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS'),
+  updated_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE TABLE IF NOT EXISTS inventory_counts (
+  id SERIAL PRIMARY KEY,
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'completed', 'canceled')),
+  notes TEXT,
+  created_by INTEGER REFERENCES users(id),
+  completed_by INTEGER REFERENCES users(id),
+  completed_at TEXT,
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE TABLE IF NOT EXISTS inventory_count_items (
+  id SERIAL PRIMARY KEY,
+  count_id INTEGER NOT NULL REFERENCES inventory_counts(id) ON DELETE CASCADE,
+  jewelry_id INTEGER NOT NULL REFERENCES jewelry_inventory(id),
+  variant_id INTEGER REFERENCES jewelry_variants(id),
+  expected_quantity INTEGER NOT NULL DEFAULT 0,
+  counted_quantity INTEGER,
+  difference INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(count_id, jewelry_id, variant_id)
+);
+
+CREATE TABLE IF NOT EXISTS inventory_audit_log (
+  id SERIAL PRIMARY KEY,
+  jewelry_id INTEGER REFERENCES jewelry_inventory(id),
+  action TEXT NOT NULL,
+  before_data TEXT,
+  after_data TEXT,
+  user_id INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE INDEX IF NOT EXISTS idx_inventory_suggestions_status ON inventory_suggestions(status, suggestion_type, jewelry_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_counts_status ON inventory_counts(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_inventory_count_items_count ON inventory_count_items(count_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_audit_product ON inventory_audit_log(jewelry_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_stock_movements_date_type ON stock_movements(movement_date, movement_type, jewelry_id);
+
+CREATE TABLE IF NOT EXISTS payment_intents (
+  id SERIAL PRIMARY KEY,
+  appointment_id INTEGER REFERENCES appointments(id),
+  client_id INTEGER NOT NULL REFERENCES clients(id),
+  provider TEXT NOT NULL DEFAULT 'manual',
+  external_id TEXT,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  amount DOUBLE PRECISION NOT NULL CHECK (amount >= 0),
+  currency TEXT NOT NULL DEFAULT 'BRL',
+  payment_type TEXT NOT NULL DEFAULT 'deposit',
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'awaiting_payment', 'under_review', 'confirmed', 'failed', 'cancelled', 'refunded', 'expired')),
+  pix_copy_paste TEXT,
+  qr_code_url TEXT,
+  expires_at TIMESTAMP,
+  metadata JSONB,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS payment_events (
+  id SERIAL PRIMARY KEY,
+  payment_intent_id INTEGER NOT NULL REFERENCES payment_intents(id) ON DELETE CASCADE,
+  provider_event_id TEXT,
+  event_type TEXT NOT NULL,
+  payload JSONB,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(payment_intent_id, provider_event_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_payment_intents_appointment ON payment_intents(appointment_id, status);
+CREATE INDEX IF NOT EXISTS idx_payment_events_intent ON payment_events(payment_intent_id, created_at);
+
+CREATE TABLE IF NOT EXISTS catalog_layouts (
+  id SERIAL PRIMARY KEY,
+  status TEXT NOT NULL CHECK (status IN ('draft', 'published')),
+  version INTEGER NOT NULL DEFAULT 1,
+  published_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(status)
+);
+
+CREATE TABLE IF NOT EXISTS catalog_sections (
+  id SERIAL PRIMARY KEY,
+  layout_id INTEGER NOT NULL REFERENCES catalog_layouts(id) ON DELETE CASCADE,
+  section_key TEXT NOT NULL,
+  section_type TEXT NOT NULL,
+  title TEXT,
+  subtitle TEXT,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  alignment TEXT NOT NULL DEFAULT 'left',
+  background TEXT,
+  spacing INTEGER NOT NULL DEFAULT 24,
+  item_limit INTEGER NOT NULL DEFAULT 8,
+  display_mode TEXT NOT NULL DEFAULT 'grid',
+  width_mode TEXT NOT NULL DEFAULT 'contained',
+  height INTEGER,
+  columns_count INTEGER NOT NULL DEFAULT 4,
+  image_ratio TEXT NOT NULL DEFAULT '1:1',
+  card_size TEXT NOT NULL DEFAULT 'medium',
+  product_sort TEXT NOT NULL DEFAULT 'recent',
+  category_filter TEXT,
+  media_url TEXT,
+  button_text TEXT,
+  button_link TEXT,
+  body_text TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(layout_id, section_key)
+);
+
+CREATE TABLE IF NOT EXISTS catalog_layout_history (
+  id SERIAL PRIMARY KEY,
+  version INTEGER NOT NULL,
+  action TEXT NOT NULL,
+  user_id INTEGER REFERENCES users(id),
+  snapshot JSONB NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS catalog_events (
+  id SERIAL PRIMARY KEY,
+  event_type TEXT NOT NULL CHECK (event_type IN ('catalog_view', 'product_view', 'product_selected', 'checkout_started', 'booking_created')),
+  product_id INTEGER REFERENCES jewelry_inventory(id) ON DELETE SET NULL,
+  session_key TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'catalog',
+  metadata TEXT,
+  occurred_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE TABLE IF NOT EXISTS private_files (
+  id SERIAL PRIMARY KEY,
+  filename TEXT NOT NULL UNIQUE,
+  original_name TEXT,
+  mime_type TEXT NOT NULL,
+  purpose TEXT NOT NULL,
+  uploaded_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE INDEX IF NOT EXISTS idx_catalog_events_period ON catalog_events(occurred_at, event_type);
+CREATE INDEX IF NOT EXISTS idx_catalog_events_product ON catalog_events(product_id, event_type, occurred_at);
+
+CREATE TABLE IF NOT EXISTS product_visual_hashes (
+  id SERIAL PRIMARY KEY,
+  product_id INTEGER NOT NULL REFERENCES jewelry_inventory(id) ON DELETE CASCADE,
+  variation_id INTEGER REFERENCES jewelry_variants(id) ON DELETE CASCADE,
+  image_url TEXT NOT NULL,
+  perceptual_hash TEXT NOT NULL,
+  width INTEGER,
+  height INTEGER,
+  file_size INTEGER,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(product_id, variation_id, image_url)
+);
+
+ALTER TABLE catalog_featured_categories ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE catalog_featured_categories ADD COLUMN IF NOT EXISTS display_mode TEXT NOT NULL DEFAULT 'grid';
+ALTER TABLE catalog_featured_categories ADD COLUMN IF NOT EXISTS product_limit INTEGER NOT NULL DEFAULT 12;
+ALTER TABLE catalog_featured_categories ADD COLUMN IF NOT EXISTS color TEXT;
+ALTER TABLE catalog_featured_categories ADD COLUMN IF NOT EXISTS banner_url TEXT;
+ALTER TABLE catalog_featured_categories ADD COLUMN IF NOT EXISTS is_featured INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS priority INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS start_time TEXT;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS end_time TEXT;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS usage_limit INTEGER;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS usage_limit_per_client INTEGER;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS minimum_amount DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS maximum_discount DOUBLE PRECISION;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS minimum_quantity INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS variation_ids TEXT;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS excluded_product_ids TEXT;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS excluded_category_ids TEXT;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS excluded_variation_ids TEXT;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS colors TEXT;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS materials TEXT;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS stones TEXT;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS service_ids TEXT;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS buy_quantity INTEGER;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS pay_quantity INTEGER;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS fixed_promotional_price DOUBLE PRECISION;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS is_stackable INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS stackable_with_coupon INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS badge TEXT;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS legal_text TEXT;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS visible_in_catalog INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP;
+
+CREATE TABLE IF NOT EXISTS promotion_usages (
+  id SERIAL PRIMARY KEY,
+  promotion_id INTEGER NOT NULL REFERENCES catalog_promotions(id),
+  client_id INTEGER REFERENCES clients(id),
+  appointment_id INTEGER REFERENCES appointments(id),
+  sale_id INTEGER REFERENCES sales_orders(id),
+  original_amount DOUBLE PRECISION NOT NULL CHECK (original_amount >= 0),
+  discount_amount DOUBLE PRECISION NOT NULL CHECK (discount_amount >= 0),
+  final_amount DOUBLE PRECISION NOT NULL CHECK (final_amount >= 0),
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS promotion_audit_logs (
+  id SERIAL PRIMARY KEY,
+  promotion_id INTEGER,
+  user_id INTEGER REFERENCES users(id),
+  action TEXT NOT NULL,
+  previous_data JSONB,
+  next_data JSONB,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS coupons (
+  id SERIAL PRIMARY KEY,
+  code TEXT NOT NULL,
+  internal_name TEXT NOT NULL,
+  description TEXT,
+  discount_type TEXT NOT NULL DEFAULT 'percent' CHECK (discount_type IN ('percent', 'fixed')),
+  discount_value DOUBLE PRECISION NOT NULL DEFAULT 0 CHECK (discount_value >= 0),
+  starts_at TIMESTAMP,
+  ends_at TIMESTAMP,
+  usage_limit INTEGER CHECK (usage_limit IS NULL OR usage_limit >= 0),
+  usage_limit_per_client INTEGER CHECK (usage_limit_per_client IS NULL OR usage_limit_per_client >= 0),
+  minimum_amount DOUBLE PRECISION NOT NULL DEFAULT 0 CHECK (minimum_amount >= 0),
+  maximum_discount DOUBLE PRECISION CHECK (maximum_discount IS NULL OR maximum_discount >= 0),
+  product_ids TEXT,
+  category_ids TEXT,
+  excluded_product_ids TEXT,
+  excluded_category_ids TEXT,
+  service_ids TEXT,
+  first_purchase_only INTEGER NOT NULL DEFAULT 0,
+  selected_client_ids TEXT,
+  is_stackable INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'inactive')),
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  deleted_at TIMESTAMP,
+  UNIQUE(code)
+);
+
+CREATE TABLE IF NOT EXISTS coupon_usages (
+  id SERIAL PRIMARY KEY,
+  coupon_id INTEGER NOT NULL REFERENCES coupons(id),
+  client_id INTEGER REFERENCES clients(id),
+  appointment_id INTEGER REFERENCES appointments(id),
+  sale_id INTEGER REFERENCES sales_orders(id),
+  original_amount DOUBLE PRECISION NOT NULL CHECK (original_amount >= 0),
+  discount_amount DOUBLE PRECISION NOT NULL CHECK (discount_amount >= 0),
+  final_amount DOUBLE PRECISION NOT NULL CHECK (final_amount >= 0),
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS catalog_theme (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   brand_name TEXT NOT NULL DEFAULT 'Aura Clinic',
@@ -543,6 +972,16 @@ CREATE INDEX IF NOT EXISTS idx_payments_appointment ON payments(appointment_id);
 CREATE INDEX IF NOT EXISTS idx_loyalty_points_client ON loyalty_points(client_id);
 CREATE INDEX IF NOT EXISTS idx_medical_records_client ON client_medical_records(client_id);
 CREATE INDEX IF NOT EXISTS idx_expenses_due ON expenses(due_date);
+CREATE INDEX IF NOT EXISTS idx_catalog_promotions_active_dates ON catalog_promotions(is_active, start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_catalog_sections_layout_order ON catalog_sections(layout_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_catalog_categories_public_order ON catalog_featured_categories(is_active, sort_order);
+CREATE INDEX IF NOT EXISTS idx_product_visual_hashes_product ON product_visual_hashes(product_id, variation_id);
+CREATE INDEX IF NOT EXISTS idx_catalog_promotions_rules ON catalog_promotions(status, priority DESC, start_date, end_date) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_promotion_usages_promotion ON promotion_usages(promotion_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_promotion_audit_promotion ON promotion_audit_logs(promotion_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_coupons_status_dates ON coupons(status, starts_at, ends_at) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_coupon_usages_coupon ON coupon_usages(coupon_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_coupon_usages_client ON coupon_usages(client_id, created_at);
 
 -- Log central de erros (backend + frontend) para diagnóstico. Só o admin lê
 -- (via /api/error-logs). Ingestão do frontend é pública para capturar erros de

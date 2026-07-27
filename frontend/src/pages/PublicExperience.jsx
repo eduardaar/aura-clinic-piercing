@@ -24,8 +24,10 @@ import { Loading, ApiError } from "../components/common/Feedback";
 import { BookingChoiceGrid, Input, Select } from "../components/common/Ui";
 import { API_ORIGIN, publicApiFetch, usePublicFetch } from "../lib/api";
 import { asArray, asNumber, asObject, formatLongDate, removeAccents } from "../lib/utils";
+import { readRecentSearches, saveRecentSearch, smartSearchMatches, useDebouncedValue } from "../lib/smartSearch";
 import { ANODIZATION_COLOR_OPTIONS, JEWELRY_CATEGORY_OPTIONS, JEWELRY_LENGTH_OPTIONS, defaultPublicBooking, nextBookingDates, parseGalleryUrls } from "../lib/defaultForms";
 import {
+  catalogAvailabilityMatches,
   catalogCategoryTerms,
   catalogContentSections,
   catalogFilterOptions,
@@ -42,6 +44,27 @@ import { variantCatalogLabel } from "../features/shared/helpers";
 import { catalogUrl, publicTenant, publicUrl, replaceCatalogState } from "../lib/publicRoutes";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
+function catalogSessionKey() {
+  const key = "aura-catalog-session";
+  try {
+    const current = sessionStorage.getItem(key);
+    if (current) return current;
+    const created = globalThis.crypto?.randomUUID?.().replace(/-/g, "") || `${Date.now()}${Math.random().toString(36).slice(2)}`;
+    sessionStorage.setItem(key, created);
+    return created;
+  } catch {
+    return `anonymous${Date.now()}`;
+  }
+}
+
+function trackCatalogEvent(eventType, productId = null, metadata = {}) {
+  publicApiFetch("/catalog/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ event_type: eventType, product_id: productId, session_key: catalogSessionKey(), metadata })
+  }).catch(() => {});
+}
 
 // Leitura resiliente do localStorage do catálogo público (favoritos / itens do pedido).
 function readCatalogStorage(key, fallback = []) {
@@ -60,6 +83,8 @@ export function PublicCatalog() {
   const initialQuery = new URLSearchParams(window.location.search);
   const [activeCategory, setActiveCategory] = useState(initialQuery.get("category") || "Todos");
   const [search, setSearch] = useState(initialQuery.get("q") || "");
+  const debouncedSearch = useDebouncedValue(search);
+  const [recentSearches, setRecentSearches] = useState(() => readRecentSearches("aura-catalog-recent-searches"));
   const [filters, setFilters] = useState({ material: initialQuery.get("material") || "", color: initialQuery.get("color") || "", stone: initialQuery.get("stone") || "", size: initialQuery.get("size") || "", topSize: initialQuery.get("topSize") || "", availability: initialQuery.get("available") || "" });
   const [sort, setSort] = useState(initialQuery.get("sort") || "recentes");
   const [favoriteIds, setFavoriteIds] = useState(() => readCatalogStorage("aura-catalog-favorites", []));
@@ -80,7 +105,7 @@ export function PublicCatalog() {
   useEffect(() => {
     replaceCatalogState({
       category: activeCategory !== "Todos" ? activeCategory : "",
-      q: search.trim(),
+      q: debouncedSearch.trim(),
       material: filters.material,
       color: filters.color,
       stone: filters.stone,
@@ -89,7 +114,7 @@ export function PublicCatalog() {
       available: filters.availability,
       sort: sort !== "recentes" ? sort : ""
     });
-  }, [activeCategory, search, filters, sort]);
+  }, [activeCategory, debouncedSearch, filters, sort]);
 
   useEffect(() => {
     const activeCount = asArray(data?.banners).filter((banner) => Boolean(asNumber(banner?.is_active))).length;
@@ -98,12 +123,33 @@ export function PublicCatalog() {
     return () => window.clearInterval(timer);
   }, [data?.banners]);
 
+  useEffect(() => {
+    if (data && !data.error) trackCatalogEvent("catalog_view");
+  }, [Boolean(data && !data.error)]);
+
+  useEffect(() => {
+    if (selectedProductId) trackCatalogEvent("product_view", selectedProductId);
+  }, [selectedProductId]);
+
   if (!data) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
 
   const safeData = asObject(data);
   const theme = asObject(safeData.theme);
   const settings = safeData;
+  const layoutSections = asArray(safeData.catalogSections);
+  const layoutStyle = (type, fallbackOrder) => {
+    const section = layoutSections.find((item) => item.section_type === type);
+    if (!section) return { order: fallbackOrder };
+    return {
+      order: Number(section.sort_order || fallbackOrder),
+      display: Boolean(Number(section.is_active)) ? undefined : "none",
+      background: section.background || undefined,
+      padding: section.spacing ? `${Number(section.spacing)}px` : undefined,
+      textAlign: section.alignment || undefined,
+      "--catalog-section-columns": Number(section.columns_count || 4)
+    };
+  };
   const contentSections = catalogContentSections(settings.content_sections);
   const activeBanners = asArray(safeData.banners).filter((banner) => Boolean(asNumber(banner?.is_active))).sort((a, b) => asNumber(a?.sort_order) - asNumber(b?.sort_order));
   const fallbackBanner = {
@@ -128,15 +174,14 @@ export function PublicCatalog() {
     const haystack = removeAccents(`${item.name} ${item.description} ${item.category} ${item.subcategory} ${item.material} ${item.color} ${item.stone} ${item.size} ${item.thickness} ${item.sku} ${variants.map((variant) => Object.values(variant).join(" ")).join(" ")}`.toLowerCase());
     const activeCategoryConfig = categories.find((category) => category.name === activeCategory);
     const categoryMatch = activeCategory === "Todos" || catalogCategoryTerms(activeCategoryConfig?.match || activeCategory).some((term) => haystack.includes(term));
-    const searchMatch = !search.trim() || haystack.includes(removeAccents(search.trim().toLowerCase()));
+    const searchMatch = smartSearchMatches(haystack, debouncedSearch);
     const matchesVariant = (key, value) => !value || variants.some((variant) => String(variant[key] ?? "").toLowerCase().includes(String(value).toLowerCase()));
     const materialMatch = !filters.material || item.material === filters.material || matchesVariant("material", filters.material);
     const colorMatch = !filters.color || String(item.color || "").toLowerCase().includes(filters.color.toLowerCase()) || matchesVariant("color", filters.color);
     const stoneMatch = !filters.stone || String(item.stone || "").toLowerCase().includes(filters.stone.toLowerCase()) || matchesVariant("stone_color", filters.stone);
     const sizeMatch = !filters.size || item.size === filters.size || matchesVariant("size", filters.size);
     const topSizeMatch = !filters.topSize || Number(item.top_size_mm) === Number(filters.topSize) || variants.some((variant) => Number(variant.top_size_mm) === Number(filters.topSize));
-    const available = variants.length ? variants.some((variant) => Number(variant.quantity) > 0) : Number(item.quantity) > 0;
-    const availabilityMatch = !filters.availability || (filters.availability === "true" ? available : !available);
+    const availabilityMatch = catalogAvailabilityMatches(item, filters.availability, Boolean(Number(theme.show_out_of_stock)));
     return categoryMatch && searchMatch && materialMatch && colorMatch && stoneMatch && sizeMatch && topSizeMatch && availabilityMatch;
   });
   const items = [...filteredItems].sort((a, b) => sort === "menor-preco" ? a.sale_value - b.sale_value : sort === "maior-preco" ? b.sale_value - a.sale_value : sort === "nome-az" ? a.name.localeCompare(b.name) : sort === "nome-za" ? b.name.localeCompare(a.name) : sort === "estoque" ? Number(b.quantity) - Number(a.quantity) : b.id - a.id);
@@ -165,6 +210,7 @@ export function PublicCatalog() {
   }
 
 function addToOrder(item) {
+    trackCatalogEvent("product_selected", item.id, { variation_id: item.selected_variant_id || null });
     setOrderItems((currentValue) => {
       const current = asArray(currentValue);
       const orderKey = `${item.id}-${item.selected_variant_id || "produto"}-${item.selected_color || "sem-cor"}`;
@@ -215,7 +261,7 @@ function addToOrder(item) {
   return (
     <main className={`catalog-page theme-${theme.theme || "premium"}`} style={catalogStyle}>
       <section className="catalog-main">
-        <header className="catalog-topbar">
+        <header className="catalog-topbar" style={{ order: -30 }}>
           <a className="catalog-client-brand" href={catalogUrl()}>
             {theme.logo_url && <img src={catalogImageUrl(theme.logo_url)} alt={theme.brand_name || "Aura Clinic"} />}
             <strong>{theme.brand_name || data.brand_name || "Aura Clinic"}</strong>
@@ -224,14 +270,23 @@ function addToOrder(item) {
           <div className="catalog-top-actions">
             <label className="catalog-search">
               <Search size={17} />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar joia, material ou tamanho" />
+              <input
+                value={search}
+                list="catalog-search-history"
+                onChange={(event) => setSearch(event.target.value)}
+                onBlur={() => setRecentSearches(saveRecentSearch("aura-catalog-recent-searches", search))}
+                placeholder="Buscar joia, SKU, material, pedra ou tamanho"
+              />
+              <datalist id="catalog-search-history">
+                {recentSearches.map((item) => <option key={item} value={item} />)}
+              </datalist>
             </label>
             {Boolean(Number(theme.show_favorites || 1)) && <button className="catalog-icon-action" onClick={() => setDrawer("favorites")} aria-label="Favoritos"><Heart size={18} /><span>{favoriteIds.length}</span></button>}
             <button className="catalog-icon-action primary-cart" onClick={() => setDrawer("order")}><ShoppingCart size={19} /> Pedido <span>{orderItems.reduce((sum, item) => sum + Number(item.qty || 1), 0)}</span></button>
           </div>
         </header>
 
-        <div className="catalog-title">
+        <div className="catalog-title" style={{ order: -20 }}>
           <span className="eyebrow">Catálogo online</span>
           <h1 style={{ fontFamily: theme.title_font || "Georgia" }}>{settings.page_title || "Catálogo Online"} <Sparkles size={26} /></h1>
           <p>{data.title || "Escolha a joia perfeita para você"}</p>
@@ -241,6 +296,7 @@ function addToOrder(item) {
         <section
           className={`catalog-premium-hero catalog-carousel-hero catalog-layout-${data.layout_style || "premium"}`}
           style={{
+            ...layoutStyle("hero", 1),
             backgroundImage: `linear-gradient(90deg, rgba(255, 253, 249, .08), rgba(255, 253, 249, .04), rgba(28, 28, 28, .14)), url(${catalogImageUrl(activeBanner.image_url || data.hero_image_url)})`,
             minHeight: `${Number(activeBanner.banner_height || 340)}px`,
             maxWidth: activeBanner.banner_width ? `${Number(activeBanner.banner_width)}px` : "none",
@@ -259,7 +315,7 @@ function addToOrder(item) {
           )}
         </section>
 
-        <section className="catalog-category-strip">
+        <section className="catalog-category-strip" style={layoutStyle("categories", 2)}>
           {categories.map(({ name, icon: Icon }) => (
             <button key={name} className={activeCategory === name ? "active" : ""} onClick={() => setActiveCategory(name)}>
               <Icon size={25} />
@@ -268,7 +324,7 @@ function addToOrder(item) {
           ))}
         </section>
 
-        <section className="catalog-filters">
+        <section className="catalog-filters" style={{ order: 3 }}>
           <span className="catalog-filter-label">Refinar</span>
           <CatalogSelect label="Material" value={filters.material} options={options.materials} onChange={(value) => setFilters({ ...filters, material: value })} />
           <CatalogSelect label="Observação de cor" value={filters.color} options={options.colors} onChange={(value) => setFilters({ ...filters, color: value })} />
@@ -289,22 +345,22 @@ function addToOrder(item) {
           </label>
         </section>
 
-        <section className="catalog-trust-strip" aria-label="Diferenciais Aura">
+        <section className="catalog-trust-strip" aria-label="Diferenciais do estúdio" style={{ order: 4 }}>
           <span><ShieldCheck size={20} /><strong>Curadoria profissional</strong><small>Joias selecionadas pela Aura</small></span>
           <span><Gem size={20} /><strong>Materiais premium</strong><small>Titânio, ouro e peças seguras</small></span>
           <span><Truck size={20} /><strong>Envio orientado</strong><small>Pedido finalizado pelo WhatsApp</small></span>
           <span><Heart size={20} /><strong>Composição personalizada</strong><small>Favoritos e observações no pedido</small></span>
         </section>
 
-        <CatalogProductRail title="Lançamentos" subtitle="Novidades recém-adicionadas à curadoria." items={latestItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} />
-        <CatalogProductRail title="Mais desejadas" subtitle="Peças premium em destaque para composições especiais." items={bestSellerItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} />
-        {promoItems.length > 0 && <CatalogProductRail title="Promoções" subtitle="Ofertas ativas com preço especial." items={promoItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} />}
-        {lastUnitsItems.length > 0 && <CatalogProductRail title="Últimas unidades" subtitle="Joias com poucas peças disponíveis." items={lastUnitsItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} />}
+        <div style={layoutStyle("new_products", 6)}><CatalogProductRail title="Lançamentos" subtitle="Novidades recém-adicionadas à curadoria." items={latestItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} /></div>
+        <div style={layoutStyle("best_sellers", 7)}><CatalogProductRail title="Mais desejadas" subtitle="Peças premium em destaque para composições especiais." items={bestSellerItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} /></div>
+        {promoItems.length > 0 && <div style={layoutStyle("promotions", 8)}><CatalogProductRail title="Promoções" subtitle="Ofertas ativas com preço especial." items={promoItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} /></div>}
+        {lastUnitsItems.length > 0 && <div style={layoutStyle("in_stock", 9)}><CatalogProductRail title="Últimas unidades" subtitle="Joias com poucas peças disponíveis." items={lastUnitsItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} /></div>}
 
-        <CatalogBookingWidget />
-        <CatalogContentSections sections={contentSections} />
+        <div style={layoutStyle("booking_cta", 10)}><CatalogBookingWidget /></div>
+        <div style={layoutStyle("custom_content", 11)}><CatalogContentSections sections={contentSections} /></div>
 
-        <section className="catalog-grid" id="catalog-products">
+        <section className="catalog-grid" id="catalog-products" style={layoutStyle("featured_products", 12)}>
           {items.map((item) => (
             <CatalogProductCard
               item={item}
@@ -321,7 +377,13 @@ function addToOrder(item) {
             />
           ))}
         </section>
-        {!items.length && <p className="empty-state catalog-empty">Nenhuma joia disponível no catálogo no momento.</p>}
+        {!items.length && (
+          <p className="empty-state catalog-empty">
+            {filters.availability === "false"
+              ? "Nenhuma joia esgotada encontrada para os filtros selecionados."
+              : "Nenhuma joia disponível para os filtros selecionados."}
+          </p>
+        )}
 
         <section className="catalog-guide-section">
           <article>
@@ -336,7 +398,7 @@ function addToOrder(item) {
           </div>
         </section>
 
-        <footer className="catalog-footer-benefits catalog-dynamic-footer">
+        <footer className="catalog-footer-benefits catalog-dynamic-footer" style={layoutStyle("footer", 20)}>
           <div className="catalog-contact-heading">
             <span className="eyebrow">Atendimento Aura</span>
             <h2>Fale com a nossa equipe</h2>
@@ -738,15 +800,70 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
 
 function CatalogDrawer({ type, favorites, orderItems, orderTotal, whatsappPhone, onClose, onRemoveFavorite, onRemoveOrder, onUpdateOrderNotes, onClearOrder }) {
   const isFavorites = type === "favorites";
+  const [couponCode, setCouponCode] = useState("");
+  const [couponQuote, setCouponQuote] = useState(null);
+  const [couponError, setCouponError] = useState("");
   const safeFavorites = asArray(favorites);
   const safeOrderItems = asArray(orderItems);
   const items = isFavorites ? safeFavorites : safeOrderItems;
+  useEffect(() => {
+    if (isFavorites || !safeOrderItems.length) {
+      setCouponQuote(null);
+      return;
+    }
+    let active = true;
+    publicApiFetch("/catalog/price-quote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: safeOrderItems.map((item) => ({
+          product_id: item.id,
+          variation_id: item.selected_variant_id,
+          category: item.category,
+          color: item.selected_color || item.color,
+          material: item.material,
+          stone: item.stone,
+          unit_price: item.sale_value,
+          quantity: item.qty || 1
+        }))
+      })
+    }).then((response) => response.json()).then((json) => {
+      if (active && json.valid) setCouponQuote(json);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [isFavorites, orderItems]);
   const favoriteMessage = safeFavorites.length
     ? `Olá! Quero ajuda com estas joias favoritas: ${safeFavorites.map((item) => item.name).join(", ")}.`
     : "Olá! Quero ajuda para escolher minhas joias favoritas no catálogo da Aura Clinic.";
+  const finalTotal = couponQuote?.valid ? couponQuote.final_amount : orderTotal;
   const message = safeOrderItems.length
-    ? `Olá! Quero agendar com estas joias: ${safeOrderItems.map((item) => `${item.qty || 1}x ${item.name}${item.customer_notes ? ` (${item.customer_notes})` : ""}`).join(", ")}. Total aproximado: ${currency.format(asNumber(orderTotal))}.`
+    ? `Olá! Quero agendar com estas joias: ${safeOrderItems.map((item) => `${item.qty || 1}x ${item.name}${item.customer_notes ? ` (${item.customer_notes})` : ""}`).join(", ")}. ${couponQuote?.coupon ? `Cupom: ${couponQuote.coupon.code}. ` : ""}Total aproximado: ${currency.format(asNumber(finalTotal))}.`
     : "Olá! Quero ajuda para montar meu pedido no catálogo da Aura Clinic.";
+
+  async function applyCoupon() {
+    setCouponError("");
+    setCouponQuote(null);
+    const response = await publicApiFetch("/catalog/price-quote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        coupon_code: couponCode,
+        items: safeOrderItems.map((item) => ({
+          product_id: item.id,
+          variation_id: item.selected_variant_id,
+          category: item.category,
+          color: item.selected_color || item.color,
+          material: item.material,
+          stone: item.stone,
+          unit_price: item.sale_value,
+          quantity: item.qty || 1
+        }))
+      })
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok) return setCouponError(json.error || "Cupom inválido.");
+    setCouponQuote(json);
+  }
 
   return (
     <div className="catalog-drawer-backdrop" role="presentation" onClick={onClose}>
@@ -774,7 +891,14 @@ function CatalogDrawer({ type, favorites, orderItems, orderTotal, whatsappPhone,
         </div>
         {!isFavorites && (
           <footer>
-            <div><span>Total aproximado</span><strong>{currency.format(orderTotal)}</strong></div>
+            <div className="catalog-coupon-field">
+              <input value={couponCode} onChange={(event) => setCouponCode(event.target.value.toUpperCase())} placeholder="Cupom de desconto" />
+              <button type="button" className="secondary-button" onClick={applyCoupon} disabled={!couponCode.trim() || !safeOrderItems.length}>Aplicar</button>
+            </div>
+            {couponError && <span className="form-error">{couponError}</span>}
+            {couponQuote?.promotion_discount > 0 && <span className="form-success">Promoções: −{currency.format(couponQuote.promotion_discount)}</span>}
+            {couponQuote?.coupon_discount > 0 && <span className="form-success">Cupom aplicado: −{currency.format(couponQuote.coupon_discount)}</span>}
+            <div><span>Total aproximado</span><strong>{currency.format(finalTotal)}</strong></div>
             <a className="secondary-button" href={publicUrl("/comprar")}>Finalizar no site</a>
             <a className="primary-button whatsapp-checkout" href={whatsappCatalogUrl(message, whatsappPhone)} target="_blank" rel="noreferrer"><MessageCircle size={17} /> Finalizar pelo WhatsApp</a>
             {safeOrderItems.length > 0 && <button className="secondary-button" onClick={onClearOrder}>Limpar pedido</button>}
@@ -938,19 +1062,24 @@ export function PublicBooking() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [confirmed, setConfirmed] = useState(null);
+  const [serviceIds, setServiceIds] = useState([]);
   const safeData = asObject(data);
   const services = asArray(safeData.services);
   const catalogItems = asArray(catalogData?.items);
   const allProfessionals = asArray(safeData.professionals);
-  const professionals = allProfessionals.filter((professional) => professionalMatchesService(professional, form.service_id));
+  const effectiveServiceIds = serviceIds.length ? serviceIds : form.service_id ? [form.service_id] : [];
+  const professionals = allProfessionals.filter((professional) => effectiveServiceIds.every((serviceId) => professionalMatchesService(professional, serviceId)));
   const bookingDates = nextBookingDates(10);
   const selectedService = services.find((item) => String(item.id) === String(form.service_id));
   const selectedProfessional = allProfessionals.find((item) => String(item.id) === String(form.professional_id));
   const selectedJewelry = catalogItems.find((item) => String(item.id) === String(form.jewelry_id));
   const selectedJewelryVariant = asArray(selectedJewelry?.variants).find((variant) => String(variant.id) === String(form.jewelry_variant_id));
   const selectedJewelryValue = form.jewelry_id ? asNumber(selectedJewelryVariant?.sale_value || selectedJewelry?.sale_value || 0) : 0;
-  const selectedServiceValue = asNumber(selectedService?.base_price || selectedService?.price || 0);
-  const selectedTotal = selectedServiceValue + selectedJewelryValue;
+  const selectedServices = services.filter((item) => effectiveServiceIds.some((id) => String(id) === String(item.id)));
+  const selectedServiceValue = selectedServices.reduce((sum, item) => sum + asNumber(item.base_price || item.price || 0), 0);
+  const bookingOrderItems = readCatalogStorage("aura-catalog-order", []);
+  const orderJewelryValue = asArray(bookingOrderItems).reduce((sum, item) => sum + asNumber(item.sale_value) * asNumber(item.qty, 1), 0);
+  const selectedTotal = selectedServiceValue + (bookingOrderItems.length ? orderJewelryValue : selectedJewelryValue);
   const selectedDeposit = asNumber(selectedService?.deposit_value || 25);
   const selectedRemaining = Math.max(selectedTotal - selectedDeposit, 0);
 
@@ -984,6 +1113,18 @@ export function PublicBooking() {
     Object.entries(form).forEach(([key, value]) => {
       if (value) body.append(key, value);
     });
+    body.set("service_id", String(effectiveServiceIds[0] || form.service_id));
+    body.append("items", JSON.stringify([
+      ...selectedServices.map((item) => ({ item_type: "service", service_id: item.id, quantity: 1 })),
+      ...asArray(bookingOrderItems).map((item) => ({
+        item_type: "jewelry",
+        jewelry_id: item.id,
+        jewelry_variant_id: item.selected_variant_id || null,
+        quantity: item.qty || 1,
+        selected_color: item.selected_color || item.color || "",
+        notes: item.customer_notes || ""
+      }))
+    ]));
     const response = await publicApiFetch("/booking/requests", { method: "POST", body });
     const json = await response.json().catch(() => ({}));
     setSubmitting(false);
@@ -996,7 +1137,7 @@ export function PublicBooking() {
     <main className="public-booking-page">
       <section className="booking-shell">
         <header className="booking-public-header">
-          <a className="catalog-client-brand" href={catalogUrl()}><strong>Aura Clinic</strong><span>Piercing</span></a>
+          <a className="catalog-client-brand" href={catalogUrl()}><strong>{catalogData?.theme?.brand_name || catalogData?.brand_name || "Estúdio"}</strong><span>{catalogData?.theme?.slogan || "Agendamento"}</span></a>
           <a className="secondary-button" href={catalogUrl()}>Ver Catálogo</a>
         </header>
         <div className="booking-hero">
@@ -1013,15 +1154,30 @@ export function PublicBooking() {
           ))}
         </div>
 
-        {step === 1 && <BookingChoiceGrid title="Escolha O Serviço" items={services} value={form.service_id} onSelect={(id) => { setForm({ ...form, service_id: id, professional_id: "", appointment_time: "" }); setStep(2); }} render={(item) => {
-          const total = asNumber(item.base_price || item.price || 0);
-          const deposit = asNumber(item.deposit_value || 25);
-          return <><strong>{item.name}</strong><p>{item.description}</p><span>{item.duration_minutes} min · Total {currency.format(total)} · Sinal {currency.format(deposit)}</span></>;
-        }} />}
+        {step === 1 && (
+          <section className="booking-panel">
+            <h2>Escolha um ou mais serviços</h2>
+            <div className="booking-choice-grid">
+              {services.map((item) => {
+                const selected = effectiveServiceIds.some((id) => String(id) === String(item.id));
+                return (
+                  <button type="button" key={item.id} className={selected ? "active" : ""} onClick={() => {
+                    const next = selected ? effectiveServiceIds.filter((id) => String(id) !== String(item.id)) : [...effectiveServiceIds, item.id];
+                    setServiceIds(next);
+                    setForm({ ...form, service_id: next[0] || "", professional_id: "", appointment_time: "" });
+                  }}>
+                    <strong>{item.name}</strong><p>{item.description}</p><span>{item.duration_minutes} min · {currency.format(item.base_price || item.price || 0)}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <button type="button" className="primary-button booking-wide-button" disabled={!effectiveServiceIds.length} onClick={() => setStep(2)}>Continuar com {effectiveServiceIds.length} serviço(s)</button>
+          </section>
+        )}
         {step === 2 && (
           professionals.length
             ? <BookingChoiceGrid title="Escolha A Profissional" items={professionals} value={form.professional_id} onSelect={(id) => { setForm({ ...form, professional_id: id, appointment_time: "" }); setStep(3); }} render={(item) => <><strong>{item.name}</strong><p>{item.specialty || "Body Piercer Aura"}</p></>} />
-            : <section className="booking-panel"><h2>Nenhuma Profissional Vinculada</h2><p className="empty-state">Este serviço ainda não possui profissional ativo vinculado. Volte e escolha outro serviço ou fale com a Aura pelo WhatsApp.</p><button type="button" className="secondary-button" onClick={() => setStep(1)}>Escolher Outro Serviço</button></section>
+            : <section className="booking-panel"><h2>Nenhuma Profissional Vinculada</h2><p className="empty-state">Este serviço ainda não possui profissional ativo vinculado. Volte e escolha outro serviço ou fale com o estúdio pelo WhatsApp.</p><button type="button" className="secondary-button" onClick={() => setStep(1)}>Escolher Outro Serviço</button></section>
         )}
         {step === 3 && (
           <section className="booking-panel booking-date-card">
@@ -1079,16 +1235,19 @@ export function PublicBooking() {
           <section className="booking-panel booking-summary">
             <span className="booking-section-kicker">Etapa 6  Resumo</span>
             <h2>Resumo Da Solicitação</h2>
-            <p><strong>Serviço:</strong> {selectedService?.name}</p>
-            {selectedJewelry && <p><strong>Joia escolhida:</strong> {elegantProductName(selectedJewelry.name)}{selectedJewelryVariant ? ` · ${variantCatalogLabel(selectedJewelryVariant)}` : ""}{form.selected_color ? ` · ${form.selected_color}` : ""}</p>}
+            <p><strong>Serviços:</strong> {selectedServices.map((item) => item.name).join(", ")}</p>
+            {bookingOrderItems.length > 0
+              ? <p><strong>Joias:</strong> {bookingOrderItems.map((item) => `${item.qty || 1}x ${elegantProductName(item.name)}`).join(", ")}</p>
+              : selectedJewelry && <p><strong>Joia escolhida:</strong> {elegantProductName(selectedJewelry.name)}{selectedJewelryVariant ? ` · ${variantCatalogLabel(selectedJewelryVariant)}` : ""}{form.selected_color ? ` · ${form.selected_color}` : ""}</p>}
             <p><strong>Profissional:</strong> {selectedProfessional?.name}</p>
             <p><strong>Data E Horário:</strong> {formatLongDate(form.appointment_date)} às {form.appointment_time}</p>
             <p><strong>Valor do procedimento:</strong> {currency.format(selectedServiceValue)}</p>
-            {selectedJewelry && <p><strong>Valor da joia:</strong> {currency.format(selectedJewelryValue)}</p>}
+            {(selectedJewelry || bookingOrderItems.length > 0) && <p><strong>Valor das joias:</strong> {currency.format(bookingOrderItems.length ? orderJewelryValue : selectedJewelryValue)}</p>}
             <p><strong>Valor total:</strong> {currency.format(selectedTotal)}</p>
             <p><strong>Sinal obrigatório:</strong> {currency.format(selectedDeposit)}</p>
             <p><strong>Valor restante:</strong> {currency.format(selectedRemaining)}</p>
             <p><strong>Regras:</strong> {data.rules?.cancellation}</p>
+            <Input label="Cupom (opcional)" value={form.coupon_code || ""} onChange={(value) => setForm({ ...form, coupon_code: value.toUpperCase() })} />
             <label>Comprovante Do Sinal Pix (opcional)<input type="file" accept="image/*,.pdf" onChange={(event) => setForm({ ...form, payment_proof: event.target.files?.[0] })} /></label>
             {error && <span className="form-error">{error}</span>}
             <button className="primary-button booking-wide-button" disabled={submitting} onClick={submit}>{submitting ? "Enviando..." : "Confirmar Solicitação"}</button>

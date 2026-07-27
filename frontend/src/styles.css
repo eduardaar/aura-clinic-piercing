@@ -7422,6 +7422,19 @@ body {
   overflow: auto;
 }
 
+.catalog-coupon-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.catalog-coupon-field input {
+  min-width: 0;
+  border: 1px solid #ded7ce;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
 .catalog-drawer-list article {
   display: grid;
   grid-template-columns: 72px 1fr auto;
@@ -9066,6 +9079,85 @@ body {
   max-width: 1240px;
   margin: 0 auto;
   gap: 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.catalog-grid {
+  grid-template-columns: repeat(var(--catalog-section-columns, 4), minmax(0, 1fr));
+}
+
+.preview-device-switcher {
+  display: flex;
+  gap: 4px;
+}
+
+.preview-device-switcher button {
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 7px;
+  font-size: 10px;
+}
+
+.preview-device-switcher button.active {
+  background: var(--preview-primary);
+  color: white;
+}
+
+.visual-search-upload {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+
+.visual-search-upload label input {
+  display: none;
+}
+
+.visual-search-upload > img {
+  width: min(280px, 100%);
+  max-height: 240px;
+  object-fit: contain;
+  border-radius: 14px;
+  background: #f5f2ed;
+}
+
+.visual-search-results {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.visual-search-results > button {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 12px;
+  width: 100%;
+  border: 1px solid #e5ded5;
+  border-radius: 14px;
+  padding: 10px;
+  background: white;
+  text-align: left;
+}
+
+.visual-search-results img {
+  width: 82px;
+  height: 82px;
+  object-fit: cover;
+  border-radius: 10px;
+}
+
+.visual-search-results span {
+  display: grid;
+  gap: 4px;
+}
+
+.catalog-live-preview.preview-tablet {
+  max-width: 768px;
+}
+
+.catalog-live-preview.preview-mobile {
+  max-width: 390px;
 }
 
 .catalog-topbar {

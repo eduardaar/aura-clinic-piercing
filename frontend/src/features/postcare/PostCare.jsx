@@ -1,10 +1,10 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import React, { useState } from "react";
 import { Instagram, Search } from "lucide-react";
-import { Button, Metric, Select, StatusBadge } from "../../components/common/Ui";
+import { Button, Metric, SecureImage, Select, StatusBadge } from "../../components/common/Ui";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, formatDate } from "../../lib/utils";
-import { API_ORIGIN, apiFetch, useFetch } from "../../lib/api";
+import { apiFetch, useFetch } from "../../lib/api";
 import { personName } from "../../features/shared/helpers";
 
 export function PostCare() {
@@ -84,7 +84,7 @@ export function PostCareCard({ item, onChanged }) {
         <div><dt>Joia</dt><dd>{item.jewelry_name || "sem joia"}</dd></div>
         <div><dt>Profissional</dt><dd>{item.professional_name}</dd></div>
       </dl>
-      {item.client_photo_url && <img className="post-care-photo" src={`${API_ORIGIN}${item.client_photo_url}`} alt="Foto enviada pelo cliente" />}
+      {item.client_photo_url && <SecureImage className="post-care-photo" src={item.client_photo_url} alt="Foto enviada pelo cliente" />}
       <form onSubmit={save} className="post-care-form">
         <label>Mensagem personalizada de cuidados
           <textarea value={form.care_message} onChange={(event) => setForm({ ...form, care_message: event.target.value })} />

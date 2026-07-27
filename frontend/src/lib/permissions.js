@@ -1,8 +1,8 @@
 export function allowedPagesForRole(role) {
   return {
-    admin: ["dashboard", "erp", "agenda", "catalog", "catalog-customization", "sales", "finance", "client-center", "clients", "terms", "postcare", "admin", "error-logs", "meu-plano"],
-    reception: ["agenda", "sales", "client-center", "clients"],
-    finance: ["finance", "sales"],
+    admin: ["dashboard", "erp", "agenda", "communications", "catalog", "catalog-customization", "sales", "finance", "reports", "client-center", "clients", "terms", "postcare", "admin", "error-logs", "meu-plano"],
+    reception: ["agenda", "communications", "sales", "reports", "client-center", "clients"],
+    finance: ["finance", "reports", "sales"],
     piercer: ["agenda", "sales", "client-center", "clients", "postcare"]
     // Fallback SEGURO para papéis desconhecidos: acesso mínimo, sem áreas
     // administrativas (erp/admin/finance). O "Aura ERP" só aparece para admin.
@@ -15,6 +15,8 @@ export const PAGE_FEATURE = {
   finance: "basic_finance",
   terms: "digital_terms",
   postcare: "automatic_followup",
+  communications: "message_templates",
+  reports: "basic_reports",
   "catalog-customization": "public_catalog_customization",
   sales: "basic_catalog"
 };
@@ -39,10 +41,12 @@ export function pageTitle(page) {
     dashboard: "Dashboard",
     erp: "Aura Clinic ERP",
     agenda: "Agenda",
+    communications: "Comunicações",
     catalog: "Catálogo",
     "catalog-customization": "Personalização do Catálogo",
     sales: "Vendas e ordens",
     finance: "Administrativo Financeiro",
+    reports: "Relatórios",
     "client-center": "Clientes",
     clients: "Clientes",
     terms: "Termos digitais",

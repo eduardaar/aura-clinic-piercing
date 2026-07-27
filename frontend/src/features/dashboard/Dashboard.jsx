@@ -8,14 +8,15 @@ import { useFetch } from "../../lib/api";
 import { currency, formatRevenueAxisLabel, formatRevenueLabel, personName, statusClass } from "../../features/shared/helpers";
 
 export function Dashboard({ user, setPage, alertsOpen, setAlertsOpen, alertsData, alertsLoading }) {
-  const { data } = useFetch("/dashboard");
+  const [period, setPeriod] = useState("30d");
+  const { data } = useFetch(`/dashboard?period=${period}`);
 
   if (data == null) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
-  return <PremiumDashboard data={data} user={user} setPage={setPage} alertsOpen={alertsOpen} setAlertsOpen={setAlertsOpen} alertsData={alertsData} alertsLoading={alertsLoading} />;
+  return <PremiumDashboard data={data} user={user} setPage={setPage} period={period} setPeriod={setPeriod} alertsOpen={alertsOpen} setAlertsOpen={setAlertsOpen} alertsData={alertsData} alertsLoading={alertsLoading} />;
 }
 
-export function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpen, alertsData, alertsLoading }) {
+export function PremiumDashboard({ data, user, setPage, period, setPeriod, alertsOpen, setAlertsOpen, alertsData, alertsLoading }) {
   const [revenueMode, setRevenueMode] = useState("mensal");
   const safeData = asObject(data);
   const safeStats = {
@@ -40,6 +41,9 @@ export function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpe
   const nextAppointment = asObject(adminDashboard.nextAppointment);
   const appointmentAlerts = asArray(adminDashboard.appointmentAlerts);
   const todaysAppointments = asArray(safeData.todaysAppointments);
+  const executive = asObject(adminDashboard.executive);
+  const topViewed = asArray(adminDashboard.topViewed);
+  const professionalRanking = asArray(adminDashboard.professionalRanking);
 
   const cards = [
     { label: "Agendamentos hoje", value: String(safeStats.todayCount ?? 0), icon: Calendar, action: "Ver agenda", page: "agenda", tone: "gold" },
@@ -62,6 +66,23 @@ export function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpe
   return (
     <section className="premium-dashboard">
       {alertsOpen && <AlertsPopup alerts={alertsData} loading={alertsLoading} onClose={() => setAlertsOpen(false)} onAction={(nextPage) => { setAlertsOpen(false); setPage(nextPage); }} />}
+
+      <div className="panel-heading dashboard-period-heading">
+        <div><h2>Visão executiva</h2><span>Indicadores consolidados do período.</span></div>
+        <div className="segmented compact">
+          {["7d", "30d", "90d", "365d"].map((value) => <button type="button" key={value} className={period === value ? "active" : ""} onClick={() => setPeriod(value)}>{value}</button>)}
+        </div>
+      </div>
+      <div className="metric-grid">
+        <article className="metric-card"><span>Comparecimento</span><strong>{asNumber(executive.attendance_rate)}%</strong></article>
+        <article className="metric-card"><span>Cancelamentos</span><strong>{asNumber(executive.cancellation_rate)}%</strong></article>
+        <article className="metric-card"><span>Ticket médio</span><strong>{currency.format(asNumber(executive.average_ticket))}</strong></article>
+        <article className="metric-card"><span>A receber</span><strong>{currency.format(asNumber(executive.receivable))}</strong></article>
+        <article className="metric-card"><span>A pagar</span><strong>{currency.format(asNumber(executive.payable))}</strong></article>
+        <article className="metric-card"><span>Conversão catálogo</span><strong>{asNumber(executive.catalog_conversion_rate)}%</strong></article>
+        <article className="metric-card"><span>Promoções usadas</span><strong>{asNumber(executive.promotion_uses)}</strong></article>
+        <article className="metric-card"><span>Cupons usados</span><strong>{asNumber(executive.coupon_uses)}</strong></article>
+      </div>
 
       <div className="premium-metric-grid">
         {cards.map(({ label, value, icon: Icon, action, page, tone, critical }) => (
@@ -202,6 +223,14 @@ export function PremiumDashboard({ data, user, setPage, alertsOpen, setAlertsOpe
           <MiniBarChart data={categoryRanking} valueKey="total" labelKey="label" />
         </div>
         <DashboardList title="Clientes em retorno" items={returnClients} render={(item) => `${formatDate(item.due_date)} · ${personName(item)} · ${item.reminder_day || 0} dias`} />
+        <div className="panel">
+          <div className="panel-heading"><h2>Produtos mais visualizados</h2><span>Catálogo público</span></div>
+          <MiniBarChart data={topViewed} valueKey="views" labelKey="name" />
+        </div>
+        <div className="panel">
+          <div className="panel-heading"><h2>Profissionais</h2><span>Faturamento no período</span></div>
+          <MiniBarChart data={professionalRanking} valueKey="revenue" labelKey="label" currencyValue />
+        </div>
       </div>
     </section>
   );

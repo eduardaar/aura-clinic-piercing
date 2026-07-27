@@ -63,7 +63,7 @@ router.post("/api/digital-terms", withFeature("digital_terms", async (req, res, 
   );
 
   const term = await db.get("SELECT * FROM digital_terms WHERE id = ?", [result.lastID]);
-  const pdfUrl = await createTermPdf(term, appointment || {});
+  const pdfUrl = await createTermPdf(db, term, appointment || {}, req.user?.id || null);
   await db.run("UPDATE digital_terms SET pdf_url = ? WHERE id = ?", [pdfUrl, result.lastID]);
   res.status(201).json((await listDigitalTerms(db)).find((item) => item.id === result.lastID));
 }));

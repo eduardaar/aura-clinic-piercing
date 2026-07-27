@@ -58,6 +58,8 @@ function buildAppointmentAlerts(appointments, now = new Date()) {
 router.get("/api/dashboard", withDb(async (_req, res, db) => {
   const today = new Date().toISOString().slice(0, 10);
   const month = today.slice(0, 7);
+  const periodDays = { "7d": 7, "30d": 30, "90d": 90, "365d": 365 }[_req.query.period] || 30;
+  const periodStart = new Date(Date.now() - (periodDays - 1) * 86_400_000).toISOString().slice(0, 10);
   const stats = await db.get(`
     SELECT
       SUM(CASE WHEN appointment_date = ? THEN 1 ELSE 0 END) AS today_count,
@@ -139,6 +141,36 @@ router.get("/api/dashboard", withDb(async (_req, res, db) => {
     ORDER BY f.due_date ASC
     LIMIT 8
   `);
+  const appointmentKpis = await db.get(`
+      SELECT COUNT(*) AS total,
+        SUM(CASE WHEN status='atendido' THEN 1 ELSE 0 END) AS attended,
+        SUM(CASE WHEN status IN ('cancelado','recusado') THEN 1 ELSE 0 END) AS canceled,
+        COALESCE(AVG(CASE WHEN status='atendido' THEN total_value END),0) AS average_ticket
+      FROM appointments WHERE appointment_date BETWEEN ? AND ?
+    `, [periodStart, today]);
+  const paymentKpis = await db.get("SELECT COALESCE(SUM(amount),0) AS received, COALESCE(SUM(CASE WHEN payment_type='sinal' THEN amount ELSE 0 END),0) AS deposits FROM payments WHERE status='pago' AND SUBSTRING(paid_at,1,10) BETWEEN ? AND ?", [periodStart, today]);
+  const promotionKpis = await db.get("SELECT COUNT(*) AS uses,COALESCE(SUM(discount_amount),0) AS discount FROM promotion_usages WHERE SUBSTRING(CAST(created_at AS TEXT),1,10) BETWEEN ? AND ?", [periodStart, today]);
+  const couponKpis = await db.get("SELECT COUNT(*) AS uses,COALESCE(SUM(discount_amount),0) AS discount FROM coupon_usages WHERE SUBSTRING(CAST(created_at AS TEXT),1,10) BETWEEN ? AND ?", [periodStart, today]);
+  const catalogKpis = await db.all("SELECT event_type,COUNT(*) AS total,COUNT(DISTINCT session_key) AS sessions FROM catalog_events WHERE SUBSTRING(occurred_at,1,10) BETWEEN ? AND ? GROUP BY event_type", [periodStart, today]);
+  const topViewed = await db.all(`
+      SELECT j.id,j.name,COUNT(*) AS views FROM catalog_events e JOIN jewelry_inventory j ON j.id=e.product_id
+      WHERE e.event_type='product_view' AND SUBSTRING(e.occurred_at,1,10) BETWEEN ? AND ?
+      GROUP BY j.id ORDER BY views DESC LIMIT 6
+    `, [periodStart, today]);
+  const professionalRanking = await db.all(`
+      SELECT p.id,p.name AS label,COUNT(a.id) AS appointments,COALESCE(SUM(a.total_value),0) AS revenue
+      FROM professionals p LEFT JOIN appointments a ON a.professional_id=p.id AND a.appointment_date BETWEEN ? AND ? AND a.status='atendido'
+      GROUP BY p.id ORDER BY revenue DESC LIMIT 6
+    `, [periodStart, today]);
+  const financialPending = await db.get(`
+      SELECT
+        COALESCE(SUM(CASE WHEN entry_type IN ('payable','expense') AND status IN ('pending','overdue','partially_paid') THEN amount-paid_amount ELSE 0 END),0) AS payable,
+        COALESCE(SUM(CASE WHEN entry_type IN ('receivable','income') AND status IN ('pending','overdue','partially_paid') THEN amount-paid_amount ELSE 0 END),0) AS receivable
+      FROM financial_entries
+    `);
+  const catalogMetrics = Object.fromEntries(catalogKpis.map((item) => [item.event_type, Number(item.total || 0)]));
+  const catalogViews = Number(catalogMetrics.catalog_view || 0);
+  const catalogSelections = Number(catalogMetrics.product_selected || 0);
 
   res.json({
     stats: {
@@ -165,6 +197,27 @@ router.get("/api/dashboard", withDb(async (_req, res, db) => {
       nextAppointment,
       appointmentAlerts,
       returnClients
+      ,
+      executive: {
+        period_days: periodDays,
+        period_start: periodStart,
+        appointments: Number(appointmentKpis.total || 0),
+        cancellations: Number(appointmentKpis.canceled || 0),
+        attendance_rate: Number(appointmentKpis.total || 0) ? Number(((Number(appointmentKpis.attended || 0) / Number(appointmentKpis.total)) * 100).toFixed(1)) : 0,
+        cancellation_rate: Number(appointmentKpis.total || 0) ? Number(((Number(appointmentKpis.canceled || 0) / Number(appointmentKpis.total)) * 100).toFixed(1)) : 0,
+        average_ticket: Number(paymentKpis.received || appointmentKpis.average_ticket || 0) / Math.max(Number(appointmentKpis.attended || 0), 1),
+        received: Number(paymentKpis.received || 0),
+        deposits: Number(paymentKpis.deposits || 0),
+        payable: Number(financialPending.payable || 0),
+        receivable: Number(financialPending.receivable || 0),
+        promotion_uses: Number(promotionKpis.uses || 0),
+        coupon_uses: Number(couponKpis.uses || 0),
+        catalog_conversion_rate: catalogViews ? Number(((catalogSelections / catalogViews) * 100).toFixed(1)) : 0,
+        catalog_views: catalogViews,
+        product_selections: catalogSelections
+      },
+      topViewed,
+      professionalRanking
     }
   });
 }));

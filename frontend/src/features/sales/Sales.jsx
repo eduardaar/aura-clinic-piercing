@@ -7,6 +7,7 @@ import { asArray, formatDate } from "../../lib/utils";
 import { apiFetch, useFetch } from "../../lib/api";
 import { defaultSalesLine, defaultSalesOrderForm } from "../../lib/defaultForms";
 import { currency, personName, saleItemLabel, saleOrderTypeLabel } from "../../features/shared/helpers";
+import { smartSearchMatches } from "../../lib/smartSearch";
 
 export function SalesWorkspace() {
   const { data: orders, refresh: refreshOrders } = useFetch("/sales-orders");
@@ -20,11 +21,16 @@ export function SalesWorkspace() {
   const [line, setLine] = useState(defaultSalesLine());
   const [items, setItems] = useState([]);
   const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
   const safeOrders = asArray(orders);
   const safeServices = asArray(services);
   const safeProcedures = asArray(procedures);
   const safeJewelry = asArray(jewelry);
   const safeAppointments = asArray(appointments);
+  const visibleOrders = safeOrders.filter((order) => smartSearchMatches(
+    `${order.full_name} ${order.order_type} ${order.payment_method} ${order.status} ${asArray(order.items).map((item) => `${item.item_name} ${item.sku || ""}`).join(" ")}`,
+    search
+  ));
   const selectedProduct = safeJewelry.find((item) => String(item.id) === String(line.product_id));
   const selectedVariants = asArray(selectedProduct?.variants).filter((variant) => Number(variant.is_active ?? 1));
   const selectedVariant = selectedVariants.find((variant) => String(variant.id) === String(line.product_variant_id));
@@ -163,8 +169,11 @@ export function SalesWorkspace() {
           actionLabel="Nova venda"
           onAction={openNew}
         />
+        <div className="inventory-filter-row simplified">
+          <Input label="Buscar vendas" value={search} onChange={setSearch} />
+        </div>
         <DataTable
-          rows={safeOrders}
+          rows={visibleOrders}
           columns={[
             {
               key: "full_name",

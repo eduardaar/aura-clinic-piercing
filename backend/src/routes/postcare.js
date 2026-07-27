@@ -1,7 +1,7 @@
 // Rotas de pós-atendimento (acompanhamentos de cicatrização).
 import { Router } from "express";
 import { withDb, withFeature } from "../middleware/withDb.js";
-import { upload } from "../middleware/upload.js";
+import { parseUpload, privateUpload, registerPrivateFiles } from "../middleware/upload.js";
 import {
   ensureFollowupsForCompletedAppointments,
   listPostCareFollowups
@@ -14,10 +14,12 @@ router.get("/api/post-care", withFeature("automatic_followup", async (_req, res,
   res.json(await listPostCareFollowups(db));
 }));
 
-router.patch("/api/post-care/:id", upload.single("client_photo"), withFeature("automatic_followup", async (req, res, db) => {
+router.patch("/api/post-care/:id", withFeature("automatic_followup", async (req, res, db) => {
+  await parseUpload(privateUpload.single("client_photo"), req, res);
+  await registerPrivateFiles(db, req.file, "postcare_photo", req.user?.id);
   const existing = await db.get("SELECT * FROM post_care_followups WHERE id = ?", [req.params.id]);
   if (!existing) return res.status(404).json({ error: "Acompanhamento não encontrado." });
-  const photoUrl = req.file ? `/uploads/${req.file.filename}` : existing.client_photo_url;
+  const photoUrl = req.file ? `/api/private-files/${req.file.filename}` : existing.client_photo_url;
   await db.run(
     `UPDATE post_care_followups
      SET care_message = ?, healing_status = ?, client_notes = ?, status = ?, client_photo_url = ?, updated_at = CURRENT_TIMESTAMP
