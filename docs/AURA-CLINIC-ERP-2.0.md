@@ -102,6 +102,18 @@ entrada.
 - Categorias mantêm nome interno separado do nome público, com descrição,
   imagem, banner, cor, destaque, limite e modo de exibição.
 
+### Busca visual
+
+- Busca real por hash perceptual de pixels decodificados (dHash 64 bits).
+- Ranking por distância de Hamming combinado com metadados.
+- Índice persistente de hashes dentro do schema de cada tenant.
+- Upload temporário em memória, sem persistência da imagem de consulta.
+- JPEG, PNG e WebP limitados a 5 MB e 40 milhões de pixels.
+- Origens remotas passam por proteção contra endereços privados/SSRF.
+- Resultado inclui identidade, SKU, categoria, atributos, variações, estoque,
+  preço e percentual de similaridade.
+- Recurso protegido por plano no backend.
+
 ## Segurança e decisões
 
 - Valores calculados pelo navegador são apenas estimativas visuais; o backend
@@ -114,10 +126,9 @@ entrada.
 
 ## Fases seguintes
 
-1. Busca visual fase 1 e limpeza de arquivos temporários.
-2. Agenda com múltiplos serviços/joias e reserva de estoque.
-3. Templates de comunicação e provedores de pagamento.
-4. Relatórios, indicadores, exportações e medições de performance.
+1. Agenda com múltiplos serviços/joias e reserva de estoque.
+2. Templates de comunicação e provedores de pagamento.
+3. Relatórios, indicadores, exportações e medições de performance.
 
 Este documento deve ser atualizado a cada fase com migrations, testes,
 medições, riscos, commits e estado de deploy reais.

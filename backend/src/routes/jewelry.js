@@ -1,6 +1,7 @@
 // Rotas de estoque de joalherias: produtos, variacoes e movimentacoes.
 import { Router } from "express";
-import { withDb } from "../middleware/withDb.js";
+import multer from "multer";
+import { withDb, withFeature } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { boolNumber, elegantProductName, variantStatus, variantFromLegacy } from "../services/utils.js";
 import {
@@ -16,8 +17,25 @@ import {
 import { validateBody } from "../middleware/validate.js";
 import { jewelryCreateSchema, jewelryUpdateSchema } from "../schemas/index.js";
 import { calculatePricing, getPricingSettings } from "../services/pricing.js";
+import { visualSearch } from "../services/visualSearch.js";
 
 const router = Router();
+const visualUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, callback) => callback(null, ["image/jpeg", "image/png", "image/webp"].includes(file.mimetype))
+});
+
+router.post("/api/jewelry/visual-search", visualUpload.single("image"), withFeature("visual_search", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!req.file?.buffer) return res.status(400).json({ error: "Envie uma imagem JPEG, PNG ou WebP de até 5 MB." });
+  try {
+    const results = await visualSearch(db, req.file.buffer, req.body || {});
+    res.json({ phase: "perceptual_hash", stored_query_image: false, results: await attachVariants(db, results) });
+  } catch {
+    res.status(400).json({ error: "Imagem inválida ou corrompida." });
+  }
+}));
 
 function skuConflict(res, message = "SKU já cadastrado.") {
   return res.status(409).json({ success: false, message });

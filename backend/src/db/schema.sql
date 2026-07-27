@@ -542,6 +542,19 @@ CREATE TABLE IF NOT EXISTS catalog_layout_history (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS product_visual_hashes (
+  id SERIAL PRIMARY KEY,
+  product_id INTEGER NOT NULL REFERENCES jewelry_inventory(id) ON DELETE CASCADE,
+  variation_id INTEGER REFERENCES jewelry_variants(id) ON DELETE CASCADE,
+  image_url TEXT NOT NULL,
+  perceptual_hash TEXT NOT NULL,
+  width INTEGER,
+  height INTEGER,
+  file_size INTEGER,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(product_id, variation_id, image_url)
+);
+
 ALTER TABLE catalog_featured_categories ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE catalog_featured_categories ADD COLUMN IF NOT EXISTS display_mode TEXT NOT NULL DEFAULT 'grid';
 ALTER TABLE catalog_featured_categories ADD COLUMN IF NOT EXISTS product_limit INTEGER NOT NULL DEFAULT 12;
@@ -694,6 +707,7 @@ CREATE INDEX IF NOT EXISTS idx_expenses_due ON expenses(due_date);
 CREATE INDEX IF NOT EXISTS idx_catalog_promotions_active_dates ON catalog_promotions(is_active, start_date, end_date);
 CREATE INDEX IF NOT EXISTS idx_catalog_sections_layout_order ON catalog_sections(layout_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_catalog_categories_public_order ON catalog_featured_categories(is_active, sort_order);
+CREATE INDEX IF NOT EXISTS idx_product_visual_hashes_product ON product_visual_hashes(product_id, variation_id);
 CREATE INDEX IF NOT EXISTS idx_catalog_promotions_rules ON catalog_promotions(status, priority DESC, start_date, end_date) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_promotion_usages_promotion ON promotion_usages(promotion_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_promotion_audit_promotion ON promotion_audit_logs(promotion_id, created_at DESC);
