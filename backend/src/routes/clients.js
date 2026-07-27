@@ -2,7 +2,7 @@
 import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
-import { upload } from "../middleware/upload.js";
+import { parseUpload, privateUpload, registerPrivateFiles } from "../middleware/upload.js";
 import { listMedicalRecords } from "../services/appointments.js";
 import { getClientLoyalty } from "../services/loyalty.js";
 import { listClientsWithDetails } from "../services/clients.js";
@@ -30,6 +30,7 @@ function clientResponse(client) {
 }
 
 router.post("/api/clients", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
   const b = normalizeClientBody(req.body);
   req.body = { ...req.body, full_name: b.full_name, whatsapp: b.whatsapp };
   if (!validateBody(clientCreateSchema, req, res)) return;
@@ -41,6 +42,7 @@ router.post("/api/clients", withDb(async (req, res, db) => {
 }));
 
 async function updateClient(req, res, db) {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
   const current = await db.get("SELECT * FROM clients WHERE id = ?", [req.params.id]);
   if (!current) return res.status(404).json({ error: "Cliente nao encontrado." });
   const b = normalizeClientBody(req.body, current);
@@ -80,11 +82,16 @@ router.delete("/api/clients/:id", withDb(async (req, res, db) => {
 }));
 
 router.get("/api/clients", withDb(async (_req, res, db) => {
+  if (!requireRole(_req, res, ["admin", "reception", "piercer"])) return;
   const clients = await listClientsWithDetails(db);
-  res.json(clients.map(clientResponse));
+  const rows = _req.user?.role === "reception"
+    ? clients.map(({ medicalRecords, terms, ...client }) => ({ ...client, medicalRecords: [], terms: [] }))
+    : clients;
+  res.json(rows.map(clientResponse));
 }));
 
 router.post("/api/clients/:id/loyalty-redemptions", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
   const client = await db.get("SELECT id FROM clients WHERE id = ?", [req.params.id]);
   if (!client) return res.status(404).json({ error: "Cliente nao encontrado." });
   const points = Number(req.body.points_used || 0);
@@ -100,12 +107,15 @@ router.post("/api/clients/:id/loyalty-redemptions", withDb(async (req, res, db) 
   res.status(201).json(await getClientLoyalty(db, req.params.id));
 }));
 
-router.post("/api/clients/:id/medical-records", upload.fields([{ name: "before_photo", maxCount: 1 }, { name: "after_photo", maxCount: 1 }]), withDb(async (req, res, db) => {
+router.post("/api/clients/:id/medical-records", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "piercer"])) return;
+  await parseUpload(privateUpload.fields([{ name: "before_photo", maxCount: 1 }, { name: "after_photo", maxCount: 1 }]), req, res);
+  await registerPrivateFiles(db, Object.values(req.files || {}).flat(), "medical_record", req.user?.id);
   const client = await db.get("SELECT id FROM clients WHERE id = ?", [req.params.id]);
   if (!client) return res.status(404).json({ error: "Cliente nao encontrado." });
   const body = req.body;
-  const beforePhoto = req.files?.before_photo?.[0] ? `/uploads/${req.files.before_photo[0].filename}` : "";
-  const afterPhoto = req.files?.after_photo?.[0] ? `/uploads/${req.files.after_photo[0].filename}` : "";
+  const beforePhoto = req.files?.before_photo?.[0] ? `/api/private-files/${req.files.before_photo[0].filename}` : "";
+  const afterPhoto = req.files?.after_photo?.[0] ? `/api/private-files/${req.files.after_photo[0].filename}` : "";
   const result = await db.run(
     `INSERT INTO client_medical_records
     (client_id, appointment_id, record_date, piercing_history, jewelry_used, before_photo_url, after_photo_url, occurrences, guidance, allergies_notes, healing_evolution, returns_done)
@@ -129,6 +139,7 @@ router.post("/api/clients/:id/medical-records", upload.fields([{ name: "before_p
 }));
 
 router.delete("/api/clients/:clientId/medical-records/:recordId", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "piercer"])) return;
   await db.run("DELETE FROM client_medical_records WHERE id = ? AND client_id = ?", [req.params.recordId, req.params.clientId]);
   res.json({ ok: true });
 }));

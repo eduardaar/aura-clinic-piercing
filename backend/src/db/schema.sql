@@ -797,6 +797,16 @@ CREATE TABLE IF NOT EXISTS catalog_events (
   occurred_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
 
+CREATE TABLE IF NOT EXISTS private_files (
+  id SERIAL PRIMARY KEY,
+  filename TEXT NOT NULL UNIQUE,
+  original_name TEXT,
+  mime_type TEXT NOT NULL,
+  purpose TEXT NOT NULL,
+  uploaded_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
 CREATE INDEX IF NOT EXISTS idx_catalog_events_period ON catalog_events(occurred_at, event_type);
 CREATE INDEX IF NOT EXISTS idx_catalog_events_product ON catalog_events(product_id, event_type, occurred_at);
 

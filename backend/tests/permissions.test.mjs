@@ -270,6 +270,27 @@ test("DELETE /clients/:id com reception → permitido (200, mesmo sem existir a 
   assert.equal(status, 200);
 });
 
+test("recepção não cria prontuário clínico e piercer não altera cadastro civil", async () => {
+  const medical = await req("/clients/999999/medical-records", {
+    token: ctx.tokens.reception,
+    method: "POST",
+    body: {}
+  });
+  assert.equal(medical.status, 403);
+
+  const update = await req("/clients/999999", {
+    token: ctx.tokens.piercer,
+    method: "PATCH",
+    body: { full_name: "Alteração indevida", whatsapp: "11999999999" }
+  });
+  assert.equal(update.status, 403);
+});
+
+test("papéis não operacionais não acessam agenda", async () => {
+  const { status } = await req("/appointments", { token: ctx.tokens.finance });
+  assert.equal(status, 403);
+});
+
 // -- Reset destrutivo exige admin E gate de produção ---------------------
 test("POST /admin/reset-clinic-data com reception → 403", async () => {
   const { status } = await req("/admin/reset-clinic-data", {

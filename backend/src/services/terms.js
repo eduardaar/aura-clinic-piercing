@@ -2,7 +2,7 @@
 import path from "path";
 import fs from "fs";
 import PDFDocument from "pdfkit";
-import { uploadsDir } from "../config/index.js";
+import { privateUploadsDir } from "../config/index.js";
 import {
   parseTermFormData,
   signatureBufferFromDataUrl,
@@ -48,9 +48,9 @@ export async function listDigitalTerms(db) {
   `);
 }
 
-export async function createTermPdf(term, appointment = {}) {
+export async function createTermPdf(db, term, appointment = {}, userId = null) {
   const fileName = `termo-digital-${term.id}.pdf`;
-  const filePath = path.join(uploadsDir, fileName);
+  const filePath = path.join(privateUploadsDir, fileName);
   const signatureBuffer = signatureBufferFromDataUrl(term.signature_data_url);
   const formData = parseTermFormData(term.form_data);
   await new Promise((resolve, reject) => {
@@ -115,5 +115,9 @@ export async function createTermPdf(term, appointment = {}) {
     doc.text("Aura Clinic Piercing  Atendimento premium e cuidadoso.", { align: "center" });
     doc.end();
   });
-  return `/uploads/${fileName}`;
+  await db.run(
+    "INSERT INTO private_files (filename, original_name, mime_type, purpose, uploaded_by) VALUES (?, ?, 'application/pdf', 'digital_term', ?) ON CONFLICT (filename) DO NOTHING",
+    [fileName, fileName, userId]
+  );
+  return `/api/private-files/${fileName}`;
 }

@@ -228,11 +228,66 @@ entrada.
   portanto não foi aplicado sem validar primeiro as exportações na fase de
   relatórios.
 
-## Fases seguintes
+### Segurança, permissões e arquivos clínicos
 
-1. Inteligência de estoque, previsões e sugestões de compra.
-2. Financeiro 2.0, relatórios, exportações e medições de performance.
-3. Integrações oficiais de WhatsApp e pagamento, dependentes de credenciais.
+- Uploads públicos e clínicos agora usam diretórios separados. Termos,
+  prontuários, referências, pós-atendimento e comprovantes novos ficam privados.
+- A leitura privada exige token, papel autorizado e registro no schema do
+  tenant; tentativas anônimas ou cruzadas são rejeitadas.
+- Imagens, GIFs e PDFs têm conteúdo real validado, além de MIME e tamanho.
+- Recepção não recebe prontuários/termos e não altera registros clínicos;
+  usuários financeiros não acessam a agenda.
+- Valores, descontos, reservas e relatórios continuam calculados no backend e
+  dentro do `search_path` do tenant autenticado.
 
-Este documento deve ser atualizado a cada fase com migrations, testes,
-medições, riscos, commits e estado de deploy reais.
+## Matriz de recursos validada
+
+| Área | Essencial | Start | Profissional | Studio | Premium |
+| --- | --- | --- | --- | --- | --- |
+| Clientes, agenda, procedimentos e estoque básico | Sim | Sim | Sim | Sim | Sim |
+| Catálogo, WhatsApp por link e relatórios básicos | Não | Sim | Sim | Sim | Sim |
+| Agenda online, termos, financeiro e pós-atendimento | Não | Não | Sim | Sim | Sim |
+| Personalização pública e modelos de mensagem | Não | Não | Sim | Sim | Sim |
+| Equipe, comissões, cupons e relatórios mensais | Não | Não | Não | Sim | Sim |
+| Promoções, busca visual e Financeiro 2.0 | Não | Não | Não | Não | Sim |
+
+O frontend espelha a matriz, mas o backend decide o acesso com `withFeature`.
+Testes verificam herança cumulativa, duplicidades e recursos exclusivos.
+
+## Performance medida localmente
+
+Referência: Node em modo de produção local, PostgreSQL local, tenant Premium
+vazio e 15 requisições sequenciais por endpoint em 27/07/2026.
+
+| Operação | p50 | p95 |
+| --- | ---: | ---: |
+| Catálogo público | 6,65 ms | 19,85 ms |
+| Dashboard (30 dias) | 14,43 ms | 35,86 ms |
+| Busca de estoque | 2,48 ms | 3,48 ms |
+| Relatório de estoque | 2,06 ms | 59,92 ms |
+
+Bundle: entrada principal 195,55 kB (63,46 kB gzip), CSS 161,75 kB
+(30,38 kB gzip), estoque 64,61 kB (17,06 kB gzip) e catálogo público 54,49 kB
+(15,88 kB gzip). `performance.test.mjs` torna a medição reproduzível e detecta
+regressões severas de p95.
+
+## Responsividade e acessibilidade
+
+- Validação real no navegador em 360, 375, 390, 768, 1024, 1366 e 1440 px.
+- Nenhuma largura apresentou overflow horizontal ou controle cortado na página
+  pública.
+- Não foram encontrados erros de console, imagens sem `alt` ou botões/links sem
+  nome acessível nessa superfície.
+
+## Estado final e pendências externas
+
+- Fases locais concluídas sem recriar Personalização, Catálogo, Estoque ou Agenda.
+- Asaas, Mercado Pago, Stripe e WhatsApp oficial permanecem preparados, mas não
+  ativados por falta de credenciais e webhooks públicos. O modo atual usa
+  comprovante manual e `wa.me` e não declara envio automático.
+- Os 10 alertas transitivos do `exceljs` permanecem documentados; o reparo
+  automático exige downgrade major com risco para XLSX.
+- Arquivos clínicos legados já gravados em `/uploads` precisam de migração
+  operacional individual antes da remoção definitiva da rota pública. Novos
+  arquivos já usam armazenamento privado.
+- Nenhum merge, deploy ou validação de produção foi executado nesta etapa.

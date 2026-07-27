@@ -1,5 +1,31 @@
 import React from "react";
 import { ListFilter } from "lucide-react";
+import { API_ORIGIN, apiFetch } from "../../lib/api";
+
+export function SecureImage({ src, alt, ...props }) {
+  const [url, setUrl] = React.useState("");
+  React.useEffect(() => {
+    let active = true;
+    let objectUrl = "";
+    if (!src) { setUrl(""); return undefined; }
+    if (!String(src).startsWith("/api/private-files/")) {
+      setUrl(String(src).startsWith("http") ? src : `${API_ORIGIN}${src}`);
+      return undefined;
+    }
+    apiFetch(String(src).replace(/^\/api/, ""))
+      .then((response) => response.ok ? response.blob() : Promise.reject())
+      .then((blob) => {
+        objectUrl = URL.createObjectURL(blob);
+        if (active) setUrl(objectUrl);
+      })
+      .catch(() => active && setUrl(""));
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [src]);
+  return url ? <img src={url} alt={alt} {...props} /> : null;
+}
 
 export function Metric({ label, value }) {
   return (

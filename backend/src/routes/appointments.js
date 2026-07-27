@@ -1,7 +1,7 @@
 // Rotas de agendamentos.
 import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
-import { upload } from "../middleware/upload.js";
+import { parseUpload, privateUpload, registerPrivateFiles } from "../middleware/upload.js";
 import { normalizeAppointment, addMinutesToTime } from "../services/utils.js";
 import {
   listAppointments,
@@ -20,6 +20,7 @@ import { ensureSalesOrderForAppointment } from "../services/sales.js";
 import { validateBody } from "../middleware/validate.js";
 import { appointmentCreateSchema } from "../schemas/index.js";
 import { queueAppointmentReminderNotifications } from "../services/notifications.js";
+import { requireRole } from "../middleware/auth.js";
 
 const router = Router();
 
@@ -46,6 +47,7 @@ async function validateAppointmentItemsStock(db, items = []) {
 }
 
 router.get("/api/appointments", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
   const clauses = [];
   const params = [];
   if (req.query.professional_id) {
@@ -64,7 +66,10 @@ router.get("/api/appointments", withDb(async (req, res, db) => {
   res.json(await listAppointments(db, where, params));
 }));
 
-router.post("/api/appointments", upload.single("reference_photo"), withDb(async (req, res, db) => {
+router.post("/api/appointments", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
+  await parseUpload(privateUpload.single("reference_photo"), req, res);
+  await registerPrivateFiles(db, req.file, "appointment_reference", req.user?.id);
   // Payload chega como multipart (multer já populou req.body). Valida os
   // obrigatórios (profissional/data/hora) preservando os demais campos.
   if (!validateBody(appointmentCreateSchema, req, res)) return;
@@ -79,7 +84,7 @@ router.post("/api/appointments", upload.single("reference_photo"), withDb(async 
   if (conflict) {
     return res.status(409).json({ error: "Horário ocupado para este profissional." });
   }
-  const photoUrl = req.file ? `/uploads/${req.file.filename}` : body.reference_photo_url || "";
+  const photoUrl = req.file ? `/api/private-files/${req.file.filename}` : body.reference_photo_url || "";
   const client = await upsertClient(db, body);
   const serviceId = optionalId(body.service_id);
   const service = serviceId ? await db.get("SELECT * FROM services WHERE id = ?", [serviceId]) : null;
@@ -113,6 +118,7 @@ router.post("/api/appointments", upload.single("reference_photo"), withDb(async 
 }));
 
 router.patch("/api/appointments/:id", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
   const appointment = await db.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
   if (!appointment) return res.status(404).json({ error: "Agendamento não encontrado." });
 

@@ -2,7 +2,7 @@
 import { Router } from "express";
 import { createHash } from "crypto";
 import { withDb, withFeature } from "../middleware/withDb.js";
-import { upload } from "../middleware/upload.js";
+import { parseUpload, privateUpload, registerPrivateFiles } from "../middleware/upload.js";
 import { addMinutesToTime } from "../services/utils.js";
 import { availableBookingSlots, upsertClient, listAppointments } from "../services/appointments.js";
 import { getStoreName, queueProfessionalBookingNotification, whatsappLink } from "../services/notifications.js";
@@ -138,7 +138,9 @@ router.get("/api/booking/slots", withFeature("online_booking", async (req, res, 
   res.json({ date, slots });
 }));
 
-router.post("/api/booking/requests", upload.fields([{ name: "reference_photo", maxCount: 1 }, { name: "payment_proof", maxCount: 1 }]), withFeature("online_booking", async (req, res, db) => {
+router.post("/api/booking/requests", withFeature("online_booking", async (req, res, db) => {
+  await parseUpload(privateUpload.fields([{ name: "reference_photo", maxCount: 1 }, { name: "payment_proof", maxCount: 1 }]), req, res);
+  await registerPrivateFiles(db, Object.values(req.files || {}).flat(), "public_booking", null);
   const body = req.body || {};
   console.info("[booking-request] request recebido", { tenant: req.tenant, service_id: body.service_id, professional_id: body.professional_id, appointment_date: body.appointment_date, appointment_time: body.appointment_time });
 
@@ -214,8 +216,8 @@ router.post("/api/booking/requests", upload.fields([{ name: "reference_photo", m
     birth_date: "",
     client_notes: body.notes || ""
   });
-  const referencePhoto = req.files?.reference_photo?.[0] ? `/uploads/${req.files.reference_photo[0].filename}` : "";
-  const paymentProof = req.files?.payment_proof?.[0] ? `/uploads/${req.files.payment_proof[0].filename}` : "";
+  const referencePhoto = req.files?.reference_photo?.[0] ? `/api/private-files/${req.files.reference_photo[0].filename}` : "";
+  const paymentProof = req.files?.payment_proof?.[0] ? `/api/private-files/${req.files.payment_proof[0].filename}` : "";
   const durationMinutes = bookingItems.filter((item) => item.item_type === "service").reduce((sum, item) => sum + Number(item.duration_minutes || 0) * Number(item.quantity || 1), 0) || Number(service.duration_minutes || 40);
   const multiItemSlots = await availableBookingSlots(db, { service: { ...service, duration_minutes: durationMinutes }, professionalId, date });
   if (!multiItemSlots.some((slot) => slot.time === time)) return res.status(409).json({ error: "O horário não comporta a duração total dos serviços selecionados." });

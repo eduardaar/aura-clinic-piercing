@@ -1,11 +1,11 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import React, { useState } from "react";
 import { ChevronRight, FileSignature, HeartPulse, Search, UsersRound } from "lucide-react";
-import { Button, Input, Select, StatusBadge } from "../../components/common/Ui";
+import { Button, Input, SecureImage, Select, StatusBadge } from "../../components/common/Ui";
 import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../components/common/Crud";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, dateInputValue, formatDate, formatLongDate } from "../../lib/utils";
-import { API_ORIGIN, apiFetch, useFetch } from "../../lib/api";
+import { apiFetch, useFetch } from "../../lib/api";
 import { defaultMedicalRecord } from "../../lib/defaultForms";
 import { currency, matchesClientSearch, personName, whatsappUrl } from "../../features/shared/helpers";
 import { DigitalTerms } from "../terms/DigitalTerms";
@@ -332,14 +332,14 @@ export function MedicalRecordTimeline({ client, onChanged }) {
             <div className="record-photos">
               {record.before_photo_url && (
   <figure>
-    <img src={`${API_ORIGIN}${record.before_photo_url}`} alt="Antes" />
+    <SecureImage src={record.before_photo_url} alt="Antes" />
     <figcaption>Antes</figcaption>
   </figure>
 )}
 
 {record.after_photo_url && (
   <figure>
-    <img src={`${API_ORIGIN}${record.after_photo_url}`} alt="Depois" />
+    <SecureImage src={record.after_photo_url} alt="Depois" />
     <figcaption>Depois</figcaption>
   </figure>
 )}

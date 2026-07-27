@@ -7,6 +7,7 @@ import { processDueCommunications, TEMPLATE_VARIABLES } from "../services/commun
 const router = Router();
 
 router.get("/api/notifications", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
   const params = [];
   const where = req.query.status ? "WHERE nq.status = ?" : "";
   if (req.query.status) params.push(req.query.status);
