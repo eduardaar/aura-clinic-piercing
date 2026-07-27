@@ -73,12 +73,43 @@ export async function listClientsWithDetails(db) {
   const redemptions = await db.all("SELECT * FROM loyalty_redemptions ORDER BY redeemed_at DESC, id DESC");
   const pointsByClient = groupBy(loyaltyPoints, "client_id");
   const redemptionsByClient = groupBy(redemptions, "client_id");
+  const terms = await db.all("SELECT id,client_id,appointment_id,procedure,piercing_region,pdf_url,signed_at FROM digital_terms ORDER BY signed_at DESC");
+  const followups = await db.all("SELECT * FROM post_care_followups ORDER BY due_date DESC,id DESC");
+  const sales = await db.all("SELECT * FROM sales_orders ORDER BY created_at DESC,id DESC");
+  const couponUses = await db.all(`
+    SELECT u.*,c.code,c.internal_name FROM coupon_usages u JOIN coupons c ON c.id=u.coupon_id
+    WHERE u.client_id IS NOT NULL ORDER BY u.created_at DESC
+  `);
+  const promotionUses = await db.all(`
+    SELECT u.*,p.name FROM promotion_usages u JOIN catalog_promotions p ON p.id=u.promotion_id
+    WHERE u.client_id IS NOT NULL ORDER BY u.created_at DESC
+  `);
+  const termsByClient = groupBy(terms, "client_id");
+  const followupsByClient = groupBy(followups, "client_id");
+  const salesByClient = groupBy(sales, "client_id");
+  const couponsByClient = groupBy(couponUses, "client_id");
+  const promotionsByClient = groupBy(promotionUses, "client_id");
 
   for (const client of clients) {
     client.history = historyByClient.get(client.id) || [];
     client.payments = paymentsByClient.get(client.id) || [];
     client.medicalRecords = recordsByClient.get(client.id) || [];
     client.loyalty = buildLoyalty(pointsByClient.get(client.id) || [], redemptionsByClient.get(client.id) || []);
+    client.terms = termsByClient.get(client.id) || [];
+    client.followups = followupsByClient.get(client.id) || [];
+    client.sales = salesByClient.get(client.id) || [];
+    client.couponsUsed = couponsByClient.get(client.id) || [];
+    client.promotionsUsed = promotionsByClient.get(client.id) || [];
+    client.timeline = [
+      ...client.history.map((item) => ({ type: "appointment", date: item.appointment_date, title: item.procedure || "Atendimento", status: item.status, value: item.total_value })),
+      ...client.payments.map((item) => ({ type: "payment", date: item.paid_at, title: `Pagamento ${item.payment_type}`, status: item.status, value: item.amount })),
+      ...client.medicalRecords.map((item) => ({ type: "medical_record", date: item.record_date, title: "Registro de prontuário", status: "registrado" })),
+      ...client.terms.map((item) => ({ type: "term", date: item.signed_at, title: "Termo digital assinado", status: "assinado" })),
+      ...client.followups.map((item) => ({ type: "followup", date: item.due_date, title: `Pós-atendimento ${item.reminder_day}d`, status: item.status })),
+      ...client.sales.map((item) => ({ type: "sale", date: item.created_at, title: "Venda", status: item.status, value: item.total_value })),
+      ...client.couponsUsed.map((item) => ({ type: "coupon", date: item.created_at, title: `Cupom ${item.code}`, status: "usado", value: item.discount_amount })),
+      ...client.promotionsUsed.map((item) => ({ type: "promotion", date: item.created_at, title: `Promoção ${item.name}`, status: "usada", value: item.discount_amount }))
+    ].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
   }
   return clients;
 }

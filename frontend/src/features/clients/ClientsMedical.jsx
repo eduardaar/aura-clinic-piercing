@@ -1,13 +1,13 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import React, { useState } from "react";
 import { ChevronRight, FileSignature, HeartPulse, Search, UsersRound } from "lucide-react";
-import { Button, Input, Select } from "../../components/common/Ui";
+import { Button, Input, Select, StatusBadge } from "../../components/common/Ui";
 import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../components/common/Crud";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, dateInputValue, formatDate, formatLongDate } from "../../lib/utils";
 import { API_ORIGIN, apiFetch, useFetch } from "../../lib/api";
 import { defaultMedicalRecord } from "../../lib/defaultForms";
-import { matchesClientSearch, personName, whatsappUrl } from "../../features/shared/helpers";
+import { currency, matchesClientSearch, personName, whatsappUrl } from "../../features/shared/helpers";
 import { DigitalTerms } from "../terms/DigitalTerms";
 import { PostCare } from "../postcare/PostCare";
 import { smartSearchMatches } from "../../lib/smartSearch";
@@ -46,6 +46,7 @@ export function ClientsMedical() {
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState(null);
+  const [profile, setProfile] = useState(null);
   if (!data) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
   const clients = asArray(data);
@@ -107,6 +108,7 @@ export function ClientsMedical() {
           ]}
           actions={(client) => (
             <>
+              <button type="button" onClick={() => setProfile(client)}>Perfil completo</button>
               <a className="secondary-button" href={whatsappUrl(client.whatsapp, `Olá, ${personName(client)}, tudo bem? Aqui é da Aura Clinic. Estamos entrando em contato para confirmar informações, acompanhar seu atendimento ou informar uma atualização importante.`)} target="_blank" rel="noreferrer">WhatsApp</a>
               <button type="button" onClick={() => openEdit(client)}>Editar</button>
               <button type="button" onClick={() => setDeleting({ message: `Excluir ${personName(client)}?`, run: () => removeClient(client) })}>Apagar</button>
@@ -146,7 +148,48 @@ export function ClientsMedical() {
         onClose={() => setDeleting(null)}
         onConfirm={async () => { await deleting.run(); setDeleting(null); }}
       />
+      {profile && (
+        <Modal open title={personName(profile)} subtitle="Timeline, histórico clínico e relacionamento" size="lg" onClose={() => setProfile(null)}
+          footer={<Button variant="secondary" onClick={() => setProfile(null)}>Fechar</Button>}>
+          <ClientProfile client={clients.find((item) => item.id === profile.id) || profile} onChanged={() => { refresh(); }} />
+        </Modal>
+      )}
     </section>
+  );
+}
+
+function ClientProfile({ client, onChanged }) {
+  const timeline = asArray(client.timeline);
+  const paid = asArray(client.payments).filter((item) => item.status === "pago").reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  return (
+    <div className="stack">
+      <div className="metric-grid">
+        <article className="metric-card"><span>Atendimentos</span><strong>{asArray(client.history).length}</strong></article>
+        <article className="metric-card"><span>Total pago</span><strong>{currency.format(paid)}</strong></article>
+        <article className="metric-card"><span>Termos</span><strong>{asArray(client.terms).length}</strong></article>
+        <article className="metric-card"><span>Retornos</span><strong>{asArray(client.followups).length}</strong></article>
+        <article className="metric-card"><span>Fidelidade</span><strong>{client.loyalty?.availablePoints || 0} pts</strong></article>
+      </div>
+      <section className="detail-card">
+        <h3>Preferências e observações</h3>
+        <p>{client.notes || "Nenhuma observação cadastrada."}</p>
+        <small>{client.whatsapp} · {client.email || "sem e-mail"} · {client.instagram || "sem Instagram"}</small>
+      </section>
+      <section className="detail-card">
+        <h3>Timeline completa</h3>
+        <div className="medical-timeline">
+          {timeline.map((item, index) => (
+            <article className="record-entry" key={`${item.type}-${item.date}-${index}`}>
+              <header><div><strong>{item.title}</strong><span>{formatLongDate(String(item.date || "").slice(0, 10))} · {item.type}</span></div><StatusBadge status={item.status}>{item.status}</StatusBadge></header>
+              {item.value !== undefined && <small>{currency.format(Number(item.value || 0))}</small>}
+            </article>
+          ))}
+          {!timeline.length && <p className="empty-state">Nenhum evento registrado para esta cliente.</p>}
+        </div>
+      </section>
+      <MedicalRecordForm client={client} onSaved={onChanged} />
+      <MedicalRecordTimeline client={client} onChanged={onChanged} />
+    </div>
   );
 }
 

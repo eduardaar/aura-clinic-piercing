@@ -65,6 +65,7 @@ export const PAGE_FEATURE = {
   terms: "digital_terms",
   postcare: "automatic_followup",
   communications: "message_templates",
+  reports: "basic_reports",
   "catalog-customization": "public_catalog_customization",
   sales: "basic_catalog"
 };

@@ -45,6 +45,27 @@ import { catalogUrl, publicTenant, publicUrl, replaceCatalogState } from "../lib
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
+function catalogSessionKey() {
+  const key = "aura-catalog-session";
+  try {
+    const current = sessionStorage.getItem(key);
+    if (current) return current;
+    const created = globalThis.crypto?.randomUUID?.().replace(/-/g, "") || `${Date.now()}${Math.random().toString(36).slice(2)}`;
+    sessionStorage.setItem(key, created);
+    return created;
+  } catch {
+    return `anonymous${Date.now()}`;
+  }
+}
+
+function trackCatalogEvent(eventType, productId = null, metadata = {}) {
+  publicApiFetch("/catalog/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ event_type: eventType, product_id: productId, session_key: catalogSessionKey(), metadata })
+  }).catch(() => {});
+}
+
 // Leitura resiliente do localStorage do catálogo público (favoritos / itens do pedido).
 function readCatalogStorage(key, fallback = []) {
   try {
@@ -101,6 +122,14 @@ export function PublicCatalog() {
     const timer = window.setInterval(() => setBannerIndex((index) => (index + 1) % activeCount), 4500);
     return () => window.clearInterval(timer);
   }, [data?.banners]);
+
+  useEffect(() => {
+    if (data && !data.error) trackCatalogEvent("catalog_view");
+  }, [Boolean(data && !data.error)]);
+
+  useEffect(() => {
+    if (selectedProductId) trackCatalogEvent("product_view", selectedProductId);
+  }, [selectedProductId]);
 
   if (!data) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
@@ -181,6 +210,7 @@ export function PublicCatalog() {
   }
 
 function addToOrder(item) {
+    trackCatalogEvent("product_selected", item.id, { variation_id: item.selected_variant_id || null });
     setOrderItems((currentValue) => {
       const current = asArray(currentValue);
       const orderKey = `${item.id}-${item.selected_variant_id || "produto"}-${item.selected_color || "sem-cor"}`;

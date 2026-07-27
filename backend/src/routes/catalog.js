@@ -17,6 +17,23 @@ import {
 
 const router = Router();
 
+router.post("/api/catalog/events", withDb(async (req, res, db) => {
+  const eventType = String(req.body?.event_type || "");
+  const allowed = new Set(["catalog_view", "product_view", "product_selected", "checkout_started", "booking_created"]);
+  if (!allowed.has(eventType)) return res.status(400).json({ error: "Evento inválido." });
+  const sessionKey = String(req.body?.session_key || "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80);
+  if (sessionKey.length < 8) return res.status(400).json({ error: "Sessão inválida." });
+  const productId = req.body?.product_id ? Number(req.body.product_id) : null;
+  if (productId && !(await db.get("SELECT id FROM jewelry_inventory WHERE id=? AND is_catalog_active=1", [productId]))) {
+    return res.status(404).json({ error: "Produto não encontrado." });
+  }
+  await db.run(
+    "INSERT INTO catalog_events (event_type, product_id, session_key, source, metadata) VALUES (?, ?, ?, ?, ?)",
+    [eventType, productId, sessionKey, String(req.body?.source || "catalog").slice(0, 40), JSON.stringify(req.body?.metadata || {})]
+  );
+  res.status(202).json({ ok: true });
+}));
+
 const asArray = (value) => (Array.isArray(value) ? value : []);
 
 router.get("/api/catalog", withDb(async (_req, res, db) => {

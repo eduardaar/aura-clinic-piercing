@@ -72,6 +72,7 @@ const Communications = lazy(() => import("./features/communications/Communicatio
 const CatalogWorkspace = lazy(() => import("./features/inventory/Inventory").then((m) => ({ default: m.CatalogWorkspace })));
 const SalesWorkspace = lazy(() => import("./features/sales/Sales").then((m) => ({ default: m.SalesWorkspace })));
 const FinanceAdmin = lazy(() => import("./features/finance/Finance").then((m) => ({ default: m.FinanceAdmin })));
+const Reports = lazy(() => import("./features/reports/Reports").then((m) => ({ default: m.Reports })));
 const AccessAdmin = lazy(() => import("./features/access/AccessAdmin").then((m) => ({ default: m.AccessAdmin })));
 const AuraERP = lazy(() => import("./features/access/AccessAdmin").then((m) => ({ default: m.AuraERP })));
 const ClientWorkspace = lazy(() => import("./features/clients/ClientsMedical").then((m) => ({ default: m.ClientWorkspace })));
@@ -300,6 +301,7 @@ function App() {
           {activePage === "catalog-customization" && <CatalogCustomization />}
           {activePage === "sales" && <SalesWorkspace />}
           {activePage === "finance" && <FinanceAdmin />}
+          {activePage === "reports" && <Reports />}
           {activePage === "clients" && <ClientsMedical />}
           {activePage === "terms" && <DigitalTerms />}
           {activePage === "postcare" && <PostCare />}

@@ -10,6 +10,7 @@ import { AUTH_SECRET, isProduction } from "../config/index.js";
 export function requiresAuth(req) {
   if (!req.path.startsWith("/api")) return false;
   if (["/api/login", "/api/health", "/api/catalog", "/api/catalog/coupon-quote", "/api/catalog/promotion-quote", "/api/catalog/price-quote", "/api/sales-orders/public"].includes(req.path)) return false;
+  if (req.method === "POST" && req.path === "/api/catalog/events") return false;
   if (req.path.startsWith("/api/booking")) return false;
   // Ingestão de erros do frontend: pública (captura erros de telas sem sessão).
   // A leitura/gestão (GET/PATCH/DELETE) continua exigindo auth + papel admin.

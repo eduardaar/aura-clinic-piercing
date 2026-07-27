@@ -289,6 +289,7 @@ CREATE TABLE IF NOT EXISTS inventory_reservations (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(reservation_key, jewelry_id, jewelry_variant_id)
 );
+ALTER TABLE professionals ADD COLUMN IF NOT EXISTS commission_percentage DOUBLE PRECISION NOT NULL DEFAULT 0;
 
 CREATE INDEX IF NOT EXISTS idx_inventory_reservations_stock ON inventory_reservations(jewelry_id, jewelry_variant_id, status, expires_at);
 CREATE INDEX IF NOT EXISTS idx_inventory_reservations_expiry ON inventory_reservations(status, expires_at);
@@ -785,6 +786,19 @@ CREATE TABLE IF NOT EXISTS catalog_layout_history (
   snapshot JSONB NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS catalog_events (
+  id SERIAL PRIMARY KEY,
+  event_type TEXT NOT NULL CHECK (event_type IN ('catalog_view', 'product_view', 'product_selected', 'checkout_started', 'booking_created')),
+  product_id INTEGER REFERENCES jewelry_inventory(id) ON DELETE SET NULL,
+  session_key TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'catalog',
+  metadata TEXT,
+  occurred_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE INDEX IF NOT EXISTS idx_catalog_events_period ON catalog_events(occurred_at, event_type);
+CREATE INDEX IF NOT EXISTS idx_catalog_events_product ON catalog_events(product_id, event_type, occurred_at);
 
 CREATE TABLE IF NOT EXISTS product_visual_hashes (
   id SERIAL PRIMARY KEY,

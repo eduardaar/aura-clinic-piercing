@@ -193,6 +193,26 @@ entrada.
 - Teste de integração comprova parcelamento, baixa parcial, razão e
   idempotência das recorrências.
 
+### Dashboard, clientes e relatórios
+
+- Dashboard executivo ganhou filtros de 7, 30, 90 e 365 dias e indicadores de
+  comparecimento, cancelamento, ticket médio, contas, promoções, cupons e
+  conversão do catálogo.
+- Visualizações e seleções do catálogo são registradas sem dados pessoais, com
+  sessão anônima e isolamento por tenant.
+- Ranking de profissionais e produtos mais visualizados usa agregações reais.
+- O perfil da cliente reúne atendimentos, prontuário e fotos, termos,
+  pós-atendimento, pagamentos, vendas, fidelidade, cupons e promoções em uma
+  timeline cronológica.
+- A central de relatórios cobre financeiro, vendas, estoque, serviços,
+  clientes, profissionais, agenda, cancelamentos, promoções, cupons, comissões,
+  pagamentos e conversão.
+- Os relatórios aceitam período e filtros específicos e exportam PDF, XLSX e
+  CSV no backend; tipos financeiros continuam restritos a administrador e
+  financeiro.
+- Testes percorrem todos os tipos de relatório e confirmam a ingestão pública
+  validada dos eventos de conversão.
+
 ## Segurança e decisões
 
 - Valores calculados pelo navegador são apenas estimativas visuais; o backend
