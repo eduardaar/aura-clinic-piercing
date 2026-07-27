@@ -54,7 +54,8 @@ echo "==> [1/5] Build do frontend (VITE_API_URL=${API_URL})"
 echo "==> [2/5] Sync do backend -> ${REMOTE_BACKEND}"
 rsync -rlpt --delete \
   --exclude 'node_modules' --exclude '.env' --exclude '.env.*' \
-  --exclude 'src/data/uploads' --exclude '*.log' --exclude '.DS_Store' \
+  --exclude 'src/data/uploads' --exclude 'src/data/private-uploads' \
+  --exclude '*.log' --exclude '.DS_Store' \
   -e "${rsh}" \
   backend/ "${target}:${REMOTE_BACKEND}/"
 

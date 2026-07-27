@@ -22,9 +22,59 @@ env:
   REMOTE_FRONT: /home/nginx/front/auraclinic
 
 jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: aura_clinic
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d aura_clinic"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/aura_clinic
+      DATABASE_SSL: "false"
+      AUTH_SECRET: aura-ci-secret-only-for-isolated-tests-2026
+      PLATFORM_ADMIN_EMAIL: superadmin@aura.local
+      PLATFORM_ADMIN_PASSWORD: superadmin123
+      ALLOW_PUBLIC_SIGNUP: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Instalar dependências
+        run: |
+          npm --prefix backend ci
+          npm --prefix frontend ci
+
+      - name: Testes do backend e migrations multi-tenant
+        run: npm --prefix backend test
+
+      - name: Testes e build do frontend
+        run: |
+          npm --prefix frontend test
+          npm --prefix frontend run build
+
   # Sem o secret da chave SSH não há como deployar — pula (verde) com um aviso,
   # em vez de falhar. Assim o primeiro push não quebra antes da configuração.
   guard:
+    needs: validate
     runs-on: ubuntu-latest
     outputs:
       ready: ${{ steps.check.outputs.ready }}
@@ -39,7 +89,7 @@ jobs:
           fi
 
   deploy:
-    needs: guard
+    needs: [validate, guard]
     if: needs.guard.outputs.ready == 'true'
     runs-on: ubuntu-latest
     steps:
