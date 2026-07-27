@@ -126,9 +126,12 @@ export async function attachVariants(db, products = []) {
     return map;
   }, new Map());
   const images = await db.all(
-    `SELECT * FROM product_images
-     WHERE product_id IN (${placeholders})
-     ORDER BY product_id, variation_id NULLS FIRST, sort_order, id`,
+    `SELECT pi.*
+     FROM product_images pi
+     LEFT JOIN jewelry_variants v ON v.id = pi.variation_id
+     WHERE pi.product_id IN (${placeholders})
+       AND (pi.variation_id IS NULL OR v.jewelry_id = pi.product_id)
+     ORDER BY pi.product_id, pi.variation_id NULLS FIRST, pi.sort_order, pi.id`,
     ids
   ).catch(() => []);
   const imagesByProduct = images.reduce((map, image) => {
@@ -198,6 +201,12 @@ function normalizeImageInput(input) {
 }
 
 export async function syncProductImages(db, productId, imagesInput = [], { variationId = null } = {}) {
+  const product = await db.get("SELECT id FROM jewelry_inventory WHERE id = ?", [productId]);
+  if (!product) throw new Error("Produto não encontrado para vincular imagens.");
+  if (variationId) {
+    const variation = await db.get("SELECT id FROM jewelry_variants WHERE id = ? AND jewelry_id = ?", [variationId, productId]);
+    if (!variation) throw new Error("A variação não pertence ao produto informado.");
+  }
   const seen = new Set();
   const images = normalizeImageInput(imagesInput)
     .map((item, index) => typeof item === "string" ? { image_url: item, sort_order: index + 1, is_primary: index === 0 } : item)
@@ -212,7 +221,7 @@ export async function syncProductImages(db, productId, imagesInput = [], { varia
       storage_key: item.storage_key || "",
       alt_text: item.alt_text || "",
       sort_order: Number(item.sort_order || index + 1),
-      is_primary: index === 0 ? 1 : Number(item.is_primary || 0)
+      is_primary: index === 0 ? 1 : 0
     }));
 
   if (!images.some((image) => Number(image.is_primary)) && images[0]) images[0].is_primary = 1;

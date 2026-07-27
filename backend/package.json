@@ -10,6 +10,7 @@
     "backup": "bash scripts/backup.sh",
     "restore-admin": "node scripts/restore-admin.mjs",
     "import:aura-jewelry": "node scripts/import-aura-jewelry.mjs",
+    "audit:product-images": "node scripts/audit-product-images.mjs",
     "test": "node tests/run-suite.mjs"
   },
   "dependencies": {

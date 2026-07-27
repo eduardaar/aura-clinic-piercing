@@ -186,10 +186,10 @@ async function upsertVariant(db, product, item, index, summary) {
   const variantSku = await ensureUniqueSku(db, `${product.sku}-${String(index).padStart(2, "0")}`, "jewelry_variants");
   const result = await db.run(
     `INSERT INTO jewelry_variants
-     (jewelry_id, sku, variation_name, material, color, stone_color, side, size, thickness, length, length_mm, diameter,
+     (jewelry_id, sku, variation_name, material, color, stone_color, side, size, top_size_mm, thickness, length, length_mm, diameter,
       thread_type, supplier, cost_value, sale_value, purchase_cost_cents, total_cost_cents, suggested_price_cents,
       sale_price_cents, quantity, low_stock_threshold, status, is_active)
-     VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, '', 0, 0, 0, 0, 0, 0, ?, ?, ?, 1)`,
+     VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, '', 0, 0, 0, 0, 0, 0, ?, ?, ?, 1)`,
     [
       product.id,
       variantSku,
@@ -198,6 +198,7 @@ async function upsertVariant(db, product, item, index, summary) {
       item.color || "Sem cor informada",
       item.stone || "",
       item.size || "",
+      item.top_size_mm === "" || item.top_size_mm == null ? null : Number(item.top_size_mm),
       item.thickness || "",
       item.length || "",
       parseFloat(String(item.length || "").replace(",", ".")) || null,
@@ -262,6 +263,7 @@ export async function importAuraJewelry(db, { logger = console } = {}) {
     material: normalizeSeedText(item.material),
     color: normalizeSeedText(item.color, "Sem cor informada"),
     stone: normalizeSeedText(item.stone),
+    top_size_mm: item.top_size_mm === "" || item.top_size_mm == null ? null : Number(item.top_size_mm),
     thread_type: normalizeSeedText(item.thread_type, "Interna"),
     low_stock_threshold: Number(item.low_stock_threshold || 3),
     quantity: Number(item.quantity || 0)

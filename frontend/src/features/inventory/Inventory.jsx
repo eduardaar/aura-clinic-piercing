@@ -677,16 +677,15 @@ function ProductGalleryManager({ images = [], productName = "", onChange }) {
       {uploading && <small className="form-success">Enviando imagens...</small>}
       <div className="product-gallery-grid">
         {safeImages.map((image, index) => (
-          <article key={`${image.image_url}-${index}`} className={image.is_primary ? "primary" : ""}>
+          <article key={image.id || image.image_url} className={image.is_primary ? "primary" : ""}>
             <button type="button" className="gallery-thumb" onClick={() => setPreview(image.image_url)}>
-              <img src={catalogImageUrl(image.image_url)} alt={image.alt_text || productName || "Joia"} />
+              <img src={catalogImageUrl(image.image_url)} alt="" />
             </button>
             <div>
-              <strong>{image.is_primary ? "Principal" : `Imagem ${index + 1}`}</strong>
-              <small>{image.image_url}</small>
+              <strong>{image.is_primary ? "Imagem Principal" : "Imagem Secundária"}</strong>
             </div>
             <div className="gallery-actions">
-              <button type="button" onClick={() => setPrimary(index)}>Principal</button>
+              <button type="button" onClick={() => setPrimary(index)} disabled={image.is_primary}>{image.is_primary ? "Principal" : "Definir Principal"}</button>
               <button type="button" onClick={() => move(index, -1)}>Subir</button>
               <button type="button" onClick={() => move(index, 1)}>Descer</button>
               <button type="button" onClick={() => remove(index)}>Remover</button>
@@ -1076,6 +1075,7 @@ export function VariantEditModal({ category, variant, pricingSettings = {}, onCh
         </header>
         <div className="variant-modal-fields">
           <Input label="Nome da Variação" value={variant.variation_name} onChange={(value) => onChange({ variation_name: value })} />
+          <Input type="number" step="0.1" min="0" label="Tamanho do Topo (mm)" value={variant.top_size_mm ?? ""} onChange={(value) => onChange({ top_size_mm: value })} />
           {usesSize && <Input label="Tamanho / Medida" value={variant.size} onChange={(value) => onChange({ size: value })} />}
           {usesDiameter && <Input label="Diâmetro" value={variant.diameter} onChange={(value) => onChange({ diameter: value })} />}
           {usesLength && (
