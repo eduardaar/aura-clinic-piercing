@@ -122,6 +122,7 @@ export function CatalogCustomization() {
             ["categorias", "Categorias"],
             ["produtos", "Produtos"],
             ["promocoes", "Promoções"],
+            ["cupons", "Cupons"],
             ["exibicao", "Exibição"],
             ["textos", "Textos"],
             ["contato", "Contato"],
@@ -302,6 +303,8 @@ export function CatalogCustomization() {
           </CustomizationCard>
         )}
 
+        {activeSection === "cupons" && <CouponManager />}
+
         {activeSection === "exibicao" && (
           <CustomizationCard title="Configurações de exibição">
             <div className="toggle-grid">
@@ -341,17 +344,35 @@ export function CatalogCustomization() {
           <CustomizationCard title="Contato e Informações da Empresa">
             <p className="customization-help">Estes dados aparecem no rodapé do catálogo e nos botões de atendimento ao cliente.</p>
             <div className="form-grid">
+              <Input label="Razão social" value={form.settings.company_legal_name} onChange={(value) => setForm(updateSettings(form, { company_legal_name: value }))} />
+              <Input label="Nome de exibição" value={form.settings.company_display_name} onChange={(value) => setForm(updateSettings(form, { company_display_name: value }))} />
+              <Input label="Telefone" value={form.settings.company_phone} onChange={(value) => setForm(updateSettings(form, { company_phone: value }))} />
               <Input label="WhatsApp com DDD" value={form.settings.whatsapp_phone} onChange={(value) => setForm(updateSettings(form, { whatsapp_phone: value }))} />
               <Input label="Instagram" value={form.settings.company_instagram} onChange={(value) => setForm(updateSettings(form, { company_instagram: value }))} />
               <Input type="email" label="E-mail" value={form.settings.company_email} onChange={(value) => setForm(updateSettings(form, { company_email: value }))} />
+              <Input type="email" label="E-mail de suporte" value={form.settings.company_support_email} onChange={(value) => setForm(updateSettings(form, { company_support_email: value }))} />
               <Input label="Horário de Atendimento" value={form.settings.company_hours} onChange={(value) => setForm(updateSettings(form, { company_hours: value }))} />
+              <Input label="Dias de atendimento" value={form.settings.company_service_days} onChange={(value) => setForm(updateSettings(form, { company_service_days: value }))} />
+              <Input label="Site" value={form.settings.company_website} onChange={(value) => setForm(updateSettings(form, { company_website: value }))} />
+              <Input label="Google Maps" value={form.settings.company_maps_url} onChange={(value) => setForm(updateSettings(form, { company_maps_url: value }))} />
             </div>
+            <label>Descrição curta
+              <textarea value={form.settings.company_short_description} onChange={(event) => setForm(updateSettings(form, { company_short_description: event.target.value }))} />
+            </label>
             <label>Endereço
               <textarea value={form.settings.company_address} onChange={(event) => setForm(updateSettings(form, { company_address: event.target.value }))} placeholder="Rua, número, bairro, cidade e estado" />
             </label>
             <label>Mensagem Inicial do WhatsApp
               <textarea value={form.settings.whatsapp_message} onChange={(event) => setForm(updateSettings(form, { whatsapp_message: event.target.value }))} />
             </label>
+            <div className="form-grid">
+              <label>Política de atendimento<textarea value={form.settings.service_policy} onChange={(event) => setForm(updateSettings(form, { service_policy: event.target.value }))} /></label>
+              <label>Política de sinal<textarea value={form.settings.deposit_policy} onChange={(event) => setForm(updateSettings(form, { deposit_policy: event.target.value }))} /></label>
+              <label>Política de cancelamento<textarea value={form.settings.cancellation_policy} onChange={(event) => setForm(updateSettings(form, { cancellation_policy: event.target.value }))} /></label>
+              <label>Política de troca<textarea value={form.settings.exchange_policy} onChange={(event) => setForm(updateSettings(form, { exchange_policy: event.target.value }))} /></label>
+              <label>Biossegurança<textarea value={form.settings.biosafety_text} onChange={(event) => setForm(updateSettings(form, { biosafety_text: event.target.value }))} /></label>
+              <label>Materiais<textarea value={form.settings.materials_text} onChange={(event) => setForm(updateSettings(form, { materials_text: event.target.value }))} /></label>
+            </div>
           </CustomizationCard>
         )}
 
@@ -385,6 +406,115 @@ function CustomizationCard({ title, action, children }) {
       </div>
       {children}
     </article>
+  );
+}
+
+function CouponManager() {
+  const { data, refresh } = useFetch("/coupons");
+  const [draft, setDraft] = useState(defaultCoupon());
+  const [editingId, setEditingId] = useState(null);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const coupons = asArray(data);
+
+  async function submit(event) {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    const response = await apiFetch(editingId ? `/coupons/${editingId}` : "/coupons", {
+      method: editingId ? "PATCH" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(draft)
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok) return setError(json.error || "Não foi possível salvar o cupom.");
+    setDraft(defaultCoupon());
+    setEditingId(null);
+    setMessage(editingId ? "Cupom atualizado." : "Cupom criado.");
+    refresh();
+  }
+
+  async function remove(coupon) {
+    if (!window.confirm(`Excluir o cupom ${coupon.code}?`)) return;
+    const response = await apiFetch(`/coupons/${coupon.id}`, { method: "DELETE" });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok) return setError(json.error || "Não foi possível excluir o cupom.");
+    if (editingId === coupon.id) {
+      setEditingId(null);
+      setDraft(defaultCoupon());
+    }
+    setMessage("Cupom removido.");
+    refresh();
+  }
+
+  function edit(coupon) {
+    setEditingId(coupon.id);
+    setDraft({
+      ...defaultCoupon(),
+      ...coupon,
+      starts_at: String(coupon.starts_at || "").slice(0, 16),
+      ends_at: String(coupon.ends_at || "").slice(0, 16),
+      first_purchase_only: Boolean(Number(coupon.first_purchase_only)),
+      is_stackable: Boolean(Number(coupon.is_stackable))
+    });
+  }
+
+  return (
+    <CustomizationCard title="Cupons de desconto">
+      {data?.error && <ApiError message={data.error} />}
+      <form className="stack" onSubmit={submit}>
+        <div className="form-grid">
+          <Input label="Código" value={draft.code} onChange={(value) => setDraft({ ...draft, code: value.toUpperCase() })} />
+          <Input label="Nome interno" value={draft.internal_name} onChange={(value) => setDraft({ ...draft, internal_name: value })} />
+          <Select label="Tipo" value={draft.discount_type} onChange={(value) => setDraft({ ...draft, discount_type: value })}>
+            <option value="percent">Percentual</option>
+            <option value="fixed">Valor fixo</option>
+          </Select>
+          <Input type="number" label="Desconto" value={draft.discount_value} onChange={(value) => setDraft({ ...draft, discount_value: value })} />
+          <Input type="datetime-local" label="Início" value={draft.starts_at} onChange={(value) => setDraft({ ...draft, starts_at: value })} />
+          <Input type="datetime-local" label="Fim" value={draft.ends_at} onChange={(value) => setDraft({ ...draft, ends_at: value })} />
+          <Input type="number" label="Limite total" value={draft.usage_limit} onChange={(value) => setDraft({ ...draft, usage_limit: value })} />
+          <Input type="number" label="Limite por cliente" value={draft.usage_limit_per_client} onChange={(value) => setDraft({ ...draft, usage_limit_per_client: value })} />
+          <Input type="number" label="Compra mínima" value={draft.minimum_amount} onChange={(value) => setDraft({ ...draft, minimum_amount: value })} />
+          <Input type="number" label="Desconto máximo" value={draft.maximum_discount} onChange={(value) => setDraft({ ...draft, maximum_discount: value })} />
+          <Input label="IDs de produtos" value={draft.product_ids} onChange={(value) => setDraft({ ...draft, product_ids: value })} />
+          <Input label="Categorias" value={draft.category_ids} onChange={(value) => setDraft({ ...draft, category_ids: value })} />
+          <Input label="Produtos excluídos" value={draft.excluded_product_ids} onChange={(value) => setDraft({ ...draft, excluded_product_ids: value })} />
+          <Input label="Categorias excluídas" value={draft.excluded_category_ids} onChange={(value) => setDraft({ ...draft, excluded_category_ids: value })} />
+          <Select label="Status" value={draft.status} onChange={(value) => setDraft({ ...draft, status: value })}>
+            <option value="active">Ativo</option>
+            <option value="paused">Pausado</option>
+            <option value="inactive">Inativo</option>
+          </Select>
+        </div>
+        <label>Descrição
+          <textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} />
+        </label>
+        <div className="form-grid">
+          <Toggle label="Somente primeira compra" checked={draft.first_purchase_only} onChange={(value) => setDraft({ ...draft, first_purchase_only: value })} />
+          <Toggle label="Permitir acumular" checked={draft.is_stackable} onChange={(value) => setDraft({ ...draft, is_stackable: value })} />
+        </div>
+        <div className="modal-actions">
+          {editingId && <button type="button" className="secondary-button" onClick={() => { setEditingId(null); setDraft(defaultCoupon()); }}>Cancelar edição</button>}
+          <button type="submit" className="primary-button">{editingId ? "Salvar cupom" : "Criar cupom"}</button>
+        </div>
+      </form>
+      {error && <span className="form-error">{error}</span>}
+      {message && <span className="form-success">{message}</span>}
+      <div className="custom-list">
+        {coupons.map((coupon) => (
+          <article key={coupon.id}>
+            <div className="panel-heading">
+              <div><strong>{coupon.code}</strong><small>{coupon.internal_name} · {coupon.usage_count || 0} uso(s)</small></div>
+              <div className="customization-actions">
+                <button type="button" onClick={() => edit(coupon)}>Editar</button>
+                <button type="button" className="danger-link" onClick={() => remove(coupon)}>Excluir</button>
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </CustomizationCard>
   );
 }
 
@@ -556,6 +686,29 @@ function defaultPromotion() {
   };
 }
 
+function defaultCoupon() {
+  return {
+    code: "",
+    internal_name: "",
+    description: "",
+    discount_type: "percent",
+    discount_value: 10,
+    starts_at: "",
+    ends_at: "",
+    usage_limit: "",
+    usage_limit_per_client: 1,
+    minimum_amount: 0,
+    maximum_discount: "",
+    product_ids: "",
+    category_ids: "",
+    excluded_product_ids: "",
+    excluded_category_ids: "",
+    first_purchase_only: false,
+    is_stackable: false,
+    status: "active"
+  };
+}
+
 function defaultCatalogCustomization() {
   return {
     settings: {
@@ -575,9 +728,24 @@ function defaultCatalogCustomization() {
       whatsapp_phone: "",
       whatsapp_message: "Olá! Vim pelo catálogo online da Aura Clinic e quero ajuda para escolher uma joia.",
       company_instagram: "",
+      company_legal_name: "",
+      company_display_name: "",
+      company_short_description: "",
+      company_phone: "",
+      company_whatsapp: "",
       company_email: "",
+      company_support_email: "",
       company_address: "",
-      company_hours: ""
+      company_hours: "",
+      company_service_days: "",
+      company_website: "",
+      company_maps_url: "",
+      service_policy: "",
+      deposit_policy: "",
+      cancellation_policy: "",
+      exchange_policy: "",
+      biosafety_text: "",
+      materials_text: ""
     },
     theme: {
       brand_name: "Aura Clinic",

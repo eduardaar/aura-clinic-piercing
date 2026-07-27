@@ -7422,6 +7422,19 @@ body {
   overflow: auto;
 }
 
+.catalog-coupon-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.catalog-coupon-field input {
+  min-width: 0;
+  border: 1px solid #ded7ce;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
 .catalog-drawer-list article {
   display: grid;
   grid-template-columns: 72px 1fr auto;

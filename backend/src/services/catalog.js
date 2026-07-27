@@ -17,9 +17,24 @@ export async function getCatalogSettings(db) {
     whatsapp_phone: "",
     whatsapp_message: "Olá! Vim pelo catálogo online da Aura Clinic e quero ajuda para escolher uma joia.",
     company_instagram: "",
+    company_legal_name: "",
+    company_display_name: "",
+    company_short_description: "",
+    company_phone: "",
+    company_whatsapp: "",
     company_email: "",
+    company_support_email: "",
     company_address: "",
     company_hours: "",
+    company_service_days: "",
+    company_website: "",
+    company_maps_url: "",
+    service_policy: "",
+    deposit_policy: "",
+    cancellation_policy: "",
+    exchange_policy: "",
+    biosafety_text: "",
+    materials_text: "",
     layout_style: "premium",
     page_title: "Catálogo Online",
     unavailable_message: "Produto indisponível no momento.",
@@ -79,7 +94,10 @@ export async function saveCatalogCustomization(db, body) {
   if (body.settings) {
     const allowed = [
       "title", "subtitle", "hero_title", "hero_subtitle", "hero_image_url", "categories", "whatsapp_phone", "whatsapp_message", "layout_style",
-      "company_instagram", "company_email", "company_address", "company_hours",
+      "company_instagram", "company_legal_name", "company_display_name", "company_short_description", "company_phone", "company_whatsapp",
+      "company_email", "company_support_email", "company_address", "company_hours", "company_service_days",
+      "company_website", "company_maps_url", "service_policy", "deposit_policy", "cancellation_policy",
+      "exchange_policy", "biosafety_text", "materials_text",
       "page_title", "unavailable_message", "low_stock_message", "institutional_text", "footer_text", "seo_title", "seo_description", "share_image_url", "product_share_text", "content_sections"
     ];
     for (const [key, value] of Object.entries(body.settings).filter(([key]) => allowed.includes(key))) {

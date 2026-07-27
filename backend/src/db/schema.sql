@@ -493,6 +493,46 @@ CREATE TABLE IF NOT EXISTS catalog_promotions (
   is_active INTEGER NOT NULL DEFAULT 1
 );
 
+CREATE TABLE IF NOT EXISTS coupons (
+  id SERIAL PRIMARY KEY,
+  code TEXT NOT NULL,
+  internal_name TEXT NOT NULL,
+  description TEXT,
+  discount_type TEXT NOT NULL DEFAULT 'percent' CHECK (discount_type IN ('percent', 'fixed')),
+  discount_value DOUBLE PRECISION NOT NULL DEFAULT 0 CHECK (discount_value >= 0),
+  starts_at TIMESTAMP,
+  ends_at TIMESTAMP,
+  usage_limit INTEGER CHECK (usage_limit IS NULL OR usage_limit >= 0),
+  usage_limit_per_client INTEGER CHECK (usage_limit_per_client IS NULL OR usage_limit_per_client >= 0),
+  minimum_amount DOUBLE PRECISION NOT NULL DEFAULT 0 CHECK (minimum_amount >= 0),
+  maximum_discount DOUBLE PRECISION CHECK (maximum_discount IS NULL OR maximum_discount >= 0),
+  product_ids TEXT,
+  category_ids TEXT,
+  excluded_product_ids TEXT,
+  excluded_category_ids TEXT,
+  service_ids TEXT,
+  first_purchase_only INTEGER NOT NULL DEFAULT 0,
+  selected_client_ids TEXT,
+  is_stackable INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'inactive')),
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  deleted_at TIMESTAMP,
+  UNIQUE(code)
+);
+
+CREATE TABLE IF NOT EXISTS coupon_usages (
+  id SERIAL PRIMARY KEY,
+  coupon_id INTEGER NOT NULL REFERENCES coupons(id),
+  client_id INTEGER REFERENCES clients(id),
+  appointment_id INTEGER REFERENCES appointments(id),
+  sale_id INTEGER REFERENCES sales_orders(id),
+  original_amount DOUBLE PRECISION NOT NULL CHECK (original_amount >= 0),
+  discount_amount DOUBLE PRECISION NOT NULL CHECK (discount_amount >= 0),
+  final_amount DOUBLE PRECISION NOT NULL CHECK (final_amount >= 0),
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS catalog_theme (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   brand_name TEXT NOT NULL DEFAULT 'Aura Clinic',
@@ -543,6 +583,10 @@ CREATE INDEX IF NOT EXISTS idx_payments_appointment ON payments(appointment_id);
 CREATE INDEX IF NOT EXISTS idx_loyalty_points_client ON loyalty_points(client_id);
 CREATE INDEX IF NOT EXISTS idx_medical_records_client ON client_medical_records(client_id);
 CREATE INDEX IF NOT EXISTS idx_expenses_due ON expenses(due_date);
+CREATE INDEX IF NOT EXISTS idx_catalog_promotions_active_dates ON catalog_promotions(is_active, start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_coupons_status_dates ON coupons(status, starts_at, ends_at) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_coupon_usages_coupon ON coupon_usages(coupon_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_coupon_usages_client ON coupon_usages(client_id, created_at);
 
 -- Log central de erros (backend + frontend) para diagnóstico. Só o admin lê
 -- (via /api/error-logs). Ingestão do frontend é pública para capturar erros de

@@ -4,6 +4,7 @@ import { withDb, withFeature } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { attachVariants } from "../services/inventory.js";
 import { groupInventoryOptions, splitCatalogCategories } from "../services/utils.js";
+import { validateCoupon } from "../services/discounts.js";
 import {
   getCatalogCustomization,
   getCatalogSettings,
@@ -17,7 +18,6 @@ const asArray = (value) => (Array.isArray(value) ? value : []);
 
 router.get("/api/catalog", withDb(async (_req, res, db) => {
   const customization = await getCatalogCustomization(db);
-  const showOutOfStock = Boolean(Number(customization.theme.show_out_of_stock));
   const productRows = await db.all(`
     SELECT
       j.*,
@@ -39,7 +39,6 @@ router.get("/api/catalog", withDb(async (_req, res, db) => {
     ORDER BY COALESCE(fp.sort_order, 9999), j.category, j.name
   `);
   const items = (await attachVariants(db, productRows))
-    .filter((item) => showOutOfStock || item.quantity > 0)
     .map((item) => ({
       // Dados públicos
       id: item.id,
@@ -144,6 +143,93 @@ router.get("/api/catalog-settings", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   const settings = await getCatalogSettings(db);
   res.json({ ...settings, categories: splitCatalogCategories(settings.categories) });
+}));
+
+router.get("/api/coupons", withFeature("coupons", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
+  const coupons = await db.all(`
+    SELECT c.*,
+      (SELECT COUNT(*) FROM coupon_usages u WHERE u.coupon_id = c.id) AS usage_count,
+      (SELECT COALESCE(SUM(discount_amount), 0) FROM coupon_usages u WHERE u.coupon_id = c.id) AS total_discount
+    FROM coupons c
+    WHERE c.deleted_at IS NULL
+    ORDER BY c.created_at DESC, c.id DESC
+  `);
+  res.json(coupons);
+}));
+
+router.post("/api/coupons", withFeature("coupons", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin"])) return;
+  const body = req.body || {};
+  const code = String(body.code || "").trim().toUpperCase();
+  const internalName = String(body.internal_name || body.name || "").trim();
+  const discountType = body.discount_type === "fixed" ? "fixed" : "percent";
+  const discountValue = Number(body.discount_value || 0);
+  if (!/^[A-Z0-9_-]{3,40}$/.test(code)) return res.status(400).json({ error: "Código deve ter de 3 a 40 letras, números, _ ou -." });
+  if (!internalName) return res.status(400).json({ error: "Informe o nome interno." });
+  if (discountValue < 0 || (discountType === "percent" && discountValue > 100)) return res.status(400).json({ error: "Valor de desconto inválido." });
+  const result = await db.run(
+    `INSERT INTO coupons
+      (code, internal_name, description, discount_type, discount_value, starts_at, ends_at, usage_limit,
+       usage_limit_per_client, minimum_amount, maximum_discount, product_ids, category_ids,
+       excluded_product_ids, excluded_category_ids, service_ids, first_purchase_only,
+       selected_client_ids, is_stackable, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      code, internalName, body.description || "", discountType, discountValue,
+      body.starts_at || null, body.ends_at || null, body.usage_limit || null,
+      body.usage_limit_per_client || null, Number(body.minimum_amount || 0), body.maximum_discount || null,
+      body.product_ids || "", body.category_ids || "", body.excluded_product_ids || "",
+      body.excluded_category_ids || "", body.service_ids || "", Number(Boolean(body.first_purchase_only)),
+      body.selected_client_ids || "", Number(Boolean(body.is_stackable)), body.status || "active"
+    ]
+  );
+  res.status(201).json(await db.get("SELECT * FROM coupons WHERE id = ?", [result.lastID]));
+}));
+
+router.patch("/api/coupons/:id", withFeature("coupons", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin"])) return;
+  const current = await db.get("SELECT * FROM coupons WHERE id = ? AND deleted_at IS NULL", [req.params.id]);
+  if (!current) return res.status(404).json({ error: "Cupom não encontrado." });
+  const body = { ...current, ...(req.body || {}) };
+  const code = String(body.code || "").trim().toUpperCase();
+  const discountType = body.discount_type === "fixed" ? "fixed" : "percent";
+  const discountValue = Number(body.discount_value || 0);
+  if (!/^[A-Z0-9_-]{3,40}$/.test(code) || discountValue < 0 || (discountType === "percent" && discountValue > 100)) {
+    return res.status(400).json({ error: "Dados do cupom inválidos." });
+  }
+  await db.run(
+    `UPDATE coupons SET code = ?, internal_name = ?, description = ?, discount_type = ?, discount_value = ?,
+      starts_at = ?, ends_at = ?, usage_limit = ?, usage_limit_per_client = ?, minimum_amount = ?,
+      maximum_discount = ?, product_ids = ?, category_ids = ?, excluded_product_ids = ?,
+      excluded_category_ids = ?, service_ids = ?, first_purchase_only = ?, selected_client_ids = ?,
+      is_stackable = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+    [
+      code, body.internal_name, body.description || "", discountType, discountValue, body.starts_at || null,
+      body.ends_at || null, body.usage_limit || null, body.usage_limit_per_client || null,
+      Number(body.minimum_amount || 0), body.maximum_discount || null, body.product_ids || "",
+      body.category_ids || "", body.excluded_product_ids || "", body.excluded_category_ids || "",
+      body.service_ids || "", Number(Boolean(Number(body.first_purchase_only))), body.selected_client_ids || "",
+      Number(Boolean(Number(body.is_stackable))), body.status || "active", req.params.id
+    ]
+  );
+  res.json(await db.get("SELECT * FROM coupons WHERE id = ?", [req.params.id]));
+}));
+
+router.delete("/api/coupons/:id", withFeature("coupons", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin"])) return;
+  const usage = await db.get("SELECT COUNT(*) AS count FROM coupon_usages WHERE coupon_id = ?", [req.params.id]);
+  if (Number(usage?.count || 0) > 0) {
+    await db.run("UPDATE coupons SET status = 'inactive', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [req.params.id]);
+  } else {
+    await db.run("DELETE FROM coupons WHERE id = ?", [req.params.id]);
+  }
+  res.json({ ok: true });
+}));
+
+router.post("/api/catalog/coupon-quote", withDb(async (req, res, db) => {
+  const result = await validateCoupon(db, req.body?.code, req.body || {});
+  res.status(result.valid ? 200 : 400).json(result);
 }));
 
 router.patch("/api/catalog-settings", withDb(async (req, res, db) => {

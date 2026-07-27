@@ -26,6 +26,7 @@ import { API_ORIGIN, publicApiFetch, usePublicFetch } from "../lib/api";
 import { asArray, asNumber, asObject, formatLongDate, removeAccents } from "../lib/utils";
 import { ANODIZATION_COLOR_OPTIONS, JEWELRY_CATEGORY_OPTIONS, JEWELRY_LENGTH_OPTIONS, defaultPublicBooking, nextBookingDates, parseGalleryUrls } from "../lib/defaultForms";
 import {
+  catalogAvailabilityMatches,
   catalogCategoryTerms,
   catalogContentSections,
   catalogFilterOptions,
@@ -135,8 +136,7 @@ export function PublicCatalog() {
     const stoneMatch = !filters.stone || String(item.stone || "").toLowerCase().includes(filters.stone.toLowerCase()) || matchesVariant("stone_color", filters.stone);
     const sizeMatch = !filters.size || item.size === filters.size || matchesVariant("size", filters.size);
     const topSizeMatch = !filters.topSize || Number(item.top_size_mm) === Number(filters.topSize) || variants.some((variant) => Number(variant.top_size_mm) === Number(filters.topSize));
-    const available = variants.length ? variants.some((variant) => Number(variant.quantity) > 0) : Number(item.quantity) > 0;
-    const availabilityMatch = !filters.availability || (filters.availability === "true" ? available : !available);
+    const availabilityMatch = catalogAvailabilityMatches(item, filters.availability, Boolean(Number(theme.show_out_of_stock)));
     return categoryMatch && searchMatch && materialMatch && colorMatch && stoneMatch && sizeMatch && topSizeMatch && availabilityMatch;
   });
   const items = [...filteredItems].sort((a, b) => sort === "menor-preco" ? a.sale_value - b.sale_value : sort === "maior-preco" ? b.sale_value - a.sale_value : sort === "nome-az" ? a.name.localeCompare(b.name) : sort === "nome-za" ? b.name.localeCompare(a.name) : sort === "estoque" ? Number(b.quantity) - Number(a.quantity) : b.id - a.id);
@@ -321,7 +321,13 @@ function addToOrder(item) {
             />
           ))}
         </section>
-        {!items.length && <p className="empty-state catalog-empty">Nenhuma joia disponível no catálogo no momento.</p>}
+        {!items.length && (
+          <p className="empty-state catalog-empty">
+            {filters.availability === "false"
+              ? "Nenhuma joia esgotada encontrada para os filtros selecionados."
+              : "Nenhuma joia disponível para os filtros selecionados."}
+          </p>
+        )}
 
         <section className="catalog-guide-section">
           <article>
@@ -738,15 +744,36 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
 
 function CatalogDrawer({ type, favorites, orderItems, orderTotal, whatsappPhone, onClose, onRemoveFavorite, onRemoveOrder, onUpdateOrderNotes, onClearOrder }) {
   const isFavorites = type === "favorites";
+  const [couponCode, setCouponCode] = useState("");
+  const [couponQuote, setCouponQuote] = useState(null);
+  const [couponError, setCouponError] = useState("");
   const safeFavorites = asArray(favorites);
   const safeOrderItems = asArray(orderItems);
   const items = isFavorites ? safeFavorites : safeOrderItems;
   const favoriteMessage = safeFavorites.length
     ? `Olá! Quero ajuda com estas joias favoritas: ${safeFavorites.map((item) => item.name).join(", ")}.`
     : "Olá! Quero ajuda para escolher minhas joias favoritas no catálogo da Aura Clinic.";
+  const finalTotal = couponQuote?.valid ? couponQuote.final_amount : orderTotal;
   const message = safeOrderItems.length
-    ? `Olá! Quero agendar com estas joias: ${safeOrderItems.map((item) => `${item.qty || 1}x ${item.name}${item.customer_notes ? ` (${item.customer_notes})` : ""}`).join(", ")}. Total aproximado: ${currency.format(asNumber(orderTotal))}.`
+    ? `Olá! Quero agendar com estas joias: ${safeOrderItems.map((item) => `${item.qty || 1}x ${item.name}${item.customer_notes ? ` (${item.customer_notes})` : ""}`).join(", ")}. ${couponQuote?.valid ? `Cupom: ${couponQuote.coupon.code}. ` : ""}Total aproximado: ${currency.format(asNumber(finalTotal))}.`
     : "Olá! Quero ajuda para montar meu pedido no catálogo da Aura Clinic.";
+
+  async function applyCoupon() {
+    setCouponError("");
+    setCouponQuote(null);
+    const response = await publicApiFetch("/catalog/coupon-quote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: couponCode,
+        amount: orderTotal,
+        items: safeOrderItems.map((item) => ({ product_id: item.id, category: item.category }))
+      })
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok) return setCouponError(json.error || "Cupom inválido.");
+    setCouponQuote(json);
+  }
 
   return (
     <div className="catalog-drawer-backdrop" role="presentation" onClick={onClose}>
@@ -774,7 +801,13 @@ function CatalogDrawer({ type, favorites, orderItems, orderTotal, whatsappPhone,
         </div>
         {!isFavorites && (
           <footer>
-            <div><span>Total aproximado</span><strong>{currency.format(orderTotal)}</strong></div>
+            <div className="catalog-coupon-field">
+              <input value={couponCode} onChange={(event) => setCouponCode(event.target.value.toUpperCase())} placeholder="Cupom de desconto" />
+              <button type="button" className="secondary-button" onClick={applyCoupon} disabled={!couponCode.trim() || !safeOrderItems.length}>Aplicar</button>
+            </div>
+            {couponError && <span className="form-error">{couponError}</span>}
+            {couponQuote?.valid && <span className="form-success">Cupom aplicado: −{currency.format(couponQuote.discount_amount)}</span>}
+            <div><span>Total aproximado</span><strong>{currency.format(finalTotal)}</strong></div>
             <a className="secondary-button" href={publicUrl("/comprar")}>Finalizar no site</a>
             <a className="primary-button whatsapp-checkout" href={whatsappCatalogUrl(message, whatsappPhone)} target="_blank" rel="noreferrer"><MessageCircle size={17} /> Finalizar pelo WhatsApp</a>
             {safeOrderItems.length > 0 && <button className="secondary-button" onClick={onClearOrder}>Limpar pedido</button>}
@@ -996,7 +1029,7 @@ export function PublicBooking() {
     <main className="public-booking-page">
       <section className="booking-shell">
         <header className="booking-public-header">
-          <a className="catalog-client-brand" href={catalogUrl()}><strong>Aura Clinic</strong><span>Piercing</span></a>
+          <a className="catalog-client-brand" href={catalogUrl()}><strong>{catalogData?.theme?.brand_name || catalogData?.brand_name || "Estúdio"}</strong><span>{catalogData?.theme?.slogan || "Agendamento"}</span></a>
           <a className="secondary-button" href={catalogUrl()}>Ver Catálogo</a>
         </header>
         <div className="booking-hero">
@@ -1021,7 +1054,7 @@ export function PublicBooking() {
         {step === 2 && (
           professionals.length
             ? <BookingChoiceGrid title="Escolha A Profissional" items={professionals} value={form.professional_id} onSelect={(id) => { setForm({ ...form, professional_id: id, appointment_time: "" }); setStep(3); }} render={(item) => <><strong>{item.name}</strong><p>{item.specialty || "Body Piercer Aura"}</p></>} />
-            : <section className="booking-panel"><h2>Nenhuma Profissional Vinculada</h2><p className="empty-state">Este serviço ainda não possui profissional ativo vinculado. Volte e escolha outro serviço ou fale com a Aura pelo WhatsApp.</p><button type="button" className="secondary-button" onClick={() => setStep(1)}>Escolher Outro Serviço</button></section>
+            : <section className="booking-panel"><h2>Nenhuma Profissional Vinculada</h2><p className="empty-state">Este serviço ainda não possui profissional ativo vinculado. Volte e escolha outro serviço ou fale com o estúdio pelo WhatsApp.</p><button type="button" className="secondary-button" onClick={() => setStep(1)}>Escolher Outro Serviço</button></section>
         )}
         {step === 3 && (
           <section className="booking-panel booking-date-card">
