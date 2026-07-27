@@ -5,6 +5,7 @@ import { requireRole } from "../middleware/auth.js";
 import { attachVariants } from "../services/inventory.js";
 import { groupInventoryOptions, splitCatalogCategories } from "../services/utils.js";
 import { validateCoupon } from "../services/discounts.js";
+import { quotePromotions } from "../services/promotions.js";
 import {
   getCatalogCustomization,
   getCatalogSettings,
@@ -231,6 +232,140 @@ router.post("/api/catalog/coupon-quote", withDb(async (req, res, db) => {
   const result = await validateCoupon(db, req.body?.code, req.body || {});
   res.status(result.valid ? 200 : 400).json(result);
 }));
+
+router.post("/api/catalog/promotion-quote", withDb(async (req, res, db) => {
+  res.json(await quotePromotions(db, req.body || {}));
+}));
+
+router.post("/api/catalog/price-quote", withDb(async (req, res, db) => {
+  const body = req.body || {};
+  const promotionQuote = await quotePromotions(db, body);
+  let couponQuote = null;
+  if (body.coupon_code) {
+    couponQuote = await validateCoupon(db, body.coupon_code, {
+      ...body,
+      amount: promotionQuote.final_amount
+    });
+    if (!couponQuote.valid) return res.status(400).json(couponQuote);
+  }
+  const promotionsAllowCoupon = promotionQuote.promotions.every((promotion) => promotion.stackable_with_coupon);
+  let promotionDiscount = promotionQuote.discount_amount;
+  let couponDiscount = couponQuote?.discount_amount || 0;
+  if (couponQuote?.valid && promotionQuote.promotions.length && !promotionsAllowCoupon) {
+    if (couponDiscount > promotionDiscount) promotionDiscount = 0;
+    else couponDiscount = 0;
+  }
+  const totalDiscount = Math.min(promotionDiscount + couponDiscount, promotionQuote.original_amount);
+  res.json({
+    valid: true,
+    original_amount: promotionQuote.original_amount,
+    promotion_discount: promotionDiscount,
+    coupon_discount: couponDiscount,
+    discount_amount: Number(totalDiscount.toFixed(2)),
+    final_amount: Number((promotionQuote.original_amount - totalDiscount).toFixed(2)),
+    promotions: promotionDiscount ? promotionQuote.promotions : [],
+    coupon: couponDiscount ? couponQuote.coupon : null
+  });
+}));
+
+router.get("/api/promotions", withFeature("campaigns", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
+  const rows = await db.all(`
+    SELECT p.*,
+      (SELECT COUNT(*) FROM promotion_usages u WHERE u.promotion_id = p.id) AS usage_count,
+      (SELECT COALESCE(SUM(discount_amount), 0) FROM promotion_usages u WHERE u.promotion_id = p.id) AS total_discount
+    FROM catalog_promotions p
+    WHERE p.deleted_at IS NULL
+    ORDER BY p.priority DESC, p.created_at DESC, p.id DESC
+  `);
+  res.json(rows);
+}));
+
+router.post("/api/promotions", withFeature("campaigns", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin"])) return;
+  const body = req.body || {};
+  const name = String(body.name || "").trim();
+  const discountValue = Number(body.discount_value || 0);
+  const allowedTypes = ["percent", "fixed", "fixed_price", "buy_x_pay_y", "progressive", "quantity"];
+  if (!name) return res.status(400).json({ error: "Informe o nome da promoção." });
+  if (!allowedTypes.includes(body.discount_type || "percent") || discountValue < 0 || (body.discount_type === "percent" && discountValue > 100)) {
+    return res.status(400).json({ error: "Tipo ou valor de desconto inválido." });
+  }
+  const result = await db.run(
+    `INSERT INTO catalog_promotions
+      (name, description, status, discount_type, discount_value, priority, start_date, end_date, start_time, end_time,
+       usage_limit, usage_limit_per_client, minimum_amount, maximum_discount, minimum_quantity, applies_to,
+       product_ids, category_ids, variation_ids, excluded_product_ids, excluded_category_ids, excluded_variation_ids,
+       colors, materials, stones, service_ids, buy_quantity, pay_quantity, fixed_promotional_price,
+       is_stackable, stackable_with_coupon, badge, legal_text, visible_in_catalog, is_active)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    promotionValues(body)
+  );
+  const created = await db.get("SELECT * FROM catalog_promotions WHERE id = ?", [result.lastID]);
+  await db.run("INSERT INTO promotion_audit_logs (promotion_id, user_id, action, next_data) VALUES (?, ?, 'create', ?)", [created.id, req.user?.id || null, JSON.stringify(created)]);
+  res.status(201).json(created);
+}));
+
+router.patch("/api/promotions/:id", withFeature("campaigns", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin"])) return;
+  const current = await db.get("SELECT * FROM catalog_promotions WHERE id = ? AND deleted_at IS NULL", [req.params.id]);
+  if (!current) return res.status(404).json({ error: "Promoção não encontrada." });
+  const body = { ...current, ...(req.body || {}) };
+  await db.run(
+    `UPDATE catalog_promotions SET
+      name=?, description=?, status=?, discount_type=?, discount_value=?, priority=?, start_date=?, end_date=?,
+      start_time=?, end_time=?, usage_limit=?, usage_limit_per_client=?, minimum_amount=?, maximum_discount=?,
+      minimum_quantity=?, applies_to=?, product_ids=?, category_ids=?, variation_ids=?, excluded_product_ids=?,
+      excluded_category_ids=?, excluded_variation_ids=?, colors=?, materials=?, stones=?, service_ids=?,
+      buy_quantity=?, pay_quantity=?, fixed_promotional_price=?, is_stackable=?, stackable_with_coupon=?,
+      badge=?, legal_text=?, visible_in_catalog=?, is_active=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+    [...promotionValues(body), req.params.id]
+  );
+  const updated = await db.get("SELECT * FROM catalog_promotions WHERE id = ?", [req.params.id]);
+  await db.run("INSERT INTO promotion_audit_logs (promotion_id, user_id, action, previous_data, next_data) VALUES (?, ?, 'update', ?, ?)", [updated.id, req.user?.id || null, JSON.stringify(current), JSON.stringify(updated)]);
+  res.json(updated);
+}));
+
+router.post("/api/promotions/:id/duplicate", withFeature("campaigns", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin"])) return;
+  const current = await db.get("SELECT * FROM catalog_promotions WHERE id = ? AND deleted_at IS NULL", [req.params.id]);
+  if (!current) return res.status(404).json({ error: "Promoção não encontrada." });
+  const result = await db.run(
+    `INSERT INTO catalog_promotions
+      (name, description, status, discount_type, discount_value, priority, start_date, end_date, start_time, end_time,
+       usage_limit, usage_limit_per_client, minimum_amount, maximum_discount, minimum_quantity, applies_to,
+       product_ids, category_ids, variation_ids, excluded_product_ids, excluded_category_ids, excluded_variation_ids,
+       colors, materials, stones, service_ids, buy_quantity, pay_quantity, fixed_promotional_price,
+       is_stackable, stackable_with_coupon, badge, legal_text, visible_in_catalog, is_active)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    promotionValues({ ...current, name: `${current.name} (cópia)`, status: "paused", is_active: 0 })
+  );
+  res.status(201).json(await db.get("SELECT * FROM catalog_promotions WHERE id = ?", [result.lastID]));
+}));
+
+router.delete("/api/promotions/:id", withFeature("campaigns", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin"])) return;
+  const current = await db.get("SELECT * FROM catalog_promotions WHERE id = ? AND deleted_at IS NULL", [req.params.id]);
+  if (!current) return res.status(404).json({ error: "Promoção não encontrada." });
+  await db.run("UPDATE catalog_promotions SET status='ended', is_active=0, deleted_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?", [req.params.id]);
+  await db.run("INSERT INTO promotion_audit_logs (promotion_id, user_id, action, previous_data) VALUES (?, ?, 'delete', ?)", [current.id, req.user?.id || null, JSON.stringify(current)]);
+  res.json({ ok: true });
+}));
+
+function promotionValues(body) {
+  return [
+    String(body.name || "").trim(), body.description || "", body.status || "active", body.discount_type || "percent",
+    Number(body.discount_value || 0), Number(body.priority || 0), body.start_date || null, body.end_date || null,
+    body.start_time || null, body.end_time || null, body.usage_limit || null, body.usage_limit_per_client || null,
+    Number(body.minimum_amount || 0), body.maximum_discount || null, Number(body.minimum_quantity || 1),
+    body.applies_to || "all", body.product_ids || "", body.category_ids || "", body.variation_ids || "",
+    body.excluded_product_ids || "", body.excluded_category_ids || "", body.excluded_variation_ids || "",
+    body.colors || "", body.materials || "", body.stones || "", body.service_ids || "", body.buy_quantity || null,
+    body.pay_quantity || null, body.fixed_promotional_price || null, Number(Boolean(Number(body.is_stackable))),
+    Number(Boolean(Number(body.stackable_with_coupon))), body.badge || "", body.legal_text || "",
+    Number(body.visible_in_catalog ?? 1), Number(body.is_active ?? 1)
+  ];
+}
 
 router.patch("/api/catalog-settings", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;

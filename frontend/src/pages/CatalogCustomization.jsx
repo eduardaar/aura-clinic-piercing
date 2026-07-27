@@ -276,7 +276,7 @@ export function CatalogCustomization() {
           </CustomizationCard>
         )}
 
-        {activeSection === "promocoes" && (
+        {activeSection === "promocoes-legado" && (
           <CustomizationCard title="Promoções" action={<button type="button" onClick={() => setForm({ ...form, promotions: [...form.promotions, defaultPromotion()] })}>Nova promoção</button>}>
             <div className="custom-list">
               {form.promotions.map((promotion, index) => (
@@ -302,6 +302,8 @@ export function CatalogCustomization() {
             </div>
           </CustomizationCard>
         )}
+
+        {activeSection === "promocoes" && <PromotionManager />}
 
         {activeSection === "cupons" && <CouponManager />}
 
@@ -518,6 +520,113 @@ function CouponManager() {
   );
 }
 
+function PromotionManager() {
+  const { data, refresh } = useFetch("/promotions");
+  const [draft, setDraft] = useState(defaultAdvancedPromotion());
+  const [editingId, setEditingId] = useState(null);
+  const [feedback, setFeedback] = useState({ error: "", success: "" });
+  const promotions = asArray(data);
+
+  async function request(path, options, success) {
+    setFeedback({ error: "", success: "" });
+    const response = await apiFetch(path, options);
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setFeedback({ error: json.error || "Não foi possível concluir a operação.", success: "" });
+      return null;
+    }
+    setFeedback({ error: "", success });
+    refresh();
+    return json;
+  }
+
+  async function submit(event) {
+    event.preventDefault();
+    const saved = await request(editingId ? `/promotions/${editingId}` : "/promotions", {
+      method: editingId ? "PATCH" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(draft)
+    }, editingId ? "Promoção atualizada." : "Promoção criada.");
+    if (saved) {
+      setEditingId(null);
+      setDraft(defaultAdvancedPromotion());
+    }
+  }
+
+  function edit(item) {
+    setEditingId(item.id);
+    setDraft({ ...defaultAdvancedPromotion(), ...item, is_stackable: Boolean(Number(item.is_stackable)), stackable_with_coupon: Boolean(Number(item.stackable_with_coupon)), visible_in_catalog: Boolean(Number(item.visible_in_catalog)), is_active: Boolean(Number(item.is_active)) });
+  }
+
+  return (
+    <CustomizationCard title="Promoções avançadas">
+      {data?.error && <ApiError message={data.error} />}
+      <form className="stack" onSubmit={submit}>
+        <div className="form-grid">
+          <Input label="Nome" value={draft.name} onChange={(value) => setDraft({ ...draft, name: value })} />
+          <Select label="Tipo" value={draft.discount_type} onChange={(value) => setDraft({ ...draft, discount_type: value })}>
+            <option value="percent">Percentual</option><option value="fixed">Valor fixo</option>
+            <option value="fixed_price">Preço promocional</option><option value="buy_x_pay_y">Compre X, pague Y</option>
+            <option value="quantity">Por quantidade</option><option value="progressive">Progressivo</option>
+          </Select>
+          <Input type="number" label="Valor/percentual" value={draft.discount_value} onChange={(value) => setDraft({ ...draft, discount_value: value })} />
+          <Input type="number" label="Preço promocional" value={draft.fixed_promotional_price} onChange={(value) => setDraft({ ...draft, fixed_promotional_price: value })} />
+          <Input type="number" label="Prioridade" value={draft.priority} onChange={(value) => setDraft({ ...draft, priority: value })} />
+          <Select label="Status" value={draft.status} onChange={(value) => setDraft({ ...draft, status: value, is_active: value === "active" })}>
+            <option value="active">Ativa</option><option value="paused">Pausada</option><option value="ended">Encerrada</option>
+          </Select>
+          <Input type="date" label="Início" value={draft.start_date || ""} onChange={(value) => setDraft({ ...draft, start_date: value })} />
+          <Input type="date" label="Fim" value={draft.end_date || ""} onChange={(value) => setDraft({ ...draft, end_date: value })} />
+          <Input type="time" label="Hora inicial" value={draft.start_time || ""} onChange={(value) => setDraft({ ...draft, start_time: value })} />
+          <Input type="time" label="Hora final" value={draft.end_time || ""} onChange={(value) => setDraft({ ...draft, end_time: value })} />
+          <Input type="number" label="Quantidade mínima" value={draft.minimum_quantity} onChange={(value) => setDraft({ ...draft, minimum_quantity: value })} />
+          <Input type="number" label="Compra mínima" value={draft.minimum_amount} onChange={(value) => setDraft({ ...draft, minimum_amount: value })} />
+          <Input type="number" label="Desconto máximo" value={draft.maximum_discount} onChange={(value) => setDraft({ ...draft, maximum_discount: value })} />
+          <Input type="number" label="Compre X" value={draft.buy_quantity} onChange={(value) => setDraft({ ...draft, buy_quantity: value })} />
+          <Input type="number" label="Pague Y" value={draft.pay_quantity} onChange={(value) => setDraft({ ...draft, pay_quantity: value })} />
+          <Input label="Produtos incluídos" value={draft.product_ids} onChange={(value) => setDraft({ ...draft, product_ids: value })} />
+          <Input label="Variações incluídas" value={draft.variation_ids} onChange={(value) => setDraft({ ...draft, variation_ids: value })} />
+          <Input label="Categorias incluídas" value={draft.category_ids} onChange={(value) => setDraft({ ...draft, category_ids: value })} />
+          <Input label="Produtos excluídos" value={draft.excluded_product_ids} onChange={(value) => setDraft({ ...draft, excluded_product_ids: value })} />
+          <Input label="Categorias excluídas" value={draft.excluded_category_ids} onChange={(value) => setDraft({ ...draft, excluded_category_ids: value })} />
+          <Input label="Cores" value={draft.colors} onChange={(value) => setDraft({ ...draft, colors: value })} />
+          <Input label="Materiais" value={draft.materials} onChange={(value) => setDraft({ ...draft, materials: value })} />
+          <Input label="Pedras" value={draft.stones} onChange={(value) => setDraft({ ...draft, stones: value })} />
+          <Input label="Serviços" value={draft.service_ids} onChange={(value) => setDraft({ ...draft, service_ids: value })} />
+          <Input label="Selo" value={draft.badge} onChange={(value) => setDraft({ ...draft, badge: value })} />
+        </div>
+        <label>Descrição<textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label>
+        <label>Texto legal<textarea value={draft.legal_text} onChange={(event) => setDraft({ ...draft, legal_text: event.target.value })} /></label>
+        <div className="form-grid">
+          <Toggle label="Pode acumular" checked={draft.is_stackable} onChange={(value) => setDraft({ ...draft, is_stackable: value })} />
+          <Toggle label="Acumula com cupom" checked={draft.stackable_with_coupon} onChange={(value) => setDraft({ ...draft, stackable_with_coupon: value })} />
+          <Toggle label="Visível no catálogo" checked={draft.visible_in_catalog} onChange={(value) => setDraft({ ...draft, visible_in_catalog: value })} />
+        </div>
+        <div className="modal-actions">
+          {editingId && <button type="button" className="secondary-button" onClick={() => { setEditingId(null); setDraft(defaultAdvancedPromotion()); }}>Cancelar</button>}
+          <button type="submit" className="primary-button">{editingId ? "Salvar promoção" : "Criar promoção"}</button>
+        </div>
+      </form>
+      {feedback.error && <span className="form-error">{feedback.error}</span>}
+      {feedback.success && <span className="form-success">{feedback.success}</span>}
+      <div className="custom-list">
+        {promotions.map((promotion) => (
+          <article key={promotion.id}>
+            <div className="panel-heading">
+              <div><strong>{promotion.name}</strong><small>{promotion.status} · prioridade {promotion.priority || 0} · {promotion.usage_count || 0} uso(s)</small></div>
+              <div className="customization-actions">
+                <button type="button" onClick={() => edit(promotion)}>Editar</button>
+                <button type="button" onClick={() => request(`/promotions/${promotion.id}/duplicate`, { method: "POST" }, "Promoção duplicada.")}>Duplicar</button>
+                <button type="button" className="danger-link" onClick={() => request(`/promotions/${promotion.id}`, { method: "DELETE" }, "Promoção encerrada.")}>Encerrar</button>
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </CustomizationCard>
+  );
+}
+
 export function Toggle({ label, checked, onChange }) {
   return (
     <label className="toggle-field">
@@ -600,8 +709,9 @@ function normalizeCatalogCustomization(data) {
 }
 
 function serializeCatalogCustomization(form) {
+  const { promotions: _promotions, ...safeForm } = form;
   return {
-    ...form,
+    ...safeForm,
     settings: {
       ...form.settings,
       content_sections: JSON.stringify(asArray(form.contentSections).map((section, index) => ({
@@ -706,6 +816,18 @@ function defaultCoupon() {
     first_purchase_only: false,
     is_stackable: false,
     status: "active"
+  };
+}
+
+function defaultAdvancedPromotion() {
+  return {
+    name: "", description: "", status: "active", discount_type: "percent", discount_value: 10,
+    priority: 0, start_date: "", end_date: "", start_time: "", end_time: "", minimum_amount: 0,
+    maximum_discount: "", minimum_quantity: 1, product_ids: "", category_ids: "", variation_ids: "",
+    excluded_product_ids: "", excluded_category_ids: "", excluded_variation_ids: "", colors: "", materials: "",
+    stones: "", service_ids: "", buy_quantity: "", pay_quantity: "", fixed_promotional_price: "",
+    is_stackable: false, stackable_with_coupon: false, badge: "", legal_text: "", visible_in_catalog: true,
+    is_active: true
   };
 }
 

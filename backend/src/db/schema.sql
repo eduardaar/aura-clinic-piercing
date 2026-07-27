@@ -493,6 +493,58 @@ CREATE TABLE IF NOT EXISTS catalog_promotions (
   is_active INTEGER NOT NULL DEFAULT 1
 );
 
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS priority INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS start_time TEXT;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS end_time TEXT;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS usage_limit INTEGER;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS usage_limit_per_client INTEGER;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS minimum_amount DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS maximum_discount DOUBLE PRECISION;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS minimum_quantity INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS variation_ids TEXT;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS excluded_product_ids TEXT;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS excluded_category_ids TEXT;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS excluded_variation_ids TEXT;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS colors TEXT;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS materials TEXT;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS stones TEXT;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS service_ids TEXT;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS buy_quantity INTEGER;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS pay_quantity INTEGER;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS fixed_promotional_price DOUBLE PRECISION;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS is_stackable INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS stackable_with_coupon INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS badge TEXT;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS legal_text TEXT;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS visible_in_catalog INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP;
+
+CREATE TABLE IF NOT EXISTS promotion_usages (
+  id SERIAL PRIMARY KEY,
+  promotion_id INTEGER NOT NULL REFERENCES catalog_promotions(id),
+  client_id INTEGER REFERENCES clients(id),
+  appointment_id INTEGER REFERENCES appointments(id),
+  sale_id INTEGER REFERENCES sales_orders(id),
+  original_amount DOUBLE PRECISION NOT NULL CHECK (original_amount >= 0),
+  discount_amount DOUBLE PRECISION NOT NULL CHECK (discount_amount >= 0),
+  final_amount DOUBLE PRECISION NOT NULL CHECK (final_amount >= 0),
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS promotion_audit_logs (
+  id SERIAL PRIMARY KEY,
+  promotion_id INTEGER,
+  user_id INTEGER REFERENCES users(id),
+  action TEXT NOT NULL,
+  previous_data JSONB,
+  next_data JSONB,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS coupons (
   id SERIAL PRIMARY KEY,
   code TEXT NOT NULL,
@@ -584,6 +636,9 @@ CREATE INDEX IF NOT EXISTS idx_loyalty_points_client ON loyalty_points(client_id
 CREATE INDEX IF NOT EXISTS idx_medical_records_client ON client_medical_records(client_id);
 CREATE INDEX IF NOT EXISTS idx_expenses_due ON expenses(due_date);
 CREATE INDEX IF NOT EXISTS idx_catalog_promotions_active_dates ON catalog_promotions(is_active, start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_catalog_promotions_rules ON catalog_promotions(status, priority DESC, start_date, end_date) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_promotion_usages_promotion ON promotion_usages(promotion_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_promotion_audit_promotion ON promotion_audit_logs(promotion_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_coupons_status_dates ON coupons(status, starts_at, ends_at) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_coupon_usages_coupon ON coupon_usages(coupon_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_coupon_usages_client ON coupon_usages(client_id, created_at);

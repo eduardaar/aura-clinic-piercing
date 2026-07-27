@@ -750,24 +750,58 @@ function CatalogDrawer({ type, favorites, orderItems, orderTotal, whatsappPhone,
   const safeFavorites = asArray(favorites);
   const safeOrderItems = asArray(orderItems);
   const items = isFavorites ? safeFavorites : safeOrderItems;
+  useEffect(() => {
+    if (isFavorites || !safeOrderItems.length) {
+      setCouponQuote(null);
+      return;
+    }
+    let active = true;
+    publicApiFetch("/catalog/price-quote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: safeOrderItems.map((item) => ({
+          product_id: item.id,
+          variation_id: item.selected_variant_id,
+          category: item.category,
+          color: item.selected_color || item.color,
+          material: item.material,
+          stone: item.stone,
+          unit_price: item.sale_value,
+          quantity: item.qty || 1
+        }))
+      })
+    }).then((response) => response.json()).then((json) => {
+      if (active && json.valid) setCouponQuote(json);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [isFavorites, orderItems]);
   const favoriteMessage = safeFavorites.length
     ? `Olá! Quero ajuda com estas joias favoritas: ${safeFavorites.map((item) => item.name).join(", ")}.`
     : "Olá! Quero ajuda para escolher minhas joias favoritas no catálogo da Aura Clinic.";
   const finalTotal = couponQuote?.valid ? couponQuote.final_amount : orderTotal;
   const message = safeOrderItems.length
-    ? `Olá! Quero agendar com estas joias: ${safeOrderItems.map((item) => `${item.qty || 1}x ${item.name}${item.customer_notes ? ` (${item.customer_notes})` : ""}`).join(", ")}. ${couponQuote?.valid ? `Cupom: ${couponQuote.coupon.code}. ` : ""}Total aproximado: ${currency.format(asNumber(finalTotal))}.`
+    ? `Olá! Quero agendar com estas joias: ${safeOrderItems.map((item) => `${item.qty || 1}x ${item.name}${item.customer_notes ? ` (${item.customer_notes})` : ""}`).join(", ")}. ${couponQuote?.coupon ? `Cupom: ${couponQuote.coupon.code}. ` : ""}Total aproximado: ${currency.format(asNumber(finalTotal))}.`
     : "Olá! Quero ajuda para montar meu pedido no catálogo da Aura Clinic.";
 
   async function applyCoupon() {
     setCouponError("");
     setCouponQuote(null);
-    const response = await publicApiFetch("/catalog/coupon-quote", {
+    const response = await publicApiFetch("/catalog/price-quote", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        code: couponCode,
-        amount: orderTotal,
-        items: safeOrderItems.map((item) => ({ product_id: item.id, category: item.category }))
+        coupon_code: couponCode,
+        items: safeOrderItems.map((item) => ({
+          product_id: item.id,
+          variation_id: item.selected_variant_id,
+          category: item.category,
+          color: item.selected_color || item.color,
+          material: item.material,
+          stone: item.stone,
+          unit_price: item.sale_value,
+          quantity: item.qty || 1
+        }))
       })
     });
     const json = await response.json().catch(() => ({}));
@@ -806,7 +840,8 @@ function CatalogDrawer({ type, favorites, orderItems, orderTotal, whatsappPhone,
               <button type="button" className="secondary-button" onClick={applyCoupon} disabled={!couponCode.trim() || !safeOrderItems.length}>Aplicar</button>
             </div>
             {couponError && <span className="form-error">{couponError}</span>}
-            {couponQuote?.valid && <span className="form-success">Cupom aplicado: −{currency.format(couponQuote.discount_amount)}</span>}
+            {couponQuote?.promotion_discount > 0 && <span className="form-success">Promoções: −{currency.format(couponQuote.promotion_discount)}</span>}
+            {couponQuote?.coupon_discount > 0 && <span className="form-success">Cupom aplicado: −{currency.format(couponQuote.coupon_discount)}</span>}
             <div><span>Total aproximado</span><strong>{currency.format(finalTotal)}</strong></div>
             <a className="secondary-button" href={publicUrl("/comprar")}>Finalizar no site</a>
             <a className="primary-button whatsapp-checkout" href={whatsappCatalogUrl(message, whatsappPhone)} target="_blank" rel="noreferrer"><MessageCircle size={17} /> Finalizar pelo WhatsApp</a>

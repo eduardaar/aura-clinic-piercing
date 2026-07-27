@@ -71,6 +71,18 @@ entrada.
   compra mínima, teto, cliente, produtos, categorias e exclusões.
 - Soft delete para cupons que já possuem histórico de uso.
 
+### Promoções avançadas
+
+- Modelo existente ampliado de forma aditiva, preservando campanhas atuais.
+- Regras por produto, variação, categoria, cor, material, pedra e serviço.
+- Períodos por data e horário, prioridade, limites, quantidade mínima, selos e texto legal.
+- Tipos percentual, valor fixo, preço promocional e compre X/pague Y.
+- Resolução de conflitos por prioridade e especificidade.
+- Acumulação controlada entre promoções e cupons.
+- Cotação final no backend, sem total negativo ou aplicação duplicada.
+- CRUD, duplicação, pausa, encerramento, soft delete e auditoria.
+- Integração da cotação com o pedido público.
+
 ### Identidade
 
 - Informações comerciais, suporte, presença digital, políticas, biossegurança
@@ -89,12 +101,11 @@ entrada.
 
 ## Fases seguintes
 
-1. Expandir promoções, conflito e auditoria.
-2. Separar rascunho/publicação do construtor.
-3. Busca visual fase 1 e limpeza de arquivos temporários.
-4. Agenda com múltiplos serviços/joias e reserva de estoque.
-5. Templates de comunicação e provedores de pagamento.
-6. Relatórios, indicadores, exportações e medições de performance.
+1. Separar rascunho/publicação do construtor.
+2. Busca visual fase 1 e limpeza de arquivos temporários.
+3. Agenda com múltiplos serviços/joias e reserva de estoque.
+4. Templates de comunicação e provedores de pagamento.
+5. Relatórios, indicadores, exportações e medições de performance.
 
 Este documento deve ser atualizado a cada fase com migrations, testes,
 medições, riscos, commits e estado de deploy reais.
