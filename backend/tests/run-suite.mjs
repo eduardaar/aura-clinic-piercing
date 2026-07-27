@@ -18,6 +18,7 @@ const env = {
   ...process.env,
   NODE_ENV: "production",
   PORT: String(PORT),
+  AUTH_SECRET: process.env.AUTH_SECRET || "aura-test-secret-only-for-isolated-suite-2026",
   // Garante superadmin previsível nos testes, sem depender do que estiver no .env.
   PLATFORM_ADMIN_EMAIL: process.env.PLATFORM_ADMIN_EMAIL || "superadmin@aura.local",
   PLATFORM_ADMIN_PASSWORD: process.env.PLATFORM_ADMIN_PASSWORD || "superadmin123",

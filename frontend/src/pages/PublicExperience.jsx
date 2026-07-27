@@ -563,7 +563,7 @@ function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, th
       <figure>
         {(item.badge || promotion || !available) && <em className={`catalog-product-badge ${!available ? "unavailable" : ""}`}>{!available ? "Indisponível" : promotion ? "Promoção" : cleanDisplayText(item.badge)}</em>}
         <a className="catalog-product-image-link" href={catalogProductUrl(item.id)} aria-label={`Abrir ${productName}`}>
-          <img src={catalogImageUrl(item.photo_url)} alt={productName} />
+          <img src={catalogImageUrl(item.photo_url)} alt="" loading="lazy" onError={useNeutralImageFallback} />
         </a>
         {Boolean(Number(theme.show_favorites || 1)) && <button type="button" className={favorite ? "favorite active" : "favorite"} onClick={onToggleFavorite} aria-label="Favoritar">
           <Heart size={19} />
@@ -607,8 +607,8 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
   useEffect(() => {
     const nextColors = splitColorOptions(selectedVariant.color);
     setSelectedColor((current) => nextColors.includes(current) ? current : nextColors[0] || "");
-    setActiveImage((current) => current || uniqueGalleryImages[0]?.image_url || item.photo_url || item.image_url);
-  }, [selectedVariantId, selectedVariant.color]);
+    setActiveImage(uniqueGalleryImages[0]?.image_url || item.photo_url || item.image_url || "");
+  }, [item.id, selectedVariantId]);
 
   const description = item.description || "Joia selecionada da curadoria Aura Clinic.";
   const detailItems = [
@@ -649,11 +649,11 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
 
         <section className="catalog-product-detail">
           <div className="catalog-product-gallery">
-            <img className="catalog-product-hero-image" src={catalogImageUrl(activeImage || item.photo_url)} alt={productName} />
+            <img className="catalog-product-hero-image" src={catalogImageUrl(activeImage || item.photo_url)} alt="" onError={useNeutralImageFallback} />
             <div className="catalog-product-mini-gallery">
               {(uniqueGalleryImages.length ? uniqueGalleryImages : [{ image_url: item.photo_url }]).map((photo, index) => (
-                <button key={`${photo.image_url}-${index}`} type="button" className={activeImage === photo.image_url ? "active" : ""} onClick={() => setActiveImage(photo.image_url)}>
-                  <img src={catalogImageUrl(photo.image_url)} alt={`${productName} ${index + 1}`} />
+                <button key={`${item.id}-${selectedVariantId || "product"}-${photo.id || photo.image_url}`} type="button" className={activeImage === photo.image_url ? "active" : ""} onClick={() => setActiveImage(photo.image_url)} aria-label={`Selecionar imagem ${index + 1}`}>
+                  <img src={catalogImageUrl(photo.image_url)} alt="" loading="lazy" onError={useNeutralImageFallback} />
                 </button>
               ))}
             </div>
@@ -1156,8 +1156,15 @@ function tenantAwareContentUrl(url = "") {
 }
 
 function catalogImageUrl(url) {
-  if (!url) return "https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=900&q=80";
+  if (!url) return "/placeholder-jewel-neutral.svg";
   return url.startsWith("/uploads") ? `${API_ORIGIN}${url}` : url;
+}
+
+function useNeutralImageFallback(event) {
+  if (event.currentTarget.dataset.fallbackApplied) return;
+  event.currentTarget.dataset.fallbackApplied = "true";
+  event.currentTarget.src = "/placeholder-jewel-neutral.svg";
+  event.currentTarget.alt = "";
 }
 
 function catalogCategories(names = []) {
