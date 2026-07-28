@@ -1,3 +1,11 @@
+/* Camada da cascata: `app`. A ordem `base, legado, telas, app` é
+   declarada no topo de styles.css (primeiro import de main.jsx).
+   Última camada: vence styles.css e as telas públicas sem precisar de
+   especificidade extra — é o que torna este arquivo a autoridade do shell.
+   CSS fora de camada venceria todas elas — por isso o arquivo inteiro fica
+   dentro deste bloco. */
+@layer app {
+
 /* ============================================================================
    App shell — layout da área autenticada.
 
@@ -870,3 +878,5 @@
   padding-bottom: 8px;
   font-size: 10.5px;
 }
+
+} /* fim de @layer app */

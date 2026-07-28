@@ -1,4 +1,27 @@
+/* ==========================================================================
+   ORDEM DAS CAMADAS DA CASCATA — declarada aqui porque styles.css é o primeiro
+   import de main.jsx, e a ordem vale a partir da primeira declaração.
+
+     base    fundação: tokens do :root e reset. Perde para todo o resto.
+     legado  o corpo deste arquivo. Quatro gerações de CSS que redefinem os
+             mesmos seletores; dentro da camada continua valendo a ordem do
+             arquivo, exatamente como era antes.
+     telas   topnav.css, landing.css, auth.css, directory.css.
+     app     appshell.css — layout do shell autenticado. Vence todas.
+
+   REGRA DE OURO: CSS *sem* camada vence CSS de *qualquer* camada. Por isso os
+   seis arquivos de frontend/src estão todos dentro de uma camada. Se algum
+   ficar de fora, ele passa a ganhar de tudo e o visual do sistema inteiro muda.
+   Ao criar um .css novo, envolva-o numa destas camadas e importe-o em main.jsx.
+
+   Cuidado com !important: entre camadas ele INVERTE a ordem (base ganha de app).
+   Hoje os únicos !important convivem sem disputar a mesma propriedade.
+   ========================================================================== */
+@layer base, legado, telas, app;
+
 @import url("https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap");
+
+@layer base {
 
 :root {
   color-scheme: light;
@@ -50,6 +73,10 @@ button, a {
 button {
   cursor: pointer;
 }
+
+} /* fim de @layer base */
+
+@layer legado {
 
 .login-screen {
   min-height: 100vh;
@@ -1897,18 +1924,6 @@ button {
   z-index: 10;
 }
 
-.sidebar-brand {
-  padding: 14px;
-  border: 1px solid rgba(200, 169, 106, .45);
-  border-radius: 14px;
-}
-
-.sidebar-brand strong {
-  display: block;
-  font-size: 28px;
-  color: var(--gold-soft);
-}
-
 .sidebar-brand span {
   display: block;
   color: #cfc7bf;
@@ -1942,13 +1957,6 @@ button {
 }
 
 /* --- Gating por plano: menu, banner de trial e tela "Meu plano" --- */
-.sidebar nav button.locked {
-  opacity: .6;
-}
-.sidebar nav button .lock-icon {
-  margin-left: auto;
-  opacity: .8;
-}
 .sidebar .plan-link {
   display: flex;
   align-items: center;
@@ -2039,11 +2047,6 @@ button {
 .catalog-link-actions .primary-button,
 .catalog-link-actions .secondary-button { text-decoration: none; padding: 8px 14px; }
 
-.sidebar nav {
-  display: grid;
-  gap: 8px;
-}
-
 .sidebar button {
   width: 100%;
   border: 0;
@@ -2083,11 +2086,6 @@ button {
 
 .logout-button {
   margin-top: auto;
-}
-
-.main-content {
-  padding: 28px;
-  min-width: 0;
 }
 
 .topbar {
@@ -5676,14 +5674,6 @@ textarea:focus-visible {
   outline-offset: 2px;
 }
 
-.main-content {
-  padding: clamp(18px, 3vw, 36px);
-}
-
-.topbar {
-  padding: 2px 0 8px;
-}
-
 .topbar h1 {
   letter-spacing: 0;
   font-weight: 760;
@@ -5691,25 +5681,6 @@ textarea:focus-visible {
 
 .eyebrow {
   color: var(--nude-strong);
-}
-
-.sidebar {
-  padding: 24px 16px;
-  box-shadow: 18px 0 44px rgba(28, 28, 28, .10);
-}
-
-.sidebar-brand {
-  padding: 18px;
-  background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(200,169,106,.055));
-}
-
-.sidebar-brand strong {
-  font-size: 30px;
-  letter-spacing: .02em;
-}
-
-.sidebar nav {
-  gap: 6px;
 }
 
 .sidebar button {
@@ -6398,10 +6369,6 @@ body {
     linear-gradient(135deg, #fbfaf7 0%, #F8F5F0 48%, #f4eee5 100%);
 }
 
-.app-shell {
-  grid-template-columns: 292px 1fr;
-}
-
 .sidebar {
   margin: 0;
   padding: 32px 18px 24px;
@@ -6423,15 +6390,6 @@ body {
   color: #C8A96A;
 }
 
-.sidebar-brand strong {
-  font-family: var(--title-font);
-  font-size: 76px;
-  line-height: .82;
-  font-weight: 400;
-  color: #C8A96A;
-  text-transform: uppercase;
-}
-
 .sidebar-brand span {
   margin-top: 10px;
   font-family: var(--title-font);
@@ -6439,14 +6397,6 @@ body {
   letter-spacing: 5px;
   text-transform: uppercase;
   color: #C8A96A;
-}
-
-.sidebar-brand small {
-  display: none;
-}
-
-.sidebar nav {
-  gap: 12px;
 }
 
 .sidebar button {
@@ -6478,21 +6428,9 @@ body {
   background: rgba(255, 255, 255, .04) !important;
 }
 
-.main-content {
-  padding: 52px 38px 42px;
-}
-
 .topbar {
   align-items: flex-start;
   margin-bottom: 30px;
-}
-
-.topbar-title h1 {
-  margin: 0;
-  font-family: var(--title-font);
-  font-size: clamp(32px, 4vw, 46px);
-  font-weight: 400;
-  letter-spacing: 0;
 }
 
 .topbar-title p {
@@ -8970,23 +8908,12 @@ body {
 }
 
 /* Premium cleanup: sidebar and public storefront */
-.sidebar {
-  width: min(264px, 22vw);
-  padding: 22px 18px 18px;
-  gap: 16px;
-}
-
 .sidebar-brand {
   padding: 18px 14px 16px;
   margin-bottom: 0;
   border-radius: 18px;
   background: linear-gradient(180deg, rgba(28, 28, 28, .98), rgba(14, 14, 14, .98));
   box-shadow: inset 0 0 0 1px rgba(200, 169, 106, .18);
-}
-
-.sidebar-brand strong {
-  font-size: 2.9rem;
-  line-height: .9;
 }
 
 .sidebar-brand span {
@@ -9000,10 +8927,6 @@ body {
   color: rgba(255, 245, 225, .72);
   font-size: .72rem;
   line-height: 1.35;
-}
-
-.sidebar nav {
-  gap: 8px;
 }
 
 .sidebar button {
@@ -9934,10 +9857,6 @@ body,
   text-align: center;
 }
 
-.premium-metric-grid {
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-}
-
 .premium-dashboard-grid,
 .premium-lower-grid,
 .premium-ranking-grid {
@@ -10652,3 +10571,5 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--gold); width: 
 .landing-footer a { font-weight: 600; color: var(--gold-dark, #A87A34); }
 
 /* ============================ DIRETÓRIO PÚBLICO DE CATÁLOGOS (/catalogo sem ?t) ============================ */
+
+} /* fim de @layer legado */

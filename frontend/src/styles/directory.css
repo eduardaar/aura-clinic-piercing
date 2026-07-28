@@ -1,3 +1,10 @@
+/* Camada da cascata: `telas`. A ordem `base, legado, telas, app` é
+   declarada no topo de styles.css (primeiro import de main.jsx).
+   Vence o legado de styles.css; perde para appshell.css (camada `app`).
+   CSS fora de camada venceria todas elas — por isso o arquivo inteiro fica
+   dentro deste bloco. */
+@layer telas {
+
 /* =========================================================================
    Diretórios públicos — /catalogo e /agendar sem ?t=<slug>.
 
@@ -415,3 +422,5 @@
   .au-dir-clear { transition: none; }
   .au-dir-card:hover { transform: none; }
 }
+
+} /* fim de @layer telas */

@@ -1,3 +1,10 @@
+/* Camada da cascata: `telas`. A ordem `base, legado, telas, app` é
+   declarada no topo de styles.css (primeiro import de main.jsx).
+   Vence o legado de styles.css; perde para appshell.css (camada `app`).
+   CSS fora de camada venceria todas elas — por isso o arquivo inteiro fica
+   dentro deste bloco. */
+@layer telas {
+
 /* =========================================================================
    Landing pública (rota "/") — namespace exclusivo `au-l-`.
    Tudo ancorado em `.au-l-root` para não colidir com o CSS legado
@@ -703,3 +710,5 @@
   .au-l-root .au-l-link-card { transition: none; }
   .au-l-root .au-l-link-card:hover { transform: none; }
 }
+
+} /* fim de @layer telas */

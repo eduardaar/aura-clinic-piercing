@@ -1,3 +1,10 @@
+/* Camada da cascata: `telas`. A ordem `base, legado, telas, app` é
+   declarada no topo de styles.css (primeiro import de main.jsx).
+   Vence o legado de styles.css; perde para appshell.css (camada `app`).
+   CSS fora de camada venceria todas elas — por isso o arquivo inteiro fica
+   dentro deste bloco. */
+@layer telas {
+
 /* =============================================================
    Aura Clinic — telas de autenticação (login + cadastro)
 
@@ -799,3 +806,5 @@
   /* Não vira split em tela grande: a coluna única é o próprio disfarce. */
   .au-a-root.au-a-restricted { grid-template-columns: minmax(0, 1fr); }
 }
+
+} /* fim de @layer telas */
