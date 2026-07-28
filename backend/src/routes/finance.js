@@ -7,8 +7,20 @@ import { requireRole } from "../middleware/auth.js";
 import { csvEscape, writePdfMetric, formatCurrency } from "../services/utils.js";
 import { buildFinanceReport } from "../services/finance.js";
 import { ledgerReport, normalizeEntry, processRecurringEntries } from "../services/financeLedger.js";
+import { parsePaging } from "../services/pagination.js";
 
 const router = Router();
+
+// Whitelist de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
+const LEDGER_SORTABLE = {
+  due_date: "e.due_date",
+  competence_date: "e.competence_date",
+  amount: "e.amount",
+  status: "e.status",
+  entry_type: "e.entry_type",
+  description: "e.description",
+  category: "e.category"
+};
 
 router.get("/api/finance", withFeature("basic_finance", async (_req, res, db) => {
   if (!requireRole(_req, res, ["admin", "finance"])) return;
@@ -60,9 +72,43 @@ router.delete("/api/expenses/:id", withFeature("basic_finance", async (req, res,
   res.json({ ok: true });
 }));
 
+// O ledger é um RELATÓRIO, não uma lista: além dos lançamentos ele devolve
+// caixa, DRE e inadimplência. Por isso a paginação recorta só `entries` e
+// acrescenta total/limit/offset ao objeto — sem limit/offset a resposta é
+// byte a byte a de antes. Os indicadores seguem somando o período inteiro.
 router.get("/api/finance/ledger", withFeature("advanced_finance", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "finance"])) return;
-  res.json(await ledgerReport(db, req.query.from, req.query.to));
+  const filters = [];
+  const filterParams = [];
+  if (req.query.status) {
+    filters.push("e.status = ?");
+    filterParams.push(req.query.status);
+  }
+  if (req.query.entry_type) {
+    filters.push("e.entry_type = ?");
+    filterParams.push(req.query.entry_type);
+  }
+  if (req.query.cost_center_id) {
+    filters.push("e.cost_center_id = ?");
+    filterParams.push(req.query.cost_center_id);
+  }
+  if (req.query.search) {
+    filters.push("(e.description ILIKE ? OR e.category ILIKE ? OR e.notes ILIKE ?)");
+    filterParams.push(...Array(3).fill(`%${req.query.search}%`));
+  }
+  const paging = parsePaging(req.query, {
+    sortable: LEDGER_SORTABLE,
+    tieBreak: "e.id",
+    defaultOrderBy: "ORDER BY e.due_date DESC, e.id DESC"
+  });
+  const { total, ...report } = await ledgerReport(db, {
+    from: req.query.from,
+    to: req.query.to,
+    filters,
+    filterParams,
+    paging
+  });
+  res.json(paging.paginated ? { ...report, total, limit: paging.limit, offset: paging.offset } : report);
 }));
 
 router.post("/api/finance/entries", withFeature("advanced_finance", async (req, res, db) => {

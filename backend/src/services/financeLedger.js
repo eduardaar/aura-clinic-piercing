@@ -1,3 +1,5 @@
+import { limitOffset } from "./pagination.js";
+
 const VALID_TYPES = new Set(["payable", "receivable", "income", "expense"]);
 const VALID_STATUSES = new Set(["pending", "paid", "overdue", "canceled", "partially_paid", "refunded"]);
 
@@ -65,23 +67,41 @@ export async function syncFinanceSources(db) {
   `);
 }
 
-export async function ledgerReport(db, from, to) {
+const LEDGER_FROM = "financial_entries e LEFT JOIN financial_cost_centers c ON c.id=e.cost_center_id";
+const LEDGER_ORDER_BY = "ORDER BY e.due_date DESC, e.id DESC";
+
+// `filters`/`filterParams` são fragmentos de WHERE montados pela rota (nunca
+// texto do cliente); `paging` é opcional e só recorta a lista `entries`.
+export async function ledgerReport(db, { from, to, filters = [], filterParams = [], paging = null } = {}) {
   await syncFinanceSources(db);
   const start = from || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
   const end = to || new Date().toISOString().slice(0, 10);
   await db.run("UPDATE financial_entries SET status='overdue', updated_at=CURRENT_TIMESTAMP WHERE status='pending' AND due_date < ?", [new Date().toISOString().slice(0, 10)]);
-  const entries = await db.all(`
-    SELECT e.*, c.name AS cost_center_name
-    FROM financial_entries e LEFT JOIN financial_cost_centers c ON c.id=e.cost_center_id
-    WHERE e.competence_date BETWEEN ? AND ? ORDER BY e.due_date DESC, e.id DESC
-  `, [start, end]);
-  const active = entries.filter((item) => item.status !== "canceled");
+  const where = `WHERE ${["e.competence_date BETWEEN ? AND ?", ...filters].join(" AND ")}`;
+  const params = [start, end, ...filterParams];
+  const orderBy = paging?.orderBy || LEDGER_ORDER_BY;
+  const page = limitOffset(paging);
+  const entries = await db.all(
+    `SELECT e.*, c.name AS cost_center_name FROM ${LEDGER_FROM} ${where} ${orderBy}${page.clause}`,
+    [...params, ...page.params]
+  );
+  // Os indicadores (caixa, DRE, inadimplência) continuam somando TODO o período
+  // filtrado, nunca só a página. Quando paginado, quem alimenta as somas é um
+  // SELECT enxuto de 4 colunas em vez do `e.*` completo. A ordenação é mantida
+  // para que as somas em ponto flutuante deem exatamente o mesmo resultado.
+  const summary = paging?.paginated
+    ? await db.all(
+      `SELECT e.entry_type, e.status, e.amount, e.paid_amount FROM ${LEDGER_FROM} ${where} ${orderBy}`,
+      params
+    )
+    : entries;
+  const active = summary.filter((item) => item.status !== "canceled");
   const incomes = active.filter((item) => ["income", "receivable"].includes(item.entry_type));
   const expenses = active.filter((item) => ["expense", "payable"].includes(item.entry_type));
   const received = incomes.reduce((sum, item) => sum + Number(item.paid_amount || 0), 0);
   const paid = expenses.reduce((sum, item) => sum + Number(item.paid_amount || 0), 0);
   return {
-    from: start, to: end, entries,
+    from: start, to: end, entries, total: summary.length,
     cashflow: { received, paid, balance: received - paid },
     dre: {
       gross_revenue: incomes.reduce((sum, item) => sum + Number(item.amount || 0), 0),

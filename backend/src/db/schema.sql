@@ -1092,3 +1092,24 @@ CREATE INDEX IF NOT EXISTS idx_post_care_followups_due ON post_care_followups(du
 CREATE INDEX IF NOT EXISTS idx_jewelry_category_name ON jewelry_inventory(category, name);
 CREATE INDEX IF NOT EXISTS idx_appointments_status_date ON appointments(status, appointment_date);
 CREATE INDEX IF NOT EXISTS idx_clients_created ON clients(created_at);
+
+-- Segunda leva: ordenação/filtro das listagens que passaram a paginar agora.
+-- A ordenação padrão de cada lista vem primeiro; os filtros comuns (status,
+-- período, chave estrangeira) entram como prefixo ou coluna adicional.
+CREATE INDEX IF NOT EXISTS idx_post_care_followups_status_due ON post_care_followups(status, due_date, reminder_day);
+CREATE INDEX IF NOT EXISTS idx_post_care_followups_client ON post_care_followups(client_id);
+CREATE INDEX IF NOT EXISTS idx_post_care_followups_appointment ON post_care_followups(appointment_id);
+CREATE INDEX IF NOT EXISTS idx_digital_terms_client ON digital_terms(client_id);
+CREATE INDEX IF NOT EXISTS idx_digital_terms_appointment ON digital_terms(appointment_id);
+CREATE INDEX IF NOT EXISTS idx_notification_queue_created ON notification_queue(created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_coupons_created ON coupons(created_at DESC, id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_catalog_promotions_priority ON catalog_promotions(priority DESC, created_at DESC, id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_financial_entries_competence_due ON financial_entries(competence_date, due_date DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_procedures_service_name ON procedures(service_id, name);
+CREATE INDEX IF NOT EXISTS idx_procedures_name ON procedures(name);
+CREATE INDEX IF NOT EXISTS idx_professionals_active_name ON professionals(active DESC, name);
+CREATE INDEX IF NOT EXISTS idx_professional_services_service ON professional_services(service_id);
+CREATE INDEX IF NOT EXISTS idx_services_active_name ON services(active_online_booking DESC, name);
+CREATE INDEX IF NOT EXISTS idx_users_name ON users(name);
+CREATE INDEX IF NOT EXISTS idx_schedule_blocks_start ON schedule_blocks(start_datetime DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_schedule_blocks_professional_start ON schedule_blocks(professional_id, start_datetime DESC);

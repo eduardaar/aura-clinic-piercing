@@ -193,10 +193,30 @@ async function decorateService(db, service) {
   return service;
 }
 
-export async function listServices(db) {
-  const services = await db.all("SELECT * FROM services ORDER BY active_online_booking DESC, name");
-  for (const service of services) await decorateService(db, service);
-  return services;
+// `paging` é opcional: sem ele o comportamento é o de sempre (lista inteira).
+// O N+1 do professional_ids virou uma consulta só, restrita à página.
+export async function listServices(db, { where = "", params = [], paging = null } = {}) {
+  const page = limitOffset(paging);
+  const orderBy = paging?.orderBy || "ORDER BY active_online_booking DESC, name";
+  const services = await db.all(
+    `SELECT * FROM services ${where} ${orderBy}${page.clause}`,
+    [...params, ...page.params]
+  );
+  if (!services.length) return services;
+  const links = await db.all(
+    `SELECT service_id, professional_id FROM professional_services WHERE service_id IN (${services.map(() => "?").join(",")})`,
+    services.map((service) => service.id)
+  );
+  return services.map((service) => ({
+    ...service,
+    base_price: service.price,
+    is_active: service.active_online_booking,
+    professional_ids: links.filter((link) => link.service_id === service.id).map((link) => link.professional_id)
+  }));
+}
+
+export async function countServices(db, { where = "", params = [] } = {}) {
+  return countRows(db, { from: "services", where, params });
 }
 
 // Busca direta por id, para responder a criação/edição sem varrer a lista.

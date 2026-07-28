@@ -5,9 +5,18 @@ import { withDb } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
 import { userCreateSchema, userUpdateSchema } from "../schemas/index.js";
+import { parsePaging, fetchPage, pageResponse } from "../services/pagination.js";
 
 const router = Router();
 const LAST_ADMIN_MESSAGE = "Não é possível remover o acesso do último administrador geral. Cadastre ou promova outro administrador antes de alterar esta conta.";
+
+// Whitelist de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
+const USER_SORTABLE = {
+  name: "name",
+  email: "email",
+  role: "role",
+  created_at: "created_at"
+};
 
 async function assertAdminContinuity(db, targetUser, nextRole) {
   if (targetUser.role !== "admin" || nextRole === "admin") return null;
@@ -16,9 +25,34 @@ async function assertAdminContinuity(db, targetUser, nextRole) {
   return null;
 }
 
-router.get("/api/users", withDb(async (_req, res, db) => {
-  if (!requireRole(_req, res, ["admin"])) return;
-  res.json(await db.all("SELECT id, name, email, role, created_at FROM users ORDER BY name"));
+router.get("/api/users", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin"])) return;
+  const clauses = [];
+  const params = [];
+  if (req.query.role) {
+    clauses.push("role = ?");
+    params.push(req.query.role);
+  }
+  if (req.query.search) {
+    clauses.push("(name ILIKE ? OR email ILIKE ?)");
+    params.push(...Array(2).fill(`%${req.query.search}%`));
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const paging = parsePaging(req.query, {
+    sortable: USER_SORTABLE,
+    tieBreak: "id",
+    defaultOrderBy: "ORDER BY name, id"
+  });
+  // Nunca devolve password_hash: a lista de colunas é fixa no servidor.
+  const { rows, total } = await fetchPage(db, {
+    select: "id, name, email, role, created_at",
+    from: "users",
+    where,
+    params,
+    orderBy: paging.orderBy,
+    paging
+  });
+  res.json(pageResponse(rows, total, paging));
 }));
 
 router.post("/api/users", withDb(async (req, res, db) => {

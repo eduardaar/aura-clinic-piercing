@@ -6,6 +6,7 @@ import { attachVariants } from "../services/inventory.js";
 import { groupInventoryOptions, splitCatalogCategories } from "../services/utils.js";
 import { validateCoupon } from "../services/discounts.js";
 import { quotePromotions } from "../services/promotions.js";
+import { parsePaging, fetchPage, pageResponse } from "../services/pagination.js";
 import {
   getCatalogCustomization,
   getCatalogSettings,
@@ -16,6 +17,26 @@ import {
 } from "../services/catalog.js";
 
 const router = Router();
+
+// Whitelists de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
+const COUPON_SORTABLE = {
+  created_at: "c.created_at",
+  code: "c.code",
+  name: "c.internal_name",
+  status: "c.status",
+  discount: "c.discount_value",
+  ends_at: "c.ends_at"
+};
+
+const PROMOTION_SORTABLE = {
+  priority: "p.priority",
+  created_at: "p.created_at",
+  name: "p.name",
+  status: "p.status",
+  discount: "p.discount_value",
+  start_date: "p.start_date",
+  end_date: "p.end_date"
+};
 
 router.post("/api/catalog/events", withDb(async (req, res, db) => {
   const eventType = String(req.body?.event_type || "");
@@ -170,15 +191,42 @@ router.get("/api/catalog-settings", withDb(async (req, res, db) => {
 
 router.get("/api/coupons", withFeature("coupons", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
-  const coupons = await db.all(`
-    SELECT c.*,
+  // O cupom "apagado" continua fora da lista: é o filtro base, não um opcional.
+  const clauses = ["c.deleted_at IS NULL"];
+  const params = [];
+  if (req.query.status) {
+    clauses.push("c.status = ?");
+    params.push(req.query.status);
+  }
+  if (req.query.from) {
+    clauses.push("c.created_at >= ?");
+    params.push(req.query.from);
+  }
+  if (req.query.to) {
+    clauses.push("c.created_at <= ?");
+    params.push(`${req.query.to} 23:59:59`);
+  }
+  if (req.query.search) {
+    clauses.push("(c.code ILIKE ? OR c.internal_name ILIKE ? OR c.description ILIKE ?)");
+    params.push(...Array(3).fill(`%${req.query.search}%`));
+  }
+  const where = `WHERE ${clauses.join(" AND ")}`;
+  const paging = parsePaging(req.query, {
+    sortable: COUPON_SORTABLE,
+    tieBreak: "c.id",
+    defaultOrderBy: "ORDER BY c.created_at DESC, c.id DESC"
+  });
+  const { rows, total } = await fetchPage(db, {
+    select: `c.*,
       (SELECT COUNT(*) FROM coupon_usages u WHERE u.coupon_id = c.id) AS usage_count,
-      (SELECT COALESCE(SUM(discount_amount), 0) FROM coupon_usages u WHERE u.coupon_id = c.id) AS total_discount
-    FROM coupons c
-    WHERE c.deleted_at IS NULL
-    ORDER BY c.created_at DESC, c.id DESC
-  `);
-  res.json(coupons);
+      (SELECT COALESCE(SUM(discount_amount), 0) FROM coupon_usages u WHERE u.coupon_id = c.id) AS total_discount`,
+    from: "coupons c",
+    where,
+    params,
+    orderBy: paging.orderBy,
+    paging
+  });
+  res.json(pageResponse(rows, total, paging));
 }));
 
 router.post("/api/coupons", withFeature("coupons", async (req, res, db) => {
@@ -292,15 +340,42 @@ router.post("/api/catalog/price-quote", withDb(async (req, res, db) => {
 
 router.get("/api/promotions", withFeature("campaigns", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
-  const rows = await db.all(`
-    SELECT p.*,
+  const clauses = ["p.deleted_at IS NULL"];
+  const params = [];
+  if (req.query.status) {
+    clauses.push("p.status = ?");
+    params.push(req.query.status);
+  }
+  // Período pela vigência da campanha: pega tudo que se sobrepõe ao intervalo.
+  if (req.query.from) {
+    clauses.push("(p.end_date IS NULL OR p.end_date >= ?)");
+    params.push(req.query.from);
+  }
+  if (req.query.to) {
+    clauses.push("(p.start_date IS NULL OR p.start_date <= ?)");
+    params.push(req.query.to);
+  }
+  if (req.query.search) {
+    clauses.push("(p.name ILIKE ? OR p.description ILIKE ? OR p.badge ILIKE ?)");
+    params.push(...Array(3).fill(`%${req.query.search}%`));
+  }
+  const where = `WHERE ${clauses.join(" AND ")}`;
+  const paging = parsePaging(req.query, {
+    sortable: PROMOTION_SORTABLE,
+    tieBreak: "p.id",
+    defaultOrderBy: "ORDER BY p.priority DESC, p.created_at DESC, p.id DESC"
+  });
+  const { rows, total } = await fetchPage(db, {
+    select: `p.*,
       (SELECT COUNT(*) FROM promotion_usages u WHERE u.promotion_id = p.id) AS usage_count,
-      (SELECT COALESCE(SUM(discount_amount), 0) FROM promotion_usages u WHERE u.promotion_id = p.id) AS total_discount
-    FROM catalog_promotions p
-    WHERE p.deleted_at IS NULL
-    ORDER BY p.priority DESC, p.created_at DESC, p.id DESC
-  `);
-  res.json(rows);
+      (SELECT COALESCE(SUM(discount_amount), 0) FROM promotion_usages u WHERE u.promotion_id = p.id) AS total_discount`,
+    from: "catalog_promotions p",
+    where,
+    params,
+    orderBy: paging.orderBy,
+    paging
+  });
+  res.json(pageResponse(rows, total, paging));
 }));
 
 router.post("/api/promotions", withFeature("campaigns", async (req, res, db) => {

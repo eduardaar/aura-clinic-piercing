@@ -4,8 +4,16 @@ import { withDb } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { boolNumber } from "../services/utils.js";
 import { normalizeWhatsappNumber } from "../services/notifications.js";
+import { parsePaging, fetchPage, pageResponse } from "../services/pagination.js";
 
 const router = Router();
+
+// Whitelist de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
+const PROFESSIONAL_SORTABLE = {
+  name: "name",
+  specialty: "specialty",
+  active: "active"
+};
 
 async function replaceProfessionalServices(db, professionalId, serviceIds = []) {
   const ids = Array.isArray(serviceIds) ? serviceIds : String(serviceIds || "").split(",");
@@ -18,9 +26,15 @@ async function replaceProfessionalServices(db, professionalId, serviceIds = []) 
   }
 }
 
-async function listProfessionals(db) {
-  const professionals = await db.all("SELECT * FROM professionals ORDER BY active DESC, name");
-  const rows = await db.all("SELECT professional_id, service_id FROM professional_services");
+// Anexa service_ids apenas aos profissionais da página: antes a rota lia a
+// tabela professional_services inteira para depois filtrar em memória.
+async function attachServiceIds(db, professionals) {
+  if (!professionals.length) return professionals;
+  const placeholders = professionals.map(() => "?").join(",");
+  const rows = await db.all(
+    `SELECT professional_id, service_id FROM professional_services WHERE professional_id IN (${placeholders})`,
+    professionals.map((professional) => professional.id)
+  );
   return professionals.map((professional) => ({
     ...professional,
     service_ids: rows.filter((row) => row.professional_id === professional.id).map((row) => row.service_id)
@@ -36,8 +50,33 @@ async function getProfessional(db, id) {
   return { ...professional, service_ids: rows.map((row) => row.service_id) };
 }
 
-router.get("/api/professionals", withDb(async (_req, res, db) => {
-  res.json(await listProfessionals(db));
+router.get("/api/professionals", withDb(async (req, res, db) => {
+  const clauses = [];
+  const params = [];
+  // `status` aqui é "active"/"inactive" (a coluna é o booleano active).
+  if (req.query.status) {
+    clauses.push("active = ?");
+    params.push(req.query.status === "active" ? 1 : 0);
+  }
+  if (req.query.search) {
+    clauses.push("(name ILIKE ? OR specialty ILIKE ? OR email ILIKE ? OR whatsapp ILIKE ?)");
+    params.push(...Array(4).fill(`%${req.query.search}%`));
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const paging = parsePaging(req.query, {
+    sortable: PROFESSIONAL_SORTABLE,
+    tieBreak: "id",
+    defaultOrderBy: "ORDER BY active DESC, name, id"
+  });
+  const { rows, total } = await fetchPage(db, {
+    select: "*",
+    from: "professionals",
+    where,
+    params,
+    orderBy: paging.orderBy,
+    paging
+  });
+  res.json(pageResponse(await attachServiceIds(db, rows), total, paging));
 }));
 
 router.post("/api/professionals", withDb(async (req, res, db) => {

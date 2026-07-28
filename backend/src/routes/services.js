@@ -3,14 +3,43 @@ import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { boolNumber } from "../services/utils.js";
-import { listServices, getService, replaceProfessionalServices } from "../services/appointments.js";
+import { listServices, countServices, getService, replaceProfessionalServices } from "../services/appointments.js";
 import { validateBody } from "../middleware/validate.js";
 import { serviceCreateSchema, serviceUpdateSchema } from "../schemas/index.js";
+import { parsePaging, pageResponse } from "../services/pagination.js";
 
 const router = Router();
 
-router.get("/api/services", withDb(async (_req, res, db) => {
-  res.json(await listServices(db));
+// Whitelist de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
+const SERVICE_SORTABLE = {
+  name: "name",
+  price: "price",
+  duration: "duration_minutes",
+  active: "active_online_booking",
+  created_at: "created_at"
+};
+
+router.get("/api/services", withDb(async (req, res, db) => {
+  const clauses = [];
+  const params = [];
+  // `status` aqui é "active"/"inactive" (a coluna é active_online_booking).
+  if (req.query.status) {
+    clauses.push("active_online_booking = ?");
+    params.push(req.query.status === "active" ? 1 : 0);
+  }
+  if (req.query.search) {
+    clauses.push("(name ILIKE ? OR description ILIKE ?)");
+    params.push(...Array(2).fill(`%${req.query.search}%`));
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const paging = parsePaging(req.query, {
+    sortable: SERVICE_SORTABLE,
+    tieBreak: "id",
+    defaultOrderBy: "ORDER BY active_online_booking DESC, name, id"
+  });
+  const items = await listServices(db, { where, params, paging });
+  const total = paging.paginated ? await countServices(db, { where, params }) : items.length;
+  res.json(pageResponse(items, total, paging));
 }));
 
 router.post("/api/services", withDb(async (req, res, db) => {
