@@ -6,8 +6,11 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "test": "node --test tests/*.test.mjs",
-    "preview": "vite preview --host 0.0.0.0"
+    "test": "npm run test:unit && npm run test:components",
+    "preview": "vite preview --host 0.0.0.0",
+    "test:unit": "node --test tests/*.test.mjs",
+    "test:components": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
@@ -16,7 +19,12 @@
     "react-router-dom": "^6.28.0"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^5.4.11"
+    "jsdom": "^25.0.1",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.9"
   }
 }

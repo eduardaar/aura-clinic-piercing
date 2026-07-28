@@ -34,16 +34,22 @@ export const MONTH_OPTIONS = [
 const fold = (value) =>
   String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
-function compareValues(a, b) {
-  if (a === b) return 0;
-  if (a === null || a === undefined || a === "") return 1;   // vazios sempre no fim
-  if (b === null || b === undefined || b === "") return -1;
-  const na = Number(a);
-  const nb = Number(b);
-  if (!Number.isNaN(na) && !Number.isNaN(nb) && String(a).trim() !== "" && String(b).trim() !== "") {
-    return na - nb;
-  }
-  return fold(a).localeCompare(fold(b), "pt-BR");
+const isEmpty = (value) => value === null || value === undefined || value === "";
+const isNumeric = (value) => !isEmpty(value) && String(value).trim() !== "" && !Number.isNaN(Number(value));
+
+// O modo de comparação é decidido para a COLUNA INTEIRA, não par a par. Decidir
+// par a par produz uma ordem não-transitiva quando a coluna mistura número e
+// texto: com 9, 10 e "1a" resultava em 9<10, 10<"1a" e 9>"1a" ao mesmo tempo, e
+// aí o resultado passa a depender do algoritmo de sort do motor JS.
+function comparatorFor(values) {
+  const numerica = values.filter((v) => !isEmpty(v)).every(isNumeric);
+  return (a, b) => {
+    if (a === b) return 0;
+    if (isEmpty(a)) return 1;   // vazios sempre no fim, nos dois modos
+    if (isEmpty(b)) return -1;
+    if (numerica) return Number(a) - Number(b);
+    return fold(a).localeCompare(fold(b), "pt-BR");
+  };
 }
 
 // Valor usado para buscar e ordenar. `render` pode devolver JSX, então a coluna
@@ -114,7 +120,13 @@ export function DataView({
   const setPage = (value) => (onPageChange ? onPageChange(value) : setPageState(value));
   const setPageSize = (value) => (onPageSizeChange ? onPageSizeChange(value) : setPageSizeState(value));
 
-  const activeFilters = Object.entries(filterValues).filter(([, v]) => v !== "" && v !== undefined && v !== null);
+  // Só conta como filtro ativo o que está declarado em `filters`. Sem esse
+  // cruzamento, uma chave extra guardada em filterValues (ou um filtro montado
+  // condicionalmente, tipo "só admin") acendia o contador e fazia o estado
+  // vazio dizer "nenhum resultado para o filtro" sem filtro nenhum aplicado.
+  const activeFilters = Object.entries(filterValues).filter(
+    ([key, v]) => v !== "" && v !== undefined && v !== null && filters.some((f) => f.key === key)
+  );
   const hasQuery = Boolean(search) || activeFilters.length > 0;
 
   // Mudar busca ou filtro invalida a página atual — senão o usuário fica numa
@@ -150,8 +162,9 @@ export function DataView({
     if (sort?.key) {
       const col = columns.find((c) => c.key === sort.key);
       if (col) {
+        const compare = comparatorFor(result.map((row) => cellValue(col, row)));
         result = [...result].sort((a, b) => {
-          const diff = compareValues(cellValue(col, a), cellValue(col, b));
+          const diff = compare(cellValue(col, a), cellValue(col, b));
           return sort.dir === "desc" ? -diff : diff;
         });
       }
@@ -314,7 +327,7 @@ export function DataView({
         </div>
       )}
 
-      {paginated && !error && !loading && total > 0 && (
+      {paginated && !error && !loading && total > 0 && visible.length > 0 && (
         <div className="dataview-pagination">
           <span className="dataview-range">
             {firstRow}–{lastRow} de {total}
