@@ -1,52 +1,7 @@
-import React, { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import React, { lazy, Suspense, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
-import {
-  AlertTriangle,
-  ArrowLeft,
-  Bell,
-  Cake,
-  Calendar,
-  ChevronLeft,
-  ChevronRight,
-  CheckCircle2,
-  CircleDollarSign,
-  Clock,
-  Download,
-  Gem,
-  Heart,
-  Home,
-  ImageIcon,
-  Instagram,
-  LayoutGrid,
-  ListFilter,
-  FileSignature,
-  HeartPulse,
-  LogOut,
-  Mail,
-  MapPin,
-  Menu,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Pencil,
-  Plus,
-  Search,
-  ShieldCheck,
-  MessageCircle,
-  ShoppingCart,
-  SlidersHorizontal,
-  Sparkles,
-  Star,
-  Table2,
-  Truck,
-  Trash2,
-  Trophy,
-  UserRound,
-  UsersRound,
-  WalletCards,
-  X,
-  XCircle
-} from "lucide-react";
+import { Bell, Calendar, Menu, PanelLeftClose, PanelLeftOpen, UserRound } from "lucide-react";
 import "./styles.css";
 import "./styles/topnav.css";
 import "./styles/landing.css";
@@ -56,18 +11,14 @@ import "./styles/directory.css";
 import "./styles/appshell.css";
 import { Login } from "./components/auth/Login";
 import { Sidebar } from "./components/layout/Sidebar";
-import { Loading, ApiError } from "./components/common/Feedback";
+import { Loading } from "./components/common/Feedback";
 import { AppErrorBoundary } from "./components/common/AppErrorBoundary";
-import { AlertBlock, BookingChoiceGrid, Input, Metric, PaymentSelect, Select, StatusSelect } from "./components/common/Ui";
-import { asArray, asNumber, asObject, removeAccents, firstName, initials, formatDate, formatLongDate, localDateValue, dateInputValue } from "./lib/utils";
-import { API, API_ORIGIN, apiFetch, downloadApiFile, readStoredSession, useFetch, usePublicFetch } from "./lib/api";
+import { asArray, asNumber, firstName } from "./lib/utils";
+import { API_ORIGIN, apiFetch, readStoredSession } from "./lib/api";
 import { queryClient } from "./lib/queryClient";
 import { installGlobalErrorReporting } from "./lib/errorReporter";
 import { canAccessPage, defaultPageForRole, pageTitle } from "./lib/permissions";
-import { buildCalendar, buildTimeSlots, dateKey, movePeriod } from "./lib/calendarUtils";
-import { ANODIZATION_COLOR_OPTIONS, DIGITAL_TERM_HEALTH_ITEMS, DIGITAL_TERM_LIFESTYLE_ITEMS, JEWELRY_CATEGORY_OPTIONS, JEWELRY_LENGTH_OPTIONS, JEWELRY_THICKNESS_OPTIONS, JEWELRY_THREAD_OPTIONS, defaultAccessUser, defaultAppointment, defaultCatalogSettings, defaultDigitalTerm, defaultExpense, defaultJewelry, defaultJewelryVariant, defaultMedicalRecord, defaultProcedureForm, defaultSalesLine, defaultSalesOrderForm, defaultScheduleBlock, defaultServiceForm, normalizeJewelryForm, parseGalleryUrls } from "./lib/defaultForms";
-import { catalogCategoryTerms, catalogFilterOptions, catalogPromotionForItem, catalogStockText, cleanDisplayText, elegantProductName, normalizeJewelryMaterial, normalizeJewelryThread, promotionalPrice, splitColorOptions } from "./features/catalog/catalogUtils";
-import { calcRemaining, catalogImageUrl, currency, formatRevenueAxisLabel, formatRevenueLabel, inventoryStatusClass, inventoryStatusLabel, inventoryStockState, jewelrySkuBase, matchesClientSearch, roleLabel, saleItemLabel, saleOrderTypeLabel, statusClass, statuses, weekdayLabel, whatsappUrl } from "./features/shared/helpers";
+import { roleLabel } from "./features/shared/helpers";
 
 if (typeof __AURA_BUILD__ !== "undefined") {
   console.info("Aura Clinic ERP", __AURA_BUILD__);
@@ -84,7 +35,6 @@ const SalesWorkspace = lazy(() => import("./features/sales/Sales").then((m) => (
 const FinanceAdmin = lazy(() => import("./features/finance/Finance").then((m) => ({ default: m.FinanceAdmin })));
 const Reports = lazy(() => import("./features/reports/Reports").then((m) => ({ default: m.Reports })));
 const AccessAdmin = lazy(() => import("./features/access/AccessAdmin").then((m) => ({ default: m.AccessAdmin })));
-const AuraERP = lazy(() => import("./features/access/AccessAdmin").then((m) => ({ default: m.AuraERP })));
 const ClientWorkspace = lazy(() => import("./features/clients/ClientsMedical").then((m) => ({ default: m.ClientWorkspace })));
 const ClientsMedical = lazy(() => import("./features/clients/ClientsMedical").then((m) => ({ default: m.ClientsMedical })));
 const DigitalTerms = lazy(() => import("./features/terms/DigitalTerms").then((m) => ({ default: m.DigitalTerms })));
@@ -99,7 +49,6 @@ const MyPlan = lazy(() => import("./features/platform/MyPlan").then((m) => ({ de
 const Landing = lazy(() => import("./pages/Landing").then((m) => ({ default: m.Landing })));
 const CatalogDirectory = lazy(() => import("./pages/PublicDirectory").then((m) => ({ default: m.CatalogDirectory })));
 const BookingDirectory = lazy(() => import("./pages/PublicDirectory").then((m) => ({ default: m.BookingDirectory })));
-const ErrorLogs = lazy(() => import("./features/errors/ErrorLogs").then((m) => ({ default: m.ErrorLogs })));
 
 function App() {
   const [session, setSession] = useState(readStoredSession);
@@ -340,7 +289,6 @@ function App() {
           {activePage === "meu-plano" && <MyPlan subscription={subscription} plans={plans} onChanged={loadStoreIdentity} />}
           {activePage === "dashboard" && <Dashboard user={normalizedSession.user} setPage={setPage} alertsOpen={alertsOpen} setAlertsOpen={setAlertsOpen} alertsData={alertsData} alertsLoading={alertsLoading} />}
           {activePage !== "dashboard" && alertsOpen && <AlertsPopup alerts={alertsData} loading={alertsLoading} onClose={() => setAlertsOpen(false)} onAction={(nextPage) => { setAlertsOpen(false); setPage(nextPage); }} />}
-          {activePage === "erp" && <AuraERP setPage={setPage} />}
           {activePage === "agenda" && <AgendaWorkspace />}
           {activePage === "communications" && <Communications />}
           {activePage === "catalog" && <CatalogWorkspace />}
@@ -353,7 +301,6 @@ function App() {
           {activePage === "terms" && <DigitalTerms />}
           {activePage === "postcare" && <PostCare />}
           {activePage === "admin" && <AccessAdmin />}
-          {activePage === "error-logs" && <ErrorLogs />}
         </Suspense>
         </div>
       </main>

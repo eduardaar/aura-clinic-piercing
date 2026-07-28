@@ -92,37 +92,6 @@ export function CatalogWorkspace() {
   );
 }
 
-export function Inventory() {
-  const [view, setView] = useState("cards");
-  const [filters, setFilters] = useState({ search: "", material: "", color: "", stone: "", status: "" });
-  const query = new URLSearchParams(Object.fromEntries(Object.entries(filters).filter(([, v]) => v))).toString();
-  const { data } = useFetch(`/jewelry?${query}`);
-  const items = data || [];
-  return (
-    <section className="stack">
-      <div className="toolbar">
-        <label className="search-field">
-          <Search size={17} />
-          <input placeholder="Buscar por nome, observação de cor, tamanho, espessura ou categoria" value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} />
-        </label>
-        <Select label="Material" value={filters.material} onChange={(v) => setFilters({ ...filters, material: v })}>
-          <option value="">Todos</option>
-          <option>titânio grau implante</option><option>ouro 14k</option><option>ouro 18k</option><option>aço</option><option>outro</option>
-        </Select>
-        <Select label="Status" value={filters.status} onChange={(v) => setFilters({ ...filters, status: v })}>
-          <option value="">Todos</option>
-          <option>disponível</option><option>baixo estoque</option><option>esgotado</option>
-        </Select>
-        <div className="icon-toggle">
-          <button className={view === "cards" ? "active" : ""} onClick={() => setView("cards")} aria-label="Cards"><LayoutGrid size={18} /></button>
-          <button className={view === "table" ? "active" : ""} onClick={() => setView("table")} aria-label="Tabela"><Table2 size={18} /></button>
-        </div>
-      </div>
-      {view === "cards" ? <JewelryCards items={items} /> : <JewelryTable items={items} />}
-    </section>
-  );
-}
-
 export function JewelryCards({ items, onOpen, onEdit, onMovement, onArchive }) {
   const safeItems = asArray(items);
   return (
@@ -264,11 +233,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
     invested: allJewelry.reduce((sum, item) => sum + Number(item.cost_value || 0) * Number(item.quantity || 0), 0),
     potential: allJewelry.reduce((sum, item) => sum + Number(item.sale_value || 0) * Number(item.quantity || 0), 0)
   };
-  const criticalStockItems = allJewelry.filter((item) => inventoryStockState(item) === "critical");
-  const lowStockItems = criticalStockItems;
-  const reorderItems = criticalStockItems;
-  const soldOutItems = allJewelry.filter((item) => inventoryStockState(item) === "sold-out");
-  const topValueItems = [...allJewelry].sort((a, b) => (Number(b.sale_value || 0) * Number(b.quantity || 0)) - (Number(a.sale_value || 0) * Number(a.quantity || 0))).slice(0, 8);
+  const topValueItems =[...allJewelry].sort((a, b) => (Number(b.sale_value || 0) * Number(b.quantity || 0)) - (Number(a.sale_value || 0) * Number(a.quantity || 0))).slice(0, 8);
   const mainTabs = [
     { id: "produtos", label: "Lista de Produtos", icon: LayoutGrid },
     { id: "categorias", label: "Categorias", icon: ListFilter },

@@ -5,10 +5,10 @@ import { Button, Input, Metric, PaymentSelect, Select, StatusBadge } from "../..
 import { Modal, CrudHeader, ConfirmDeleteModal } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
-import { asArray, asNumber, asObject, formatDate, formatLongDate } from "../../lib/utils";
+import { asArray, asNumber, asObject } from "../../lib/utils";
 import { apiFetch, downloadApiFile, useApiInvalidate, useFetch } from "../../lib/api";
 import { defaultExpense } from "../../lib/defaultForms";
-import { currency, personName } from "../../features/shared/helpers";
+import { currency } from "../../features/shared/helpers";
 
 // `formatDate` de lib/utils devolve dd/MM sem ano: em listas financeiras com
 // vencimentos de anos diferentes as linhas ficariam indistinguíveis.
@@ -38,58 +38,6 @@ const NO_COST_CENTER = "__sem_centro__";
 // Opções vindas das próprias linhas: nenhum filtro oferecido devolve lista vazia.
 const distinctOptions = (rows, pick, label = (value) => value) =>
   [...new Set(rows.map(pick).filter(Boolean))].sort().map((value) => ({ value, label: label(value) }));
-
-export function Finance() {
-  const { data } = useFetch("/finance");
-  if (!data) return <Loading />;
-  if (data.error) return <ApiError message={data.error} />;
-  const safeData = asObject(data);
-  const totals = asObject(safeData.totals);
-  const forecast = asObject(safeData.forecast);
-  const methods = asArray(safeData.methods);
-  return (
-    <section className="stack">
-      <div className="metric-grid">
-        <Metric label="Recebido hoje" value={currency.format(asNumber(totals.day_total))} />
-        <Metric label="Recebido na semana" value={currency.format(asNumber(totals.week_total))} />
-        <Metric label="Recebido no mês" value={currency.format(asNumber(totals.month_total))} />
-        <Metric label="Total previsto" value={currency.format(asNumber(forecast.total))} />
-        <Metric label="Total pendente" value={currency.format(asNumber(forecast.pending))} />
-        <Metric label="Pagamento mais usado" value={safeData.mostUsedMethod || "Sem registros"} />
-      </div>
-      <div className="panel">
-        <div className="panel-heading">
-          <h2>Relatório Financeiro</h2>
-          <Button variant="secondary" type="button" onClick={() => downloadApiFile("/finance/export.csv", "relatorio-aura-clinic.csv")}><Download size={16} /> Exportar CSV</Button>
-        </div>
-        <div className="payment-bars">
-          {methods.map((item) => <div key={item.method || item.name}><span>{item.method || "Não informado"}</span><strong>{asNumber(item.total)}</strong></div>)}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-export function Clients() {
-  const { data } = useFetch("/clients");
-  if (!data) return <Loading />;
-  if (data.error) return <ApiError message={data.error} />;
-  const clients = asArray(data);
-  return (
-    <section className="client-grid">
-      {clients.map((client) => (
-        <article className="panel client-card" key={client.id}>
-          <h2>{personName(client)}</h2>
-          <p>{client.whatsapp} · {client.instagram}</p>
-          {client.birth_date && <small>Aniversário: {formatLongDate(client.birth_date)}</small>}
-          <span>{client.notes}</span>
-          <h3>Histórico</h3>
-          {asArray(client.history).map((item) => <div className="history-item" key={item.id}><strong>{formatDate(item.appointment_date)}</strong><span>{item.procedure} · {item.jewelry_name || "sem joia"}</span><small>{item.status} · {currency.format(asNumber(item.total_value))}</small></div>)}
-        </article>
-      ))}
-    </section>
-  );
-}
 
 export function FinanceAdmin() {
   const { data } = useFetch("/finance");

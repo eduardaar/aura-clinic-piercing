@@ -50,10 +50,6 @@ export function SalesWorkspace() {
   const paymentOptions = [...new Set(safeOrders.map((order) => order.payment_method || "Pix"))].sort();
   const selectedProduct = safeJewelry.find((item) => String(item.id) === String(line.product_id));
   const selectedVariants = asArray(selectedProduct?.variants).filter((variant) => Number(variant.is_active ?? 1));
-  const selectedVariant = selectedVariants.find((variant) => String(variant.id) === String(line.product_variant_id));
-  const availableQuantity = line.item_type === "produto"
-    ? Number((selectedVariant || selectedProduct)?.quantity || 0)
-    : null;
 
   useEffect(() => {
     setLine((current) => ({ ...current, item_type: tab === "servico" ? "servico" : "produto" }));
