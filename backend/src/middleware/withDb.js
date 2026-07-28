@@ -56,6 +56,10 @@ export const withDb = (handler) => async (req, res) => {
     await handler(req, res, db);
   } catch (error) {
     console.error(error);
+    // Se o handler morreu com transação aberta, desfaz ANTES de qualquer coisa:
+    // dentro de uma transação abortada nenhuma query passa (nem o log de erro
+    // abaixo) e as escritas parciais não podem sobreviver ao 500.
+    if (db) await db.abortOpenTransaction();
     // Captura central: grava o erro do backend na tabela de logs (best-effort;
     // o search_path ainda aponta para o tenant, pois o reset ocorre no finally).
     if (db) {
@@ -79,9 +83,14 @@ export const withDb = (handler) => async (req, res) => {
       });
     }
   } finally {
-    // CRÍTICO: nunca devolver o client ao pool com search_path de tenant.
-    // Se o reset falhar, descartamos a conexão (release(true) destrói o client).
+    // CRÍTICO: nunca devolver o client ao pool com search_path de tenant nem
+    // com transação aberta — o próximo tenant herdaria a transação (e os locks)
+    // e o reset do search_path viajaria junto no rollback dela.
     try {
+      if (db?.inTransaction()) {
+        console.error("Transação deixada aberta pelo handler; desfazendo antes de devolver o client.");
+        await db.abortOpenTransaction();
+      }
       await client.query("SET search_path TO public");
       client.release();
     } catch {

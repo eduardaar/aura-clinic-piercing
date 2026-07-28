@@ -51,72 +51,80 @@ export async function createSalesOrder(db, body, user) {
   const whatsapp = String(body.whatsapp || "").trim();
   if (!fullName || !whatsapp) return null;
 
-  const client = await upsertClient(db, {
-    client_id: body.client_id,
-    full_name: fullName,
-    whatsapp,
-    instagram: body.instagram || "",
-    birth_date: body.birth_date || "",
-    client_notes: body.notes || body.client_notes || ""
-  });
-  if (!client?.id) return null;
-
   const total = items.reduce((sum, item) => sum + Number(item.unit_price || 0) * Number(item.quantity || 1), 0);
   const orderType = String(body.order_type || "produto");
   const source = String(body.source || "site");
   const status = String(body.status || "concluida");
-  const result = await db.run(
-    `INSERT INTO sales_orders
-    (client_id, appointment_id, order_type, source, status, payment_method, total_value, notes, created_by_user_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      client.id,
-      body.appointment_id ? Number(body.appointment_id) : null,
-      orderType,
-      source,
-      status,
-      body.payment_method || "Pix",
-      total,
-      body.notes || "",
-      user?.id || null
-    ]
-  );
 
-  for (const item of items) {
-    await db.run(
-      `INSERT INTO sales_order_items (sales_order_id, item_type, product_id, product_variant_id, service_id, item_name, quantity, unit_price, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        result.lastID,
-        item.item_type || "produto",
-        item.product_id ? Number(item.product_id) : null,
-        item.product_variant_id ? Number(item.product_variant_id) : null,
-        item.service_id ? Number(item.service_id) : null,
-        item.item_name,
-        Number(item.quantity || 1),
-        Number(item.unit_price || 0),
-        item.notes || ""
-      ]
-    );
-    if (status !== "cancelada") await deductSoldProductStock(db, item, result.lastID);
-  }
+  // Cliente, pedido, itens, baixa de estoque e pagamento são uma coisa só:
+  // metade disso gravado deixaria estoque baixado sem venda (ou venda sem
+  // pagamento) e o financeiro do dia não fecharia.
+  const orderId = await db.transaction(async (tx) => {
+    const client = await upsertClient(tx, {
+      client_id: body.client_id,
+      full_name: fullName,
+      whatsapp,
+      instagram: body.instagram || "",
+      birth_date: body.birth_date || "",
+      client_notes: body.notes || body.client_notes || ""
+    });
+    if (!client?.id) return null;
 
-  if (total > 0) {
-    await db.run(
-      "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    const result = await tx.run(
+      `INSERT INTO sales_orders
+      (client_id, appointment_id, order_type, source, status, payment_method, total_value, notes, created_by_user_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        body.appointment_id ? Number(body.appointment_id) : null,
         client.id,
-        total,
+        body.appointment_id ? Number(body.appointment_id) : null,
         orderType,
+        source,
+        status,
         body.payment_method || "Pix",
-        status === "cancelada" ? "pendente" : "pago",
-        localTimestamp()
+        total,
+        body.notes || "",
+        user?.id || null
       ]
     );
-  }
 
-  return getSalesOrder(db, result.lastID);
+    for (const item of items) {
+      await tx.run(
+        `INSERT INTO sales_order_items (sales_order_id, item_type, product_id, product_variant_id, service_id, item_name, quantity, unit_price, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          result.lastID,
+          item.item_type || "produto",
+          item.product_id ? Number(item.product_id) : null,
+          item.product_variant_id ? Number(item.product_variant_id) : null,
+          item.service_id ? Number(item.service_id) : null,
+          item.item_name,
+          Number(item.quantity || 1),
+          Number(item.unit_price || 0),
+          item.notes || ""
+        ]
+      );
+      if (status !== "cancelada") await deductSoldProductStock(tx, item, result.lastID);
+    }
+
+    if (total > 0) {
+      await tx.run(
+        "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [
+          body.appointment_id ? Number(body.appointment_id) : null,
+          client.id,
+          total,
+          orderType,
+          body.payment_method || "Pix",
+          status === "cancelada" ? "pendente" : "pago",
+          localTimestamp()
+        ]
+      );
+    }
+    return result.lastID;
+  });
+
+  if (!orderId) return null;
+  return getSalesOrder(db, orderId);
 }
 
 export async function ensureSalesOrderForAppointment(db, appointmentId, user) {

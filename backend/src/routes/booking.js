@@ -14,6 +14,11 @@ import { scheduleAppointmentClientAutomations } from "../services/communications
 
 const router = Router();
 
+// Falha de reserva de estoque: precisa virar 409 para o cliente, mas sem deixar
+// de abortar a transação da solicitação inteira. Por isso é uma classe própria —
+// no catch dá para separá-la de um erro real de banco (que continua virando 500).
+class ReservationConflict extends Error {}
+
 function publicBookingKey(req, body) {
   const provided = String(req.get("Idempotency-Key") || body.idempotency_key || body.public_booking_token || "").trim();
   if (provided) return provided.slice(0, 180);
@@ -222,76 +227,90 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
   const multiItemSlots = await availableBookingSlots(db, { service: { ...service, duration_minutes: durationMinutes }, professionalId, date });
   if (!multiItemSlots.some((slot) => slot.time === time)) return res.status(409).json({ error: "O horário não comporta a duração total dos serviços selecionados." });
   const endTime = addMinutesToTime(time, durationMinutes);
-  const result = await db.run(
-    `INSERT INTO appointments
-      (client_id, professional_id, service_id, jewelry_id, jewelry_variant_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, duration_minutes, total_value, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, status, source, public_booking_key, notes, reference_photo_url, payment_proof_url)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      client.id,
-      professionalId,
-      service.id,
-      jewelryId,
-      variantId,
-      service.name,
-      service.description || "",
-      service.name,
-      date,
-      time,
-      endTime,
-      durationMinutes,
-      totalValue,
-      depositValue,
-      remainingValue,
-      "Pix",
-      "Pix",
-      "awaiting_deposit_proof",
-      "public_booking",
-      bookingKey,
-      [body.notes || "", body.selected_color ? `Observação de cor: ${body.selected_color}` : ""].filter(Boolean).join("\n"),
-      referencePhoto,
-      paymentProof
-    ]
-  );
-  if (depositValue > 0) {
-    await db.run(
-      "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, 'sinal', 'Pix', 'pendente', ?)",
-      [result.lastID, client.id, depositValue, `${date}T${time}:00`]
-    );
-  }
-  for (const item of bookingItems) {
-    await db.run(
-      `INSERT INTO appointment_items
-        (appointment_id, service_id, jewelry_id, jewelry_variant_id, quantity, procedure_price, jewelry_unit_price, duration_minutes, subtotal, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        result.lastID, item.service_id || null, item.jewelry_id || null, item.jewelry_variant_id || null,
-        item.quantity, item.item_type === "service" ? item.unit_price : 0,
-        item.item_type === "jewelry" ? item.unit_price : 0, item.duration_minutes || 0,
-        item.unit_price * item.quantity, item.notes || ""
-      ]
-    );
-  }
+  // Agendamento público: agendamento, sinal, itens, reserva de estoque e
+  // intenção de pagamento entram juntos ou não entram. Antes, quando a reserva
+  // falhava, o código apagava na mão o que já tinha gravado — compensação que
+  // deixava lixo se o próprio DELETE falhasse. Agora é o ROLLBACK que desfaz.
+  let outcome;
   try {
-    await reserveAppointmentItems(db, {
-      appointmentId: result.lastID,
-      clientId: client.id,
-      reservationKey: bookingKey,
-      items: bookingItems,
-      minutes: 30
+    outcome = await db.transaction(async (tx) => {
+      const result = await tx.run(
+        `INSERT INTO appointments
+          (client_id, professional_id, service_id, jewelry_id, jewelry_variant_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, duration_minutes, total_value, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, status, source, public_booking_key, notes, reference_photo_url, payment_proof_url)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          client.id,
+          professionalId,
+          service.id,
+          jewelryId,
+          variantId,
+          service.name,
+          service.description || "",
+          service.name,
+          date,
+          time,
+          endTime,
+          durationMinutes,
+          totalValue,
+          depositValue,
+          remainingValue,
+          "Pix",
+          "Pix",
+          "awaiting_deposit_proof",
+          "public_booking",
+          bookingKey,
+          [body.notes || "", body.selected_color ? `Observação de cor: ${body.selected_color}` : ""].filter(Boolean).join("\n"),
+          referencePhoto,
+          paymentProof
+        ]
+      );
+      if (depositValue > 0) {
+        await tx.run(
+          "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, 'sinal', 'Pix', 'pendente', ?)",
+          [result.lastID, client.id, depositValue, `${date}T${time}:00`]
+        );
+      }
+      for (const item of bookingItems) {
+        await tx.run(
+          `INSERT INTO appointment_items
+            (appointment_id, service_id, jewelry_id, jewelry_variant_id, quantity, procedure_price, jewelry_unit_price, duration_minutes, subtotal, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            result.lastID, item.service_id || null, item.jewelry_id || null, item.jewelry_variant_id || null,
+            item.quantity, item.item_type === "service" ? item.unit_price : 0,
+            item.item_type === "jewelry" ? item.unit_price : 0, item.duration_minutes || 0,
+            item.unit_price * item.quantity, item.notes || ""
+          ]
+        );
+      }
+      try {
+        // reserveAppointmentItems abre a própria transação (BEGIN/COMMIT
+        // legado): aninhada aqui ela vira SAVEPOINT, então não fecha esta.
+        await reserveAppointmentItems(tx, {
+          appointmentId: result.lastID,
+          clientId: client.id,
+          reservationKey: bookingKey,
+          items: bookingItems,
+          minutes: 30
+        });
+      } catch (error) {
+        throw new ReservationConflict(error.message);
+      }
+      const intent = depositValue > 0 ? await createPaymentIntent(tx, {
+        appointmentId: result.lastID,
+        clientId: client.id,
+        amount: depositValue,
+        provider: "manual",
+        idempotencyKey: `booking:${bookingKey}:deposit`
+      }) : null;
+      return { appointmentId: result.lastID, paymentIntent: intent };
     });
   } catch (error) {
-    await db.run("DELETE FROM payments WHERE appointment_id=?", [result.lastID]);
-    await db.run("DELETE FROM appointments WHERE id=?", [result.lastID]);
-    return res.status(409).json({ error: error.message });
+    if (error instanceof ReservationConflict) return res.status(409).json({ error: error.message });
+    throw error;
   }
-  const paymentIntent = depositValue > 0 ? await createPaymentIntent(db, {
-    appointmentId: result.lastID,
-    clientId: client.id,
-    amount: depositValue,
-    provider: "manual",
-    idempotencyKey: `booking:${bookingKey}:deposit`
-  }) : null;
-  const appointment = await listAppointments(db, "WHERE a.id = ?", [result.lastID]).then((rows) => rows[0]);
+  const { appointmentId, paymentIntent } = outcome;
+  const appointment = await listAppointments(db, "WHERE a.id = ?", [appointmentId]).then((rows) => rows[0]);
   const proofMessage = [
     `Olá, ${professional.name}. Tudo bem?`,
     `Sou ${client.full_name || body.full_name} e acabei de solicitar meu agendamento na Aura Clinic.`,
@@ -302,15 +321,17 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
     "Segue o comprovante do sinal para conferência."
   ].filter(Boolean).join("\n");
   const professionalWhatsappUrl = whatsappLink(professional.whatsapp || professional.phone, proofMessage);
+  // Fila de notificações fica FORA da transação: é entrega best-effort e não
+  // pode fazer o agendamento já confirmado voltar atrás.
   await queueProfessionalBookingNotification(db, {
-    appointmentId: result.lastID,
+    appointmentId,
     professionalId,
     client,
     service,
     appointment,
     storeName: await getStoreName(db, req.tenant?.name)
   });
-  await scheduleAppointmentClientAutomations(db, result.lastID);
+  await scheduleAppointmentClientAutomations(db, appointmentId);
   res.status(201).json({
     ...appointment,
     service_value: serviceValue,
