@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { ChevronRight, Eye, EyeOff, LogOut } from "lucide-react";
 import { Button, StatusBadge } from "../../components/common/Ui";
-import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../components/common/Crud";
+import { Modal, CrudHeader, ConfirmDeleteModal } from "../../components/common/Crud";
+import { DataView } from "../../components/common/DataView";
 import { API } from "../../lib/api";
 import { BrandMark } from "../../components/common/BrandMark";
 import { asArray } from "../../lib/utils";
@@ -22,11 +23,53 @@ function readPlatformSession() {
 
 const EMPTY_TENANT_FORM = { name: "", slug: "", admin_name: "", admin_email: "", admin_password: "" };
 
+// Data com ano: `formatDate` de lib/utils devolve dd/MM, e a lista mistura
+// clínicas cadastradas em anos diferentes.
 function tenantCreatedAt(value) {
   if (!value) return "—";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString("pt-BR");
 }
+
+// Códigos de plano vindos do backend. Um código desconhecido (base antiga, plano
+// novo) ainda aparece, só que capitalizado — melhor do que sumir da coluna.
+const PLAN_LABELS = {
+  essencial: "Essencial",
+  start: "Start",
+  profissional: "Profissional",
+  studio: "Studio",
+  premium: "Premium",
+  padrao: "Padrão",
+};
+
+const planLabel = (plan) => {
+  const code = String(plan || "").trim();
+  if (!code) return "—";
+  return PLAN_LABELS[code] || code[0].toUpperCase() + code.slice(1);
+};
+
+// O backend guarda o status da assinatura em código; a coluna mostrava o código.
+const SUBSCRIPTION_LABELS = {
+  trial_active: "Em teste",
+  trial_expired: "Teste expirado",
+  active: "Ativa",
+  overdue: "Em atraso",
+  canceled: "Cancelada",
+  suspended: "Suspensa",
+};
+
+const subscriptionLabel = (tenant) => {
+  const status = tenant.subscription_status || "trial_active";
+  const label = SUBSCRIPTION_LABELS[status] || status;
+  return status === "trial_active" ? `${label} · ${tenant.subscription_days_left ?? 0} dia(s)` : label;
+};
+
+// Opções vindas das próprias clínicas: oferecer um plano que ninguém assina só
+// produz filtro que devolve lista vazia.
+const planOptions = (tenants) =>
+  [...new Set(tenants.map((tenant) => tenant.plan).filter(Boolean))]
+    .sort()
+    .map((plan) => ({ value: plan, label: planLabel(plan) }));
 
 export function PlatformAdmin() {
   const [session, setSession] = useState(readPlatformSession);
@@ -336,42 +379,72 @@ export function PlatformAdmin() {
             onAction={openCreate}
           />
 
-          {listError && <span className="form-error">{listError}</span>}
           {actionError && <span className="form-error">{actionError}</span>}
 
-          {tenants === null && !listError ? (
-            <p>Carregando clínicas…</p>
-          ) : (
-            <DataTable
-              rows={tenantList}
-              rowKey={(tenant) => tenant.id ?? tenant.slug}
-              columns={[
-                { key: "name", label: "Nome", render: (tenant) => tenant.name || "—" },
-                { key: "slug", label: "Código", render: (tenant) => tenant.slug || "—" },
-                { key: "status", label: "Status", render: (tenant) => (
+          <DataView
+            rows={tenantList}
+            rowKey={(tenant) => tenant.id ?? tenant.slug}
+            loading={tenants === null && !listError}
+            error={listError}
+            defaultSort={{ key: "created_at", dir: "desc" }}
+            searchPlaceholder="Buscar por nome ou código"
+            filters={[
+              {
+                key: "status",
+                label: "Status",
+                type: "select",
+                options: [
+                  { value: "ativo", label: "Ativo" },
+                  { value: "suspenso", label: "Suspenso" },
+                ],
+                match: (tenant, value) => (tenant.status || "ativo") === value,
+              },
+              {
+                key: "plan",
+                label: "Plano",
+                type: "select",
+                options: planOptions(tenantList),
+                match: (tenant, value) => tenant.plan === value,
+              },
+            ]}
+            columns={[
+              { key: "name", label: "Nome", value: (tenant) => tenant.name || "", render: (tenant) => tenant.name || "—" },
+              { key: "slug", label: "Código", value: (tenant) => tenant.slug || "", render: (tenant) => tenant.slug || "—" },
+              {
+                key: "status",
+                label: "Status",
+                value: (tenant) => tenant.status || "ativo",
+                render: (tenant) => (
                   <StatusBadge status={tenant.status || "ativo"} tone={tenant.status === "suspenso" ? "danger" : "ok"} />
-                ) },
-                { key: "plan", label: "Plano", render: (tenant) => tenant.plan || "—" },
-                { key: "subscription", label: "Assinatura", render: (tenant) => (
-                  <span>
-                    {tenant.subscription_status || "trial_active"}
-                    {tenant.subscription_status === "trial_active" ? ` · ${tenant.subscription_days_left ?? 0} dia(s)` : ""}
-                  </span>
-                ) },
-                { key: "created_at", label: "Criada em", render: (tenant) => tenantCreatedAt(tenant.created_at) },
-              ]}
-              actions={(tenant) => (
-                <>
-                  <button className="primary-button" onClick={() => activateOrRenewTenant(tenant)}>Ativar/Renovar</button>
-                  <button className="secondary-button" onClick={() => toggleStatus(tenant)}>
-                    {tenant.status === "suspenso" ? "Reativar" : "Suspender"}
-                  </button>
-                  <button className="danger-button" onClick={() => removeTenant(tenant)}>Excluir</button>
-                </>
-              )}
-              empty="Nenhuma clínica cadastrada até o momento."
-            />
-          )}
+                ),
+              },
+              { key: "plan", label: "Plano", value: (tenant) => tenant.plan || "", render: (tenant) => planLabel(tenant.plan) },
+              {
+                key: "subscription",
+                label: "Assinatura",
+                value: subscriptionLabel,
+                render: (tenant) => <span>{subscriptionLabel(tenant)}</span>,
+              },
+              {
+                key: "created_at",
+                label: "Criada em",
+                // Ordena pelo ISO do backend; dd/MM/aaaa ordenaria por dia.
+                value: (tenant) => String(tenant.created_at || ""),
+                render: (tenant) => tenantCreatedAt(tenant.created_at),
+              },
+            ]}
+            actions={(tenant) => (
+              <>
+                <button type="button" onClick={() => activateOrRenewTenant(tenant)}>Ativar/Renovar</button>
+                <button type="button" onClick={() => toggleStatus(tenant)}>
+                  {tenant.status === "suspenso" ? "Reativar" : "Suspender"}
+                </button>
+                <button type="button" onClick={() => removeTenant(tenant)}>Excluir</button>
+              </>
+            )}
+            empty="Nenhuma clínica cadastrada até o momento."
+            emptyFiltered="Nenhuma clínica corresponde aos filtros aplicados."
+          />
         </section>
 
         <Modal
@@ -417,30 +490,45 @@ export function PlatformAdmin() {
           <section className="panel">
             <div className="panel-heading">
               <h2>Métricas por clínica</h2>
-              <span>Contagens reportadas pelo backend</span>
+              <span>Contagens das clínicas ativas</span>
             </div>
-            <div className="table-wrap">
-              <table>
-                <tbody>
-                  {metricList.map((entry, index) => {
-                    const row = entry && typeof entry === "object" ? entry : {};
-                    const title = row.name || row.tenant_name || row.slug || row.tenant || `Clínica ${index + 1}`;
-                    // Shape livre: renderizamos defensivamente todas as contagens numéricas.
-                    const counts = Object.entries(row).filter(([key, value]) => typeof value === "number" && !["id", "tenant_id"].includes(key));
-                    return (
-                      <tr key={row.id ?? row.slug ?? index}>
-                        <td><strong>{String(title)}</strong></td>
-                        <td>
-                          {counts.length === 0
-                            ? "—"
-                            : counts.map(([key, value]) => `${key.replace(/_/g, " ")}: ${value}`).join(" · ")}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            {/*
+              Antes eram duas colunas sem cabeçalho, a segunda montada por
+              concatenação ("clients: 12 · appointments: 30"). O endpoint
+              /platform/metrics tem shape fixo — id, name, slug, clients e
+              appointments —, então a defensiva contra shape livre só custava:
+              mostrava o nome cru do campo em inglês e impedia ordenar pela
+              contagem, que é justamente a pergunta desta lista (quais clínicas
+              estão maiores ou paradas). Com colunas de verdade, ordena.
+            */}
+            <DataView
+              rows={metricList}
+              rowKey={(row) => row.id ?? row.slug}
+              defaultSort={{ key: "clients", dir: "desc" }}
+              searchPlaceholder="Buscar por nome ou código"
+              columns={[
+                { key: "name", label: "Clínica", value: (row) => row.name || "", render: (row) => row.name || "—" },
+                { key: "slug", label: "Código", value: (row) => row.slug || "", render: (row) => row.slug || "—" },
+                {
+                  key: "clients",
+                  label: "Clientes",
+                  align: "right",
+                  searchable: false,
+                  value: (row) => Number(row.clients || 0),
+                  render: (row) => Number(row.clients || 0).toLocaleString("pt-BR"),
+                },
+                {
+                  key: "appointments",
+                  label: "Agendamentos",
+                  align: "right",
+                  searchable: false,
+                  value: (row) => Number(row.appointments || 0),
+                  render: (row) => Number(row.appointments || 0).toLocaleString("pt-BR"),
+                },
+              ]}
+              empty="Nenhuma métrica disponível."
+              emptyFiltered="Nenhuma clínica corresponde à busca."
+            />
           </section>
         )}
 
