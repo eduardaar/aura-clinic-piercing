@@ -3,13 +3,22 @@ import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { parseUpload, privateUpload, registerPrivateFiles } from "../middleware/upload.js";
-import { listMedicalRecords } from "../services/appointments.js";
+import { listMedicalRecords, getMedicalRecord } from "../services/appointments.js";
 import { getClientLoyalty } from "../services/loyalty.js";
-import { listClientsWithDetails } from "../services/clients.js";
+import { getClientWithDetails } from "../services/clients.js";
+import { parsePaging, fetchPage, pageResponse } from "../services/pagination.js";
 import { validateBody } from "../middleware/validate.js";
 import { clientCreateSchema, clientUpdateSchema } from "../schemas/index.js";
 
 const router = Router();
+
+// Whitelist de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
+const CLIENT_SORTABLE = {
+  name: "full_name",
+  created_at: "created_at",
+  updated_at: "updated_at",
+  birth_date: "birth_date"
+};
 
 function normalizeClientBody(body = {}, current = {}) {
   const name = body.full_name ?? body.name ?? current.full_name ?? "";
@@ -81,13 +90,44 @@ router.delete("/api/clients/:id", withDb(async (req, res, db) => {
   res.json({ ok: true });
 }));
 
-router.get("/api/clients", withDb(async (_req, res, db) => {
-  if (!requireRole(_req, res, ["admin", "reception", "piercer"])) return;
-  const clients = await listClientsWithDetails(db);
-  const rows = _req.user?.role === "reception"
-    ? clients.map(({ medicalRecords, terms, ...client }) => ({ ...client, medicalRecords: [], terms: [] }))
-    : clients;
-  res.json(rows.map(clientResponse));
+// Listagem ENXUTA: só as colunas da própria tabela `clients`, que é o que a
+// tela de listagem/busca exibe. O enriquecimento (timeline, prontuários,
+// fidelidade...) saiu daqui e virou GET /api/clients/:id — antes esta rota
+// carregava onze tabelas inteiras em memória para montar a timeline de todos.
+router.get("/api/clients", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
+  const clauses = [];
+  const params = [];
+  if (req.query.search) {
+    clauses.push("(full_name ILIKE ? OR whatsapp ILIKE ? OR phone ILIKE ? OR email ILIKE ? OR instagram ILIKE ? OR cpf ILIKE ?)");
+    params.push(...Array(6).fill(`%${req.query.search}%`));
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const paging = parsePaging(req.query, {
+    sortable: CLIENT_SORTABLE,
+    tieBreak: "id",
+    defaultOrderBy: "ORDER BY full_name"
+  });
+  const { rows, total } = await fetchPage(db, {
+    select: "*",
+    from: "clients",
+    where,
+    params,
+    orderBy: paging.orderBy,
+    paging
+  });
+  res.json(pageResponse(rows.map(clientResponse), total, paging));
+}));
+
+router.get("/api/clients/:id", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
+  const client = await getClientWithDetails(db, req.params.id);
+  if (!client) return res.status(404).json({ error: "Cliente nao encontrado." });
+  // Recepção não enxerga prontuário nem termo (mesma regra da listagem antiga).
+  const visible = req.user?.role === "reception"
+    ? { ...client, medicalRecords: [], terms: [] }
+    : client;
+  res.json(clientResponse(visible));
 }));
 
 router.post("/api/clients/:id/loyalty-redemptions", withDb(async (req, res, db) => {
@@ -135,7 +175,7 @@ router.post("/api/clients/:id/medical-records", withDb(async (req, res, db) => {
       body.returns_done || ""
     ]
   );
-  res.status(201).json((await listMedicalRecords(db, req.params.id)).find((record) => record.id === result.lastID));
+  res.status(201).json(await getMedicalRecord(db, result.lastID));
 }));
 
 router.delete("/api/clients/:clientId/medical-records/:recordId", withDb(async (req, res, db) => {

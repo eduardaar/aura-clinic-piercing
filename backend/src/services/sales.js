@@ -1,7 +1,8 @@
 // Serviços de vendas (pedidos avulsos e vinculados a atendimentos).
-import { normalizeSalesOrderItems, variantStatus } from "./utils.js";
+import { normalizeSalesOrderItems, variantStatus, localTimestamp } from "./utils.js";
 import { upsertClient } from "./appointments.js";
 import { syncProductInventory } from "./inventory.js";
+import { limitOffset, countRows } from "./pagination.js";
 
 async function deductSoldProductStock(db, item, orderId) {
   if (item.item_type !== "produto" || !item.product_id) return;
@@ -110,12 +111,12 @@ export async function createSalesOrder(db, body, user) {
         orderType,
         body.payment_method || "Pix",
         status === "cancelada" ? "pendente" : "pago",
-        new Date().toISOString().slice(0, 19)
+        localTimestamp()
       ]
     );
   }
 
-  return (await listSalesOrders(db)).find((item) => item.id === result.lastID) || null;
+  return getSalesOrder(db, result.lastID);
 }
 
 export async function ensureSalesOrderForAppointment(db, appointmentId, user) {
@@ -123,7 +124,7 @@ export async function ensureSalesOrderForAppointment(db, appointmentId, user) {
     "SELECT id FROM sales_orders WHERE appointment_id = ? AND order_type = 'ordem_servico' LIMIT 1",
     [appointmentId]
   );
-  if (existing) return (await listSalesOrders(db)).find((item) => item.id === existing.id) || null;
+  if (existing) return getSalesOrder(db, existing.id);
 
   const appointment = await db.get(`
     SELECT
@@ -236,25 +237,27 @@ export async function ensureSalesOrderForAppointment(db, appointmentId, user) {
     }
   }
 
-  return (await listSalesOrders(db)).find((item) => item.id === result.lastID) || null;
+  return getSalesOrder(db, result.lastID);
 }
 
-export async function listSalesOrders(db) {
-  const orders = await db.all(`
-    SELECT
-      so.*,
-      c.full_name,
-      c.whatsapp,
-      c.instagram,
-      a.procedure AS appointment_procedure,
-      a.appointment_date,
-      a.appointment_time
-    FROM sales_orders so
-    JOIN clients c ON c.id = so.client_id
-    LEFT JOIN appointments a ON a.id = so.appointment_id
-    ORDER BY so.created_at DESC, so.id DESC
-    LIMIT 120
-  `);
+const SALES_ORDER_COLUMNS = `
+  so.*,
+  c.full_name,
+  c.whatsapp,
+  c.instagram,
+  a.procedure AS appointment_procedure,
+  a.appointment_date,
+  a.appointment_time
+`;
+
+const SALES_ORDER_FROM = `
+  sales_orders so
+  JOIN clients c ON c.id = so.client_id
+  LEFT JOIN appointments a ON a.id = so.appointment_id
+`;
+
+// Carrega os itens de um lote de pedidos numa query só (evita N+1).
+async function attachSalesOrderItems(db, orders) {
   const ids = orders.map((item) => item.id);
   const items = ids.length ? await db.all(`
     SELECT *
@@ -268,4 +271,29 @@ export async function listSalesOrders(db) {
     return acc;
   }, {});
   return orders.map((order) => ({ ...order, items: grouped[order.id] || [] }));
+}
+
+// Busca DIRETA por id. Existe para não depender de "listar tudo e procurar":
+// com a lista paginada o pedido recém-criado pode nem estar na primeira página.
+export async function getSalesOrder(db, id) {
+  const order = await db.get(
+    `SELECT ${SALES_ORDER_COLUMNS} FROM ${SALES_ORDER_FROM} WHERE so.id = ?`,
+    [id]
+  );
+  if (!order) return null;
+  return (await attachSalesOrderItems(db, [order]))[0];
+}
+
+export async function listSalesOrders(db, { where = "", params = [], paging = null } = {}) {
+  const page = limitOffset(paging);
+  const orderBy = paging?.orderBy || "ORDER BY so.created_at DESC, so.id DESC";
+  const orders = await db.all(
+    `SELECT ${SALES_ORDER_COLUMNS} FROM ${SALES_ORDER_FROM} ${where} ${orderBy}${page.clause}`,
+    [...params, ...page.params]
+  );
+  return attachSalesOrderItems(db, orders);
+}
+
+export async function countSalesOrders(db, { where = "", params = [] } = {}) {
+  return countRows(db, { from: SALES_ORDER_FROM, where, params });
 }

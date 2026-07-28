@@ -15,8 +15,7 @@ import {
   STYLE_QUESTIONS
 } from "./utils.js";
 
-export async function listDigitalTerms(db) {
-  return db.all(`
+const DIGITAL_TERM_QUERY = `
     SELECT
       t.id,
       t.appointment_id,
@@ -44,8 +43,15 @@ export async function listDigitalTerms(db) {
     LEFT JOIN appointments a ON a.id = t.appointment_id
     LEFT JOIN clients c ON c.id = t.client_id
     LEFT JOIN professionals p ON p.id = a.professional_id
-    ORDER BY t.signed_at DESC
-  `);
+`;
+
+export async function listDigitalTerms(db) {
+  return db.all(`${DIGITAL_TERM_QUERY} ORDER BY t.signed_at DESC`);
+}
+
+// Busca direta por id, para devolver o termo recém-criado sem varrer a lista.
+export async function getDigitalTerm(db, id) {
+  return db.get(`${DIGITAL_TERM_QUERY} WHERE t.id = ?`, [id]);
 }
 
 export async function createTermPdf(db, term, appointment = {}, userId = null) {

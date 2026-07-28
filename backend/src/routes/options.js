@@ -142,6 +142,9 @@ router.patch("/api/inventory-categories/:id", withDb(async (req, res, db) => {
       await moveCategoryProducts(db, category.name, nextName);
     }
     await db.run("COMMIT");
+    // Continua sendo "listar e procurar", mas aqui é seguro: a listagem de
+    // categorias não é paginada e monta linhas agregadas (algumas sem id
+    // próprio), que uma busca direta por id não conseguiria reproduzir.
     res.json((await listInventoryCategories(db)).find((item) => Number(item.id) === Number(category.id)));
   } catch (error) {
     await db.run("ROLLBACK").catch(() => {});

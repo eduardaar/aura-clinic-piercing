@@ -21,8 +21,18 @@ import { jewelryCreateSchema, jewelryUpdateSchema } from "../schemas/index.js";
 import { calculatePricing, getPricingSettings } from "../services/pricing.js";
 import { visualSearch } from "../services/visualSearch.js";
 import { inventoryIntelligence, refreshInventorySuggestions } from "../services/inventoryIntelligence.js";
+import { parsePaging, fetchPage, pageResponse } from "../services/pagination.js";
 
 const router = Router();
+
+// Whitelist de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
+const JEWELRY_SORTABLE = {
+  name: "j.name",
+  category: "j.category",
+  quantity: "j.quantity",
+  price: "j.sale_value",
+  status: "j.status"
+};
 const visualUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024, files: 1 },
@@ -335,8 +345,21 @@ router.get("/api/jewelry", withDb(async (req, res, db) => {
     }
   }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-  const rows = await db.all(`SELECT j.* FROM jewelry_inventory j ${where} ORDER BY j.category, j.name`, params);
-  res.json(await attachVariants(db, rows));
+  const paging = parsePaging(req.query, {
+    sortable: JEWELRY_SORTABLE,
+    tieBreak: "j.id",
+    defaultOrderBy: "ORDER BY j.category, j.name"
+  });
+  const { rows, total } = await fetchPage(db, {
+    select: "j.*",
+    from: "jewelry_inventory j",
+    where,
+    params,
+    orderBy: paging.orderBy,
+    paging
+  });
+  // attachVariants agora roda só sobre a página, não sobre o estoque inteiro.
+  res.json(pageResponse(await attachVariants(db, rows), total, paging));
 }));
 
 router.post("/api/jewelry", withDb(async (req, res, db) => {

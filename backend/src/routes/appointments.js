@@ -3,8 +3,10 @@ import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
 import { parseUpload, privateUpload, registerPrivateFiles } from "../middleware/upload.js";
 import { normalizeAppointment, addMinutesToTime } from "../services/utils.js";
+import { parsePaging, pageResponse } from "../services/pagination.js";
 import {
   listAppointments,
+  countAppointments,
   upsertClient,
   deductJewelryStock,
   registerRemainingPayment,
@@ -23,6 +25,15 @@ import { queueAppointmentReminderNotifications } from "../services/notifications
 import { requireRole } from "../middleware/auth.js";
 
 const router = Router();
+
+// Whitelist de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
+const APPOINTMENT_SORTABLE = {
+  date: "a.appointment_date",
+  status: "a.status",
+  client: "c.full_name",
+  professional: "p.name",
+  total: "a.total_value"
+};
 
 function optionalId(value) {
   const number = Number(value);
@@ -62,8 +73,31 @@ router.get("/api/appointments", withDb(async (req, res, db) => {
       params.push(req.query.status);
     }
   }
+  if (req.query.from) {
+    clauses.push("a.appointment_date >= ?");
+    params.push(req.query.from);
+  }
+  if (req.query.to) {
+    clauses.push("a.appointment_date <= ?");
+    params.push(req.query.to);
+  }
+  if (req.query.client_id) {
+    clauses.push("a.client_id = ?");
+    params.push(req.query.client_id);
+  }
+  if (req.query.search) {
+    clauses.push("(c.full_name ILIKE ? OR c.whatsapp ILIKE ? OR a.procedure ILIKE ?)");
+    params.push(...Array(3).fill(`%${req.query.search}%`));
+  }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-  res.json(await listAppointments(db, where, params));
+  const paging = parsePaging(req.query, {
+    sortable: APPOINTMENT_SORTABLE,
+    tieBreak: "a.id",
+    defaultOrderBy: "ORDER BY a.appointment_date, a.appointment_time"
+  });
+  const items = await listAppointments(db, where, params, paging);
+  const total = paging.paginated ? await countAppointments(db, where, params) : items.length;
+  res.json(pageResponse(items, total, paging));
 }));
 
 router.post("/api/appointments", withDb(async (req, res, db) => {

@@ -3,7 +3,7 @@ import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { boolNumber } from "../services/utils.js";
-import { listServices, replaceProfessionalServices } from "../services/appointments.js";
+import { listServices, getService, replaceProfessionalServices } from "../services/appointments.js";
 import { validateBody } from "../middleware/validate.js";
 import { serviceCreateSchema, serviceUpdateSchema } from "../schemas/index.js";
 
@@ -29,7 +29,7 @@ router.post("/api/services", withDb(async (req, res, db) => {
     ]
   );
   await replaceProfessionalServices(db, result.lastID, req.body.professional_ids || []);
-  res.status(201).json((await listServices(db)).find((item) => item.id === result.lastID));
+  res.status(201).json(await getService(db, result.lastID));
 }));
 
 async function updateService(req, res, db) {
@@ -51,7 +51,7 @@ async function updateService(req, res, db) {
     ]
   );
   if (req.body.professional_ids) await replaceProfessionalServices(db, req.params.id, req.body.professional_ids);
-  res.json((await listServices(db)).find((item) => item.id === Number(req.params.id)));
+  res.json(await getService(db, req.params.id));
 }
 
 router.put("/api/services/:id", withDb(updateService));

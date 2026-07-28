@@ -27,6 +27,15 @@ async function listProfessionals(db) {
   }));
 }
 
+// Busca direta por id: "listar tudo e procurar" devolveria undefined em
+// silêncio assim que a listagem passasse a ser paginada.
+async function getProfessional(db, id) {
+  const professional = await db.get("SELECT * FROM professionals WHERE id = ?", [id]);
+  if (!professional) return null;
+  const rows = await db.all("SELECT service_id FROM professional_services WHERE professional_id = ?", [professional.id]);
+  return { ...professional, service_ids: rows.map((row) => row.service_id) };
+}
+
 router.get("/api/professionals", withDb(async (_req, res, db) => {
   res.json(await listProfessionals(db));
 }));
@@ -41,7 +50,7 @@ router.post("/api/professionals", withDb(async (req, res, db) => {
     [name.trim(), specialty || "", phone || "", email || "", whatsapp, boolNumber(req.body.notification_opt_in ?? true), calendar_color || "#C8A96A", req.body.active === false ? 0 : 1]
   );
   await replaceProfessionalServices(db, result.lastID, req.body.service_ids || []);
-  res.status(201).json((await listProfessionals(db)).find((item) => item.id === result.lastID));
+  res.status(201).json(await getProfessional(db, result.lastID));
 }));
 
 router.patch("/api/professionals/:id", withDb(async (req, res, db) => {
@@ -63,7 +72,7 @@ router.patch("/api/professionals/:id", withDb(async (req, res, db) => {
     ]
   );
   if (req.body.service_ids) await replaceProfessionalServices(db, req.params.id, req.body.service_ids);
-  res.json((await listProfessionals(db)).find((item) => item.id === Number(req.params.id)));
+  res.json(await getProfessional(db, req.params.id));
 }));
 
 router.delete("/api/professionals/:id", withDb(async (req, res, db) => {

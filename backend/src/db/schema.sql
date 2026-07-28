@@ -1082,3 +1082,13 @@ SET
   sale_price_cents = CASE WHEN sale_price_cents = 0 AND sale_value > 0 THEN ROUND(sale_value * 100)::int ELSE sale_price_cents END,
   price_manually_overridden = CASE WHEN sale_value > 0 AND cost_value > 0 AND ROUND(sale_value * 100)::int != ROUND(cost_value * 100 * price_multiplier)::int THEN 1 ELSE price_manually_overridden END
 WHERE cost_value > 0 OR sale_value > 0;
+
+-- Índices de apoio à paginação/ordenação das listagens. Sem eles, paginar
+-- apenas troca "carregar tudo" por "varrer tudo e ordenar a cada página".
+CREATE INDEX IF NOT EXISTS idx_sales_orders_created ON sales_orders(created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_notification_queue_status_created ON notification_queue(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_digital_terms_signed ON digital_terms(signed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_post_care_followups_due ON post_care_followups(due_date, reminder_day);
+CREATE INDEX IF NOT EXISTS idx_jewelry_category_name ON jewelry_inventory(category, name);
+CREATE INDEX IF NOT EXISTS idx_appointments_status_date ON appointments(status, appointment_date);
+CREATE INDEX IF NOT EXISTS idx_clients_created ON clients(created_at);

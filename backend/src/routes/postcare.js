@@ -3,14 +3,16 @@ import { Router } from "express";
 import { withDb, withFeature } from "../middleware/withDb.js";
 import { parseUpload, privateUpload, registerPrivateFiles } from "../middleware/upload.js";
 import {
-  ensureFollowupsForCompletedAppointments,
-  listPostCareFollowups
+  listPostCareFollowups,
+  getPostCareFollowup
 } from "../services/postcare.js";
 
 const router = Router();
 
+// Leitura pura: os acompanhamentos já são criados quando o agendamento vira
+// "atendido" (routes/appointments.js), então não há mais varredura de escrita
+// aqui — ela custava 1 SELECT + 3 INSERT por atendimento concluído A CADA GET.
 router.get("/api/post-care", withFeature("automatic_followup", async (_req, res, db) => {
-  await ensureFollowupsForCompletedAppointments(db);
   res.json(await listPostCareFollowups(db));
 }));
 
@@ -33,7 +35,7 @@ router.patch("/api/post-care/:id", withFeature("automatic_followup", async (req,
       req.params.id
     ]
   );
-  res.json((await listPostCareFollowups(db)).find((item) => item.id === Number(req.params.id)));
+  res.json(await getPostCareFollowup(db, req.params.id));
 }));
 
 export default router;

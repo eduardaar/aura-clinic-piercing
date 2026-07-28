@@ -39,6 +39,27 @@ export function startOfDay(date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
+export const CLINIC_TIME_ZONE = "America/Sao_Paulo";
+
+// As datas gravadas no banco são TEXT em horário local. toISOString() devolve UTC e,
+// entre 21h e a meia-noite em São Paulo, já aponta para o dia seguinte — por isso
+// derivamos "hoje" pelo fuso da clínica. "en-CA" formata exatamente como YYYY-MM-DD.
+export function localDate(date = new Date()) {
+  return date.toLocaleDateString("en-CA", { timeZone: CLINIC_TIME_ZONE });
+}
+
+export function localMonth(date = new Date()) {
+  return localDate(date).slice(0, 7);
+}
+
+// Carimbo de data/hora para gravação, no mesmo formato do default do schema
+// (to_char(now(), 'YYYY-MM-DD HH24:MI:SS')). Sem isto, um pagamento registrado
+// às 22h entraria no banco com a data de amanhã e sumiria do faturamento do dia.
+export function localTimestamp(date = new Date()) {
+  const time = date.toLocaleTimeString("en-GB", { timeZone: CLINIC_TIME_ZONE, hour12: false });
+  return `${localDate(date)} ${time}`;
+}
+
 // ---------- Formatação / exportações ----------
 
 export function csvEscape(value) {
