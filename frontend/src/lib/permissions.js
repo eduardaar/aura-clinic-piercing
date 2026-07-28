@@ -1,11 +1,16 @@
+// "erp" e "error-logs" NÃO entram em nenhum papel: são ferramentas da plataforma,
+// não da clínica. O Aura ERP exibe conteúdo fictício embutido no código
+// (backend/src/routes/erp.js) e o Monitor de erros expõe stack traces e caminhos
+// internos do servidor — nada disso é informação do cliente. Quem precisa disso
+// é a equipe da Monitence, pelo painel de plataforma.
 export function allowedPagesForRole(role) {
   return {
-    admin: ["dashboard", "erp", "agenda", "communications", "catalog", "catalog-customization", "sales", "finance", "reports", "client-center", "clients", "terms", "postcare", "admin", "error-logs", "meu-plano"],
+    admin: ["dashboard", "agenda", "communications", "catalog", "catalog-customization", "sales", "finance", "reports", "client-center", "clients", "terms", "postcare", "admin", "meu-plano"],
     reception: ["agenda", "communications", "sales", "reports", "client-center", "clients"],
     finance: ["finance", "reports", "sales"],
     piercer: ["agenda", "sales", "client-center", "clients", "postcare"]
     // Fallback SEGURO para papéis desconhecidos: acesso mínimo, sem áreas
-    // administrativas (erp/admin/finance). O "Aura ERP" só aparece para admin.
+    // administrativas (admin/finance).
   }[role] || ["dashboard", "agenda", "client-center", "clients"];
 }
 

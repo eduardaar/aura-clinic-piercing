@@ -5534,35 +5534,11 @@ th {
     min-height: 320px;
   }
 
-  .app-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    position: fixed;
-    transform: translateX(-100%);
-    transition: transform .2s ease;
-    width: 280px;
-  }
-
-  .sidebar.open {
-    transform: translateX(0);
-  }
-
-  .mobile-only {
-    display: inline-flex;
-  }
-
-  .main-content {
-    padding: 18px;
-  }
+  /* A navegação off-canvas (sidebar, hambúrguer, chip e overlay) mora em
+     um único bloco no fim do arquivo, em `@media (max-width: 900px)`. */
 
   .topbar {
     align-items: flex-start;
-  }
-
-  .user-chip {
-    display: none;
   }
 
   .metric-grid {
@@ -6108,10 +6084,6 @@ tbody tr:hover td {
 }
 
 @media (max-width: 820px) {
-  .main-content {
-    padding: 16px;
-  }
-
   .topbar {
     margin-bottom: 18px;
   }
@@ -6531,6 +6503,10 @@ body {
 
 .topbar-actions {
   display: flex;
+  /* Com o chip de usuário visível, o trio sino + data + chip pede ~765px.
+     Sem quebra de linha ele vazava para fora da viewport entre 900px e
+     ~1240px; assim o chip desce para a segunda linha em vez de ser cortado. */
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 18px;
@@ -6596,9 +6572,8 @@ body {
   padding: 0 16px;
 }
 
-.topbar-actions .user-chip {
-  display: none;
-}
+/* O chip de usuário (nome + papel) é visível em telas largas; quem esconde
+   em telas estreitas é o bloco de navegação mobile no fim do arquivo. */
 
 .panel,
 .metric-card,
@@ -9060,7 +9035,10 @@ body {
   border-radius: 14px;
 }
 
-@media (max-width: 980px) {
+/* Largura da sidebar em modo gaveta: casada com o corte de 900px. Acima
+   disso ela continua ancorada na grade do `.app-shell`; usar 88vw/330px aqui
+   fazia a sidebar transbordar a coluna de 292px entre 901px e 980px. */
+@media (max-width: 900px) {
   .sidebar {
     width: min(88vw, 330px);
     padding: 18px 16px;
@@ -10248,10 +10226,33 @@ body,
   .danger-button { min-height: 46px; }
 }
 
-/* Overlay do menu lateral off-canvas (mobile): toque fora fecha o menu. */
+/* Navegação mobile unificada: gaveta off-canvas, hambúrguer, chip e overlay.
+   Ponto de corte único desktop→mobile em 900px, o mesmo em que `.app-shell`
+   vira coluna única. Este bloco fica no fim do arquivo de propósito: é o
+   último a declarar `position`/`transform`/`display` desses seletores e por
+   isso vence a cascata sobre as camadas anteriores. */
 .sidebar-overlay { display: none; }
-@media (max-width: 820px) {
-  .sidebar { z-index: 60; }
+@media (max-width: 900px) {
+  .sidebar {
+    position: fixed;
+    z-index: 60;
+    transform: translateX(-100%);
+    transition: transform .2s ease;
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .mobile-only {
+    display: inline-flex;
+  }
+
+  /* Topbar estreito não comporta o chip de usuário. */
+  .user-chip {
+    display: none;
+  }
+
   .sidebar-overlay {
     display: block;
     position: fixed;

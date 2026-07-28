@@ -25,6 +25,8 @@ import {
   Mail,
   MapPin,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
   Plus,
   Search,
@@ -49,6 +51,8 @@ import "./styles/topnav.css";
 import "./styles/landing.css";
 import "./styles/auth.css";
 import "./styles/directory.css";
+// Por último de propósito: é a camada que define o layout do shell autenticado.
+import "./styles/appshell.css";
 import { Login } from "./components/auth/Login";
 import { Sidebar } from "./components/layout/Sidebar";
 import { Loading, ApiError } from "./components/common/Feedback";
@@ -99,6 +103,19 @@ function App() {
   const [session, setSession] = useState(readStoredSession);
   const [page, setPage] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Preferência de menu recolhido é por usuário e persiste entre sessões.
+  const [navCollapsed, setNavCollapsed] = useState(() => {
+    try { return localStorage.getItem("aura-nav-collapsed") === "true"; } catch { return false; }
+  });
+  function toggleNav() {
+    // Em telas estreitas o menu é gaveta: o mesmo botão abre a gaveta.
+    if (window.matchMedia("(max-width: 900px)").matches) return setSidebarOpen((open) => !open);
+    setNavCollapsed((collapsed) => {
+      const next = !collapsed;
+      try { localStorage.setItem("aura-nav-collapsed", String(next)); } catch { /* storage indisponível */ }
+      return next;
+    });
+  }
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [alertsData, setAlertsData] = useState({ count: 0, items: [] });
   const [alertsLoading, setAlertsLoading] = useState(false);
@@ -237,9 +254,12 @@ function App() {
   }
   
   const activePage = canAccessPage(normalizedSession.user?.role, page) ? page : defaultPageForRole(normalizedSession.user?.role);
+  // Informação de plano é do administrador: para os demais papéis o atalho
+  // "Ver planos" seria um botão morto (a navegação cairia no reset de página).
+  const canSeePlan = canAccessPage(normalizedSession.user?.role, "meu-plano");
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${navCollapsed ? "nav-collapsed" : ""}`}>
       {/* Sidebar apenas renderizado se autenticado */}
       {isAdminAuthenticated && (
         <Sidebar
@@ -253,6 +273,7 @@ function App() {
             setSidebarOpen(false);
           }}
           open={sidebarOpen}
+          collapsed={navCollapsed}
           onLogout={() => {
             localStorage.removeItem("aura-session");
             localStorage.removeItem("aura-admin-authenticated");
@@ -266,8 +287,15 @@ function App() {
 
       <main className="main-content">
         <header className="topbar">
-          <button className="icon-button mobile-only" onClick={() => setSidebarOpen(true)} aria-label="Abrir menu">
-            <Menu size={20} />
+          <button
+            className="icon-button nav-toggle"
+            onClick={toggleNav}
+            aria-label={navCollapsed ? "Expandir menu" : "Recolher menu"}
+            aria-expanded={!navCollapsed}
+            title={navCollapsed ? "Expandir menu" : "Recolher menu"}
+          >
+            <Menu size={20} className="nav-toggle-mobile" />
+            {navCollapsed ? <PanelLeftOpen size={20} className="nav-toggle-desk" /> : <PanelLeftClose size={20} className="nav-toggle-desk" />}
           </button>
           <div className="topbar-title">
             <span className="eyebrow">{brandName}</span>
@@ -286,12 +314,16 @@ function App() {
                 <span>{new Date().toLocaleDateString("pt-BR", { weekday: "long" })}, {new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
               </div>
             </div>
-          <div className="user-chip">
+          {/* Primeiro nome apenas: o nome completo somado ao papel não cabia no
+              chip e era cortado no meio da palavra. */}
+          <div className="user-chip" title={`${normalizedSession.user?.name || "Usuário"} · ${roleLabel(normalizedSession.user?.role)}`}>
             <UserRound size={16} />
-            {normalizedSession.user?.name || "Usuário"} · {roleLabel(normalizedSession.user?.role)}
+            {firstName(normalizedSession.user?.name || "Usuário")} · {roleLabel(normalizedSession.user?.role)}
           </div>
           </div>
         </header>
+        {/* Único elemento com rolagem: o menu lateral e o topo ficam fixos. */}
+        <div className="content-scroll">
         {(trialDays !== null || subscriptionInactive) && activePage !== "meu-plano" && (
           <div className={`plan-banner ${subscriptionInactive ? "danger" : "warn"}`}>
             <span>
@@ -299,7 +331,7 @@ function App() {
                 ? "Seu período de teste terminou. Escolha um plano para continuar usando todos os recursos."
                 : `Teste grátis: ${trialDays} dia(s) restante(s).`}
             </span>
-            <button type="button" onClick={() => setPage("meu-plano")}>Ver planos</button>
+            {canSeePlan && <button type="button" onClick={() => setPage("meu-plano")}>Ver planos</button>}
           </div>
         )}
         <Suspense fallback={<Loading />}>
@@ -321,6 +353,7 @@ function App() {
           {activePage === "admin" && <AccessAdmin />}
           {activePage === "error-logs" && <ErrorLogs />}
         </Suspense>
+        </div>
       </main>
     </div>
   );
