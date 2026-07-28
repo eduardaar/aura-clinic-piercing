@@ -130,7 +130,7 @@ async function upsertProduct(db, item, index, summary) {
       quantity, cost_value, sale_value, purchase_cost_cents, total_cost_cents, suggested_price_cents, sale_price_cents,
       supplier, sku, notes, status, low_stock_threshold, critical_stock_threshold, is_catalog_active, is_published,
       virtual_store_active, is_featured, is_new, is_most_wanted, is_promotion, is_last_units)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, '', ?, ?, 'esgotado', ?, ?, 0, 0, 0, 0, 0, 0, 0, 0)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, '', ?, ?, 'esgotado', ?, ?, 0, 0, 0, 0, 0, 0, 0, 0) RETURNING id`,
     [
       item.product,
       commercialDescription(item),
@@ -152,7 +152,7 @@ async function upsertProduct(db, item, index, summary) {
   summary.productsCreated += 1;
   summary.pendingPrice += 1;
   summary.pendingImage += 1;
-  return { id: result.lastID, sku };
+  return { id: result.returnedId, sku };
 }
 
 async function upsertVariant(db, product, item, index, summary) {
@@ -189,7 +189,7 @@ async function upsertVariant(db, product, item, index, summary) {
      (jewelry_id, sku, variation_name, material, color, stone_color, side, size, top_size_mm, thickness, length, length_mm, diameter,
       thread_type, supplier, cost_value, sale_value, purchase_cost_cents, total_cost_cents, suggested_price_cents,
       sale_price_cents, quantity, low_stock_threshold, status, is_active)
-     VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, '', 0, 0, 0, 0, 0, 0, ?, ?, ?, 1)`,
+     VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, '', 0, 0, 0, 0, 0, 0, ?, ?, ?, 1) RETURNING id`,
     [
       product.id,
       variantSku,
@@ -211,7 +211,7 @@ async function upsertVariant(db, product, item, index, summary) {
   );
   summary.variantsCreated += 1;
   if (item.ambiguous) summary.ambiguousItems += 1;
-  return { id: result.lastID, sku: variantSku };
+  return { id: result.returnedId, sku: variantSku };
 }
 
 async function syncImportedProduct(db, productId) {

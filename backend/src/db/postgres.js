@@ -1,25 +1,28 @@
-// Adaptador que expõe a mesma interface do driver `sqlite` (get/all/run com
-// placeholders `?`) porém executando no Postgres SOBRE UM CLIENT ESPECÍFICO.
+// Camada fina de acesso ao Postgres: expõe `get` / `all` / `run` SOBRE UM
+// CLIENT ESPECÍFICO, mais o helper de transação.
 //
 // Multi-tenant: cada requisição recebe um client do pool com o search_path
-// apontando para o schema da clínica ("tenant_<id>"). Por isso NÃO existe mais
-// um singleton global de `db` — toda query do app DEVE passar pelo adaptador
-// criado por createDbAdapter(client) dentro do withDb (ou de um client
-// dedicado com search_path configurado, como no provisionamento).
+// apontando para o schema da clínica ("tenant_<id>"). Por isso NÃO existe um
+// singleton global de `db` — toda query do app DEVE passar pelo objeto criado
+// por createDb(client) dentro do withDb (ou de um client dedicado com
+// search_path configurado, como no provisionamento).
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Converte placeholders posicionais `?` (SQLite) em `$1, $2, ...` (Postgres).
+// Convenção de parâmetro do projeto: as queries são escritas com `?` posicional
+// e traduzidas aqui para o `$1, $2, ...` que o driver `pg` espera. A tradução é
+// posicional pura (o n-ésimo `?` vira `$n`), o que mantém o SQL legível e
+// permite montar cláusulas condicionais sem renumerar nada à mão. Consequência:
+// um `?` dentro de literal de string ou de operador jsonb também seria trocado
+// — se precisar de um, use `$n` direto e não misture os dois estilos na mesma
+// query.
 function toPg(sql) {
   let i = 0;
   return sql.replace(/\?/g, () => `$${++i}`);
 }
-
-// Tabelas cuja PK não é `id` (não devem receber RETURNING id automático).
-const NO_RETURNING_ID = /^\s*INSERT\s+INTO\s+(catalog_settings|catalog_theme)\b/i;
 
 // Comandos de transação escritos "na mão" (`db.run("BEGIN")`) espalhados pelas
 // rotas antigas. São interceptados para passarem pelo MESMO controle de
@@ -36,12 +39,12 @@ function transactionCommand(sql) {
   return verb === "ROLLBACK" ? "ROLLBACK" : "COMMIT";
 }
 
-// Factory do adaptador: executa tudo no client informado (que já deve estar
-// com o search_path do tenant). Mesma semântica do antigo singleton.
-export function createDbAdapter(client) {
+// Factory do `db`: executa tudo no client informado (que já deve estar com o
+// search_path do tenant).
+export function createDb(client) {
   // Pilha de níveis de transação DESTE client (vazia = autocommit). O nível 0 é
   // a transação real (BEGIN/COMMIT); os aninhados viram SAVEPOINT, porque o
-  // Postgres não tem transação aninhada de verdade. Guardar isso no adaptador
+  // Postgres não tem transação aninhada de verdade. Guardar isso aqui
   // funciona porque cada requisição tem um client dedicado e o driver serializa
   // as queries de uma conexão — não há duas transações concorrentes aqui.
   const frames = [];
@@ -77,7 +80,7 @@ export function createDbAdapter(client) {
     await client.query(`RELEASE SAVEPOINT ${name}`);
   }
 
-  const adapter = {
+  const db = {
     async get(sql, params = []) {
       const result = await client.query(toPg(sql), params);
       return result.rows[0];
@@ -86,26 +89,24 @@ export function createDbAdapter(client) {
       const result = await client.query(toPg(sql), params);
       return result.rows;
     },
+    // Para escritas. `changes` é o número de linhas afetadas; `rows` e
+    // `returnedId` só vêm preenchidos se a query trouxer um RETURNING explícito
+    // (quem precisa do id de um INSERT escreve `RETURNING id` na própria query).
     async run(sql, params = []) {
       const command = transactionCommand(sql);
       if (command) {
         if (command === "BEGIN") await beginFrame();
         else if (command === "COMMIT") await commitFrame();
         else await rollbackFrame();
-        return { lastID: undefined, changes: 0 };
+        return { returnedId: undefined, changes: 0, rows: [] };
       }
-      let text = toPg(sql);
-      const isInsert = /^\s*INSERT\s+INTO/i.test(text);
-      if (isInsert && !/\bRETURNING\b/i.test(text) && !NO_RETURNING_ID.test(text)) {
-        text += " RETURNING id";
-      }
-      const result = await client.query(text, params);
-      return { lastID: result.rows[0]?.id, changes: result.rowCount };
+      const result = await client.query(toPg(sql), params);
+      return { returnedId: result.rows?.[0]?.id, changes: result.rowCount, rows: result.rows || [] };
     },
 
     // Executa `fn` dentro de uma transação e devolve o que ela retornar.
     // Commit no fim, ROLLBACK em qualquer erro (o erro original é repropagado).
-    // O `tx` recebido é o PRÓPRIO adaptador: reusa o client da requisição, que é
+    // O `tx` recebido é o PRÓPRIO `db`: reusa o client da requisição, que é
     // quem carrega o search_path do tenant — pegar outro client do pool jogaria
     // a escrita no schema errado.
     // Aninhamento: se já houver transação em curso, este nível vira SAVEPOINT.
@@ -115,7 +116,7 @@ export function createDbAdapter(client) {
       const base = frames.length;
       await beginFrame();
       try {
-        const result = await fn(adapter);
+        const result = await fn(db);
         // Fecha também o que o callback tenha deixado aberto (BEGIN legado sem
         // COMMIT), sempre voltando à profundidade em que entramos.
         while (frames.length > base) await commitFrame();
@@ -149,7 +150,7 @@ export function createDbAdapter(client) {
     },
   };
 
-  return adapter;
+  return db;
 }
 
 // Aplica o schema unificado das clínicas (idempotente: CREATE TABLE IF NOT

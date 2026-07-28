@@ -1,7 +1,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { pool } from "../src/database/connection.js";
-import { createDbAdapter } from "../src/db/sqliteCompat.js";
+import { createDb } from "../src/db/postgres.js";
 import { importAuraJewelry } from "../src/services/auraJewelryImport.js";
 import { req, createTenant, loginTenant, platformLogin, deleteTenant } from "./helpers.mjs";
 
@@ -11,7 +11,7 @@ async function tenantDb(tenant) {
   const client = await pool.connect();
   await client.query(`SET search_path TO "tenant_${tenant.tenant.id}", public`);
   return {
-    db: createDbAdapter(client),
+    db: createDb(client),
     release: async () => {
       try {
         await client.query("SET search_path TO public");

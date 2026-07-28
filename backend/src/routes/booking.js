@@ -237,7 +237,7 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
       const result = await tx.run(
         `INSERT INTO appointments
           (client_id, professional_id, service_id, jewelry_id, jewelry_variant_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, duration_minutes, total_value, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, status, source, public_booking_key, notes, reference_photo_url, payment_proof_url)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [
           client.id,
           professionalId,
@@ -267,7 +267,7 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
       if (depositValue > 0) {
         await tx.run(
           "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, 'sinal', 'Pix', 'pendente', ?)",
-          [result.lastID, client.id, depositValue, `${date}T${time}:00`]
+          [result.returnedId, client.id, depositValue, `${date}T${time}:00`]
         );
       }
       for (const item of bookingItems) {
@@ -276,7 +276,7 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
             (appointment_id, service_id, jewelry_id, jewelry_variant_id, quantity, procedure_price, jewelry_unit_price, duration_minutes, subtotal, notes)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
-            result.lastID, item.service_id || null, item.jewelry_id || null, item.jewelry_variant_id || null,
+            result.returnedId, item.service_id || null, item.jewelry_id || null, item.jewelry_variant_id || null,
             item.quantity, item.item_type === "service" ? item.unit_price : 0,
             item.item_type === "jewelry" ? item.unit_price : 0, item.duration_minutes || 0,
             item.unit_price * item.quantity, item.notes || ""
@@ -287,7 +287,7 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
         // reserveAppointmentItems abre a própria transação (BEGIN/COMMIT
         // legado): aninhada aqui ela vira SAVEPOINT, então não fecha esta.
         await reserveAppointmentItems(tx, {
-          appointmentId: result.lastID,
+          appointmentId: result.returnedId,
           clientId: client.id,
           reservationKey: bookingKey,
           items: bookingItems,
@@ -297,13 +297,13 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
         throw new ReservationConflict(error.message);
       }
       const intent = depositValue > 0 ? await createPaymentIntent(tx, {
-        appointmentId: result.lastID,
+        appointmentId: result.returnedId,
         clientId: client.id,
         amount: depositValue,
         provider: "manual",
         idempotencyKey: `booking:${bookingKey}:deposit`
       }) : null;
-      return { appointmentId: result.lastID, paymentIntent: intent };
+      return { appointmentId: result.returnedId, paymentIntent: intent };
     });
   } catch (error) {
     if (error instanceof ReservationConflict) return res.status(409).json({ error: error.message });

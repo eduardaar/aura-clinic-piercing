@@ -34,10 +34,10 @@ router.post("/api/procedures", withDb(async (req, res, db) => {
   const b = req.body || {};
   const result = await db.run(
     `INSERT INTO procedures (service_id, name, body_area, description, price, duration_minutes, aftercare_instructions, is_active)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     [Number(b.service_id), b.name.trim(), b.body_area || "", b.description || "", Number(b.price || 0), Number(b.duration_minutes || 40), b.aftercare_instructions || "", boolNumber(b.is_active ?? 1)]
   );
-  res.status(201).json(await db.get("SELECT * FROM procedures WHERE id = ?", [result.lastID]));
+  res.status(201).json(await db.get("SELECT * FROM procedures WHERE id = ?", [result.returnedId]));
 }));
 
 router.put("/api/procedures/:id", withDb(async (req, res, db) => {

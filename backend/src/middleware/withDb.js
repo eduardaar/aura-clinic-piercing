@@ -1,14 +1,14 @@
 // Wrapper padrão de todos os handlers (multi-tenant por schema):
 // - resolve o tenant da requisição (token/X-Tenant/DEFAULT_TENANT);
 // - pega UM client do pool e fixa o search_path no schema da clínica;
-// - injeta o adaptador `db` (Postgres com interface estilo SQLite) desse client;
+// - injeta o `db` (camada fina de acesso ao Postgres) desse client;
 // - normaliza o corpo das respostas (paliativo de encoding via normalizeDbValue);
 // - aplica autenticação quando a rota exige (token amarrado ao tenant);
 // - captura erros e devolve 500 padronizado;
 // - SEMPRE reseta o search_path antes de devolver o client ao pool — um client
 //   devolvido "sujo" vazaria dados entre clínicas.
 import { pool } from "../database/connection.js";
-import { createDbAdapter } from "../db/sqliteCompat.js";
+import { createDb } from "../db/postgres.js";
 import { resolveTenant, TenantError } from "./tenant.js";
 import { normalizeDbValue } from "../text-normalizer.js";
 import { requiresAuth, authenticateRequest } from "./auth.js";
@@ -47,7 +47,7 @@ export const withDb = (handler) => async (req, res) => {
   let db;
   try {
     await client.query(`SET search_path TO "${tenant.schema}", public`);
-    db = createDbAdapter(client);
+    db = createDb(client);
     if (requiresAuth(req)) {
       const user = await authenticateRequest(req, db);
       if (!user) return res.status(401).json({ error: "Sessão inválida ou expirada." });

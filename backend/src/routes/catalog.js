@@ -197,7 +197,7 @@ router.post("/api/coupons", withFeature("coupons", async (req, res, db) => {
        usage_limit_per_client, minimum_amount, maximum_discount, product_ids, category_ids,
        excluded_product_ids, excluded_category_ids, service_ids, first_purchase_only,
        selected_client_ids, is_stackable, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     [
       code, internalName, body.description || "", discountType, discountValue,
       body.starts_at || null, body.ends_at || null, body.usage_limit || null,
@@ -207,7 +207,7 @@ router.post("/api/coupons", withFeature("coupons", async (req, res, db) => {
       body.selected_client_ids || "", Number(Boolean(body.is_stackable)), body.status || "active"
     ]
   );
-  res.status(201).json(await db.get("SELECT * FROM coupons WHERE id = ?", [result.lastID]));
+  res.status(201).json(await db.get("SELECT * FROM coupons WHERE id = ?", [result.returnedId]));
 }));
 
 router.patch("/api/coupons/:id", withFeature("coupons", async (req, res, db) => {
@@ -320,10 +320,10 @@ router.post("/api/promotions", withFeature("campaigns", async (req, res, db) => 
        product_ids, category_ids, variation_ids, excluded_product_ids, excluded_category_ids, excluded_variation_ids,
        colors, materials, stones, service_ids, buy_quantity, pay_quantity, fixed_promotional_price,
        is_stackable, stackable_with_coupon, badge, legal_text, visible_in_catalog, is_active)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     promotionValues(body)
   );
-  const created = await db.get("SELECT * FROM catalog_promotions WHERE id = ?", [result.lastID]);
+  const created = await db.get("SELECT * FROM catalog_promotions WHERE id = ?", [result.returnedId]);
   await db.run("INSERT INTO promotion_audit_logs (promotion_id, user_id, action, next_data) VALUES (?, ?, 'create', ?)", [created.id, req.user?.id || null, JSON.stringify(created)]);
   res.status(201).json(created);
 }));
@@ -359,10 +359,10 @@ router.post("/api/promotions/:id/duplicate", withFeature("campaigns", async (req
        product_ids, category_ids, variation_ids, excluded_product_ids, excluded_category_ids, excluded_variation_ids,
        colors, materials, stones, service_ids, buy_quantity, pay_quantity, fixed_promotional_price,
        is_stackable, stackable_with_coupon, badge, legal_text, visible_in_catalog, is_active)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     promotionValues({ ...current, name: `${current.name} (cópia)`, status: "paused", is_active: 0 })
   );
-  res.status(201).json(await db.get("SELECT * FROM catalog_promotions WHERE id = ?", [result.lastID]));
+  res.status(201).json(await db.get("SELECT * FROM catalog_promotions WHERE id = ?", [result.returnedId]));
 }));
 
 router.delete("/api/promotions/:id", withFeature("campaigns", async (req, res, db) => {

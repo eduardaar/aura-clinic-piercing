@@ -42,7 +42,7 @@ router.post("/api/digital-terms", withFeature("digital_terms", async (req, res, 
   const result = await db.run(
     `INSERT INTO digital_terms
     (appointment_id, client_id, full_name, social_name, document_number, birth_date, whatsapp, instagram, address, procedure, piercing_region, orientations_confirmed, health_declaration, form_data, signature_data_url)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     [
       body.appointment_id || null,
       client.id,
@@ -62,10 +62,10 @@ router.post("/api/digital-terms", withFeature("digital_terms", async (req, res, 
     ]
   );
 
-  const term = await db.get("SELECT * FROM digital_terms WHERE id = ?", [result.lastID]);
+  const term = await db.get("SELECT * FROM digital_terms WHERE id = ?", [result.returnedId]);
   const pdfUrl = await createTermPdf(db, term, appointment || {}, req.user?.id || null);
-  await db.run("UPDATE digital_terms SET pdf_url = ? WHERE id = ?", [pdfUrl, result.lastID]);
-  res.status(201).json(await getDigitalTerm(db, result.lastID));
+  await db.run("UPDATE digital_terms SET pdf_url = ? WHERE id = ?", [pdfUrl, result.returnedId]);
+  res.status(201).json(await getDigitalTerm(db, result.returnedId));
 }));
 
 export default router;

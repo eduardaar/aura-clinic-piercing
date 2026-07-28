@@ -3,8 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import { pool, query } from "../src/database/connection.js";
-import { createDbAdapter } from "../src/db/sqliteCompat.js";
-import { applySchemaSql } from "../src/db/sqliteCompat.js";
+import { createDb } from "../src/db/postgres.js";
+import { applySchemaSql } from "../src/db/postgres.js";
 import { ensurePlatform } from "../src/services/tenants.js";
 import { importAuraJewelry } from "../src/services/auraJewelryImport.js";
 
@@ -42,7 +42,7 @@ try {
   await client.query(`SET search_path TO "${schema}"`);
   await applySchemaSql(client);
   await client.query(`SET search_path TO "${schema}", public`);
-  const db = createDbAdapter(client);
+  const db = createDb(client);
   const summary = await importAuraJewelry(db);
   console.log(JSON.stringify({ tenant: tenant.slug, schema, ...summary }, null, 2));
 } finally {

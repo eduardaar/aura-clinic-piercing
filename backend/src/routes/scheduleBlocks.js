@@ -48,10 +48,10 @@ router.post("/api/schedule-blocks", withDb(async (req, res, db) => {
   const result = await db.run(
     `INSERT INTO schedule_blocks
       (professional_id, start_datetime, end_datetime, block_type, reason, notes, is_full_day, is_recurring, lunch_start, lunch_end, duration_minutes, buffer_minutes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     [next.professional_id, next.start_datetime, next.end_datetime, next.block_type, next.reason, next.notes, next.is_full_day, next.is_recurring, next.lunch_start, next.lunch_end, next.duration_minutes, next.buffer_minutes]
   );
-  res.status(201).json(await db.get("SELECT * FROM schedule_blocks WHERE id = ?", [result.lastID]));
+  res.status(201).json(await db.get("SELECT * FROM schedule_blocks WHERE id = ?", [result.returnedId]));
 }));
 
 router.patch("/api/schedule-blocks/:id", withDb(async (req, res, db) => {

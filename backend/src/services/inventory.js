@@ -370,11 +370,11 @@ export async function replaceJewelryVariants(db, jewelryId, variants = []) {
          (jewelry_id, sku, variation_name, material, color, stone_color, side, size, top_size_mm, thickness, length, length_mm, diameter, thread_type, supplier,
           cost_value, sale_value, purchase_cost_cents, allocated_freight_cents, additional_cost_cents, total_cost_cents, price_multiplier,
           price_rounding_mode, suggested_price_cents, sale_price_cents, price_manually_overridden, cost_estimated, quantity, low_stock_threshold, status, is_active)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id` ,
         [jewelryId, ...values]
       );
-      retainedIds.push(result.lastID);
-      await syncProductImages(db, jewelryId, variant.images || variant.gallery_urls || [variant.image_url || variant.photo_url].filter(Boolean), { variationId: result.lastID });
+      retainedIds.push(result.returnedId);
+      await syncProductImages(db, jewelryId, variant.images || variant.gallery_urls || [variant.image_url || variant.photo_url].filter(Boolean), { variationId: result.returnedId });
     }
   }
   for (const variant of current.filter((item) => !retainedIds.includes(item.id))) {

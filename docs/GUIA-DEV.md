@@ -139,7 +139,7 @@ backend/src/
   index.js         Bootstrap (middlewares, routers, boot multi-tenant)
   config/          Env e constantes de domínio
   database/        Pool PostgreSQL (pg)
-  db/              schema.sql (clínica), platformSchema.sql (controle), sqliteCompat.js (adaptador)
+  db/              schema.sql (clínica), platformSchema.sql (controle), postgres.js (camada db)
   middleware/      withDb, tenant, auth, rateLimit, upload, validate
   routes/          Um router por domínio (+ platform.js: signup e painel de plataforma)
   services/        Regras de negócio (tenants, finance, sales, inventory, loyalty, ...)
@@ -155,7 +155,7 @@ frontend/src/
 
 ## Convenções
 
-- **Adaptador `db` estilo SQLite**: os handlers/services recebem um adaptador `db` (`db.get/all/run`) com placeholders posicionais `?` (convertidos para `$1, $2, ...`). Não use o driver `pg` diretamente no código de negócio — isso quebraria o isolamento por `search_path`. Em `INSERT` sem `RETURNING`, o adaptador acrescenta `RETURNING id` automaticamente para popular `lastID`.
+- **Camada `db`**: os handlers/services recebem um `db` (`db.get/all/run/transaction`) com placeholders posicionais `?` — a convenção de parâmetro do projeto, traduzida posicionalmente para `$1, $2, ...` antes de chegar ao driver. Não use o driver `pg` diretamente no código de negócio — isso quebraria o isolamento por `search_path`. Nada é acrescentado à sua query: para obter o id gerado por um `INSERT`, escreva `RETURNING id` e leia `result.returnedId` (`result.changes` traz as linhas afetadas).
 - **Isolamento por tenant**: nunca abra conexão fora do `withDb` para atender uma requisição de clínica. O `withDb` garante o `search_path` correto e o reset ao devolver o client ao pool.
 - **Validação Zod**: valide o corpo dos POST/PATCH com os schemas de `backend/src/schemas/index.js`. Os schemas são permissivos (`.passthrough()`), validando presença/tipo dos campos obrigatórios e preservando extras do frontend.
 - **Autorização por papel**: restrinja handlers sensíveis com `requireRole(req, res, [...])`. Papéis: `admin`, `reception`, `finance`, `piercer`.

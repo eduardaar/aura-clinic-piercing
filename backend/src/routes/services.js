@@ -17,7 +17,7 @@ router.post("/api/services", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   if (!validateBody(serviceCreateSchema, req, res)) return;
   const result = await db.run(
-    "INSERT INTO services (name, description, duration_minutes, price, deposit_value, active_online_booking, pre_service_notes) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO services (name, description, duration_minutes, price, deposit_value, active_online_booking, pre_service_notes) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
     [
       req.body.name,
       req.body.description || "",
@@ -28,8 +28,8 @@ router.post("/api/services", withDb(async (req, res, db) => {
       req.body.pre_service_notes || ""
     ]
   );
-  await replaceProfessionalServices(db, result.lastID, req.body.professional_ids || []);
-  res.status(201).json(await getService(db, result.lastID));
+  await replaceProfessionalServices(db, result.returnedId, req.body.professional_ids || []);
+  res.status(201).json(await getService(db, result.returnedId));
 }));
 
 async function updateService(req, res, db) {

@@ -107,21 +107,21 @@ router.post("/api/inventory/counts", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   await db.run("BEGIN");
   try {
-    const created = await db.run("INSERT INTO inventory_counts (notes, created_by) VALUES (?, ?)", [String(req.body?.notes || ""), req.user?.id || null]);
+    const created = await db.run("INSERT INTO inventory_counts (notes, created_by) VALUES (?, ?) RETURNING id", [String(req.body?.notes || ""), req.user?.id || null]);
     await db.run(`
       INSERT INTO inventory_count_items (count_id, jewelry_id, variant_id, expected_quantity)
       SELECT ?, j.id, v.id, v.quantity
       FROM jewelry_inventory j JOIN jewelry_variants v ON v.jewelry_id=j.id AND v.is_active=1
       WHERE j.status != 'arquivado'
-    `, [created.lastID]);
+    `, [created.returnedId]);
     await db.run(`
       INSERT INTO inventory_count_items (count_id, jewelry_id, variant_id, expected_quantity)
       SELECT ?, j.id, NULL, j.quantity FROM jewelry_inventory j
       WHERE j.status != 'arquivado'
         AND NOT EXISTS (SELECT 1 FROM jewelry_variants v WHERE v.jewelry_id=j.id AND v.is_active=1)
-    `, [created.lastID]);
+    `, [created.returnedId]);
     await db.run("COMMIT");
-    res.status(201).json(await db.get("SELECT * FROM inventory_counts WHERE id=?", [created.lastID]));
+    res.status(201).json(await db.get("SELECT * FROM inventory_counts WHERE id=?", [created.returnedId]));
   } catch (error) {
     await db.run("ROLLBACK").catch(() => {});
     throw error;
@@ -380,12 +380,12 @@ router.post("/api/jewelry", withDb(async (req, res, db) => {
     const result = await db.run(
       `INSERT INTO jewelry_inventory
       (name, description, photo_url, gallery_urls, category, subcategory, variant_group, variation_label, material, color, stone, size, top_size_mm, thickness, stem_length, thread_type, piercing_type, weight_grams, package_length_cm, package_width_cm, package_height_cm, package_type, virtual_store_active, preparation_days, shipping_info, seo_title, seo_description, freight_notes, quantity, cost_value, sale_value, purchase_cost_cents, allocated_freight_cents, additional_cost_cents, total_cost_cents, price_multiplier, price_rounding_mode, suggested_price_cents, sale_price_cents, price_manually_overridden, cost_estimated, supplier, physical_location, sku, is_catalog_active, is_featured, is_new, is_most_wanted, is_promotion, is_last_units, notes, status, low_stock_threshold, critical_stock_threshold, image_url, is_published)
-      VALUES (${Array(56).fill("?").join(", ")})`,
+      VALUES (${Array(56).fill("?").join(", ")}) RETURNING id`,
       jewelryPayload(req.body, sku, pricing)
     );
-    await replaceJewelryVariants(db, result.lastID, req.body.variants || [variantFromLegacy({ ...req.body, sku: "" })]);
-    await syncProductImages(db, result.lastID, req.body.images || req.body.gallery_urls || [req.body.image_url || req.body.photo_url].filter(Boolean));
-    const product = (await attachVariants(db, [await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [result.lastID])]))[0];
+    await replaceJewelryVariants(db, result.returnedId, req.body.variants || [variantFromLegacy({ ...req.body, sku: "" })]);
+    await syncProductImages(db, result.returnedId, req.body.images || req.body.gallery_urls || [req.body.image_url || req.body.photo_url].filter(Boolean));
+    const product = (await attachVariants(db, [await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [result.returnedId])]))[0];
     await db.run("COMMIT");
     return res.status(201).json(product);
   } catch (error) {

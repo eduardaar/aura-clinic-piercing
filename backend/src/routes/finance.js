@@ -24,10 +24,10 @@ router.post("/api/expenses", withFeature("basic_finance", async (req, res, db) =
   }
   const result = await db.run(
     `INSERT INTO expenses (description, expense_type, category, amount, due_date, status, payment_method, payment_account, paid_at, paid_by_user_id, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     [description.trim(), expense_type, category || "", Number(amount || 0), due_date, status || "pendente", payment_method || "", payment_account || "", status === "paga" ? new Date().toISOString() : null, status === "paga" ? req.user?.id || null : null, notes || ""]
   );
-  res.status(201).json(await db.get("SELECT * FROM expenses WHERE id = ?", [result.lastID]));
+  res.status(201).json(await db.get("SELECT * FROM expenses WHERE id = ?", [result.returnedId]));
 }));
 
 router.patch("/api/expenses/:id", withFeature("basic_finance", async (req, res, db) => {
@@ -83,7 +83,7 @@ router.post("/api/finance/entries", withFeature("advanced_finance", async (req, 
           (entry_type, description, category, amount, paid_amount, due_date, competence_date, status,
            payment_method, payment_account, paid_at, cost_center_id, responsible_user_id, attachment_url,
            notes, recurrence, recurrence_end_date, installment_number, installment_count, parent_entry_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
       `, [
         entry.entry_type, entry.description, entry.category, amount, installment === 1 ? entry.paid_amount : 0,
         date.toISOString().slice(0, 10), installment === 1 ? entry.competence_date : date.toISOString().slice(0, 10),
@@ -91,8 +91,8 @@ router.post("/api/finance/entries", withFeature("advanced_finance", async (req, 
         installment === 1 ? entry.paid_at : null, entry.cost_center_id, req.user?.id || null, entry.attachment_url,
         entry.notes, entry.recurrence, entry.recurrence_end_date, installment, installmentCount, parentId
       ]);
-      if (!parentId) parentId = result.lastID;
-      created.push(result.lastID);
+      if (!parentId) parentId = result.returnedId;
+      created.push(result.returnedId);
     }
     await db.run("COMMIT");
     res.status(201).json(await db.all(`SELECT * FROM financial_entries WHERE id IN (${created.map(() => "?").join(",")}) ORDER BY id`, created));
@@ -143,8 +143,9 @@ router.post("/api/finance/cost-centers", withFeature("advanced_finance", async (
   if (!requireRole(req, res, ["admin", "finance"])) return;
   const name = String(req.body?.name || "").trim();
   if (!name) return res.status(400).json({ error: "Informe o centro de custo." });
-  const result = await db.run("INSERT INTO financial_cost_centers (name, description) VALUES (?, ?) ON CONFLICT (name) DO UPDATE SET description=EXCLUDED.description", [name, req.body?.description || ""]);
-  res.status(201).json(result);
+  // Devolve o próprio centro de custo (antes vazava o resultado cru do driver).
+  const result = await db.run("INSERT INTO financial_cost_centers (name, description) VALUES (?, ?) ON CONFLICT (name) DO UPDATE SET description=EXCLUDED.description RETURNING id", [name, req.body?.description || ""]);
+  res.status(201).json(await db.get("SELECT * FROM financial_cost_centers WHERE id = ?", [result.returnedId]));
 }));
 
 router.post("/api/finance/entries/:id/reconcile", withFeature("advanced_finance", async (req, res, db) => {
@@ -179,10 +180,10 @@ router.post("/api/finance/goals", withFeature("advanced_finance", async (req, re
     return res.status(400).json({ error: "Dados da meta inválidos." });
   }
   const result = await db.run(
-    "INSERT INTO financial_goals (name, period_start, period_end, target_amount, goal_type) VALUES (?, ?, ?, ?, ?)",
+    "INSERT INTO financial_goals (name, period_start, period_end, target_amount, goal_type) VALUES (?, ?, ?, ?, ?) RETURNING id",
     [name, req.body.period_start, req.body.period_end, Number(req.body.target_amount), req.body.goal_type || "revenue"]
   );
-  res.status(201).json(await db.get("SELECT * FROM financial_goals WHERE id=?", [result.lastID]));
+  res.status(201).json(await db.get("SELECT * FROM financial_goals WHERE id=?", [result.returnedId]));
 }));
 
 router.get("/api/finance/export.csv", withFeature("basic_finance", async (_req, res, db) => {

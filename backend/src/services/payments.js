@@ -8,10 +8,10 @@ export async function createPaymentIntent(db, { appointmentId, clientId, amount,
   const result = await db.run(
     `INSERT INTO payment_intents
       (appointment_id, client_id, provider, idempotency_key, amount, status, expires_at, metadata)
-     VALUES (?, ?, ?, ?, ?, 'awaiting_payment', CURRENT_TIMESTAMP + (? * INTERVAL '1 minute'), ?)`,
+     VALUES (?, ?, ?, ?, ?, 'awaiting_payment', CURRENT_TIMESTAMP + (? * INTERVAL '1 minute'), ?) RETURNING id`,
     [appointmentId, clientId, provider, key, Math.max(Number(amount || 0), 0), expiresMinutes, JSON.stringify({ integration: provider === "manual" ? "manual_proof" : "credentials_required" })]
   );
-  return db.get("SELECT * FROM payment_intents WHERE id=?", [result.lastID]);
+  return db.get("SELECT * FROM payment_intents WHERE id=?", [result.returnedId]);
 }
 
 // Transição de estado da intenção de pagamento. TUDO numa transação só: o

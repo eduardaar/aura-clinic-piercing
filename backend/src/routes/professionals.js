@@ -46,11 +46,11 @@ router.post("/api/professionals", withDb(async (req, res, db) => {
   if (!name?.trim()) return res.status(400).json({ error: "Nome do profissional e obrigatorio." });
   const whatsapp = normalizeWhatsappNumber(req.body.whatsapp || phone);
   const result = await db.run(
-    "INSERT INTO professionals (name, specialty, phone, email, whatsapp, notification_opt_in, calendar_color, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO professionals (name, specialty, phone, email, whatsapp, notification_opt_in, calendar_color, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
     [name.trim(), specialty || "", phone || "", email || "", whatsapp, boolNumber(req.body.notification_opt_in ?? true), calendar_color || "#C8A96A", req.body.active === false ? 0 : 1]
   );
-  await replaceProfessionalServices(db, result.lastID, req.body.service_ids || []);
-  res.status(201).json(await getProfessional(db, result.lastID));
+  await replaceProfessionalServices(db, result.returnedId, req.body.service_ids || []);
+  res.status(201).json(await getProfessional(db, result.returnedId));
 }));
 
 router.patch("/api/professionals/:id", withDb(async (req, res, db) => {

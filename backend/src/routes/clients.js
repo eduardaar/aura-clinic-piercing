@@ -44,10 +44,10 @@ router.post("/api/clients", withDb(async (req, res, db) => {
   req.body = { ...req.body, full_name: b.full_name, whatsapp: b.whatsapp };
   if (!validateBody(clientCreateSchema, req, res)) return;
   const result = await db.run(
-    "INSERT INTO clients (full_name, phone, whatsapp, instagram, email, birth_date, cpf, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO clients (full_name, phone, whatsapp, instagram, email, birth_date, cpf, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
     [b.full_name, b.phone, b.whatsapp, b.instagram, b.email, b.birth_date, b.cpf, b.notes]
   );
-  res.status(201).json(clientResponse(await db.get("SELECT * FROM clients WHERE id = ?", [result.lastID])));
+  res.status(201).json(clientResponse(await db.get("SELECT * FROM clients WHERE id = ?", [result.returnedId])));
 }));
 
 async function updateClient(req, res, db) {
@@ -159,7 +159,7 @@ router.post("/api/clients/:id/medical-records", withDb(async (req, res, db) => {
   const result = await db.run(
     `INSERT INTO client_medical_records
     (client_id, appointment_id, record_date, piercing_history, jewelry_used, before_photo_url, after_photo_url, occurrences, guidance, allergies_notes, healing_evolution, returns_done)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     [
       req.params.id,
       body.appointment_id || null,
@@ -175,7 +175,7 @@ router.post("/api/clients/:id/medical-records", withDb(async (req, res, db) => {
       body.returns_done || ""
     ]
   );
-  res.status(201).json(await getMedicalRecord(db, result.lastID));
+  res.status(201).json(await getMedicalRecord(db, result.returnedId));
 }));
 
 router.delete("/api/clients/:clientId/medical-records/:recordId", withDb(async (req, res, db) => {

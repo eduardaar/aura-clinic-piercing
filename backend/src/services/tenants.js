@@ -6,7 +6,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import bcrypt from "bcryptjs";
 import { pool, query } from "../database/connection.js";
-import { applySchemaSql } from "../db/sqliteCompat.js";
+import { applySchemaSql } from "../db/postgres.js";
 import { TENANT_SLUG_REGEX, invalidateTenantCache } from "../middleware/tenant.js";
 import { isProduction } from "../config/index.js";
 import { normalizePlanCode, planByCode, trialWindow } from "./plans.js";

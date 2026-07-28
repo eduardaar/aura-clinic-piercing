@@ -73,7 +73,7 @@ export async function createSalesOrder(db, body, user) {
     const result = await tx.run(
       `INSERT INTO sales_orders
       (client_id, appointment_id, order_type, source, status, payment_method, total_value, notes, created_by_user_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       [
         client.id,
         body.appointment_id ? Number(body.appointment_id) : null,
@@ -92,7 +92,7 @@ export async function createSalesOrder(db, body, user) {
         `INSERT INTO sales_order_items (sales_order_id, item_type, product_id, product_variant_id, service_id, item_name, quantity, unit_price, notes)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          result.lastID,
+          result.returnedId,
           item.item_type || "produto",
           item.product_id ? Number(item.product_id) : null,
           item.product_variant_id ? Number(item.product_variant_id) : null,
@@ -103,7 +103,7 @@ export async function createSalesOrder(db, body, user) {
           item.notes || ""
         ]
       );
-      if (status !== "cancelada") await deductSoldProductStock(tx, item, result.lastID);
+      if (status !== "cancelada") await deductSoldProductStock(tx, item, result.returnedId);
     }
 
     if (total > 0) {
@@ -120,7 +120,7 @@ export async function createSalesOrder(db, body, user) {
         ]
       );
     }
-    return result.lastID;
+    return result.returnedId;
   });
 
   if (!orderId) return null;
@@ -174,7 +174,7 @@ export async function ensureSalesOrderForAppointment(db, appointmentId, user) {
   const result = await db.run(
     `INSERT INTO sales_orders
     (client_id, appointment_id, order_type, source, status, payment_method, total_value, notes, created_by_user_id)
-    VALUES (?, ?, 'ordem_servico', 'agenda', 'concluida', ?, ?, ?, ?)`,
+    VALUES (?, ?, 'ordem_servico', 'agenda', 'concluida', ?, ?, ?, ?) RETURNING id`,
     [
       appointment.client_id,
       appointment.id,
@@ -192,7 +192,7 @@ export async function ensureSalesOrderForAppointment(db, appointmentId, user) {
           `INSERT INTO sales_order_items (sales_order_id, item_type, service_id, item_name, quantity, unit_price, notes)
            VALUES (?, 'servico', ?, ?, 1, ?, ?)`,
           [
-            result.lastID,
+            result.returnedId,
             item.service_id || null,
             item.procedure_name || item.service_name || appointment.procedure || "Atendimento",
             Number(item.procedure_price || 0),
@@ -205,7 +205,7 @@ export async function ensureSalesOrderForAppointment(db, appointmentId, user) {
           `INSERT INTO sales_order_items (sales_order_id, item_type, product_id, product_variant_id, item_name, quantity, unit_price, notes)
            VALUES (?, 'produto', ?, ?, ?, ?, ?, ?)`,
           [
-            result.lastID,
+            result.returnedId,
             item.jewelry_id,
             item.jewelry_variant_id || null,
             item.variant_name ? `${item.jewelry_name} - ${item.variant_name}` : item.jewelry_name,
@@ -221,7 +221,7 @@ export async function ensureSalesOrderForAppointment(db, appointmentId, user) {
       `INSERT INTO sales_order_items (sales_order_id, item_type, service_id, item_name, quantity, unit_price, notes)
        VALUES (?, 'servico', ?, ?, 1, ?, ?)`,
       [
-        result.lastID,
+        result.returnedId,
         appointment.service_id || null,
         appointment.service_name || appointment.procedure || "Atendimento",
         fallbackServiceValue,
@@ -234,7 +234,7 @@ export async function ensureSalesOrderForAppointment(db, appointmentId, user) {
       `INSERT INTO sales_order_items (sales_order_id, item_type, product_id, product_variant_id, item_name, quantity, unit_price, notes)
        VALUES (?, 'produto', ?, ?, ?, 1, ?, ?)`,
         [
-          result.lastID,
+          result.returnedId,
           appointment.jewelry_id,
           appointment.jewelry_variant_id || null,
           appointment.variant_name ? `${appointment.jewelry_name} - ${appointment.variant_name}` : appointment.jewelry_name,
@@ -245,7 +245,7 @@ export async function ensureSalesOrderForAppointment(db, appointmentId, user) {
     }
   }
 
-  return getSalesOrder(db, result.lastID);
+  return getSalesOrder(db, result.returnedId);
 }
 
 const SALES_ORDER_COLUMNS = `

@@ -8,7 +8,7 @@ Arquivos analisados:
 - `backend/src/db/schema.sql` (schema de cada clínica)
 - `backend/src/db/platformSchema.sql` (schema de controle `platform`)
 - `backend/src/database/connection.js` (pool)
-- `backend/src/db/sqliteCompat.js` (adaptador `get/all/run` com placeholders `?`)
+- `backend/src/db/postgres.js` (camada `get/all/run` com placeholders `?`)
 - `backend/src/middleware/withDb.js` (client por requisição + `search_path`)
 - `backend/src/middleware/tenant.js` (resolução do tenant)
 - `backend/src/routes/*.js` e `backend/src/services/*.js`
@@ -17,7 +17,7 @@ Arquivos analisados:
 
 ## 1. Sumário executivo
 
-O isolamento multi-tenant por `search_path` está **bem construído** no caminho principal: o `withDb` valida o schema por regex (`^tenant_\d+$`), o schema é **sempre** derivado do id inteiro do banco (nunca de input do usuário), o `search_path` é resetado no `finally` e a conexão é **destruída** (`release(true)`) se o reset falhar. Todo o app passa pelo adaptador `createDbAdapter(client)`. Esse eixo do sistema é sólido.
+O isolamento multi-tenant por `search_path` está **bem construído** no caminho principal: o `withDb` valida o schema por regex (`^tenant_\d+$`), o schema é **sempre** derivado do id inteiro do banco (nunca de input do usuário), o `search_path` é resetado no `finally` e a conexão é **destruída** (`release(true)`) se o reset falhar. Todo o app passa pelo `createDb(client)`. Esse eixo do sistema é sólido.
 
 Os problemas concentram-se em **três frentes**:
 
@@ -40,7 +40,7 @@ Complementarmente há decisões de **tipagem por compatibilidade** (datas como `
 | 3 | **Alta** | Integridade / exclusão | `DELETE FROM clients` sem checar vínculos; FKs `appointments/payments/…→clients` sem `ON DELETE`. Excluir cliente com histórico → erro 500 (violação de FK). | `routes/clients.js:38`; `schema.sql:160,187,208,248,266,287,302,313` | Definir política explícita: arquivar (soft-delete) como em profissionais/joias, ou `ON DELETE` coerente por FK. |
 | 4 | **Alta** | Transações | Provisionamento de tenant mistura dois clients: DDL/seed no `client` dedicado, mas o `DELETE` de rollback roda em `query()` (outro client do pool). Se o rollback falhar, sobra tenant "meio-criado". | `services/tenants.js:79-115` (esp. 102) | Executar todo o fluxo (incl. registro e rollback) de forma coordenada; idealmente transação única ou compensação garantida. |
 | 5 | **Alta** | Transações | `POST /api/appointments`: INSERT do agendamento + INSERT do pagamento de sinal sem transação. Mesma coisa no fluxo de "atendido" (baixa+pagamento+followup+loyalty encadeados). | `routes/appointments.js:53-64,81-86`; `routes/booking.js:69-93` | Transação por operação de negócio. |
-| 6 | **Média** | Dinheiro (tipo) | Todos os valores monetários são `DOUBLE PRECISION`. Somatórios financeiros (`buildFinanceReport`) acumulam erro de ponto flutuante. | `schema.sql` (price, *_value, amount, unit_price, cost/sale_value); `services/finance.js` | Migrar para `NUMERIC(12,2)` (registrar que hoje é escolha de compatibilidade SQLite). |
+| 6 | **Média** | Dinheiro (tipo) | Todos os valores monetários são `DOUBLE PRECISION`. Somatórios financeiros (`buildFinanceReport`) acumulam erro de ponto flutuante. | `schema.sql` (price, *_value, amount, unit_price, cost/sale_value); `services/finance.js` | Migrar para `NUMERIC(12,2)` (o tipo atual foi herdado da migração de SQLite para Postgres, já concluída). |
 | 7 | **Média** | Datas (tipo) | Datas/horas são `TEXT`. Filtros usam `substr()`, `LIKE '2026-07%'`, comparação de string e `CAST(... AS date/timestamp)`. Frágil a formatos divergentes (`ISO com T` vs `espaço`, `paid_at` gravado como `slice(0,19)`). | `schema.sql` (appointment_date/time, paid_at, due_date, created_at…); `services/finance.js:5-71` | `DATE`/`TIME`/`TIMESTAMPTZ`. Registrar trade-off de compatibilidade. |
 | 8 | **Média** | Constraints | Sem `CHECK` de status válidos em quase todas as tabelas (appointments.status, payments.status/payment_type, sales_orders.status, jewelry.status, etc.). Enums são texto livre. | `schema.sql` (status TEXT em várias) | `CHECK (status IN (...))` ou tabela de domínio. Único `CHECK` existente: `expenses.expense_type`, `platform.tenants.status`. |
 | 9 | **Média** | Constraints | Sem `CHECK` de não-negatividade: `quantity`, `points`, `points_used`, `amount`, `*_value`, `discount_value`. Estoque negativo só é contido em JS (`Math.max(0, …)`), não no banco. | `schema.sql`; `routes/jewelry.js` | `CHECK (quantity >= 0)`, `CHECK (amount >= 0)` etc. |
@@ -110,7 +110,7 @@ Impacto: seq scans em tabelas que crescem (appointments, payments, stock_movemen
 
 ### 3.4 Tipos (trade-offs de compatibilidade)
 
-O cabeçalho de `schema.sql:1-4` declara explicitamente a escolha: `SERIAL` para ids, `DOUBLE PRECISION` para valores, `INTEGER` para flags 0/1, `TEXT` para datas/hora — "compatível com o comportamento atual dos handlers" (herança do SQLite). É uma **decisão consciente de compatibilidade**, mas com riscos concretos:
+O cabeçalho de `schema.sql:1-4` declara explicitamente a escolha: `SERIAL` para ids, `DOUBLE PRECISION` para valores, `INTEGER` para flags 0/1, `TEXT` para datas/hora — "compatível com o comportamento atual dos handlers" — tipos herdados da migração de SQLite para Postgres, concluída. É uma **decisão consciente de compatibilidade**, mas com riscos concretos:
 
 - **Dinheiro em `DOUBLE PRECISION`**: erro de ponto flutuante em somas (`buildFinanceReport` soma `amount`/`total_value` de muitas linhas; UNION ALL de receitas). Recomendação: `NUMERIC(12,2)`.
 - **Datas/horas em `TEXT`**: comparação e ordenação como string funcionam só enquanto o formato for rigorosamente `YYYY-MM-DD`/`HH:MM`. O código mistura formatos: `paid_at` às vezes `new Date().toISOString().slice(0,19)` (com `T`), às vezes `${date}T${time}:00`; `movement_date` grava `slice(0,10)`. `buildFinanceReport` compensa com `substr()`, `LIKE`, `CAST(... AS date/timestamp)` — frágil. Sem validação temporal (o banco aceita `appointment_date = 'amanhã'`). Recomendação: `DATE`/`TIME`/`TIMESTAMPTZ`.
@@ -124,7 +124,7 @@ Registrar em ADR que a migração de tipos exige adaptar os handlers (que hoje a
 - `withDb` **reseta** `search_path TO public` no `finally` antes de `client.release()`, e se o reset falhar **destrói** a conexão com `client.release(true)` (`middleware/withDb.js:63-72`). Evita vazamento entre clínicas por client sujo.
 - Schema **validado por regex** `^tenant_\d+$` antes de interpolar (`middleware/withDb.js:19,38-41`) e **sempre derivado do id inteiro** (`middleware/tenant.js:86`), nunca de input.
 - Token amarra o tenant (`tslug`); header `X-Tenant` divergente → 403 (`middleware/tenant.js:57-62`).
-- Todo o app passa pelo adaptador `createDbAdapter(client)` — não há `db` singleton global.
+- Todo o app passa pelo `createDb(client)` — não há `db` singleton global.
 
 **Pontos de atenção:**
 - **`services/tenants.js` e `routes/platform.js` usam `query()`** (client anônimo do pool, `search_path` public) **e** `pool.connect()` diretamente. É legítimo (operações de plataforma), mas convivem no mesmo fluxo: em `provisionTenant`, o DDL/seed roda no `client` dedicado enquanto o `DELETE` de rollback roda em `query()` (outro client) — não é o mesmo caminho transacional (ver achado #4).

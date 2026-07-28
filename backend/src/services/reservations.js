@@ -40,7 +40,7 @@ export async function reserveAppointmentItems(db, { appointmentId, clientId, res
        RETURNING id`,
       [reservationKey, appointmentId, clientId, jewelryId, variationId, quantity, minutes]
     );
-      reservations.push(result.lastID);
+      reservations.push(result.returnedId);
     }
     await db.run("COMMIT");
     return reservations;

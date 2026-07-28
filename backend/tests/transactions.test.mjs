@@ -1,4 +1,4 @@
-// Testes das transações do adaptador `db` (backend/src/db/sqliteCompat.js).
+// Testes das transações do `db` (backend/src/db/postgres.js).
 //
 // Parte 1: unitários do helper `db.transaction` sobre um client de mentira —
 //          conferem os comandos SQL emitidos (BEGIN/COMMIT/ROLLBACK/SAVEPOINT).
@@ -6,7 +6,7 @@
 //          deixa nenhuma escrita para trás (clínica de teste própria).
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { createDbAdapter } from "../src/db/sqliteCompat.js";
+import { createDb } from "../src/db/postgres.js";
 import { req, createTenant, loginTenant, platformLogin, deleteTenant } from "./helpers.mjs";
 
 // ---------------------------------------------------------------- parte 1 ---
@@ -28,7 +28,7 @@ function fakeClient() {
 
 test("transação de sucesso emite BEGIN ... COMMIT e devolve o valor do callback", async () => {
   const client = fakeClient();
-  const db = createDbAdapter(client);
+  const db = createDb(client);
   const retorno = await db.transaction(async (tx) => {
     await tx.run("INSERT INTO clients (full_name) VALUES (?)", ["Ana"]);
     await tx.run("UPDATE clients SET full_name = ? WHERE id = ?", ["Ana", 7]);
@@ -43,7 +43,7 @@ test("transação de sucesso emite BEGIN ... COMMIT e devolve o valor do callbac
 
 test("erro no meio da transação faz ROLLBACK e repropaga o erro original", async () => {
   const client = fakeClient();
-  const db = createDbAdapter(client);
+  const db = createDb(client);
   await assert.rejects(
     db.transaction(async (tx) => {
       await tx.run("INSERT INTO sales_orders (total_value) VALUES (?)", [10]);
@@ -61,7 +61,7 @@ test("erro no meio da transação faz ROLLBACK e repropaga o erro original", asy
 
 test("transação aninhada vira SAVEPOINT: o COMMIT interno não encerra a externa", async () => {
   const client = fakeClient();
-  const db = createDbAdapter(client);
+  const db = createDb(client);
   await db.transaction(async (tx) => {
     await tx.run("INSERT INTO appointments (procedure) VALUES (?)", ["A"]);
     await tx.transaction(async (inner) => {
@@ -80,7 +80,7 @@ test("transação aninhada vira SAVEPOINT: o COMMIT interno não encerra a exter
 
 test("falha do nível aninhado desfaz a transação inteira quando o erro sobe", async () => {
   const client = fakeClient();
-  const db = createDbAdapter(client);
+  const db = createDb(client);
   await assert.rejects(
     db.transaction(async (tx) => {
       await tx.run("INSERT INTO appointments (procedure) VALUES (?)", ["A"]);
@@ -97,7 +97,7 @@ test("falha do nível aninhado desfaz a transação inteira quando o erro sobe",
 
 test("nível aninhado pode falhar sem derrubar a externa (erro tratado pelo chamador)", async () => {
   const client = fakeClient();
-  const db = createDbAdapter(client);
+  const db = createDb(client);
   await db.transaction(async (tx) => {
     await tx.run("INSERT INTO appointments (procedure) VALUES (?)", ["A"]);
     await assert.rejects(tx.transaction(async (inner) => {
@@ -111,7 +111,7 @@ test("nível aninhado pode falhar sem derrubar a externa (erro tratado pelo cham
 
 test("BEGIN/COMMIT escritos na mão viram SAVEPOINT quando já há transação aberta", async () => {
   const client = fakeClient();
-  const db = createDbAdapter(client);
+  const db = createDb(client);
   await db.transaction(async (tx) => {
     // Padrão legado que ainda existe em várias rotas (routes/jewelry.js etc.).
     await tx.run("BEGIN");
@@ -128,7 +128,7 @@ test("BEGIN/COMMIT escritos na mão viram SAVEPOINT quando já há transação a
 
 test("BEGIN/COMMIT na mão fora de transação continuam sendo transação real", async () => {
   const client = fakeClient();
-  const db = createDbAdapter(client);
+  const db = createDb(client);
   await db.run("BEGIN");
   assert.equal(db.inTransaction(), true);
   await db.run("INSERT INTO clients (full_name) VALUES (?)", ["Ana"]);
@@ -139,7 +139,7 @@ test("BEGIN/COMMIT na mão fora de transação continuam sendo transação real"
 
 test("abortOpenTransaction desfaz transação deixada aberta (rede de segurança do withDb)", async () => {
   const client = fakeClient();
-  const db = createDbAdapter(client);
+  const db = createDb(client);
   await db.run("BEGIN");
   await db.run("INSERT INTO clients (full_name) VALUES (?)", ["Ana"]);
   assert.equal(await db.abortOpenTransaction(), true);

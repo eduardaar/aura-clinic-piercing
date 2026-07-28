@@ -12,7 +12,7 @@ function fakeDb({ product = true, variation = true } = {}) {
     },
     async run(sql, params) {
       calls.push({ sql, params });
-      return { lastID: calls.length };
+      return { returnedId: calls.length };
     }
   };
 }

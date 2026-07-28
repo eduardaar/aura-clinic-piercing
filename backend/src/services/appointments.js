@@ -331,10 +331,10 @@ export async function upsertClient(db, body) {
     return { ...existing, full_name: body.full_name || existing.full_name };
   }
   const result = await db.run(
-    "INSERT INTO clients (full_name, whatsapp, instagram, birth_date, notes) VALUES (?, ?, ?, ?, ?)",
+    "INSERT INTO clients (full_name, whatsapp, instagram, birth_date, notes) VALUES (?, ?, ?, ?, ?) RETURNING id",
     [body.full_name, body.whatsapp, body.instagram, body.birth_date || null, body.client_notes || ""]
   );
-  return { id: result.lastID };
+  return { id: result.returnedId };
 }
 
 async function deductLegacyJewelryStock(db, appointmentId) {

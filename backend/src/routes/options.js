@@ -113,10 +113,10 @@ router.post("/api/inventory-categories", withDb(async (req, res, db) => {
   const existing = await ensureCategoryExists(db, name);
   if (existing) return res.status(409).json({ error: "Já existe uma categoria com esse nome." });
   const result = await db.run(
-    "INSERT INTO inventory_options (type, name, description, is_active) VALUES ('category', ?, ?, ?)",
+    "INSERT INTO inventory_options (type, name, description, is_active) VALUES ('category', ?, ?, ?) RETURNING id",
     [name, String(req.body.description || "").trim(), boolNumber(req.body.is_active ?? 1)]
   );
-  res.status(201).json(await db.get("SELECT * FROM inventory_options WHERE id = ?", [result.lastID]));
+  res.status(201).json(await db.get("SELECT * FROM inventory_options WHERE id = ?", [result.returnedId]));
 }));
 
 router.patch("/api/inventory-categories/:id", withDb(async (req, res, db) => {
@@ -252,8 +252,8 @@ router.post("/api/inventory-options", withDb(async (req, res, db) => {
   const cleanName = name.trim();
   const existing = await db.get("SELECT * FROM inventory_options WHERE type = ? AND name = ?", [type, cleanName]);
   if (existing) return res.json(existing);
-  const result = await db.run("INSERT INTO inventory_options (type, name) VALUES (?, ?)", [type, cleanName]);
-  res.status(201).json(await db.get("SELECT * FROM inventory_options WHERE id = ?", [result.lastID]));
+  const result = await db.run("INSERT INTO inventory_options (type, name) VALUES (?, ?) RETURNING id", [type, cleanName]);
+  res.status(201).json(await db.get("SELECT * FROM inventory_options WHERE id = ?", [result.returnedId]));
 }));
 
 router.patch("/api/inventory-options/:id", withDb(async (req, res, db) => {

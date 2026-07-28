@@ -28,10 +28,10 @@ router.post("/api/users", withDb(async (req, res, db) => {
   const { name, email, password, role } = req.body;
   const passwordHash = await bcrypt.hash(password, 10);
   const result = await db.run(
-    "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)",
+    "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?) RETURNING id",
     [name.trim(), email.trim(), passwordHash, role]
   );
-  res.status(201).json(await db.get("SELECT id, name, email, role, created_at FROM users WHERE id = ?", [result.lastID]));
+  res.status(201).json(await db.get("SELECT id, name, email, role, created_at FROM users WHERE id = ?", [result.returnedId]));
 }));
 
 router.patch("/api/users/:id", withDb(async (req, res, db) => {
