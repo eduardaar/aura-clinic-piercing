@@ -7,6 +7,9 @@
     "dev": "concurrently -n backend,frontend -c blue,magenta \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
     "start": "npm --prefix backend run start",
     "build": "npm --prefix frontend run build",
+    "typecheck": "npm run typecheck:backend && npm run typecheck:frontend",
+    "typecheck:backend": "tsc --noEmit -p backend/jsconfig.json",
+    "typecheck:frontend": "tsc --noEmit -p frontend/jsconfig.json",
     "lint": "biome lint .",
     "lint:fix": "biome lint --write .",
     "check": "biome check .",
@@ -20,6 +23,9 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.6",
-    "concurrently": "^9.2.1"
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "concurrently": "^9.2.1",
+    "typescript": "^5.7.3"
   }
 }

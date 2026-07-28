@@ -19,6 +19,110 @@ import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Filter, Search, X } 
 
 const PAGE_SIZES = [10, 25, 50, 100];
 
+// --- Contrato das props ------------------------------------------------------
+//
+// ~20 telas dependem deste componente, então a forma das `columns` e dos
+// `filters` é um contrato de verdade. Os typedefs abaixo existem para o editor
+// reclamar ANTES de a tela ir para produção — em especial nos dois erros que já
+// custaram tempo aqui:
+//
+//   1. coluna cujo `render` devolve JSX e NÃO declara `value(row)`: busca e
+//      ordenação passam a comparar "[object Object]". Ver `ColumnDef.value`.
+//   2. filtro `select` com lista fixa de `options` que não cobre os valores
+//      reais do banco: a opção some da lista e o registro fica inalcançável.
+//      Ver `FilterDef.options`.
+
+/**
+ * Uma linha da tabela. Vem crua da API, então é um saco de campos.
+ * @typedef {Record<string, any>} Row
+ */
+
+/**
+ * Definição de uma coluna.
+ * @typedef {object} ColumnDef
+ * @property {string} key Chave do campo em `row` e identidade da coluna na ordenação.
+ * @property {string} label Cabeçalho da coluna (também vira `data-label` no mobile).
+ * @property {(row: Row) => React.ReactNode} [render] Como EXIBIR a célula. Sem ele, exibe `row[key]`.
+ * @property {(row: Row) => string | number | null | undefined} [value] Como BUSCAR e ORDENAR a célula.
+ *   OBRIGATÓRIO na prática sempre que `render` devolve JSX ou o dado exibido não
+ *   é `row[key]` cru: sem ele a busca e a ordenação recebem o objeto JSX e
+ *   comparam "[object Object]" — a coluna vira inerte sem nenhum aviso.
+ * @property {"left" | "center" | "right"} [align] Alinhamento do texto.
+ * @property {boolean} [sortable] `false` desliga a ordenação por esta coluna. Padrão: ordenável.
+ * @property {boolean} [searchable] `false` tira a coluna da busca textual. Padrão: incluída.
+ */
+
+/**
+ * Opção de um filtro `select`. String simples equivale a `{ value: s, label: s }`.
+ * @typedef {string | { value: string, label: string }} FilterOption
+ */
+
+/**
+ * Definição de um filtro avançado.
+ * @typedef {object} FilterDef
+ * @property {string} key Chave em `filterValues`. No filtro padrão, também é a chave lida em `row`.
+ * @property {string} label Rótulo exibido.
+ * @property {"select" | "date" | "text"} [type] Padrão: campo de texto.
+ * @property {FilterOption[]} [options] Só para `type: "select"`.
+ *   Prefira derivar as opções DOS DADOS (ex.: `[...new Set(rows.map(r => r.status))]`)
+ *   em vez de escrever uma lista fixa: lista fixa que não cobre os valores reais
+ *   do banco esconde registros sem nenhum erro visível.
+ * @property {string} [placeholder] Só para `type: "text"`/`"date"`.
+ * @property {(row: Row, value: string) => boolean} [match] Comparação sob medida.
+ *   Sem ele, o padrão é igualdade tolerante a acento/caixa entre `row[key]` e o valor.
+ *   Use para intervalo de data, campo aninhado ou valor derivado.
+ */
+
+/**
+ * Estado de ordenação. `null` = ordem natural das linhas.
+ * @typedef {{ key: string, dir: "asc" | "desc" } | null} SortState
+ */
+
+/**
+ * Valores dos filtros ativos, indexados pela `key` do filtro. "" = sem filtro.
+ * @typedef {Record<string, string>} FilterValues
+ */
+
+/**
+ * @typedef {object} DataViewProps
+ * @property {ColumnDef[]} columns
+ * @property {Row[]} [rows] Modo `client`: a lista INTEIRA. Modo `server`: só a página atual.
+ * @property {(row: Row) => React.Key} [rowKey] Padrão: `row.id`.
+ * @property {(row: Row) => React.ReactNode} [actions] Botões da última coluna.
+ * @property {"client" | "server"} [mode] Ver o cabeçalho do arquivo. Padrão: `"client"`.
+ *
+ * @property {boolean} [loading]
+ * @property {string} [error] Mensagem já pronta para exibição ("" = sem erro).
+ *
+ * @property {boolean} [searchable] Liga/desliga o campo de busca. Padrão: ligado.
+ * @property {string} [searchPlaceholder]
+ * @property {string} [search] Controla a busca por fora (obrigatório no modo `server`).
+ * @property {(value: string) => void} [onSearchChange]
+ *
+ * @property {FilterDef[]} [filters]
+ * @property {FilterValues} [filterValues] Controla os filtros por fora.
+ * @property {(values: FilterValues) => void} [onFilterChange]
+ *
+ * @property {SortState} [sort] Controla a ordenação por fora.
+ * @property {(sort: SortState) => void} [onSortChange]
+ * @property {SortState} [defaultSort] Ordenação inicial quando `sort` não é controlado.
+ *
+ * @property {boolean} [paginated] Padrão: ligado.
+ * @property {number} [page] 1-based.
+ * @property {number} [pageSize]
+ * @property {number} [defaultPageSize] Padrão: 25.
+ * @property {number} [total] OBRIGATÓRIO no modo `server` — é o `total` do envelope
+ *   `{ items, total, limit, offset }` do backend. Sem ele o rodapé conta só as
+ *   linhas da página atual e a paginação para na página 1.
+ * @property {(page: number) => void} [onPageChange]
+ * @property {(size: number) => void} [onPageSizeChange]
+ *
+ * @property {React.ReactNode} [toolbar] Conteúdo extra na barra de ferramentas.
+ * @property {string} [empty] Vazio sem busca/filtro aplicado.
+ * @property {string} [emptyFiltered] Vazio COM busca/filtro aplicado.
+ * @property {string} [caption] `<caption>` da tabela (acessibilidade).
+ */
+
 // Meses para filtros de data (aniversário, competência…). Fica aqui para as
 // telas não reescreverem a mesma lista com nomes ligeiramente diferentes.
 export const MONTH_OPTIONS = [
@@ -31,16 +135,23 @@ export const MONTH_OPTIONS = [
 ];
 
 // Comparação tolerante a acento e caixa, para busca e ordenação de texto.
+/** @type {(value: unknown) => string} */
 const fold = (value) =>
   String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
+/** @type {(value: unknown) => boolean} */
 const isEmpty = (value) => value === null || value === undefined || value === "";
+/** @type {(value: unknown) => boolean} */
 const isNumeric = (value) => !isEmpty(value) && String(value).trim() !== "" && !Number.isNaN(Number(value));
 
 // O modo de comparação é decidido para a COLUNA INTEIRA, não par a par. Decidir
 // par a par produz uma ordem não-transitiva quando a coluna mistura número e
 // texto: com 9, 10 e "1a" resultava em 9<10, 10<"1a" e 9>"1a" ao mesmo tempo, e
 // aí o resultado passa a depender do algoritmo de sort do motor JS.
+/**
+ * @param {unknown[]} values Todos os valores da coluna, para decidir o modo.
+ * @returns {(a: unknown, b: unknown) => number}
+ */
 function comparatorFor(values) {
   const numerica = values.filter((v) => !isEmpty(v)).every(isNumeric);
   return (a, b) => {
@@ -54,11 +165,19 @@ function comparatorFor(values) {
 
 // Valor usado para buscar e ordenar. `render` pode devolver JSX, então a coluna
 // declara `value(row)` quando o dado exibido não é `row[key]` cru.
+/**
+ * @param {ColumnDef} col
+ * @param {Row} row
+ * @returns {string | number | null | undefined}
+ */
 function cellValue(col, row) {
   if (col.value) return col.value(row);
   return row[col.key];
 }
 
+/**
+ * @param {DataViewProps} props
+ */
 export function DataView({
   columns,
   rows = [],

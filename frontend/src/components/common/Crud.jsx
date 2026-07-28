@@ -6,6 +6,17 @@
 import React, { useEffect, useState } from "react";
 import { AlertTriangle, Plus, X } from "lucide-react";
 
+/**
+ * Janela sobreposta. Fecha no Esc, no clique fora e trava o scroll do body.
+ * @param {object} props
+ * @param {boolean} props.open
+ * @param {React.ReactNode} [props.title]
+ * @param {React.ReactNode} [props.subtitle]
+ * @param {() => void} [props.onClose]
+ * @param {React.ReactNode} [props.children]
+ * @param {React.ReactNode} [props.footer] Botões do rodapé.
+ * @param {"sm" | "md" | "lg"} [props.size] Padrão: "md".
+ */
 export function Modal({ open, title, subtitle, onClose, children, footer, size = "md" }) {
   useEffect(() => {
     if (!open) return undefined;
@@ -52,6 +63,16 @@ export function Modal({ open, title, subtitle, onClose, children, footer, size =
 //   <ConfirmDeleteModal open={!!deleting} message={deleting?.message}
 //     onClose={() => setDeleting(null)}
 //     onConfirm={async () => { await deleting.run(); setDeleting(null); }} />
+/**
+ * @param {object} props
+ * @param {boolean} props.open
+ * @param {() => void} [props.onClose]
+ * @param {() => void | Promise<void>} props.onConfirm
+ * @param {string} [props.title]
+ * @param {React.ReactNode} [props.message]
+ * @param {string} [props.confirmWord] Palavra que o usuário precisa digitar. Padrão: "sim".
+ * @param {boolean} [props.loading] Estado de carregamento controlado por fora.
+ */
 export function ConfirmDeleteModal({
   open,
   onClose,
@@ -113,6 +134,13 @@ export function ConfirmDeleteModal({
   );
 }
 
+/**
+ * @param {object} props
+ * @param {React.ReactNode} [props.title]
+ * @param {React.ReactNode} [props.subtitle]
+ * @param {string} [props.actionLabel] Padrão: "Novo".
+ * @param {() => void} [props.onAction] Sem ele, o botão de ação não é renderizado.
+ */
 export function CrudHeader({ title, subtitle, actionLabel = "Novo", onAction }) {
   return (
     <div className="panel-heading crud-header">
@@ -129,8 +157,18 @@ export function CrudHeader({ title, subtitle, actionLabel = "Novo", onAction }) 
   );
 }
 
-// columns: [{ key, label, render?(row), align? }]
-// actions?(row) → JSX (botões). rowKey?(row) → chave única (default row.id).
+// Tabela nua, sem busca/filtro/ordenação/paginação. Para listagem nova prefira
+// o `DataView` — este componente permanece para as telas ainda não migradas.
+/**
+ * @param {object} props
+ * @param {Array<Pick<import("./DataView.jsx").ColumnDef, "key" | "label" | "render" | "align">>} props.columns
+ *   Só estas quatro chaves têm efeito aqui: sem ordenação e sem busca, `value`,
+ *   `sortable` e `searchable` do `DataView` seriam ignorados em silêncio.
+ * @param {import("./DataView.jsx").Row[]} [props.rows]
+ * @param {(row: import("./DataView.jsx").Row) => React.ReactNode} [props.actions]
+ * @param {(row: import("./DataView.jsx").Row) => React.Key} [props.rowKey] Padrão: `row.id`.
+ * @param {string} [props.empty]
+ */
 export function DataTable({ columns, rows = [], actions, rowKey = (row) => row.id, empty = "Nenhum registro cadastrado ainda." }) {
   if (!rows || rows.length === 0) {
     return <div className="data-empty">{empty}</div>;

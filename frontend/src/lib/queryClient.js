@@ -12,6 +12,10 @@ import { QueryClient } from "@tanstack/react-query";
 const STALE_TIME = 60_000; // 1 min sem refetch — cobre a troca de abas/telas
 const GC_TIME = 10 * 60_000; // 10 min no cache mesmo sem ninguém montado
 
+/**
+ * @returns {QueryClient} Cliente novo — os testes criam um por caso para não
+ *   vazar cache entre eles.
+ */
 export function createQueryClient() {
   return new QueryClient({
     defaultOptions: {
@@ -28,7 +32,10 @@ export function createQueryClient() {
         // Erro de regra (400, 403, 404, 422) não melhora repetindo: só insiste
         // no que é transitório (rede fora, 5xx).
         retry: (failureCount, error) => {
-          const status = Number(error?.status || 0);
+          // `status` só existe nos erros criados por `fetchApiJson` (ApiError).
+          // Erro de rede não tem status e cai como 0, que é justamente o caso
+          // "transitório, vale repetir".
+          const status = Number(/** @type {import("./api.js").ApiError} */ (error)?.status || 0);
           if (status >= 400 && status < 500) return false;
           return failureCount < 2;
         },

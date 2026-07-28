@@ -1,0 +1,27 @@
+{
+  // Verificação de tipos INCREMENTAL do backend — sem migrar para TypeScript.
+  //
+  // Fase 1 cobre APENAS `src/services/pagination.js`: é o contrato de resposta
+  // ({ items, total, limit, offset }) que várias telas do frontend consomem, e
+  // é um módulo sem dependências, então o escopo não vaza para o resto da API.
+  //
+  // A ampliação (services/ inteiro, depois routes/) está descrita no README do
+  // typecheck — a ordem importa, porque ligar tudo de uma vez produz centenas
+  // de erros e o time desliga a verificação.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": false,
+    "types": ["node"],
+    "baseUrl": "."
+  },
+  "include": ["src/services/pagination.js"],
+  "exclude": ["node_modules"]
+}

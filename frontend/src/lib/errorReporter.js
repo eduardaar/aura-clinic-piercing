@@ -3,10 +3,27 @@
 // floodar a tabela nem entrar em laço (um erro no envio não gera outro envio).
 import { API, tenantSlug, readStoredSession } from "./api";
 
+/**
+ * Erro a reportar. Todos os campos são opcionais: o reporter é chamado de
+ * handlers globais, onde não há garantia nenhuma sobre o que chegou.
+ * @typedef {object} ErrorPayload
+ * @property {string} [message] Truncada em 2000 caracteres no envio.
+ * @property {"error" | "warn" | "info"} [level] Padrão: "error".
+ * @property {string} [stack] Truncada em 8000 caracteres.
+ * @property {string} [url] Padrão: `location.href`.
+ * @property {Record<string, any>} [context] Dados extras (componentStack, arquivo/linha…).
+ */
+
+/** @type {Set<string>} */
 const seen = new Set();
 let sent = 0;
 const MAX_PER_SESSION = 30;
 
+/**
+ * Envia um erro para o log central. NUNCA lança e nunca gera outro envio.
+ * @param {ErrorPayload} [payload]
+ * @returns {void}
+ */
 export function reportError(payload = {}) {
   try {
     if (sent >= MAX_PER_SESSION) return;
@@ -38,9 +55,20 @@ export function reportError(payload = {}) {
 }
 
 // Instala os hooks globais uma única vez.
+// A marca da instalação vive no `window` (e não num módulo) de propósito: o
+// HMR do Vite recarrega o módulo e o guard de escopo de módulo se perderia,
+// duplicando os listeners a cada salvamento.
+/**
+ * @typedef {Window & typeof globalThis & { __auraErrorHook?: boolean }} AuraWindow
+ */
+/**
+ * @returns {void}
+ */
 export function installGlobalErrorReporting() {
-  if (typeof window === "undefined" || window.__auraErrorHook) return;
-  window.__auraErrorHook = true;
+  if (typeof window === "undefined") return;
+  const auraWindow = /** @type {AuraWindow} */ (window);
+  if (auraWindow.__auraErrorHook) return;
+  auraWindow.__auraErrorHook = true;
 
   window.addEventListener("error", (event) => {
     reportError({
