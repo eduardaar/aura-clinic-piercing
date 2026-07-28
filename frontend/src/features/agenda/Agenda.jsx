@@ -6,7 +6,7 @@ import { Modal, CrudHeader, ConfirmDeleteModal } from "../../components/common/C
 import { DataView } from "../../components/common/DataView";
 import { Loading } from "../../components/common/Feedback";
 import { asArray, asNumber, asObject, formatDate } from "../../lib/utils";
-import { apiFetch, useFetch } from "../../lib/api";
+import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
 import { buildCalendar, buildTimeSlots, dateKey, movePeriod } from "../../lib/calendarUtils";
 import { defaultAppointment, defaultProcedureForm, defaultProfessionalForm, defaultScheduleBlock, defaultServiceForm } from "../../lib/defaultForms";
 import { appointmentWhatsAppMessage, calcRemaining, currency, personName, statusClass, statuses, weekdayLabel, whatsappUrl } from "../../features/shared/helpers";
@@ -95,10 +95,15 @@ export function AgendaWorkspace() {
 
 export function Appointments() {
   const { data: options } = useFetch("/options");
-  const { data: clients, refresh: refreshClients } = useFetch("/clients");
-  const { data: appointments, refresh } = useFetch("/appointments");
+  const { data: clients } = useFetch("/clients");
+  const { data: appointments } = useFetch("/appointments");
   const { data: services } = useFetch("/services");
   const { data: procedures } = useFetch("/procedures");
+  // Um agendamento pode criar cliente novo, ocupar horário e mexer nos números
+  // do painel — as três rotas caem juntas.
+  const invalidate = useApiInvalidate();
+  const refresh = () => invalidate("/appointments", "/clients", "/dashboard");
+  const refreshClients = refresh;
   const [form, setForm] = useState(defaultAppointment());
   const [error, setError] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
@@ -456,14 +461,19 @@ function AppointmentValueSummary({ form, services, jewelry }) {
 
 export function VisualCalendar() {
   const { data: options } = useFetch("/options");
-  const { data: clients, refresh: refreshClients } = useFetch("/clients");
+  const { data: clients } = useFetch("/clients");
   const { data: services } = useFetch("/services");
   const { data: procedures } = useFetch("/procedures");
   const [filters, setFilters] = useState({ mode: "mensal", professional_id: "", status: "" });
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [createSeed, setCreateSeed] = useState(null);
-  const { data, refresh } = useFetch(`/appointments?${new URLSearchParams(Object.fromEntries(Object.entries(filters).filter(([, v]) => v && !["mensal", "semanal", "diario"].includes(v))))}`);
+  const { data } = useFetch(`/appointments?${new URLSearchParams(Object.fromEntries(Object.entries(filters).filter(([, v]) => v && !["mensal", "semanal", "diario"].includes(v))))}`);
+  // Invalidar "/appointments" alcança o calendário sob qualquer combinação de
+  // filtros, não só a consulta que está montada agora.
+  const invalidate = useApiInvalidate();
+  const refresh = () => invalidate("/appointments", "/clients", "/dashboard");
+  const refreshClients = refresh;
   const safeOptions = asObject(options);
   const calendar = useMemo(() => buildCalendar(asArray(data), filters.mode, currentDate), [data, filters.mode, currentDate]);
 
@@ -764,14 +774,25 @@ export function AppointmentQuickModal({ appointment, onClose, onSaved }) {
 }
 
 export function BookingAdmin() {
-  const { data: services, refresh: refreshServices } = useFetch("/services");
-  const { data: procedures, refresh: refreshProcedures } = useFetch("/procedures");
-  const { data: professionalsData, refresh: refreshProfessionals } = useFetch("/professionals");
-  const { data: readiness, refresh: refreshReadiness } = useFetch("/booking/readiness");
+  const { data: services } = useFetch("/services");
+  const { data: procedures } = useFetch("/procedures");
+  const { data: professionalsData } = useFetch("/professionals");
+  const { data: readiness } = useFetch("/booking/readiness");
   const { data: options } = useFetch("/options");
-  const { data: availability, refresh: refreshAvailability } = useFetch("/availability");
-  const { data: blocks, refresh: refreshBlocks } = useFetch("/schedule-blocks");
-  const { data: appointments, refresh: refreshAppointments } = useFetch("/appointments?status=pendente");
+  const { data: availability } = useFetch("/availability");
+  const { data: blocks } = useFetch("/schedule-blocks");
+  const { data: appointments } = useFetch("/appointments?status=pendente");
+  // Serviço, procedimento e profissional alimentam também "/options" (usado nos
+  // formulários da agenda) e "/booking/readiness" (semáforo do agendamento
+  // online): salvar num lugar tinha que atualizar os dois, e não atualizava.
+  const invalidate = useApiInvalidate();
+  const refreshServices = () => invalidate("/services", "/options", "/booking/readiness");
+  const refreshProcedures = () => invalidate("/procedures", "/options", "/booking/readiness");
+  const refreshProfessionals = () => invalidate("/professionals", "/options", "/booking/readiness");
+  const refreshReadiness = () => invalidate("/booking/readiness");
+  const refreshAvailability = () => invalidate("/availability", "/booking/readiness");
+  const refreshBlocks = () => invalidate("/schedule-blocks", "/availability");
+  const refreshAppointments = () => invalidate("/appointments", "/dashboard");
   const [tab, setTab] = useState("servicos");
   const [serviceForm, setServiceForm] = useState(defaultServiceForm());
   const [editingServiceId, setEditingServiceId] = useState(null);

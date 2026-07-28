@@ -4,7 +4,7 @@ import { Button, Input, Metric, Select, StatusBadge } from "../../components/com
 import { Modal, CrudHeader } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { asArray, formatDate } from "../../lib/utils";
-import { apiFetch, useFetch } from "../../lib/api";
+import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
 import { defaultSalesLine, defaultSalesOrderForm } from "../../lib/defaultForms";
 import { currency, personName, saleItemLabel, saleOrderTypeLabel } from "../../features/shared/helpers";
 
@@ -27,10 +27,14 @@ const orderItemsLabel = (order) =>
   asArray(order.items).map((item) => `${item.quantity}x ${item.item_name}`).join(" · ");
 
 export function SalesWorkspace() {
-  const { data: orders, refresh: refreshOrders } = useFetch("/sales-orders");
+  const { data: orders, loading: ordersLoading, error: ordersError } = useFetch("/sales-orders");
   const { data: services } = useFetch("/services");
   const { data: jewelry } = useFetch("/jewelry");
   const { data: appointments } = useFetch("/appointments");
+  // Uma venda dá baixa no estoque e lança no financeiro: invalidar só a lista
+  // de pedidos deixaria as outras telas mostrando o saldo anterior.
+  const invalidate = useApiInvalidate();
+  const refreshOrders = () => invalidate("/sales-orders", "/jewelry", "/finance", "/dashboard");
   const [modalOpen, setModalOpen] = useState(false);
   const [tab, setTab] = useState("produto");
   const [form, setForm] = useState(defaultSalesOrderForm());
@@ -76,9 +80,6 @@ export function SalesWorkspace() {
 
   // A lista carrega sozinha: só a tabela espera pelos pedidos, o resto da tela
   // (métricas e modal de cadastro) não fica bloqueado pelos outros fetches.
-  const ordersLoading = !orders;
-  const ordersError = orders?.error || "";
-
   const currentMonth = new Date().toISOString().slice(0, 7);
   const monthOrders = safeOrders.filter((order) => String(order?.created_at || "").startsWith(currentMonth) && order?.status !== "cancelada");
   const summary = {

@@ -1,5 +1,6 @@
 import React, { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { QueryClientProvider } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -60,6 +61,7 @@ import { AppErrorBoundary } from "./components/common/AppErrorBoundary";
 import { AlertBlock, BookingChoiceGrid, Input, Metric, PaymentSelect, Select, StatusSelect } from "./components/common/Ui";
 import { asArray, asNumber, asObject, removeAccents, firstName, initials, formatDate, formatLongDate, localDateValue, dateInputValue } from "./lib/utils";
 import { API, API_ORIGIN, apiFetch, downloadApiFile, readStoredSession, useFetch, usePublicFetch } from "./lib/api";
+import { queryClient } from "./lib/queryClient";
 import { installGlobalErrorReporting } from "./lib/errorReporter";
 import { canAccessPage, defaultPageForRole, pageTitle } from "./lib/permissions";
 import { buildCalendar, buildTimeSlots, dateKey, movePeriod } from "./lib/calendarUtils";
@@ -375,5 +377,11 @@ if (window.location.pathname.startsWith("/plataforma")) {
 installGlobalErrorReporting();
 const auraRoot = window.__auraReactRoot || createRoot(document.getElementById("root"));
 window.__auraReactRoot = auraRoot;
-auraRoot.render(<AppErrorBoundary><App /></AppErrorBoundary>);
+// O provider envolve tudo (inclusive as rotas públicas): o cache é a camada de
+// leitura do app inteiro.
+auraRoot.render(
+  <QueryClientProvider client={queryClient}>
+    <AppErrorBoundary><App /></AppErrorBoundary>
+  </QueryClientProvider>
+);
 

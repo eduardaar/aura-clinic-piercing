@@ -6,7 +6,7 @@ import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../componen
 import { DataView, MONTH_OPTIONS } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, dateInputValue, formatDate, formatLongDate } from "../../lib/utils";
-import { apiFetch, useFetch } from "../../lib/api";
+import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
 import { defaultMedicalRecord } from "../../lib/defaultForms";
 import { currency, matchesClientSearch, personName, whatsappUrl } from "../../features/shared/helpers";
 import { DigitalTerms } from "../terms/DigitalTerms";
@@ -41,7 +41,11 @@ export function ClientWorkspace() {
 }
 
 export function ClientsMedical() {
-  const { data, refresh } = useFetch("/clients");
+  const { data } = useFetch("/clients");
+  // Uma invalidação de "/clients" cobre a listagem, os filtros e o detalhe
+  // "/clients/:id"; o dashboard conta clientes, então acompanha.
+  const invalidate = useApiInvalidate();
+  const refresh = () => invalidate("/clients", "/dashboard");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState("");
@@ -187,10 +191,11 @@ export function ClientsMedical() {
 // prontuários e fidelidade vêm de /clients/:id, sob demanda. Antes tudo isso
 // vinha embutido na listagem, que chegava a 845 KB.
 function ClientProfileLoader({ clientId, fallback, onChanged }) {
-  const { data, refresh } = useFetch(`/clients/${clientId}`);
+  const { data } = useFetch(`/clients/${clientId}`);
   if (!data) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
-  return <ClientProfile client={{ ...fallback, ...data }} onChanged={() => { refresh(); onChanged?.(); }} />;
+  // `onChanged` já invalida "/clients" inteiro — o detalhe recarrega junto.
+  return <ClientProfile client={{ ...fallback, ...data }} onChanged={() => onChanged?.()} />;
 }
 
 function ClientProfile({ client, onChanged }) {

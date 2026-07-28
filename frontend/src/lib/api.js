@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 export const API = import.meta.env.VITE_API_URL || "http://localhost:4000/api";
 export const API_ORIGIN = API.replace(/\/api$/, "");
@@ -103,22 +104,77 @@ export async function downloadApiFile(path, filename) {
   URL.revokeObjectURL(url);
 }
 
+// --- Leituras cacheadas (TanStack Query) -------------------------------------
+
+// Chave de cache derivada da rota, em segmentos: "/clients/12?full=1" vira
+// ["api", "clients", "12", { full: "1" }]. Assim invalidar ["api","clients"]
+// alcança a listagem, os filtros e o detalhe de cada cliente de uma vez, que é
+// o que se espera depois de salvar. Chave de string única não permitiria isso.
+export function apiQueryKey(path) {
+  const [route = "", search = ""] = String(path || "").split("?");
+  const key = ["api", ...route.split("/").filter(Boolean)];
+  if (search) key.push(Object.fromEntries(new URLSearchParams(search)));
+  return key;
+}
+
+// A única porta de saída continua sendo o apiFetch. O erro vira exceção com o
+// `status` preservado, que é o que a política de retry usa para não insistir
+// em 4xx.
+export async function fetchApiJson(path) {
+  let response;
+  try {
+    response = await apiFetch(path);
+  } catch {
+    throw new Error("Não foi possível conectar com a API.");
+  }
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(json.error || "Não foi possível carregar os dados.");
+    error.status = response.status;
+    throw error;
+  }
+  return json;
+}
+
+// Mesma assinatura do useFetch antigo — `{ data, refresh }`, com `data === null`
+// enquanto carrega e `{ error }` quando falha — agora servida pelo cache. Os
+// campos extras (`loading`, `error`, `fetching`) existem para quem quiser passar
+// direto ao DataView em vez de derivar de `data`.
 export function useFetch(path) {
-  const [data, setData] = useState(null);
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    let active = true;
-    apiFetch(`${path}`)
-      .then(async (res) => {
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok) return { error: json.error || "Não foi possível carregar os dados." };
-        return json;
-      })
-      .then((json) => active && setData(json))
-      .catch(() => active && setData({ error: "Não foi possível conectar com a API." }));
-    return () => { active = false; };
-  }, [path, tick]);
-  return { data, refresh: () => setTick((value) => value + 1) };
+  const queryClient = useQueryClient();
+  const queryKey = apiQueryKey(path);
+  const query = useQuery({
+    queryKey,
+    queryFn: () => fetchApiJson(path),
+    enabled: Boolean(path)
+  });
+
+  const errorMessage = query.isError ? (query.error?.message || "Não foi possível carregar os dados.") : "";
+  const refresh = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: apiQueryKey(path) }),
+    [queryClient, path]
+  );
+
+  return {
+    data: errorMessage ? { error: errorMessage } : (query.data ?? null),
+    refresh,
+    loading: query.isPending,
+    error: errorMessage,
+    fetching: query.isFetching
+  };
+}
+
+// Invalidação após mutação: `invalidate("/clients", "/dashboard")` marca as
+// rotas como velhas, refaz as que estão na tela e deixa as demais recarregarem
+// na próxima montagem. Substitui o `refresh()` manual — que dependia de o
+// autor lembrar de chamá-lo, e só atualizava a própria tela.
+export function useApiInvalidate() {
+  const queryClient = useQueryClient();
+  return useCallback((...paths) => {
+    for (const path of paths.flat()) {
+      if (path) queryClient.invalidateQueries({ queryKey: apiQueryKey(path) });
+    }
+  }, [queryClient]);
 }
 
 export function usePublicFetch(path) {

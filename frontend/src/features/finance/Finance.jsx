@@ -6,7 +6,7 @@ import { Modal, CrudHeader, ConfirmDeleteModal } from "../../components/common/C
 import { DataView } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, asNumber, asObject, formatDate, formatLongDate } from "../../lib/utils";
-import { apiFetch, downloadApiFile, useFetch } from "../../lib/api";
+import { apiFetch, downloadApiFile, useApiInvalidate, useFetch } from "../../lib/api";
 import { defaultExpense } from "../../lib/defaultForms";
 import { currency, personName } from "../../features/shared/helpers";
 
@@ -92,7 +92,10 @@ export function Clients() {
 }
 
 export function FinanceAdmin() {
-  const { data, refresh } = useFetch("/finance");
+  const { data } = useFetch("/finance");
+  // Despesa mexe no resumo, no razão e nos indicadores do painel.
+  const invalidate = useApiInvalidate();
+  const refresh = () => invalidate("/finance", "/dashboard");
   const [expense, setExpense] = useState(defaultExpense());
   const [modalOpen, setModalOpen] = useState(false);
   const [error, setError] = useState("");
@@ -304,9 +307,15 @@ function AdvancedFinance() {
   const monthStart = `${today.slice(0, 7)}-01`;
   const [period, setPeriod] = useState({ from: monthStart, to: today });
   const query = new URLSearchParams(period).toString();
-  const { data, refresh } = useFetch(`/finance/ledger?${query}`);
-  const { data: centers, refresh: refreshCenters } = useFetch("/finance/cost-centers");
-  const { data: goals, refresh: refreshGoals } = useFetch("/finance/goals");
+  const { data } = useFetch(`/finance/ledger?${query}`);
+  const { data: centers } = useFetch("/finance/cost-centers");
+  const { data: goals } = useFetch("/finance/goals");
+  // "/finance" cobre resumo, razão, centros de custo e metas de uma vez — o
+  // razão precisa recarregar em qualquer período consultado, não só no atual.
+  const invalidate = useApiInvalidate();
+  const refresh = () => invalidate("/finance", "/dashboard");
+  const refreshCenters = () => invalidate("/finance/cost-centers");
+  const refreshGoals = () => invalidate("/finance/goals");
   const [modalOpen, setModalOpen] = useState(false);
   const [error, setError] = useState("");
   const [form, setForm] = useState({

@@ -5,7 +5,7 @@ import { Button, Input, Metric, Select, StatusBadge } from "../../components/com
 import { Modal, CrudHeader, ConfirmDeleteModal } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { asArray, asObject, formatDate, removeAccents } from "../../lib/utils";
-import { apiFetch, useFetch } from "../../lib/api";
+import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
 import { useDebouncedValue } from "../../lib/smartSearch";
 import { ANODIZATION_COLOR_OPTIONS, JEWELRY_CATEGORY_OPTIONS, JEWELRY_LENGTH_OPTIONS, JEWELRY_THICKNESS_OPTIONS, JEWELRY_THREAD_OPTIONS, PRICE_MULTIPLIER_OPTIONS, PRICE_ROUNDING_OPTIONS, calculateVariantPricing, centsToMoney, defaultJewelry, defaultJewelryVariant, normalizeJewelryForm, parseGalleryUrls } from "../../lib/defaultForms";
 import { catalogFilterOptions, cleanDisplayText, elegantProductName, splitColorOptions } from "../../features/catalog/catalogUtils";
@@ -175,14 +175,22 @@ export function Inventory2() {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [showVisualSearch, setShowVisualSearch] = useState(false);
   const [pricingSaving, setPricingSaving] = useState(false);
-  const { data: options, refresh: refreshOptions } = useFetch("/options");
-  const { data: intelligence, refresh: refreshIntelligence } = useFetch("/inventory/intelligence?days=90");
-  const { data: inventorySuggestions, refresh: refreshSuggestions } = useFetch("/inventory/suggestions");
+  const { data: options } = useFetch("/options");
+  const { data: intelligence } = useFetch("/inventory/intelligence?days=90");
+  const { data: inventorySuggestions } = useFetch("/inventory/suggestions");
   const debouncedSearch = useDebouncedValue(filters.search);
   const { status: _statusFilter, ...queryFilters } = filters;
   queryFilters.search = debouncedSearch;
   const query = new URLSearchParams(Object.fromEntries(Object.entries(queryFilters).filter(([, value]) => value))).toString();
-  const { data, refresh: refreshJewelry } = useFetch(`/jewelry?${query}`);
+  const { data } = useFetch(`/jewelry?${query}`);
+  // Movimentar estoque muda a lista sob qualquer filtro, o extrato do item, a
+  // inteligência de estoque e os alertas do painel — invalidar só a consulta
+  // atual deixava o resto exibindo o saldo anterior.
+  const invalidate = useApiInvalidate();
+  const refreshJewelry = () => invalidate("/jewelry", "/inventory", "/dashboard");
+  const refreshOptions = () => invalidate("/options");
+  const refreshIntelligence = () => invalidate("/inventory/intelligence");
+  const refreshSuggestions = () => invalidate("/inventory/suggestions");
   const apiItems = asArray(data);
   const items = apiItems;
   const safeOptions = asObject(options);
@@ -668,6 +676,9 @@ function InventoryIntelligence({ data, suggestions, onRefresh, onReview }) {
   const [count, setCount] = useState(null);
   const [countBusy, setCountBusy] = useState(false);
   const [countError, setCountError] = useState("");
+  // Concluir o inventário ajusta o saldo de cada joia; ninguém invalidava nada
+  // aqui, então a lista continuava com a quantidade antiga até recarregar.
+  const invalidate = useApiInvalidate();
 
   async function createCount() {
     setCountBusy(true);
@@ -698,7 +709,10 @@ function InventoryIntelligence({ data, suggestions, onRefresh, onReview }) {
     if (response.ok && complete) response = await apiFetch(`/inventory/counts/${count.id}/complete`, { method: "POST", body: JSON.stringify({}) });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) setCountError(payload.error || "Não foi possível salvar o inventário.");
-    else if (complete) setCount(null);
+    else if (complete) {
+      setCount(null);
+      invalidate("/jewelry", "/inventory", "/dashboard");
+    }
     setCountBusy(false);
   }
   return (
