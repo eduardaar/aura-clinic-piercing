@@ -1,13 +1,61 @@
 import React, { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Heart, ImageIcon, Plus, Trash2 } from "lucide-react";
 import { Loading, ApiError } from "../components/common/Feedback";
-import { Input, Select } from "../components/common/Ui";
+import { Input, Select, StatusBadge } from "../components/common/Ui";
+import { ConfirmDeleteModal, Modal } from "../components/common/Crud";
+import { DataView } from "../components/common/DataView";
 import { API_ORIGIN, apiFetch, tenantSlug, useFetch } from "../lib/api";
 import { asArray, asNumber, asObject } from "../lib/utils";
 import { JEWELRY_CATEGORY_OPTIONS, defaultCatalogSettings } from "../lib/defaultForms";
 import { catalogContentSections, cleanDisplayText, defaultContentSection } from "../features/catalog/catalogUtils";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
+// `formatDate` de lib/utils devolve dd/MM sem ano: cupons e promoções de anos
+// diferentes ficariam com a mesma data na coluna de validade.
+function formatDateWithYear(date) {
+  const value = String(date || "").slice(0, 10);
+  const parsed = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toLocaleDateString("pt-BR");
+}
+
+// Intervalo início–fim tolerante a pontas vazias (o backend aceita as duas nulas).
+function periodLabel(start, end, emptyLabel = "Sem prazo definido") {
+  const from = formatDateWithYear(start);
+  const to = formatDateWithYear(end);
+  if (from && to) return `${from} até ${to}`;
+  if (from) return `A partir de ${from}`;
+  if (to) return `Até ${to}`;
+  return emptyLabel;
+}
+
+const DISCOUNT_TYPE_LABELS = {
+  percent: "Percentual",
+  fixed: "Valor fixo",
+  fixed_price: "Preço promocional",
+  buy_x_pay_y: "Compre X, pague Y",
+  quantity: "Por quantidade",
+  progressive: "Progressivo"
+};
+
+const COUPON_STATUS_LABELS = { active: "Ativo", paused: "Pausado", inactive: "Inativo" };
+const PROMOTION_STATUS_LABELS = { active: "Ativa", paused: "Pausada", ended: "Encerrada", inactive: "Inativa" };
+
+const statusTone = (status) => (status === "active" ? "ok" : status === "paused" ? "warn" : "danger");
+
+// Opções vindas dos próprios registros: nenhum filtro oferecido devolve lista
+// vazia e valores legados (ex.: promoção com status "inactive") não somem.
+const distinctOptions = (rows, pick, labels = {}) =>
+  [...new Set(rows.map(pick).filter(Boolean))].sort().map((value) => ({ value, label: labels[value] || value }));
+
+const discountLabel = (type, value) =>
+  type === "percent" ? `${Number(value || 0)}%` : currency.format(Number(value || 0));
+
+// O backend devolve null nos campos opcionais; `value={null}` transforma o
+// <input> em não-controlado e o React reclama no console ao abrir a edição.
+const withoutNulls = (record) =>
+  Object.fromEntries(Object.entries(asObject(record)).map(([key, value]) => [key, value === null ? "" : value]));
 
 function catalogImageUrl(url) {
   if (!url) return "https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=900&q=80";
@@ -425,6 +473,13 @@ function CustomizationCard({ title, action, children }) {
   );
 }
 
+// A coluna esquerda desta tela divide espaço com a pré-visualização fixa. Sem
+// `min-width: 0` o item de grid cresce até a largura mínima da tabela e passa
+// por baixo do preview; com ele, a rolagem horizontal fica dentro da lista.
+function ListWrap({ children }) {
+  return <div style={{ minWidth: 0, maxWidth: "100%" }}>{children}</div>;
+}
+
 function CatalogLayoutBuilder({ form, setForm }) {
   const sections = asArray(form.catalogSections);
   function update(index, patch) {
@@ -484,6 +539,8 @@ function CouponManager() {
   const { data, refresh } = useFetch("/coupons");
   const [draft, setDraft] = useState(defaultCoupon());
   const [editingId, setEditingId] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [deleting, setDeleting] = useState(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const coupons = asArray(data);
@@ -499,41 +556,157 @@ function CouponManager() {
     });
     const json = await response.json().catch(() => ({}));
     if (!response.ok) return setError(json.error || "Não foi possível salvar o cupom.");
+    setMessage(editingId ? "Cupom atualizado." : "Cupom criado.");
     setDraft(defaultCoupon());
     setEditingId(null);
-    setMessage(editingId ? "Cupom atualizado." : "Cupom criado.");
+    setModalOpen(false);
     refresh();
   }
 
   async function remove(coupon) {
-    if (!window.confirm(`Excluir o cupom ${coupon.code}?`)) return;
+    setError("");
+    setMessage("");
     const response = await apiFetch(`/coupons/${coupon.id}`, { method: "DELETE" });
     const json = await response.json().catch(() => ({}));
     if (!response.ok) return setError(json.error || "Não foi possível excluir o cupom.");
     if (editingId === coupon.id) {
       setEditingId(null);
       setDraft(defaultCoupon());
+      setModalOpen(false);
     }
     setMessage("Cupom removido.");
     refresh();
+  }
+
+  function openNew() {
+    setEditingId(null);
+    setDraft(defaultCoupon());
+    setError("");
+    setMessage("");
+    setModalOpen(true);
   }
 
   function edit(coupon) {
     setEditingId(coupon.id);
     setDraft({
       ...defaultCoupon(),
-      ...coupon,
+      ...withoutNulls(coupon),
       starts_at: String(coupon.starts_at || "").slice(0, 16),
       ends_at: String(coupon.ends_at || "").slice(0, 16),
       first_purchase_only: Boolean(Number(coupon.first_purchase_only)),
       is_stackable: Boolean(Number(coupon.is_stackable))
     });
+    setError("");
+    setMessage("");
+    setModalOpen(true);
   }
 
   return (
-    <CustomizationCard title="Cupons de desconto">
+    <CustomizationCard
+      title="Cupons de desconto"
+      action={<button type="button" className="primary-button" onClick={openNew}><Plus size={16} /> Novo cupom</button>}
+    >
       {data?.error && <ApiError message={data.error} />}
-      <form className="stack" onSubmit={submit}>
+      {!modalOpen && error && <span className="form-error">{error}</span>}
+      {message && <span className="form-success">{message}</span>}
+
+      <ListWrap>
+      <DataView
+        rows={coupons}
+        loading={!data}
+        searchPlaceholder="Buscar por código, nome interno ou status"
+        filters={[
+          {
+            key: "status",
+            label: "Status",
+            type: "select",
+            options: distinctOptions(coupons, (coupon) => coupon.status, COUPON_STATUS_LABELS)
+          },
+          {
+            key: "discount_type",
+            label: "Tipo de desconto",
+            type: "select",
+            options: distinctOptions(coupons, (coupon) => coupon.discount_type, DISCOUNT_TYPE_LABELS)
+          }
+        ]}
+        // Sem `defaultSort`: GET /coupons já devolve por criação desc
+        // (ORDER BY created_at DESC), que é a ordenação padrão desejada.
+        columns={[
+          { key: "code", label: "Código", render: (coupon) => <strong>{coupon.code}</strong> },
+          { key: "internal_name", label: "Nome interno", render: (coupon) => coupon.internal_name || "—" },
+          {
+            key: "discount_type",
+            label: "Tipo de desconto",
+            value: (coupon) => DISCOUNT_TYPE_LABELS[coupon.discount_type] || coupon.discount_type || "",
+            render: (coupon) => DISCOUNT_TYPE_LABELS[coupon.discount_type] || coupon.discount_type || "—"
+          },
+          {
+            key: "discount_value",
+            label: "Valor",
+            align: "right",
+            value: (coupon) => Number(coupon.discount_value || 0),
+            render: (coupon) => discountLabel(coupon.discount_type, coupon.discount_value)
+          },
+          {
+            key: "usage_count",
+            label: "Usos",
+            align: "right",
+            value: (coupon) => Number(coupon.usage_count || 0),
+            render: (coupon) => `${Number(coupon.usage_count || 0)}${coupon.usage_limit ? ` de ${coupon.usage_limit}` : ""}`
+          },
+          {
+            key: "status",
+            label: "Status",
+            value: (coupon) => COUPON_STATUS_LABELS[coupon.status] || coupon.status || "",
+            render: (coupon) => (
+              <StatusBadge tone={statusTone(coupon.status)}>{COUPON_STATUS_LABELS[coupon.status] || coupon.status}</StatusBadge>
+            )
+          },
+          {
+            key: "ends_at",
+            label: "Validade",
+            value: (coupon) => String(coupon.ends_at || ""),
+            render: (coupon) => periodLabel(coupon.starts_at, coupon.ends_at, "Sem validade")
+          }
+        ]}
+        actions={(coupon) => (
+          <>
+            <button type="button" onClick={() => edit(coupon)}>Editar</button>
+            <button
+              type="button"
+              className="danger-link"
+              onClick={() => setDeleting({ message: `Excluir o cupom ${coupon.code}?`, run: () => remove(coupon) })}
+            >
+              Excluir
+            </button>
+          </>
+        )}
+        empty="Nenhum cupom cadastrado ainda."
+        emptyFiltered="Nenhum cupom corresponde à busca ou aos filtros."
+      />
+      </ListWrap>
+
+      <ConfirmDeleteModal
+        open={!!deleting}
+        message={deleting?.message}
+        onClose={() => setDeleting(null)}
+        onConfirm={async () => { await deleting.run(); setDeleting(null); }}
+      />
+
+      <Modal
+        open={modalOpen}
+        title={editingId ? "Editar cupom" : "Novo cupom"}
+        subtitle="Regras de desconto aplicadas no catálogo"
+        size="lg"
+        onClose={() => setModalOpen(false)}
+        footer={(
+          <>
+            <button type="button" className="secondary-button" onClick={() => setModalOpen(false)}>Cancelar</button>
+            <button type="submit" form="coupon-form" className="primary-button">{editingId ? "Salvar cupom" : "Criar cupom"}</button>
+          </>
+        )}
+      >
+      <form id="coupon-form" className="stack" onSubmit={submit}>
         <div className="form-grid">
           <Input label="Código" value={draft.code} onChange={(value) => setDraft({ ...draft, code: value.toUpperCase() })} />
           <Input label="Nome interno" value={draft.internal_name} onChange={(value) => setDraft({ ...draft, internal_name: value })} />
@@ -565,26 +738,9 @@ function CouponManager() {
           <Toggle label="Somente primeira compra" checked={draft.first_purchase_only} onChange={(value) => setDraft({ ...draft, first_purchase_only: value })} />
           <Toggle label="Permitir acumular" checked={draft.is_stackable} onChange={(value) => setDraft({ ...draft, is_stackable: value })} />
         </div>
-        <div className="modal-actions">
-          {editingId && <button type="button" className="secondary-button" onClick={() => { setEditingId(null); setDraft(defaultCoupon()); }}>Cancelar edição</button>}
-          <button type="submit" className="primary-button">{editingId ? "Salvar cupom" : "Criar cupom"}</button>
-        </div>
+        {error && <span className="form-error">{error}</span>}
       </form>
-      {error && <span className="form-error">{error}</span>}
-      {message && <span className="form-success">{message}</span>}
-      <div className="custom-list">
-        {coupons.map((coupon) => (
-          <article key={coupon.id}>
-            <div className="panel-heading">
-              <div><strong>{coupon.code}</strong><small>{coupon.internal_name} · {coupon.usage_count || 0} uso(s)</small></div>
-              <div className="customization-actions">
-                <button type="button" onClick={() => edit(coupon)}>Editar</button>
-                <button type="button" className="danger-link" onClick={() => remove(coupon)}>Excluir</button>
-              </div>
-            </div>
-          </article>
-        ))}
-      </div>
+      </Modal>
     </CustomizationCard>
   );
 }
@@ -593,6 +749,8 @@ function PromotionManager() {
   const { data, refresh } = useFetch("/promotions");
   const [draft, setDraft] = useState(defaultAdvancedPromotion());
   const [editingId, setEditingId] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [ending, setEnding] = useState(null);
   const [feedback, setFeedback] = useState({ error: "", success: "" });
   const promotions = asArray(data);
 
@@ -619,18 +777,140 @@ function PromotionManager() {
     if (saved) {
       setEditingId(null);
       setDraft(defaultAdvancedPromotion());
+      setModalOpen(false);
     }
+  }
+
+  function openNew() {
+    setEditingId(null);
+    setDraft(defaultAdvancedPromotion());
+    setFeedback({ error: "", success: "" });
+    setModalOpen(true);
   }
 
   function edit(item) {
     setEditingId(item.id);
-    setDraft({ ...defaultAdvancedPromotion(), ...item, is_stackable: Boolean(Number(item.is_stackable)), stackable_with_coupon: Boolean(Number(item.stackable_with_coupon)), visible_in_catalog: Boolean(Number(item.visible_in_catalog)), is_active: Boolean(Number(item.is_active)) });
+    setDraft({ ...defaultAdvancedPromotion(), ...withoutNulls(item), is_stackable: Boolean(Number(item.is_stackable)), stackable_with_coupon: Boolean(Number(item.stackable_with_coupon)), visible_in_catalog: Boolean(Number(item.visible_in_catalog)), is_active: Boolean(Number(item.is_active)) });
+    setFeedback({ error: "", success: "" });
+    setModalOpen(true);
   }
 
   return (
-    <CustomizationCard title="Promoções avançadas">
+    <CustomizationCard
+      title="Promoções avançadas"
+      action={<button type="button" className="primary-button" onClick={openNew}><Plus size={16} /> Nova promoção</button>}
+    >
       {data?.error && <ApiError message={data.error} />}
-      <form className="stack" onSubmit={submit}>
+      {!modalOpen && feedback.error && <span className="form-error">{feedback.error}</span>}
+      {feedback.success && <span className="form-success">{feedback.success}</span>}
+
+      <ListWrap>
+      <DataView
+        rows={promotions}
+        loading={!data}
+        searchPlaceholder="Buscar por nome, tipo ou status"
+        filters={[
+          {
+            key: "status",
+            label: "Status",
+            type: "select",
+            options: distinctOptions(promotions, (promotion) => promotion.status, PROMOTION_STATUS_LABELS)
+          },
+          {
+            key: "discount_type",
+            label: "Tipo de desconto",
+            type: "select",
+            options: distinctOptions(promotions, (promotion) => promotion.discount_type, DISCOUNT_TYPE_LABELS)
+          }
+        ]}
+        // Sem `defaultSort`: GET /promotions já devolve por prioridade desc e
+        // criação desc, que é a ordem de aplicação real das campanhas.
+        columns={[
+          { key: "name", label: "Nome", render: (promotion) => <strong>{promotion.name}</strong> },
+          {
+            key: "discount_type",
+            label: "Tipo",
+            value: (promotion) => DISCOUNT_TYPE_LABELS[promotion.discount_type] || promotion.discount_type || "",
+            render: (promotion) => DISCOUNT_TYPE_LABELS[promotion.discount_type] || promotion.discount_type || "—"
+          },
+          {
+            key: "discount_value",
+            label: "Valor",
+            align: "right",
+            value: (promotion) => Number(promotion.discount_value || 0),
+            render: (promotion) => promotionValueLabel(promotion)
+          },
+          {
+            key: "priority",
+            label: "Prioridade",
+            align: "right",
+            value: (promotion) => Number(promotion.priority || 0),
+            render: (promotion) => Number(promotion.priority || 0)
+          },
+          {
+            key: "usage_count",
+            label: "Usos",
+            align: "right",
+            value: (promotion) => Number(promotion.usage_count || 0),
+            render: (promotion) => Number(promotion.usage_count || 0)
+          },
+          {
+            key: "status",
+            label: "Status",
+            value: (promotion) => PROMOTION_STATUS_LABELS[promotion.status] || promotion.status || "",
+            render: (promotion) => (
+              <StatusBadge tone={statusTone(promotion.status)}>{PROMOTION_STATUS_LABELS[promotion.status] || promotion.status}</StatusBadge>
+            )
+          },
+          {
+            key: "end_date",
+            label: "Período",
+            value: (promotion) => String(promotion.end_date || ""),
+            render: (promotion) => periodLabel(promotion.start_date, promotion.end_date, "Sem período definido")
+          }
+        ]}
+        actions={(promotion) => (
+          <>
+            <button type="button" onClick={() => edit(promotion)}>Editar</button>
+            <button type="button" onClick={() => request(`/promotions/${promotion.id}/duplicate`, { method: "POST" }, "Promoção duplicada.")}>Duplicar</button>
+            <button
+              type="button"
+              className="danger-link"
+              onClick={() => setEnding({
+                message: `Excluir a promoção ${promotion.name}? Ela será encerrada e sai da lista de campanhas.`,
+                run: () => request(`/promotions/${promotion.id}`, { method: "DELETE" }, "Promoção encerrada.")
+              })}
+            >
+              Excluir
+            </button>
+          </>
+        )}
+        empty="Nenhuma promoção cadastrada ainda."
+        emptyFiltered="Nenhuma promoção corresponde à busca ou aos filtros."
+      />
+      </ListWrap>
+
+      <ConfirmDeleteModal
+        open={!!ending}
+        message={ending?.message}
+        onClose={() => setEnding(null)}
+        onConfirm={async () => { await ending.run(); setEnding(null); }}
+      />
+
+      <Modal
+        open={modalOpen}
+        title={editingId ? "Editar promoção" : "Nova promoção"}
+        subtitle="Campanhas aplicadas automaticamente no catálogo"
+        size="lg"
+        onClose={() => setModalOpen(false)}
+        footer={(
+          <>
+            <button type="button" className="secondary-button" onClick={() => setModalOpen(false)}>Cancelar</button>
+            <button type="submit" form="promotion-form" className="primary-button">{editingId ? "Salvar promoção" : "Criar promoção"}</button>
+          </>
+        )}
+      >
+      <form id="promotion-form" className="stack" onSubmit={submit}>
         <div className="form-grid">
           <Input label="Nome" value={draft.name} onChange={(value) => setDraft({ ...draft, name: value })} />
           <Select label="Tipo" value={draft.discount_type} onChange={(value) => setDraft({ ...draft, discount_type: value })}>
@@ -671,29 +951,18 @@ function PromotionManager() {
           <Toggle label="Acumula com cupom" checked={draft.stackable_with_coupon} onChange={(value) => setDraft({ ...draft, stackable_with_coupon: value })} />
           <Toggle label="Visível no catálogo" checked={draft.visible_in_catalog} onChange={(value) => setDraft({ ...draft, visible_in_catalog: value })} />
         </div>
-        <div className="modal-actions">
-          {editingId && <button type="button" className="secondary-button" onClick={() => { setEditingId(null); setDraft(defaultAdvancedPromotion()); }}>Cancelar</button>}
-          <button type="submit" className="primary-button">{editingId ? "Salvar promoção" : "Criar promoção"}</button>
-        </div>
+        {feedback.error && <span className="form-error">{feedback.error}</span>}
       </form>
-      {feedback.error && <span className="form-error">{feedback.error}</span>}
-      {feedback.success && <span className="form-success">{feedback.success}</span>}
-      <div className="custom-list">
-        {promotions.map((promotion) => (
-          <article key={promotion.id}>
-            <div className="panel-heading">
-              <div><strong>{promotion.name}</strong><small>{promotion.status} · prioridade {promotion.priority || 0} · {promotion.usage_count || 0} uso(s)</small></div>
-              <div className="customization-actions">
-                <button type="button" onClick={() => edit(promotion)}>Editar</button>
-                <button type="button" onClick={() => request(`/promotions/${promotion.id}/duplicate`, { method: "POST" }, "Promoção duplicada.")}>Duplicar</button>
-                <button type="button" className="danger-link" onClick={() => request(`/promotions/${promotion.id}`, { method: "DELETE" }, "Promoção encerrada.")}>Encerrar</button>
-              </div>
-            </div>
-          </article>
-        ))}
-      </div>
+      </Modal>
     </CustomizationCard>
   );
+}
+
+// O "valor" da promoção muda de significado conforme o tipo de desconto.
+function promotionValueLabel(promotion) {
+  if (promotion.discount_type === "fixed_price") return currency.format(Number(promotion.fixed_promotional_price || 0));
+  if (promotion.discount_type === "buy_x_pay_y") return `Compre ${promotion.buy_quantity || 0}, pague ${promotion.pay_quantity || 0}`;
+  return discountLabel(promotion.discount_type, promotion.discount_value);
 }
 
 export function Toggle({ label, checked, onChange }) {

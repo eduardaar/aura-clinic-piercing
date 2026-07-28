@@ -2,7 +2,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Calendar, CheckCircle2, ChevronLeft, ChevronRight, Clock, ShieldCheck, XCircle } from "lucide-react";
 import { Button, Input, PaymentSelect, Select, StatusBadge, StatusSelect } from "../../components/common/Ui";
-import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../components/common/Crud";
+import { Modal, CrudHeader, ConfirmDeleteModal } from "../../components/common/Crud";
+import { DataView } from "../../components/common/DataView";
 import { Loading } from "../../components/common/Feedback";
 import { asArray, asNumber, asObject, formatDate } from "../../lib/utils";
 import { apiFetch, useFetch } from "../../lib/api";
@@ -10,6 +11,44 @@ import { buildCalendar, buildTimeSlots, dateKey, movePeriod } from "../../lib/ca
 import { defaultAppointment, defaultProcedureForm, defaultProfessionalForm, defaultScheduleBlock, defaultServiceForm } from "../../lib/defaultForms";
 import { appointmentWhatsAppMessage, calcRemaining, currency, personName, statusClass, statuses, weekdayLabel, whatsappUrl } from "../../features/shared/helpers";
 import { Toggle } from "../../pages/CatalogCustomization";
+
+// formatDate() de lib/utils devolve dd/MM sem ano, e a agenda lista atendimentos
+// de anos diferentes na mesma tabela — aqui a data precisa do ano para não virar
+// ambígua. lib/utils é compartilhado com outras telas, então a correção fica aqui.
+function formatDateWithYear(date) {
+  if (!date) return "";
+  const value = String(date).slice(0, 10);
+  const parsed = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toLocaleDateString("pt-BR");
+}
+
+// Status canônicos de agendamento, com o rótulo que aparece na tela.
+const APPOINTMENT_STATUS_OPTIONS = [
+  { value: "pendente", label: "Pendente" },
+  { value: "awaiting_deposit_proof", label: "Aguardando sinal" },
+  { value: "confirmado", label: "Confirmado" },
+  { value: "atendido", label: "Atendido" },
+  { value: "cancelado", label: "Cancelado" },
+  { value: "recusado", label: "Recusado" }
+];
+
+function appointmentStatusLabel(status) {
+  return APPOINTMENT_STATUS_OPTIONS.find((option) => option.value === status)?.label || status || "Sem status";
+}
+
+// Tudo que não é horário especial nem data indisponível é exibido como bloqueio
+// de intervalo; o filtro por tipo segue exatamente esse agrupamento.
+function blockTypeLabel(type) {
+  if (type === "special_hours") return "Horário especial";
+  if (type === "unavailable") return "Data indisponível";
+  return "Bloqueio de intervalo";
+}
+
+// Opções de select montadas a partir dos próprios dados, sem repetir valores.
+function distinctOptions(values) {
+  return [...new Set(values.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), "pt-BR"));
+}
 
 export function AgendaWorkspace() {
   const [tab, setTab] = useState("visual");
@@ -146,7 +185,7 @@ export function Appointments() {
         <CrudHeader
           title="Agendamentos"
           subtitle="Cadastre e acompanhe os próximos atendimentos."
-          actionLabel="Novo Agendamento"
+          actionLabel="Novo agendamento"
           onAction={openNew}
         />
       </div>
@@ -159,7 +198,7 @@ export function Appointments() {
         footer={(
           <>
             <button type="button" className="secondary-button" onClick={() => setModalOpen(false)}>Cancelar</button>
-            <button type="submit" form="appointment-form" className="primary-button" disabled={!form.appointment_time}>Salvar Agendamento</button>
+            <button type="submit" form="appointment-form" className="primary-button" disabled={!form.appointment_time}>Salvar agendamento</button>
           </>
         )}
       >
@@ -347,7 +386,7 @@ function AppointmentItemsEditor({ form, services, procedures = [], jewelry, onCh
     <div className="appointment-items-editor">
       <div className="section-inline-header">
         <strong>Procedimentos E Joias</strong>
-        <button type="button" className="secondary-button" onClick={() => onChange(withAppointmentItems(form, [...items, emptyAppointmentItem()], services, jewelry))}>Adicionar Item</button>
+        <button type="button" className="secondary-button" onClick={() => onChange(withAppointmentItems(form, [...items, emptyAppointmentItem()], services, jewelry))}>Adicionar item</button>
       </div>
       {items.map((item, index) => {
         const selectedJewelry = asArray(jewelry).find((product) => String(product.id) === String(item.jewelry_id));
@@ -612,7 +651,7 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
       footer={(
         <>
           <button type="button" className="secondary-button" onClick={onClose}>Cancelar</button>
-          <button type="submit" form="visual-appointment-form" className="primary-button">Salvar Agendamento</button>
+          <button type="submit" form="visual-appointment-form" className="primary-button">Salvar agendamento</button>
         </>
       )}
     >
@@ -692,7 +731,7 @@ export function AppointmentQuickModal({ appointment, onClose, onSaved }) {
       footer={(
         <>
           <button type="button" className="secondary-button" onClick={onClose}>Fechar</button>
-          <button type="button" className="primary-button" onClick={() => saveAppointment()}>Salvar Alterações</button>
+          <button type="button" className="primary-button" onClick={() => saveAppointment()}>Salvar alterações</button>
         </>
       )}
     >
@@ -1136,7 +1175,7 @@ export function BookingAdmin() {
 
   function removeBlock(block) {
     setDeleting({
-      message: `Apagar o bloqueio "${block.reason}"?`,
+      message: `Excluir o bloqueio "${block.reason}"?`,
       run: async () => {
         await apiFetch(`/schedule-blocks/${block.id}`, { method: "DELETE" });
         refreshBlocks();
@@ -1185,7 +1224,8 @@ export function BookingAdmin() {
         )}
         {readinessMessage && <span className="form-error">{readinessMessage}</span>}
       </div>
-      <nav className="customization-tabs">`r`n        {[
+      <nav className="customization-tabs">
+        {[
           ["profissionais", "Profissionais"],
           ["servicos", "Serviços"],
           ["horarios", "Agenda semanal"],
@@ -1202,14 +1242,32 @@ export function BookingAdmin() {
             actionLabel="Novo profissional"
             onAction={openNewProfessional}
           />
-          <DataTable
+          <DataView
             rows={allProfessionals}
+            defaultSort={{ key: "name", dir: "asc" }}
+            searchPlaceholder="Buscar por nome, especialidade, telefone ou e-mail"
+            filters={[
+              {
+                key: "status",
+                label: "Status",
+                type: "select",
+                options: [{ value: "ativo", label: "Ativo" }, { value: "inativo", label: "Inativo" }],
+                match: (professional, value) => (Boolean(Number(professional.active)) ? "ativo" : "inativo") === value
+              },
+              {
+                key: "service_id",
+                label: "Serviço atendido",
+                type: "select",
+                options: safeServices.map((service) => ({ value: String(service.id), label: service.name })),
+                match: (professional, value) => asArray(professional.service_ids).map(String).includes(value)
+              }
+            ]}
             columns={[
               { key: "name", label: "Nome" },
-              { key: "specialty", label: "Especialidade", render: (professional) => professional.specialty || "Body Piercer" },
-              { key: "phone", label: "Contato", render: (professional) => [professional.phone, professional.email].filter(Boolean).join(" · ") || "Sem contato" },
-              { key: "service_ids", label: "Serviços", render: (professional) => asArray(professional.service_ids).length ? `${asArray(professional.service_ids).length} serviço(s)` : "Sem vínculo" },
-              { key: "active", label: "Status", render: (professional) => <StatusBadge status={professional.active ? "Ativo" : "Inativo"} /> },
+              { key: "specialty", label: "Especialidade", value: (professional) => professional.specialty || "Body Piercer", render: (professional) => professional.specialty || "Body Piercer" },
+              { key: "phone", label: "Contato", value: (professional) => [professional.phone, professional.email].filter(Boolean).join(" · ") || "Sem contato", render: (professional) => [professional.phone, professional.email].filter(Boolean).join(" · ") || "Sem contato" },
+              { key: "service_ids", label: "Serviços", value: (professional) => asArray(professional.service_ids).length, render: (professional) => asArray(professional.service_ids).length ? `${asArray(professional.service_ids).length} serviço(s)` : "Sem vínculo" },
+              { key: "active", label: "Status", value: (professional) => professional.active ? "Ativo" : "Inativo", render: (professional) => <StatusBadge status={professional.active ? "Ativo" : "Inativo"} /> },
             ]}
             actions={(professional) => (
               <>
@@ -1218,6 +1276,7 @@ export function BookingAdmin() {
               </>
             )}
             empty="Cadastre pelo menos um profissional para liberar o agendamento online."
+            emptyFiltered="Nenhum profissional corresponde aos filtros aplicados."
           />
           <Modal
             open={professionalModalOpen}
@@ -1270,13 +1329,24 @@ export function BookingAdmin() {
               actionLabel="Novo serviço"
               onAction={openNewService}
             />
-            <DataTable
+            <DataView
               rows={safeServices}
+              defaultSort={{ key: "name", dir: "asc" }}
+              searchPlaceholder="Buscar por nome do serviço"
+              filters={[
+                {
+                  key: "status",
+                  label: "Agendamento online",
+                  type: "select",
+                  options: [{ value: "ativo", label: "Ativo" }, { value: "inativo", label: "Inativo" }],
+                  match: (service, value) => (service.is_active ? "ativo" : "inativo") === value
+                }
+              ]}
               columns={[
                 { key: "name", label: "Nome" },
-                { key: "duration_minutes", label: "Duração", render: (service) => `${service.duration_minutes} min` },
-                { key: "base_price", label: "Preço base", render: (service) => currency.format(service.base_price || 0) },
-                { key: "is_active", label: "Status", render: (service) => <StatusBadge status={service.is_active ? "Ativo" : "Inativo"} /> },
+                { key: "duration_minutes", label: "Duração", value: (service) => asNumber(service.duration_minutes), render: (service) => `${service.duration_minutes} min` },
+                { key: "base_price", label: "Preço base", value: (service) => asNumber(service.base_price), render: (service) => currency.format(service.base_price || 0) },
+                { key: "is_active", label: "Status", value: (service) => service.is_active ? "Ativo" : "Inativo", render: (service) => <StatusBadge status={service.is_active ? "Ativo" : "Inativo"} /> },
               ]}
               actions={(service) => (
                 <>
@@ -1285,6 +1355,7 @@ export function BookingAdmin() {
                 </>
               )}
               empty="Você ainda não possui serviços cadastrados."
+              emptyFiltered="Nenhum serviço corresponde aos filtros aplicados."
             />
           </div>
 
@@ -1295,15 +1366,40 @@ export function BookingAdmin() {
               actionLabel="Novo procedimento"
               onAction={openNewProcedure}
             />
-            <DataTable
+            <DataView
               rows={safeProcedures}
+              defaultSort={{ key: "name", dir: "asc" }}
+              searchPlaceholder="Buscar por nome, serviço ou área do corpo"
+              filters={[
+                {
+                  key: "service_id",
+                  label: "Serviço vinculado",
+                  type: "select",
+                  options: safeServices.map((service) => ({ value: String(service.id), label: service.name })),
+                  match: (procedure, value) => String(procedure.service_id) === value
+                },
+                {
+                  key: "body_area",
+                  label: "Área do corpo",
+                  type: "select",
+                  options: distinctOptions(safeProcedures.map((procedure) => procedure.body_area)),
+                  match: (procedure, value) => procedure.body_area === value
+                },
+                {
+                  key: "status",
+                  label: "Status",
+                  type: "select",
+                  options: [{ value: "ativo", label: "Ativo" }, { value: "inativo", label: "Inativo" }],
+                  match: (procedure, value) => (procedure.is_active ? "ativo" : "inativo") === value
+                }
+              ]}
               columns={[
                 { key: "name", label: "Nome" },
-                { key: "service_name", label: "Serviço", render: (procedure) => procedure.service_name || "Sem serviço" },
-                { key: "body_area", label: "Área do corpo", render: (procedure) => procedure.body_area || "Sem área" },
-                { key: "duration_minutes", label: "Duração", render: (procedure) => `${procedure.duration_minutes} min` },
-                { key: "price", label: "Preço", render: (procedure) => currency.format(procedure.price || 0) },
-                { key: "is_active", label: "Status", render: (procedure) => <StatusBadge status={procedure.is_active ? "Ativo" : "Inativo"} /> },
+                { key: "service_name", label: "Serviço", value: (procedure) => procedure.service_name || "Sem serviço", render: (procedure) => procedure.service_name || "Sem serviço" },
+                { key: "body_area", label: "Área do corpo", value: (procedure) => procedure.body_area || "Sem área", render: (procedure) => procedure.body_area || "Sem área" },
+                { key: "duration_minutes", label: "Duração", value: (procedure) => asNumber(procedure.duration_minutes), render: (procedure) => `${procedure.duration_minutes} min` },
+                { key: "price", label: "Preço", value: (procedure) => asNumber(procedure.price), render: (procedure) => currency.format(procedure.price || 0) },
+                { key: "is_active", label: "Status", value: (procedure) => procedure.is_active ? "Ativo" : "Inativo", render: (procedure) => <StatusBadge status={procedure.is_active ? "Ativo" : "Inativo"} /> },
               ]}
               actions={(procedure) => (
                 <>
@@ -1312,6 +1408,7 @@ export function BookingAdmin() {
                 </>
               )}
               empty="Você ainda não possui procedimentos cadastrados."
+              emptyFiltered="Nenhum procedimento corresponde aos filtros aplicados."
             />
           </div>
 
@@ -1443,22 +1540,46 @@ export function BookingAdmin() {
               actionLabel="Nova regra"
               onAction={openNewBlock}
             />
-            <DataTable
+            <DataView
               rows={safeBlocks}
+              defaultSort={{ key: "start_datetime", dir: "asc" }}
+              searchPlaceholder="Buscar por motivo, tipo ou profissional"
+              filters={[
+                {
+                  key: "professional_name",
+                  label: "Profissional",
+                  type: "select",
+                  options: distinctOptions(safeBlocks.map((block) => block.professional_name || "Todos")),
+                  match: (block, value) => (block.professional_name || "Todos") === value
+                },
+                {
+                  key: "block_type",
+                  label: "Tipo de bloqueio",
+                  type: "select",
+                  options: [
+                    { value: "block", label: "Bloqueio de intervalo" },
+                    { value: "unavailable", label: "Data indisponível" },
+                    { value: "special_hours", label: "Horário especial" }
+                  ],
+                  match: (block, value) => blockTypeLabel(block.block_type) === blockTypeLabel(value)
+                }
+              ]}
               columns={[
-                { key: "block_type", label: "Tipo", render: (block) => block.block_type === "special_hours" ? "Horário especial" : block.block_type === "unavailable" ? "Data indisponível" : "Bloqueio de intervalo" },
+                { key: "block_type", label: "Tipo", value: (block) => blockTypeLabel(block.block_type), render: (block) => blockTypeLabel(block.block_type) },
                 { key: "reason", label: "Motivo" },
-                { key: "professional_name", label: "Profissional", render: (block) => block.professional_name || "Todos" },
+                { key: "professional_name", label: "Profissional", value: (block) => block.professional_name || "Todos", render: (block) => block.professional_name || "Todos" },
+                // Ordena pelo valor cru (ISO) porque dd/MM/aaaa ordenaria errado.
                 { key: "start_datetime", label: "Início", render: (block) => new Date(block.start_datetime).toLocaleString("pt-BR") },
                 { key: "end_datetime", label: "Final", render: (block) => new Date(block.end_datetime).toLocaleString("pt-BR") },
               ]}
               actions={(block) => (
                 <>
                   <button type="button" onClick={() => editBlock(block)}>Editar</button>
-                  <button type="button" onClick={() => removeBlock(block)}>Apagar</button>
+                  <button type="button" onClick={() => removeBlock(block)}>Excluir</button>
                 </>
               )}
               empty="Nenhuma regra avançada cadastrada ainda."
+              emptyFiltered="Nenhuma regra corresponde aos filtros aplicados."
             />
           </div>
 
@@ -1542,26 +1663,115 @@ export function BookingAdmin() {
 
 export function AppointmentList({ appointments = [], onChanged, compact }) {
   const safeAppointments = asArray(appointments);
-  if (!safeAppointments.length) return <p className="empty-state">Nenhum atendimento encontrado.</p>;
+  // As opções de profissional saem da própria lista: o componente recebe só os
+  // agendamentos, sem acesso ao cadastro de profissionais.
+  const professionalOptions = useMemo(
+    () => distinctOptions(safeAppointments.map((item) => item.professional_name)),
+    [appointments]
+  );
+
   return (
-    <div className="appointment-list">
-      {safeAppointments.map((item) => (
-        <article className="appointment-row" key={item.id}>
-          <div className="time-box"><strong>{item.appointment_time}</strong><span>{formatDate(item.appointment_date)}</span></div>
-          <div>
-            <h3>{personName(item)}</h3>
-            <p>{item.procedure} · {item.piercing_region}</p>
-            <small>{item.professional_name} · {item.jewelry_name || "sem joia vinculada"}</small>
-          </div>
-          <StatusBadge status={item.status} />
-          {!compact && <div className="row-actions">
-            <a title="WhatsApp" href={whatsappUrl(item.whatsapp, appointmentWhatsAppMessage(item))} target="_blank" rel="noreferrer">WhatsApp</a>
-            <button title="Cancelar" onClick={() => updateAppointment(item.id, { status: "cancelado" }, onChanged)}><XCircle size={16} /></button>
-            <button title="Atendido" onClick={() => updateAppointment(item.id, { status: "atendido" }, onChanged)}><CheckCircle2 size={16} /></button>
-          </div>}
-        </article>
-      ))}
-    </div>
+    <DataView
+      rows={safeAppointments}
+      defaultSort={{ key: "appointment_date", dir: "asc" }}
+      searchPlaceholder="Buscar por cliente, procedimento, região, profissional ou data"
+      filters={[
+        {
+          key: "status",
+          label: "Status",
+          type: "select",
+          options: APPOINTMENT_STATUS_OPTIONS,
+          match: (item, value) => item.status === value
+        },
+        {
+          key: "professional_name",
+          label: "Profissional",
+          type: "select",
+          options: professionalOptions,
+          match: (item, value) => item.professional_name === value
+        },
+        {
+          key: "date_from",
+          label: "Data inicial",
+          type: "date",
+          match: (item, value) => String(item.appointment_date || "").slice(0, 10) >= value
+        },
+        {
+          key: "date_to",
+          label: "Data final",
+          type: "date",
+          match: (item, value) => String(item.appointment_date || "").slice(0, 10) <= value
+        }
+      ]}
+      columns={[
+        {
+          key: "appointment_date",
+          label: "Data/Hora",
+          // Ordena pela data ISO (dd/MM/aaaa ordenaria errado) e ainda deixa a
+          // busca achar a data no formato que aparece na tela.
+          value: (item) => `${item.appointment_date || ""} ${item.appointment_time || ""} ${formatDateWithYear(item.appointment_date)}`,
+          render: (item) => (
+            <span><strong>{formatDateWithYear(item.appointment_date)}</strong>{item.appointment_time ? ` · ${item.appointment_time}` : ""}</span>
+          )
+        },
+        {
+          key: "client",
+          label: "Cliente",
+          value: (item) => `${personName(item)} ${item.whatsapp || ""}`,
+          render: (item) => personName(item)
+        },
+        {
+          key: "procedure",
+          label: "Procedimento · Região",
+          value: (item) => `${item.procedure || ""} ${item.piercing_region || ""} ${item.jewelry_name || ""}`,
+          render: (item) => (
+            <>
+              <span>{item.procedure || "Sem procedimento"} · {item.piercing_region || "sem região"}</span>
+              <br />
+              <small>{item.jewelry_name || "sem joia vinculada"}</small>
+            </>
+          )
+        },
+        {
+          key: "professional_name",
+          label: "Profissional",
+          value: (item) => item.professional_name || "Sem profissional",
+          render: (item) => item.professional_name || "Sem profissional"
+        },
+        {
+          key: "status",
+          label: "Status",
+          value: (item) => appointmentStatusLabel(item.status),
+          render: (item) => <StatusBadge status={item.status} />
+        }
+      ]}
+      actions={compact ? undefined : (item) => (
+        <>
+          <a
+            className="secondary-button"
+            title="WhatsApp"
+            aria-label={`Abrir WhatsApp de ${personName(item)}`}
+            href={whatsappUrl(item.whatsapp, appointmentWhatsAppMessage(item))}
+            target="_blank"
+            rel="noreferrer"
+          >WhatsApp</a>
+          <button
+            type="button"
+            title="Cancelar"
+            aria-label={`Cancelar o atendimento de ${personName(item)}`}
+            onClick={() => updateAppointment(item.id, { status: "cancelado" }, onChanged)}
+          ><XCircle size={16} /></button>
+          <button
+            type="button"
+            title="Atendido"
+            aria-label={`Marcar como atendido o atendimento de ${personName(item)}`}
+            onClick={() => updateAppointment(item.id, { status: "atendido" }, onChanged)}
+          ><CheckCircle2 size={16} /></button>
+        </>
+      )}
+      empty="Nenhum atendimento encontrado."
+      emptyFiltered="Nenhum atendimento corresponde aos filtros aplicados."
+    />
   );
 }
 

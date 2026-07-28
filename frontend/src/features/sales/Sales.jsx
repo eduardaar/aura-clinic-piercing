@@ -1,18 +1,34 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import React, { useEffect, useState } from "react";
 import { Button, Input, Metric, Select, StatusBadge } from "../../components/common/Ui";
-import { Modal, CrudHeader, DataTable } from "../../components/common/Crud";
-import { Loading } from "../../components/common/Feedback";
+import { Modal, CrudHeader } from "../../components/common/Crud";
+import { DataView } from "../../components/common/DataView";
 import { asArray, formatDate } from "../../lib/utils";
 import { apiFetch, useFetch } from "../../lib/api";
 import { defaultSalesLine, defaultSalesOrderForm } from "../../lib/defaultForms";
 import { currency, personName, saleItemLabel, saleOrderTypeLabel } from "../../features/shared/helpers";
-import { smartSearchMatches } from "../../lib/smartSearch";
+
+// `formatDate` de lib/utils devolve dd/MM sem ano: numa lista com histórico de
+// vários anos duas vendas distantes ficariam idênticas na coluna.
+function formatDateWithYear(date) {
+  const value = String(date || "").slice(0, 10);
+  const parsed = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toLocaleDateString("pt-BR");
+}
+
+const ORDER_STATUS_LABELS = { concluida: "concluída", aberta: "aberta", cancelada: "cancelada" };
+
+// Opções vindas dos próprios pedidos: nenhum filtro oferecido devolve lista vazia.
+const distinctOptions = (rows, pick, label = (value) => value) =>
+  [...new Set(rows.map(pick).filter(Boolean))].sort().map((value) => ({ value, label: label(value) }));
+
+const orderItemsLabel = (order) =>
+  asArray(order.items).map((item) => `${item.quantity}x ${item.item_name}`).join(" · ");
 
 export function SalesWorkspace() {
   const { data: orders, refresh: refreshOrders } = useFetch("/sales-orders");
   const { data: services } = useFetch("/services");
-  const { data: procedures } = useFetch("/procedures");
   const { data: jewelry } = useFetch("/jewelry");
   const { data: appointments } = useFetch("/appointments");
   const [modalOpen, setModalOpen] = useState(false);
@@ -21,16 +37,13 @@ export function SalesWorkspace() {
   const [line, setLine] = useState(defaultSalesLine());
   const [items, setItems] = useState([]);
   const [error, setError] = useState("");
-  const [search, setSearch] = useState("");
   const safeOrders = asArray(orders);
   const safeServices = asArray(services);
-  const safeProcedures = asArray(procedures);
   const safeJewelry = asArray(jewelry);
   const safeAppointments = asArray(appointments);
-  const visibleOrders = safeOrders.filter((order) => smartSearchMatches(
-    `${order.full_name} ${order.order_type} ${order.payment_method} ${order.status} ${asArray(order.items).map((item) => `${item.item_name} ${item.sku || ""}`).join(" ")}`,
-    search
-  ));
+  const statusOptions = distinctOptions(safeOrders, (order) => order.status, (value) => ORDER_STATUS_LABELS[value] || value);
+  const typeOptions = distinctOptions(safeOrders, (order) => order.order_type, saleOrderTypeLabel);
+  const paymentOptions = [...new Set(safeOrders.map((order) => order.payment_method || "Pix"))].sort();
   const selectedProduct = safeJewelry.find((item) => String(item.id) === String(line.product_id));
   const selectedVariants = asArray(selectedProduct?.variants).filter((variant) => Number(variant.is_active ?? 1));
   const selectedVariant = selectedVariants.find((variant) => String(variant.id) === String(line.product_variant_id));
@@ -61,7 +74,10 @@ export function SalesWorkspace() {
     }
   }, [safeServices.length, tab]);
 
-  if (!orders || !services || !jewelry || !appointments) return <Loading />;
+  // A lista carrega sozinha: só a tabela espera pelos pedidos, o resto da tela
+  // (métricas e modal de cadastro) não fica bloqueado pelos outros fetches.
+  const ordersLoading = !orders;
+  const ordersError = orders?.error || "";
 
   const currentMonth = new Date().toISOString().slice(0, 7);
   const monthOrders = safeOrders.filter((order) => String(order?.created_at || "").startsWith(currentMonth) && order?.status !== "cancelada");
@@ -169,34 +185,66 @@ export function SalesWorkspace() {
           actionLabel="Nova venda"
           onAction={openNew}
         />
-        <div className="inventory-filter-row simplified">
-          <Input label="Buscar vendas" value={search} onChange={setSearch} />
-        </div>
-        <DataTable
-          rows={visibleOrders}
+        <DataView
+          rows={safeOrders}
+          loading={ordersLoading}
+          error={ordersError}
+          defaultSort={{ key: "created_at", dir: "desc" }}
+          searchPlaceholder="Buscar por cliente, item, SKU, pagamento ou status"
+          filters={[
+            { key: "status", label: "Status", type: "select", options: statusOptions },
+            { key: "order_type", label: "Tipo de pedido", type: "select", options: typeOptions },
+            {
+              key: "payment_method",
+              label: "Forma de pagamento",
+              type: "select",
+              options: paymentOptions,
+              match: (order, value) => (order.payment_method || "Pix") === value
+            },
+            {
+              key: "from",
+              label: "Data inicial",
+              type: "date",
+              match: (order, value) => String(order.created_at || "").slice(0, 10) >= value
+            },
+            {
+              key: "to",
+              label: "Data final",
+              type: "date",
+              match: (order, value) => String(order.created_at || "").slice(0, 10) <= value
+            }
+          ]}
           columns={[
             {
               key: "full_name",
               label: "Cliente",
+              // Inclui itens e SKU no valor de busca, como fazia a busca própria da tela.
+              value: (order) => `${order.full_name || ""} ${asArray(order.items).map((item) => `${item.item_name} ${item.sku || ""}`).join(" ")}`,
               render: (order) => (
                 <div>
                   <strong>{order.full_name}</strong>
                   <br />
-                  <small>{asArray(order.items).map((item) => `${item.quantity}x ${item.item_name}`).join(" · ")}</small>
+                  <small>{orderItemsLabel(order)}</small>
                 </div>
               )
             },
-            { key: "order_type", label: "Tipo", render: (order) => saleOrderTypeLabel(order.order_type) },
-            { key: "total_value", label: "Valor", align: "right", render: (order) => currency.format(order.total_value || 0) },
-            { key: "payment_method", label: "Pagamento", render: (order) => order.payment_method || "Pix" },
+            { key: "order_type", label: "Tipo", value: (order) => saleOrderTypeLabel(order.order_type), render: (order) => saleOrderTypeLabel(order.order_type) },
+            { key: "total_value", label: "Valor", align: "right", value: (order) => Number(order.total_value || 0), render: (order) => currency.format(order.total_value || 0) },
+            { key: "payment_method", label: "Pagamento", value: (order) => order.payment_method || "Pix", render: (order) => order.payment_method || "Pix" },
             {
               key: "status",
               label: "Status",
+              value: (order) => order.status || "",
               render: (order) => (
                 <StatusBadge status={order.status} tone={order.status === "cancelada" ? "danger" : order.status === "aberta" ? "warn" : "ok"} />
               )
             },
-            { key: "created_at", label: "Data", render: (order) => formatDate(String(order.created_at || "").slice(0, 10)) }
+            {
+              key: "created_at",
+              label: "Data",
+              value: (order) => String(order.created_at || "").slice(0, 10),
+              render: (order) => formatDateWithYear(order.created_at)
+            }
           ]}
           actions={(order) => (
             <>

@@ -2,7 +2,8 @@
 import React, { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { Button, Input, Metric, Select, StatusBadge } from "../../components/common/Ui";
-import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../components/common/Crud";
+import { Modal, CrudHeader, ConfirmDeleteModal } from "../../components/common/Crud";
+import { DataView } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, asNumber, asObject, removeAccents } from "../../lib/utils";
 import { apiFetch, useFetch } from "../../lib/api";
@@ -158,6 +159,9 @@ export function erpModuleAction(name = "") {
 }
 
 
+const ROLE_OPTIONS = ["admin", "piercer", "reception", "finance"]
+  .map((value) => ({ value, label: roleLabel(value) }));
+
 export function AccessAdmin() {
   const { data, refresh } = useFetch("/users");
   const [form, setForm] = useState(defaultAccessUser());
@@ -248,17 +252,22 @@ export function AccessAdmin() {
           actionLabel="Novo usuário"
           onAction={openNew}
         />
-        <DataTable
+        <DataView
           rows={users}
+          defaultSort={{ key: "name", dir: "asc" }}
+          searchPlaceholder="Buscar por nome, e-mail ou nível"
+          filters={[
+            { key: "role", label: "Nível de acesso", type: "select", options: ROLE_OPTIONS },
+          ]}
           columns={[
             { key: "name", label: "Nome" },
             { key: "email", label: "E-mail" },
-            { key: "role", label: "Nível", render: (user) => <StatusBadge status={roleLabel(user.role)} /> },
+            { key: "role", label: "Nível", value: (user) => roleLabel(user.role), render: (user) => <StatusBadge status={roleLabel(user.role)} /> },
           ]}
           actions={(user) => (
             <>
               <button type="button" onClick={() => openEdit(user)}>Editar</button>
-              <button type="button" disabled={isProtectedLastAdmin(user)} onClick={() => setDeleting({ message: `Remover o acesso de ${user.name}?`, run: () => remove(user) })}>Apagar</button>
+              <button type="button" disabled={isProtectedLastAdmin(user)} onClick={() => setDeleting({ message: `Remover o acesso de ${user.name}?`, run: () => remove(user) })}>Excluir</button>
             </>
           )}
           empty="Nenhum usuário cadastrado ainda."

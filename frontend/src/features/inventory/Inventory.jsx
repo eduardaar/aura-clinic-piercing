@@ -2,7 +2,8 @@
 import React, { useEffect, useState } from "react";
 import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Gem, ImageIcon, LayoutGrid, ListFilter, Pencil, Search, ShoppingCart, SlidersHorizontal, Sparkles, Table2, Trash2, X } from "lucide-react";
 import { Button, Input, Metric, Select, StatusBadge } from "../../components/common/Ui";
-import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../components/common/Crud";
+import { Modal, CrudHeader, ConfirmDeleteModal } from "../../components/common/Crud";
+import { DataView } from "../../components/common/DataView";
 import { asArray, asObject, formatDate, removeAccents } from "../../lib/utils";
 import { apiFetch, useFetch } from "../../lib/api";
 import { useDebouncedValue } from "../../lib/smartSearch";
@@ -30,6 +31,24 @@ function normalizeManagedCategory(item = {}, index = 0) {
     variant_count: Number(variantCount || 0),
     virtual: Boolean(item.virtual || !item.id)
   };
+}
+
+// O `Input` de Ui.jsx é compartilhado com outras telas e não repassa
+// `placeholder` — o exemplo de preenchimento sumia sem aviso. Aqui o campo é
+// escrito à mão para preservar a dica.
+function HintedInput({ label, value, onChange, placeholder, type = "text", required }) {
+  return (
+    <label>
+      {label}
+      <input
+        type={type}
+        value={value ?? ""}
+        required={required}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  );
 }
 
 export function CatalogWorkspace() {
@@ -255,6 +274,39 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
     setBadgeTab("todos");
   }, [inventoryMode]);
 
+  // Imprime as etiquetas da lista visível — por isso vive aqui, junto de
+  // `displayItems`, e não no painel de inteligência.
+  async function printLabels() {
+    const ids = displayItems.map((item) => item.id).slice(0, 100);
+    if (!ids.length) return;
+    const popup = window.open("", "_blank");
+    const response = await apiFetch(`/inventory/labels?ids=${ids.join(",")}`);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !popup) return;
+    popup.opener = null;
+    popup.document.title = "Etiquetas de estoque";
+    const style = popup.document.createElement("style");
+    style.textContent = "body{font-family:Arial;display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.label{border:1px solid #bbb;padding:10px;text-align:center;break-inside:avoid}.label strong{display:block;font-size:13px}.barcode{width:100%;height:55px;object-fit:contain}.qr{width:72px;height:72px}@media print{body{margin:4mm}.label{page-break-inside:avoid}}";
+    popup.document.head.appendChild(style);
+    asArray(payload.labels).forEach((label) => {
+      const card = popup.document.createElement("article");
+      card.className = "label";
+      const title = popup.document.createElement("strong");
+      title.textContent = label.name;
+      const barcode = popup.document.createElement("img");
+      barcode.className = "barcode";
+      barcode.src = label.barcode_data_url;
+      barcode.alt = `Código de barras ${label.code}`;
+      const qr = popup.document.createElement("img");
+      qr.className = "qr";
+      qr.src = label.qr_data_url;
+      qr.alt = `QR Code ${label.code}`;
+      card.append(title, barcode, qr);
+      popup.document.body.appendChild(card);
+    });
+    window.setTimeout(() => { popup.focus(); popup.print(); }, 300);
+  }
+
   async function archiveJewelry(item) {
     const response = await apiFetch(`/jewelry/${item.id}`, {
       method: "PATCH",
@@ -368,7 +420,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
           <div className="inventory-hero-actions">
             <Button variant="secondary" onClick={() => setShowVisualSearch(true)}><ImageIcon size={16} /> Buscar por foto</Button>
             <Button variant="secondary" onClick={printLabels}><Table2 size={16} /> Imprimir etiquetas</Button>
-            <Button variant="primary" onClick={openNewProduct}><Gem size={16} /> Nova Joia</Button>
+            <Button variant="primary" onClick={openNewProduct}><Gem size={16} /> Nova joia</Button>
           </div>
         </header>
 
@@ -612,6 +664,7 @@ function InventoryIntelligence({ data, suggestions, onRefresh, onReview }) {
   const summary = asObject(data?.summary);
   const items = asArray(data?.items);
   const reviews = asArray(suggestions);
+  const abcOptions = [...new Set(items.map((item) => item.abc_class).filter(Boolean))].sort();
   const [count, setCount] = useState(null);
   const [countBusy, setCountBusy] = useState(false);
   const [countError, setCountError] = useState("");
@@ -628,37 +681,6 @@ function InventoryIntelligence({ data, suggestions, onRefresh, onReview }) {
       setCountError(created.error || "Não foi possível iniciar o inventário.");
     }
     setCountBusy(false);
-  }
-
-  async function printLabels() {
-    const ids = displayItems.map((item) => item.id).slice(0, 100);
-    if (!ids.length) return;
-    const popup = window.open("", "_blank");
-    const response = await apiFetch(`/inventory/labels?ids=${ids.join(",")}`);
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !popup) return;
-    popup.opener = null;
-    popup.document.title = "Etiquetas de estoque";
-    const style = popup.document.createElement("style");
-    style.textContent = "body{font-family:Arial;display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.label{border:1px solid #bbb;padding:10px;text-align:center;break-inside:avoid}.label strong{display:block;font-size:13px}.barcode{width:100%;height:55px;object-fit:contain}.qr{width:72px;height:72px}@media print{body{margin:4mm}.label{page-break-inside:avoid}}";
-    popup.document.head.appendChild(style);
-    asArray(payload.labels).forEach((label) => {
-      const card = popup.document.createElement("article");
-      card.className = "label";
-      const title = popup.document.createElement("strong");
-      title.textContent = label.name;
-      const barcode = popup.document.createElement("img");
-      barcode.className = "barcode";
-      barcode.src = label.barcode_data_url;
-      barcode.alt = `Código de barras ${label.code}`;
-      const qr = popup.document.createElement("img");
-      qr.className = "qr";
-      qr.src = label.qr_data_url;
-      qr.alt = `QR Code ${label.code}`;
-      card.append(title, barcode, qr);
-      popup.document.body.appendChild(card);
-    });
-    window.setTimeout(() => { popup.focus(); popup.print(); }, 300);
   }
 
   function updateCountItem(id, value) {
@@ -697,23 +719,61 @@ function InventoryIntelligence({ data, suggestions, onRefresh, onReview }) {
         <Metric label="Unidades sugeridas" value={String(summary.suggested_units || 0)} />
         <Metric label="Produtos classe A" value={String(summary.class_a || 0)} />
       </div>
-      <div className="table-wrap">
-        <table>
-          <thead><tr><th>Produto</th><th>Curva</th><th>Saídas</th><th>Giro/dia</th><th>Ruptura</th><th>Compra sugerida</th></tr></thead>
-          <tbody>
-            {items.slice(0, 100).map((item) => (
-              <tr key={item.id}>
-                <td><strong>{item.name}</strong><br /><small>{item.sku || "Sem SKU"}</small></td>
-                <td><StatusBadge status={item.abc_class}>{item.abc_class}</StatusBadge></td>
-                <td>{item.units_out}</td>
-                <td>{Number(item.daily_demand || 0).toLocaleString("pt-BR")}</td>
-                <td>{item.days_to_stockout === null ? "Sem consumo" : `${item.days_to_stockout} dias`}</td>
-                <td>{item.suggested_purchase} un.</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataView
+        rows={items}
+        defaultSort={{ key: "suggested_purchase", dir: "desc" }}
+        searchPlaceholder="Buscar por produto ou SKU"
+        filters={[
+          { key: "abc_class", label: "Curva", type: "select", options: abcOptions },
+          {
+            key: "stockout",
+            label: "Ruptura",
+            type: "select",
+            options: [
+              { value: "30", label: "Em até 30 dias" },
+              { value: "sem", label: "Sem consumo" }
+            ],
+            match: (item, value) => value === "sem"
+              ? item.days_to_stockout === null
+              : item.days_to_stockout !== null && Number(item.days_to_stockout) <= 30
+          }
+        ]}
+        columns={[
+          {
+            key: "name",
+            label: "Produto",
+            value: (item) => `${item.name || ""} ${item.sku || ""}`,
+            render: (item) => <><strong>{item.name}</strong><br /><small>{item.sku || "Sem SKU"}</small></>
+          },
+          {
+            key: "abc_class",
+            label: "Curva",
+            value: (item) => item.abc_class || "",
+            render: (item) => <StatusBadge status={item.abc_class}>{item.abc_class}</StatusBadge>
+          },
+          { key: "units_out", label: "Saídas", value: (item) => Number(item.units_out || 0) },
+          {
+            key: "daily_demand",
+            label: "Giro/dia",
+            value: (item) => Number(item.daily_demand || 0),
+            render: (item) => Number(item.daily_demand || 0).toLocaleString("pt-BR")
+          },
+          {
+            key: "days_to_stockout",
+            label: "Ruptura",
+            // `null` = sem consumo: o DataView já joga vazios para o fim da ordenação.
+            value: (item) => item.days_to_stockout,
+            render: (item) => item.days_to_stockout === null ? "Sem consumo" : `${item.days_to_stockout} dias`
+          },
+          {
+            key: "suggested_purchase",
+            label: "Compra sugerida",
+            value: (item) => Number(item.suggested_purchase || 0),
+            render: (item) => `${item.suggested_purchase} un.`
+          }
+        ]}
+        empty="Nenhum produto com histórico de saída no período."
+      />
       <div className="panel-heading"><h3>Sugestões para revisão</h3><span>Aceitar registra a decisão de compra; não movimenta o estoque.</span></div>
       <div className="cards-grid">
         {reviews.map((item) => (
@@ -786,7 +846,7 @@ function VisualSearchModal({ onClose, onOpenProduct }) {
   }
 
   return (
-    <Modal title="Buscar por foto" onClose={onClose} wide>
+    <Modal open title="Buscar por foto" onClose={onClose} size="lg">
       <div className="visual-search-upload">
         <label className="secondary-button">
           <ImageIcon size={17} /> Tirar ou escolher foto
@@ -814,6 +874,7 @@ function ProductGalleryManager({ images = [], productName = "", onChange }) {
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState(null);
   const [url, setUrl] = useState("");
+  const [removingIndex, setRemovingIndex] = useState(null);
   const safeImages = asArray(images);
 
   function normalizeList(list) {
@@ -872,8 +933,8 @@ function ProductGalleryManager({ images = [], productName = "", onChange }) {
   }
 
   function remove(index) {
-    if (!window.confirm("Remover esta imagem da galeria?")) return;
     emit(safeImages.filter((_, itemIndex) => itemIndex !== index));
+    setRemovingIndex(null);
   }
 
   function setPrimary(index) {
@@ -901,7 +962,7 @@ function ProductGalleryManager({ images = [], productName = "", onChange }) {
         </label>
       </div>
       <div className="gallery-url-row">
-        <Input label="URL da imagem" value={url} onChange={setUrl} placeholder="https://..." />
+        <HintedInput label="URL da imagem" value={url} onChange={setUrl} placeholder="https://..." />
         <Button variant="secondary" onClick={addUrl}>Adicionar URL</Button>
       </div>
       {uploading && <small className="form-success">Enviando imagens...</small>}
@@ -918,7 +979,7 @@ function ProductGalleryManager({ images = [], productName = "", onChange }) {
               <button type="button" onClick={() => setPrimary(index)} disabled={image.is_primary}>{image.is_primary ? "Principal" : "Definir Principal"}</button>
               <button type="button" onClick={() => move(index, -1)}>Subir</button>
               <button type="button" onClick={() => move(index, 1)}>Descer</button>
-              <button type="button" onClick={() => remove(index)}>Remover</button>
+              <button type="button" onClick={() => setRemovingIndex(index)}>Remover</button>
             </div>
           </article>
         ))}
@@ -929,6 +990,22 @@ function ProductGalleryManager({ images = [], productName = "", onChange }) {
           <img src={catalogImageUrl(preview)} alt="Pré-visualização" />
         </div>
       )}
+      {/* A galeria vive dentro do formulário da joia: um modal sem campo de
+          texto evita que o Enter da confirmação submeta o produto inteiro. */}
+      <Modal
+        open={removingIndex !== null}
+        title="Remover imagem"
+        size="sm"
+        onClose={() => setRemovingIndex(null)}
+        footer={(
+          <>
+            <Button variant="secondary" onClick={() => setRemovingIndex(null)}>Cancelar</Button>
+            <Button variant="danger" onClick={() => remove(removingIndex)}>Remover</Button>
+          </>
+        )}
+      >
+        <p>Remover esta imagem da galeria do produto?</p>
+      </Modal>
     </section>
   );
 }
@@ -938,6 +1015,7 @@ export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTI
   const [error, setError] = useState("");
   const [editorTab, setEditorTab] = useState("dados");
   const [editingVariantIndex, setEditingVariantIndex] = useState(null);
+  const [confirmPricing, setConfirmPricing] = useState(false);
 
   useEffect(() => {
     setForm(editing ? normalizeJewelryForm(editing) : defaultJewelry());
@@ -1021,8 +1099,8 @@ export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTI
   }
 
   function applyPricingToAll() {
+    setConfirmPricing(false);
     if (!form.variants.length) return;
-    if (!window.confirm("Aplicar custo, frete, multiplicador e arredondamento da primeira variação para todas as variações? Preços finais manuais serão recalculados.")) return;
     const source = form.variants[0];
     setForm((current) => ({
       ...current,
@@ -1132,7 +1210,7 @@ export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTI
               <p>Cada combinação possui SKU, preço e estoque próprios.</p>
             </div>
             <div className="product-movement-actions">
-              <Button variant="secondary" onClick={applyPricingToAll}>Aplicar custo e multiplicador a todas</Button>
+              <Button variant="secondary" onClick={() => setConfirmPricing(true)}>Aplicar custo e multiplicador a todas</Button>
               <Button variant="primary" onClick={addVariant}>+ Nova Variação</Button>
             </div>
           </div>
@@ -1174,6 +1252,21 @@ export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTI
               );
             })}
           </div>
+          <Modal
+            open={confirmPricing}
+            title="Aplicar precificação a todas as variações"
+            size="sm"
+            onClose={() => setConfirmPricing(false)}
+            footer={(
+              <>
+                <Button variant="secondary" onClick={() => setConfirmPricing(false)}>Cancelar</Button>
+                <Button variant="primary" onClick={applyPricingToAll}>Aplicar</Button>
+              </>
+            )}
+          >
+            <p>Aplicar custo, frete, multiplicador e arredondamento da primeira variação para todas as variações?</p>
+            <p>Preços finais definidos manualmente serão recalculados.</p>
+          </Modal>
           {editingVariantIndex !== null && form.variants[editingVariantIndex] && (
             <VariantEditModal
               category={form.category}
@@ -1236,7 +1329,7 @@ export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTI
           {Boolean(form.virtual_store_active) && (
             <>
               <div className="form-grid">
-                <Input label="URL da imagem (para catálogo)" value={form.image_url} onChange={(value) => setForm({ ...form, image_url: value })} placeholder="https://..." />
+                <HintedInput label="URL da imagem (para catálogo)" value={form.image_url} onChange={(value) => setForm({ ...form, image_url: value })} placeholder="https://..." />
                 <Input type="number" label="Peso para envio (g)" value={form.weight_grams} onChange={(value) => setForm({ ...form, weight_grams: value })} />
                 <Input type="number" label="Comprimento da embalagem (cm)" value={form.package_length_cm} onChange={(value) => setForm({ ...form, package_length_cm: value })} />
                 <Input type="number" label="Largura da embalagem (cm)" value={form.package_width_cm} onChange={(value) => setForm({ ...form, package_width_cm: value })} />
@@ -1614,7 +1707,7 @@ export function CategoryManager({ categories = [], onChanged }) {
 
   return (
     <article className="manager-card category-manager-card">
-      <CrudHeader title="Categorias" actionLabel="Nova Categoria" onAction={openNew} />
+      <CrudHeader title="Categorias" actionLabel="Nova categoria" onAction={openNew} />
       {error && !modalOpen && !deleteTarget && <span className="form-error">{error}</span>}
       <CategoryManagementTable
         rows={rows}
@@ -1624,7 +1717,7 @@ export function CategoryManager({ categories = [], onChanged }) {
       />
       <Modal
         open={modalOpen}
-        title={editing ? "Editar Categoria" : "Nova Categoria"}
+        title={editing ? "Editar categoria" : "Nova categoria"}
         onClose={() => setModalOpen(false)}
         footer={(
           <>
@@ -1644,7 +1737,7 @@ export function CategoryManager({ categories = [], onChanged }) {
       </Modal>
       <Modal
         open={!!deleteTarget}
-        title="Excluir ou Tratar Categoria"
+        title="Excluir ou tratar categoria"
         onClose={() => setDeleteTarget(null)}
         footer={(
           <>
@@ -1682,40 +1775,66 @@ export function CategoryManager({ categories = [], onChanged }) {
 }
 
 function CategoryManagementTable({ rows = [], onEdit, onToggleStatus, onDelete }) {
-  const safeRows = asArray(rows);
-  if (!safeRows.length) return <div className="data-empty">Nenhuma categoria cadastrada ainda.</div>;
   return (
-    <div className="category-management-table" data-testid="inventory-category-management-table">
-      <div className="category-management-head" aria-hidden="true">
-        <span>Categoria</span>
-        <span>Produtos</span>
-        <span>Status</span>
-        <span>Ações</span>
-      </div>
-      {safeRows.map((category) => (
-        <div className="category-management-row" key={category.row_key}>
-          <div className="category-management-name" data-label="Categoria">
-            <strong>{category.name}</strong>
-            {category.description && <small>{category.description}</small>}
-          </div>
-          <div data-label="Produtos">
-            <strong>{Number(category.product_count || 0)}</strong>
-            <small>{Number(category.variant_count || 0)} variações</small>
-          </div>
-          <div data-label="Status">
-            <StatusBadge status={category.status_label} tone={Number(category.is_active ?? 1) ? "ok" : "neutral"} />
-          </div>
-          <div className="category-management-actions" data-label="Ações">
+    <div data-testid="inventory-category-management-table">
+      <DataView
+        rows={asArray(rows)}
+        rowKey={(category) => category.row_key}
+        defaultSort={{ key: "name", dir: "asc" }}
+        searchPlaceholder="Buscar categoria"
+        filters={[
+          {
+            key: "status",
+            label: "Status",
+            type: "select",
+            options: [{ value: "ativa", label: "Ativa" }, { value: "inativa", label: "Inativa" }],
+            match: (category, value) => (Number(category.is_active ?? 1) ? "ativa" : "inativa") === value
+          }
+        ]}
+        columns={[
+          {
+            key: "name",
+            label: "Categoria",
+            value: (category) => `${category.name} ${category.description || ""}`,
+            render: (category) => (
+              <>
+                <strong>{category.name}</strong>
+                {category.description && <><br /><small>{category.description}</small></>}
+              </>
+            )
+          },
+          {
+            key: "product_count",
+            label: "Produtos",
+            value: (category) => Number(category.product_count || 0),
+            render: (category) => (
+              <>
+                <strong>{Number(category.product_count || 0)}</strong>
+                <br />
+                <small>{Number(category.variant_count || 0)} variações</small>
+              </>
+            )
+          },
+          {
+            key: "status_label",
+            label: "Status",
+            value: (category) => category.status_label,
+            render: (category) => (
+              <StatusBadge status={category.status_label} tone={Number(category.is_active ?? 1) ? "ok" : "neutral"} />
+            )
+          }
+        ]}
+        actions={(category) => (
+          <>
             <button type="button" onClick={() => onEdit(category)}>Editar</button>
             <button type="button" onClick={() => onToggleStatus(category)}>
               {Number(category.is_active ?? 1) ? "Desativar" : "Ativar"}
             </button>
-            <button type="button" onClick={() => onDelete(category)}>
-              Apagar
-            </button>
-          </div>
-        </div>
-      ))}
+            <button type="button" onClick={() => onDelete(category)}>Excluir</button>
+          </>
+        )}
+        empty="Nenhuma categoria cadastrada ainda."
+      />
     </div>
   );
 }
@@ -1762,7 +1881,7 @@ export function OptionManager({ title, type, items = [], onChanged, placeholder 
       run: async () => {
         setError("");
         const response = await apiFetch(`/inventory-options/${item.id}`, { method: "DELETE" });
-        if (!response.ok) return setError((await response.json()).error || "Não foi possível apagar.");
+        if (!response.ok) return setError((await response.json()).error || "Não foi possível excluir.");
         onChanged();
       }
     });
@@ -1772,13 +1891,15 @@ export function OptionManager({ title, type, items = [], onChanged, placeholder 
     <article className="manager-card">
       <CrudHeader title={title} actionLabel="Novo" onAction={openNew} />
       {error && !modalOpen && <span className="form-error">{error}</span>}
-      <DataTable
+      <DataView
         rows={asArray(items)}
+        defaultSort={{ key: "name", dir: "asc" }}
+        searchPlaceholder={`Buscar em ${title.toLowerCase()}`}
         columns={[{ key: "name", label: "Nome" }]}
         actions={(item) => (
           <>
             <button type="button" onClick={() => openEdit(item)}>Editar</button>
-            <button type="button" onClick={() => remove(item)}>Apagar</button>
+            <button type="button" onClick={() => remove(item)}>Excluir</button>
           </>
         )}
         empty="Nenhum registro cadastrado ainda."
@@ -1795,7 +1916,7 @@ export function OptionManager({ title, type, items = [], onChanged, placeholder 
         )}
       >
         <form id={formId} onSubmit={save}>
-          <Input label={title} value={name} onChange={setName} placeholder={placeholder} required />
+          <HintedInput label={title} value={name} onChange={setName} placeholder={placeholder} required />
           {error && <span className="form-error">{error}</span>}
         </form>
       </Modal>
@@ -1852,7 +1973,7 @@ export function ProfessionalManager({ professionals = [], onChanged }) {
       run: async () => {
         setError("");
         const response = await apiFetch(`/professionals/${professional.id}`, { method: "DELETE" });
-        if (!response.ok) return setError((await response.json()).error || "Não foi possível apagar.");
+        if (!response.ok) return setError((await response.json()).error || "Não foi possível excluir.");
         onChanged();
       }
     });
@@ -1862,16 +1983,18 @@ export function ProfessionalManager({ professionals = [], onChanged }) {
     <article className="manager-card professionals-manager">
       <CrudHeader title="Profissionais" actionLabel="Novo profissional" onAction={openNew} />
       {error && !modalOpen && <span className="form-error">{error}</span>}
-      <DataTable
+      <DataView
         rows={asArray(professionals)}
+        defaultSort={{ key: "name", dir: "asc" }}
+        searchPlaceholder="Buscar por nome ou especialidade"
         columns={[
           { key: "name", label: "Nome" },
-          { key: "specialty", label: "Especialidade" }
+          { key: "specialty", label: "Especialidade", render: (professional) => professional.specialty || "—" }
         ]}
         actions={(professional) => (
           <>
             <button type="button" onClick={() => openEdit(professional)}>Editar</button>
-            <button type="button" onClick={() => remove(professional)}>Apagar</button>
+            <button type="button" onClick={() => remove(professional)}>Excluir</button>
           </>
         )}
         empty="Nenhum profissional cadastrado ainda."
@@ -1883,11 +2006,13 @@ export function ProfessionalManager({ professionals = [], onChanged }) {
         footer={(
           <>
             <button type="button" className="secondary-button" onClick={() => setModalOpen(false)}>Cancelar</button>
-            <button type="submit" form="professional-form" className="primary-button">{editing ? "Salvar" : "Criar"}</button>
+            <button type="submit" form="inventory-professional-form" className="primary-button">{editing ? "Salvar" : "Criar"}</button>
           </>
         )}
       >
-        <form id="professional-form" onSubmit={save}>
+        {/* Id próprio: a Agenda tem outra tela de profissionais com o mesmo
+            formulário, e ids repetidos fazem o botão submeter o form errado. */}
+        <form id="inventory-professional-form" onSubmit={save}>
           <div className="form-grid">
             <Input label="Nome" value={form.name} onChange={(value) => setForm({ ...form, name: value })} required />
             <Input label="Especialidade" value={form.specialty} onChange={(value) => setForm({ ...form, specialty: value })} />
@@ -1907,34 +2032,69 @@ export function ProfessionalManager({ professionals = [], onChanged }) {
 }
 
 export function JewelryTable({ items, onOpen, onEdit, onMovement, onArchive }) {
-  const safeItems = asArray(items);
   return (
-    <div className="table-wrap inventory-admin-table compact-inventory-table">
-      <table>
-        <thead><tr><th>Produto</th><th>Variações</th><th>Estoque Total</th><th>Status</th><th>Venda</th><th>Ações</th></tr></thead>
-        <tbody>{safeItems.map((item) => (
-          <tr className="clickable-product-row" key={item.id} onClick={() => onOpen?.(item)}>
-            <td>
-              <div className="inventory-product-cell">
+    <div className="inventory-admin-table compact-inventory-table">
+      <DataView
+        rows={asArray(items)}
+        // A busca e os filtros desta tela são server-side (debounce + query na
+        // API). A barra do DataView filtraria de novo, em memória, um resultado
+        // que o backend já filtrou — e esconderia linhas que casaram por SKU de
+        // variação, dado que não aparece em nenhuma coluna.
+        searchable={false}
+        defaultSort={{ key: "name", dir: "asc" }}
+        columns={[
+          {
+            key: "name",
+            label: "Produto",
+            value: (item) => elegantProductName(item.name),
+            render: (item) => (
+              <div
+                className={`inventory-product-cell${onOpen ? " clickable-product-row" : ""}`}
+                role={onOpen ? "button" : undefined}
+                tabIndex={onOpen ? 0 : undefined}
+                onClick={() => onOpen?.(item)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") onOpen?.(item);
+                }}
+              >
                 <img src={catalogImageUrl(item.photo_url)} alt={elegantProductName(item.name)} />
-                <span><strong>{elegantProductName(item.name)}</strong><small>{[item.category, item.subcategory].map(cleanDisplayText).filter(Boolean).join(" · ")}</small></span>
+                <span>
+                  <strong>{elegantProductName(item.name)}</strong>
+                  <small>{[item.category, item.subcategory].map(cleanDisplayText).filter(Boolean).join(" · ")}</small>
+                </span>
               </div>
-            </td>
-            <td>{item.variant_count || item.variants?.length || 0}</td>
-            <td>{item.quantity}</td>
-            <td><StatusBadge status={inventoryStatusLabel(item)} className={`inventory-status ${inventoryStatusClass(item)}`} /></td>
-            <td>A partir de {currency.format(item.sale_value || 0)}</td>
-            <td>
-              <div className="table-actions">
-                {onMovement && <button type="button" onClick={(event) => { event.stopPropagation(); onMovement(item, "Entrada"); }}>Entrada</button>}
-                {onMovement && <button type="button" onClick={(event) => { event.stopPropagation(); onMovement(item, "Saída"); }}>Saída</button>}
-                <button type="button" onClick={(event) => { event.stopPropagation(); onEdit(item); }}>Editar</button>
-                {onArchive && <button type="button" onClick={(event) => { event.stopPropagation(); onArchive(item); }}>Arquivar</button>}
-              </div>
-            </td>
-          </tr>
-        ))}</tbody>
-      </table>
+            )
+          },
+          {
+            key: "variant_count",
+            label: "Variações",
+            value: (item) => Number(item.variant_count || item.variants?.length || 0),
+            render: (item) => item.variant_count || item.variants?.length || 0
+          },
+          { key: "quantity", label: "Estoque Total", value: (item) => Number(item.quantity || 0) },
+          {
+            key: "status",
+            label: "Status",
+            value: (item) => inventoryStatusLabel(item),
+            render: (item) => <StatusBadge status={inventoryStatusLabel(item)} className={`inventory-status ${inventoryStatusClass(item)}`} />
+          },
+          {
+            key: "sale_value",
+            label: "Venda",
+            value: (item) => Number(item.sale_value || 0),
+            render: (item) => `A partir de ${currency.format(item.sale_value || 0)}`
+          }
+        ]}
+        actions={(item) => (
+          <>
+            {onMovement && <button type="button" onClick={() => onMovement(item, "Entrada")}>Entrada</button>}
+            {onMovement && <button type="button" onClick={() => onMovement(item, "Saída")}>Saída</button>}
+            <button type="button" onClick={() => onEdit?.(item)}>Editar</button>
+            {onArchive && <button type="button" onClick={() => onArchive(item)}>Arquivar</button>}
+          </>
+        )}
+        empty="Nenhuma joia cadastrada ainda."
+      />
     </div>
   );
 }

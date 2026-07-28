@@ -1,24 +1,59 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import React, { useState } from "react";
-import { Instagram, Search } from "lucide-react";
 import { Button, Metric, SecureImage, Select, StatusBadge } from "../../components/common/Ui";
+import { Modal } from "../../components/common/Crud";
+import { DataView } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
-import { asArray, formatDate } from "../../lib/utils";
+import { asArray } from "../../lib/utils";
 import { apiFetch, useFetch } from "../../lib/api";
 import { personName } from "../../features/shared/helpers";
 
+const HEALING_STATUS_OPTIONS = [
+  "aguardando retorno",
+  "cicatrização normal",
+  "atenção necessária",
+  "intercorrência",
+  "cicatrização concluída"
+];
+
+const REMINDER_STATUS_OPTIONS = [
+  { value: "pendente", label: "pendente" },
+  { value: "mensagem enviada", label: "mensagem enviada" },
+  { value: "foto recebida", label: "foto recebida" },
+  { value: "concluido", label: "concluído" }
+];
+
+// `formatDate` de lib/utils devolve dd/MM sem ano: lembretes de anos diferentes
+// ficariam com a mesma data na coluna de vencimento.
+function formatDateWithYear(date) {
+  const value = String(date || "").slice(0, 10);
+  const parsed = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toLocaleDateString("pt-BR");
+}
+
+const today = () => new Date().toISOString().slice(0, 10);
+const isOverdue = (item) => item.status !== "concluido" && String(item.due_date || "") <= today();
+
+// Opções vindas dos próprios acompanhamentos: a base tem status que não estão
+// na lista fixa do formulário (ex.: "respondido", "cicatrizando bem"), e um
+// filtro que não os oferece esconde registros do usuário.
+const distinctOptions = (rows, pick) => [...new Set(rows.map(pick).filter(Boolean))].sort();
+
+// Mantém no <select> o valor já gravado quando ele não está na lista canônica:
+// sem isso o navegador exibe a primeira opção e salvar trocaria o dado.
+const withCurrent = (options, current) =>
+  current && !options.some((option) => (option.value ?? option) === current)
+    ? [...options, typeof options[0] === "string" ? current : { value: current, label: current }]
+    : options;
+
 export function PostCare() {
   const { data, refresh } = useFetch("/post-care");
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("");
+  const [editing, setEditing] = useState(null);
   if (!data) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
   const followups = asArray(data);
-  const items = followups.filter((item) => {
-    const text = `${personName(item)} ${item.whatsapp} ${item.procedure} ${item.piercing_region} ${item.jewelry_name} ${item.healing_status}`.toLowerCase();
-    return (!search.trim() || text.includes(search.toLowerCase())) && (!status || item.status === status);
-  });
-  const dueCount = followups.filter((item) => item.status !== "concluido" && item.due_date <= new Date().toISOString().slice(0, 10)).length;
+  const dueCount = followups.filter(isOverdue).length;
 
   return (
     <section className="stack">
@@ -27,28 +62,111 @@ export function PostCare() {
         <Metric label="Pendentes ou vencidos" value={dueCount} />
         <Metric label="Fotos recebidas" value={followups.filter((item) => item.client_photo_url).length} />
       </div>
-      <div className="toolbar">
-        <label className="search-field">
-          <Search size={17} />
-          <input placeholder="Pesquisar cliente, procedimento, joia ou status" value={search} onChange={(event) => setSearch(event.target.value)} />
-        </label>
-        <Select label="Status" value={status} onChange={setStatus}>
-          <option value="">Todos</option>
-          <option value="pendente">pendente</option>
-          <option value="mensagem enviada">mensagem enviada</option>
-          <option value="foto recebida">foto recebida</option>
-          <option value="concluido">concluído</option>
-        </Select>
+
+      <div className="panel">
+        <DataView
+          rows={followups}
+          defaultSort={{ key: "due_date", dir: "asc" }}
+          searchPlaceholder="Pesquisar cliente, WhatsApp, procedimento, joia ou status"
+          filters={[
+            { key: "status", label: "Status do lembrete", type: "select", options: distinctOptions(followups, (item) => item.status) },
+            { key: "healing_status", label: "Status da cicatrização", type: "select", options: distinctOptions(followups, (item) => item.healing_status) },
+            {
+              key: "from",
+              label: "Vencimento a partir de",
+              type: "date",
+              match: (item, value) => String(item.due_date || "").slice(0, 10) >= value
+            },
+            {
+              key: "to",
+              label: "Vencimento até",
+              type: "date",
+              match: (item, value) => String(item.due_date || "").slice(0, 10) <= value
+            }
+          ]}
+          columns={[
+            {
+              key: "full_name",
+              label: "Cliente",
+              value: (item) => `${personName(item)} ${item.whatsapp || ""} ${item.instagram || ""}`,
+              render: (item) => (
+                <div>
+                  <strong>{personName(item)}</strong>
+                  <br />
+                  <small>{item.whatsapp} · {item.instagram || "sem Instagram"}</small>
+                </div>
+              )
+            },
+            {
+              key: "procedure",
+              label: "Procedimento",
+              value: (item) => `${item.procedure || ""} ${item.piercing_region || ""} ${item.jewelry_name || ""}`,
+              render: (item) => (
+                <div>
+                  <span>{item.procedure}</span>
+                  <br />
+                  <small>{item.piercing_region} · {item.jewelry_name || "sem joia"}</small>
+                </div>
+              )
+            },
+            {
+              key: "reminder_day",
+              label: "Dia do lembrete",
+              align: "right",
+              value: (item) => Number(item.reminder_day || 0),
+              render: (item) => `${item.reminder_day} dias`
+            },
+            {
+              key: "due_date",
+              label: "Vencimento",
+              value: (item) => String(item.due_date || ""),
+              render: (item) => (
+                <StatusBadge tone={isOverdue(item) ? "warn" : "ok"}>{formatDateWithYear(item.due_date)}</StatusBadge>
+              )
+            },
+            { key: "healing_status", label: "Status de cicatrização", render: (item) => item.healing_status || "—" },
+            {
+              key: "status",
+              label: "Status",
+              render: (item) => <StatusBadge status={item.status}>{item.status === "concluido" ? "concluído" : item.status}</StatusBadge>
+            }
+          ]}
+          actions={(item) => (
+            <button type="button" onClick={() => setEditing(item)}>Editar</button>
+          )}
+          empty="Nenhum acompanhamento registrado ainda."
+          emptyFiltered="Nenhum acompanhamento corresponde à busca ou aos filtros."
+        />
       </div>
-      <div className="post-care-grid">
-        {items.map((item) => <PostCareCard item={item} key={item.id} onChanged={refresh} />)}
-      </div>
-      {!items.length && <p className="empty-state">Nenhum acompanhamento encontrado.</p>}
+
+      <Modal
+        open={!!editing}
+        title={editing ? personName(editing) : ""}
+        subtitle="Acompanhamento de cicatrização"
+        size="lg"
+        onClose={() => setEditing(null)}
+        footer={(
+          <>
+            <Button type="button" variant="secondary" onClick={() => setEditing(null)}>Cancelar</Button>
+            <Button type="submit" form="post-care-form" variant="primary">Salvar acompanhamento</Button>
+          </>
+        )}
+      >
+        {editing && (
+          <PostCareEditor
+            key={editing.id}
+            item={editing}
+            onChanged={() => { setEditing(null); refresh(); }}
+          />
+        )}
+      </Modal>
     </section>
   );
 }
 
-export function PostCareCard({ item, onChanged }) {
+// Edição por registro: mesmos campos do card antigo, agora dentro do modal
+// aberto pela ação "Editar" da linha (não cabem numa célula de tabela).
+export function PostCareEditor({ item, onChanged }) {
   const [form, setForm] = useState({
     care_message: item.care_message || "",
     healing_status: item.healing_status || "aguardando retorno",
@@ -56,7 +174,6 @@ export function PostCareCard({ item, onChanged }) {
     status: item.status || "pendente"
   });
   const [photo, setPhoto] = useState(null);
-  const isDue = item.status !== "concluido" && item.due_date <= new Date().toISOString().slice(0, 10);
 
   async function save(event) {
     event.preventDefault();
@@ -69,39 +186,25 @@ export function PostCareCard({ item, onChanged }) {
   }
 
   return (
-    <article className={`post-care-card ${isDue ? "due" : ""}`}>
-      <header>
-        <div>
-          <span className="eyebrow">{item.reminder_day} dias</span>
-          <h2>{personName(item)}</h2>
-          <p>{item.whatsapp} · {item.instagram || "sem Instagram"}</p>
-        </div>
-        <StatusBadge tone={isDue ? "warn" : "ok"}>{formatDate(item.due_date)}</StatusBadge>
-      </header>
+    <div className="stack">
       <dl>
         <div><dt>Procedimento</dt><dd>{item.procedure}</dd></div>
         <div><dt>Região</dt><dd>{item.piercing_region}</dd></div>
         <div><dt>Joia</dt><dd>{item.jewelry_name || "sem joia"}</dd></div>
         <div><dt>Profissional</dt><dd>{item.professional_name}</dd></div>
+        <div><dt>Vencimento</dt><dd>{formatDateWithYear(item.due_date)} ({item.reminder_day} dias)</dd></div>
       </dl>
       {item.client_photo_url && <SecureImage className="post-care-photo" src={item.client_photo_url} alt="Foto enviada pelo cliente" />}
-      <form onSubmit={save} className="post-care-form">
+      <form id="post-care-form" onSubmit={save} className="post-care-form">
         <label>Mensagem personalizada de cuidados
           <textarea value={form.care_message} onChange={(event) => setForm({ ...form, care_message: event.target.value })} />
         </label>
         <div className="form-grid">
           <Select label="Status da cicatrização" value={form.healing_status} onChange={(value) => setForm({ ...form, healing_status: value })}>
-            <option>aguardando retorno</option>
-            <option>cicatrização normal</option>
-            <option>atenção necessária</option>
-            <option>intercorrência</option>
-            <option>cicatrização concluída</option>
+            {withCurrent(HEALING_STATUS_OPTIONS, item.healing_status).map((option) => <option key={option}>{option}</option>)}
           </Select>
           <Select label="Status do lembrete" value={form.status} onChange={(value) => setForm({ ...form, status: value })}>
-            <option value="pendente">pendente</option>
-            <option value="mensagem enviada">mensagem enviada</option>
-            <option value="foto recebida">foto recebida</option>
-            <option value="concluido">concluído</option>
+            {withCurrent(REMINDER_STATUS_OPTIONS, item.status).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </Select>
         </div>
         <label>Observações do cliente
@@ -110,9 +213,7 @@ export function PostCareCard({ item, onChanged }) {
         <label>Foto enviada pelo cliente
           <input type="file" accept="image/*" onChange={(event) => setPhoto(event.target.files[0])} />
         </label>
-        <Button variant="primary" type="submit">Salvar acompanhamento</Button>
       </form>
-    </article>
+    </div>
   );
 }
-

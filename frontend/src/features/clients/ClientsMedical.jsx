@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { ChevronRight, FileSignature, HeartPulse, Search, UsersRound } from "lucide-react";
 import { Button, Input, SecureImage, Select, StatusBadge } from "../../components/common/Ui";
 import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../components/common/Crud";
+import { DataView, MONTH_OPTIONS } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, dateInputValue, formatDate, formatLongDate } from "../../lib/utils";
 import { apiFetch, useFetch } from "../../lib/api";
@@ -41,7 +42,6 @@ export function ClientWorkspace() {
 
 export function ClientsMedical() {
   const { data, refresh } = useFetch("/clients");
-  const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState("");
@@ -50,10 +50,6 @@ export function ClientsMedical() {
   if (!data) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
   const clients = asArray(data);
-  const filteredClients = clients.filter((client) => matchesClientSearch(client, search) || smartSearchMatches(
-    `${client.full_name} ${client.whatsapp} ${client.instagram} ${client.email} ${client.phone}`,
-    search
-  ));
 
   function openNew() {
     setEditing(null);
@@ -91,30 +87,59 @@ export function ClientsMedical() {
           actionLabel="Novo cliente"
           onAction={openNew}
         />
-        <label className="client-search">
-          <Search size={17} />
-          <input placeholder="Pesquisar cliente, WhatsApp ou Instagram" value={search} onChange={(event) => setSearch(event.target.value)} />
-        </label>
         {error && <span className="form-error">{error}</span>}
-        <DataTable
-          rows={filteredClients}
+        <DataView
+          rows={clients}
+          defaultSort={{ key: "full_name", dir: "asc" }}
+          searchPlaceholder="Buscar por nome, WhatsApp, Instagram, e-mail ou telefone"
+          filters={[
+            {
+              key: "contato",
+              label: "Contato cadastrado",
+              type: "select",
+              options: [
+                { value: "whatsapp", label: "Com WhatsApp" },
+                { value: "email", label: "Com e-mail" },
+                { value: "instagram", label: "Com Instagram" },
+                { value: "incompleto", label: "Sem e-mail e sem telefone" },
+              ],
+              match: (client, value) => {
+                if (value === "whatsapp") return Boolean(client.whatsapp);
+                if (value === "email") return Boolean(client.email);
+                if (value === "instagram") return Boolean(client.instagram);
+                return !client.email && !client.phone;
+              },
+            },
+            {
+              key: "aniversario",
+              label: "Aniversário no mês",
+              type: "select",
+              options: MONTH_OPTIONS,
+              match: (client, value) => String(client.birth_date || "").slice(5, 7) === value,
+            },
+          ]}
           columns={[
-            { key: "full_name", label: "Nome", render: (client) => personName(client) },
+            { key: "full_name", label: "Nome", value: (client) => personName(client), render: (client) => personName(client) },
             { key: "whatsapp", label: "WhatsApp", render: (client) => client.whatsapp || "—" },
             { key: "instagram", label: "Instagram", render: (client) => client.instagram || "sem Instagram" },
-            { key: "contact", label: "Contato", render: (client) => (
-              <span>{client.phone || "Sem telefone"} · {client.email || "Sem e-mail"}</span>
-            ) },
+            {
+              key: "contact",
+              label: "Contato",
+              value: (client) => `${client.phone || ""} ${client.email || ""}`,
+              render: (client) => (
+                <span>{client.phone || "Sem telefone"} · {client.email || "Sem e-mail"}</span>
+              ),
+            },
           ]}
           actions={(client) => (
             <>
               <button type="button" onClick={() => setProfile(client)}>Perfil completo</button>
               <a className="secondary-button" href={whatsappUrl(client.whatsapp, `Olá, ${personName(client)}, tudo bem? Aqui é da Aura Clinic. Estamos entrando em contato para confirmar informações, acompanhar seu atendimento ou informar uma atualização importante.`)} target="_blank" rel="noreferrer">WhatsApp</a>
               <button type="button" onClick={() => openEdit(client)}>Editar</button>
-              <button type="button" onClick={() => setDeleting({ message: `Excluir ${personName(client)}?`, run: () => removeClient(client) })}>Apagar</button>
+              <button type="button" onClick={() => setDeleting({ message: `Excluir ${personName(client)}?`, run: () => removeClient(client) })}>Excluir</button>
             </>
           )}
-          empty={clients.length ? "Nenhum cliente encontrado." : "Você ainda não possui clientes cadastrados."}
+          empty="Você ainda não possui clientes cadastrados."
         />
       </div>
 
@@ -151,11 +176,21 @@ export function ClientsMedical() {
       {profile && (
         <Modal open title={personName(profile)} subtitle="Timeline, histórico clínico e relacionamento" size="lg" onClose={() => setProfile(null)}
           footer={<Button variant="secondary" onClick={() => setProfile(null)}>Fechar</Button>}>
-          <ClientProfile client={clients.find((item) => item.id === profile.id) || profile} onChanged={() => { refresh(); }} />
+          <ClientProfileLoader clientId={profile.id} fallback={profile} onChanged={refresh} />
         </Modal>
       )}
     </section>
   );
+}
+
+// A lista de clientes é enxuta (só as colunas da tabela): histórico, pagamentos,
+// prontuários e fidelidade vêm de /clients/:id, sob demanda. Antes tudo isso
+// vinha embutido na listagem, que chegava a 845 KB.
+function ClientProfileLoader({ clientId, fallback, onChanged }) {
+  const { data, refresh } = useFetch(`/clients/${clientId}`);
+  if (!data) return <Loading />;
+  if (data.error) return <ApiError message={data.error} />;
+  return <ClientProfile client={{ ...fallback, ...data }} onChanged={() => { refresh(); onChanged?.(); }} />;
 }
 
 function ClientProfile({ client, onChanged }) {
@@ -327,7 +362,7 @@ export function MedicalRecordTimeline({ client, onChanged }) {
                 <strong>{formatLongDate(record.record_date)}</strong>
                 <span>{record.procedure || "Registro avulso"} · {record.piercing_region || "sem região vinculada"}</span>
               </div>
-              <button onClick={() => setDeleting({ message: "Excluir este registro do prontuário?", run: () => remove(record.id) })}>Apagar</button>
+              <button onClick={() => setDeleting({ message: "Excluir este registro do prontuário?", run: () => remove(record.id) })}>Excluir</button>
             </header>
             <div className="record-photos">
               {record.before_photo_url && (

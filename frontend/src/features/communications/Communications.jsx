@@ -3,6 +3,13 @@ import { MessageCircle, Play, Save } from "lucide-react";
 import { apiFetch, useFetch } from "../../lib/api";
 import { asArray } from "../../lib/utils";
 import { Checkbox, Input, Select, StatusBadge, Textarea } from "../../components/common/Ui";
+import { DataView } from "../../components/common/DataView";
+
+// Opções vindas das próprias notificações: nenhum filtro oferecido devolve
+// lista vazia.
+const distinctOptions = (rows, pick) => [...new Set(rows.map(pick).filter(Boolean))].sort();
+
+const formatDateTime = (value) => (value ? new Date(value).toLocaleString("pt-BR") : "—");
 
 async function request(path, options = {}) {
   const response = await apiFetch(path, options);
@@ -135,23 +142,48 @@ export function Communications() {
 
       <section className="panel">
         <div className="panel-heading"><h2>Fila e histórico recente</h2><span>Mensagens não são marcadas como enviadas sem integração oficial.</span></div>
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th>Status</th><th>Destino</th><th>Mensagem</th><th>Agendamento</th><th>Ação</th></tr></thead>
-            <tbody>
-              {notifications.map((item) => (
-                <tr key={item.id}>
-                  <td><StatusBadge status={item.status}>{item.status}</StatusBadge></td>
-                  <td>{item.destination || "—"}</td>
-                  <td>{item.message}</td>
-                  <td>{item.scheduled_at ? new Date(item.scheduled_at).toLocaleString("pt-BR") : "—"}</td>
-                  <td>{item.whatsapp_link ? <a className="secondary-button" href={item.whatsapp_link} target="_blank" rel="noreferrer">Abrir WhatsApp</a> : "—"}</td>
-                </tr>
-              ))}
-              {!notifications.length && <tr><td colSpan="5">Nenhuma comunicação registrada.</td></tr>}
-            </tbody>
-          </table>
-        </div>
+        {/* GET /notifications já limita a 100 registros e ordena por criação
+            desc, então a fila cabe em memória: DataView em modo cliente. */}
+        <DataView
+          rows={notifications}
+          loading={!notificationsRequest.data}
+          error={notificationsRequest.data?.error || ""}
+          searchPlaceholder="Buscar por destino, mensagem ou status"
+          filters={[
+            {
+              key: "status",
+              label: "Status",
+              type: "select",
+              options: distinctOptions(notifications, (item) => item.status)
+            }
+          ]}
+          columns={[
+            {
+              key: "status",
+              label: "Status",
+              render: (item) => <StatusBadge status={item.status}>{item.status}</StatusBadge>
+            },
+            { key: "destination", label: "Destino", render: (item) => item.destination || "—" },
+            { key: "message", label: "Mensagem" },
+            {
+              key: "scheduled_at",
+              label: "Agendamento",
+              value: (item) => String(item.scheduled_at || ""),
+              render: (item) => formatDateTime(item.scheduled_at)
+            },
+            {
+              key: "created_at",
+              label: "Criado em",
+              value: (item) => String(item.created_at || ""),
+              render: (item) => formatDateTime(item.created_at)
+            }
+          ]}
+          actions={(item) => (item.whatsapp_link
+            ? <a className="secondary-button" href={item.whatsapp_link} target="_blank" rel="noreferrer">Abrir WhatsApp</a>
+            : "—")}
+          empty="Nenhuma comunicação registrada."
+          emptyFiltered="Nenhuma comunicação corresponde à busca ou aos filtros."
+        />
       </section>
     </div>
   );
