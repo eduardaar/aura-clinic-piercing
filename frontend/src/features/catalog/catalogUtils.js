@@ -1,4 +1,4 @@
-import { asArray, asNumber, removeAccents } from "../../lib/utils.js";
+import { asArray, removeAccents } from "../../lib/utils.js";
 
 export function catalogCategoryTerms(category) {
   return {

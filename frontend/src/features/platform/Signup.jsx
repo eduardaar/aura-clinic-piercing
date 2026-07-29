@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Check, CheckCircle2, ChevronRight } from "lucide-react";
 import { API, setTenantSlug } from "../../lib/api";
 import { asArray } from "../../lib/utils";

@@ -1,5 +1,5 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
-import React, { useState } from "react";
+import { useState } from "react";
 import { Download } from "lucide-react";
 import { Button, Input, Metric, PaymentSelect, Select, StatusBadge } from "../../components/common/Ui";
 import { Modal, CrudHeader, ConfirmDeleteModal } from "../../components/common/Crud";

@@ -14,7 +14,7 @@
 //   mode="server" — a tela controla `page`, `sort`, `search` e `filters` e
 //       repassa `total`. Use quando o endpoint já pagina, para não trazer a
 //       base inteira só para exibir 20 linhas.
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Filter, Search, X } from "lucide-react";
 
 const PAGE_SIZES = [10, 25, 50, 100];

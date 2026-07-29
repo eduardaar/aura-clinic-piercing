@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { CheckCircle2, Sparkles } from "lucide-react";
 import { apiFetch } from "../../lib/api";
 import { asArray } from "../../lib/utils";

@@ -1,6 +1,6 @@
 // Rotas de pós-atendimento (acompanhamentos de cicatrização).
 import { Router } from "express";
-import { withDb, withFeature } from "../middleware/withDb.js";
+import { withFeature } from "../middleware/withDb.js";
 import { parseUpload, privateUpload, registerPrivateFiles } from "../middleware/upload.js";
 import {
   listPostCareFollowups,

@@ -1,4 +1,4 @@
-import React from "react";
+
 import { BrandMark } from "../common/BrandMark";
 
 // Menu de topo compartilhado pelas três telas públicas: landing ("/"),

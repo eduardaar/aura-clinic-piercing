@@ -1,6 +1,6 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import React, { useEffect, useState } from "react";
-import { Download, Instagram } from "lucide-react";
+import { Download, } from "lucide-react";
 import { Button, Input, Select, StatusBadge } from "../../components/common/Ui";
 import { DataView } from "../../components/common/DataView";
 import { asArray, asObject, formatDate } from "../../lib/utils";

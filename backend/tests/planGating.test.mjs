@@ -3,7 +3,7 @@
 // funcionar. Também cobre a troca self-service e a troca/ativação pela plataforma.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { req, loginTenant, platformLogin, deleteTenant } from "./helpers.mjs";
+import { req, platformLogin, deleteTenant } from "./helpers.mjs";
 
 const ctx = { platformToken: null, slug: null, tenantId: null, token: null, email: null, password: null };
 

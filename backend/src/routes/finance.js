@@ -2,7 +2,7 @@
 import { Router } from "express";
 import PDFDocument from "pdfkit";
 import ExcelJS from "exceljs";
-import { withDb, withFeature } from "../middleware/withDb.js";
+import { withFeature } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { csvEscape, writePdfMetric, formatCurrency } from "../services/utils.js";
 import { buildFinanceReport } from "../services/finance.js";
