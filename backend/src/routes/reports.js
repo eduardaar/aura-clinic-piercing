@@ -1,7 +1,7 @@
 import { Router } from "express";
 import PDFDocument from "pdfkit";
 import ExcelJS from "exceljs";
-import { withDb, withFeature } from "../middleware/withDb.js";
+import { withFeature } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { buildReport } from "../services/reports.js";
 import { csvEscape } from "../services/utils.js";

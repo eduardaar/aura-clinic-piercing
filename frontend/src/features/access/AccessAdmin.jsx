@@ -1,5 +1,5 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
-import React, { useState } from "react";
+import { useState } from "react";
 import { Button, Input, Select, StatusBadge } from "../../components/common/Ui";
 import { Modal, CrudHeader, ConfirmDeleteModal } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";

@@ -3,7 +3,7 @@ import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { parseUpload, privateUpload, registerPrivateFiles } from "../middleware/upload.js";
-import { listMedicalRecords, getMedicalRecord } from "../services/appointments.js";
+import { getMedicalRecord } from "../services/appointments.js";
 import { getClientLoyalty } from "../services/loyalty.js";
 import { getClientWithDetails } from "../services/clients.js";
 import { parsePaging, fetchPage, pageResponse } from "../services/pagination.js";

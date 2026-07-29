@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MapPin, Search, SlidersHorizontal, X } from "lucide-react";
 import { API, API_ORIGIN } from "../lib/api";
 import { asArray, initials, removeAccents } from "../lib/utils";

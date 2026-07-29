@@ -1,13 +1,14 @@
-import React, { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, Heart, ImageIcon, Plus, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Heart, ImageIcon, Plus } from "lucide-react";
 import { Loading, ApiError } from "../components/common/Feedback";
 import { Input, Select, StatusBadge } from "../components/common/Ui";
 import { ConfirmDeleteModal, Modal } from "../components/common/Crud";
 import { DataView } from "../components/common/DataView";
 import { API_ORIGIN, apiFetch, tenantSlug, useFetch } from "../lib/api";
-import { asArray, asNumber, asObject } from "../lib/utils";
-import { JEWELRY_CATEGORY_OPTIONS, defaultCatalogSettings } from "../lib/defaultForms";
-import { catalogContentSections, cleanDisplayText, defaultContentSection } from "../features/catalog/catalogUtils";
+import { asArray, asObject } from "../lib/utils";
+import { JEWELRY_CATEGORY_OPTIONS } from "../lib/defaultForms";
+import { catalogContentSections, defaultContentSection } from "../features/catalog/catalogUtils";
+import { DEFAULT_IMAGE_TRANSFORM, ImageEditor, imageTransformStyle, normalizeImageTransform } from "../components/common/ImageEditor";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -176,6 +177,7 @@ export function CatalogCustomization() {
             ["exibicao", "Exibição"],
             ["textos", "Textos"],
             ["contato", "Contato"],
+            ["rodape", "Rodapé e identidade"],
             ["seo", "SEO"]
           ].map(([id, label]) => (
             <button key={id} type="button" className={activeSection === id ? "active" : ""} onClick={() => setActiveSection(id)}>{label}</button>
@@ -221,10 +223,20 @@ export function CatalogCustomization() {
                       <button type="button" onClick={() => setForm({ ...form, banners: moveListItem(form.banners, index, 1) })}>Descer</button>
                     </span>
                   </div>
-                  <ImageUploadField label="Imagem do banner" value={banner.image_url} onChange={(value) => setForm(updateList(form, "banners", index, { image_url: value }))} />
+                  <ImageUploadField
+                    label="Imagem do banner"
+                    value={banner.image_url}
+                    aspectRatio="16/5"
+                    contextLabel="banner desktop"
+                    transform={banner.image_transform}
+                    onChange={(value) => setForm(updateList(form, "banners", index, { image_url: value }))}
+                    onTransformChange={(image_transform, original_image_url) => setForm(updateList(form, "banners", index, { image_transform, original_image_url }))}
+                  />
+                  <ImageUploadField label="Imagem mobile opcional" value={banner.mobile_image_url} aspectRatio="4/5" contextLabel="banner mobile" onChange={(value) => setForm(updateList(form, "banners", index, { mobile_image_url: value }))} />
                   <div className="form-grid">
                     <Input label="Título" value={banner.title} onChange={(value) => setForm(updateList(form, "banners", index, { title: value }))} />
                     <Input label="Subtítulo" value={banner.subtitle} onChange={(value) => setForm(updateList(form, "banners", index, { subtitle: value }))} />
+                  <Input label="Texto alternativo" value={banner.alt_text} onChange={(value) => setForm(updateList(form, "banners", index, { alt_text: value }))} />
                   <Input label="Texto do botão" value={banner.button_text} onChange={(value) => setForm(updateList(form, "banners", index, { button_text: value }))} />
                   <Input label="Link do botão" value={banner.button_link} onChange={(value) => setForm(updateList(form, "banners", index, { button_link: value }))} />
                   <Input type="number" label="Altura do banner (px)" value={banner.banner_height} onChange={(value) => setForm(updateList(form, "banners", index, { banner_height: value }))} />
@@ -440,6 +452,8 @@ export function CatalogCustomization() {
           </CustomizationCard>
         )}
 
+        {activeSection === "rodape" && <FooterIdentityEditor form={form} setForm={setForm} />}
+
         {activeSection === "seo" && (
           <CustomizationCard title="SEO e compartilhamento">
             <div className="form-grid">
@@ -459,6 +473,91 @@ export function CatalogCustomization() {
       <CatalogCustomizationPreview form={form} products={products} device={previewDevice} onDeviceChange={setPreviewDevice} />
     </section>
   );
+}
+
+function FooterIdentityEditor({ form, setForm }) {
+  const settings = form.settings;
+  const inherit = settings.footer_inherit_main_palette === "1";
+  const footerBackground = inherit ? form.theme.background_color : settings.footer_background_color;
+  const footerText = inherit ? (settings.text_color || "#1c1c1c") : settings.footer_text_color;
+  const contrast = contrastRatio(footerBackground, footerText);
+  const update = (patch) => setForm(updateSettings(form, patch));
+  const colorFields = [
+    ["footer_background_color", "Fundo do rodapé"], ["footer_brand_background_color", "Fundo da marca"],
+    ["footer_text_color", "Texto"], ["footer_muted_text_color", "Texto secundário"], ["footer_heading_color", "Títulos"],
+    ["footer_link_color", "Links"], ["footer_link_hover_color", "Hover dos links"], ["footer_icon_color", "Ícones"],
+    ["footer_border_color", "Bordas"], ["footer_accent_color", "Destaque"]
+  ];
+  return (
+    <CustomizationCard title="Rodapé e identidade inferior">
+      <div className="toggle-grid">
+        <Toggle label="Exibir rodapé" checked={settings.footer_enabled !== "0"} onChange={(value) => update({ footer_enabled: value ? "1" : "0" })} />
+        <Toggle label="Herdar cores da identidade visual principal" checked={inherit} onChange={(value) => update({ footer_inherit_main_palette: value ? "1" : "0" })} />
+        <Toggle label="Exibir nome comercial" checked={settings.footer_show_business_name !== "0"} onChange={(value) => update({ footer_show_business_name: value ? "1" : "0" })} />
+        <Toggle label="Exibir slogan" checked={settings.footer_show_slogan !== "0"} onChange={(value) => update({ footer_show_slogan: value ? "1" : "0" })} />
+      </div>
+      <div className="footer-theme-presets">
+        {["claro", "escuro", "neutro", "elegante", "minimalista", "paleta principal"].map((name) => <button type="button" key={name} onClick={() => update(footerPreset(name, form.theme))}>{name}</button>)}
+      </div>
+      <div className="form-grid">
+        <Input label="Nome exibido" value={settings.footer_display_name} onChange={(value) => update({ footer_display_name: value })} />
+        <Input label="Slogan" value={settings.footer_slogan} onChange={(value) => update({ footer_slogan: value })} />
+        <ImageUploadField label="Logo principal do rodapé" value={settings.footer_logo_url} contextLabel="logo do rodapé" aspectRatio="3/1" onChange={(value) => update({ footer_logo_url: value })} />
+        <ImageUploadField label="Logo clara" value={settings.footer_light_logo_url} contextLabel="logo clara" aspectRatio="3/1" onChange={(value) => update({ footer_light_logo_url: value })} />
+        <ImageUploadField label="Logo escura" value={settings.footer_dark_logo_url} contextLabel="logo escura" aspectRatio="3/1" onChange={(value) => update({ footer_dark_logo_url: value })} />
+        <Select label="Alinhamento da logo" value={settings.footer_logo_alignment} onChange={(value) => update({ footer_logo_alignment: value })}><option value="left">Esquerda</option><option value="center">Centro</option><option value="right">Direita</option></Select>
+        <Input type="number" label="Largura máxima da logo" value={settings.footer_logo_max_width} onChange={(value) => update({ footer_logo_max_width: value })} />
+        <Input type="number" label="Altura máxima da logo" value={settings.footer_logo_max_height} onChange={(value) => update({ footer_logo_max_height: value })} />
+        <Select label="Tipo de fundo" value={settings.footer_background_type} onChange={(value) => update({ footer_background_type: value })}><option value="solid">Cor sólida</option><option value="gradient">Degradê</option><option value="image">Imagem</option></Select>
+        <ImageUploadField label="Imagem de fundo" value={settings.footer_background_image_url} contextLabel="fundo do rodapé" aspectRatio="16/5" onChange={(value) => update({ footer_background_image_url: value })} />
+        <Input label="Posição do fundo" value={settings.footer_background_position} onChange={(value) => update({ footer_background_position: value })} />
+        <Select label="Tamanho do fundo" value={settings.footer_background_size} onChange={(value) => update({ footer_background_size: value })}><option value="cover">Cobrir</option><option value="contain">Mostrar inteiro</option><option value="auto">Original</option></Select>
+        <Input type="color" label="Cor do overlay" value={settings.footer_overlay_color} onChange={(value) => update({ footer_overlay_color: value })} />
+        <Input type="number" label="Opacidade do overlay (0–1)" value={settings.footer_overlay_opacity} onChange={(value) => update({ footer_overlay_opacity: value })} />
+        <Input type="color" label="Início do degradê" value={settings.footer_gradient_start_color} onChange={(value) => update({ footer_gradient_start_color: value })} />
+        <Input type="color" label="Fim do degradê" value={settings.footer_gradient_end_color} onChange={(value) => update({ footer_gradient_end_color: value })} />
+        <Input label="Direção do degradê" value={settings.footer_gradient_direction} onChange={(value) => update({ footer_gradient_direction: value })} />
+        <Input type="number" label="Raio das bordas" value={settings.footer_border_radius} onChange={(value) => update({ footer_border_radius: value })} />
+        <Input type="number" label="Largura do conteúdo" value={settings.footer_container_width} onChange={(value) => update({ footer_container_width: value })} />
+        <Input type="number" label="Espaçamento interno" value={settings.footer_spacing} onChange={(value) => update({ footer_spacing: value })} />
+      </div>
+      <fieldset className={inherit ? "footer-colors inherited" : "footer-colors"} disabled={inherit}>
+        <legend>Cores específicas do rodapé</legend>
+        <div className="form-grid">{colorFields.map(([key, label]) => <Input key={key} type="color" label={label} value={settings[key]} onChange={(value) => update({ [key]: value })} />)}</div>
+      </fieldset>
+      <label>Copyright<textarea value={settings.footer_copyright_text} onChange={(event) => update({ footer_copyright_text: event.target.value })} /></label>
+      <div className={`contrast-warning ${contrast >= 4.5 ? "ok" : "risk"}`} role="status">
+        Contraste texto/fundo: {contrast.toFixed(2)}:1 — {contrast >= 4.5 ? "adequado para texto normal." : `leitura prejudicada; considere texto ${bestTextColor(footerBackground) === "#ffffff" ? "claro" : "escuro"}.`}
+      </div>
+    </CustomizationCard>
+  );
+}
+
+function footerPreset(name, theme) {
+  const presets = {
+    claro: { footer_inherit_main_palette: "0", footer_background_type: "solid", footer_background_color: "#fafafa", footer_text_color: "#242424", footer_muted_text_color: "#666666", footer_heading_color: "#111111", footer_link_color: "#5f421d", footer_icon_color: "#8b642f", footer_border_color: "#dddddd" },
+    escuro: { footer_inherit_main_palette: "0", footer_background_type: "solid", footer_background_color: "#151515", footer_text_color: "#f5f5f5", footer_muted_text_color: "#b8b8b8", footer_heading_color: "#ffffff", footer_link_color: "#f0cf91", footer_icon_color: "#f0cf91", footer_border_color: "#454545" },
+    neutro: { footer_inherit_main_palette: "0", footer_background_type: "solid", footer_background_color: "#ece9e4", footer_text_color: "#35322e", footer_muted_text_color: "#716b63", footer_heading_color: "#25221f", footer_link_color: "#59524a", footer_icon_color: "#59524a", footer_border_color: "#cbc5bc" },
+    elegante: { footer_inherit_main_palette: "0", footer_background_type: "gradient", footer_gradient_start_color: "#161616", footer_gradient_end_color: "#332a23", footer_text_color: "#f8f1e5", footer_muted_text_color: "#c7b9a6", footer_heading_color: "#ffffff", footer_link_color: "#d9b873", footer_icon_color: "#d9b873", footer_border_color: "#5b4b3d" },
+    minimalista: { footer_inherit_main_palette: "0", footer_background_type: "solid", footer_background_color: "#ffffff", footer_text_color: "#222222", footer_muted_text_color: "#777777", footer_heading_color: "#111111", footer_link_color: "#222222", footer_icon_color: "#222222", footer_border_color: "#eeeeee" },
+    "paleta principal": { footer_inherit_main_palette: "1", footer_background_color: theme.background_color, footer_accent_color: theme.primary_color }
+  };
+  return presets[name];
+}
+
+function contrastRatio(a, b) {
+  const luminance = (hex) => {
+    const value = String(hex || "#000000").replace("#", "");
+    if (!/^[0-9a-f]{6}$/i.test(value)) return 0;
+    const rgb = [0, 2, 4].map((index) => parseInt(value.slice(index, index + 2), 16) / 255).map((channel) => channel <= .03928 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4);
+    return .2126 * rgb[0] + .7152 * rgb[1] + .0722 * rgb[2];
+  };
+  const values = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (values[0] + .05) / (values[1] + .05);
+}
+
+function bestTextColor(background) {
+  return contrastRatio(background, "#ffffff") >= contrastRatio(background, "#111111") ? "#ffffff" : "#111111";
 }
 
 function CustomizationCard({ title, action, children }) {
@@ -1004,10 +1103,16 @@ function CatalogCustomizationPreview({ form, products, device = "desktop", onDev
           </div>
           {Boolean(Number(theme.show_favorites)) && <Heart size={18} />}
         </header>
-        <section className="preview-banner" style={{ backgroundImage: `linear-gradient(90deg, rgba(255,255,255,.95), rgba(255,255,255,.48)), url(${catalogImageUrl(activeBanner.image_url)})`, minHeight: `${Number(activeBanner.banner_height || 340)}px`, maxWidth: activeBanner.banner_width ? `${Number(activeBanner.banner_width)}px` : "none", backgroundSize: activeBanner.banner_fit || "cover" }}>
-          <h3 style={{ fontFamily: theme.title_font }}>{activeBanner.title}</h3>
-          <p>{activeBanner.subtitle}</p>
-          {activeBanner.button_text && <button>{activeBanner.button_text}</button>}
+        <section className="preview-banner" style={{ maxWidth: activeBanner.banner_width ? `${Number(activeBanner.banner_width)}px` : "none" }}>
+          <picture>
+            {activeBanner.mobile_image_url && <source media="(max-width: 600px)" srcSet={catalogImageUrl(activeBanner.mobile_image_url)} />}
+            <img src={catalogImageUrl(activeBanner.image_url)} alt={activeBanner.alt_text || activeBanner.title || "Banner do catálogo"} style={imageTransformStyle(activeBanner.image_transform)} />
+          </picture>
+          <div>
+            <h3 style={{ fontFamily: theme.title_font }}>{activeBanner.title}</h3>
+            <p>{activeBanner.subtitle}</p>
+            {activeBanner.button_text && <button>{activeBanner.button_text}</button>}
+          </div>
         </section>
         <div className="preview-categories">
           {form.featuredCategories.filter((item) => Boolean(Number(item.is_active))).slice(0, 6).map((category, index) => (
@@ -1040,7 +1145,8 @@ function normalizeCatalogCustomization(data) {
     theme: { ...defaults.theme, ...asObject(safeData.theme) },
     banners: (asArray(safeData.banners).length ? asArray(safeData.banners) : [defaultCatalogBanner(1)]).map((banner, index) => ({
       ...defaultCatalogBanner(index + 1),
-      ...normalizeBooleanRecord(banner)
+      ...normalizeBooleanRecord(banner),
+      image_transform: normalizeImageTransform(safeJsonObject(banner.image_transform), "16/5")
     })).sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0)),
     contentSections: catalogContentSections(settings.content_sections),
     featuredCategories: (asArray(safeData.featuredCategories).length ? asArray(safeData.featuredCategories) : defaults.featuredCategories).map(normalizeBooleanRecord),
@@ -1107,11 +1213,15 @@ function defaultCatalogBanner(order) {
     title: "Escolha a joia perfeita para você",
     subtitle: "Joias de alta qualidade para realçar sua essência.",
     image_url: "https://images.unsplash.com/photo-1602751584552-8ba73aad10e1?auto=format&fit=crop&w=1200&q=85",
+    mobile_image_url: "",
+    original_image_url: "",
+    alt_text: "",
+    image_transform: { ...DEFAULT_IMAGE_TRANSFORM, aspectRatio: "16/5" },
     button_text: "Ver todas as joias",
     button_link: "#catalog-products",
     banner_width: 0,
     banner_height: 340,
-    banner_fit: "cover",
+    banner_fit: "contain",
     is_active: true,
     sort_order: order
   };
@@ -1179,19 +1289,19 @@ function defaultCatalogCustomization() {
     settings: {
       page_title: "Catálogo Online",
       title: "Escolha a joia perfeita para você",
-      subtitle: "Curadoria premium da Aura Clinic Piercing",
+      subtitle: "Curadoria premium de joias selecionadas",
       institutional_text: "Joias selecionadas com cuidado, segurança e estética premium.",
       unavailable_message: "Produto indisponível no momento.",
       low_stock_message: "Poucas unidades",
-      footer_text: "Aura Clinic Piercing. Curadoria de joias, cuidado e atendimento especializado.",
-      seo_title: "Aura Clinic Piercing | Catálogo Online",
-      seo_description: "Escolha joias premium para piercing na Aura Clinic.",
+      footer_text: "",
+      seo_title: "Catálogo Online",
+      seo_description: "Escolha joias premium para piercing.",
       share_image_url: "",
-      product_share_text: "Olha essa joia da Aura Clinic:",
+      product_share_text: "Olha esta joia:",
       content_sections: JSON.stringify([defaultContentSection(1)]),
       categories: `Todos,${JEWELRY_CATEGORY_OPTIONS.join(",")}`,
       whatsapp_phone: "",
-      whatsapp_message: "Olá! Vim pelo catálogo online da Aura Clinic e quero ajuda para escolher uma joia.",
+      whatsapp_message: "Olá! Vim pelo catálogo online e quero ajuda para escolher uma joia.",
       company_instagram: "",
       company_legal_name: "",
       company_display_name: "",
@@ -1210,11 +1320,56 @@ function defaultCatalogCustomization() {
       cancellation_policy: "",
       exchange_policy: "",
       biosafety_text: "",
-      materials_text: ""
+      materials_text: "",
+      footer_enabled: "1",
+      footer_display_name: "",
+      footer_slogan: "",
+      footer_logo_url: "",
+      footer_light_logo_url: "",
+      footer_dark_logo_url: "",
+      footer_logo_alignment: "left",
+      footer_logo_max_width: "220",
+      footer_logo_max_height: "90",
+      footer_show_business_name: "1",
+      footer_show_slogan: "1",
+      footer_background_type: "solid",
+      footer_background_color: "#171512",
+      footer_background_image_url: "",
+      footer_background_position: "center",
+      footer_background_size: "cover",
+      footer_overlay_color: "#000000",
+      footer_overlay_opacity: "0",
+      footer_gradient_start_color: "#171512",
+      footer_gradient_end_color: "#30291f",
+      footer_gradient_direction: "135deg",
+      footer_brand_background_color: "transparent",
+      footer_text_color: "#ffffff",
+      footer_muted_text_color: "#d1cbc2",
+      footer_heading_color: "#ffffff",
+      footer_link_color: "#ffffff",
+      footer_link_hover_color: "#c8a96a",
+      footer_icon_color: "#c8a96a",
+      footer_border_color: "#454038",
+      footer_accent_color: "#c8a96a",
+      footer_border_radius: "24",
+      footer_container_width: "1240",
+      footer_spacing: "40",
+      footer_copyright_text: "",
+      footer_inherit_main_palette: "0",
+      site_background: "#f8f5f0",
+      section_background: "#ffffff",
+      text_color: "#24211d",
+      muted_text_color: "#716b62",
+      heading_color: "#171512",
+      link_color: "#8a6b2d",
+      link_hover_color: "#5e471e",
+      icon_color: "#8a6b2d",
+      border_color: "#ded8ce",
+      button_text_color: "#ffffff"
     },
     theme: {
-      brand_name: "Aura Clinic",
-      slogan: "Piercing premium e joalherias selecionadas",
+      brand_name: "",
+      slogan: "",
       logo_url: "",
       primary_color: "#C8A96A",
       secondary_color: "#D8C3A5",
@@ -1230,7 +1385,7 @@ function defaultCatalogCustomization() {
       show_schedule_button: true,
       show_buy_button: false,
       show_favorites: true,
-      footer_text: "Aura Clinic Piercing. Curadoria de joias, cuidado e atendimento especializado."
+      footer_text: ""
     },
     banners: [defaultCatalogBanner(1)],
     contentSections: [defaultContentSection(1)],
@@ -1268,45 +1423,91 @@ function defaultCatalogSections() {
     .map((type, index) => defaultCatalogSection(type, index + 1));
 }
 
-export function ImageUploadField({ label, value, onChange }) {
+export function ImageUploadField({ label, value, onChange, onTransformChange, transform, aspectRatio = "1/1", contextLabel = label }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
+  const [warning, setWarning] = useState("");
+  const [editor, setEditor] = useState(null);
 
-  async function uploadImage(event) {
-  const file = event.target.files?.[0];
-  if (!file) return;
-
-  setUploading(true);
-  setError("");
-
-  try {
-    const formData = new FormData();
-    formData.append("file", file);
-    const response = await apiFetch("/uploads", {
-      method: "POST",
-      body: formData
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || "Upload invalido.");
-    onChange(data.url);
-  } catch (err) {
-    console.error(err);
-    setError("Não foi possível enviar a imagem.");
-  } finally {
-    setUploading(false);
+  async function selectImage(event) {
+    const file = event.target.files?.[0];
     event.target.value = "";
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type)) {
+      setError("Use uma imagem JPEG, PNG, WebP ou GIF.");
+      return;
+    }
+    setError("");
+    setWarning(file.type === "image/gif" ? "GIFs animados são preservados, mas o enquadramento não altera os quadros do arquivo." : "");
+    const source = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      if (image.naturalWidth < 800 || image.naturalHeight < 300) setWarning((current) => current || "A resolução é baixa e pode perder nitidez em telas grandes.");
+      URL.revokeObjectURL(source);
+    };
+    image.src = source;
+    setEditor({ file, src: "" });
   }
-}
+
+  async function confirmEdit(imageTransform) {
+    try {
+      let imageUrl = value;
+      if (editor?.file) {
+        setUploading(true);
+        const formData = new FormData();
+        formData.append("file", editor.file);
+        const response = await apiFetch("/uploads", { method: "POST", body: formData });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Upload inválido.");
+        imageUrl = data.url;
+        onChange(imageUrl);
+      }
+      onTransformChange?.(imageTransform, imageUrl);
+      setEditor(null);
+    } catch (err) {
+      console.error(err);
+      setError("Não foi possível enviar a imagem.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function updateExternalUrl(nextValue) {
+    onChange(nextValue);
+    if (!nextValue) onTransformChange?.(normalizeImageTransform({}, aspectRatio), "");
+  }
+
+  const internalUpload = String(value || "").startsWith("/uploads/");
   return (
-    <label className="image-upload-field">{label}
-      <div className="image-upload-preview">
-        <img src={catalogImageUrl(value)} alt={label} />
-        <span><ImageIcon size={18} /> Prévia da imagem</span>
+    <div className="image-upload-field">
+      <span className="image-upload-label">{label}</span>
+      {value ? (
+        <div className="image-upload-preview">
+          <img src={catalogImageUrl(value)} alt={label} style={imageTransformStyle(transform)} />
+          <span><ImageIcon size={18} /> Prévia da imagem</span>
+        </div>
+      ) : <div className="image-upload-empty"><ImageIcon size={22} /><span>Nenhuma imagem selecionada</span></div>}
+      {!internalUpload && <input value={value || ""} onChange={(event) => updateExternalUrl(event.target.value)} placeholder="Cole uma URL externa ou envie um arquivo" />}
+      {internalUpload && <small>Arquivo enviado e armazenado com segurança.</small>}
+      <div className="image-upload-actions">
+        <label className="secondary-button">Escolher arquivo<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={selectImage} /></label>
+        {value && <button type="button" className="secondary-button" onClick={() => setEditor({ file: null, src: catalogImageUrl(value) })}>Editar enquadramento</button>}
+        {value && <button type="button" className="danger-link" onClick={() => updateExternalUrl("")}>Remover</button>}
       </div>
-      <input value={value || ""} onChange={(event) => onChange(event.target.value)} placeholder="Cole a URL da imagem ou envie um arquivo" />
-      <input type="file" accept="image/*" onChange={uploadImage} />
       {uploading && <small>Enviando imagem...</small>}
+      {warning && <small className="form-warning">{warning}</small>}
       {error && <span className="form-error">{error}</span>}
-    </label>
+      {editor && <ImageEditor file={editor.file} src={editor.src} initialTransform={transform} aspectRatio={aspectRatio} contextLabel={contextLabel} onCancel={() => setEditor(null)} onConfirm={confirmEdit} />}
+    </div>
   );
+}
+
+function safeJsonObject(value) {
+  if (value && typeof value === "object") return value;
+  try {
+    const parsed = JSON.parse(value || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
 }

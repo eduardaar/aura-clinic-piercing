@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { ChevronRight, Eye, EyeOff } from "lucide-react";
 import { apiFetch, setTenantSlug, tenantSlug } from "../../lib/api";
 import { PublicTopNav } from "../layout/PublicTopNav";

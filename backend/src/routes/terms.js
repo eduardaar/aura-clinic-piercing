@@ -1,6 +1,6 @@
 // Rotas de termos digitais (anamnese): criacao, listagem e PDF.
 import { Router } from "express";
-import { withDb, withFeature } from "../middleware/withDb.js";
+import { withFeature } from "../middleware/withDb.js";
 import { listAppointments, upsertClient } from "../services/appointments.js";
 import { listDigitalTerms, countDigitalTerms, getDigitalTerm, createTermPdf } from "../services/terms.js";
 import { parsePaging, pageResponse } from "../services/pagination.js";

@@ -1,4 +1,4 @@
-import React from "react";
+
 
 // Marca da Aura: uma argola de bola cativa (captive bead ring) — a joia mais
 // reconhecível do universo do piercing. Substitui o monograma "A"/"AC", que era

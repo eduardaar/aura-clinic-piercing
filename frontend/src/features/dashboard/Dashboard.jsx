@@ -1,6 +1,6 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
-import React, { useState } from "react";
-import { Bell, Cake, Calendar, ChevronRight, CircleDollarSign, Gem, Trophy, UsersRound, X } from "lucide-react";
+import { useState } from "react";
+import { Bell, Cake, Calendar, ChevronRight, CircleDollarSign, Gem, Trophy, UsersRound, } from "lucide-react";
 import { Button, StatusBadge } from "../../components/common/Ui";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, asNumber, asObject, formatDate, formatLongDate, initials } from "../../lib/utils";

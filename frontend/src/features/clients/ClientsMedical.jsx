@@ -1,17 +1,16 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
-import React, { useState } from "react";
-import { ChevronRight, FileSignature, HeartPulse, Search, UsersRound } from "lucide-react";
+import { useState } from "react";
+import { ChevronRight, FileSignature, HeartPulse, UsersRound } from "lucide-react";
 import { Button, Input, SecureImage, Select, StatusBadge } from "../../components/common/Ui";
-import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../components/common/Crud";
+import { Modal, CrudHeader, ConfirmDeleteModal } from "../../components/common/Crud";
 import { DataView, MONTH_OPTIONS } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, dateInputValue, formatDate, formatLongDate } from "../../lib/utils";
 import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
 import { defaultMedicalRecord } from "../../lib/defaultForms";
-import { currency, matchesClientSearch, personName, whatsappUrl } from "../../features/shared/helpers";
+import { currency, personName, whatsappUrl } from "../../features/shared/helpers";
 import { DigitalTerms } from "../terms/DigitalTerms";
 import { PostCare } from "../postcare/PostCare";
-import { smartSearchMatches } from "../../lib/smartSearch";
 
 export function ClientWorkspace() {
   const [tab, setTab] = useState("clientes");

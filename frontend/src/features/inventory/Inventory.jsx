@@ -1,5 +1,5 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Gem, ImageIcon, LayoutGrid, ListFilter, Pencil, Search, ShoppingCart, SlidersHorizontal, Sparkles, Table2, Trash2, X } from "lucide-react";
 import { Button, Input, Metric, Select, StatusBadge } from "../../components/common/Ui";
 import { Modal, CrudHeader, ConfirmDeleteModal } from "../../components/common/Crud";
@@ -133,7 +133,7 @@ export function JewelryCards({ items, onOpen, onEdit, onMovement, onArchive }) {
 export function Inventory2() {
   const [view, setView] = useState("table");
   const [sectionTab, setSectionTab] = useState("produtos");
-  const [inventoryMode, setInventoryMode] = useState("internal");
+  const [inventoryMode] = useState("internal");
   const [editingJewelry, setEditingJewelry] = useState(null);
   const [movementTarget, setMovementTarget] = useState(null);
   const [filters, setFilters] = useState({ search: "", category: "", subcategory: "", material: "", color: "", size: "", thickness: "", length: "", diameter: "", thread_type: "", supplier: "", physical_location: "", status: "" });

@@ -352,8 +352,8 @@ export function nextBirthdays(clients, daysAhead) {
 
 export function defaultCatalogTheme() {
   return {
-    brand_name: "Aura Clinic",
-    slogan: "Piercing premium e joalherias selecionadas",
+    brand_name: "",
+    slogan: "",
     logo_url: "",
     primary_color: "#C8A96A",
     secondary_color: "#D8C3A5",
@@ -369,6 +369,6 @@ export function defaultCatalogTheme() {
     show_schedule_button: 1,
     show_buy_button: 0,
     show_favorites: 1,
-    footer_text: "Aura Clinic Piercing. Curadoria de joias, cuidado e atendimento especializado."
+    footer_text: ""
   };
 }
