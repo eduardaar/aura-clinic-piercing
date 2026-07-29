@@ -709,11 +709,19 @@ test("8a. cria prontuário do cliente", async () => {
   assert.equal(create.status, 201, JSON.stringify(create.json));
   assert.ok(create.json.id, "prontuário deve ter id");
 
-  // O prontuário deve vir no enriquecimento do cliente na listagem.
+  // O enriquecimento saiu da listagem (que agora é enxuta) e passou a viver no
+  // detalhe do cliente: é lá que o prontuário deve aparecer.
+  const detail = await api(`/clients/${ctx.clientId}`);
+  assert.equal(detail.status, 200, JSON.stringify(detail.json));
+  assert.ok(Array.isArray(detail.json.medicalRecords), "detalhe deve trazer medicalRecords");
+  assert.ok(detail.json.medicalRecords.length >= 1, "prontuário deve constar no cliente");
+
+  // E a listagem NÃO deve mais carregar os agregados por cliente.
   const list = await api("/clients");
   const client = list.json.find((c) => c.id === ctx.clientId);
-  assert.ok(Array.isArray(client.medicalRecords), "cliente deve trazer medicalRecords");
-  assert.ok(client.medicalRecords.length >= 1, "prontuário deve constar no cliente");
+  assert.ok(client, "cliente deve aparecer na listagem");
+  assert.equal(client.medicalRecords, undefined, "listagem deve ser enxuta (sem medicalRecords)");
+  assert.equal(client.timeline, undefined, "listagem deve ser enxuta (sem timeline)");
 });
 
 // 8b) Termo digital.

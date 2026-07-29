@@ -23,10 +23,27 @@ function groupBy(rows, key) {
   return map;
 }
 
-// Retorna todos os clientes já enriquecidos (mesmo shape da versão por-cliente),
-// porém usando queries em batch em vez de loop por-cliente.
-export async function listClientsWithDetails(db) {
-  const clients = await db.all("SELECT * FROM clients ORDER BY full_name");
+// Detalhe COMPLETO de um cliente só. É o endpoint GET /api/clients/:id: a
+// listagem virou enxuta, então todo o enriquecimento (timeline, prontuários,
+// fidelidade...) passou a viver aqui, custando o mesmo que antes só que para
+// UM cliente em vez de todos.
+export async function getClientWithDetails(db, clientId) {
+  const [client] = await listClientsWithDetails(db, clientId);
+  return client || null;
+}
+
+// Retorna os clientes já enriquecidos usando queries em batch (uma por tabela,
+// independente de N). `clientId` restringe o enriquecimento a um único cliente.
+export async function listClientsWithDetails(db, clientId = null) {
+  const one = clientId !== null && clientId !== undefined;
+  // Escopo aplicado em TODA query do enriquecimento: sem ele, o detalhe de um
+  // cliente carregaria as onze tabelas inteiras só para descartar quase tudo.
+  const scope = (column) => (one ? `WHERE ${column} = ?` : "");
+  const scoped = (extra = []) => (one ? [clientId, ...extra] : extra);
+
+  const clients = one
+    ? await db.all("SELECT * FROM clients WHERE id = ?", [clientId])
+    : await db.all("SELECT * FROM clients ORDER BY full_name");
   if (!clients.length) return clients;
 
   // ----- history (agendamentos) de todos os clientes, em uma query -----
@@ -43,12 +60,13 @@ export async function listClientsWithDetails(db) {
     LEFT JOIN jewelry_inventory j ON j.id = a.jewelry_id
     LEFT JOIN jewelry_variants v ON v.id = a.jewelry_variant_id
     LEFT JOIN services s ON s.id = a.service_id
+    ${scope("a.client_id")}
     ORDER BY a.appointment_date, a.appointment_time
-  `);
+  `, scoped());
   const historyByClient = groupBy(appointments, "client_id");
 
   // ----- payments de todos os clientes -----
-  const payments = await db.all("SELECT * FROM payments ORDER BY paid_at DESC");
+  const payments = await db.all(`SELECT * FROM payments ${scope("client_id")} ORDER BY paid_at DESC`, scoped());
   const paymentsByClient = groupBy(payments, "client_id");
 
   // ----- medicalRecords de todos os clientes (mesmos JOINs de listMedicalRecords) -----
@@ -64,26 +82,27 @@ export async function listClientsWithDetails(db) {
     LEFT JOIN appointments a ON a.id = r.appointment_id
     LEFT JOIN professionals p ON p.id = a.professional_id
     LEFT JOIN jewelry_inventory j ON j.id = a.jewelry_id
+    ${scope("r.client_id")}
     ORDER BY r.record_date DESC, r.id DESC
-  `);
+  `, scoped());
   const recordsByClient = groupBy(medicalRecords, "client_id");
 
   // ----- loyalty (pontos e resgates) de todos os clientes -----
-  const loyaltyPoints = await db.all("SELECT * FROM loyalty_points ORDER BY created_at DESC, id DESC");
-  const redemptions = await db.all("SELECT * FROM loyalty_redemptions ORDER BY redeemed_at DESC, id DESC");
+  const loyaltyPoints = await db.all(`SELECT * FROM loyalty_points ${scope("client_id")} ORDER BY created_at DESC, id DESC`, scoped());
+  const redemptions = await db.all(`SELECT * FROM loyalty_redemptions ${scope("client_id")} ORDER BY redeemed_at DESC, id DESC`, scoped());
   const pointsByClient = groupBy(loyaltyPoints, "client_id");
   const redemptionsByClient = groupBy(redemptions, "client_id");
-  const terms = await db.all("SELECT id,client_id,appointment_id,procedure,piercing_region,pdf_url,signed_at FROM digital_terms ORDER BY signed_at DESC");
-  const followups = await db.all("SELECT * FROM post_care_followups ORDER BY due_date DESC,id DESC");
-  const sales = await db.all("SELECT * FROM sales_orders ORDER BY created_at DESC,id DESC");
+  const terms = await db.all(`SELECT id,client_id,appointment_id,procedure,piercing_region,pdf_url,signed_at FROM digital_terms ${scope("client_id")} ORDER BY signed_at DESC`, scoped());
+  const followups = await db.all(`SELECT * FROM post_care_followups ${scope("client_id")} ORDER BY due_date DESC,id DESC`, scoped());
+  const sales = await db.all(`SELECT * FROM sales_orders ${scope("client_id")} ORDER BY created_at DESC,id DESC`, scoped());
   const couponUses = await db.all(`
     SELECT u.*,c.code,c.internal_name FROM coupon_usages u JOIN coupons c ON c.id=u.coupon_id
-    WHERE u.client_id IS NOT NULL ORDER BY u.created_at DESC
-  `);
+    WHERE u.client_id IS NOT NULL ${one ? "AND u.client_id = ?" : ""} ORDER BY u.created_at DESC
+  `, scoped());
   const promotionUses = await db.all(`
     SELECT u.*,p.name FROM promotion_usages u JOIN catalog_promotions p ON p.id=u.promotion_id
-    WHERE u.client_id IS NOT NULL ORDER BY u.created_at DESC
-  `);
+    WHERE u.client_id IS NOT NULL ${one ? "AND u.client_id = ?" : ""} ORDER BY u.created_at DESC
+  `, scoped());
   const termsByClient = groupBy(terms, "client_id");
   const followupsByClient = groupBy(followups, "client_id");
   const salesByClient = groupBy(sales, "client_id");

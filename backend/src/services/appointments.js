@@ -5,9 +5,11 @@ import {
   addMinutesToTime,
   dateTimeToDayMinutes,
   rangesOverlap,
-  variantStatus
+  variantStatus,
+  localTimestamp
 } from "./utils.js";
 import { syncProductInventory } from "./inventory.js";
+import { limitOffset, countRows } from "./pagination.js";
 
 function sameDateTimeDate(value, date) {
   return String(value || "").slice(0, 10) === date;
@@ -21,22 +23,35 @@ function bookingDebug(message, payload = {}) {
   console.info(`[booking-slots] ${message}`, payload);
 }
 
-export async function listAppointments(db, where = "", params = []) {
+const APPOINTMENT_FROM = `
+  appointments a
+  JOIN clients c ON c.id = a.client_id
+  JOIN professionals p ON p.id = a.professional_id
+  LEFT JOIN jewelry_inventory j ON j.id = a.jewelry_id
+  LEFT JOIN jewelry_variants v ON v.id = a.jewelry_variant_id
+  LEFT JOIN services s ON s.id = a.service_id
+`;
+
+// `paging` é opcional e só entra em ação quando o chamador o fornece: sem ele o
+// comportamento é o de sempre (array completo), preservando os 5 chamadores
+// internos que dependem da lista inteira.
+export async function listAppointments(db, where = "", params = [], paging = null) {
+  const page = limitOffset(paging);
+  const orderBy = paging?.orderBy || "ORDER BY a.appointment_date, a.appointment_time";
   const rows = await db.all(`
     SELECT a.*, c.full_name, c.whatsapp, c.instagram, p.name AS professional_name,
       j.name AS jewelry_name, j.photo_url AS jewelry_photo,
       v.variation_name AS jewelry_variation_name, v.sku AS jewelry_variant_sku,
       s.name AS service_name
-    FROM appointments a
-    JOIN clients c ON c.id = a.client_id
-    JOIN professionals p ON p.id = a.professional_id
-    LEFT JOIN jewelry_inventory j ON j.id = a.jewelry_id
-    LEFT JOIN jewelry_variants v ON v.id = a.jewelry_variant_id
-    LEFT JOIN services s ON s.id = a.service_id
+    FROM ${APPOINTMENT_FROM}
     ${where}
-    ORDER BY a.appointment_date, a.appointment_time
-  `, params);
+    ${orderBy}${page.clause}
+  `, [...params, ...page.params]);
   return attachAppointmentItems(db, rows);
+}
+
+export async function countAppointments(db, where = "", params = []) {
+  return countRows(db, { from: APPOINTMENT_FROM, where, params });
 }
 
 function parseItems(value) {
@@ -169,15 +184,44 @@ async function attachAppointmentItems(db, rows = []) {
   return rows.map((row) => ({ ...row, items: grouped[row.id] || [] }));
 }
 
-export async function listServices(db) {
-  const services = await db.all("SELECT * FROM services ORDER BY active_online_booking DESC, name");
-  for (const service of services) {
-    // O frontend lê base_price/is_active; as colunas reais são price/active_online_booking.
-    service.base_price = service.price;
-    service.is_active = service.active_online_booking;
-    service.professional_ids = (await db.all("SELECT professional_id FROM professional_services WHERE service_id = ?", [service.id])).map((item) => item.professional_id);
-  }
-  return services;
+// O frontend lê base_price/is_active; as colunas reais são price/active_online_booking.
+async function decorateService(db, service) {
+  if (!service) return service;
+  service.base_price = service.price;
+  service.is_active = service.active_online_booking;
+  service.professional_ids = (await db.all("SELECT professional_id FROM professional_services WHERE service_id = ?", [service.id])).map((item) => item.professional_id);
+  return service;
+}
+
+// `paging` é opcional: sem ele o comportamento é o de sempre (lista inteira).
+// O N+1 do professional_ids virou uma consulta só, restrita à página.
+export async function listServices(db, { where = "", params = [], paging = null } = {}) {
+  const page = limitOffset(paging);
+  const orderBy = paging?.orderBy || "ORDER BY active_online_booking DESC, name";
+  const services = await db.all(
+    `SELECT * FROM services ${where} ${orderBy}${page.clause}`,
+    [...params, ...page.params]
+  );
+  if (!services.length) return services;
+  const links = await db.all(
+    `SELECT service_id, professional_id FROM professional_services WHERE service_id IN (${services.map(() => "?").join(",")})`,
+    services.map((service) => service.id)
+  );
+  return services.map((service) => ({
+    ...service,
+    base_price: service.price,
+    is_active: service.active_online_booking,
+    professional_ids: links.filter((link) => link.service_id === service.id).map((link) => link.professional_id)
+  }));
+}
+
+export async function countServices(db, { where = "", params = [] } = {}) {
+  return countRows(db, { from: "services", where, params });
+}
+
+// Busca direta por id, para responder a criação/edição sem varrer a lista.
+export async function getService(db, id) {
+  return decorateService(db, await db.get("SELECT * FROM services WHERE id = ?", [id]));
 }
 
 export async function replaceProfessionalServices(db, serviceId, professionalIds) {
@@ -262,22 +306,27 @@ export async function availableBookingSlots(db, { service, professionalId, date 
   return uniqueSlots;
 }
 
+const MEDICAL_RECORD_QUERY = `
+  SELECT
+    r.*,
+    a.procedure,
+    a.piercing_region,
+    a.appointment_date,
+    p.name AS professional_name,
+    j.name AS appointment_jewelry
+  FROM client_medical_records r
+  LEFT JOIN appointments a ON a.id = r.appointment_id
+  LEFT JOIN professionals p ON p.id = a.professional_id
+  LEFT JOIN jewelry_inventory j ON j.id = a.jewelry_id
+`;
+
 export async function listMedicalRecords(db, clientId) {
-  return db.all(`
-    SELECT
-      r.*,
-      a.procedure,
-      a.piercing_region,
-      a.appointment_date,
-      p.name AS professional_name,
-      j.name AS appointment_jewelry
-    FROM client_medical_records r
-    LEFT JOIN appointments a ON a.id = r.appointment_id
-    LEFT JOIN professionals p ON p.id = a.professional_id
-    LEFT JOIN jewelry_inventory j ON j.id = a.jewelry_id
-    WHERE r.client_id = ?
-    ORDER BY r.record_date DESC, r.id DESC
-  `, [clientId]);
+  return db.all(`${MEDICAL_RECORD_QUERY} WHERE r.client_id = ? ORDER BY r.record_date DESC, r.id DESC`, [clientId]);
+}
+
+// Busca direta pelo id do prontuário, sem depender da posição dele na lista.
+export async function getMedicalRecord(db, recordId) {
+  return db.get(`${MEDICAL_RECORD_QUERY} WHERE r.id = ?`, [recordId]);
 }
 
 export async function upsertClient(db, body) {
@@ -302,10 +351,10 @@ export async function upsertClient(db, body) {
     return { ...existing, full_name: body.full_name || existing.full_name };
   }
   const result = await db.run(
-    "INSERT INTO clients (full_name, whatsapp, instagram, birth_date, notes) VALUES (?, ?, ?, ?, ?)",
+    "INSERT INTO clients (full_name, whatsapp, instagram, birth_date, notes) VALUES (?, ?, ?, ?, ?) RETURNING id",
     [body.full_name, body.whatsapp, body.instagram, body.birth_date || null, body.client_notes || ""]
   );
-  return { id: result.lastID };
+  return { id: result.returnedId };
 }
 
 async function deductLegacyJewelryStock(db, appointmentId) {
@@ -428,7 +477,7 @@ export async function registerRemainingPayment(db, appointmentId) {
       appointment.client_id,
       Number(appointment.remaining_value || 0),
       appointment.remaining_payment_method || "Pix",
-      new Date().toISOString().slice(0, 19)
+      localTimestamp()
     ]
   );
 }

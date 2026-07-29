@@ -16,20 +16,21 @@ export function Dashboard({ user, setPage, alertsOpen, setAlertsOpen, alertsData
   return <PremiumDashboard data={data} user={user} setPage={setPage} period={period} setPeriod={setPeriod} alertsOpen={alertsOpen} setAlertsOpen={setAlertsOpen} alertsData={alertsData} alertsLoading={alertsLoading} />;
 }
 
+// Indicador ausente no payload vira "—" em vez de zero, para não mascarar falha de dado.
+function statCurrency(value) {
+  return value === undefined || value === null ? "—" : currency.format(Number(value));
+}
+
+function statCount(value) {
+  return value === undefined || value === null ? "—" : String(value);
+}
+
 export function PremiumDashboard({ data, user, setPage, period, setPeriod, alertsOpen, setAlertsOpen, alertsData, alertsLoading }) {
   const [revenueMode, setRevenueMode] = useState("mensal");
   const safeData = asObject(data);
-  const safeStats = {
-    todayCount: 0,
-    pendingCount: 0,
-    completedCount: 0,
-    revenue: 0,
-    criticalStock: 0,
-    lowStockCount: 0,
-    depositReceived: 0,
-    monthForecast: 0,
-    ...asObject(safeData.stats)
-  };
+  // Sem defaults zerados: se um indicador sumir do payload precisa aparecer como "—",
+  // e não como um R$ 0,00 silencioso que passa por número real.
+  const safeStats = asObject(safeData.stats);
   const adminDashboard = asObject(safeData.adminDashboard);
   const upcomingAppointments = asArray(adminDashboard.upcomingAppointments);
   const criticalStockItems = asArray(adminDashboard.criticalStock);
@@ -40,16 +41,15 @@ export function PremiumDashboard({ data, user, setPage, period, setPeriod, alert
   const returnClients = asArray(adminDashboard.returnClients);
   const nextAppointment = asObject(adminDashboard.nextAppointment);
   const appointmentAlerts = asArray(adminDashboard.appointmentAlerts);
-  const todaysAppointments = asArray(safeData.todaysAppointments);
   const executive = asObject(adminDashboard.executive);
   const topViewed = asArray(adminDashboard.topViewed);
   const professionalRanking = asArray(adminDashboard.professionalRanking);
 
   const cards = [
-    { label: "Agendamentos hoje", value: String(safeStats.todayCount ?? 0), icon: Calendar, action: "Ver agenda", page: "agenda", tone: "gold" },
-    { label: "Clientes novos", value: String(upcomingAppointments.length || todaysAppointments.length), icon: UsersRound, action: "Ver clientes", page: "clients", tone: "nude" },
-    { label: "Joias em estoque crítico", value: String(safeStats.lowStockCount ?? safeStats.criticalStock ?? 0), icon: Gem, action: "Ver estoque", page: "catalog", tone: "green" },
-    { label: "Faturamento hoje", value: currency.format(Number(safeStats.depositReceived ?? 0)), icon: CircleDollarSign, action: "Ver Financeiro", page: "finance", tone: "brown" },
+    { label: "Agendamentos hoje", value: statCount(safeStats.todayCount), icon: Calendar, action: "Ver agenda", page: "agenda", tone: "gold" },
+    { label: "Clientes novos", value: statCount(safeStats.newClientsMonth), icon: UsersRound, action: "Ver clientes", page: "clients", tone: "nude" },
+    { label: "Joias em estoque crítico", value: statCount(safeStats.lowStockCount ?? safeStats.criticalStock), icon: Gem, action: "Ver estoque", page: "catalog", tone: "green" },
+    { label: "Faturamento hoje", value: statCurrency(safeStats.revenueToday), icon: CircleDollarSign, action: "Ver Financeiro", page: "finance", tone: "brown" },
     { label: "Aniversariantes do mês", value: String(birthdaysItems.length), icon: Cake, action: "Ver todos", page: "clients", tone: "gold" }
   ];
 
@@ -197,14 +197,14 @@ export function PremiumDashboard({ data, user, setPage, period, setPeriod, alert
             <span>{new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</span>
           </div>
           <div className="finance-summary-list">
-            <div className="ok"><span>Faturamento</span><strong>{currency.format(Number(safeStats.revenue ?? safeStats.monthForecast ?? 0))}</strong></div>
-            <div className="ok"><span>Sinais recebidos</span><strong>{currency.format(Number(safeStats.depositReceived ?? 0))}</strong></div>
+            <div className="ok"><span>Faturamento</span><strong>{statCurrency(safeStats.revenueMonth)}</strong></div>
+            <div className="ok"><span>Sinais recebidos</span><strong>{statCurrency(safeStats.depositReceived)}</strong></div>
             <div className="warn"><span>Pendentes</span><strong>{currency.format(Number(pendingValue || 0))}</strong></div>
-            <div className="danger"><span>Despesas</span><strong>{currency.format(0)}</strong></div>
+            <div className="danger"><span>Despesas</span><strong>{statCurrency(safeStats.expensesMonth)}</strong></div>
           </div>
           <div className="profit-box">
             <span>Lucro estimado</span>
-            <strong>{currency.format(Number(safeStats.revenue ?? safeStats.monthForecast ?? 0))}</strong>
+            <strong>{statCurrency(safeStats.profitEstimated)}</strong>
           </div>
         </article>
       </div>

@@ -1,4 +1,10 @@
-// Rota do painel ERP (visão geral do produto/SaaS).
+// Agregações consolidadas do estúdio: contagens, funil de CRM e mapa corporal.
+// Tudo aqui vem do banco do tenant — o painel "Aura ERP" que consumia esta rota
+// foi removido do frontend justamente porque exibia conteúdo fictício embutido
+// no código (módulos, cupons, influenciadores, consultorias, cursos e calendário
+// editorial). Esses blocos saíram; o que sobrou é medição real.
+// O funil de CRM e o mapa corporal (regiões mais perfuradas) não existem em
+// nenhuma outra rota — é por isso que este endpoint continua de pé.
 import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
@@ -46,68 +52,15 @@ router.get("/api/erp", withDb(async (_req, res, db) => {
   `);
 
   res.json({
-    product: {
-      name: "Aura Clinic ERP",
-      positioning: "SaaS premium para body piercing, joalherias corporais, consultorias, cursos e CRM.",
-      stackTarget: ["React", "Vite", "TypeScript", "TailwindCSS", "Framer Motion", "Node.js", "Express", "PostgreSQL", "Cloudinary", "JWT"],
-      tenancy: "Preparado para multiempresa com separacao futura por studio_id/tenant_id."
-    },
     metrics: {
-      studios: 1,
       clients: clientsCount.count || 0,
       appointments: appointmentsCount.count || 0,
       jewelry: jewelryCount.count || 0,
       revenue: paid.total || 0
     },
-    modules: [
-      ["Dashboard", "ativo", "Indicadores, alertas, graficos e agenda do dia"],
-      ["Agendamentos", "ativo", "Calendario, status, sinais, profissionais e joias"],
-      ["Clientes e prontuários", "ativo", "Histórico, fotos, intercorrências, fidelidade e retornos"],
-      ["Termo digital", "ativo", "Assinatura, aceite e PDF automático"],
-      ["Estoque de joalherias", "ativo", "Cadastro, filtros, baixa automática e alertas"],
-      ["Catalogo online", "planejado", "Vitrine publica com reserva, compra e agendamento"],
-      ["Financeiro", "ativo", "Entradas, saidas, lucro e exportações"],
-      ["CRM", "planejado", "Funil, automações, reativação e aniversários"],
-      ["Aura Rewards", "ativo", "Pontos, niveis e resgates"],
-      ["Indique e Ganhe", "planejado", "Indicacoes, beneficios e acompanhamento"],
-      ["Cupons", "planejado", "Cupons fixos, percentuais, validade e limite"],
-      ["Influenciadores", "planejado", "Cupons, cliques, vendas, conversoes e comissoes"],
-      ["Consultorias", "planejado", "Agenda, pagamento e Google Meet"],
-      ["Aura Academy", "planejado", "Cursos, videos, PDFs e certificados"],
-      ["Conteúdo", "planejado", "Calendário editorial, ideias, hashtags e legendas IA"],
-      ["Mapa corporal", "planejado", "Modelo anatômico com histórico de perfurações"],
-      ["Administrativo", "ativo", "Permissões por perfil e usuários"],
-      ["Relatorios", "ativo", "Financeiro, clientes, estoque e exportações"],
-      ["Configuracoes", "planejado", "Logo, cores, horarios, profissionais e mensagens"]
-    ].map(([name, status, description]) => ({ name, status, description })),
     crm,
     catalogItems,
-    bodyMap,
-    coupons: [
-      { code: "AURA15", type: "percentual", value: 15, status: "ativo" },
-      { code: "JULIA10", type: "percentual", value: 10, status: "influenciador" }
-    ],
-    influencers: [
-      { name: "Julia Mendes", instagram: "@juliamendes", coupon: "JULIA10", conversions: 12, commission: 420 },
-      { name: "Marina Glow", instagram: "@marinaglow", coupon: "GLOWAURA", conversions: 8, commission: 280 }
-    ],
-    consultancies: [
-      { name: "Consultoria individual", price: 497, format: "Google Meet" },
-      { name: "Mentoria Aura Pro", price: 1497, format: "Online ao vivo" }
-    ],
-    academy: [
-      { name: "Biosseguranca para Body Piercer", lessons: 12, students: 34 },
-      { name: "Curadoria de Joias Premium", lessons: 8, students: 19 }
-    ],
-    contentPlanner: [
-      ["Segunda", "Reels"],
-      ["Terca", "Antes e depois"],
-      ["Quarta", "Mitos"],
-      ["Quinta", "Bastidores"],
-      ["Sexta", "Promocoes"],
-      ["Sabado", "Clientes"],
-      ["Domingo", "Autoridade"]
-    ].map(([day, theme]) => ({ day, theme }))
+    bodyMap
   });
 }));
 

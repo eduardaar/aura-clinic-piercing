@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs";
 import PDFDocument from "pdfkit";
 import { privateUploadsDir } from "../config/index.js";
+import { limitOffset, countRows } from "./pagination.js";
 import {
   parseTermFormData,
   signatureBufferFromDataUrl,
@@ -15,8 +16,14 @@ import {
   STYLE_QUESTIONS
 } from "./utils.js";
 
-export async function listDigitalTerms(db) {
-  return db.all(`
+const DIGITAL_TERM_FROM = `
+    digital_terms t
+    LEFT JOIN appointments a ON a.id = t.appointment_id
+    LEFT JOIN clients c ON c.id = t.client_id
+    LEFT JOIN professionals p ON p.id = a.professional_id
+`;
+
+const DIGITAL_TERM_QUERY = `
     SELECT
       t.id,
       t.appointment_id,
@@ -40,12 +47,23 @@ export async function listDigitalTerms(db) {
       t.instagram AS term_instagram,
       c.instagram AS client_instagram,
       p.name AS professional_name
-    FROM digital_terms t
-    LEFT JOIN appointments a ON a.id = t.appointment_id
-    LEFT JOIN clients c ON c.id = t.client_id
-    LEFT JOIN professionals p ON p.id = a.professional_id
-    ORDER BY t.signed_at DESC
-  `);
+    FROM ${DIGITAL_TERM_FROM}
+`;
+
+// `paging` é opcional: sem ele o comportamento é o de sempre (lista inteira).
+export async function listDigitalTerms(db, { where = "", params = [], paging = null } = {}) {
+  const page = limitOffset(paging);
+  const orderBy = paging?.orderBy || "ORDER BY t.signed_at DESC";
+  return db.all(`${DIGITAL_TERM_QUERY} ${where} ${orderBy}${page.clause}`, [...params, ...page.params]);
+}
+
+export async function countDigitalTerms(db, { where = "", params = [] } = {}) {
+  return countRows(db, { from: DIGITAL_TERM_FROM, where, params });
+}
+
+// Busca direta por id, para devolver o termo recém-criado sem varrer a lista.
+export async function getDigitalTerm(db, id) {
+  return db.get(`${DIGITAL_TERM_QUERY} WHERE t.id = ?`, [id]);
 }
 
 export async function createTermPdf(db, term, appointment = {}, userId = null) {

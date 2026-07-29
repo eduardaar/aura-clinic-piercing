@@ -1,28 +1,50 @@
 // Serviços de pós-atendimento: geração e listagem de acompanhamentos.
 import { dateAfter, defaultCareMessage } from "./utils.js";
+import { limitOffset, countRows } from "./pagination.js";
 
-export async function listPostCareFollowups(db) {
-  return db.all(`
-    SELECT
-      f.*,
-      c.full_name,
-      c.whatsapp,
-      c.instagram,
-      a.procedure,
-      a.piercing_region,
-      a.appointment_date,
-      a.appointment_time,
-      p.name AS professional_name,
-      j.name AS jewelry_name
-    FROM post_care_followups f
-    JOIN clients c ON c.id = f.client_id
-    JOIN appointments a ON a.id = f.appointment_id
-    JOIN professionals p ON p.id = a.professional_id
-    LEFT JOIN jewelry_inventory j ON j.id = a.jewelry_id
-    ORDER BY f.due_date ASC, f.reminder_day ASC
-  `);
+const POST_CARE_FROM = `
+  post_care_followups f
+  JOIN clients c ON c.id = f.client_id
+  JOIN appointments a ON a.id = f.appointment_id
+  JOIN professionals p ON p.id = a.professional_id
+  LEFT JOIN jewelry_inventory j ON j.id = a.jewelry_id
+`;
+
+const POST_CARE_COLUMNS = `
+  f.*,
+  c.full_name,
+  c.whatsapp,
+  c.instagram,
+  a.procedure,
+  a.piercing_region,
+  a.appointment_date,
+  a.appointment_time,
+  p.name AS professional_name,
+  j.name AS jewelry_name
+`;
+
+const POST_CARE_QUERY = `SELECT ${POST_CARE_COLUMNS} FROM ${POST_CARE_FROM}`;
+
+// `paging` é opcional: sem ele o comportamento é o de sempre (lista inteira).
+export async function listPostCareFollowups(db, { where = "", params = [], paging = null } = {}) {
+  const page = limitOffset(paging);
+  const orderBy = paging?.orderBy || "ORDER BY f.due_date ASC, f.reminder_day ASC";
+  return db.all(`${POST_CARE_QUERY} ${where} ${orderBy}${page.clause}`, [...params, ...page.params]);
 }
 
+export async function countPostCareFollowups(db, { where = "", params = [] } = {}) {
+  return countRows(db, { from: POST_CARE_FROM, where, params });
+}
+
+// Busca direta por id, para responder ao PATCH sem varrer a lista inteira.
+export async function getPostCareFollowup(db, id) {
+  return db.get(`${POST_CARE_QUERY} WHERE f.id = ?`, [id]);
+}
+
+// Varredura de backfill: gera os acompanhamentos de TODOS os atendimentos já
+// concluídos. Custa 4 queries por atendimento, então fica fora do caminho de
+// leitura — o fluxo normal já cria os followups ao marcar o status "atendido"
+// (routes/appointments.js). Mantida para reprocessar bases importadas/semeadas.
 export async function ensureFollowupsForCompletedAppointments(db) {
   const appointments = await db.all("SELECT id FROM appointments WHERE status = 'atendido'");
   for (const appointment of appointments) {

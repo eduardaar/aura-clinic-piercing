@@ -15,7 +15,7 @@ test("reserva falha e faz rollback quando não há estoque", async () => {
   const db = {
     run: async (sql) => {
       commands.push(sql);
-      return { changes: 0, lastID: 1 };
+      return { changes: 0, returnedId: 1 };
     },
     get: async (sql) => {
       if (sql.includes("FOR UPDATE")) return { id: 1 };
@@ -36,7 +36,7 @@ test("reserva válida é confirmada atomicamente", async () => {
   const db = {
     run: async (sql) => {
       commands.push(sql);
-      return { changes: 1, lastID: 9 };
+      return { changes: 1, returnedId: 9 };
     },
     get: async (sql) => {
       if (sql.includes("FOR UPDATE")) return { id: 1 };

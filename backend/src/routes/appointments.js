@@ -3,8 +3,10 @@ import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
 import { parseUpload, privateUpload, registerPrivateFiles } from "../middleware/upload.js";
 import { normalizeAppointment, addMinutesToTime } from "../services/utils.js";
+import { parsePaging, pageResponse } from "../services/pagination.js";
 import {
   listAppointments,
+  countAppointments,
   upsertClient,
   deductJewelryStock,
   registerRemainingPayment,
@@ -23,6 +25,15 @@ import { queueAppointmentReminderNotifications } from "../services/notifications
 import { requireRole } from "../middleware/auth.js";
 
 const router = Router();
+
+// Whitelist de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
+const APPOINTMENT_SORTABLE = {
+  date: "a.appointment_date",
+  status: "a.status",
+  client: "c.full_name",
+  professional: "p.name",
+  total: "a.total_value"
+};
 
 function optionalId(value) {
   const number = Number(value);
@@ -62,8 +73,31 @@ router.get("/api/appointments", withDb(async (req, res, db) => {
       params.push(req.query.status);
     }
   }
+  if (req.query.from) {
+    clauses.push("a.appointment_date >= ?");
+    params.push(req.query.from);
+  }
+  if (req.query.to) {
+    clauses.push("a.appointment_date <= ?");
+    params.push(req.query.to);
+  }
+  if (req.query.client_id) {
+    clauses.push("a.client_id = ?");
+    params.push(req.query.client_id);
+  }
+  if (req.query.search) {
+    clauses.push("(c.full_name ILIKE ? OR c.whatsapp ILIKE ? OR a.procedure ILIKE ?)");
+    params.push(...Array(3).fill(`%${req.query.search}%`));
+  }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-  res.json(await listAppointments(db, where, params));
+  const paging = parsePaging(req.query, {
+    sortable: APPOINTMENT_SORTABLE,
+    tieBreak: "a.id",
+    defaultOrderBy: "ORDER BY a.appointment_date, a.appointment_time"
+  });
+  const items = await listAppointments(db, where, params, paging);
+  const total = paging.paginated ? await countAppointments(db, where, params) : items.length;
+  res.json(pageResponse(items, total, paging));
 }));
 
 router.post("/api/appointments", withDb(async (req, res, db) => {
@@ -100,20 +134,25 @@ router.post("/api/appointments", withDb(async (req, res, db) => {
   const remainingValue = totals.remainingValue;
   const duration = totals.durationMinutes || Number(service?.duration_minutes || body.duration_minutes || 40);
   const endTime = addMinutesToTime(body.appointment_time, duration);
-  const result = await db.run(
-    `INSERT INTO appointments
-    (client_id, professional_id, service_id, jewelry_id, jewelry_variant_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, total_value, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, status, notes, reference_photo_url, duration_minutes)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [client.id, body.professional_id, serviceId || firstItem.service_id || null, jewelryId, variantId, body.procedure || firstItem.procedure_name || service?.name || "Atendimento", body.description, body.piercing_region || firstItem.region || "Atendimento", body.appointment_date, body.appointment_time, endTime, totalValue, depositValue, remainingValue, body.deposit_payment_method, body.remaining_payment_method, body.status || "pendente", body.notes, photoUrl, duration]
-  );
-  await replaceAppointmentItems(db, result.lastID, items);
-  if (depositValue > 0) {
-    await db.run(
-      "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, 'sinal', ?, 'pago', ?)",
-      [result.lastID, client.id, depositValue, body.deposit_payment_method || "Pix", `${body.appointment_date}T${body.appointment_time}:00`]
+  // Agendamento + itens + sinal formam um registro só: agendamento sem itens
+  // (ou sem o pagamento do sinal) já entra torto na agenda e no financeiro.
+  const appointmentId = await db.transaction(async (tx) => {
+    const result = await tx.run(
+      `INSERT INTO appointments
+      (client_id, professional_id, service_id, jewelry_id, jewelry_variant_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, total_value, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, status, notes, reference_photo_url, duration_minutes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      [client.id, body.professional_id, serviceId || firstItem.service_id || null, jewelryId, variantId, body.procedure || firstItem.procedure_name || service?.name || "Atendimento", body.description, body.piercing_region || firstItem.region || "Atendimento", body.appointment_date, body.appointment_time, endTime, totalValue, depositValue, remainingValue, body.deposit_payment_method, body.remaining_payment_method, body.status || "pendente", body.notes, photoUrl, duration]
     );
-  }
-  const created = await listAppointments(db, "WHERE a.id = ?", [result.lastID]).then((rows) => rows[0]);
+    await replaceAppointmentItems(tx, result.returnedId, items);
+    if (depositValue > 0) {
+      await tx.run(
+        "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, 'sinal', ?, 'pago', ?)",
+        [result.returnedId, client.id, depositValue, body.deposit_payment_method || "Pix", `${body.appointment_date}T${body.appointment_time}:00`]
+      );
+    }
+    return result.returnedId;
+  });
+  const created = await listAppointments(db, "WHERE a.id = ?", [appointmentId]).then((rows) => rows[0]);
   res.status(201).json(created);
 }));
 
@@ -127,6 +166,7 @@ router.patch("/api/appointments/:id", withDb(async (req, res, db) => {
   }
 
   const hasSubmittedItems = appointmentItemsFromBody(req.body).length > 0;
+  let pendingItems = null;
   if (hasSubmittedItems) {
     const serviceId = optionalId(req.body.service_id ?? appointment.service_id);
     const service = serviceId ? await db.get("SELECT * FROM services WHERE id = ?", [serviceId]) : null;
@@ -146,7 +186,9 @@ router.patch("/api/appointments/:id", withDb(async (req, res, db) => {
     req.body.total_value = totals.totalValue;
     req.body.remaining_value = Math.max(totals.totalValue - Number(req.body.deposit_value ?? appointment.deposit_value ?? 0), 0);
     req.body.end_time = req.body.appointment_time ? addMinutesToTime(req.body.appointment_time, totals.durationMinutes || Number(service?.duration_minutes || appointment.duration_minutes || 40)) : req.body.end_time;
-    await replaceAppointmentItems(db, req.params.id, items);
+    // Só grava dentro da transação abaixo: reescrever os itens aqui e falhar
+    // depois deixaria o agendamento sem os itens antigos nem os novos.
+    pendingItems = items;
   }
   if (req.body.status === "cancelado") {
     req.body.remaining_value = 0;
@@ -154,24 +196,33 @@ router.patch("/api/appointments/:id", withDb(async (req, res, db) => {
 
   const fields = ["status", "appointment_date", "appointment_time", "end_time", "professional_id", "service_id", "jewelry_id", "jewelry_variant_id", "procedure", "description", "piercing_region", "total_value", "deposit_value", "remaining_value", "deposit_payment_method", "remaining_payment_method", "notes"];
   const updates = fields.filter((field) => req.body[field] !== undefined);
-  if (updates.length) {
-    await db.run(
-      `UPDATE appointments SET ${updates.map((field) => `${field} = ?`).join(", ")} WHERE id = ?`,
-      [...updates.map((field) => req.body[field]), req.params.id]
-    );
-  }
 
-  if (req.body.status === "atendido") {
-    await deductJewelryStock(db, req.params.id);
-    await registerRemainingPayment(db, req.params.id);
-    await ensureSalesOrderForAppointment(db, req.params.id, req.user);
-    await ensurePostCareFollowups(db, req.params.id);
-    await awardLoyaltyForAppointment(db, req.params.id);
-  }
-  if (req.body.status === "cancelado") {
-    await restoreJewelryStock(db, req.params.id);
-    await db.run("UPDATE payments SET status = 'cancelado' WHERE appointment_id = ? AND status != 'pago'", [req.params.id]);
-  }
+  // Marcar "atendido" dispara cinco efeitos em cadeia (baixa de estoque,
+  // pagamento do restante, ordem de serviço, pós-atendimento e fidelidade).
+  // Tudo junto com o UPDATE do status: um erro no meio não pode deixar estoque
+  // baixado sem ordem de serviço nem atendimento concluído sem pagamento.
+  await db.transaction(async (tx) => {
+    if (pendingItems) await replaceAppointmentItems(tx, req.params.id, pendingItems);
+    if (updates.length) {
+      await tx.run(
+        `UPDATE appointments SET ${updates.map((field) => `${field} = ?`).join(", ")} WHERE id = ?`,
+        [...updates.map((field) => req.body[field]), req.params.id]
+      );
+    }
+
+    if (req.body.status === "atendido") {
+      await deductJewelryStock(tx, req.params.id);
+      await registerRemainingPayment(tx, req.params.id);
+      await ensureSalesOrderForAppointment(tx, req.params.id, req.user);
+      await ensurePostCareFollowups(tx, req.params.id);
+      await awardLoyaltyForAppointment(tx, req.params.id);
+    }
+    if (req.body.status === "cancelado") {
+      await restoreJewelryStock(tx, req.params.id);
+      await tx.run("UPDATE payments SET status = 'cancelado' WHERE appointment_id = ? AND status != 'pago'", [req.params.id]);
+    }
+  });
+
   const updated = await listAppointments(db, "WHERE a.id = ?", [req.params.id]).then((rows) => rows[0]);
   if (["confirmado", "remarcado"].includes(updated?.status) || req.body.appointment_date || req.body.appointment_time) {
     await queueAppointmentReminderNotifications(db, updated);

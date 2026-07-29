@@ -20,5 +20,14 @@ export default defineConfig({
   plugins: [react()],
   define: {
     __AURA_BUILD__: JSON.stringify(buildInfo)
+  },
+  // Testes de componente com Vitest. O import segue vindo de "vite" (e não de
+  // "vitest/config") para o `vite build` não passar a exigir o vitest instalado.
+  test: {
+    environment: "jsdom",
+    globals: true,
+    include: ["tests/**/*.test.{js,jsx}"],
+    setupFiles: ["./tests/setup.js"],
+    restoreMocks: true
   }
 });

@@ -2,67 +2,48 @@
 import React, { useState } from "react";
 import { Download } from "lucide-react";
 import { Button, Input, Metric, PaymentSelect, Select, StatusBadge } from "../../components/common/Ui";
-import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../components/common/Crud";
+import { Modal, CrudHeader, ConfirmDeleteModal } from "../../components/common/Crud";
+import { DataView } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
-import { asArray, asNumber, asObject, formatDate, formatLongDate } from "../../lib/utils";
-import { apiFetch, downloadApiFile, useFetch } from "../../lib/api";
+import { asArray, asNumber, asObject } from "../../lib/utils";
+import { apiFetch, downloadApiFile, useApiInvalidate, useFetch } from "../../lib/api";
 import { defaultExpense } from "../../lib/defaultForms";
-import { currency, personName } from "../../features/shared/helpers";
+import { currency } from "../../features/shared/helpers";
 
-export function Finance() {
-  const { data } = useFetch("/finance");
-  if (!data) return <Loading />;
-  if (data.error) return <ApiError message={data.error} />;
-  const safeData = asObject(data);
-  const totals = asObject(safeData.totals);
-  const forecast = asObject(safeData.forecast);
-  const methods = asArray(safeData.methods);
-  return (
-    <section className="stack">
-      <div className="metric-grid">
-        <Metric label="Recebido hoje" value={currency.format(asNumber(totals.day_total))} />
-        <Metric label="Recebido na semana" value={currency.format(asNumber(totals.week_total))} />
-        <Metric label="Recebido no mês" value={currency.format(asNumber(totals.month_total))} />
-        <Metric label="Total previsto" value={currency.format(asNumber(forecast.total))} />
-        <Metric label="Total pendente" value={currency.format(asNumber(forecast.pending))} />
-        <Metric label="Pagamento mais usado" value={safeData.mostUsedMethod || "Sem registros"} />
-      </div>
-      <div className="panel">
-        <div className="panel-heading">
-          <h2>Relatório Financeiro</h2>
-          <Button variant="secondary" type="button" onClick={() => downloadApiFile("/finance/export.csv", "relatorio-aura-clinic.csv")}><Download size={16} /> Exportar CSV</Button>
-        </div>
-        <div className="payment-bars">
-          {methods.map((item) => <div key={item.method || item.name}><span>{item.method || "Não informado"}</span><strong>{asNumber(item.total)}</strong></div>)}
-        </div>
-      </div>
-    </section>
-  );
+// `formatDate` de lib/utils devolve dd/MM sem ano: em listas financeiras com
+// vencimentos de anos diferentes as linhas ficariam indistinguíveis.
+function formatDateWithYear(date) {
+  const value = String(date || "").slice(0, 10);
+  const parsed = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toLocaleDateString("pt-BR");
 }
 
-export function Clients() {
-  const { data } = useFetch("/clients");
-  if (!data) return <Loading />;
-  if (data.error) return <ApiError message={data.error} />;
-  const clients = asArray(data);
-  return (
-    <section className="client-grid">
-      {clients.map((client) => (
-        <article className="panel client-card" key={client.id}>
-          <h2>{personName(client)}</h2>
-          <p>{client.whatsapp} · {client.instagram}</p>
-          {client.birth_date && <small>Aniversário: {formatLongDate(client.birth_date)}</small>}
-          <span>{client.notes}</span>
-          <h3>Histórico</h3>
-          {asArray(client.history).map((item) => <div className="history-item" key={item.id}><strong>{formatDate(item.appointment_date)}</strong><span>{item.procedure} · {item.jewelry_name || "sem joia"}</span><small>{item.status} · {currency.format(asNumber(item.total_value))}</small></div>)}
-        </article>
-      ))}
-    </section>
-  );
-}
+const EXPENSE_TYPE_LABELS = { fixa: "fixa", variavel: "variável" };
+
+const ENTRY_TYPE_LABELS = {
+  payable: "Conta a pagar", receivable: "Conta a receber",
+  expense: "Despesa", income: "Receita",
+};
+
+const ENTRY_STATUS_LABELS = {
+  pending: "Pendente", partially_paid: "Parcialmente liquidado", paid: "Liquidado",
+  overdue: "Vencido", canceled: "Cancelado", refunded: "Estornado",
+};
+
+// Sentinela para filtrar lançamentos sem centro de custo (o select do DataView
+// usa string vazia como "Todos").
+const NO_COST_CENTER = "__sem_centro__";
+
+// Opções vindas das próprias linhas: nenhum filtro oferecido devolve lista vazia.
+const distinctOptions = (rows, pick, label = (value) => value) =>
+  [...new Set(rows.map(pick).filter(Boolean))].sort().map((value) => ({ value, label: label(value) }));
 
 export function FinanceAdmin() {
-  const { data, refresh } = useFetch("/finance");
+  const { data } = useFetch("/finance");
+  // Despesa mexe no resumo, no razão e nos indicadores do painel.
+  const invalidate = useApiInvalidate();
+  const refresh = () => invalidate("/finance", "/dashboard");
   const [expense, setExpense] = useState(defaultExpense());
   const [modalOpen, setModalOpen] = useState(false);
   const [error, setError] = useState("");
@@ -79,6 +60,9 @@ export function FinanceAdmin() {
   const methods = asArray(safeData.methods);
   const expenses = asArray(safeData.expenses);
   const monthlyRevenue = asArray(safeData.monthlyRevenue);
+  const expenseCategories = [...new Set(expenses.map((item) => item.category || "sem categoria"))].sort();
+  const expenseTypeOptions = distinctOptions(expenses, (item) => item.expense_type, (value) => EXPENSE_TYPE_LABELS[value] || value);
+  const expenseStatusOptions = distinctOptions(expenses, (item) => item.status);
 
   function openNew() {
     setExpense(defaultExpense());
@@ -169,22 +153,47 @@ export function FinanceAdmin() {
           actionLabel="Nova despesa"
           onAction={openNew}
         />
-        <DataTable
+        <DataView
           rows={expenses}
+          defaultSort={{ key: "due_date", dir: "desc" }}
+          searchPlaceholder="Buscar por descrição, categoria ou status"
+          filters={[
+            { key: "expense_type", label: "Tipo", type: "select", options: expenseTypeOptions },
+            { key: "status", label: "Status", type: "select", options: expenseStatusOptions },
+            {
+              key: "category",
+              label: "Categoria",
+              type: "select",
+              options: expenseCategories,
+              match: (item, value) => (item.category || "sem categoria") === value
+            },
+            {
+              key: "due_from",
+              label: "Vencimento a partir de",
+              type: "date",
+              match: (item, value) => String(item.due_date || "").slice(0, 10) >= value
+            },
+            {
+              key: "due_to",
+              label: "Vencimento até",
+              type: "date",
+              match: (item, value) => String(item.due_date || "").slice(0, 10) <= value
+            }
+          ]}
           columns={[
             { key: "description", label: "Descrição" },
             { key: "expense_type", label: "Tipo" },
-            { key: "category", label: "Categoria", render: (item) => item.category || "sem categoria" },
-            { key: "amount", label: "Valor", align: "right", render: (item) => currency.format(item.amount) },
-            { key: "due_date", label: "Vencimento", render: (item) => formatDate(item.due_date) },
-            { key: "status", label: "Status", render: (item) => <StatusBadge status={item.status} tone={item.status === "paga" ? "ok" : "warn"} /> }
+            { key: "category", label: "Categoria", value: (item) => item.category || "sem categoria", render: (item) => item.category || "sem categoria" },
+            { key: "amount", label: "Valor", align: "right", value: (item) => asNumber(item.amount), render: (item) => currency.format(item.amount) },
+            { key: "due_date", label: "Vencimento", value: (item) => String(item.due_date || "").slice(0, 10), render: (item) => formatDateWithYear(item.due_date) },
+            { key: "status", label: "Status", value: (item) => item.status || "", render: (item) => <StatusBadge status={item.status} tone={item.status === "paga" ? "ok" : "warn"} /> }
           ]}
           actions={(item) => (
             <>
               <button type="button" onClick={() => openEdit(item)}>Editar</button>
               {item.status !== "paga" && <button type="button" onClick={async () => { await apiFetch(`/expenses/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "paga", paid_at: new Date().toISOString() }) }); refresh(); }}>Marcar como paga</button>}
               {item.status === "paga" && <button type="button" onClick={async () => { await apiFetch(`/expenses/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "pendente" }) }); refresh(); }}>Desfazer pagamento</button>}
-              <button type="button" onClick={() => setDeleting({ message: `Apagar esta despesa?`, run: () => removeExpense(item.id) })}>Apagar</button>
+              <button type="button" onClick={() => setDeleting({ message: `Excluir esta despesa?`, run: () => removeExpense(item.id) })}>Excluir</button>
             </>
           )}
           empty="Nenhuma despesa lançada ainda."
@@ -246,9 +255,15 @@ function AdvancedFinance() {
   const monthStart = `${today.slice(0, 7)}-01`;
   const [period, setPeriod] = useState({ from: monthStart, to: today });
   const query = new URLSearchParams(period).toString();
-  const { data, refresh } = useFetch(`/finance/ledger?${query}`);
-  const { data: centers, refresh: refreshCenters } = useFetch("/finance/cost-centers");
-  const { data: goals, refresh: refreshGoals } = useFetch("/finance/goals");
+  const { data } = useFetch(`/finance/ledger?${query}`);
+  const { data: centers } = useFetch("/finance/cost-centers");
+  const { data: goals } = useFetch("/finance/goals");
+  // "/finance" cobre resumo, razão, centros de custo e metas de uma vez — o
+  // razão precisa recarregar em qualquer período consultado, não só no atual.
+  const invalidate = useApiInvalidate();
+  const refresh = () => invalidate("/finance", "/dashboard");
+  const refreshCenters = () => invalidate("/finance/cost-centers");
+  const refreshGoals = () => invalidate("/finance/goals");
   const [modalOpen, setModalOpen] = useState(false);
   const [error, setError] = useState("");
   const [form, setForm] = useState({
@@ -256,6 +271,10 @@ function AdvancedFinance() {
     due_date: today, status: "pending", payment_method: "Pix", payment_account: "",
     cost_center_id: "", installment_count: 1, recurrence: "", notes: ""
   });
+  // Baixa de valor, centro de custo e meta usavam window.prompt no meio do fluxo.
+  const [payment, setPayment] = useState(null);
+  const [centerForm, setCenterForm] = useState(null);
+  const [goalForm, setGoalForm] = useState(null);
 
   if (!data) return <Loading />;
   if (data.error) {
@@ -265,6 +284,11 @@ function AdvancedFinance() {
   const cashflow = asObject(ledger.cashflow);
   const dre = asObject(ledger.dre);
   const entries = asArray(ledger.entries);
+  const centerOptions = [...new Set(entries.map((item) => item.cost_center_name || NO_COST_CENTER))]
+    .sort()
+    .map((name) => ({ value: name, label: name === NO_COST_CENTER ? "Sem centro" : name }));
+  const entryTypeOptions = distinctOptions(entries, (item) => item.entry_type, (value) => ENTRY_TYPE_LABELS[value] || value);
+  const entryStatusOptions = distinctOptions(entries, (item) => item.status, (value) => ENTRY_STATUS_LABELS[value] || value);
 
   async function save(event) {
     event.preventDefault();
@@ -276,29 +300,36 @@ function AdvancedFinance() {
     refresh();
   }
 
-  async function registerPayment(item) {
-    const value = window.prompt("Valor pago/recebido:", String(Math.max(0, Number(item.amount) - Number(item.paid_amount))));
-    if (value === null) return;
+  function openPayment(item) {
+    setPayment({ item, value: String(Math.max(0, asNumber(item.amount) - asNumber(item.paid_amount))) });
+  }
+
+  async function registerPayment(event) {
+    event.preventDefault();
+    const { item, value } = payment;
     await apiFetch(`/finance/entries/${item.id}`, {
       method: "PATCH",
       body: JSON.stringify({ paid_amount: Number(item.paid_amount || 0) + Number(value), payment_method: item.payment_method || "Pix" })
     });
+    setPayment(null);
     refresh();
   }
 
-  async function createCenter() {
-    const name = window.prompt("Nome do centro de custo:");
+  async function createCenter(event) {
+    event.preventDefault();
+    const name = String(centerForm?.name || "").trim();
     if (!name) return;
     await apiFetch("/finance/cost-centers", { method: "POST", body: JSON.stringify({ name }) });
+    setCenterForm(null);
     refreshCenters();
   }
 
-  async function createGoal() {
-    const name = window.prompt("Nome da meta:");
+  async function createGoal(event) {
+    event.preventDefault();
+    const name = String(goalForm?.name || "").trim();
     if (!name) return;
-    const target = window.prompt("Valor da meta:", "10000");
-    if (target === null) return;
-    await apiFetch("/finance/goals", { method: "POST", body: JSON.stringify({ name, target_amount: Number(target), period_start: period.from, period_end: period.to, goal_type: "revenue" }) });
+    await apiFetch("/finance/goals", { method: "POST", body: JSON.stringify({ name, target_amount: Number(goalForm.target), period_start: period.from, period_end: period.to, goal_type: "revenue" }) });
+    setGoalForm(null);
     refreshGoals();
   }
 
@@ -314,8 +345,8 @@ function AdvancedFinance() {
           <div><h2>Financeiro 2.0</h2><span>Contas a pagar e receber, fluxo de caixa, DRE e inadimplência.</span></div>
           <div className="export-actions">
             <Button variant="secondary" onClick={processRecurrences}>Gerar recorrências</Button>
-            <Button variant="secondary" onClick={createGoal}>Nova meta</Button>
-            <Button variant="secondary" onClick={createCenter}>Novo centro de custo</Button>
+            <Button variant="secondary" onClick={() => setGoalForm({ name: "", target: "10000" })}>Nova meta</Button>
+            <Button variant="secondary" onClick={() => setCenterForm({ name: "" })}>Novo centro de custo</Button>
             <Button variant="primary" onClick={() => setModalOpen(true)}>Novo lançamento</Button>
           </div>
         </div>
@@ -333,17 +364,35 @@ function AdvancedFinance() {
           <Metric label="Resultado DRE" value={currency.format(asNumber(dre.result))} />
           <Metric label="Metas do período" value={String(asArray(goals).filter((goal) => goal.period_start <= period.to && goal.period_end >= period.from).length)} />
         </div>
-        <DataTable rows={entries} columns={[
-          { key: "description", label: "Lançamento" },
-          { key: "entry_type", label: "Tipo" },
-          { key: "cost_center_name", label: "Centro", render: (item) => item.cost_center_name || "—" },
-          { key: "due_date", label: "Vencimento", render: (item) => formatDate(item.due_date) },
-          { key: "amount", label: "Valor", align: "right", render: (item) => currency.format(item.amount) },
-          { key: "paid_amount", label: "Liquidado", align: "right", render: (item) => currency.format(item.paid_amount) },
-          { key: "status", label: "Status", render: (item) => <StatusBadge status={item.status}>{item.status}</StatusBadge> }
-        ]} actions={(item) => (
-          <>{!["paid", "canceled", "refunded"].includes(item.status) && <button type="button" onClick={() => registerPayment(item)}>Baixar valor</button>}</>
-        )} empty="Nenhum lançamento no período." />
+        <DataView
+          rows={entries}
+          defaultSort={{ key: "due_date", dir: "desc" }}
+          searchPlaceholder="Buscar por lançamento, categoria ou centro de custo"
+          filters={[
+            { key: "entry_type", label: "Tipo de lançamento", type: "select", options: entryTypeOptions },
+            { key: "status", label: "Status", type: "select", options: entryStatusOptions },
+            {
+              key: "cost_center",
+              label: "Centro de custo",
+              type: "select",
+              options: centerOptions,
+              match: (item, value) => (item.cost_center_name || NO_COST_CENTER) === value
+            }
+          ]}
+          columns={[
+            { key: "description", label: "Lançamento" },
+            { key: "entry_type", label: "Tipo" },
+            { key: "cost_center_name", label: "Centro", value: (item) => item.cost_center_name || "", render: (item) => item.cost_center_name || "—" },
+            { key: "due_date", label: "Vencimento", value: (item) => String(item.due_date || "").slice(0, 10), render: (item) => formatDateWithYear(item.due_date) },
+            { key: "amount", label: "Valor", align: "right", value: (item) => asNumber(item.amount), render: (item) => currency.format(item.amount) },
+            { key: "paid_amount", label: "Liquidado", align: "right", value: (item) => asNumber(item.paid_amount), render: (item) => currency.format(item.paid_amount) },
+            { key: "status", label: "Status", value: (item) => item.status || "", render: (item) => <StatusBadge status={item.status}>{item.status}</StatusBadge> }
+          ]}
+          actions={(item) => (
+            <>{!["paid", "canceled", "refunded"].includes(item.status) && <button type="button" onClick={() => openPayment(item)}>Baixar valor</button>}</>
+          )}
+          empty="Nenhum lançamento no período."
+        />
       </section>
       <Modal open={modalOpen} title="Novo lançamento financeiro" subtitle="Parcelas são criadas mês a mês." onClose={() => setModalOpen(false)}
         footer={<><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button><Button type="submit" form="ledger-form">Salvar</Button></>}>
@@ -369,6 +418,72 @@ function AdvancedFinance() {
           </div>
           <label>Observações<textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
           {error && <span className="form-error">{error}</span>}
+        </form>
+      </Modal>
+
+      <Modal
+        open={!!payment}
+        title="Baixar valor"
+        subtitle={payment?.item?.description}
+        size="sm"
+        onClose={() => setPayment(null)}
+        footer={<><Button variant="secondary" onClick={() => setPayment(null)}>Cancelar</Button><Button type="submit" form="ledger-payment-form" variant="primary">Registrar baixa</Button></>}
+      >
+        <form id="ledger-payment-form" onSubmit={registerPayment}>
+          <Input
+            type="number"
+            label="Valor pago/recebido"
+            value={payment?.value ?? ""}
+            onChange={(value) => setPayment((current) => ({ ...current, value }))}
+            required
+          />
+          <p className="empty-state">
+            Já liquidado: {currency.format(asNumber(payment?.item?.paid_amount))} de {currency.format(asNumber(payment?.item?.amount))}.
+          </p>
+        </form>
+      </Modal>
+
+      <Modal
+        open={!!centerForm}
+        title="Novo centro de custo"
+        size="sm"
+        onClose={() => setCenterForm(null)}
+        footer={<><Button variant="secondary" onClick={() => setCenterForm(null)}>Cancelar</Button><Button type="submit" form="cost-center-form" variant="primary">Salvar</Button></>}
+      >
+        <form id="cost-center-form" onSubmit={createCenter}>
+          <Input
+            label="Nome do centro de custo"
+            value={centerForm?.name ?? ""}
+            onChange={(value) => setCenterForm((current) => ({ ...current, name: value }))}
+            required
+          />
+        </form>
+      </Modal>
+
+      <Modal
+        open={!!goalForm}
+        title="Nova meta"
+        subtitle={`Período de ${formatDateWithYear(period.from)} a ${formatDateWithYear(period.to)}`}
+        size="sm"
+        onClose={() => setGoalForm(null)}
+        footer={<><Button variant="secondary" onClick={() => setGoalForm(null)}>Cancelar</Button><Button type="submit" form="finance-goal-form" variant="primary">Salvar meta</Button></>}
+      >
+        <form id="finance-goal-form" onSubmit={createGoal}>
+          <div className="form-grid">
+            <Input
+              label="Nome da meta"
+              value={goalForm?.name ?? ""}
+              onChange={(value) => setGoalForm((current) => ({ ...current, name: value }))}
+              required
+            />
+            <Input
+              type="number"
+              label="Valor da meta"
+              value={goalForm?.target ?? ""}
+              onChange={(value) => setGoalForm((current) => ({ ...current, target: value }))}
+              required
+            />
+          </div>
         </form>
       </Modal>
     </>

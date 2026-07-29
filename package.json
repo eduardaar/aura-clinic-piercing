@@ -7,11 +7,25 @@
     "dev": "concurrently -n backend,frontend -c blue,magenta \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
     "start": "npm --prefix backend run start",
     "build": "npm --prefix frontend run build",
+    "typecheck": "npm run typecheck:backend && npm run typecheck:frontend",
+    "typecheck:backend": "tsc --noEmit -p backend/jsconfig.json",
+    "typecheck:frontend": "tsc --noEmit -p frontend/jsconfig.json",
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --write .",
+    "check": "biome check .",
+    "format:check": "biome format .",
+    "format": "biome format --write --staged .",
+    "format:branch": "biome format --write --changed .",
+    "format:all": "biome format --write .",
     "install:all": "npm install && npm --prefix backend install && npm --prefix frontend install",
     "restore-admin": "npm --prefix backend run restore-admin --",
     "import:aura-jewelry": "npm --prefix backend run import:aura-jewelry --"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "@biomejs/biome": "2.5.6",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "concurrently": "^9.2.1",
+    "typescript": "^5.7.3"
   }
 }

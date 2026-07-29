@@ -1,0 +1,882 @@
+/* Camada da cascata: `app`. A ordem `base, legado, telas, app` é
+   declarada no topo de styles.css (primeiro import de main.jsx).
+   Última camada: vence styles.css e as telas públicas sem precisar de
+   especificidade extra — é o que torna este arquivo a autoridade do shell.
+   CSS fora de camada venceria todas elas — por isso o arquivo inteiro fica
+   dentro deste bloco. */
+@layer app {
+
+/* ============================================================================
+   App shell — layout da área autenticada.
+
+   Este arquivo é a AUTORIDADE sobre .app-shell, .sidebar, .topbar e a área de
+   conteúdo. É importado por último em main.jsx justamente por isso: styles.css
+   tem quatro camadas históricas que redefinem os mesmos seletores, e disputar
+   especificidade lá dentro é como o arquivo chegou a 10 mil linhas. Aqui a
+   regra é simples — layout do shell mora neste arquivo, e só nele.
+
+   Estrutura: menu lateral e topo FIXOS, conteúdo com rolagem própria.
+
+     .app-shell            grid de 2 colunas, 100dvh, sem rolagem
+     ├─ .sidebar           coluna fixa, rolagem própria se o menu crescer
+     └─ .main-content      coluna flex, sem rolagem
+        ├─ .topbar         altura fixa, não rola
+        └─ .content-scroll único elemento com rolagem vertical
+   ========================================================================== */
+
+:root {
+  --shell-sidebar-w: 264px;
+  --shell-rail-w: 68px;
+  --shell-topbar-h: 72px;
+  --shell-gutter: 24px;
+  --shell-nav: #221812;
+  --shell-nav-2: #17100c;
+  --shell-nav-line: rgba(201, 168, 106, .16);
+  --shell-nav-text: #cbbfb2;
+  --shell-break: 900px;
+}
+
+/* ---------------------------------------------------------------- estrutura */
+
+.app-shell {
+  display: grid;
+  grid-template-columns: var(--shell-sidebar-w) 1fr;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.main-content {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  gap: 0;
+}
+
+.content-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 28px var(--shell-gutter) 56px;
+  scrollbar-gutter: stable;
+}
+
+/* ------------------------------------------------------------------ sidebar */
+
+.sidebar {
+  position: relative;
+  height: 100dvh;
+  width: auto;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: linear-gradient(180deg, var(--shell-nav) 0%, var(--shell-nav-2) 100%);
+  box-shadow: inset -1px 0 0 var(--shell-nav-line);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(201, 168, 106, .3) transparent;
+}
+
+.sidebar::-webkit-scrollbar { width: 6px; }
+.sidebar::-webkit-scrollbar-thumb { background: rgba(201, 168, 106, .28); border-radius: 3px; }
+
+/* Marca — compacta de propósito. A versão anterior usava 46px fixos e o nome
+   de um tenant com 3 palavras cobria o primeiro item do menu. */
+.sidebar-brand {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--shell-topbar-h);
+  padding: 0 18px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--shell-nav-line);
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+}
+
+.sidebar-brand .sidebar-logo {
+  grid-row: span 2;
+  width: 38px;
+  height: 38px;
+  max-height: none;
+  object-fit: cover;
+  border-radius: 9px;
+  border: 1px solid var(--shell-nav-line);
+  background: rgba(255, 255, 255, .04);
+}
+
+.sidebar-brand strong {
+  grid-column: 2;
+  font-family: var(--title-font);
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.22;
+  letter-spacing: -0.01em;
+  color: #f2e6d2;
+  text-transform: none;
+  /* Nome longo trunca em 2 linhas em vez de empurrar o menu para baixo. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.sidebar-brand span {
+  grid-column: 2;
+  margin: 2px 0 0;
+  font-family: var(--body-font);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: rgba(201, 168, 106, .8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-brand small { display: none; }
+
+/* --------------------------------------------------------------- navegação */
+
+.sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 12px 8px;
+  margin: 0;
+  flex: 1;
+}
+
+.nav-group-label {
+  padding: 14px 10px 6px;
+  font-family: var(--body-font);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: rgba(203, 191, 178, .42);
+}
+.nav-group-label:first-child { padding-top: 2px; }
+
+.sidebar nav button {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--shell-nav-text);
+  font-family: var(--body-font);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-align: left;
+  text-transform: none;
+  cursor: pointer;
+  position: relative;
+  transition: background-color .15s ease, color .15s ease;
+}
+
+.sidebar nav button svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  opacity: .72;
+  transition: opacity .15s ease;
+}
+
+.sidebar nav button:hover {
+  background: rgba(255, 255, 255, .055);
+  color: #f0e7db;
+  transform: none;
+}
+.sidebar nav button:hover svg { opacity: 1; }
+
+/* Estado ativo discreto: barra dourada + fundo suave. O preenchimento sólido
+   anterior competia visualmente com o conteúdo da página. */
+.sidebar nav button.active {
+  background: rgba(201, 168, 106, .14);
+  color: var(--gold-light);
+  font-weight: 600;
+  box-shadow: none;
+}
+.sidebar nav button.active svg { opacity: 1; color: var(--gold-light); }
+.sidebar nav button.active::before {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 20px;
+  border-radius: 0 3px 3px 0;
+  background: var(--gold);
+}
+
+.sidebar nav button.locked { opacity: .45; }
+.sidebar nav button.locked:hover { opacity: .62; }
+.sidebar nav button .lock-icon { margin-left: auto; opacity: .6; }
+
+.sidebar nav button:focus-visible,
+.sidebar-foot button:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: -2px;
+}
+
+/* ----------------------------------------------------------------- rodapé */
+
+.sidebar-foot {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px 14px;
+  border-top: 1px solid var(--shell-nav-line);
+  background: var(--shell-nav-2);
+}
+
+.sidebar-foot .plan-link,
+.sidebar-foot .logout-button {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  min-height: 38px;
+  margin: 0;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--shell-nav-text);
+  font-family: var(--body-font);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color .15s ease, color .15s ease;
+}
+.sidebar-foot .plan-link:hover { background: rgba(201, 168, 106, .12); color: var(--gold-light); }
+.sidebar-foot .logout-button:hover { background: rgba(184, 92, 92, .16); color: #ecc0c0; }
+.sidebar-foot .plan-link svg,
+.sidebar-foot .logout-button svg { flex: none; width: 17px; height: 17px; opacity: .75; }
+.sidebar-foot .plan-link .trial-badge {
+  margin-left: auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(201, 168, 106, .2);
+  color: var(--gold-light);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+
+/* ------------------------------------------------------------------ topbar */
+
+.topbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: var(--shell-topbar-h);
+  min-height: var(--shell-topbar-h);
+  padding: 0 var(--shell-gutter);
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--white);
+  box-shadow: none;
+}
+
+.topbar-title { display: flex; flex-direction: column; justify-content: center; min-width: 0; gap: 1px; }
+.topbar-title .eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.topbar-title h1 {
+  margin: 0;
+  font-family: var(--title-font);
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* A saudação do dashboard já vive no <h1>; a linha extra só rouba altura. */
+.topbar-title p { display: none; }
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  flex: none;
+  flex-wrap: nowrap;
+}
+
+.topbar-actions .notification-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--white);
+  color: var(--ink);
+  cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease;
+}
+.topbar-actions .notification-button:hover { background: var(--paper); border-color: var(--nude); }
+.topbar-actions .notification-button span {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--danger);
+  color: var(--white);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* A data completa é a primeira coisa a sair quando falta espaço. */
+.topbar-actions .date-card {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 38px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--white);
+  box-shadow: none;
+}
+.topbar-actions .date-card svg { width: 17px; height: 17px; color: var(--nude-strong); flex: none; }
+.topbar-actions .date-card div { display: flex; flex-direction: column; line-height: 1.2; }
+.topbar-actions .date-card strong { font-size: 12.5px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.topbar-actions .date-card span { font-size: 11px; color: var(--muted); white-space: nowrap; text-transform: capitalize; }
+
+.topbar-actions .user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 230px;
+  height: 38px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.topbar-actions .user-chip svg { flex: none; color: var(--nude-strong); }
+
+.plan-banner { margin: 0 0 20px; }
+
+/* ------------------------------------------------------- gaveta em telas estreitas */
+
+/* ------------------------------------------------- menu recolhido (rail) */
+
+/* Só os ícones ficam. A transição é da coluna do grid, então o conteúdo
+   acompanha o movimento em vez de "pular" quando o menu termina de fechar. */
+.app-shell { transition: grid-template-columns .18s ease; }
+.app-shell.nav-collapsed { grid-template-columns: var(--shell-rail-w) 1fr; }
+
+.nav-collapsed .sidebar-brand {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  padding: 0;
+}
+.nav-collapsed .sidebar-brand strong,
+.nav-collapsed .sidebar-brand span { display: none; }
+
+.nav-collapsed .sidebar nav { padding: 12px 10px 8px; }
+.nav-collapsed .sidebar nav button,
+.nav-collapsed .sidebar-foot .plan-link,
+.nav-collapsed .sidebar-foot .logout-button {
+  justify-content: center;
+  padding: 0;
+  gap: 0;
+}
+.nav-collapsed .nav-label,
+.nav-collapsed .lock-icon,
+.nav-collapsed .trial-badge { display: none; }
+.nav-collapsed .sidebar-foot { padding: 10px 10px 14px; }
+
+/* O rótulo do grupo vira um traço: mantém a separação visual sem texto. */
+.nav-collapsed .nav-group-label {
+  height: 1px;
+  padding: 0;
+  margin: 10px 8px;
+  overflow: hidden;
+  text-indent: -999px;
+  background: var(--shell-nav-line);
+}
+.nav-collapsed .nav-group-label:first-child { margin-top: 2px; }
+
+/* Item ativo: sem o texto, a barra lateral vira a única marca de posição. */
+.nav-collapsed .sidebar nav button.active::before { left: -10px; }
+
+.sidebar-initial {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--title-font);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--gold-light);
+}
+
+/* Um botão só: recolhe no desktop, abre a gaveta em telas estreitas. */
+.icon-button.nav-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--white);
+  color: var(--ink);
+  cursor: pointer;
+  transition: border-color .15s ease, background-color .15s ease;
+}
+.icon-button.nav-toggle:hover { border-color: var(--nude); background: var(--paper); }
+.nav-toggle-mobile { display: none; }
+
+@media (max-width: 1180px) {
+  :root { --shell-gutter: 24px; }
+  .topbar-actions .date-card span { display: none; }
+}
+
+@media (max-width: 1040px) {
+  .topbar-actions .user-chip { display: none; }
+}
+
+@media (max-width: 900px) {
+  :root { --shell-gutter: 16px; --shell-topbar-h: 64px; }
+
+  .app-shell { grid-template-columns: 1fr; }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 70;
+    width: min(84vw, 296px);
+    transform: translateX(-100%);
+    transition: transform .22s ease;
+    box-shadow: none;
+    /* Fora da tela não deve receber foco de teclado. */
+    visibility: hidden;
+  }
+  .sidebar.open {
+    transform: translateX(0);
+    visibility: visible;
+    box-shadow: 0 0 60px rgba(0, 0, 0, .4);
+  }
+
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 65;
+    background: rgba(20, 14, 10, .5);
+    backdrop-filter: blur(2px);
+  }
+
+  /* Em gaveta, recolher não faz sentido: o botão volta a ser hambúrguer. */
+  .app-shell.nav-collapsed { grid-template-columns: 1fr; }
+  .nav-toggle-desk { display: none; }
+  .nav-toggle-mobile { display: inline-flex; }
+
+  .topbar-actions .date-card { display: none; }
+  .topbar-title h1 { font-size: 17px; }
+}
+
+@media (max-width: 560px) {
+  .topbar-title .eyebrow { display: none; }
+  .content-scroll { padding-top: 20px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell { transition: none; }
+  .sidebar { transition: none; }
+  .sidebar nav button { transition: none; }
+}
+
+/* ============================================================================
+   Cartões de indicador — correção de estouro.
+
+   Mora aqui, e não em styles.css, pelo mesmo motivo do resto do arquivo: as
+   regras originais estão espalhadas por quatro camadas (2331, 5795, 6603, 9937)
+   e a última a declarar é quem vence. Sintomas corrigidos:
+
+   · `.premium-metric-card` não tinha `min-width: 0`, então a trilha `1fr` não
+     encolhia abaixo do conteúdo e um valor em reais empurrava o grid inteiro.
+   · `.metric-card` tinha `overflow: hidden` sem `text-overflow`: "R$ 98.466,18"
+     virava "R$ 98.466," sem nenhum sinal de que fora cortado.
+   · `.metric-grid` fixava 6 colunas para 8 cartões, deixando 2 órfãos.
+   ========================================================================== */
+
+.metric-grid,
+.premium-metric-grid {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.metric-card,
+.premium-metric-card {
+  min-width: 0;
+}
+
+.metric-card strong,
+.premium-metric-card strong,
+.metric-card span,
+.premium-metric-card span {
+  min-width: 0;
+}
+
+/* Dígitos de mesma largura: valores ficam alinhados entre cartões.
+   Sem `overflow-wrap: anywhere` de propósito — ele quebra dentro do número
+   ("R$ 18 / 7,00") e no meio da palavra ("Agendame / ntos"). */
+.metric-card strong,
+.premium-metric-card strong {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: normal;
+}
+
+.metric-card strong { font-size: clamp(19px, 1.7vw, 25px); }
+
+/* Ícone em cima do valor, não ao lado: lado a lado, o ícone de 58px comia
+   metade da largura útil do cartão e o valor não tinha onde caber. */
+.premium-metric-card {
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 14px;
+  padding: 22px 20px;
+  min-height: 0;
+}
+.premium-metric-card .metric-icon {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+}
+.premium-metric-card .metric-icon svg { width: 19px; height: 19px; }
+.premium-metric-card strong {
+  font-size: clamp(21px, 1.9vw, 28px);
+  line-height: 1.1;
+}
+.premium-metric-card span { margin-top: 4px; }
+
+/* ============================================================================
+   DataView — componente padrão de listagem.
+
+   Barra de ferramentas (busca + filtros), tabela com ordenação por coluna e
+   rodapé de paginação. Fica aqui, e não em styles.css, pelo mesmo motivo do
+   resto do arquivo: é a camada que vence a cascata sem disputar especificidade.
+   ========================================================================== */
+
+.dataview { display: flex; flex-direction: column; gap: 14px; }
+
+/* ------------------------------------------------------- barra de ferramentas */
+
+.dataview-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.dataview-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1 1 260px;
+  min-width: 0;
+  max-width: 420px;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--white);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.dataview-search:focus-within {
+  border-color: var(--nude);
+  box-shadow: 0 0 0 3px rgba(201, 168, 106, .16);
+}
+.dataview-search svg { flex: none; color: var(--muted); }
+.dataview-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-family: var(--body-font);
+  font-size: 14px;
+  color: var(--ink);
+}
+.dataview-search input::-webkit-search-cancel-button { display: none; }
+.dataview-search button {
+  display: inline-flex;
+  flex: none;
+  padding: 3px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.dataview-search button:hover { background: var(--paper); color: var(--ink); }
+
+.dataview-filter-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--white);
+  color: var(--ink);
+  font-family: var(--body-font);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color .15s ease, background-color .15s ease;
+}
+.dataview-filter-toggle:hover { border-color: var(--nude); }
+.dataview-filter-toggle.open { background: var(--paper); border-color: var(--nude); }
+.dataview-filter-toggle.has-filters { border-color: var(--nude-strong); color: var(--nude-strong); }
+.dataview-filter-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--nude-strong);
+  color: var(--white);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.dataview-toolbar-extra { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+
+/* --------------------------------------------------------- filtros avançados */
+
+.dataview-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  align-items: end;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+.dataview-filter { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.dataview-filter span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.dataview-filter select,
+.dataview-filter input {
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--white);
+  font-family: var(--body-font);
+  font-size: 13.5px;
+  color: var(--ink);
+}
+.dataview-filter select:focus,
+.dataview-filter input:focus {
+  outline: 0;
+  border-color: var(--nude);
+  box-shadow: 0 0 0 3px rgba(201, 168, 106, .16);
+}
+
+.dataview-clear {
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--white);
+  color: var(--nude-strong);
+  font-family: var(--body-font);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.dataview-clear:hover { border-color: var(--nude-strong); background: var(--paper); }
+
+/* ------------------------------------------------------- ordenação por coluna */
+
+.dataview-table th { white-space: nowrap; }
+
+.dataview-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+.dataview-sort:hover { color: var(--nude-strong); }
+.dataview-sort svg { flex: none; color: var(--nude-strong); }
+/* Espaço reservado: sem ele o cabeçalho "pula" ao ganhar a seta de ordenação. */
+.dataview-sort-idle { display: inline-block; width: 13px; }
+
+/* -------------------------------------------------- estados vazio/erro/carga */
+
+.dataview-state {
+  padding: 34px 20px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+}
+.dataview-error {
+  border-style: solid;
+  border-color: rgba(184, 92, 92, .4);
+  background: rgba(184, 92, 92, .07);
+  color: var(--danger);
+}
+
+/* ----------------------------------------------------------------- paginação */
+
+.dataview-pagination {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+
+.dataview-range {
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.dataview-pagesize {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.dataview-pagesize select {
+  height: 32px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--white);
+  font-family: var(--body-font);
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.dataview-pager { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+.dataview-pager span {
+  min-width: 62px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.dataview-pager button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--white);
+  color: var(--ink);
+  cursor: pointer;
+  transition: border-color .15s ease, background-color .15s ease;
+}
+.dataview-pager button:hover:not(:disabled) { border-color: var(--nude); background: var(--paper); }
+.dataview-pager button:disabled { opacity: .4; cursor: not-allowed; }
+
+.dataview :focus-visible { outline: 2px solid var(--nude-strong); outline-offset: 2px; }
+
+@media (max-width: 720px) {
+  .dataview-toolbar-extra { margin-left: 0; width: 100%; }
+  .dataview-search { max-width: none; }
+  .dataview-pagination { gap: 10px; }
+  .dataview-pager { margin-left: 0; width: 100%; justify-content: space-between; }
+}
+
+/* Cabeçalho volta a aparecer nos cartões de gerenciamento (Tamanhos, Espessuras,
+   Profissionais, Categorias). `styles.css:2921` o esconde porque essas tabelas
+   eram só rótulo+valor; agora que usam DataView, sem cabeçalho não há onde
+   clicar para ordenar — a ordenação existia mas era invisível. */
+.manager-card .dataview-table thead { display: table-header-group; }
+.manager-card .dataview-table th {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  font-size: 10.5px;
+}
+
+} /* fim de @layer app */

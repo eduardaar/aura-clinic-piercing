@@ -2,19 +2,35 @@
 import React, { useEffect, useState } from "react";
 import { Download, Instagram } from "lucide-react";
 import { Button, Input, Select, StatusBadge } from "../../components/common/Ui";
-import { asArray, formatDate } from "../../lib/utils";
+import { DataView } from "../../components/common/DataView";
+import { asArray, asObject, formatDate } from "../../lib/utils";
 import { API_ORIGIN, apiFetch, useFetch } from "../../lib/api";
 import { DIGITAL_TERM_HEALTH_ITEMS, DIGITAL_TERM_LIFESTYLE_ITEMS, defaultDigitalTerm } from "../../lib/defaultForms";
 import { currency, personName } from "../../features/shared/helpers";
 
+// O <select> de vínculo só precisa dos agendamentos recentes: sem `limit` o
+// endpoint devolvia a base inteira (295 registros / ~446 KB) para preencher uma
+// caixa de seleção. Com `limit`/`offset` a resposta vira { items, total, … }.
+const APPOINTMENTS_QUERY = "/appointments?limit=100&sort=date:desc";
+
+// `formatDate` de lib/utils devolve dd/MM sem ano: termos de anos diferentes
+// ficariam com a mesma data na coluna de assinatura.
+function formatDateWithYear(date) {
+  const value = String(date || "").slice(0, 10);
+  const parsed = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toLocaleDateString("pt-BR");
+}
+
 export function DigitalTerms() {
-  const { data: appointments } = useFetch("/appointments");
+  const { data: appointmentsPage } = useFetch(APPOINTMENTS_QUERY);
   const { data: terms, refresh } = useFetch("/digital-terms");
   const [form, setForm] = useState(defaultDigitalTerm());
   const [error, setError] = useState("");
   const [savedTerm, setSavedTerm] = useState(null);
 
-  const safeAppointments = asArray(appointments);
+  const safeAppointments = asArray(asObject(appointmentsPage).items);
+  const appointmentTotal = Number(asObject(appointmentsPage).total || safeAppointments.length);
   const hasAppointments = safeAppointments.length > 0;
   const safeTerms = asArray(terms);
   const selectedAppointment = safeAppointments.find((item) => String(item.id) === String(form.appointment_id));
@@ -79,7 +95,7 @@ export function DigitalTerms() {
             <span className="eyebrow">Termos Digitais</span>
             <h2>Ficha De Anamnese</h2>
           </div>
-          <span>{safeAppointments.length} agendamento(s)</span>
+          <span>{appointmentTotal} agendamento(s)</span>
         </div>
 
         <div className="term-intro">
@@ -101,6 +117,9 @@ export function DigitalTerms() {
             <option value="">{hasAppointments ? "Sem vínculo / preencher manualmente" : "Nenhum agendamento disponível"}</option>
             {safeAppointments.map((item) => <option key={item.id} value={item.id}>{formatDate(item.appointment_date)}  {item.appointment_time}  {personName(item)}  {item.procedure}</option>)}
           </Select>
+          {hasAppointments && appointmentTotal > safeAppointments.length && (
+            <small>Exibindo os {safeAppointments.length} agendamentos mais recentes de {appointmentTotal}.</small>
+          )}
           {!hasAppointments && <p className="empty-state">Você pode salvar a ficha sem agendamento vinculado. Quando houver agendamentos cadastrados, eles aparecerão aqui para seleção.</p>}
         </section>
 
@@ -225,18 +244,63 @@ export function DigitalTerms() {
           </div>
           <span>{safeTerms.length} registro(s)</span>
         </div>
-        <div className="terms-list">
-          {safeTerms.map((term) => (
-            <article className="term-row" key={term.id}>
-              <div>
-                <strong>{term.full_name}</strong>
-                <span>{term.appointment_id ? `${formatDate(term.appointment_date)}  ${term.appointment_time || ""}  ${term.procedure || ""}` : term.procedure || "Ficha sem agendamento vinculado"}</span>
-                <small>{term.professional_name || "Sem profissional vinculado"}  assinado em {new Date(term.signed_at).toLocaleDateString("pt-BR")}</small>
-              </div>
-              {term.pdf_url && <a className="secondary-button" href={`${API_ORIGIN}${term.pdf_url}`} target="_blank" rel="noreferrer">PDF</a>}
-            </article>
-          ))}
-        </div>
+        <DataView
+          rows={safeTerms}
+          loading={!terms}
+          error={terms?.error || ""}
+          defaultSort={{ key: "signed_at", dir: "desc" }}
+          searchPlaceholder="Buscar por cliente, procedimento ou profissional"
+          filters={[
+            {
+              key: "from",
+              label: "Assinado a partir de",
+              type: "date",
+              match: (term, value) => String(term.signed_at || "").slice(0, 10) >= value
+            },
+            {
+              key: "to",
+              label: "Assinado até",
+              type: "date",
+              match: (term, value) => String(term.signed_at || "").slice(0, 10) <= value
+            }
+          ]}
+          columns={[
+            { key: "full_name", label: "Cliente", render: (term) => <strong>{term.full_name}</strong> },
+            {
+              key: "procedure",
+              label: "Procedimento",
+              value: (term) => `${term.procedure || ""} ${term.appointment_id ? `${term.appointment_date || ""} ${term.appointment_time || ""}` : ""}`,
+              render: (term) => (
+                <div>
+                  <span>{term.procedure || "Ficha sem procedimento informado"}</span>
+                  {term.appointment_id && <><br /><small>{formatDateWithYear(term.appointment_date)} · {term.appointment_time || ""}</small></>}
+                </div>
+              )
+            },
+            {
+              key: "professional_name",
+              label: "Profissional",
+              render: (term) => term.professional_name || "Sem profissional vinculado"
+            },
+            {
+              key: "signed_at",
+              label: "Assinado em",
+              value: (term) => String(term.signed_at || ""),
+              render: (term) => formatDateWithYear(term.signed_at)
+            },
+            {
+              key: "pdf_url",
+              label: "PDF",
+              sortable: false,
+              searchable: false,
+              render: (term) => (term.pdf_url
+                ? <a className="secondary-button" href={`${API_ORIGIN}${term.pdf_url}`} target="_blank" rel="noreferrer">PDF</a>
+                : "—")
+            }
+          ]}
+          empty="Nenhum termo assinado ainda."
+          emptyFiltered="Nenhum termo corresponde à busca ou ao período."
+        />
       </div>
     </section>
   );

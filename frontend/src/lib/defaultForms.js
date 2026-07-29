@@ -452,7 +452,7 @@ export function normalizeJewelryForm(item = {}) {
       const parsed = JSON.parse(galleryUrls);
       galleryUrls = Array.isArray(parsed) ? parsed.join("\n") : galleryUrls;
     } catch {
-      galleryUrls = galleryUrls;
+      // Não é JSON: mantém a string crua como veio (já é o valor de galleryUrls).
     }
   }
   return {

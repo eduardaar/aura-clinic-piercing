@@ -1,0 +1,209 @@
+/* Camada da cascata: `telas`. A ordem `base, legado, telas, app` é
+   declarada no topo de styles.css (primeiro import de main.jsx).
+   Vence o legado de styles.css; perde para appshell.css (camada `app`).
+   CSS fora de camada venceria todas elas — por isso o arquivo inteiro fica
+   dentro deste bloco. */
+@layer telas {
+
+/* =========================================================================
+   Menu de topo público — compartilhado por landing, login e cadastro.
+
+   Namespace `au-nav` / `au-shell`, sem depender de `.au-l-root` nem de
+   `.au-a-root`, justamente para poder ser o mesmo nas três telas.
+   Mobile-first; breakpoints em min-width: 640 / 900.
+   ========================================================================= */
+
+/* Estrutura da página: menu fixo no topo + conteúdo ocupando o resto da
+   altura. As telas de auth precisam disso para o split continuar colando no
+   rodapé da viewport agora que existe um cabeçalho acima delas. */
+.au-shell {
+  min-height: 100vh;   /* fallback */
+  min-height: 100svh;  /* a barra do navegador mobile não corta o conteúdo */
+  display: flex;
+  flex-direction: column;
+  background: var(--paper, #FCFBF8);
+}
+
+.au-shell > .au-nav { flex: 0 0 auto; }
+
+/* O filho de conteúdo ocupa a altura restante. `min-height: 0` anula o
+   100svh próprio das telas de auth, que somaria com o menu e criaria
+   scroll vertical desnecessário. */
+.au-shell > .au-a-root,
+.au-shell > .au-l-root {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* ---------- barra ---------- */
+
+.au-nav {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  width: 100%;
+  background: rgba(252, 251, 248, .92);
+  background: color-mix(in srgb, var(--paper, #FCFBF8) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(231, 221, 206, .8);
+  border-bottom-color: color-mix(in srgb, var(--line, #e7ddce) 70%, transparent);
+  font-family: var(--body-font);
+}
+
+.au-nav *,
+.au-nav *::before,
+.au-nav *::after { box-sizing: border-box; }
+
+/* Sem `color: inherit` aqui: `.au-nav a` tem especificidade (0,1,1) e venceria
+   as classes (0,1,0) abaixo, fazendo o texto do CTA herdar o preto do body e
+   sumir sobre o fundo preto. Cada âncora define a própria cor. */
+.au-nav a { text-decoration: none; }
+
+.au-nav-inner {
+  width: 100%;
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* ---------- marca ---------- */
+
+.au-nav-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 44px;   /* alvo de toque */
+  color: var(--ink, #1A1A1A);
+}
+
+.au-nav-mark {
+  flex: 0 0 auto;
+  display: block;
+  width: 34px;
+  height: 34px;
+}
+
+.au-nav-brand strong {
+  font-family: var(--title-font, "Outfit", sans-serif);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+
+/* ---------- links ---------- */
+
+.au-nav-links {
+  display: none;      /* mobile: sobra marca + CTA */
+  margin-left: auto;
+  align-items: center;
+  gap: 26px;
+  min-width: 0;
+}
+
+.au-nav-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 15px;
+  color: #4b463f;
+  white-space: nowrap;
+  transition: color .18s ease;
+}
+
+/* ---------- ações ---------- */
+
+.au-nav-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.au-nav-login {
+  display: none;      /* mobile: só o CTA, para não espremer a barra */
+  align-items: center;
+  min-height: 44px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink, #1A1A1A);
+  white-space: nowrap;
+  transition: color .18s ease;
+}
+
+.au-nav-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: var(--ink, #1A1A1A);
+  color: var(--paper, #FCFBF8);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  box-shadow: 0 10px 24px rgba(26, 26, 26, .18);
+  transition: transform .18s ease, box-shadow .18s ease, background-color .18s ease;
+}
+
+.au-nav-link:hover,
+.au-nav-login:hover { color: var(--gold-dark, #A87A34); }
+
+.au-nav-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px rgba(26, 26, 26, .24);
+}
+
+.au-nav a:focus-visible {
+  outline: 2px solid var(--gold-dark, #A87A34);
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+
+/* Tela atual: o menu não oferece um caminho onde o usuário já está. */
+.au-nav-login[aria-current="page"] {
+  color: var(--gold-dark, #A87A34);
+  cursor: default;
+}
+
+.au-nav-cta[aria-current="page"] {
+  background: transparent;
+  color: var(--gold-dark, #A87A34);
+  border-color: var(--gold, #C9A86A);
+  box-shadow: none;
+  cursor: default;
+}
+
+.au-nav-cta[aria-current="page"]:hover { transform: none; box-shadow: none; }
+
+/* ---------- >= 640px ---------- */
+
+@media (min-width: 640px) {
+  .au-nav-inner { padding: 12px 28px; }
+  .au-nav-login { display: inline-flex; }
+}
+
+/* ---------- >= 900px ---------- */
+
+@media (min-width: 900px) {
+  .au-nav-inner { padding: 14px 32px; gap: 22px; }
+  .au-nav-links { display: flex; }
+  .au-nav-actions { gap: 20px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .au-nav-cta,
+  .au-nav-link,
+  .au-nav-login { transition: none; }
+  .au-nav-cta:hover { transform: none; }
+}
+
+} /* fim de @layer telas */

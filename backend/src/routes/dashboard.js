@@ -1,7 +1,7 @@
 // Rota do dashboard: indicadores, agenda do dia, rankings e alertas.
 import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
-import { nextBirthdays } from "../services/utils.js";
+import { localDate, nextBirthdays } from "../services/utils.js";
 import { listAppointments } from "../services/appointments.js";
 import { buildFinanceReport } from "../services/finance.js";
 import { listCriticalStockItems } from "../services/inventory.js";
@@ -56,19 +56,21 @@ function buildAppointmentAlerts(appointments, now = new Date()) {
 }
 
 router.get("/api/dashboard", withDb(async (_req, res, db) => {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDate();
   const month = today.slice(0, 7);
   const periodDays = { "7d": 7, "30d": 30, "90d": 90, "365d": 365 }[_req.query.period] || 30;
-  const periodStart = new Date(Date.now() - (periodDays - 1) * 86_400_000).toISOString().slice(0, 10);
+  const periodStart = localDate(new Date(Date.now() - (periodDays - 1) * 86_400_000));
   const stats = await db.get(`
     SELECT
-      SUM(CASE WHEN appointment_date = ? THEN 1 ELSE 0 END) AS today_count,
+      SUM(CASE WHEN appointment_date = ? AND status NOT IN ('cancelado', 'recusado') THEN 1 ELSE 0 END) AS today_count,
       SUM(CASE WHEN status IN ('pendente', 'awaiting_deposit_proof') THEN 1 ELSE 0 END) AS pending_count,
       SUM(CASE WHEN status = 'confirmado' THEN 1 ELSE 0 END) AS confirmed_count,
       SUM(CASE WHEN appointment_date LIKE ? AND status NOT IN ('cancelado', 'recusado') THEN total_value ELSE 0 END) AS month_forecast
     FROM appointments
   `, [today, `${month}%`]);
-  const deposit = await db.get("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE payment_type = 'sinal' AND status = 'pago'");
+  // Faturamento do dia: todos os tipos de pagamento quitados na data local de hoje.
+  const revenueToday = await db.get("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE status = 'pago' AND SUBSTRING(paid_at, 1, 10) = ?", [today]);
+  const newClients = await db.get("SELECT COUNT(*) AS total FROM clients WHERE created_at LIKE ?", [`${month}%`]);
   const todaysAppointments = await listAppointments(db, "WHERE a.appointment_date = ?", [today]);
   const lowStockJewelry = await listCriticalStockItems(db, { limit: 8 });
   const clients = await db.all("SELECT id, full_name, whatsapp, instagram, birth_date FROM clients WHERE birth_date IS NOT NULL");
@@ -179,8 +181,14 @@ router.get("/api/dashboard", withDb(async (_req, res, db) => {
       confirmedCount: stats?.confirmed_count || 0,
       criticalStock: lowStockJewelry.length,
       lowStockCount: lowStockJewelry.length,
-      depositReceived: deposit?.total || 0,
-      monthForecast: stats?.month_forecast || 0
+      // Sinais do mês corrente (o painel que consome este valor é mensal).
+      depositReceived: Number(finance.deposits?.monthTotal || 0),
+      monthForecast: stats?.month_forecast || 0,
+      revenueToday: Number(revenueToday?.total || 0),
+      revenueMonth: Number(finance.totals?.month_total || 0),
+      expensesMonth: Number(finance.expensesSummary?.total || 0),
+      profitEstimated: Number(finance.profit?.estimated || 0),
+      newClientsMonth: Number(newClients?.total || 0)
     },
     todaysAppointments,
     alerts: { lowStockJewelry, birthdays, topClients },

@@ -1,0 +1,41 @@
+{
+  // Verificação de tipos INCREMENTAL do frontend — sem migrar para TypeScript.
+  //
+  // O escopo começa estreito de propósito: só `lib/` (contratos de dados) e
+  // `components/common/` (componentes que todas as telas consomem). Ligar
+  // `checkJs` no `src/` inteiro produziria centenas de erros de uma vez e o
+  // resultado prático seria alguém desligar a verificação. Aqui o retorno é
+  // imediato: é nessas fronteiras que um campo errado passa despercebido.
+  //
+  // Editores (VS Code etc.) leem este arquivo sozinhos; a CI roda pelo script
+  // `npm run typecheck` na raiz.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    // `strict` fica DESLIGADO nesta fase. O objetivo é pegar contrato errado
+    // (campo que não existe, prop com forma errada), não obrigar a anotar todo
+    // parâmetro. `strictNullChecks` entra numa fase posterior, junto com a
+    // ampliação do escopo.
+    "strict": false,
+    // `import.meta.env` do Vite.
+    "types": ["vite/client"],
+    "baseUrl": "."
+  },
+  "include": ["src/lib/**/*.js", "src/components/common/**/*.jsx"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    // Fora desta fase: importa de `src/features/`, que ainda não está no escopo
+    // da verificação. Entra junto com `features/catalog`.
+    "src/lib/defaultForms.js"
+  ]
+}

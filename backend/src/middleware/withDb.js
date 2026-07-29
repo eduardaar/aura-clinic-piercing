@@ -1,14 +1,14 @@
 // Wrapper padrão de todos os handlers (multi-tenant por schema):
 // - resolve o tenant da requisição (token/X-Tenant/DEFAULT_TENANT);
 // - pega UM client do pool e fixa o search_path no schema da clínica;
-// - injeta o adaptador `db` (Postgres com interface estilo SQLite) desse client;
+// - injeta o `db` (camada fina de acesso ao Postgres) desse client;
 // - normaliza o corpo das respostas (paliativo de encoding via normalizeDbValue);
 // - aplica autenticação quando a rota exige (token amarrado ao tenant);
 // - captura erros e devolve 500 padronizado;
 // - SEMPRE reseta o search_path antes de devolver o client ao pool — um client
 //   devolvido "sujo" vazaria dados entre clínicas.
 import { pool } from "../database/connection.js";
-import { createDbAdapter } from "../db/sqliteCompat.js";
+import { createDb } from "../db/postgres.js";
 import { resolveTenant, TenantError } from "./tenant.js";
 import { normalizeDbValue } from "../text-normalizer.js";
 import { requiresAuth, authenticateRequest } from "./auth.js";
@@ -47,7 +47,7 @@ export const withDb = (handler) => async (req, res) => {
   let db;
   try {
     await client.query(`SET search_path TO "${tenant.schema}", public`);
-    db = createDbAdapter(client);
+    db = createDb(client);
     if (requiresAuth(req)) {
       const user = await authenticateRequest(req, db);
       if (!user) return res.status(401).json({ error: "Sessão inválida ou expirada." });
@@ -56,6 +56,10 @@ export const withDb = (handler) => async (req, res) => {
     await handler(req, res, db);
   } catch (error) {
     console.error(error);
+    // Se o handler morreu com transação aberta, desfaz ANTES de qualquer coisa:
+    // dentro de uma transação abortada nenhuma query passa (nem o log de erro
+    // abaixo) e as escritas parciais não podem sobreviver ao 500.
+    if (db) await db.abortOpenTransaction();
     // Captura central: grava o erro do backend na tabela de logs (best-effort;
     // o search_path ainda aponta para o tenant, pois o reset ocorre no finally).
     if (db) {
@@ -79,9 +83,14 @@ export const withDb = (handler) => async (req, res) => {
       });
     }
   } finally {
-    // CRÍTICO: nunca devolver o client ao pool com search_path de tenant.
-    // Se o reset falhar, descartamos a conexão (release(true) destrói o client).
+    // CRÍTICO: nunca devolver o client ao pool com search_path de tenant nem
+    // com transação aberta — o próximo tenant herdaria a transação (e os locks)
+    // e o reset do search_path viajaria junto no rollback dela.
     try {
+      if (db?.inTransaction()) {
+        console.error("Transação deixada aberta pelo handler; desfazendo antes de devolver o client.");
+        await db.abortOpenTransaction();
+      }
       await client.query("SET search_path TO public");
       client.release();
     } catch {

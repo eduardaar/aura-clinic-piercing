@@ -3,21 +3,50 @@ import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { boolNumber } from "../services/utils.js";
-import { listServices, replaceProfessionalServices } from "../services/appointments.js";
+import { listServices, countServices, getService, replaceProfessionalServices } from "../services/appointments.js";
 import { validateBody } from "../middleware/validate.js";
 import { serviceCreateSchema, serviceUpdateSchema } from "../schemas/index.js";
+import { parsePaging, pageResponse } from "../services/pagination.js";
 
 const router = Router();
 
-router.get("/api/services", withDb(async (_req, res, db) => {
-  res.json(await listServices(db));
+// Whitelist de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
+const SERVICE_SORTABLE = {
+  name: "name",
+  price: "price",
+  duration: "duration_minutes",
+  active: "active_online_booking",
+  created_at: "created_at"
+};
+
+router.get("/api/services", withDb(async (req, res, db) => {
+  const clauses = [];
+  const params = [];
+  // `status` aqui é "active"/"inactive" (a coluna é active_online_booking).
+  if (req.query.status) {
+    clauses.push("active_online_booking = ?");
+    params.push(req.query.status === "active" ? 1 : 0);
+  }
+  if (req.query.search) {
+    clauses.push("(name ILIKE ? OR description ILIKE ?)");
+    params.push(...Array(2).fill(`%${req.query.search}%`));
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const paging = parsePaging(req.query, {
+    sortable: SERVICE_SORTABLE,
+    tieBreak: "id",
+    defaultOrderBy: "ORDER BY active_online_booking DESC, name, id"
+  });
+  const items = await listServices(db, { where, params, paging });
+  const total = paging.paginated ? await countServices(db, { where, params }) : items.length;
+  res.json(pageResponse(items, total, paging));
 }));
 
 router.post("/api/services", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   if (!validateBody(serviceCreateSchema, req, res)) return;
   const result = await db.run(
-    "INSERT INTO services (name, description, duration_minutes, price, deposit_value, active_online_booking, pre_service_notes) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO services (name, description, duration_minutes, price, deposit_value, active_online_booking, pre_service_notes) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
     [
       req.body.name,
       req.body.description || "",
@@ -28,8 +57,8 @@ router.post("/api/services", withDb(async (req, res, db) => {
       req.body.pre_service_notes || ""
     ]
   );
-  await replaceProfessionalServices(db, result.lastID, req.body.professional_ids || []);
-  res.status(201).json((await listServices(db)).find((item) => item.id === result.lastID));
+  await replaceProfessionalServices(db, result.returnedId, req.body.professional_ids || []);
+  res.status(201).json(await getService(db, result.returnedId));
 }));
 
 async function updateService(req, res, db) {
@@ -51,7 +80,7 @@ async function updateService(req, res, db) {
     ]
   );
   if (req.body.professional_ids) await replaceProfessionalServices(db, req.params.id, req.body.professional_ids);
-  res.json((await listServices(db)).find((item) => item.id === Number(req.params.id)));
+  res.json(await getService(db, req.params.id));
 }
 
 router.put("/api/services/:id", withDb(updateService));

@@ -41,6 +41,33 @@ rsh="ssh ${SSH_OPTS} -o ConnectTimeout=20 -o ControlMaster=auto -o ControlPath=$
 cleanup() { ssh -o ControlPath="${CONTROL}" -O exit "${target}" 2>/dev/null || true; }
 trap cleanup EXIT
 
+# Retry APENAS para falha de conexão. A rota entre o runner do GitHub (Azure) e
+# este servidor cai de vez em quando: o SYN não chega, o ConnectTimeout estoura
+# em 20s e o deploy inteiro morre com o build já pronto. Confirmado no servidor
+# — nos horários das falhas não há registro nenhum no sshd, o fail2ban está
+# zerado e o UFW nunca disparou; ou seja, o pacote se perde no caminho.
+#
+# ssh e rsync usam o código 255 exclusivamente para erro de conexão. Qualquer
+# outro código (build quebrado, migração falhando, health check negativo) passa
+# direto e derruba o deploy na hora, como deve ser.
+retry_conn() {
+  local label="$1"; shift
+  local attempt=1 max=3 delay=10 status=0
+  while :; do
+    "$@" && return 0
+    status=$?
+    if [ "${status}" -ne 255 ] || [ "${attempt}" -ge "${max}" ]; then
+      return "${status}"
+    fi
+    echo "   !! ${label}: falha de conexão (tentativa ${attempt}/${max}); nova tentativa em ${delay}s"
+    # A conexão multiplexada pode ter ficado num estado ruim — descarta antes de tentar de novo.
+    ssh -o ControlPath="${CONTROL}" -O exit "${target}" 2>/dev/null || true
+    sleep "${delay}"
+    attempt=$((attempt + 1))
+    delay=$((delay * 2))
+  done
+}
+
 echo "==> [1/5] Build do frontend (VITE_API_URL=${API_URL})"
 (
   cd frontend
@@ -52,7 +79,7 @@ echo "==> [1/5] Build do frontend (VITE_API_URL=${API_URL})"
 )
 
 echo "==> [2/5] Sync do backend -> ${REMOTE_BACKEND}"
-rsync -rlpt --delete \
+retry_conn "sync do backend" rsync -rlpt --delete \
   --exclude 'node_modules' --exclude '.env' --exclude '.env.*' \
   --exclude 'src/data/uploads' --exclude 'src/data/private-uploads' \
   --exclude '*.log' --exclude '.DS_Store' \
@@ -60,7 +87,7 @@ rsync -rlpt --delete \
   backend/ "${target}:${REMOTE_BACKEND}/"
 
 echo "==> [3/5] Sync do frontend -> ${REMOTE_FRONT}"
-rsync -rlpt --delete --exclude '.DS_Store' \
+retry_conn "sync do frontend" rsync -rlpt --delete --exclude '.DS_Store' \
   -e "${rsh}" \
   frontend/dist/ "${target}:${REMOTE_FRONT}/"
 
@@ -83,7 +110,10 @@ docker tag aura-api:latest aura-api:rollback 2>/dev/null || true
 
 # Rebuild + restart. As migrations idempotentes rodam no boot do container.
 docker compose build aura-api
-docker compose up -d aura-api
+# `redis` explícito: guarda os contadores do loginGuard e precisa estar de pé
+# antes da API. Sem ele a API sobe do mesmo jeito (cai para contadores em
+# memória), mas a proteção fica mais fraca.
+docker compose up -d redis aura-api
 docker image prune -f >/dev/null 2>&1 || true
 
 docker ps --filter name=aura-api --format 'aura-api: {{.Status}}'

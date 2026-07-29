@@ -7,6 +7,8 @@
 // dedicado com SET search_path + reset.
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
+import { clientIp } from "../middleware/rateLimit.js";
+import { checkAccess, registerFailure, registerSuccess } from "../services/loginGuard.js";
 import bcrypt from "bcryptjs";
 import { pool, query } from "../database/connection.js";
 import { createPlatformToken, verifyPlatformToken, createToken } from "../middleware/auth.js";
@@ -20,7 +22,7 @@ import {
 import { validateBody } from "../middleware/validate.js";
 import { signupSchema, platformLoginSchema, tenantStatusSchema } from "../schemas/index.js";
 import { isProduction } from "../config/index.js";
-import { SUBSCRIPTION_PLANS, normalizePlanCode } from "../services/plans.js";
+import { PLAN_FEATURES, SUBSCRIPTION_PLANS, normalizePlanCode } from "../services/plans.js";
 import { invalidateSubscriptionCache } from "../services/subscriptions.js";
 
 const router = Router();
@@ -110,8 +112,18 @@ router.post("/api/signup", signupLimiter, async (req, res) => {
 });
 
 // ---------- Login do super-admin ----------
+// Além do rate limit por janela, passa pelo loginGuard: 5 falhas bloqueiam o IP
+// por 15 min; dois bloqueios viram ban permanente em platform.blocked_ips, que
+// só sai por remoção manual (ver backend/src/services/loginGuard.js).
 router.post("/api/platform/login", platformLoginLimiter, async (req, res) => {
+  const ip = clientIp(req);
   try {
+    const access = await checkAccess(ip);
+    if (!access.allowed) {
+      if (access.retryAfterSeconds) res.set("Retry-After", String(access.retryAfterSeconds));
+      return res.status(access.status).json({ error: access.error });
+    }
+
     if (!validateBody(platformLoginSchema, req, res)) return;
     const { email, password } = req.body;
     const result = await query(
@@ -120,8 +132,12 @@ router.post("/api/platform/login", platformLoginLimiter, async (req, res) => {
     );
     const user = result.rows[0];
     if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+      // Conta a falha DEPOIS de responder o mesmo erro genérico de sempre — a
+      // resposta não muda conforme o IP se aproxima do bloqueio.
+      await registerFailure(ip, { userAgent: req.headers["user-agent"], email });
       return res.status(401).json({ error: "Credenciais inválidas." });
     }
+    await registerSuccess(ip);
     res.json({
       token: createPlatformToken(user),
       user: { id: user.id, name: user.name, email: user.email, role: user.role }
@@ -135,17 +151,25 @@ router.get("/api/plans", async (_req, res) => {
   res.json({ trial_days: 7, plans: SUBSCRIPTION_PLANS });
 });
 
-// Diretório público de clínicas (para /catalogo sem ?t): lista as clínicas
-// ativas e marcadas como listáveis. Público (sem auth), como /api/plans.
+// Diretório público de clínicas (/catalogo e /agendar sem ?t): lista as
+// clínicas ativas e marcadas como listáveis. Público (sem auth), como /api/plans.
+//
+// `has_booking` é derivado do plano — só quem tem a feature `online_booking`
+// aparece no diretório de agendamento. O cálculo fica aqui, e não no frontend,
+// para não expor o mapa de features por plano numa rota pública.
 router.get("/api/clinics", async (_req, res) => {
   try {
     const result = await query(
-      `SELECT name, slug, store_short_name, city, state, logo_url
+      `SELECT name, slug, store_short_name, city, state, logo_url, plan, created_at
        FROM platform.tenants
        WHERE status = 'ativo' AND listed = true
        ORDER BY name`
     );
-    res.json({ clinics: result.rows });
+    const clinics = result.rows.map(({ plan, ...clinic }) => ({
+      ...clinic,
+      has_booking: (PLAN_FEATURES[normalizePlanCode(plan)] || []).includes("online_booking")
+    }));
+    res.json({ clinics });
   } catch (error) {
     handleServiceError(res, error);
   }

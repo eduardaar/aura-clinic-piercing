@@ -7,8 +7,20 @@ import { requireRole } from "../middleware/auth.js";
 import { csvEscape, writePdfMetric, formatCurrency } from "../services/utils.js";
 import { buildFinanceReport } from "../services/finance.js";
 import { ledgerReport, normalizeEntry, processRecurringEntries } from "../services/financeLedger.js";
+import { parsePaging } from "../services/pagination.js";
 
 const router = Router();
+
+// Whitelist de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
+const LEDGER_SORTABLE = {
+  due_date: "e.due_date",
+  competence_date: "e.competence_date",
+  amount: "e.amount",
+  status: "e.status",
+  entry_type: "e.entry_type",
+  description: "e.description",
+  category: "e.category"
+};
 
 router.get("/api/finance", withFeature("basic_finance", async (_req, res, db) => {
   if (!requireRole(_req, res, ["admin", "finance"])) return;
@@ -24,10 +36,10 @@ router.post("/api/expenses", withFeature("basic_finance", async (req, res, db) =
   }
   const result = await db.run(
     `INSERT INTO expenses (description, expense_type, category, amount, due_date, status, payment_method, payment_account, paid_at, paid_by_user_id, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     [description.trim(), expense_type, category || "", Number(amount || 0), due_date, status || "pendente", payment_method || "", payment_account || "", status === "paga" ? new Date().toISOString() : null, status === "paga" ? req.user?.id || null : null, notes || ""]
   );
-  res.status(201).json(await db.get("SELECT * FROM expenses WHERE id = ?", [result.lastID]));
+  res.status(201).json(await db.get("SELECT * FROM expenses WHERE id = ?", [result.returnedId]));
 }));
 
 router.patch("/api/expenses/:id", withFeature("basic_finance", async (req, res, db) => {
@@ -60,9 +72,43 @@ router.delete("/api/expenses/:id", withFeature("basic_finance", async (req, res,
   res.json({ ok: true });
 }));
 
+// O ledger é um RELATÓRIO, não uma lista: além dos lançamentos ele devolve
+// caixa, DRE e inadimplência. Por isso a paginação recorta só `entries` e
+// acrescenta total/limit/offset ao objeto — sem limit/offset a resposta é
+// byte a byte a de antes. Os indicadores seguem somando o período inteiro.
 router.get("/api/finance/ledger", withFeature("advanced_finance", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "finance"])) return;
-  res.json(await ledgerReport(db, req.query.from, req.query.to));
+  const filters = [];
+  const filterParams = [];
+  if (req.query.status) {
+    filters.push("e.status = ?");
+    filterParams.push(req.query.status);
+  }
+  if (req.query.entry_type) {
+    filters.push("e.entry_type = ?");
+    filterParams.push(req.query.entry_type);
+  }
+  if (req.query.cost_center_id) {
+    filters.push("e.cost_center_id = ?");
+    filterParams.push(req.query.cost_center_id);
+  }
+  if (req.query.search) {
+    filters.push("(e.description ILIKE ? OR e.category ILIKE ? OR e.notes ILIKE ?)");
+    filterParams.push(...Array(3).fill(`%${req.query.search}%`));
+  }
+  const paging = parsePaging(req.query, {
+    sortable: LEDGER_SORTABLE,
+    tieBreak: "e.id",
+    defaultOrderBy: "ORDER BY e.due_date DESC, e.id DESC"
+  });
+  const { total, ...report } = await ledgerReport(db, {
+    from: req.query.from,
+    to: req.query.to,
+    filters,
+    filterParams,
+    paging
+  });
+  res.json(paging.paginated ? { ...report, total, limit: paging.limit, offset: paging.offset } : report);
 }));
 
 router.post("/api/finance/entries", withFeature("advanced_finance", async (req, res, db) => {
@@ -83,7 +129,7 @@ router.post("/api/finance/entries", withFeature("advanced_finance", async (req, 
           (entry_type, description, category, amount, paid_amount, due_date, competence_date, status,
            payment_method, payment_account, paid_at, cost_center_id, responsible_user_id, attachment_url,
            notes, recurrence, recurrence_end_date, installment_number, installment_count, parent_entry_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
       `, [
         entry.entry_type, entry.description, entry.category, amount, installment === 1 ? entry.paid_amount : 0,
         date.toISOString().slice(0, 10), installment === 1 ? entry.competence_date : date.toISOString().slice(0, 10),
@@ -91,8 +137,8 @@ router.post("/api/finance/entries", withFeature("advanced_finance", async (req, 
         installment === 1 ? entry.paid_at : null, entry.cost_center_id, req.user?.id || null, entry.attachment_url,
         entry.notes, entry.recurrence, entry.recurrence_end_date, installment, installmentCount, parentId
       ]);
-      if (!parentId) parentId = result.lastID;
-      created.push(result.lastID);
+      if (!parentId) parentId = result.returnedId;
+      created.push(result.returnedId);
     }
     await db.run("COMMIT");
     res.status(201).json(await db.all(`SELECT * FROM financial_entries WHERE id IN (${created.map(() => "?").join(",")}) ORDER BY id`, created));
@@ -143,8 +189,9 @@ router.post("/api/finance/cost-centers", withFeature("advanced_finance", async (
   if (!requireRole(req, res, ["admin", "finance"])) return;
   const name = String(req.body?.name || "").trim();
   if (!name) return res.status(400).json({ error: "Informe o centro de custo." });
-  const result = await db.run("INSERT INTO financial_cost_centers (name, description) VALUES (?, ?) ON CONFLICT (name) DO UPDATE SET description=EXCLUDED.description", [name, req.body?.description || ""]);
-  res.status(201).json(result);
+  // Devolve o próprio centro de custo (antes vazava o resultado cru do driver).
+  const result = await db.run("INSERT INTO financial_cost_centers (name, description) VALUES (?, ?) ON CONFLICT (name) DO UPDATE SET description=EXCLUDED.description RETURNING id", [name, req.body?.description || ""]);
+  res.status(201).json(await db.get("SELECT * FROM financial_cost_centers WHERE id = ?", [result.returnedId]));
 }));
 
 router.post("/api/finance/entries/:id/reconcile", withFeature("advanced_finance", async (req, res, db) => {
@@ -179,10 +226,10 @@ router.post("/api/finance/goals", withFeature("advanced_finance", async (req, re
     return res.status(400).json({ error: "Dados da meta inválidos." });
   }
   const result = await db.run(
-    "INSERT INTO financial_goals (name, period_start, period_end, target_amount, goal_type) VALUES (?, ?, ?, ?, ?)",
+    "INSERT INTO financial_goals (name, period_start, period_end, target_amount, goal_type) VALUES (?, ?, ?, ?, ?) RETURNING id",
     [name, req.body.period_start, req.body.period_end, Number(req.body.target_amount), req.body.goal_type || "revenue"]
   );
-  res.status(201).json(await db.get("SELECT * FROM financial_goals WHERE id=?", [result.lastID]));
+  res.status(201).json(await db.get("SELECT * FROM financial_goals WHERE id=?", [result.returnedId]));
 }));
 
 router.get("/api/finance/export.csv", withFeature("basic_finance", async (_req, res, db) => {

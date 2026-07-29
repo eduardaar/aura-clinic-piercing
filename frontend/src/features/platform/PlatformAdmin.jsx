@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ChevronRight, LogOut } from "lucide-react";
+import { ChevronRight, Eye, EyeOff, LogOut } from "lucide-react";
 import { Button, StatusBadge } from "../../components/common/Ui";
-import { Modal, CrudHeader, DataTable, ConfirmDeleteModal } from "../../components/common/Crud";
+import { Modal, CrudHeader, ConfirmDeleteModal } from "../../components/common/Crud";
+import { DataView } from "../../components/common/DataView";
 import { API } from "../../lib/api";
+import { BrandMark } from "../../components/common/BrandMark";
 import { asArray } from "../../lib/utils";
 
 // Painel do super-admin da plataforma (/plataforma).
@@ -21,17 +23,60 @@ function readPlatformSession() {
 
 const EMPTY_TENANT_FORM = { name: "", slug: "", admin_name: "", admin_email: "", admin_password: "" };
 
+// Data com ano: `formatDate` de lib/utils devolve dd/MM, e a lista mistura
+// clínicas cadastradas em anos diferentes.
 function tenantCreatedAt(value) {
   if (!value) return "—";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString("pt-BR");
 }
 
+// Códigos de plano vindos do backend. Um código desconhecido (base antiga, plano
+// novo) ainda aparece, só que capitalizado — melhor do que sumir da coluna.
+const PLAN_LABELS = {
+  essencial: "Essencial",
+  start: "Start",
+  profissional: "Profissional",
+  studio: "Studio",
+  premium: "Premium",
+  padrao: "Padrão",
+};
+
+const planLabel = (plan) => {
+  const code = String(plan || "").trim();
+  if (!code) return "—";
+  return PLAN_LABELS[code] || code[0].toUpperCase() + code.slice(1);
+};
+
+// O backend guarda o status da assinatura em código; a coluna mostrava o código.
+const SUBSCRIPTION_LABELS = {
+  trial_active: "Em teste",
+  trial_expired: "Teste expirado",
+  active: "Ativa",
+  overdue: "Em atraso",
+  canceled: "Cancelada",
+  suspended: "Suspensa",
+};
+
+const subscriptionLabel = (tenant) => {
+  const status = tenant.subscription_status || "trial_active";
+  const label = SUBSCRIPTION_LABELS[status] || status;
+  return status === "trial_active" ? `${label} · ${tenant.subscription_days_left ?? 0} dia(s)` : label;
+};
+
+// Opções vindas das próprias clínicas: oferecer um plano que ninguém assina só
+// produz filtro que devolve lista vazia.
+const planOptions = (tenants) =>
+  [...new Set(tenants.map((tenant) => tenant.plan).filter(Boolean))]
+    .sort()
+    .map((plan) => ({ value: plan, label: planLabel(plan) }));
+
 export function PlatformAdmin() {
   const [session, setSession] = useState(readPlatformSession);
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const [tenants, setTenants] = useState(null);
   const [metrics, setMetrics] = useState(null);
@@ -236,53 +281,72 @@ export function PlatformAdmin() {
     });
   }
 
-  // Sem sessão de plataforma: formulário de login do super-admin.
+  // Sem sessão: formulário de acesso.
+  //
+  // A tela é deliberadamente muda sobre o que existe atrás dela. Nada de
+  // "super-admin", "plataforma" ou "administração do SaaS": quem cair aqui por
+  // acaso não deve descobrir que achou o painel de controle do sistema. Sem
+  // link para cadastro/login de clínica também — não interligar as telas evita
+  // que uma leve à outra. A proteção real é a senha forte + o limite de 10
+  // tentativas a cada 15 min no backend; o silêncio aqui é só uma camada a mais.
   if (!token) {
     return (
-      <main className="login-screen">
-        <section className="login-panel">
-          <header className="login-brand">
-            <div className="login-monogram" aria-hidden="true">AC</div>
-            <div>
-              <strong>Aura Clinic</strong>
-              <span>Plataforma</span>
-            </div>
-          </header>
+      <main className="au-a-root au-a-restricted">
+        <section className="au-a-panel">
+          <div className="au-a-inner">
+            <header className="au-a-restricted-brand">
+              <BrandMark size={40} title="" />
+            </header>
 
-          <div className="login-copy">
-            <span className="login-kicker">Super-admin</span>
-            <h1>Painel da plataforma</h1>
-            <p>Acesso restrito à administração do SaaS: clínicas, planos e métricas.</p>
+            <h1 className="au-a-title">Acesso restrito</h1>
+
+            <form className="au-a-form" onSubmit={submitLogin}>
+              <div className="au-a-field">
+                <label htmlFor="au-p-email">E-mail</label>
+                <input
+                  id="au-p-email"
+                  className="au-a-input"
+                  type="email"
+                  autoComplete="username"
+                  required
+                  value={loginForm.email}
+                  onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })}
+                  placeholder="seu@email.com"
+                />
+              </div>
+
+              <div className="au-a-field">
+                <label htmlFor="au-p-password">Senha</label>
+                <div className="au-a-pass">
+                  <input
+                    id="au-p-password"
+                    className="au-a-input"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="current-password"
+                    required
+                    value={loginForm.password}
+                    onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })}
+                    placeholder="Digite a senha"
+                  />
+                  <button
+                    type="button"
+                    className="au-a-eye"
+                    onClick={() => setShowPassword((current) => !current)}
+                    aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                    aria-pressed={showPassword}
+                  >
+                    {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                  </button>
+                </div>
+              </div>
+
+              {loginError && <p className="au-a-error" role="alert">{loginError}</p>}
+
+              <button type="submit" className="au-a-submit" disabled={loginLoading}>
+                {loginLoading ? "Entrando…" : "Entrar"} <ChevronRight size={18} aria-hidden="true" />
+              </button>
+            </form>
           </div>
-
-          <form className="login-form" onSubmit={submitLogin}>
-            <label>
-              E-mail
-              <input
-                type="email"
-                autoComplete="username"
-                required
-                value={loginForm.email}
-                onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })}
-                placeholder="admin@plataforma.com"
-              />
-            </label>
-            <label>
-              Senha
-              <input
-                type="password"
-                autoComplete="current-password"
-                required
-                value={loginForm.password}
-                onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })}
-                placeholder="Digite a senha"
-              />
-            </label>
-            {loginError && <span className="form-error">{loginError}</span>}
-            <button className="login-submit" disabled={loginLoading}>
-              {loginLoading ? "Entrando…" : "Entrar na plataforma"} <ChevronRight size={18} />
-            </button>
-          </form>
         </section>
       </main>
     );
@@ -315,42 +379,72 @@ export function PlatformAdmin() {
             onAction={openCreate}
           />
 
-          {listError && <span className="form-error">{listError}</span>}
           {actionError && <span className="form-error">{actionError}</span>}
 
-          {tenants === null && !listError ? (
-            <p>Carregando clínicas…</p>
-          ) : (
-            <DataTable
-              rows={tenantList}
-              rowKey={(tenant) => tenant.id ?? tenant.slug}
-              columns={[
-                { key: "name", label: "Nome", render: (tenant) => tenant.name || "—" },
-                { key: "slug", label: "Código", render: (tenant) => tenant.slug || "—" },
-                { key: "status", label: "Status", render: (tenant) => (
+          <DataView
+            rows={tenantList}
+            rowKey={(tenant) => tenant.id ?? tenant.slug}
+            loading={tenants === null && !listError}
+            error={listError}
+            defaultSort={{ key: "created_at", dir: "desc" }}
+            searchPlaceholder="Buscar por nome ou código"
+            filters={[
+              {
+                key: "status",
+                label: "Status",
+                type: "select",
+                options: [
+                  { value: "ativo", label: "Ativo" },
+                  { value: "suspenso", label: "Suspenso" },
+                ],
+                match: (tenant, value) => (tenant.status || "ativo") === value,
+              },
+              {
+                key: "plan",
+                label: "Plano",
+                type: "select",
+                options: planOptions(tenantList),
+                match: (tenant, value) => tenant.plan === value,
+              },
+            ]}
+            columns={[
+              { key: "name", label: "Nome", value: (tenant) => tenant.name || "", render: (tenant) => tenant.name || "—" },
+              { key: "slug", label: "Código", value: (tenant) => tenant.slug || "", render: (tenant) => tenant.slug || "—" },
+              {
+                key: "status",
+                label: "Status",
+                value: (tenant) => tenant.status || "ativo",
+                render: (tenant) => (
                   <StatusBadge status={tenant.status || "ativo"} tone={tenant.status === "suspenso" ? "danger" : "ok"} />
-                ) },
-                { key: "plan", label: "Plano", render: (tenant) => tenant.plan || "—" },
-                { key: "subscription", label: "Assinatura", render: (tenant) => (
-                  <span>
-                    {tenant.subscription_status || "trial_active"}
-                    {tenant.subscription_status === "trial_active" ? ` · ${tenant.subscription_days_left ?? 0} dia(s)` : ""}
-                  </span>
-                ) },
-                { key: "created_at", label: "Criada em", render: (tenant) => tenantCreatedAt(tenant.created_at) },
-              ]}
-              actions={(tenant) => (
-                <>
-                  <button className="primary-button" onClick={() => activateOrRenewTenant(tenant)}>Ativar/Renovar</button>
-                  <button className="secondary-button" onClick={() => toggleStatus(tenant)}>
-                    {tenant.status === "suspenso" ? "Reativar" : "Suspender"}
-                  </button>
-                  <button className="danger-button" onClick={() => removeTenant(tenant)}>Excluir</button>
-                </>
-              )}
-              empty="Nenhuma clínica cadastrada até o momento."
-            />
-          )}
+                ),
+              },
+              { key: "plan", label: "Plano", value: (tenant) => tenant.plan || "", render: (tenant) => planLabel(tenant.plan) },
+              {
+                key: "subscription",
+                label: "Assinatura",
+                value: subscriptionLabel,
+                render: (tenant) => <span>{subscriptionLabel(tenant)}</span>,
+              },
+              {
+                key: "created_at",
+                label: "Criada em",
+                // Ordena pelo ISO do backend; dd/MM/aaaa ordenaria por dia.
+                value: (tenant) => String(tenant.created_at || ""),
+                render: (tenant) => tenantCreatedAt(tenant.created_at),
+              },
+            ]}
+            actions={(tenant) => (
+              <>
+                <button type="button" onClick={() => activateOrRenewTenant(tenant)}>Ativar/Renovar</button>
+                <button type="button" onClick={() => toggleStatus(tenant)}>
+                  {tenant.status === "suspenso" ? "Reativar" : "Suspender"}
+                </button>
+                <button type="button" onClick={() => removeTenant(tenant)}>Excluir</button>
+              </>
+            )}
+            empty="Nenhuma clínica cadastrada até o momento."
+            emptyFiltered="Nenhuma clínica corresponde aos filtros aplicados."
+          />
         </section>
 
         <Modal
@@ -396,30 +490,45 @@ export function PlatformAdmin() {
           <section className="panel">
             <div className="panel-heading">
               <h2>Métricas por clínica</h2>
-              <span>Contagens reportadas pelo backend</span>
+              <span>Contagens das clínicas ativas</span>
             </div>
-            <div className="table-wrap">
-              <table>
-                <tbody>
-                  {metricList.map((entry, index) => {
-                    const row = entry && typeof entry === "object" ? entry : {};
-                    const title = row.name || row.tenant_name || row.slug || row.tenant || `Clínica ${index + 1}`;
-                    // Shape livre: renderizamos defensivamente todas as contagens numéricas.
-                    const counts = Object.entries(row).filter(([key, value]) => typeof value === "number" && !["id", "tenant_id"].includes(key));
-                    return (
-                      <tr key={row.id ?? row.slug ?? index}>
-                        <td><strong>{String(title)}</strong></td>
-                        <td>
-                          {counts.length === 0
-                            ? "—"
-                            : counts.map(([key, value]) => `${key.replace(/_/g, " ")}: ${value}`).join(" · ")}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            {/*
+              Antes eram duas colunas sem cabeçalho, a segunda montada por
+              concatenação ("clients: 12 · appointments: 30"). O endpoint
+              /platform/metrics tem shape fixo — id, name, slug, clients e
+              appointments —, então a defensiva contra shape livre só custava:
+              mostrava o nome cru do campo em inglês e impedia ordenar pela
+              contagem, que é justamente a pergunta desta lista (quais clínicas
+              estão maiores ou paradas). Com colunas de verdade, ordena.
+            */}
+            <DataView
+              rows={metricList}
+              rowKey={(row) => row.id ?? row.slug}
+              defaultSort={{ key: "clients", dir: "desc" }}
+              searchPlaceholder="Buscar por nome ou código"
+              columns={[
+                { key: "name", label: "Clínica", value: (row) => row.name || "", render: (row) => row.name || "—" },
+                { key: "slug", label: "Código", value: (row) => row.slug || "", render: (row) => row.slug || "—" },
+                {
+                  key: "clients",
+                  label: "Clientes",
+                  align: "right",
+                  searchable: false,
+                  value: (row) => Number(row.clients || 0),
+                  render: (row) => Number(row.clients || 0).toLocaleString("pt-BR"),
+                },
+                {
+                  key: "appointments",
+                  label: "Agendamentos",
+                  align: "right",
+                  searchable: false,
+                  value: (row) => Number(row.appointments || 0),
+                  render: (row) => Number(row.appointments || 0).toLocaleString("pt-BR"),
+                },
+              ]}
+              empty="Nenhuma métrica disponível."
+              emptyFiltered="Nenhuma clínica corresponde à busca."
+            />
           </section>
         )}
 

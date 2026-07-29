@@ -3,27 +3,83 @@ import { withDb, withFeature } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { whatsappLink } from "../services/notifications.js";
 import { processDueCommunications, TEMPLATE_VARIABLES } from "../services/communications.js";
+import { parsePaging, limitOffset, countRows, pageResponse } from "../services/pagination.js";
 
 const router = Router();
 
-router.get("/api/notifications", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
-  const params = [];
-  const where = req.query.status ? "WHERE nq.status = ?" : "";
-  if (req.query.status) params.push(req.query.status);
-  const rows = await db.all(`
-    SELECT nq.*, p.name AS professional_name, a.appointment_date, a.appointment_time
-    FROM notification_queue nq
+const NOTIFICATION_FROM = `
+    notification_queue nq
     LEFT JOIN professionals p ON p.id = nq.professional_id
     LEFT JOIN appointments a ON a.id = nq.appointment_id
-    ${where}
-    ORDER BY nq.created_at DESC, nq.id DESC
-    LIMIT 100
-  `, params);
-  res.json(rows.map((row) => ({
+`;
+
+// Whitelist de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
+const NOTIFICATION_SORTABLE = {
+  created_at: "nq.created_at",
+  scheduled_at: "nq.scheduled_at",
+  sent_at: "nq.sent_at",
+  status: "nq.status",
+  channel: "nq.channel",
+  professional: "p.name"
+};
+
+// Teto histórico da rota: quem não pede paginação continua recebendo as 100
+// mais recentes, exatamente como antes. Quem manda limit/offset entra na
+// paginação real (LIMIT/OFFSET + total com os mesmos filtros).
+const LEGACY_LIMIT = 100;
+
+router.get("/api/notifications", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
+  const clauses = [];
+  const params = [];
+  if (req.query.status) {
+    clauses.push("nq.status = ?");
+    params.push(req.query.status);
+  }
+  if (req.query.channel) {
+    clauses.push("nq.channel = ?");
+    params.push(req.query.channel);
+  }
+  if (req.query.professional_id) {
+    clauses.push("nq.professional_id = ?");
+    params.push(req.query.professional_id);
+  }
+  if (req.query.appointment_id) {
+    clauses.push("nq.appointment_id = ?");
+    params.push(req.query.appointment_id);
+  }
+  if (req.query.from) {
+    clauses.push("nq.created_at >= ?");
+    params.push(req.query.from);
+  }
+  if (req.query.to) {
+    clauses.push("nq.created_at <= ?");
+    params.push(`${req.query.to} 23:59:59`);
+  }
+  if (req.query.search) {
+    clauses.push("(nq.destination ILIKE ? OR nq.message ILIKE ? OR nq.template ILIKE ?)");
+    params.push(...Array(3).fill(`%${req.query.search}%`));
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const paging = parsePaging(req.query, {
+    sortable: NOTIFICATION_SORTABLE,
+    tieBreak: "nq.id",
+    defaultOrderBy: "ORDER BY nq.created_at DESC, nq.id DESC"
+  });
+  const page = limitOffset(paging);
+  // Sem paginação, o teto histórico entra como placeholder (nada interpolado).
+  const legacy = paging.paginated ? { clause: "", params: [] } : { clause: " LIMIT ?", params: [LEGACY_LIMIT] };
+  const rows = await db.all(
+    `SELECT nq.*, p.name AS professional_name, a.appointment_date, a.appointment_time
+     FROM ${NOTIFICATION_FROM} ${where} ${paging.orderBy}${page.clause}${legacy.clause}`,
+    [...params, ...page.params, ...legacy.params]
+  );
+  const total = paging.paginated ? await countRows(db, { from: NOTIFICATION_FROM, where, params }) : rows.length;
+  const items = rows.map((row) => ({
     ...row,
     whatsapp_link: row.destination ? whatsappLink(row.destination, row.message) : ""
-  })));
+  }));
+  res.json(pageResponse(items, total, paging));
 }));
 
 router.get("/api/communication-templates", withFeature("message_templates", async (req, res, db) => {

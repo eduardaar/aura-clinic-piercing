@@ -70,11 +70,11 @@ Todo handler de rota é embrulhado pelo middleware `withDb` (`backend/src/middle
 
 3. **Client dedicado do pool com `search_path`** — `withDb` pega **um client do pool** Postgres (`pool.connect()`) e executa `SET search_path TO "tenant_<id>", public`. A partir daí toda query dessa requisição roda no schema da clínica.
 
-4. **Adaptador `db`** — `createDbAdapter(client)` (`backend/src/db/sqliteCompat.js`) embrulha o client numa interface estilo SQLite (`get` / `all` / `run` com placeholders `?`). Isso é injetado no handler como terceiro argumento (`handler(req, res, db)`).
+4. **Camada `db`** — `createDb(client)` (`backend/src/db/postgres.js`) embrulha o client numa interface fina de acesso ao Postgres (`get` / `all` / `run` com placeholders `?`). Isso é injetado no handler como terceiro argumento (`handler(req, res, db)`).
 
 5. **Autenticação (quando exigida)** — se `requiresAuth(req)` for verdadeiro (ver seção 4), chama `authenticateRequest(req, db)`. Sem usuário válido → `401`. O usuário resolvido é anexado em `req.user`.
 
-6. **Execução do handler** — a lógica de negócio roda usando o adaptador `db` (que já está apontando para o schema certo). Erros são capturados e devolvidos como `500` padronizado (detalhe do erro só em dev; em produção mensagem genérica, para não vazar stack/SQL).
+6. **Execução do handler** — a lógica de negócio roda usando o `db` (que já está apontando para o schema certo). Erros são capturados e devolvidos como `500` padronizado (detalhe do erro só em dev; em produção mensagem genérica, para não vazar stack/SQL).
 
 7. **Reset garantido do `search_path`** — no `finally`, **sempre** executa `SET search_path TO public` antes de devolver o client ao pool. Isso é **crítico**: um client devolvido "sujo" (ainda apontando para um tenant) vazaria dados entre clínicas na próxima requisição que o reutilizasse. Se o reset falhar, o client é **descartado** (`client.release(true)` destrói a conexão em vez de devolvê-la ao pool).
 
@@ -144,7 +144,7 @@ backend/src/
 ├── db/
 │   ├── schema.sql           Schema de CADA clínica (aplicado por tenant, idempotente)
 │   ├── platformSchema.sql   Schema de controle: platform.tenants, platform.platform_users
-│   └── sqliteCompat.js      Adaptador db estilo SQLite (get/all/run) sobre um client + applySchemaSql
+│   └── postgres.js          Camada db (get/all/run + transaction) sobre um client + applySchemaSql
 ├── middleware/
 │   ├── withDb.js            Wrapper de todo handler: resolve tenant, client+search_path, auth, reset
 │   ├── tenant.js            Resolução do tenant (token/X-Tenant/DEFAULT_TENANT) + cache
@@ -178,9 +178,13 @@ backend/tests/
 └── helpers.mjs              Utilitários de teste
 ```
 
-### Adaptador `db` estilo SQLite
+### A camada `db`
 
-Uma convenção importante: os handlers e services **não** usam o driver `pg` diretamente. Eles recebem o adaptador `db` (`createDbAdapter`), que expõe `get(sql, params)`, `all(sql, params)` e `run(sql, params)` com **placeholders posicionais `?`** (estilo SQLite). O adaptador converte `?` em `$1, $2, ...` e, em `INSERT` sem `RETURNING`, acrescenta `RETURNING id` automaticamente para popular `lastID` (exceto tabelas cuja PK não é `id`, como `catalog_settings` e `catalog_theme`). Isso mantém o código de negócio agnóstico e simples.
+Uma convenção importante: os handlers e services **não** usam o driver `pg` diretamente. Eles recebem o `db` (`createDb`), que expõe `get(sql, params)`, `all(sql, params)`, `run(sql, params)` e `transaction(fn)`.
+
+- **Placeholders posicionais `?`** são a convenção de parâmetro do projeto: o n-ésimo `?` vira `$n` antes de ir ao driver. A tradução é puramente posicional, o que permite montar cláusulas condicionais (`clauses.push("a.status = ?")`) sem renumerar nada à mão. Um `?` dentro de literal de string ou de operador `jsonb` também seria trocado — nesse caso escreva `$n` direto, sem misturar os dois estilos na mesma query.
+- **Nada é acrescentado à sua query.** Quem precisa do id gerado escreve `RETURNING id` explicitamente e lê `result.returnedId`; `result.changes` traz as linhas afetadas e `result.rows`, o que o `RETURNING` devolveu.
+- Passar pelo `db` é o que mantém o isolamento por `search_path`: o client é o da requisição, já apontado para o schema da clínica.
 
 ## 7. Estrutura de pastas do frontend
 
@@ -244,4 +248,4 @@ Complementam a UI base: `Input`, `Select`, `Textarea`, `Checkbox`, `PaymentSelec
 - Provisionamento e migrations multi-schema: `backend/src/services/tenants.js`
 - Schema de controle: `backend/src/db/platformSchema.sql`
 - Schema de clínica: `backend/src/db/schema.sql`
-- Adaptador de banco: `backend/src/db/sqliteCompat.js`
+- Camada de acesso ao banco: `backend/src/db/postgres.js`

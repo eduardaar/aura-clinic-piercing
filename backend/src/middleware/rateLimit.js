@@ -10,10 +10,13 @@ const skip = () => disabled;
 // CF-Connecting-IP carrega o IP verdadeiro (o CF o sobrescreve; o cliente não
 // consegue forjá-lo). Fora do Cloudflare, cai para req.ip (derivado do
 // trust proxy). ipKeyGenerator normaliza IPv6 (/56) para não vazar buckets.
-function clientKey(req) {
+export function clientIp(req) {
   const cf = req.headers["cf-connecting-ip"];
-  const ip = (Array.isArray(cf) ? cf[0] : cf) || req.ip || "";
-  return ipKeyGenerator(ip);
+  return (Array.isArray(cf) ? cf[0] : cf) || req.ip || "";
+}
+
+function clientKey(req) {
+  return ipKeyGenerator(clientIp(req));
 }
 
 // Rate limit do login: protege contra brute-force (10 tentativas / 15 min por IP).

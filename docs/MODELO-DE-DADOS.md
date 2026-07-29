@@ -5,7 +5,7 @@ Este documento descreve o modelo de dados da **Aura Clinic Piercing**. O banco �
 - **Fonte do schema de controle**: `backend/src/db/platformSchema.sql`
 - **Fonte do schema de clínica**: `backend/src/db/schema.sql`
 
-Convenções do schema de clínica (herdadas da compatibilidade estilo SQLite):
+Convenções do schema de clínica (herdadas da migração de SQLite para Postgres, concluída — hoje o backend é Postgres puro):
 
 - IDs são `SERIAL` (`id` como chave primária, salvo indicação em contrário).
 - Valores monetários e físicos usam `DOUBLE PRECISION`.

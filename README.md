@@ -102,7 +102,7 @@ backend/
     db/
       schema.sql             Schema de cada clínica (aplicado por tenant)
       platformSchema.sql     Schema de controle (tenants, platform_users)
-      sqliteCompat.js        Adaptador de acesso (get/all/run) por client
+      postgres.js            Camada de acesso ao Postgres (get/all/run) por client
     database/connection.js   Pool PostgreSQL
     data/uploads/            PDFs e imagens enviadas
   scripts/                   backup.sh, migrate-to-multitenant.mjs, test-isolation.mjs

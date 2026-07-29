@@ -102,8 +102,8 @@ export async function saveCatalogLayoutDraft(db, sections = [], userId = null) {
   if (!Array.isArray(sections)) return [];
   let layout = await db.get("SELECT * FROM catalog_layouts WHERE status = 'draft'");
   if (!layout) {
-    const result = await db.run("INSERT INTO catalog_layouts (status, version) VALUES ('draft', 1)");
-    layout = await db.get("SELECT * FROM catalog_layouts WHERE id = ?", [result.lastID]);
+    const result = await db.run("INSERT INTO catalog_layouts (status, version) VALUES ('draft', 1) RETURNING id");
+    layout = await db.get("SELECT * FROM catalog_layouts WHERE id = ?", [result.returnedId]);
   }
   await db.run("BEGIN");
   try {
@@ -143,8 +143,8 @@ export async function publishCatalogLayout(db, userId = null) {
   if (!draft) return [];
   let published = await db.get("SELECT * FROM catalog_layouts WHERE status = 'published'");
   if (!published) {
-    const result = await db.run("INSERT INTO catalog_layouts (status, version, published_at) VALUES ('published', 1, CURRENT_TIMESTAMP)");
-    published = await db.get("SELECT * FROM catalog_layouts WHERE id = ?", [result.lastID]);
+    const result = await db.run("INSERT INTO catalog_layouts (status, version, published_at) VALUES ('published', 1, CURRENT_TIMESTAMP) RETURNING id");
+    published = await db.get("SELECT * FROM catalog_layouts WHERE id = ?", [result.returnedId]);
   }
   const nextVersion = Number(published.version || 0) + 1;
   await db.run("BEGIN");
