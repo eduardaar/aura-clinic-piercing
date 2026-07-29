@@ -539,6 +539,10 @@ CREATE TABLE IF NOT EXISTS catalog_banners (
   title TEXT NOT NULL,
   subtitle TEXT,
   image_url TEXT,
+  mobile_image_url TEXT,
+  original_image_url TEXT,
+  alt_text TEXT,
+  image_transform JSONB,
   button_text TEXT,
   button_link TEXT,
   banner_width INTEGER NOT NULL DEFAULT 0,
@@ -547,6 +551,10 @@ CREATE TABLE IF NOT EXISTS catalog_banners (
   is_active INTEGER NOT NULL DEFAULT 1,
   sort_order INTEGER NOT NULL DEFAULT 0
 );
+ALTER TABLE catalog_banners ADD COLUMN IF NOT EXISTS mobile_image_url TEXT;
+ALTER TABLE catalog_banners ADD COLUMN IF NOT EXISTS original_image_url TEXT;
+ALTER TABLE catalog_banners ADD COLUMN IF NOT EXISTS alt_text TEXT;
+ALTER TABLE catalog_banners ADD COLUMN IF NOT EXISTS image_transform JSONB;
 
 CREATE TABLE IF NOT EXISTS catalog_featured_categories (
   id SERIAL PRIMARY KEY,
