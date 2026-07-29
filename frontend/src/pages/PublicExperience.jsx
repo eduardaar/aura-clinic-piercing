@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  Calendar,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   CircleDollarSign,
   Clock,
@@ -25,7 +25,7 @@ import { BookingChoiceGrid, Input, Select } from "../components/common/Ui";
 import { API_ORIGIN, publicApiFetch, usePublicFetch } from "../lib/api";
 import { asArray, asNumber, asObject, formatLongDate, removeAccents } from "../lib/utils";
 import { readRecentSearches, saveRecentSearch, smartSearchMatches, useDebouncedValue } from "../lib/smartSearch";
-import { ANODIZATION_COLOR_OPTIONS, JEWELRY_CATEGORY_OPTIONS, JEWELRY_LENGTH_OPTIONS, defaultPublicBooking, nextBookingDates, parseGalleryUrls } from "../lib/defaultForms";
+import { JEWELRY_CATEGORY_OPTIONS, defaultPublicBooking, nextBookingDates, parseGalleryUrls } from "../lib/defaultForms";
 import {
   catalogAvailabilityMatches,
   catalogCategoryTerms,
@@ -34,14 +34,13 @@ import {
   catalogPromotionForItem,
   catalogStockText,
   cleanDisplayText,
-  defaultContentSection,
   elegantProductName,
-  normalizeCatalogContentSection,
   promotionalPrice,
   splitColorOptions
 } from "../features/catalog/catalogUtils";
 import { variantCatalogLabel } from "../features/shared/helpers";
 import { catalogUrl, publicTenant, publicUrl, replaceCatalogState } from "../lib/publicRoutes";
+import { imageTransformStyle, normalizeImageTransform } from "../components/common/ImageEditor";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -197,8 +196,18 @@ export function PublicCatalog() {
   const catalogStyle = {
     "--catalog-primary": theme.primary_color || "#C8A96A",
     "--catalog-secondary": theme.secondary_color || "#D8C3A5",
-    "--catalog-bg": theme.background_color || "#F8F5F0",
+    "--catalog-accent": settings.footer_inherit_main_palette === "1" ? (theme.button_color || theme.primary_color) : (settings.footer_accent_color || theme.primary_color),
+    "--catalog-bg": settings.site_background || theme.background_color || "#F8F5F0",
+    "--catalog-section-bg": settings.section_background || "#ffffff",
     "--catalog-button": theme.button_color || "#C8A96A",
+    "--catalog-button-text": settings.button_text_color || "#ffffff",
+    "--catalog-text": settings.text_color || "#1c1c1c",
+    "--catalog-muted": settings.muted_text_color || "#74685e",
+    "--catalog-heading": settings.heading_color || settings.text_color || "#1c1c1c",
+    "--catalog-link": settings.link_color || theme.primary_color || "#8b642f",
+    "--catalog-link-hover": settings.link_hover_color || theme.button_color || "#5f421d",
+    "--catalog-icon": settings.icon_color || theme.primary_color || "#8b642f",
+    "--catalog-border": settings.border_color || theme.secondary_color || "#d8c3a5",
     fontFamily: theme.body_font || "Inter"
   };
 
@@ -263,9 +272,9 @@ function addToOrder(item) {
       <section className="catalog-main">
         <header className="catalog-topbar" style={{ order: -30 }}>
           <a className="catalog-client-brand" href={catalogUrl()}>
-            {theme.logo_url && <img src={catalogImageUrl(theme.logo_url)} alt={theme.brand_name || "Aura Clinic"} />}
-            <strong>{theme.brand_name || data.brand_name || "Aura Clinic"}</strong>
-            <span>{theme.slogan || data.slogan || "Clinic Piercing"}</span>
+            {theme.logo_url && <img src={catalogImageUrl(theme.logo_url)} alt={theme.brand_name || settings.company_display_name || "Estúdio"} />}
+            <strong>{theme.brand_name || settings.company_display_name || data.brand_name || "Estúdio"}</strong>
+            <span>{theme.slogan || data.slogan || "Piercing e joias selecionadas"}</span>
           </a>
           <div className="catalog-top-actions">
             <label className="catalog-search">
@@ -293,27 +302,14 @@ function addToOrder(item) {
           {data.subtitle && <small>{data.subtitle}</small>}
         </div>
 
-        <section
-          className={`catalog-premium-hero catalog-carousel-hero catalog-layout-${data.layout_style || "premium"}`}
-          style={{
-            ...layoutStyle("hero", 1),
-            backgroundImage: `linear-gradient(90deg, rgba(255, 253, 249, .08), rgba(255, 253, 249, .04), rgba(28, 28, 28, .14)), url(${catalogImageUrl(activeBanner.image_url || data.hero_image_url)})`,
-            minHeight: `${Number(activeBanner.banner_height || 340)}px`,
-            maxWidth: activeBanner.banner_width ? `${Number(activeBanner.banner_width)}px` : "none",
-            backgroundSize: activeBanner.banner_fit || "cover",
-            backgroundRepeat: "no-repeat",
-            marginLeft: activeBanner.banner_width ? "auto" : undefined,
-            marginRight: activeBanner.banner_width ? "auto" : undefined
-          }}
-        >
-          {banners.length > 1 && (
-            <div className="catalog-carousel-dots">
-              {banners.map((banner, index) => (
-                <button key={`${banner.title}-${index}`} className={index === bannerIndex % banners.length ? "active" : ""} aria-label={`Banner ${index + 1}`} onClick={() => setBannerIndex(index)} />
-              ))}
-            </div>
-          )}
-        </section>
+        <PublicCatalogBanner
+          banner={activeBanner}
+          banners={banners}
+          activeIndex={bannerIndex % banners.length}
+          layout={data.layout_style || "premium"}
+          style={layoutStyle("hero", 1)}
+          onChange={setBannerIndex}
+        />
 
         <section className="catalog-category-strip" style={layoutStyle("categories", 2)}>
           {categories.map(({ name, icon: Icon }) => (
@@ -346,7 +342,7 @@ function addToOrder(item) {
         </section>
 
         <section className="catalog-trust-strip" aria-label="Diferenciais do estúdio" style={{ order: 4 }}>
-          <span><ShieldCheck size={20} /><strong>Curadoria profissional</strong><small>Joias selecionadas pela Aura</small></span>
+          <span><ShieldCheck size={20} /><strong>Curadoria profissional</strong><small>Joias selecionadas com cuidado</small></span>
           <span><Gem size={20} /><strong>Materiais premium</strong><small>Titânio, ouro e peças seguras</small></span>
           <span><Truck size={20} /><strong>Envio orientado</strong><small>Pedido finalizado pelo WhatsApp</small></span>
           <span><Heart size={20} /><strong>Composição personalizada</strong><small>Favoritos e observações no pedido</small></span>
@@ -387,7 +383,7 @@ function addToOrder(item) {
 
         <section className="catalog-guide-section">
           <article>
-            <span className="eyebrow">Guia Aura</span>
+            <span className="eyebrow">Guia</span>
             <h2>Escolha com mais segurança</h2>
             <p>Na dúvida sobre tamanho, espessura, anodização ou região ideal Adicione observações no pedido e finalize pelo WhatsApp para receber orientação personalizada.</p>
           </article>
@@ -398,9 +394,12 @@ function addToOrder(item) {
           </div>
         </section>
 
-        <footer className="catalog-footer-benefits catalog-dynamic-footer" style={layoutStyle("footer", 20)}>
+        {settings.footer_enabled !== "0" && <footer
+          className="catalog-footer-benefits catalog-dynamic-footer"
+          style={{ ...layoutStyle("footer", 20), ...catalogFooterStyle(settings, theme) }}
+        >
           <div className="catalog-contact-heading">
-            <span className="eyebrow">Atendimento Aura</span>
+            <span className="eyebrow">Atendimento</span>
             <h2>Fale com a nossa equipe</h2>
             {settings.institutional_text && <p>{settings.institutional_text}</p>}
           </div>
@@ -415,7 +414,7 @@ function addToOrder(item) {
             {settings.company_instagram && (
               <a href={instagramCatalogUrl(settings.company_instagram)} target="_blank" rel="noreferrer">
                 <i><Instagram size={20} /></i>
-                <span><small>Acompanhe a Aura</small><strong>Instagram</strong><em>{settings.company_instagram}</em></span>
+                <span><small>Acompanhe nosso trabalho</small><strong>Instagram</strong><em>{settings.company_instagram}</em></span>
                 <ChevronRight size={17} />
               </a>
             )}
@@ -441,10 +440,12 @@ function addToOrder(item) {
             )}
           </div>
           <div className="catalog-footer-signature">
-            <strong>{theme.brand_name || "Aura Clinic Piercing"}</strong>
-            {theme.footer_text && <small>{theme.footer_text}</small>}
+            {(settings.footer_logo_url || theme.logo_url) && <img src={catalogImageUrl(settings.footer_logo_url || theme.logo_url)} alt={settings.footer_display_name || theme.brand_name || data.brand_name || "Marca do estúdio"} />}
+            {settings.footer_show_business_name !== "0" && <strong>{settings.footer_display_name || theme.brand_name || settings.company_display_name || data.brand_name || "Estúdio"}</strong>}
+            {settings.footer_show_slogan !== "0" && (settings.footer_slogan || theme.slogan) && <small>{settings.footer_slogan || theme.slogan}</small>}
+            {(settings.footer_copyright_text || theme.footer_text) && <small>{settings.footer_copyright_text || theme.footer_text}</small>}
           </div>
-        </footer>
+        </footer>}
         {Boolean(Number(theme.show_whatsapp_button || 1)) && <a className="floating-whatsapp" href={whatsappCatalogUrl(data.whatsapp_message, data.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle size={24} /><span>WhatsApp</span></a>}
       </section>
       {drawer && (
@@ -463,6 +464,102 @@ function addToOrder(item) {
       )}
     </main>
   );
+}
+
+function PublicCatalogBanner({ banner, banners, activeIndex, layout, style, onChange }) {
+  const transform = normalizeImageTransform(
+    typeof banner.image_transform === "string" ? safeJson(banner.image_transform) : banner.image_transform,
+    "16/5"
+  );
+  const imageStyle = {
+    ...imageTransformStyle(transform),
+    transformOrigin: `${transform.focalPointX}% ${transform.focalPointY}%`
+  };
+  const go = (direction) => onChange((activeIndex + direction + banners.length) % banners.length);
+  return (
+    <section
+      className={`catalog-premium-hero catalog-carousel-hero catalog-layout-${layout}`}
+      style={{ ...style, maxWidth: banner.banner_width ? `${Number(banner.banner_width)}px` : undefined }}
+      aria-roledescription="carrossel"
+      aria-label="Destaques do catálogo"
+      onKeyDown={(event) => {
+        if (event.key === "ArrowLeft") go(-1);
+        if (event.key === "ArrowRight") go(1);
+      }}
+      tabIndex={banners.length > 1 ? 0 : undefined}
+    >
+      <picture className="public-banner__media">
+        {banner.mobile_image_url && <source media="(max-width: 768px)" srcSet={catalogImageUrl(banner.mobile_image_url)} />}
+        <img
+          className="public-banner__image"
+          src={catalogImageUrl(banner.image_url)}
+          alt={banner.alt_text || banner.title || "Destaque do catálogo"}
+          width="1600"
+          height="500"
+          fetchpriority={activeIndex === 0 ? "high" : "auto"}
+          loading={activeIndex === 0 ? "eager" : "lazy"}
+          style={imageStyle}
+        />
+      </picture>
+      {(banner.title || banner.subtitle || banner.button_text) && (
+        <div className="catalog-banner-copy">
+          {banner.title && <h2>{banner.title}</h2>}
+          {banner.subtitle && <p>{banner.subtitle}</p>}
+          {banner.button_text && <a className="catalog-banner-cta" href={banner.button_link || "#catalog-products"}>{banner.button_text}</a>}
+        </div>
+      )}
+      {banners.length > 1 && <>
+        <button type="button" className="catalog-carousel-arrow previous" aria-label="Banner anterior" onClick={() => go(-1)}><ChevronLeft /></button>
+        <button type="button" className="catalog-carousel-arrow next" aria-label="Próximo banner" onClick={() => go(1)}><ChevronRight /></button>
+        <div className="catalog-carousel-dots" aria-label="Selecionar banner">
+          {banners.map((item, index) => (
+            <button key={`${item.title}-${index}`} className={index === activeIndex ? "active" : ""} aria-label={`Banner ${index + 1}`} aria-current={index === activeIndex ? "true" : undefined} onClick={() => onChange(index)} />
+          ))}
+        </div>
+      </>}
+    </section>
+  );
+}
+
+function catalogFooterStyle(settings, theme) {
+  const inherit = settings.footer_inherit_main_palette === "1";
+  const backgroundType = settings.footer_background_type || "solid";
+  const background = backgroundType === "gradient"
+    ? `linear-gradient(${settings.footer_gradient_direction || "135deg"}, ${settings.footer_gradient_start_color || theme.primary_color}, ${settings.footer_gradient_end_color || theme.secondary_color})`
+    : backgroundType === "image" && settings.footer_background_image_url
+      ? `linear-gradient(${hexOverlay(settings.footer_overlay_color, settings.footer_overlay_opacity)}), url(${catalogImageUrl(settings.footer_background_image_url)})`
+      : inherit ? (theme.background_color || "#f8f5f0") : (settings.footer_background_color || "#1c1c1c");
+  return {
+    "--footer-text": inherit ? (settings.text_color || "#1c1c1c") : settings.footer_text_color,
+    "--footer-muted": inherit ? (settings.muted_text_color || "#74685e") : settings.footer_muted_text_color,
+    "--footer-heading": inherit ? (settings.heading_color || "#1c1c1c") : settings.footer_heading_color,
+    "--footer-link": inherit ? (settings.link_color || theme.primary_color) : settings.footer_link_color,
+    "--footer-link-hover": inherit ? (settings.link_hover_color || theme.button_color) : settings.footer_link_hover_color,
+    "--footer-icon": inherit ? (settings.icon_color || theme.primary_color) : settings.footer_icon_color,
+    "--footer-border": inherit ? (settings.border_color || theme.secondary_color) : settings.footer_border_color,
+    "--footer-accent": inherit ? theme.primary_color : settings.footer_accent_color,
+    "--footer-logo-width": `${Number(settings.footer_logo_max_width || 180)}px`,
+    "--footer-logo-height": `${Number(settings.footer_logo_max_height || 96)}px`,
+    "--footer-brand-bg": settings.footer_brand_background_color || "transparent",
+    background,
+    backgroundPosition: settings.footer_background_position || "50% 50%",
+    backgroundSize: settings.footer_background_size || "cover",
+    borderRadius: `${Number(settings.footer_border_radius || 24)}px`,
+    padding: `${Number(settings.footer_spacing || 40)}px`,
+    maxWidth: `${Number(settings.footer_container_width || 1280)}px`,
+    marginInline: "auto"
+  };
+}
+
+function hexOverlay(color = "#000000", opacity = 0) {
+  const hex = String(color).replace("#", "");
+  if (!/^[0-9a-f]{6}$/i.test(hex)) return `rgba(0,0,0,${Number(opacity || 0)})`;
+  const values = [0, 2, 4].map((index) => parseInt(hex.slice(index, index + 2), 16));
+  return `rgba(${values.join(",")},${Math.max(0, Math.min(1, Number(opacity || 0)))})`;
+}
+
+function safeJson(value) {
+  try { return JSON.parse(value || "{}"); } catch { return {}; }
 }
 
 function CatalogSelect({ label, value, options, onChange }) {
@@ -497,8 +594,6 @@ function CatalogBookingWidget() {
   const services = asArray(safeData.services);
   const allProfessionals = asArray(safeData.professionals);
   const professionals = allProfessionals.filter((professional) => professionalMatchesService(professional, form.service_id));
-  const bookingDates = nextBookingDates(10);
-
   useEffect(() => {
     if (!services.length || form.service_id) return;
     setForm((current) => ({ ...current, service_id: String(services[0].id) }));
@@ -528,7 +623,7 @@ function CatalogBookingWidget() {
       <div>
         <span className="eyebrow">Agenda online</span>
         <h2>Escolha Um Horário Disponível</h2>
-        <p>Reserve pelo link público da Aura. A equipe confirma manualmente pelo WhatsApp.</p>
+        <p>Reserve pelo link público do estúdio. A equipe confirma manualmente pelo WhatsApp.</p>
       </div>
       <div className="catalog-booking-controls">
         <Select label="Serviço" value={form.service_id} onChange={(value) => setForm({ ...form, service_id: value, professional_id: "", appointment_time: "" })}>
@@ -558,7 +653,7 @@ function CatalogContentSections({ sections }) {
       {active.sort((a, b) => Number(a.order || 0) - Number(b.order || 0)).map((section, index) => (
         <article className={`catalog-content-card ${section.media_type || "image"}`} key={`${section.title}-${index}`}>
           <div>
-            <span className="eyebrow">{section.kicker || "Aura Clinic"}</span>
+            <span className="eyebrow">{section.kicker || "Conteúdo especial"}</span>
             <h2>{section.title}</h2>
             <p>{section.text}</p>
             {section.button_text && section.button_link && <a className="secondary-button" href={tenantAwareContentUrl(section.button_link)}>{section.button_text}</a>}
@@ -615,7 +710,7 @@ function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, th
   const finalValue = promotionalValue || saleValue;
   const pixValue = finalValue * 0.95;
   const installmentValue = finalValue / 3;
-  const shareText = `${settings.product_share_text || "Olha essa joia da Aura Clinic:"} ${productName} - ${description} - ${currency.format(finalValue)}.`;
+  const shareText = `${settings.product_share_text || "Olha esta joia:"} ${productName} - ${description} - ${currency.format(finalValue)}.`;
   const notifyText = `Olá! Quero ser avisada quando a joia ${productName} voltar ao estoque.`;
   const stockText = catalogStockText(item, theme, settings);
   const available = Number(item.quantity || 0) > 0 && item.status !== "esgotado";
@@ -672,7 +767,7 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
     setActiveImage(uniqueGalleryImages[0]?.image_url || item.photo_url || item.image_url || "");
   }, [item.id, selectedVariantId]);
 
-  const description = item.description || "Joia selecionada da curadoria Aura Clinic.";
+  const description = item.description || "Joia selecionada com curadoria profissional.";
   const detailItems = [
     selectedVariant.material && { label: "Material", value: elegantProductName(selectedVariant.material) },
     selectedColor && { label: "Observação de Cor", value: elegantProductName(selectedColor) },
@@ -699,8 +794,8 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
       <section className="catalog-main catalog-product-detail-page">
         <header className="catalog-topbar">
           <a className="catalog-client-brand" href={catalogUrl()}>
-            {theme.logo_url && <img src={catalogImageUrl(theme.logo_url)} alt={theme.brand_name || "Aura Clinic"} />}
-            <strong>{theme.brand_name || data.brand_name || "Aura Clinic"}</strong>
+            {theme.logo_url && <img src={catalogImageUrl(theme.logo_url)} alt={theme.brand_name || settings.company_display_name || "Estúdio"} />}
+            <strong>{theme.brand_name || settings.company_display_name || data.brand_name || "Estúdio"}</strong>
             <span>{theme.slogan || data.slogan || "Clinic Piercing"}</span>
           </a>
           <div className="catalog-top-actions">
@@ -765,7 +860,7 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
               {!available && settings.whatsapp_phone && <a className="primary-button" href={whatsappCatalogUrl(`Ola! Gostaria de consultar a disponibilidade desta joia:\n\nProduto: ${productName}\nVariacao: ${variantCatalogLabel(selectedVariant)}\nMaterial: ${selectedVariant.material || item.material || "nao informado"}\nCor: ${selectedColor || selectedVariant.color || item.color || "nao informada"}\nTamanho: ${variantCatalogLabel(selectedVariant)}\nLink: ${window.location.href}\n\nPodem me informar prazo e valor?`, settings.whatsapp_phone)} target="_blank" rel="noreferrer">Pedir pelo WhatsApp</a>}
               {!available && !settings.whatsapp_phone && <span className="form-error">WhatsApp de vendas nao configurado. Avise a administracao.</span>}
               {settings.whatsapp_phone && <a className="secondary-button" href={whatsappCatalogUrl(`Olá! Quero informações sobre ${productName}, ${variantCatalogLabel(selectedVariant)}${selectedColor ? `, na cor ${selectedColor}` : ""}.`, settings.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Falar com a Aura</a>}
-              <a className="secondary-button" href={whatsappShareUrl(`${settings.product_share_text || "Olha essa joia da Aura Clinic:"} ${item.name} - ${currency.format(saleValue)}.`)} target="_blank" rel="noreferrer">Compartilhar</a>
+              <a className="secondary-button" href={whatsappShareUrl(`${settings.product_share_text || "Olha esta joia:"} ${item.name} - ${currency.format(saleValue)}.`)} target="_blank" rel="noreferrer">Compartilhar</a>
             </div>
             {item.notes && <div className="catalog-notes-box"><strong>Observações</strong><p>{item.notes}</p></div>}
           </div>
@@ -834,11 +929,11 @@ function CatalogDrawer({ type, favorites, orderItems, orderTotal, whatsappPhone,
   }, [isFavorites, orderItems]);
   const favoriteMessage = safeFavorites.length
     ? `Olá! Quero ajuda com estas joias favoritas: ${safeFavorites.map((item) => item.name).join(", ")}.`
-    : "Olá! Quero ajuda para escolher minhas joias favoritas no catálogo da Aura Clinic.";
+    : "Olá! Quero ajuda para escolher minhas joias favoritas no catálogo.";
   const finalTotal = couponQuote?.valid ? couponQuote.final_amount : orderTotal;
   const message = safeOrderItems.length
     ? `Olá! Quero agendar com estas joias: ${safeOrderItems.map((item) => `${item.qty || 1}x ${item.name}${item.customer_notes ? ` (${item.customer_notes})` : ""}`).join(", ")}. ${couponQuote?.coupon ? `Cupom: ${couponQuote.coupon.code}. ` : ""}Total aproximado: ${currency.format(asNumber(finalTotal))}.`
-    : "Olá! Quero ajuda para montar meu pedido no catálogo da Aura Clinic.";
+    : "Olá! Quero ajuda para montar meu pedido no catálogo.";
 
   async function applyCoupon() {
     setCouponError("");
@@ -995,14 +1090,14 @@ export function PublicCheckout() {
     <main className="public-checkout-page">
       <section className="booking-shell">
         <header className="booking-public-header">
-          <a className="catalog-client-brand" href={catalogUrl()}><strong>{data.theme?.brand_name || "Aura Clinic"}</strong><span>Checkout direto</span></a>
+          <a className="catalog-client-brand" href={catalogUrl()}><strong>{data.theme?.brand_name || data.settings?.company_display_name || "Estúdio"}</strong><span>Checkout direto</span></a>
           <a className="secondary-button" href={catalogUrl()}>Voltar ao catálogo</a>
         </header>
         <div className="checkout-grid">
           <form className="panel appointment-form" onSubmit={submit}>
             <div className="panel-heading">
               <h2>Finalizar compra</h2>
-              <span>Vitrine pública Aura Clinic</span>
+              <span>Vitrine pública do estúdio</span>
             </div>
             <div className="form-grid">
               <Input label="Nome completo" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} required />
@@ -1142,7 +1237,7 @@ export function PublicBooking() {
         </header>
         <div className="booking-hero">
           <span className="eyebrow">Agendamento online</span>
-          <h1>Reserve Seu Horário Na Aura Clinic</h1>
+          <h1>Reserve seu horário</h1>
           <p>Escolha Serviço, Profissional, Data E Horário Disponível. A equipe confirma manualmente sua solicitação.</p>
         </div>
         <div className="booking-progress">
@@ -1270,12 +1365,6 @@ export function PublicBooking() {
   );
 }
 
-function whatsappUrl(phone, message) {
-  const digits = String(phone || "").replace(/\D/g, "");
-  const normalized = digits.startsWith("55") ? digits : `55${digits}`;
-  return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
-}
-
 function whatsappShareUrl(message) {
   return `https://wa.me/?text=${encodeURIComponent(message)}`;
 }
@@ -1288,7 +1377,7 @@ function instagramCatalogUrl(handle = "") {
 function whatsappCatalogUrl(message, phone) {
   const digits = String(phone || "").replace(/\D/g, "");
   const normalized = digits ? (digits.startsWith("55") ? digits : `55${digits}`) : "";
-  return `https://wa.me/${normalized}?text=${encodeURIComponent(message || "Olá! Vim pelo catálogo online da Aura Clinic.")}`;
+  return `https://wa.me/${normalized}?text=${encodeURIComponent(message || "Olá! Vim pelo catálogo online.")}`;
 }
 
 function catalogProductUrl(id) {

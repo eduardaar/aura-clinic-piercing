@@ -9,6 +9,7 @@ import "./styles/auth.css";
 import "./styles/directory.css";
 // Por último de propósito: é a camada que define o layout do shell autenticado.
 import "./styles/appshell.css";
+import "./styles/catalog-v2.css";
 import { Login } from "./components/auth/Login";
 import { Sidebar } from "./components/layout/Sidebar";
 import { Loading } from "./components/common/Feedback";
