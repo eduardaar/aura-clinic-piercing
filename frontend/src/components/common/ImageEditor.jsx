@@ -16,16 +16,18 @@ export const DEFAULT_IMAGE_TRANSFORM = {
 };
 
 export function normalizeImageTransform(value = {}, aspectRatio = null) {
+  /** @type {Record<string, any>} */
+  const source = value && typeof value === "object" ? value : {};
   return {
     ...DEFAULT_IMAGE_TRANSFORM,
-    ...value,
-    fitMode: ["contain", "cover", "custom"].includes(value.fitMode) ? value.fitMode : "contain",
-    focalPointX: clamp(value.focalPointX, 0, 100, 50),
-    focalPointY: clamp(value.focalPointY, 0, 100, 50),
-    zoom: clamp(value.zoom, 0.5, 3, 1),
-    rotation: Number(value.rotation || 0) % 360,
-    flipHorizontal: Boolean(value.flipHorizontal),
-    aspectRatio: value.aspectRatio || aspectRatio
+    ...source,
+    fitMode: ["contain", "cover", "custom"].includes(source.fitMode) ? source.fitMode : "contain",
+    focalPointX: clamp(source.focalPointX, 0, 100, 50),
+    focalPointY: clamp(source.focalPointY, 0, 100, 50),
+    zoom: clamp(source.zoom, 0.5, 3, 1),
+    rotation: Number(source.rotation || 0) % 360,
+    flipHorizontal: Boolean(source.flipHorizontal),
+    aspectRatio: source.aspectRatio || aspectRatio
   };
 }
 

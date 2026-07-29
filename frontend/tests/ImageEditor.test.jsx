@@ -11,6 +11,15 @@ describe("editor de imagens multi-contexto", () => {
     });
   });
 
+  it("mantém compatibilidade com tenants antigos sem transformação salva", () => {
+    expect(normalizeImageTransform(null)).toMatchObject({
+      fitMode: "contain",
+      focalPointX: 50,
+      focalPointY: 50,
+      zoom: 1
+    });
+  });
+
   it("limita coordenadas e zoom a valores seguros", () => {
     expect(normalizeImageTransform({ focalPointX: -20, focalPointY: 180, zoom: 9 })).toMatchObject({
       focalPointX: 0,
