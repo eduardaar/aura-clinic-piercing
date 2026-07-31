@@ -54,7 +54,10 @@ export async function createSalesOrder(db, body, user) {
   const total = items.reduce((sum, item) => sum + Number(item.unit_price || 0) * Number(item.quantity || 1), 0);
   const orderType = String(body.order_type || "produto");
   const source = String(body.source || "site");
-  const status = String(body.status || "concluida");
+  // Chamadas públicas nunca podem escolher um estado financeiro conclusivo.
+  // Pagamento só é confirmado por um usuário autenticado (ou, futuramente,
+  // pelo webhook autenticado do gateway).
+  const status = user ? String(body.status || "concluida") : "pendente";
 
   // Cliente, pedido, itens, baixa de estoque e pagamento são uma coisa só:
   // metade disso gravado deixaria estoque baixado sem venda (ou venda sem
@@ -103,10 +106,12 @@ export async function createSalesOrder(db, body, user) {
           item.notes || ""
         ]
       );
-      if (status !== "cancelada") await deductSoldProductStock(tx, item, result.returnedId);
+      if (status === "concluida" || status === "pago") {
+        await deductSoldProductStock(tx, item, result.returnedId);
+      }
     }
 
-    if (total > 0) {
+    if (total > 0 && (status === "concluida" || status === "pago")) {
       await tx.run(
         "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         [
@@ -115,7 +120,7 @@ export async function createSalesOrder(db, body, user) {
           total,
           orderType,
           body.payment_method || "Pix",
-          status === "cancelada" ? "pendente" : "pago",
+          "pago",
           localTimestamp()
         ]
       );

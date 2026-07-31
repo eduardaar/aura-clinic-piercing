@@ -31,6 +31,9 @@ test("PDF clínico exige autenticação e não pode ser lido por outro tenant", 
 
   const own = await req(created.json.pdf_url.replace(/^\/api/, ""), { tenant: context.a.slug, token: context.a.token });
   assert.equal(own.status, 200);
+  assert.match(own.headers.get("content-type") || "", /^application\/pdf\b/);
+  assert.match(own.headers.get("content-disposition") || "", /^inline;/);
+  assert.equal(own.headers.get("cache-control"), "private, no-store");
   const anonymous = await req(created.json.pdf_url.replace(/^\/api/, ""), { tenant: context.a.slug });
   assert.equal(anonymous.status, 401);
   const foreign = await req(created.json.pdf_url.replace(/^\/api/, ""), { tenant: context.b.slug, token: context.b.token });

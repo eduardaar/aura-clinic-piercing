@@ -528,7 +528,7 @@ function catalogFooterStyle(settings, theme) {
     ? `linear-gradient(${settings.footer_gradient_direction || "135deg"}, ${settings.footer_gradient_start_color || theme.primary_color}, ${settings.footer_gradient_end_color || theme.secondary_color})`
     : backgroundType === "image" && settings.footer_background_image_url
       ? `linear-gradient(${hexOverlay(settings.footer_overlay_color, settings.footer_overlay_opacity)}), url(${catalogImageUrl(settings.footer_background_image_url)})`
-      : inherit ? (theme.background_color || "#f8f5f0") : (settings.footer_background_color || "#1c1c1c");
+    : inherit ? (theme.background_color || "#f8f5f0") : (settings.footer_background_color || theme.background_color || "#f8f5f0");
   return {
     "--footer-text": inherit ? (settings.text_color || "#1c1c1c") : settings.footer_text_color,
     "--footer-muted": inherit ? (settings.muted_text_color || "#74685e") : settings.footer_muted_text_color,
@@ -856,7 +856,7 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
             </div>
             <div className="catalog-detail-actions">
               {available && Boolean(Number(theme.show_schedule_button || 1)) && <button className="primary-button" type="button" onClick={() => onScheduleWithJewelry({ ...selectedVariant, selected_color: selectedColor })}>Quero Agendar Com Essa Joia</button>}
-              {available && Boolean(Number(theme.show_buy_button)) && <button className="secondary-button" type="button" onClick={() => onAddToOrder({ ...selectedVariant, selected_color: selectedColor })}>Comprar Agora</button>}
+              {available && Boolean(Number(theme.show_buy_button)) && <button className="secondary-button" type="button" onClick={() => onAddToOrder({ ...selectedVariant, selected_color: selectedColor })}>Adicionar ao carrinho</button>}
               {!available && settings.whatsapp_phone && <a className="primary-button" href={whatsappCatalogUrl(`Ola! Gostaria de consultar a disponibilidade desta joia:\n\nProduto: ${productName}\nVariacao: ${variantCatalogLabel(selectedVariant)}\nMaterial: ${selectedVariant.material || item.material || "nao informado"}\nCor: ${selectedColor || selectedVariant.color || item.color || "nao informada"}\nTamanho: ${variantCatalogLabel(selectedVariant)}\nLink: ${window.location.href}\n\nPodem me informar prazo e valor?`, settings.whatsapp_phone)} target="_blank" rel="noreferrer">Pedir pelo WhatsApp</a>}
               {!available && !settings.whatsapp_phone && <span className="form-error">WhatsApp de vendas nao configurado. Avise a administracao.</span>}
               {settings.whatsapp_phone && <a className="secondary-button" href={whatsappCatalogUrl(`Olá! Quero informações sobre ${productName}, ${variantCatalogLabel(selectedVariant)}${selectedColor ? `, na cor ${selectedColor}` : ""}.`, settings.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Falar com a Aura</a>}
@@ -1042,13 +1042,13 @@ export function PublicCheckout() {
         whatsapp: form.whatsapp,
         instagram: form.instagram,
         payment_method: form.payment_method,
-        status: "concluida",
         source: "site",
         order_type: "produto",
         notes: form.notes,
         items: safeOrderItems.map((item) => ({
           item_type: "produto",
           product_id: item.id,
+          product_variant_id: item.selected_variant_id || null,
           item_name: item.name,
           quantity: Number(item.qty || 1),
           unit_price: Number(item.sale_value || 0),
@@ -1073,10 +1073,10 @@ export function PublicCheckout() {
       <main className="public-checkout-page">
         <section className="booking-shell">
           <div className="panel-heading">
-            <h2>Compra registrada</h2>
-            <span>Seu pedido foi enviado com sucesso.</span>
+            <h2>Pedido registrado</h2>
+            <span>Seu pedido foi recebido e aguarda confirmação.</span>
           </div>
-          <p>Pedido #{success.id} confirmado para {success.full_name}.</p>
+          <p>Pedido #{success.id} criado para {success.full_name}. O pagamento ainda não foi confirmado.</p>
           <div className="checkout-actions">
             <a className="primary-button" href={catalogUrl()}>Voltar ao catálogo</a>
             <a className="secondary-button" href={catalogUrl()}>Continuar comprando</a>
