@@ -2,7 +2,7 @@
 import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
 import { parseUpload, privateUpload, registerPrivateFiles } from "../middleware/upload.js";
-import { normalizeAppointment, addMinutesToTime } from "../services/utils.js";
+import { normalizeAppointment, addMinutesToTime, localTimestamp } from "../services/utils.js";
 import { parsePaging, pageResponse } from "../services/pagination.js";
 import {
   listAppointments,
@@ -14,8 +14,10 @@ import {
   normalizeAppointmentItems,
   appointmentTotalsFromItems,
   replaceAppointmentItems,
-  appointmentItemsFromBody
+  appointmentItemsFromBody,
+  registerCompletionPayments
 } from "../services/appointments.js";
+import { validateCoupon } from "../services/discounts.js";
 import { ensurePostCareFollowups } from "../services/postcare.js";
 import { awardLoyaltyForAppointment } from "../services/loyalty.js";
 import { ensureSalesOrderForAppointment } from "../services/sales.js";
@@ -130,8 +132,11 @@ router.post("/api/appointments", withDb(async (req, res, db) => {
   const variantId = optionalId(firstItem.jewelry_variant_id || body.jewelry_variant_id);
   const depositValue = Number(body.deposit_value ?? service?.deposit_value ?? 0);
   const totals = appointmentTotalsFromItems(items, { total_value: body.total_value, deposit_value: depositValue });
-  const totalValue = totals.totalValue;
-  const remainingValue = totals.remainingValue;
+  const couponQuote = body.coupon_code ? await validateCoupon(db, body.coupon_code, { amount: totals.totalValue, client_id: client.id, items: items.map((item) => ({ product_id: item.jewelry_id, category: item.category, unit_price: item.jewelry_unit_price, quantity: item.quantity })) }) : null;
+  if (couponQuote && !couponQuote.valid) return res.status(400).json({ error: couponQuote.error });
+  const discountValue = Number(couponQuote?.discount_amount || 0);
+  const totalValue = Math.max(0, totals.totalValue - discountValue);
+  const remainingValue = Math.max(0, totalValue - depositValue);
   const duration = totals.durationMinutes || Number(service?.duration_minutes || body.duration_minutes || 40);
   const endTime = addMinutesToTime(body.appointment_time, duration);
   // Agendamento + itens + sinal formam um registro só: agendamento sem itens
@@ -139,11 +144,14 @@ router.post("/api/appointments", withDb(async (req, res, db) => {
   const appointmentId = await db.transaction(async (tx) => {
     const result = await tx.run(
       `INSERT INTO appointments
-      (client_id, professional_id, service_id, jewelry_id, jewelry_variant_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, total_value, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, status, notes, reference_photo_url, duration_minutes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-      [client.id, body.professional_id, serviceId || firstItem.service_id || null, jewelryId, variantId, body.procedure || firstItem.procedure_name || service?.name || "Atendimento", body.description, body.piercing_region || firstItem.region || "Atendimento", body.appointment_date, body.appointment_time, endTime, totalValue, depositValue, remainingValue, body.deposit_payment_method, body.remaining_payment_method, body.status || "pendente", body.notes, photoUrl, duration]
+      (client_id, professional_id, service_id, jewelry_id, jewelry_variant_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, total_value, service_value, jewelry_value, subtotal_value, discount_value, coupon_id, coupon_code, coupon_snapshot, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, deposit_status, deposit_paid_at, financial_notes, status, notes, reference_photo_url, duration_minutes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      [client.id, body.professional_id, serviceId || firstItem.service_id || null, jewelryId, variantId, body.procedure || firstItem.procedure_name || service?.name || "Atendimento", body.description, body.piercing_region || firstItem.region || "Atendimento", body.appointment_date, body.appointment_time, endTime, totalValue, totals.procedureValue, totals.jewelryValue, totals.totalValue, discountValue, couponQuote?.coupon?.id || null, couponQuote?.coupon?.code || null, couponQuote ? JSON.stringify(couponQuote) : null, depositValue, remainingValue, body.deposit_payment_method, body.remaining_payment_method, depositValue > 0 ? (body.deposit_status || "pago") : "nao_aplicavel", depositValue > 0 ? (body.deposit_paid_at || `${body.appointment_date}T${body.appointment_time}:00`) : null, body.financial_notes || "", body.status || "pendente", body.notes, photoUrl, duration]
     );
     await replaceAppointmentItems(tx, result.returnedId, items);
+    if (couponQuote?.coupon?.id) {
+      await tx.run("INSERT INTO coupon_usages (coupon_id, client_id, appointment_id, original_amount, discount_amount, final_amount) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (coupon_id, appointment_id) WHERE appointment_id IS NOT NULL DO NOTHING", [couponQuote.coupon.id, client.id, result.returnedId, totals.totalValue, discountValue, totalValue]);
+    }
     if (depositValue > 0) {
       await tx.run(
         "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, 'sinal', ?, 'pago', ?)",
@@ -154,6 +162,30 @@ router.post("/api/appointments", withDb(async (req, res, db) => {
   });
   const created = await listAppointments(db, "WHERE a.id = ?", [appointmentId]).then((rows) => rows[0]);
   res.status(201).json(created);
+}));
+
+router.post("/api/appointments/:id/complete", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
+  const before = await db.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
+  if (!before) return res.status(404).json({ error: "Agendamento não encontrado." });
+  if (before.status === "atendido" && req.user?.role !== "admin") return res.status(403).json({ error: "Somente administradores podem alterar um fechamento concluído." });
+  if (before.status === "atendido" && !String(req.body.reason || "").trim()) return res.status(400).json({ error: "Informe o motivo da alteração financeira." });
+  try {
+    await db.transaction(async (tx) => {
+      await registerCompletionPayments(tx, req.params.id, req.body.payments, req.user?.id);
+      await tx.run("UPDATE appointments SET status = 'atendido', financial_notes = ?, updated_at = ? WHERE id = ?", [req.body.financial_notes || before.financial_notes || "", localTimestamp(), req.params.id]);
+      const after = await tx.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
+      await tx.run("INSERT INTO appointment_financial_audit (appointment_id, user_id, action, reason, before_snapshot, after_snapshot) VALUES (?, ?, ?, ?, ?, ?)", [req.params.id, req.user?.id, before.status === "atendido" ? "reopen_financial_close" : "financial_close", req.body.reason || null, JSON.stringify(before), JSON.stringify(after)]);
+      await deductJewelryStock(tx, req.params.id);
+      await ensureSalesOrderForAppointment(tx, req.params.id, req.user);
+      await ensurePostCareFollowups(tx, req.params.id);
+      await awardLoyaltyForAppointment(tx, req.params.id);
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "Não foi possível concluir o atendimento." });
+  }
+  const updated = await listAppointments(db, "WHERE a.id = ?", [req.params.id]).then((rows) => rows[0]);
+  res.json(updated);
 }));
 
 router.patch("/api/appointments/:id", withDb(async (req, res, db) => {

@@ -11,6 +11,7 @@ import { buildCalendar, buildTimeSlots, dateKey, movePeriod } from "../../lib/ca
 import { defaultAppointment, defaultProcedureForm, defaultProfessionalForm, defaultScheduleBlock, defaultServiceForm } from "../../lib/defaultForms";
 import { appointmentWhatsAppMessage, calcRemaining, currency, personName, statusClass, statuses, weekdayLabel, whatsappUrl } from "../../features/shared/helpers";
 import { Toggle } from "../../pages/CatalogCustomization";
+import { SmartCombobox } from "../../components/common/SmartCombobox";
 
 // formatDate() de lib/utils devolve dd/MM sem ano, e a agenda lista atendimentos
 // de anos diferentes na mesma tabela — aqui a data precisa do ano para não virar
@@ -260,10 +261,14 @@ export function Appointments() {
             <Input type="number" label="Valor total" value={form.total_value} onChange={(v) => setForm(calcRemaining({ ...form, total_value: v }))} />
             <Input type="number" label="Valor do sinal" value={form.deposit_value} onChange={(v) => setForm(calcRemaining({ ...form, deposit_value: v }))} />
             <Input type="number" label="Valor restante" value={form.remaining_value} onChange={(v) => setForm({ ...form, remaining_value: v })} />
+            <Input label="Cupom" value={form.coupon_code || ""} onChange={(v) => setForm({ ...form, coupon_code: v.toUpperCase() })} />
             <PaymentSelect label="Forma de pagamento do sinal" value={form.deposit_payment_method} onChange={(v) => setForm({ ...form, deposit_payment_method: v })} />
+            <Select label="Status do sinal" value={form.deposit_status || "pendente"} onChange={(v) => setForm({ ...form, deposit_status: v })}><option value="pendente">Pendente</option><option value="pago">Pago</option><option value="nao_aplicavel">Não aplicável</option></Select>
+            <Input type="date" label="Data do sinal" value={form.deposit_paid_at || ""} onChange={(v) => setForm({ ...form, deposit_paid_at: v })} />
             <PaymentSelect label="Forma de pagamento restante" value={form.remaining_payment_method} onChange={(v) => setForm({ ...form, remaining_payment_method: v })} />
             <StatusSelect value={form.status} onChange={(v) => setForm({ ...form, status: v })} />
           </div>
+          <label>Observações financeiras<textarea value={form.financial_notes || ""} onChange={(e) => setForm({ ...form, financial_notes: e.target.value })} /></label>
           <label>Observações importantes
             <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
           </label>
@@ -423,10 +428,7 @@ function AppointmentItemsEditor({ form, services, procedures = [], jewelry, onCh
               {asArray(procedures).filter((procedure) => !item.service_id || String(procedure.service_id) === String(item.service_id)).map((procedure) => <option key={procedure.id} value={procedure.id}>{procedure.name}</option>)}
             </Select>
             <Input label="Região" value={item.region} onChange={(value) => updateItem(index, { region: value })} required={index === 0} />
-            <Select label="Joia" value={item.jewelry_id} onChange={(value) => updateItem(index, { jewelry_id: value, jewelry_variant_id: "", jewelry_unit_price: 0 })}>
-              <option value="">Sem Joia</option>
-              {asArray(jewelry).map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
-            </Select>
+            <SmartCombobox label="Joia" value={item.jewelry_id} options={asArray(jewelry)} onChange={(value) => updateItem(index, { jewelry_id: value, jewelry_variant_id: "", jewelry_unit_price: 0 })} getMeta={(product) => [product.category, product.material, product.sku].filter(Boolean).join(" · ")} isDisabled={(product) => asArray(product.variants).length ? !asArray(product.variants).some((variant) => asNumber(variant.quantity) > 0) : asNumber(product.inventory_quantity ?? product.quantity) <= 0} />
             <Select label="Variação" value={item.jewelry_variant_id} onChange={(value) => {
               const variant = asArray(selectedJewelry?.variants).find((option) => String(option.id) === String(value));
               updateItem(index, { jewelry_variant_id: value, jewelry_unit_price: asNumber(variant?.sale_value || selectedJewelry?.sale_value || 0) });
@@ -588,7 +590,7 @@ export function CalendarEvent({ item, refresh, onSelect }) {
       <div className="event-actions" onClick={(event) => event.stopPropagation()}>
         <button onClick={() => updateAppointment(item.id, { status: "remarcado" }, refresh)}>Remarcar</button>
         <button onClick={() => updateAppointment(item.id, { status: "cancelado" }, refresh)}>Cancelar</button>
-        <button onClick={() => updateAppointment(item.id, { status: "atendido" }, refresh)}>Atendido</button>
+        <button onClick={() => onSelect?.(item)}>Revisar e finalizar</button>
       </div>
     </div>
   );
@@ -701,6 +703,8 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
 
 export function AppointmentQuickModal({ appointment, onClose, onSaved }) {
   const [form, setForm] = useState({ appointment_date: "", appointment_time: "", status: "pendente", notes: "" });
+  const [payments, setPayments] = useState([{ method: "Pix", amount: 0, status: "pago", installments: 1, fee_amount: 0, expected_receipt_date: "" }]);
+  const [financialNotes, setFinancialNotes] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -711,6 +715,8 @@ export function AppointmentQuickModal({ appointment, onClose, onSaved }) {
       status: appointment.status || "pendente",
       notes: appointment.notes || ""
     });
+    setPayments([{ method: appointment.remaining_payment_method || "Pix", amount: Math.max(0, Number(appointment.remaining_value || 0)), status: "pago", installments: 1, fee_amount: 0, expected_receipt_date: "" }]);
+    setFinancialNotes(appointment.financial_notes || "");
     setError("");
   }, [appointment]);
 
@@ -728,6 +734,14 @@ export function AppointmentQuickModal({ appointment, onClose, onSaved }) {
       setError(data.error || "Não foi possível atualizar o agendamento.");
       return;
     }
+    onSaved?.();
+  }
+
+  async function completeAppointment() {
+    setError("");
+    const response = await apiFetch(`/appointments/${appointment.id}/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ payments, financial_notes: financialNotes }) });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return setError(data.error || "Não foi possível concluir o atendimento.");
     onSaved?.();
   }
 
@@ -760,11 +774,23 @@ export function AppointmentQuickModal({ appointment, onClose, onSaved }) {
           <label>Observação
             <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
           </label>
+          {form.status !== "atendido" && <section className="soft-card stack">
+            <div className="section-inline-header"><strong>Conferência financeira</strong><button type="button" className="secondary-button" onClick={() => setPayments([...payments, { method: "Pix", amount: 0, status: "pago", installments: 1, fee_amount: 0, expected_receipt_date: "" }])}>Dividir pagamento</button></div>
+            {payments.map((payment, index) => <div className="form-grid" key={`${index}-${payment.method}`}>
+              <PaymentSelect label={`Forma ${index + 1}`} value={payment.method} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, method: value } : item))} />
+              <Input type="number" label="Valor" value={payment.amount} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, amount: value } : item))} />
+              <Select label="Status" value={payment.status} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, status: value } : item))}><option value="pago">Pago</option><option value="pendente">Pendente</option></Select>
+              {String(payment.method).toLowerCase().includes("crédito") && <><Input type="number" label="Parcelas" value={payment.installments} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, installments: value } : item))} /><Input type="number" label="Taxa" value={payment.fee_amount} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, fee_amount: value } : item))} /><Input type="date" label="Previsão de recebimento" value={payment.expected_receipt_date} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, expected_receipt_date: value } : item))} /></>}
+              {payments.length > 1 && <button type="button" className="secondary-button danger" onClick={() => setPayments(payments.filter((_, itemIndex) => itemIndex !== index))}>Remover</button>}
+            </div>)}
+            <label>Observações financeiras<textarea value={financialNotes} onChange={(event) => setFinancialNotes(event.target.value)} /></label>
+            <small>Sinal preservado: {currency.format(Number(appointment.deposit_value || 0))} · saldo atual: {currency.format(Number(appointment.remaining_value || 0))}</small>
+          </section>}
           <div className="toolbar compact-actions">
             <button type="button" className="secondary-button" onClick={() => saveAppointment({ status: "confirmado" })}>Confirmar</button>
             <button type="button" className="secondary-button" onClick={() => saveAppointment({ status: "remarcado" })}>Reagendar</button>
             <button type="button" className="secondary-button danger" onClick={() => saveAppointment({ status: "cancelado" })}>Cancelar</button>
-            <button type="button" className="primary-button" onClick={() => saveAppointment({ status: "atendido" })}>Finalizar</button>
+            <button type="button" className="primary-button" onClick={completeAppointment}>Revisar e finalizar</button>
           </div>
           {error && <span className="form-error">{error}</span>}
         </div>
@@ -1782,12 +1808,6 @@ export function AppointmentList({ appointments = [], onChanged, compact }) {
             aria-label={`Cancelar o atendimento de ${personName(item)}`}
             onClick={() => updateAppointment(item.id, { status: "cancelado" }, onChanged)}
           ><XCircle size={16} /></button>
-          <button
-            type="button"
-            title="Atendido"
-            aria-label={`Marcar como atendido o atendimento de ${personName(item)}`}
-            onClick={() => updateAppointment(item.id, { status: "atendido" }, onChanged)}
-          ><CheckCircle2 size={16} /></button>
         </>
       )}
       empty="Nenhum atendimento encontrado."

@@ -389,6 +389,38 @@ CREATE TABLE IF NOT EXISTS payments (
   status TEXT NOT NULL DEFAULT 'pago',
   paid_at TEXT NOT NULL
 );
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS installments INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS fee_amount DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS net_amount DOUBLE PRECISION;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS expected_receipt_date TEXT;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER REFERENCES users(id);
+
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS service_value DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS jewelry_value DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS subtotal_value DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS discount_value DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS coupon_id INTEGER;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS coupon_code TEXT;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS coupon_snapshot JSONB;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS deposit_status TEXT NOT NULL DEFAULT 'pendente';
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS deposit_paid_at TEXT;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS financial_notes TEXT;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS financial_closed_at TEXT;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS financial_closed_by INTEGER REFERENCES users(id);
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS updated_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS');
+
+CREATE TABLE IF NOT EXISTS appointment_financial_audit (
+  id SERIAL PRIMARY KEY,
+  appointment_id INTEGER NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
+  user_id INTEGER REFERENCES users(id),
+  action TEXT NOT NULL,
+  reason TEXT,
+  before_snapshot JSONB,
+  after_snapshot JSONB,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_appointment_financial_audit ON appointment_financial_audit(appointment_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS stock_movements (
   id SERIAL PRIMARY KEY,
@@ -929,6 +961,7 @@ CREATE TABLE IF NOT EXISTS coupon_usages (
   final_amount DOUBLE PRECISION NOT NULL CHECK (final_amount >= 0),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_coupon_usages_appointment_unique ON coupon_usages(coupon_id, appointment_id) WHERE appointment_id IS NOT NULL;
 
 -- Checkout público: colunas aditivas e idempotentes. Mantêm pedidos legados
 -- intactos e guardam o preço/cupom aceitos no momento da compra.

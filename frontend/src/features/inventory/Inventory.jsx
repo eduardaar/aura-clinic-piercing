@@ -11,6 +11,7 @@ import { ANODIZATION_COLOR_OPTIONS, JEWELRY_CATEGORY_OPTIONS, JEWELRY_LENGTH_OPT
 import { catalogFilterOptions, cleanDisplayText, elegantProductName, splitColorOptions } from "../../features/catalog/catalogUtils";
 import { catalogImageUrl, currency, inventoryStatusClass, inventoryStatusLabel, inventoryStockState, jewelrySkuBase } from "../../features/shared/helpers";
 import { CatalogCustomization, Toggle } from "../../pages/CatalogCustomization";
+import { SmartCombobox } from "../../components/common/SmartCombobox";
 
 function normalizeManagedCategory(item = {}, index = 0) {
   const name = String(item.name ?? item.nome ?? item.category_name ?? item.category ?? "").trim();
@@ -1556,11 +1557,7 @@ export function StockMovementModal({ item, initialType = "Entrada", onClose, onS
           <span>{initialType === "Saída" ? "Saída rápida" : "Entrada rápida"}</span>
         </div>
         <div className="form-grid">
-          <Select label="Variação" value={form.variant_id} onChange={(value) => setForm({ ...form, variant_id: value })} required>
-            {(item.variants || []).map((variant) => (
-              <option key={variant.id} value={variant.id}>{variant.variation_name || variant.sku} · {variant.quantity} un</option>
-            ))}
-          </Select>
+          <SmartCombobox label="Variação" value={form.variant_id} options={item.variants || []} onChange={(value) => setForm({ ...form, variant_id: value })} required getLabel={(variant) => variant.variation_name || variant.sku} getMeta={(variant) => [variant.sku, variant.material, variant.color, variant.size, `${variant.quantity} un`].filter(Boolean).join(" · ")} isDisabled={(variant) => initialType === "Saída" && Number(variant.quantity || 0) <= 0} />
           <Input type="number" label="Quantidade" value={form.quantity} onChange={(value) => setForm({ ...form, quantity: value })} required />
           <Select label="Tipo" value={form.movement_type} onChange={(value) => setForm({ ...form, movement_type: value })} required>
             <option>Entrada</option>

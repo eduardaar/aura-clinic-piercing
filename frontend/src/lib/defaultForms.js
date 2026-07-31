@@ -200,6 +200,10 @@ export function defaultAppointment() {
     remaining_value: 0,
     deposit_payment_method: "Pix",
     remaining_payment_method: "Pix",
+    coupon_code: "",
+    deposit_status: "pendente",
+    deposit_paid_at: "",
+    financial_notes: "",
     status: "pendente",
     notes: ""
   };
