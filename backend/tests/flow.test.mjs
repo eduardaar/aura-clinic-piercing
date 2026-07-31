@@ -25,7 +25,8 @@ const ctx = {
 
 // Datas: usa amanhã para o agendamento (evita conflito com "hoje" em rankings).
 const HOJE = new Date().toISOString().slice(0, 10);
-const AMANHA = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+const AMANHA = tomorrow.slice(0, 7) === HOJE.slice(0, 7) ? tomorrow : HOJE;
 
 function nextDateForWeekday(weekday, offsetDays = 1) {
   const date = new Date();

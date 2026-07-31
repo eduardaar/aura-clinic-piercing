@@ -237,6 +237,14 @@ function addToOrder(item) {
     setOrderItems((current) => asArray(current).map((item) => ((item.order_key || item.id) === id ? { ...item, customer_notes: notes } : item)));
   }
 
+  function updateOrderItemQuantity(id, quantity) {
+    setOrderItems((current) => asArray(current).map((item) => {
+      if ((item.order_key || item.id) !== id) return item;
+      const max = Math.max(1, Number(item.quantity || 1));
+      return { ...item, qty: Math.min(Math.max(1, Number(quantity || 1)), max) };
+    }));
+  }
+
   if (selectedProduct) {
     return (
       <CatalogProductDetail
@@ -459,6 +467,7 @@ function addToOrder(item) {
           onRemoveFavorite={(id) => setFavoriteIds((current) => current.filter((itemId) => itemId !== id))}
           onRemoveOrder={removeFromOrder}
           onUpdateOrderNotes={updateOrderItemNotes}
+          onUpdateOrderQuantity={updateOrderItemQuantity}
           onClearOrder={() => setOrderItems([])}
         />
       )}
@@ -714,6 +723,7 @@ function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, th
   const notifyText = `Olá! Quero ser avisada quando a joia ${productName} voltar ao estoque.`;
   const stockText = catalogStockText(item, theme, settings);
   const available = Number(item.quantity || 0) > 0 && item.status !== "esgotado";
+  const requiresVariant = asArray(item.variants).filter((variant) => Number(variant.is_active ?? 1) === 1 && Number(variant.quantity || 0) > 0).length > 1;
 
   return (
     <article className="catalog-product-card">
@@ -737,7 +747,9 @@ function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, th
         {stockText && <small className={Number(item.quantity || 0) <= 2 ? "catalog-stock warning" : "catalog-stock"}>{stockText}</small>}
         <div className="catalog-actions">
           {available && Boolean(Number(theme.show_schedule_button || 1)) && <button className="primary-button" type="button" onClick={onAddToOrder}>Quero essa joia</button>}
-          {available && Boolean(Number(theme.show_buy_button)) && <button className="secondary-button" type="button" onClick={onAddToOrder}>Comprar agora</button>}
+          {available && Boolean(Number(theme.show_buy_button)) && (requiresVariant
+            ? <a className="secondary-button" href={catalogUrl(`/catalogo/produto/${item.id}`)}>Escolher variação</a>
+            : <button className="secondary-button" type="button" onClick={onAddToOrder}>Adicionar ao carrinho</button>)}
           {!available && <a className="primary-button" href={whatsappCatalogUrl(notifyText, settings.whatsapp_phone)} target="_blank" rel="noreferrer">Avise-me</a>}
           <a className="secondary-button" href={whatsappShareUrl(shareText)} target="_blank" rel="noreferrer"><MessageCircle size={15} /> Compartilhar</a>
         </div>
@@ -893,7 +905,7 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
   );
 }
 
-function CatalogDrawer({ type, favorites, orderItems, orderTotal, whatsappPhone, onClose, onRemoveFavorite, onRemoveOrder, onUpdateOrderNotes, onClearOrder }) {
+function CatalogDrawer({ type, favorites, orderItems, orderTotal, whatsappPhone, onClose, onRemoveFavorite, onRemoveOrder, onUpdateOrderNotes, onUpdateOrderQuantity, onClearOrder }) {
   const isFavorites = type === "favorites";
   const [couponCode, setCouponCode] = useState("");
   const [couponQuote, setCouponQuote] = useState(null);
@@ -978,6 +990,7 @@ function CatalogDrawer({ type, favorites, orderItems, orderTotal, whatsappPhone,
                 <strong>{item.name}</strong>
                 <span>{[item.material, item.selected_color || item.color, item.selected_variant_name || item.size].map(elegantProductName).filter(Boolean).join(" · ")}</span>
                 <small>{isFavorites ? currency.format(item.sale_value || 0) : `${item.qty || 1}x · ${currency.format(item.sale_value || 0)}`}</small>
+                {!isFavorites && <label>Quantidade<input type="number" min="1" max={Math.max(1, Number(item.quantity || 1))} value={item.qty || 1} onChange={(event) => onUpdateOrderQuantity(item.order_key || item.id, event.target.value)} /></label>}
                 {!isFavorites && <textarea value={item.customer_notes || ""} onChange={(event) => onUpdateOrderNotes(item.order_key || item.id, event.target.value)} placeholder="Observações de cor, tamanho ou envio" />}
               </div>
               <button onClick={() => isFavorites ? onRemoveFavorite(item.id) : onRemoveOrder(item.order_key || item.id)}>Remover</button>
@@ -1011,8 +1024,10 @@ function CatalogDrawer({ type, favorites, orderItems, orderTotal, whatsappPhone,
 
 export function PublicCheckout() {
   const { data } = usePublicFetch("/catalog");
-  const [form, setForm] = useState({ full_name: "", whatsapp: "", instagram: "", payment_method: "Pix", notes: "" });
+  const [form, setForm] = useState({ full_name: "", cpf: "", whatsapp: "", email: "", instagram: "", payment_method: "Pix", fulfillment_method: "pickup", delivery_address: "", coupon_code: "", accepted_policies: false, notes: "" });
   const [orderItems, setOrderItems] = useState(() => readCatalogStorage("aura-catalog-order", []));
+  const [idempotencyKey] = useState(() => globalThis.crypto?.randomUUID?.() || `checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const [quote, setQuote] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(null);
   const safeOrderItems = asArray(orderItems);
@@ -1021,7 +1036,19 @@ export function PublicCheckout() {
     setOrderItems(readCatalogStorage("aura-catalog-order", []));
   }, []);
 
-  const total = safeOrderItems.reduce((sum, item) => sum + asNumber(item?.sale_value) * asNumber(item?.qty, 1), 0);
+  const subtotal = safeOrderItems.reduce((sum, item) => sum + asNumber(item?.sale_value) * asNumber(item?.qty, 1), 0);
+  const total = quote?.valid ? asNumber(quote.final_amount) : subtotal;
+
+  async function applyCheckoutCoupon() {
+    setError("");
+    const response = await publicApiFetch("/catalog/price-quote", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ coupon_code: form.coupon_code, items: safeOrderItems.map((item) => ({ product_id: item.id, variation_id: item.selected_variant_id, category: item.category, unit_price: item.sale_value, quantity: item.qty || 1 })) })
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok) return setError(json.error || "Cupom inválido.");
+    setQuote(json);
+  }
 
   async function submit(event) {
     event.preventDefault();
@@ -1034,6 +1061,8 @@ export function PublicCheckout() {
       setError("Seu pedido está vazio.");
       return;
     }
+    if (!form.accepted_policies) return setError("Aceite as políticas para concluir o pedido.");
+    if (form.fulfillment_method === "delivery" && !form.delivery_address.trim()) return setError("Informe o endereço de entrega.");
     const response = await publicApiFetch("/sales-orders/public", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1042,6 +1071,13 @@ export function PublicCheckout() {
         whatsapp: form.whatsapp,
         instagram: form.instagram,
         payment_method: form.payment_method,
+        cpf: form.cpf,
+        email: form.email,
+        fulfillment_method: form.fulfillment_method,
+        delivery_address: form.delivery_address,
+        accepted_policies: form.accepted_policies,
+        coupon_code: form.coupon_code,
+        idempotency_key: idempotencyKey,
         source: "site",
         order_type: "produto",
         notes: form.notes,
@@ -1102,6 +1138,8 @@ export function PublicCheckout() {
             <div className="form-grid">
               <Input label="Nome completo" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} required />
               <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => setForm({ ...form, whatsapp: value })} required />
+              <Input label="CPF" value={form.cpf} onChange={(value) => setForm({ ...form, cpf: value })} />
+              <Input label="E-mail" type="email" value={form.email} onChange={(value) => setForm({ ...form, email: value })} />
               <Input label="Instagram" value={form.instagram} onChange={(value) => setForm({ ...form, instagram: value })} />
               <Select label="Forma de pagamento" value={form.payment_method} onChange={(value) => setForm({ ...form, payment_method: value })}>
                 <option>Pix</option>
@@ -1109,10 +1147,21 @@ export function PublicCheckout() {
                 <option>Cartão de crédito</option>
                 <option>Cartão de débito</option>
               </Select>
+              <Select label="Recebimento" value={form.fulfillment_method} onChange={(value) => setForm({ ...form, fulfillment_method: value })}>
+                <option value="pickup">Retirada na clínica</option>
+                <option value="delivery">Entrega</option>
+              </Select>
+              {form.fulfillment_method === "delivery" && <Input label="Endereço de entrega" value={form.delivery_address} onChange={(value) => setForm({ ...form, delivery_address: value })} required />}
+            </div>
+            <div className="catalog-coupon-field">
+              <input value={form.coupon_code} onChange={(event) => { setForm({ ...form, coupon_code: event.target.value.toUpperCase() }); setQuote(null); }} placeholder="Cupom de desconto" />
+              <button type="button" className="secondary-button" onClick={applyCheckoutCoupon} disabled={!form.coupon_code.trim()}>Aplicar cupom</button>
+              {quote?.coupon_discount > 0 && <button type="button" className="secondary-button" onClick={() => { setForm({ ...form, coupon_code: "" }); setQuote(null); }}>Remover</button>}
             </div>
             <label>Observações
               <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Observação de cor, tamanho, envio ou retirada." />
             </label>
+            <label className="checkout-policy"><input type="checkbox" checked={form.accepted_policies} onChange={(event) => setForm({ ...form, accepted_policies: event.target.checked })} /> Li e aceito as políticas da clínica.</label>
             {error && <span className="form-error">{error}</span>}
             <button className="primary-button" type="submit">Confirmar compra</button>
           </form>
@@ -1134,7 +1183,11 @@ export function PublicCheckout() {
               )) : <p className="empty-state">Seu carrinho está vazio. Volte ao catálogo e adicione joias.</p>}
             </div>
             <div className="checkout-total-row">
-              <strong>Total</strong>
+              <strong>Subtotal</strong><span>{currency.format(subtotal)}</span>
+            </div>
+            {quote?.discount_amount > 0 && <div className="checkout-total-row"><strong>Desconto</strong><span>−{currency.format(quote.discount_amount)}</span></div>}
+            <div className="checkout-total-row">
+              <strong>Total final</strong>
               <span>{currency.format(total)}</span>
             </div>
           </div>

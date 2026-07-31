@@ -930,6 +930,23 @@ CREATE TABLE IF NOT EXISTS coupon_usages (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Checkout público: colunas aditivas e idempotentes. Mantêm pedidos legados
+-- intactos e guardam o preço/cupom aceitos no momento da compra.
+ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS subtotal_value DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS discount_value DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS coupon_id INTEGER REFERENCES coupons(id);
+ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS coupon_code TEXT;
+ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS coupon_snapshot JSONB;
+ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS fulfillment_method TEXT NOT NULL DEFAULT 'pickup';
+ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS delivery_address TEXT;
+ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS customer_email TEXT;
+ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS customer_cpf TEXT;
+ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS accepted_policies_at TIMESTAMP;
+ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS idempotency_key TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_orders_idempotency ON sales_orders(idempotency_key) WHERE idempotency_key IS NOT NULL;
+ALTER TABLE inventory_reservations ADD COLUMN IF NOT EXISTS sales_order_id INTEGER REFERENCES sales_orders(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_inventory_reservations_order ON inventory_reservations(sales_order_id, status);
+
 CREATE TABLE IF NOT EXISTS catalog_theme (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   brand_name TEXT NOT NULL DEFAULT 'Aura Clinic',

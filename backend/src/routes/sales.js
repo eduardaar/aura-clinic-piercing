@@ -2,7 +2,7 @@
 import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
-import { createSalesOrder, listSalesOrders, countSalesOrders, getSalesOrder } from "../services/sales.js";
+import { createSalesOrder, listSalesOrders, countSalesOrders, getSalesOrder, SalesOrderValidationError } from "../services/sales.js";
 import { parsePaging, pageResponse } from "../services/pagination.js";
 
 const router = Router();
@@ -58,7 +58,13 @@ router.post("/api/sales-orders", withDb(async (req, res, db) => {
 }));
 
 router.post("/api/sales-orders/public", withDb(async (req, res, db) => {
-  const order = await createSalesOrder(db, req.body || {}, null);
+  let order;
+  try {
+    order = await createSalesOrder(db, req.body || {}, null);
+  } catch (error) {
+    if (error instanceof SalesOrderValidationError) return res.status(error.status).json({ error: error.message });
+    throw error;
+  }
   if (!order) return res.status(400).json({ error: "Não foi possível criar a venda." });
   res.status(201).json(order);
 }));
