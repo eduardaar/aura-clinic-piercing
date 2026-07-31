@@ -3,6 +3,53 @@ import { normalizeSalesOrderItems, variantStatus, localTimestamp } from "./utils
 import { upsertClient } from "./appointments.js";
 import { syncProductInventory } from "./inventory.js";
 import { limitOffset, countRows } from "./pagination.js";
+import { validateCoupon } from "./discounts.js";
+import { availableStock, releaseExpiredReservations } from "./reservations.js";
+
+export class SalesOrderValidationError extends Error {
+  constructor(message, status = 400) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function authoritativePublicItems(db, submitted) {
+  const items = [];
+  for (const raw of submitted) {
+    const productId = Number(raw.product_id || 0);
+    let variantId = Number(raw.product_variant_id || 0) || null;
+    const quantity = Number(raw.quantity || 0);
+    if (!Number.isInteger(quantity) || quantity < 1) throw new SalesOrderValidationError("Quantidade inválida.");
+    const product = await db.get("SELECT id,name,category,sale_value,status,is_catalog_active,is_published FROM jewelry_inventory WHERE id=?", [productId]);
+    if (!product || Number(product.is_catalog_active) !== 1 || Number(product.is_published) !== 1 || product.status === "arquivado") {
+      throw new SalesOrderValidationError("Produto indisponível.", 409);
+    }
+    if (!variantId) {
+      const variants = await db.all("SELECT id FROM jewelry_variants WHERE jewelry_id=? AND is_active=1 AND quantity>0 ORDER BY id", [productId]);
+      if (variants.length === 1) variantId = variants[0].id;
+      else if (variants.length > 1) throw new SalesOrderValidationError("Selecione a variação do produto.");
+    }
+    const variant = variantId
+      ? await db.get("SELECT id,jewelry_id,variation_name,sale_value,quantity,is_active,status FROM jewelry_variants WHERE id=? AND jewelry_id=?", [variantId, productId])
+      : null;
+    if (variantId && (!variant || Number(variant.is_active) !== 1 || variant.status === "esgotado")) {
+      throw new SalesOrderValidationError("Variação indisponível.", 409);
+    }
+    const available = await availableStock(db, productId, variantId);
+    if (available === null || available < quantity) throw new SalesOrderValidationError("Estoque insuficiente para este item.", 409);
+    const unitPrice = Number(variant?.sale_value || product.sale_value || 0);
+    items.push({
+      ...raw,
+      product_id: productId,
+      product_variant_id: variantId,
+      item_name: variant?.variation_name ? `${product.name} - ${variant.variation_name}` : product.name,
+      category: product.category,
+      quantity,
+      unit_price: unitPrice
+    });
+  }
+  return items;
+}
 
 async function deductSoldProductStock(db, item, orderId) {
   if (item.item_type !== "produto" || !item.product_id) return;
@@ -45,16 +92,37 @@ async function deductSoldProductStock(db, item, orderId) {
 }
 
 export async function createSalesOrder(db, body, user) {
-  const items = normalizeSalesOrderItems(body.items || []);
+  const submittedItems = normalizeSalesOrderItems(body.items || []);
+  const publicOrder = !user;
+  if (publicOrder && !body.accepted_policies) throw new SalesOrderValidationError("É necessário aceitar as políticas.");
+  if (publicOrder && body.fulfillment_method === "delivery" && !String(body.delivery_address || "").trim()) {
+    throw new SalesOrderValidationError("Informe o endereço de entrega.");
+  }
+  const items = publicOrder ? await authoritativePublicItems(db, submittedItems) : submittedItems;
   if (!items.length) return null;
   const fullName = String(body.full_name || body.customer_name || body.name || "").trim();
   const whatsapp = String(body.whatsapp || "").trim();
   if (!fullName || !whatsapp) return null;
 
-  const total = items.reduce((sum, item) => sum + Number(item.unit_price || 0) * Number(item.quantity || 1), 0);
+  const subtotal = Number(items.reduce((sum, item) => sum + Number(item.unit_price || 0) * Number(item.quantity || 1), 0).toFixed(2));
+  let couponQuote = null;
+  if (body.coupon_code) {
+    couponQuote = await validateCoupon(db, body.coupon_code, { amount: subtotal, items });
+    if (!couponQuote.valid) throw new SalesOrderValidationError(couponQuote.error);
+  }
+  const discount = Number(couponQuote?.discount_amount || 0);
+  const total = Number(Math.max(subtotal - discount, 0).toFixed(2));
   const orderType = String(body.order_type || "produto");
   const source = String(body.source || "site");
-  const status = String(body.status || "concluida");
+  // Chamadas públicas nunca podem escolher um estado financeiro conclusivo.
+  // Pagamento só é confirmado por um usuário autenticado (ou, futuramente,
+  // pelo webhook autenticado do gateway).
+  const status = user ? String(body.status || "concluida") : "pendente";
+  const idempotencyKey = publicOrder ? String(body.idempotency_key || "").trim().slice(0, 100) : "";
+  if (idempotencyKey) {
+    const existing = await db.get("SELECT id FROM sales_orders WHERE idempotency_key=?", [idempotencyKey]);
+    if (existing) return getSalesOrder(db, existing.id);
+  }
 
   // Cliente, pedido, itens, baixa de estoque e pagamento são uma coisa só:
   // metade disso gravado deixaria estoque baixado sem venda (ou venda sem
@@ -72,8 +140,10 @@ export async function createSalesOrder(db, body, user) {
 
     const result = await tx.run(
       `INSERT INTO sales_orders
-      (client_id, appointment_id, order_type, source, status, payment_method, total_value, notes, created_by_user_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      (client_id, appointment_id, order_type, source, status, payment_method, subtotal_value, discount_value,
+       total_value, coupon_id, coupon_code, coupon_snapshot, fulfillment_method, delivery_address,
+       customer_email, customer_cpf, accepted_policies_at, idempotency_key, notes, created_by_user_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       [
         client.id,
         body.appointment_id ? Number(body.appointment_id) : null,
@@ -81,7 +151,18 @@ export async function createSalesOrder(db, body, user) {
         source,
         status,
         body.payment_method || "Pix",
+        subtotal,
+        discount,
         total,
+        couponQuote?.coupon?.id || null,
+        couponQuote?.coupon?.code || null,
+        couponQuote ? JSON.stringify(couponQuote) : null,
+        body.fulfillment_method === "delivery" ? "delivery" : "pickup",
+        body.fulfillment_method === "delivery" ? String(body.delivery_address || "") : null,
+        String(body.email || "") || null,
+        String(body.cpf || "") || null,
+        body.accepted_policies ? localTimestamp() : null,
+        idempotencyKey || null,
         body.notes || "",
         user?.id || null
       ]
@@ -103,10 +184,25 @@ export async function createSalesOrder(db, body, user) {
           item.notes || ""
         ]
       );
-      if (status !== "cancelada") await deductSoldProductStock(tx, item, result.returnedId);
+      if (publicOrder && item.product_id) {
+        await releaseExpiredReservations(tx);
+        if (item.product_variant_id) await tx.get("SELECT id FROM jewelry_variants WHERE id=? FOR UPDATE", [item.product_variant_id]);
+        else await tx.get("SELECT id FROM jewelry_inventory WHERE id=? FOR UPDATE", [item.product_id]);
+        const available = await availableStock(tx, item.product_id, item.product_variant_id || null);
+        if (available === null || available < Number(item.quantity)) throw new SalesOrderValidationError("Estoque esgotado durante a finalização.", 409);
+        await tx.run(
+          `INSERT INTO inventory_reservations
+           (reservation_key, sales_order_id, client_id, jewelry_id, jewelry_variant_id, quantity, expires_at)
+           VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP + INTERVAL '30 minutes')`,
+          [`order-${result.returnedId}-${item.product_id}-${item.product_variant_id || 0}`, result.returnedId, client.id, item.product_id, item.product_variant_id || null, item.quantity]
+        );
+      }
+      if (status === "concluida" || status === "pago") {
+        await deductSoldProductStock(tx, item, result.returnedId);
+      }
     }
 
-    if (total > 0) {
+    if (total > 0 && (status === "concluida" || status === "pago")) {
       await tx.run(
         "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         [
@@ -115,7 +211,7 @@ export async function createSalesOrder(db, body, user) {
           total,
           orderType,
           body.payment_method || "Pix",
-          status === "cancelada" ? "pendente" : "pago",
+          "pago",
           localTimestamp()
         ]
       );

@@ -244,6 +244,33 @@ test("venda válida continua gravando pedido, item, pagamento e baixa de estoque
   assert.equal(await estoqueDaJoia(), estoqueAntes - 2, "estoque deve cair 2 unidades");
 });
 
+test("checkout público não pode se autodeclarar pago nem baixar estoque", async () => {
+  const estoqueAntes = await estoqueDaJoia();
+  const pedido = await req("/sales-orders/public", {
+    method: "POST",
+    tenant: ctx.slug,
+    body: {
+      full_name: "Cliente Checkout TX",
+      whatsapp: "11900006666",
+      status: "concluida",
+      accepted_policies: true,
+      idempotency_key: `checkout-test-${ctx.slug}`,
+      payment_method: "Pix",
+      items: [{ item_name: "Joia TX", product_id: ctx.jewelryId, product_variant_id: ctx.variantId, quantity: 1, unit_price: 0.01 }],
+    },
+  });
+  assert.equal(pedido.status, 201, JSON.stringify(pedido.json));
+  assert.equal(pedido.json.status, "pendente");
+  assert.equal(await estoqueDaJoia(), estoqueAntes, "pedido pendente não faz baixa definitiva");
+  const repeated = await req("/sales-orders/public", {
+    method: "POST", tenant: ctx.slug,
+    body: { full_name: "Cliente Checkout TX", whatsapp: "11900006666", accepted_policies: true, idempotency_key: `checkout-test-${ctx.slug}`, items: [{ item_name: "ignorado", product_id: ctx.jewelryId, product_variant_id: ctx.variantId, quantity: 1, unit_price: 0.01 }] }
+  });
+  assert.equal(repeated.status, 201);
+  assert.equal(repeated.json.id, pedido.json.id, "repetição idempotente devolve o mesmo pedido");
+  assert.equal(Number(pedido.json.items[0].unit_price), 60, "backend ignora preço manipulado pelo navegador");
+});
+
 test("atendimento marcado 'atendido' que falha no meio não deixa nenhuma das 5 escritas", async () => {
   const criado = await api("/appointments", {
     method: "POST",

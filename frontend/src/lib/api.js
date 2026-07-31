@@ -174,7 +174,7 @@ export function publicApiFetch(path, options = {}) {
  */
 export async function downloadApiFile(path, filename) {
   const response = await apiFetch(path);
-  if (!response.ok) return;
+  if (!response.ok) throw await apiFileError(response);
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -184,6 +184,32 @@ export async function downloadApiFile(path, filename) {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+export async function openApiFile(path) {
+  const popup = window.open("", "_blank", "noopener,noreferrer");
+  try {
+    const response = await apiFetch(path);
+    if (!response.ok) throw await apiFileError(response);
+    if (!(response.headers.get("content-type") || "").toLowerCase().includes("application/pdf")) {
+      throw new Error("O servidor não retornou um PDF válido.");
+    }
+    const url = URL.createObjectURL(await response.blob());
+    if (popup) popup.location.replace(url);
+    else window.open(url, "_blank", "noopener,noreferrer");
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (error) {
+    popup?.close();
+    throw error;
+  }
+}
+
+async function apiFileError(response) {
+  const payload = await response.json().catch(() => ({}));
+  /** @type {ApiError} */
+  const error = new Error(payload.error || "Não foi possível carregar o arquivo.");
+  error.status = response.status;
+  return error;
 }
 
 // --- Leituras cacheadas (TanStack Query) -------------------------------------

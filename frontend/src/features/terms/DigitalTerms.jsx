@@ -4,7 +4,7 @@ import { Download, } from "lucide-react";
 import { Button, Input, Select, StatusBadge } from "../../components/common/Ui";
 import { DataView } from "../../components/common/DataView";
 import { asArray, asObject, formatDate } from "../../lib/utils";
-import { API_ORIGIN, apiFetch, useFetch } from "../../lib/api";
+import { apiFetch, downloadApiFile, openApiFile, useFetch } from "../../lib/api";
 import { DIGITAL_TERM_HEALTH_ITEMS, DIGITAL_TERM_LIFESTYLE_ITEMS, defaultDigitalTerm } from "../../lib/defaultForms";
 import { currency, personName } from "../../features/shared/helpers";
 
@@ -28,6 +28,7 @@ export function DigitalTerms() {
   const [form, setForm] = useState(defaultDigitalTerm());
   const [error, setError] = useState("");
   const [savedTerm, setSavedTerm] = useState(null);
+  const [fileError, setFileError] = useState("");
 
   const safeAppointments = asArray(asObject(appointmentsPage).items);
   const appointmentTotal = Number(asObject(appointmentsPage).total || safeAppointments.length);
@@ -85,6 +86,17 @@ export function DigitalTerms() {
     setSavedTerm(data);
     setForm(defaultDigitalTerm());
     refresh();
+  }
+
+  async function handlePdf(action, term) {
+    setFileError("");
+    try {
+      const path = String(term.pdf_url || "").replace(/^\/api/, "");
+      if (action === "download") await downloadApiFile(path, `ficha-anamnese-${term.id}.pdf`);
+      else await openApiFile(path);
+    } catch (error) {
+      setFileError(error.message || "Não foi possível abrir a ficha em PDF.");
+    }
   }
 
   return (
@@ -231,7 +243,8 @@ export function DigitalTerms() {
         <SignaturePad onChange={(signature) => updateField("signature_data_url", signature)} clearKey={form.appointment_id || "empty"} />
         {error && <span className="form-error">{error}</span>}
         <div className="modal-actions">
-          {savedTerm?.pdf_url && <a className="secondary-button" href={`${API_ORIGIN}${savedTerm.pdf_url}`} target="_blank" rel="noreferrer"><Download size={16} /> Abrir PDF Salvo</a>}
+          {fileError && <span className="form-error" role="alert">{fileError}</span>}
+          {savedTerm?.pdf_url && <><Button variant="secondary" type="button" onClick={() => handlePdf("open", savedTerm)}><Download size={16} /> Abrir PDF Salvo</Button><Button variant="secondary" type="button" onClick={() => handlePdf("download", savedTerm)}>Baixar PDF</Button></>}
           <Button variant="primary" type="submit">Salvar Termo Em PDF</Button>
         </div>
       </form>
@@ -294,7 +307,7 @@ export function DigitalTerms() {
               sortable: false,
               searchable: false,
               render: (term) => (term.pdf_url
-                ? <a className="secondary-button" href={`${API_ORIGIN}${term.pdf_url}`} target="_blank" rel="noreferrer">PDF</a>
+                ? <span className="inline-actions"><Button variant="secondary" type="button" onClick={() => handlePdf("open", term)}>Abrir</Button><Button variant="secondary" type="button" onClick={() => handlePdf("download", term)}>Baixar</Button></span>
                 : "—")
             }
           ]}

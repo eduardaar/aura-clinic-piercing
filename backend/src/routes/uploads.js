@@ -19,11 +19,15 @@ router.get("/api/private-files/:filename", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
   const filename = String(req.params.filename || "");
   if (!/^[a-zA-Z0-9_-]+(?:\.pdf)?$/.test(filename)) return res.status(400).json({ error: "Arquivo inválido." });
-  const file = await db.get("SELECT id, purpose FROM private_files WHERE filename=?", [filename]);
+  const file = await db.get("SELECT id, purpose, original_name, mime_type FROM private_files WHERE filename=?", [filename]);
   if (!file) return res.status(404).json({ error: "Arquivo não encontrado." });
   if (req.user?.role === "reception" && !["appointment_reference", "public_booking"].includes(file.purpose)) {
     return res.status(403).json({ error: "Acesso negado." });
   }
+  res.type(file.mime_type || "application/pdf");
+  const safeName = String(file.original_name || "ficha-anamnese.pdf").replace(/[\r\n"\\]/g, "-");
+  res.setHeader("Content-Disposition", `inline; filename="${safeName.replace(/[^\x20-\x7E]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(safeName)}`);
+  res.setHeader("Cache-Control", "private, no-store");
   res.sendFile(path.join(privateUploadsDir, filename), (error) => {
     if (error && !res.headersSent) res.status(error.statusCode || 404).json({ error: "Arquivo não encontrado." });
   });

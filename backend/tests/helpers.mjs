@@ -17,7 +17,7 @@ export async function req(path, { method = "GET", token, tenant, platform, body,
   });
   let json = null;
   try { json = await res.json(); } catch { /* sem corpo JSON */ }
-  return { status: res.status, json };
+  return { status: res.status, json, headers: res.headers };
 }
 
 // Gera um slug único de clínica de teste (evita colisão entre execuções paralelas).

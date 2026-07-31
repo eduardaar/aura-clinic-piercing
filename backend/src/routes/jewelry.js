@@ -322,12 +322,19 @@ router.get("/api/jewelry", withDb(async (req, res, db) => {
   const clauses = [];
   const params = [];
   if (req.query.search) {
+    const normalized = "translate(lower(COALESCE(%s, '')), 'áàâãäéèêëíìîïóòôõöúùûüç', 'aaaaaeeeeiiiiooooouuuuc')";
+    const searchable = (column) => normalized.replace("%s", column);
     clauses.push(`(
-      j.name LIKE ? OR j.description LIKE ? OR j.category LIKE ? OR j.subcategory LIKE ?
+      ${searchable("j.name")} LIKE ${searchable("?")} OR ${searchable("j.description")} LIKE ${searchable("?")}
+      OR ${searchable("j.category")} LIKE ${searchable("?")} OR ${searchable("j.subcategory")} LIKE ${searchable("?")}
       OR EXISTS (
         SELECT 1 FROM jewelry_variants v
         WHERE v.jewelry_id = j.id
-          AND (v.sku LIKE ? OR v.material LIKE ? OR v.color LIKE ? OR v.size LIKE ? OR v.thickness LIKE ? OR v.length LIKE ? OR v.diameter LIKE ? OR CAST(v.top_size_mm AS TEXT) LIKE ? OR v.thread_type LIKE ? OR v.supplier LIKE ?)
+          AND (${searchable("v.sku")} LIKE ${searchable("?")} OR ${searchable("v.material")} LIKE ${searchable("?")}
+            OR ${searchable("v.color")} LIKE ${searchable("?")} OR ${searchable("v.size")} LIKE ${searchable("?")}
+            OR ${searchable("v.thickness")} LIKE ${searchable("?")} OR ${searchable("v.length")} LIKE ${searchable("?")}
+            OR ${searchable("v.diameter")} LIKE ${searchable("?")} OR ${searchable("CAST(v.top_size_mm AS TEXT)")} LIKE ${searchable("?")}
+            OR ${searchable("v.thread_type")} LIKE ${searchable("?")} OR ${searchable("v.supplier")} LIKE ${searchable("?")})
       )
     )`);
     params.push(...Array(14).fill(`%${req.query.search}%`));
