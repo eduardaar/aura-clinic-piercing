@@ -9,6 +9,7 @@ import { asArray, asObject } from "../lib/utils";
 import { JEWELRY_CATEGORY_OPTIONS } from "../lib/defaultForms";
 import { catalogContentSections, defaultContentSection } from "../features/catalog/catalogUtils";
 import { DEFAULT_IMAGE_TRANSFORM, ImageEditor, imageTransformStyle, normalizeImageTransform } from "../components/common/ImageEditor";
+import { SmartCombobox } from "../components/common/SmartCombobox";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -333,10 +334,7 @@ export function CatalogCustomization() {
               {form.featuredProducts.map((product, index) => (
                 <article key={index}>
                   <div className="form-grid">
-                    <Select label="Produto" value={product.product_id} onChange={(value) => setForm(updateList(form, "featuredProducts", index, { product_id: value }))}>
-                      <option value="">Selecione</option>
-                      {products.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}
-                    </Select>
+                    <SmartCombobox label="Produto" value={product.product_id} options={products} onChange={(value) => setForm(updateList(form, "featuredProducts", index, { product_id: value }))} getMeta={(item) => [item.category, item.material, item.sku].filter(Boolean).join(" · ")} isDisabled={() => false} />
                     <Select label="Selo" value={product.badge} onChange={(value) => setForm(updateList(form, "featuredProducts", index, { badge: value }))}>
                       <option value="">Sem selo</option><option value="Lançamento">Lançamento</option><option value="Mais vendido">Mais vendido</option><option value="Promoção">Promoção</option>
                     </Select>

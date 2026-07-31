@@ -10573,3 +10573,19 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--gold); width: 
 /* ============================ DIRETÓRIO PÚBLICO DE CATÁLOGOS (/catalogo sem ?t) ============================ */
 
 } /* fim de @layer legado */
+.smart-combobox { position: relative; min-width: 0; }
+.smart-combobox-input { display: flex; align-items: center; gap: .45rem; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); padding: 0 .65rem; }
+.smart-combobox-input input { min-width: 0; flex: 1; border: 0; padding-inline: 0; outline: 0; background: transparent; }
+.smart-combobox-input button { border: 0; background: transparent; padding: .25rem; display: grid; place-items: center; }
+.smart-combobox-list { position: absolute; z-index: 80; top: calc(100% + .25rem); left: 0; right: 0; max-height: 280px; overflow: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: 0 14px 35px #0002; padding: .35rem; }
+.smart-combobox-list > button { width: 100%; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: .15rem .6rem; text-align: left; border: 0; border-radius: 8px; padding: .55rem .65rem; background: transparent; }
+.smart-combobox-list > button.active { background: var(--surface-soft); }
+.smart-combobox-list > button:disabled { opacity: .58; cursor: not-allowed; }
+.smart-combobox-list strong, .smart-combobox-list small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.smart-combobox-list small { grid-column: 1; color: var(--muted); }
+.smart-combobox-list .stock-ok, .smart-combobox-list .stock-out { grid-column: 2; grid-row: 1 / 3; align-self: center; font-size: .72rem; }
+.smart-combobox-list .stock-ok { color: #25744a; } .smart-combobox-list .stock-out { color: #a33; }
+.smart-combobox-empty { padding: .75rem; color: var(--muted); }
+.catalog-quantity-picker { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; }
+.catalog-quantity-picker button { width: 2.25rem; height: 2.25rem; border: 1px solid var(--catalog-border); border-radius: 50%; background: transparent; }
+.catalog-quantity-picker small { color: var(--muted); }

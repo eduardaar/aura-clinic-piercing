@@ -7,6 +7,7 @@ import { asArray, formatDate } from "../../lib/utils";
 import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
 import { defaultSalesLine, defaultSalesOrderForm } from "../../lib/defaultForms";
 import { currency, personName, saleItemLabel, saleOrderTypeLabel } from "../../features/shared/helpers";
+import { SmartCombobox } from "../../components/common/SmartCombobox";
 
 // `formatDate` de lib/utils devolve dd/MM sem ano: numa lista com histórico de
 // vários anos duas vendas distantes ficariam idênticas na coluna.
@@ -334,7 +335,7 @@ export function SalesWorkspace() {
                   {safeServices.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
                 </Select>
               ) : (
-                <Select label="Joia" value={line.product_id} onChange={(value) => {
+                <SmartCombobox label="Joia" value={line.product_id} options={safeJewelry} onChange={(value) => {
                   const selected = safeJewelry.find((item) => String(item.id) === String(value));
                   const firstVariant = asArray(selected?.variants).find((variant) => Number(variant.quantity || 0) > 0) || asArray(selected?.variants)[0];
                   setLine({
@@ -344,9 +345,7 @@ export function SalesWorkspace() {
                     item_name: selected?.name || "",
                     unit_price: firstVariant?.sale_value || selected?.sale_value || 0
                   });
-                }}>
-                  {safeJewelry.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-                </Select>
+                }} getMeta={(item) => [item.category, item.material, item.sku].filter(Boolean).join(" · ")} isDisabled={(item) => asArray(item.variants).length ? !asArray(item.variants).some((variant) => Number(variant.quantity || 0) > 0) : Number(item.inventory_quantity ?? item.quantity ?? 0) <= 0} />
               )}
               {line.item_type === "produto" && (
                 <Select label="Variação" value={line.product_variant_id} onChange={(value) => {

@@ -224,8 +224,10 @@ function addToOrder(item) {
       const current = asArray(currentValue);
       const orderKey = `${item.id}-${item.selected_variant_id || "produto"}-${item.selected_color || "sem-cor"}`;
       const existing = current.find((orderItem) => orderItem.order_key === orderKey);
-      if (existing) return current.map((orderItem) => orderItem.order_key === orderKey ? { ...orderItem, qty: Number(orderItem.qty || 1) + 1 } : orderItem);
-      return [...current, { ...item, order_key: orderKey, qty: 1 }];
+      const increment = Math.max(1, Number(item.requested_qty || 1));
+      const maximum = Math.max(1, Number(item.quantity || increment));
+      if (existing) return current.map((orderItem) => orderItem.order_key === orderKey ? { ...orderItem, qty: Math.min(maximum, Number(orderItem.qty || 1) + increment) } : orderItem);
+      return [...current, { ...item, order_key: orderKey, qty: Math.min(maximum, increment) }];
     });
   }
 
@@ -765,6 +767,7 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
   const selectedVariant = availableVariants.find((variant) => Number(variant.id) === Number(selectedVariantId)) || availableVariants[0] || {};
   const colorOptions = splitColorOptions(selectedVariant.color);
   const [selectedColor, setSelectedColor] = useState(colorOptions[0] || "");
+  const [quantity, setQuantity] = useState(1);
   const galleryImages = [
     ...asArray(selectedVariant.images),
     ...asArray(item.images),
@@ -796,6 +799,7 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
   ].filter(Boolean);
   const stockText = catalogStockText(item, theme, settings);
   const saleValue = Number(selectedVariant.sale_value || item.sale_value || 0);
+  const maximumQuantity = Math.max(0, Number(selectedVariant.quantity ?? item.inventory_quantity ?? 0));
   const available = Number(selectedVariant.quantity ?? item.quantity ?? 0) > 0 && selectedVariant.status !== "esgotado";
   const related = asArray(data?.items)
     .filter((candidate) => candidate.id !== item.id && (candidate.category === item.category || candidate.subcategory === item.subcategory))
@@ -858,6 +862,7 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
               <strong>{saleValue > 0 ? currency.format(saleValue) : "Valor Sob Consulta"}</strong>
               <span>{stockText || "Disponibilidade sob consulta"}</span>
             </div>
+            {available && <div className="catalog-quantity-picker" aria-label="Quantidade"><button type="button" onClick={() => setQuantity((current) => Math.max(1, current - 1))} disabled={quantity <= 1}>−</button><strong>{quantity}</strong><button type="button" onClick={() => setQuantity((current) => Math.min(maximumQuantity, current + 1))} disabled={quantity >= maximumQuantity}>+</button><small>{maximumQuantity} disponível(is)</small></div>}
             <div className="catalog-detail-grid">
               {detailItems.map((entry) => (
                 <div key={entry.label}>
@@ -868,7 +873,7 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
             </div>
             <div className="catalog-detail-actions">
               {available && Boolean(Number(theme.show_schedule_button || 1)) && <button className="primary-button" type="button" onClick={() => onScheduleWithJewelry({ ...selectedVariant, selected_color: selectedColor })}>Quero Agendar Com Essa Joia</button>}
-              {available && Boolean(Number(theme.show_buy_button)) && <button className="secondary-button" type="button" onClick={() => onAddToOrder({ ...selectedVariant, selected_color: selectedColor })}>Adicionar ao carrinho</button>}
+              {available && Boolean(Number(theme.show_buy_button)) && <button className="secondary-button" type="button" onClick={() => onAddToOrder({ ...selectedVariant, selected_color: selectedColor, requested_qty: quantity })}>Adicionar {quantity} ao carrinho</button>}
               {!available && settings.whatsapp_phone && <a className="primary-button" href={whatsappCatalogUrl(`Ola! Gostaria de consultar a disponibilidade desta joia:\n\nProduto: ${productName}\nVariacao: ${variantCatalogLabel(selectedVariant)}\nMaterial: ${selectedVariant.material || item.material || "nao informado"}\nCor: ${selectedColor || selectedVariant.color || item.color || "nao informada"}\nTamanho: ${variantCatalogLabel(selectedVariant)}\nLink: ${window.location.href}\n\nPodem me informar prazo e valor?`, settings.whatsapp_phone)} target="_blank" rel="noreferrer">Pedir pelo WhatsApp</a>}
               {!available && !settings.whatsapp_phone && <span className="form-error">WhatsApp de vendas nao configurado. Avise a administracao.</span>}
               {settings.whatsapp_phone && <a className="secondary-button" href={whatsappCatalogUrl(`Olá! Quero informações sobre ${productName}, ${variantCatalogLabel(selectedVariant)}${selectedColor ? `, na cor ${selectedColor}` : ""}.`, settings.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Falar com a Aura</a>}

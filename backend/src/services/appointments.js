@@ -481,3 +481,28 @@ export async function registerRemainingPayment(db, appointmentId) {
     ]
   );
 }
+
+export async function registerCompletionPayments(db, appointmentId, rawPayments = [], userId = null) {
+  const appointment = await db.get("SELECT * FROM appointments WHERE id = ? FOR UPDATE", [appointmentId]);
+  if (!appointment) throw new Error("Agendamento não encontrado.");
+  const deposit = Number(appointment.deposit_value || 0);
+  const total = Number(appointment.total_value || 0);
+  const maximum = Math.max(0, total - deposit);
+  const payments = (Array.isArray(rawPayments) ? rawPayments : []).map((item) => ({
+    amount: Number(item.amount || 0), method: String(item.method || "Pix"), status: String(item.status || "pago"),
+    installments: Math.max(1, Number(item.installments || 1)), fee_amount: Math.max(0, Number(item.fee_amount || 0)),
+    expected_receipt_date: item.expected_receipt_date || null, notes: String(item.notes || "")
+  })).filter((item) => item.amount > 0);
+  const paid = payments.filter((item) => item.status === "pago").reduce((sum, item) => sum + item.amount, 0);
+  if (paid > maximum + 0.009) throw new Error("A soma dos pagamentos não pode superar o saldo do atendimento.");
+  await db.run("DELETE FROM payments WHERE appointment_id = ? AND payment_type = 'restante'", [appointmentId]);
+  for (const item of payments) {
+    await db.run(
+      `INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at, installments, fee_amount, net_amount, expected_receipt_date, notes, created_by_user_id)
+       VALUES (?, ?, ?, 'restante', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [appointmentId, appointment.client_id, item.amount, item.method, item.status, localTimestamp(), item.installments, item.fee_amount, Math.max(0, item.amount - item.fee_amount), item.expected_receipt_date, item.notes, userId]
+    );
+  }
+  await db.run("UPDATE appointments SET remaining_value = ?, remaining_payment_method = ?, financial_closed_at = ?, financial_closed_by = ?, updated_at = ? WHERE id = ?", [Math.max(0, maximum - paid), payments[0]?.method || appointment.remaining_payment_method || "Pix", localTimestamp(), userId, localTimestamp(), appointmentId]);
+  return { paid, remaining: Math.max(0, maximum - paid) };
+}
