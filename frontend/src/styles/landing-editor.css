@@ -1,0 +1,294 @@
+/* Editor da landing pública (painel da plataforma).
+ *
+ * Camada própria, importada pelo próprio componente: styles.css já é gigante e
+ * compartilhado por todas as telas, e mais um bloco lá aumentaria a chance de
+ * uma regra nova vazar para o resto do sistema. Todas as classes usam o prefixo
+ * `le-` pelo mesmo motivo.
+ *
+ * As variáveis (--ink, --line, --brand…) vêm do tema global; aqui só há layout.
+ */
+
+.le-root {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.le-intro {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.le-intro h2 {
+  margin: 0 0 4px;
+}
+
+.le-intro p {
+  margin: 0;
+  max-width: 68ch;
+  color: var(--muted, #6b7280);
+  font-size: 14px;
+}
+
+.le-view-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.le-unsaved-banner,
+.le-unsaved-inline {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid rgba(202, 138, 4, 0.35);
+  border-radius: 10px;
+  background: rgba(250, 204, 21, 0.12);
+  color: #92400e;
+  font-size: 14px;
+}
+
+/* Duas colunas: a lista de blocos fica visível enquanto se edita um deles.
+   `minmax(0, …)` impede que um campo largo empurre a coluna para fora da tela. */
+.le-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 360px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .le-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.le-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.le-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line, #e5e7eb);
+  border-radius: 12px;
+  background: var(--surface, #fff);
+}
+
+.le-item.is-active {
+  border-color: var(--brand, #b8894b);
+  box-shadow: 0 0 0 1px var(--brand, #b8894b) inset;
+}
+
+/* Bloco desligado continua legível — ele precisa ser encontrado para ser
+   religado —, só perde destaque. */
+.le-item.is-off {
+  opacity: 0.72;
+}
+
+.le-item-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.le-item-position {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--line, #e5e7eb);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.le-item-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.le-item-title span {
+  color: var(--muted, #6b7280);
+  font-size: 12.5px;
+}
+
+.le-item-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.le-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.le-move {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.le-move .icon-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.le-remove {
+  color: var(--danger, #b91c1c);
+}
+
+.le-editor-panel {
+  min-width: 0;
+}
+
+.le-editor-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.le-placeholder {
+  margin: 0;
+  padding: 24px 0;
+  color: var(--muted, #6b7280);
+  text-align: center;
+}
+
+.le-form {
+  gap: 16px;
+}
+
+.le-hint {
+  margin: 4px 0 0;
+  color: var(--muted, #6b7280);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.le-notice {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--line, #e5e7eb);
+  border-radius: 10px;
+  background: rgba(148, 163, 184, 0.12);
+  font-size: 13.5px;
+}
+
+.le-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.le-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line, #e5e7eb);
+  border-radius: 12px;
+}
+
+.le-item-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.le-image-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px dashed var(--line, #e5e7eb);
+  border-radius: 12px;
+}
+
+.le-image-label {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.le-image-body {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+@media (max-width: 640px) {
+  .le-image-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.le-image-preview,
+.le-image-empty {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 10px;
+  border: 1px solid var(--line, #e5e7eb);
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.le-image-preview {
+  object-fit: cover;
+}
+
+.le-image-empty {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 6px;
+  color: var(--muted, #6b7280);
+  font-size: 12.5px;
+}
+
+.le-image-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.le-image-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* O <input type="file"> nativo não é estilizável; o rótulo faz o papel do botão
+   e o input fica escondido dentro dele (continua acessível pelo clique/teclado
+   no rótulo). */
+.le-file-button {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.le-file-button input[type="file"] {
+  display: none;
+}

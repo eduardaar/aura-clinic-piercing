@@ -230,3 +230,106 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_idempotency_keys_scope
   ON platform.idempotency_keys (tenant_id, endpoint, idempotency_key);
 CREATE INDEX IF NOT EXISTS ix_idempotency_keys_expires
   ON platform.idempotency_keys (expires_at);
+
+-- ---------------------------------------------------------------------------
+-- Conteúdo editável da landing (a página pública da plataforma, em "/").
+-- ---------------------------------------------------------------------------
+--
+-- Fica no schema `platform`, e não em nenhum tenant: é a página de marketing da
+-- Monitence, uma só para toda a plataforma. Quem edita é o super-admin.
+--
+-- Cada linha é um BLOCO da página. O tipo é fixo (`section_key`), porque o
+-- layout de cada um é código React — o editor controla conteúdo, ordem e
+-- ligado/desligado, não a estrutura. Isso é o que impede a página de ser
+-- quebrada por engano a partir do painel.
+--
+-- `content` é JSONB porque cada bloco tem campos próprios (o hero tem título e
+-- dois botões; o de recursos tem uma lista de cards). Uma coluna por campo
+-- viraria uma tabela larga e cheia de NULL, e cada campo novo exigiria
+-- migration.
+CREATE TABLE IF NOT EXISTS platform.landing_sections (
+  section_key TEXT PRIMARY KEY,
+  enabled BOOLEAN NOT NULL DEFAULT true,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  content JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_by INTEGER REFERENCES platform.platform_users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS ix_landing_sections_order ON platform.landing_sections (sort_order);
+
+-- Semente com EXATAMENTE o conteúdo que hoje está fixo no Landing.jsx.
+--
+-- `ON CONFLICT DO NOTHING` é o que torna isto seguro: a semente popula o banco
+-- no primeiro boot e, a partir daí, nunca mais sobrescreve o que o super-admin
+-- editou. Sem essa cláusula, todo deploy desfaria as edições dele.
+--
+-- O bloco `carousel` nasce DESLIGADO: ele não existe na página hoje, e ligá-lo
+-- sozinho num deploy mudaria a landing sem ninguém ter pedido.
+INSERT INTO platform.landing_sections (section_key, enabled, sort_order, content) VALUES
+  ('hero', true, 10, '{
+    "kicker": "Para estúdios de piercing",
+    "title": "Gestão premium para quem vive da perfuração.",
+    "subtitle": "Agenda, catálogo de joias, ficha digital e financeiro — num sistema só.",
+    "primary_label": "Criar minha clínica",
+    "primary_href": "/cadastro",
+    "secondary_label": "Já tenho conta",
+    "secondary_href": "/login",
+    "note": "7 dias grátis · sem cartão de crédito",
+    "image": "/assets/landing/hero-studio.jpg",
+    "image_alt": "Close de orelha com piercings de joias douradas no lóbulo",
+    "caption": "Agenda, catálogo e ficha digital num link só seu"
+  }'::jsonb),
+
+  ('features', true, 20, '{
+    "title": "Tudo que o estúdio precisa",
+    "subtitle": "",
+    "items": [
+      {"title": "Agendamento online", "text": "Seus clientes marcam horário sozinhos por um link só seu.", "image": "/assets/landing/feature-agenda.jpg", "image_alt": "Recepcionista de estúdio atendendo com um tablet em uma recepção clara"},
+      {"title": "Catálogo de joias", "text": "Uma vitrine online da sua marca, pronta pra compartilhar.", "image": "/assets/landing/feature-jewelry.jpg", "image_alt": "Argolas douradas de piercing sobre uma base de pedra clara"},
+      {"title": "Ficha digital", "text": "Anamnese e termo de consentimento assinados sem papel.", "image": "/assets/landing/feature-care.jpg", "image_alt": "Orelha com vários piercings cicatrizados no hélix e no lóbulo"},
+      {"title": "Financeiro e estoque", "text": "Caixa, vendas e alertas de estoque baixo no mesmo lugar.", "image": "/assets/landing/showcase-1.jpg", "image_alt": "Brinco dourado texturizado em close-up"}
+    ]
+  }'::jsonb),
+
+  ('carousel', false, 30, '{
+    "title": "Feito para o seu trabalho",
+    "subtitle": "",
+    "autoplay_seconds": 6,
+    "items": [
+      {"image": "/assets/landing/showcase-1.jpg", "image_alt": "Brinco dourado texturizado em close-up", "caption": ""},
+      {"image": "/assets/landing/showcase-2.jpg", "image_alt": "", "caption": ""},
+      {"image": "/assets/landing/showcase-3.jpg", "image_alt": "", "caption": ""}
+    ]
+  }'::jsonb),
+
+  ('plans', true, 40, '{
+    "title": "Planos para cada fase",
+    "subtitle": "Todos começam com 7 dias grátis. Troque quando quiser.",
+    "cta_label": "Começar grátis",
+    "cta_href": "/cadastro"
+  }'::jsonb),
+
+  ('showcase_links', true, 50, '{
+    "title": "Veja quem já usa",
+    "subtitle": "Explore as vitrines públicas das clínicas na plataforma.",
+    "items": [
+      {"title": "Catálogo online", "text": "Veja as clínicas usando e abra a vitrine de joias de cada uma.", "href": "/catalogo"},
+      {"title": "Agendamento online", "text": "Encontre um estúdio e marque horário direto na agenda dele.", "href": "/agendar"}
+    ]
+  }'::jsonb),
+
+  ('closing', true, 60, '{
+    "title": "Pronto para profissionalizar seu estúdio?",
+    "primary_label": "Criar minha clínica",
+    "primary_href": "/cadastro",
+    "note": "7 dias grátis · sem cartão de crédito",
+    "images": [
+      {"image": "/assets/landing/showcase-2.jpg", "image_alt": ""},
+      {"image": "/assets/landing/showcase-3.jpg", "image_alt": ""}
+    ],
+    "footer_text": "Plataforma de gestão para estúdios de piercing.",
+    "footer_link_label": "Entrar na minha conta",
+    "footer_link_href": "/login"
+  }'::jsonb)
+ON CONFLICT (section_key) DO NOTHING;

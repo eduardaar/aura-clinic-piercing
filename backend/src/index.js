@@ -45,6 +45,7 @@ import reportsRoutes from "./routes/reports.js";
 import webhookRoutes from "./routes/webhooks.js";
 import billingRoutes from "./routes/billing.js";
 import integrationsRoutes from "./routes/integrations.js";
+import landingRoutes from "./routes/landing.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -116,6 +117,7 @@ app.use(paymentsRoutes);
 app.use(reportsRoutes);
 app.use(billingRoutes);
 app.use(integrationsRoutes);
+app.use(landingRoutes);
 
 // ---------- Inicialização ----------
 // 1) Garante o schema de controle `platform` (tenants + superadmin inicial).

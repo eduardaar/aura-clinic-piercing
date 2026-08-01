@@ -27,6 +27,10 @@ export function requiresAuth(req) {
   // por regex e não por prefixo justamente para /api/payment-intents não virar
   // público inteiro por descuido.
   if (/^\/api\/payment-intents\/\d+\/(pix|sync)$/.test(req.path)) return false;
+  // Conteúdo da landing: é a página pública da plataforma, servida antes de
+  // qualquer login. O editor vive em /api/platform/landing/* e se autentica com
+  // token de plataforma, não com este caminho.
+  if (req.method === "GET" && req.path === "/api/landing") return false;
   return true;
 }
 

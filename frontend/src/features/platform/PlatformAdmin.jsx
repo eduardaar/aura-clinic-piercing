@@ -6,6 +6,7 @@ import { DataView } from "../../components/common/DataView";
 import { API } from "../../lib/api";
 import { BrandMark } from "../../components/common/BrandMark";
 import { asArray } from "../../lib/utils";
+import { LandingEditor } from "./LandingEditor";
 
 // Painel do super-admin da plataforma (/plataforma).
 // Sessão própria em aura-platform-session (separada da aura-session das clínicas)
@@ -71,8 +72,25 @@ const planOptions = (tenants) =>
     .sort()
     .map((plan) => ({ value: plan, label: planLabel(plan) }));
 
+// Áreas do painel. A landing é conteúdo público da plataforma, não cadastro de
+// clínica: são duas tarefas distintas e cada uma tem sua aba.
+const TABS = [
+  ["clinicas", "Clínicas"],
+  ["landing", "Landing pública"],
+];
+
+const TAB_HEADINGS = {
+  clinicas: { title: "Clínicas", subtitle: "Gerencie as clínicas cadastradas no SaaS." },
+  landing: { title: "Landing pública", subtitle: "Edite os blocos da página inicial em /." },
+};
+
 export function PlatformAdmin() {
   const [session, setSession] = useState(readPlatformSession);
+  const [tab, setTab] = useState("clinicas");
+  // Depois de aberto, o editor da landing continua MONTADO (só oculto) enquanto
+  // o painel estiver aberto: desmontar jogaria fora os rascunhos não salvos de
+  // quem só foi conferir a lista de clínicas e voltou.
+  const [landingVisited, setLandingVisited] = useState(false);
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
@@ -100,7 +118,15 @@ export function PlatformAdmin() {
   // Fetch da plataforma: Bearer do token de plataforma, sem X-Tenant.
   const platformFetch = useCallback(async (path, options = {}) => {
     const headers = new Headers(options.headers || {});
-    if (options.body !== undefined && !headers.has("Content-Type")) {
+    // FormData fica de fora: definir o Content-Type na mão apaga o `boundary`
+    // que o navegador geraria, e sem ele o multer não consegue separar as
+    // partes do multipart — o upload chega ao servidor como "nenhum arquivo
+    // enviado". Mesma regra do `apiFetch` em lib/api.js.
+    if (
+      !(options.body instanceof FormData) &&
+      options.body !== undefined &&
+      !headers.has("Content-Type")
+    ) {
       headers.set("Content-Type", "application/json");
     }
     if (token) headers.set("Authorization", `Bearer ${token}`);
@@ -360,8 +386,8 @@ export function PlatformAdmin() {
       <header className="topbar">
         <div className="topbar-title">
           <span className="eyebrow">Aura Clinic · Plataforma</span>
-          <h1>Clínicas</h1>
-          <p>Gerencie as clínicas cadastradas no SaaS.</p>
+          <h1>{TAB_HEADINGS[tab].title}</h1>
+          <p>{TAB_HEADINGS[tab].subtitle}</p>
         </div>
         <div className="topbar-actions">
           <Button variant="secondary" onClick={clearPlatformSession}>
@@ -371,6 +397,29 @@ export function PlatformAdmin() {
       </header>
 
       <div className="stack">
+        <nav className="customization-tabs">
+          {TABS.map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              className={tab === id ? "active" : ""}
+              onClick={() => {
+                setTab(id);
+                if (id === "landing") setLandingVisited(true);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+
+        {landingVisited && (
+          <div hidden={tab !== "landing"}>
+            <LandingEditor token={token} onUnauthorized={clearPlatformSession} />
+          </div>
+        )}
+
+        {tab === "clinicas" && (
         <section className="panel">
           <CrudHeader
             title="Clínicas cadastradas"
@@ -446,6 +495,7 @@ export function PlatformAdmin() {
             emptyFiltered="Nenhuma clínica corresponde aos filtros aplicados."
           />
         </section>
+        )}
 
         <Modal
           open={showCreate}
@@ -486,7 +536,7 @@ export function PlatformAdmin() {
           </form>
         </Modal>
 
-        {metricList.length > 0 && (
+        {tab === "clinicas" && metricList.length > 0 && (
           <section className="panel">
             <div className="panel-heading">
               <h2>Métricas por clínica</h2>
