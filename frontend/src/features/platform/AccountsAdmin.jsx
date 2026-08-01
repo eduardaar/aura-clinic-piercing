@@ -1,10 +1,23 @@
-// Gestão de contas: o DETALHE de UMA clínica no painel do super-admin.
+// Gestão de contas: a lista de clínicas e o DETALHE de UMA delas no painel do
+// super-admin.
 //
-// A aba "Clínicas" (PlatformAdmin) é a LISTAGEM — quem existe, quem foi criado
+// A aba "Clínicas" (PlatformAdmin) é o CADASTRO — quem existe, quem foi criado
 // quando. Esta é a outra metade: uso x cotas, plano, assinatura, trial e as
 // ações que cortam acesso ou mexem em cobrança. Por isso ela consome
 // `/api/platform/accounts/...` (a CONTA) e não `/api/platform/tenants/...` (o
 // CADASTRO), a mesma separação que o backend faz nas rotas.
+//
+// FORMA DA TELA (por que ela é assim e não com CSS próprio)
+// A tela nasceu com um sistema `aa-` inteiro só dela — 448 linhas de CSS para
+// refazer listagem, barra de busca, pares rótulo/valor e barras de progresso que
+// o painel já tinha. Agora:
+//   listagem ......... <DataView>            (busca, ordenação, loading, erro)
+//   escrita .......... <Modal>               (motivo dentro da confirmação)
+//   mestre-detalhe ... .platform-split       (styles/platform-panel.css)
+//   rótulo/valor ..... .platform-facts
+//   cotas ............ .platform-quota*
+//   destrutivo ....... .platform-danger + .platform-sticky-warning
+// O que sobra em styles/accounts-admin.css é o que ainda não tem equivalente.
 //
 // Três decisões valem para o arquivo inteiro:
 //
@@ -25,12 +38,17 @@
 //     comportamento real de planLimits.js ("cota só impede criar"), e omiti-lo
 //     faria um downgrade legítimo parecer perda de dados.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, RefreshCw, Search } from "lucide-react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 import { AlertBlock, Button, Input, Select, StatusBadge, Textarea } from "../../components/common/Ui";
-import { DataTable, Modal } from "../../components/common/Crud";
+import { CrudHeader, Modal } from "../../components/common/Crud";
+import { DataView } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { API } from "../../lib/api";
 import { asArray, asObject } from "../../lib/utils";
+// A camada compartilhada do painel é importada aqui também (e não só no
+// PlatformAdmin) para a tela não depender de quem a monta: import de CSS é
+// deduplicado pelo bundler, então isto não muda a ordem final das regras.
+import "../../styles/platform-panel.css";
 import "../../styles/accounts-admin.css";
 
 // Mesmo mínimo do `requireReason` do backend: o botão de confirmar fica
@@ -85,6 +103,8 @@ const SUBSCRIPTION_TONES = {
   suspended: "danger",
 };
 
+const rotuloDaAssinatura = (status) => SUBSCRIPTION_LABELS[status] || "Sem assinatura";
+
 // Status de assinatura que o super-admin pode FORÇAR (FORCEABLE_SUBSCRIPTION_STATUSES
 // do backend). Os dois de trial ficam de fora de propósito: quem mexe em trial é
 // a ação de trial, que também acerta as datas.
@@ -133,7 +153,7 @@ const ASSIMETRIAS = {
 // ---------------------------------------------------------------------------
 //
 // `exigeCodigo` marca o que corta acesso ou encerra cobrança: além do motivo, o
-// super-admin digita o código da clínica. É a diferença entre errar de linha na
+// super-admin digita o slug da clínica. É a diferença entre errar de linha na
 // lista e confirmar a clínica certa.
 const ACOES = {
   suspender: {
@@ -227,7 +247,6 @@ export function AccountsAdmin({ token, onUnauthorized }) {
   const [tenants, setTenants] = useState(null);
   const [planos, setPlanos] = useState([]);
   const [loadError, setLoadError] = useState("");
-  const [busca, setBusca] = useState("");
 
   const [tenantId, setTenantId] = useState(null);
   const [conta, setConta] = useState(null);
@@ -296,9 +315,9 @@ export function AccountsAdmin({ token, onUnauthorized }) {
     carregarClinicas().catch((error) => {
       if (ativo) setLoadError(error.message);
     });
-    // O catálogo de planos alimenta o seletor de troca. Falha dele não impede a
-    // tela: o resto da conta (uso, assinatura, faturas) continua legível, e o
-    // seletor avisa que está sem opções.
+    // O catálogo de planos alimenta o seletor de troca e a coluna "Plano" da
+    // listagem. Falha dele não impede a tela: o resto da conta (uso, assinatura,
+    // faturas) continua legível, e a coluna cai no código cru do plano.
     request("/platform/plans")
       .then((payload) => {
         if (ativo) setPlanos(asArray(asObject(payload).plans));
@@ -369,15 +388,6 @@ export function AccountsAdmin({ token, onUnauthorized }) {
       ativo = false;
     };
   }, [tenantId, planoAlvo, planoAtual, request]);
-
-  const lista = useMemo(() => {
-    const termo = busca.trim().toLowerCase();
-    const todas = asArray(tenants);
-    if (!termo) return todas;
-    return todas.filter((item) =>
-      `${item.name || ""} ${item.slug || ""}`.toLowerCase().includes(termo),
-    );
-  }, [tenants, busca]);
 
   // Planos oferecidos: os ativos, mais o plano vigente da clínica mesmo se ele
   // tiver sido desativado — sumir com o plano atual da lista faria o seletor
@@ -509,9 +519,6 @@ export function AccountsAdmin({ token, onUnauthorized }) {
     }
   }
 
-  if (tenants === null && !loadError) return <Loading />;
-  if (loadError) return <ApiError message={loadError} />;
-
   const definicao = acao ? ACOES[acao] : null;
   const exigeCodigo =
     Boolean(definicao?.exigeCodigo) || (acao === "forcar_status" && STATUS_QUE_CORTAM.includes(statusAlvo));
@@ -521,238 +528,208 @@ export function AccountsAdmin({ token, onUnauthorized }) {
   const trocaPendente = Boolean(planoAlvo) && planoAlvo !== planoAtual;
 
   return (
-    <div className="aa-root">
-      <div className="panel aa-intro">
-        <h2>Gestão de contas</h2>
-        <p>
-          Escolha uma clínica para ver o que ela consome do plano e agir sobre a conta: trocar de plano, suspender ou
-          reativar o acesso, mexer no teste grátis, forçar o status da assinatura e cancelar a cobrança. Toda ação aqui
-          exige um motivo, que fica gravado na auditoria com o seu e-mail.
-        </p>
-      </div>
-
+    <div className="stack">
+      {/* Avisos de gateway: `.platform-danger` pelo peso (é dinheiro pendurado) e
+          `.platform-sticky-warning` para não escaparem da vista ao rolar. Só
+          somem no clique — nunca sozinhos. */}
       {avisos.map((aviso) => (
-        <div className="aa-aviso" role="alert" key={aviso.id}>
-          <div className="aa-aviso-head">
-            <strong>
-              <AlertTriangle size={16} aria-hidden="true" /> {aviso.titulo}
-            </strong>
-            <Button
-              variant="ghost"
-              onClick={() => setAvisos((atuais) => atuais.filter((item) => item.id !== aviso.id))}
-            >
-              Já anotei, dispensar
-            </Button>
-          </div>
+        <div className="platform-danger platform-sticky-warning" role="alert" key={aviso.id}>
+          <h3>
+            <AlertTriangle size={16} aria-hidden="true" /> {aviso.titulo}
+          </h3>
           <p>{aviso.texto}</p>
+          <Button
+            variant="secondary"
+            onClick={() => setAvisos((atuais) => atuais.filter((item) => item.id !== aviso.id))}
+          >
+            Já anotei, dispensar
+          </Button>
         </div>
       ))}
 
       {feedback.error && <span className="form-error">{feedback.error}</span>}
       {feedback.success && <span className="form-success">{feedback.success}</span>}
 
-      <div className="aa-columns">
-        <section className="panel aa-list-panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Clínicas</h2>
-              <span>{lista.length} de {asArray(tenants).length} exibidas</span>
-            </div>
-          </div>
+      {/*
+        A mesma listagem em dois tamanhos: sozinha, ela ocupa a largura toda e as
+        cinco colunas são legíveis; com uma conta aberta, o MESMO nó vira a
+        coluna estreita do `.platform-split` e o detalhe entra ao lado. Trocar só
+        a classe (em vez de mover o <DataView> para outro lugar da árvore)
+        preserva busca, ordenação e página ao abrir e fechar uma conta.
+      */}
+      <div className={tenantId ? "platform-split" : ""}>
+        <section className="panel">
+          {/* `<CrudHeader>` e não um `.panel-heading` escrito à mão: é o mesmo
+              cabeçalho de painel das outras telas, e duas grafias da mesma coisa
+              é como o espaçamento começa a divergir entre abas. */}
+          <CrudHeader title="Clínicas" subtitle="Abra uma conta para ver uso, plano, assinatura e faturas." />
 
-          <label className="aa-search">
-            <Search size={16} aria-hidden="true" />
-            <input
-              type="search"
-              value={busca}
-              placeholder="Buscar por nome ou código"
-              onChange={(event) => setBusca(event.target.value)}
-            />
-          </label>
-
-          <ul className="aa-list">
-            {lista.map((item) => (
-              <li key={item.id ?? item.slug}>
-                <button
-                  type="button"
-                  className={`aa-item${item.id === tenantId ? " is-active" : ""}`}
-                  onClick={() => setTenantId(item.id)}
-                >
-                  <span className="aa-item-title">
-                    <strong>{item.name || "—"}</strong>
-                    <code>{item.slug}</code>
-                  </span>
-                  <span className="aa-item-badges">
-                    <StatusBadge
-                      status={item.status || "ativo"}
-                      tone={item.status === "suspenso" ? "danger" : "ok"}
-                    />
-                    <StatusBadge tone={SUBSCRIPTION_TONES[item.subscription_status] || "neutral"}>
-                      {SUBSCRIPTION_LABELS[item.subscription_status] || "Sem assinatura"}
-                    </StatusBadge>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-
-          {!lista.length && <p className="aa-placeholder">Nenhuma clínica corresponde à busca.</p>}
+          <DataView
+            rows={asArray(tenants)}
+            rowKey={(item) => item.id ?? item.slug}
+            loading={tenants === null && !loadError}
+            error={loadError}
+            defaultSort={{ key: "name", dir: "asc" }}
+            searchPlaceholder="Buscar por nome ou slug"
+            empty="Nenhuma clínica cadastrada até o momento."
+            emptyFiltered="Nenhuma clínica corresponde à busca."
+            columns={[
+              {
+                key: "name",
+                label: "Clínica",
+                value: (item) => item.name || "",
+                // O selo de suspensão viaja junto do nome em vez de virar uma
+                // sexta coluna: acesso cortado é a única informação da lista que
+                // não pode passar despercebida.
+                render: (item) => (
+                  <>
+                    {item.name || "—"}{" "}
+                    {item.status === "suspenso" && <StatusBadge status="suspenso" tone="danger" />}
+                  </>
+                ),
+              },
+              {
+                key: "slug",
+                label: "Slug",
+                value: (item) => item.slug || "",
+                // Identificador técnico -> `<code>`, o mesmo que a listagem de
+                // planos faz com o código do plano. É por ele que se confirma a
+                // clínica na hora de suspender, então precisa ser copiável e não
+                // se confundir com o nome comercial.
+                render: (item) => (item.slug ? <code>{item.slug}</code> : "—"),
+              },
+              {
+                key: "plan",
+                label: "Plano",
+                value: (item) => nomeDoPlano(planos, item.plan),
+                render: (item) => nomeDoPlano(planos, item.plan),
+              },
+              {
+                key: "subscription_status",
+                label: "Status da assinatura",
+                // Sem `value` a busca e a ordenação receberiam o JSX do selo e
+                // comparariam "[object Object]".
+                value: (item) => rotuloDaAssinatura(item.subscription_status),
+                render: (item) => (
+                  <StatusBadge tone={SUBSCRIPTION_TONES[item.subscription_status] || "neutral"}>
+                    {rotuloDaAssinatura(item.subscription_status)}
+                  </StatusBadge>
+                ),
+              },
+              {
+                key: "created_at",
+                label: "Criada em",
+                // Ordena pelo ISO do backend; dd/MM/aaaa ordenaria por dia.
+                value: (item) => String(item.created_at || ""),
+                render: (item) => formatarData(item.created_at),
+              },
+            ]}
+            actions={(item) => (
+              <button
+                type="button"
+                aria-current={item.id === tenantId ? "true" : undefined}
+                onClick={() => setTenantId(item.id)}
+              >
+                {item.id === tenantId ? "Gerenciando" : "Gerenciar"}
+              </button>
+            )}
+          />
         </section>
 
-        <div className="aa-detail">
-          {!tenantId && (
-            <section className="panel">
-              <p className="aa-placeholder">Escolha uma clínica na lista ao lado para abrir a conta dela.</p>
-            </section>
-          )}
+        {tenantId && (
+          <div className="stack">
+            {carregandoConta && !conta && <Loading />}
+            {contaErro && <ApiError message={contaErro} />}
 
-          {tenantId && carregandoConta && !conta && <Loading />}
-          {tenantId && contaErro && <ApiError message={contaErro} />}
+            {conta && (
+              <>
+                <ResumoDaConta clinica={clinica} plano={asObject(conta.plan)} assinatura={assinatura} />
 
-          {conta && (
-            <>
-              <ResumoDaConta clinica={clinica} plano={asObject(conta.plan)} assinatura={assinatura} />
+                <UsoXCotas itens={asArray(conta.usage)} atualizando={atualizandoUso} onAtualizar={atualizarUso} />
 
-              <UsoXCotas
-                itens={asArray(conta.usage)}
-                atualizando={atualizandoUso}
-                onAtualizar={atualizarUso}
-              />
-
-              <TrocaDePlano
-                planos={planosOferecidos}
-                planoAtual={planoAtual}
-                planoAlvo={planoAlvo}
-                onEscolher={setPlanoAlvo}
-                previsao={previsao}
-                previsaoErro={previsaoErro}
-                carregando={carregandoPrevisao}
-                trocaPendente={trocaPendente}
-                onAplicar={() => abrirAcao("plano")}
-              />
-
-              <section className="panel aa-block">
-                <div className="panel-heading">
-                  <div>
-                    <h2>Ações de conta</h2>
-                    <span>Todas exigem motivo e confirmação. Todas vão para a auditoria.</span>
-                  </div>
-                </div>
-
-                {/*
-                  As três assimetrias juntas, antes dos botões. Elas são
-                  deliberadas no backend e cada uma já causou (ou causaria) um
-                  erro operacional caro: clínica suspensa continuar sendo
-                  cobrada, assinatura cancelada derrubar quem já pagou, upgrade
-                  não chegar à recorrência.
-                */}
-                <AlertBlock icon={AlertTriangle} title="O que estas ações NÃO fazem" empty="">
-                  <p className="aa-assimetria">
-                    <strong>Suspender ≠ cancelar cobrança.</strong> {ASSIMETRIAS.suspender}
-                  </p>
-                  <p className="aa-assimetria">
-                    <strong>Cancelar ≠ cortar acesso.</strong> {ASSIMETRIAS.cancelar}
-                  </p>
-                  <p className="aa-assimetria">
-                    <strong>Trocar de plano ≠ reajustar a cobrança.</strong> {ASSIMETRIAS.plano}
-                  </p>
-                </AlertBlock>
-
-                {semAssinatura && (
-                  <p className="aa-hint aa-hint-strong">
-                    Esta clínica não tem linha de assinatura: teste grátis, status da assinatura e cancelamento ficam
-                    indisponíveis até ela ser criada pelo provisionamento ou pelo checkout.
-                  </p>
-                )}
-
-                <div className="aa-acoes">
-                  <CartaoDeAcao
-                    definicao={ACOES.suspender}
-                    disponivel={clinica.status !== "suspenso"}
-                    indisponivelPorque="Esta clínica já está suspensa."
-                    onAbrir={() => abrirAcao("suspender")}
-                    perigo
-                  />
-                  <CartaoDeAcao
-                    definicao={ACOES.reativar}
-                    disponivel={clinica.status === "suspenso"}
-                    indisponivelPorque="Esta clínica já está ativa."
-                    onAbrir={() => abrirAcao("reativar")}
-                  />
-                  <CartaoDeAcao
-                    definicao={ACOES.trial}
-                    disponivel={!semAssinatura}
-                    indisponivelPorque="Sem linha de assinatura não há teste para ajustar."
-                    onAbrir={() => abrirAcao("trial")}
-                  />
-                  <CartaoDeAcao
-                    definicao={ACOES.forcar_status}
-                    disponivel={!semAssinatura}
-                    indisponivelPorque="Sem linha de assinatura não há status para forçar."
-                    onAbrir={() => abrirAcao("forcar_status")}
-                  />
-                  <CartaoDeAcao
-                    definicao={ACOES.cancelar_assinatura}
-                    disponivel={!semAssinatura}
-                    indisponivelPorque="Sem linha de assinatura não há o que cancelar."
-                    onAbrir={() => abrirAcao("cancelar_assinatura")}
-                    perigo
-                  />
-                </div>
-              </section>
-
-              <section className="panel aa-block">
-                <div className="panel-heading">
-                  <div>
-                    <h2>Faturas recentes</h2>
-                    <span>As últimas cobranças desta clínica na plataforma.</span>
-                  </div>
-                </div>
-                <DataTable
-                  rows={asArray(conta.invoices)}
-                  rowKey={(fatura) => fatura.id}
-                  empty="Nenhuma fatura registrada para esta clínica."
-                  columns={[
-                    { key: "due_date", label: "Vencimento", render: (fatura) => formatarData(fatura.due_date) },
-                    { key: "plan_code", label: "Plano", render: (fatura) => fatura.plan_code || "—" },
-                    {
-                      key: "amount",
-                      label: "Valor",
-                      align: "right",
-                      render: (fatura) => formatarReais(fatura.amount),
-                    },
-                    {
-                      key: "status",
-                      label: "Status",
-                      render: (fatura) => (
-                        <StatusBadge status={fatura.status} tone={FATURA_TONES[fatura.status] || "neutral"} />
-                      ),
-                    },
-                    {
-                      key: "paid_at",
-                      label: "Pagamento",
-                      render: (fatura) => (fatura.paid_at ? formatarData(fatura.paid_at) : "—"),
-                    },
-                    {
-                      key: "invoice_url",
-                      label: "Cobrança",
-                      render: (fatura) =>
-                        fatura.invoice_url ? (
-                          <a href={fatura.invoice_url} target="_blank" rel="noreferrer noopener">
-                            Abrir no Asaas
-                          </a>
-                        ) : (
-                          "—"
-                        ),
-                    },
-                  ]}
+                <TrocaDePlano
+                  planos={planosOferecidos}
+                  planoAtual={planoAtual}
+                  planoAlvo={planoAlvo}
+                  onEscolher={setPlanoAlvo}
+                  previsao={previsao}
+                  previsaoErro={previsaoErro}
+                  carregando={carregandoPrevisao}
+                  trocaPendente={trocaPendente}
+                  onAplicar={() => abrirAcao("plano")}
                 />
-              </section>
-            </>
-          )}
-        </div>
+
+                <AcoesDaConta
+                  suspensa={clinica.status === "suspenso"}
+                  semAssinatura={semAssinatura}
+                  onAbrir={abrirAcao}
+                />
+
+                <section className="panel">
+                  <CrudHeader title="Faturas recentes" subtitle="As últimas cobranças desta clínica na plataforma." />
+                  <DataView
+                    rows={asArray(conta.invoices)}
+                    rowKey={(fatura) => fatura.id}
+                    searchable={false}
+                    defaultSort={{ key: "due_date", dir: "desc" }}
+                    empty="Nenhuma fatura registrada para esta clínica."
+                    columns={[
+                      {
+                        key: "due_date",
+                        label: "Vencimento",
+                        value: (fatura) => String(fatura.due_date || ""),
+                        render: (fatura) => formatarData(fatura.due_date),
+                      },
+                      {
+                        key: "plan_code",
+                        label: "Plano",
+                        value: (fatura) => fatura.plan_code || "",
+                        render: (fatura) => (fatura.plan_code ? <code>{fatura.plan_code}</code> : "—"),
+                      },
+                      {
+                        key: "amount",
+                        label: "Valor",
+                        align: "right",
+                        value: (fatura) => Number(fatura.amount || 0),
+                        render: (fatura) => formatarReais(fatura.amount),
+                      },
+                      {
+                        key: "status",
+                        label: "Status",
+                        value: (fatura) => fatura.status || "",
+                        render: (fatura) => (
+                          <StatusBadge status={fatura.status} tone={FATURA_TONES[fatura.status] || "neutral"} />
+                        ),
+                      },
+                      {
+                        key: "paid_at",
+                        label: "Pagamento",
+                        value: (fatura) => String(fatura.paid_at || ""),
+                        render: (fatura) => (fatura.paid_at ? formatarData(fatura.paid_at) : "—"),
+                      },
+                    ]}
+                    // A fatura sai da COLUNA e vira ação de linha, como no
+                    // financeiro da plataforma: era o mesmo "abrir a cobrança no
+                    // Asaas" escrito de dois jeitos — lá uma pílula na coluna de
+                    // ações, aqui um link nu no meio da tabela. Mesmo rótulo,
+                    // mesmo lugar. A pílula vem de `.table-actions a` (styles.css).
+                    actions={(fatura) =>
+                      fatura.invoice_url ? (
+                        <a href={fatura.invoice_url} target="_blank" rel="noreferrer">
+                          Abrir fatura
+                        </a>
+                      ) : null
+                    }
+                  />
+                </section>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
+      {/* Toda escrita passa por aqui: o motivo obrigatório e a digitação do slug
+          ficam DENTRO da confirmação, junto da assimetria da ação. */}
       <Modal
         open={Boolean(acao)}
         title={definicao?.titulo}
@@ -769,17 +746,17 @@ export function AccountsAdmin({ token, onUnauthorized }) {
           </>
         }
       >
-        <p className="aa-modal-resumo">{definicao?.resumo}</p>
+        <p>{definicao?.resumo}</p>
 
         {/* A assimetria repetida no instante da decisão. É aqui que ela evita o
             erro — no bloco lá em cima ela é referência, não alerta. */}
-        <p className="aa-modal-naofaz">
+        <p className="platform-notice">
           <AlertTriangle size={16} aria-hidden="true" /> {definicao?.naoFaz}
         </p>
 
         {acao === "plano" && (
-          <div className="aa-modal-campos">
-            <p className="aa-hint">
+          <div>
+            <p className="field-hint">
               De <strong>{nomeDoPlano(planosOferecidos, planoAtual)}</strong> para{" "}
               <strong>{nomeDoPlano(planosOferecidos, planoAlvo)}</strong>.
             </p>
@@ -788,7 +765,7 @@ export function AccountsAdmin({ token, onUnauthorized }) {
         )}
 
         {acao === "forcar_status" && (
-          <div className="aa-modal-campos">
+          <div>
             <Select label="Novo status da assinatura" value={statusAlvo} onChange={setStatusAlvo}>
               {STATUS_FORCAVEIS.map((item) => (
                 <option key={item.value} value={item.value}>
@@ -797,7 +774,7 @@ export function AccountsAdmin({ token, onUnauthorized }) {
               ))}
             </Select>
             {STATUS_QUE_CORTAM.includes(statusAlvo) && (
-              <p className="aa-hint aa-hint-strong">
+              <p className="platform-notice">
                 Este status BLOQUEIA o uso do sistema pela clínica (a conta continua ativa, mas o plano deixa de
                 liberar as telas).
               </p>
@@ -806,7 +783,7 @@ export function AccountsAdmin({ token, onUnauthorized }) {
         )}
 
         {acao === "trial" && (
-          <div className="aa-modal-campos">
+          <div>
             <div className="form-grid">
               <Input
                 type="number"
@@ -823,7 +800,7 @@ export function AccountsAdmin({ token, onUnauthorized }) {
                 <option value="restart">Reiniciar — recomeça a contagem hoje</option>
               </Select>
             </div>
-            <p className="aa-hint">
+            <p className="field-hint">
               Teste atual termina em {formatarData(assinatura?.trial_ends_at)}.{" "}
               {trialForm.mode === "restart"
                 ? "Reiniciar descarta o prazo que resta e conta de hoje."
@@ -832,7 +809,7 @@ export function AccountsAdmin({ token, onUnauthorized }) {
           </div>
         )}
 
-        <div className="aa-modal-campos">
+        <div>
           <Textarea
             label="Motivo (obrigatório)"
             value={motivo}
@@ -840,7 +817,7 @@ export function AccountsAdmin({ token, onUnauthorized }) {
             placeholder="Ex.: pedido da própria clínica no chamado #482"
             onChange={setMotivo}
           />
-          <p className="aa-hint">
+          <p className="field-hint">
             O motivo vai para a auditoria junto do seu e-mail e do que mudou. Mínimo de {MOTIVO_MINIMO} caracteres — é
             a resposta para “por quê?” quando alguém revisar esta conta meses depois.
           </p>
@@ -860,9 +837,9 @@ export function AccountsAdmin({ token, onUnauthorized }) {
         )}
 
         {erroDaAcao.mensagem && (
-          <div className="aa-modal-erro" role="alert">
+          <div role="alert">
             <span className="form-error">{erroDaAcao.mensagem}</span>
-            {erroDaAcao.dica && <p className="aa-hint">{erroDaAcao.dica}</p>}
+            {erroDaAcao.dica && <p className="field-hint">{erroDaAcao.dica}</p>}
           </div>
         )}
       </Modal>
@@ -876,120 +853,136 @@ function nomeDoPlano(planos, code) {
   return asArray(planos).find((plano) => plano.code === code)?.name || code || "—";
 }
 
-function ResumoDaConta({ clinica, plano, assinatura }) {
-  const status = assinatura?.status || "";
+function Fato({ rotulo, valor }) {
   return (
-    <section className="panel aa-block">
-      <div className="panel-heading">
-        <div>
-          <h2>{clinica.name || "—"}</h2>
-          <span>
-            <code>{clinica.slug}</code> · criada em {formatarData(clinica.created_at)}
-          </span>
-        </div>
-        <div className="aa-item-badges">
-          <StatusBadge status={clinica.status || "ativo"} tone={clinica.status === "suspenso" ? "danger" : "ok"} />
-          <StatusBadge tone={SUBSCRIPTION_TONES[status] || "neutral"}>
-            {SUBSCRIPTION_LABELS[status] || "Sem assinatura"}
-          </StatusBadge>
-        </div>
-      </div>
-
-      <dl className="aa-dados">
-        <Dado rotulo="Plano vigente" valor={`${plano.name || "—"} · ${formatarCentavos(plano.price_cents)}/mês`} />
-        <Dado rotulo="Responsável" valor={clinica.responsible_name || "—"} />
-        <Dado rotulo="E-mail" valor={clinica.email || "—"} />
-        <Dado rotulo="Telefone" valor={clinica.phone || "—"} />
-        <Dado rotulo="Cidade/UF" valor={[clinica.city, clinica.state].filter(Boolean).join("/") || "—"} />
-        {/*
-          O documento chega MASCARADO do servidor e é assim que fica: esta tela
-          não precisa do CPF/CNPJ inteiro para nada, e ele é dado pessoal do
-          responsável. O suficiente é ele reconhecer o próprio número.
-        */}
-        <Dado
-          rotulo="Documento"
-          valor={clinica.tax_id || (clinica.has_tax_id ? "informado" : "—")}
-          nota="Mascarado pelo servidor."
-        />
-        <Dado rotulo="Cliente no Asaas" valor={clinica.asaas_customer_id || "—"} />
-        <Dado rotulo="Assinatura no Asaas" valor={assinatura?.asaas_subscription_id || "—"} />
-        <Dado
-          rotulo="Teste grátis"
-          valor={assinatura?.trial_ends_at ? `termina em ${formatarData(assinatura.trial_ends_at)}` : "—"}
-        />
-        <Dado
-          rotulo="Período atual"
-          valor={
-            assinatura?.current_period_ends_at ? `até ${formatarData(assinatura.current_period_ends_at)}` : "—"
-          }
-        />
-        <Dado
-          rotulo="Dias restantes"
-          valor={assinatura?.days_left == null ? "—" : `${assinatura.days_left} dia(s)`}
-        />
-        <Dado
-          rotulo="Cancelada em"
-          valor={assinatura?.canceled_at ? formatarData(assinatura.canceled_at) : "—"}
-        />
-      </dl>
-    </section>
+    <div className="platform-fact">
+      <dt>{rotulo}</dt>
+      <dd>{valor}</dd>
+    </div>
   );
 }
 
-function Dado({ rotulo, valor, nota }) {
+function ResumoDaConta({ clinica, plano, assinatura }) {
+  const status = assinatura?.status || "";
   return (
-    <div className="aa-dado">
-      <dt>{rotulo}</dt>
-      <dd>
-        {valor}
-        {nota && <small>{nota}</small>}
-      </dd>
-    </div>
+    <section className="panel">
+      <CrudHeader
+        title={clinica.name || "—"}
+        subtitle={
+          <>
+            <code>{clinica.slug}</code> · criada em {formatarData(clinica.created_at)}
+          </>
+        }
+      />
+
+      {/* Os dois selos entram como fatos, e não soltos no cabeçalho: acesso e
+          assinatura são estados independentes (a assimetria de novo), e lado a
+          lado com rótulo isso fica dito em vez de subentendido. */}
+      <dl className="platform-facts">
+        <Fato
+          rotulo="Acesso da clínica"
+          valor={
+            <StatusBadge status={clinica.status || "ativo"} tone={clinica.status === "suspenso" ? "danger" : "ok"} />
+          }
+        />
+        <Fato
+          rotulo="Assinatura"
+          valor={
+            <StatusBadge tone={SUBSCRIPTION_TONES[status] || "neutral"}>{rotuloDaAssinatura(status)}</StatusBadge>
+          }
+        />
+        <Fato rotulo="Plano vigente" valor={`${plano.name || "—"} · ${formatarCentavos(plano.price_cents)}/mês`} />
+        <Fato rotulo="Responsável" valor={clinica.responsible_name || "—"} />
+        <Fato rotulo="E-mail" valor={clinica.email || "—"} />
+        <Fato rotulo="Telefone" valor={clinica.phone || "—"} />
+        <Fato rotulo="Cidade/UF" valor={[clinica.city, clinica.state].filter(Boolean).join("/") || "—"} />
+        {/*
+          O documento chega MASCARADO do servidor e é assim que fica — o rótulo
+          diz isso para ninguém achar que o campo veio truncado. Esta tela não
+          precisa do CPF/CNPJ inteiro para nada, e ele é dado pessoal do
+          responsável: o suficiente é ele reconhecer o próprio número.
+        */}
+        <Fato
+          rotulo="Documento (mascarado pelo servidor)"
+          valor={clinica.tax_id || (clinica.has_tax_id ? "informado" : "—")}
+        />
+        {/* Ids do gateway em `<code>`: são identificadores técnicos que alguém
+            vai copiar para o painel do Asaas — o mesmo tratamento que o código do
+            plano e o slug recebem nas outras telas. */}
+        <Fato
+          rotulo="Cliente no Asaas"
+          valor={clinica.asaas_customer_id ? <code>{clinica.asaas_customer_id}</code> : "—"}
+        />
+        <Fato
+          rotulo="Assinatura no Asaas"
+          valor={assinatura?.asaas_subscription_id ? <code>{assinatura.asaas_subscription_id}</code> : "—"}
+        />
+        <Fato
+          rotulo="Teste grátis"
+          valor={assinatura?.trial_ends_at ? `termina em ${formatarData(assinatura.trial_ends_at)}` : "—"}
+        />
+        <Fato
+          rotulo="Período atual"
+          valor={assinatura?.current_period_ends_at ? `até ${formatarData(assinatura.current_period_ends_at)}` : "—"}
+        />
+        <Fato rotulo="Dias restantes" valor={assinatura?.days_left == null ? "—" : `${assinatura.days_left} dia(s)`} />
+        <Fato rotulo="Cancelada em" valor={assinatura?.canceled_at ? formatarData(assinatura.canceled_at) : "—"} />
+      </dl>
+    </section>
   );
 }
 
 /**
  * Uso x cotas com barra por item.
  *
- * Três leituras precisam ficar óbvias, e cada uma tem um desenho próprio:
- *  - cota `null` é ILIMITADO: barra tracejada e vazia. Nem cheia (que sugeriria
+ * Quatro leituras precisam ficar óbvias, e cada uma tem um desenho próprio:
+ *  - cota normal: barra preenchida, com a faixa de atenção antes do teto.
+ *  - cota `null` é ILIMITADO: trilho tracejado e VAZIO. Nem cheio (que sugeriria
  *    teto atingido) nem 0% (que sugeriria uma cota existente e intacta).
  *  - `approximate` (armazenamento) vira "≈" e diz que é estimativa: o backend
  *    conta arquivos referenciados e multiplica por uma média — fingir precisão
  *    aqui faria alguém tomar decisão comercial com um número inventado.
- *  - acima da cota destaca E explica que nada foi apagado. É o comportamento
- *    real do backend, e é o que evita o pânico de "downgrade apaga cliente".
+ *  - `measured: false` não desenha barra nenhuma: uma barra vazia afirmaria
+ *    "zero", e zero é uma afirmação que o backend não fez.
+ * Acima da cota destaca E explica que nada foi apagado. É o comportamento real
+ * do backend, e é o que evita o pânico de "downgrade apaga cliente".
  */
 function UsoXCotas({ itens, atualizando, onAtualizar }) {
   const estourados = asArray(itens).filter((item) => item.over_limit);
   return (
-    <section className="panel aa-block">
+    <section className="panel">
       <div className="panel-heading">
         <div>
           <h2>Uso x cotas do plano</h2>
           <span>Medido agora, direto no banco da clínica.</span>
         </div>
-        <Button variant="secondary" disabled={atualizando} onClick={onAtualizar}>
-          <RefreshCw size={16} aria-hidden="true" /> {atualizando ? "Medindo…" : "Atualizar uso"}
-        </Button>
+        {/* `.header-actions` em volta, mesmo com um botão só: é o invólucro que
+            as outras telas do painel usam no lado direito do `.panel-heading`, e
+            é ele que dá o gap quando um segundo botão aparecer aqui.
+            `ghost` e ícone de 15: é o mesmo "reler este bloco" dos cinco painéis
+            do financeiro da plataforma, e ali ele é ghost. Duas variantes para o
+            mesmo gesto faziam o botão parecer mais pesado numa aba que na outra. */}
+        <div className="header-actions">
+          <Button variant="ghost" disabled={atualizando} onClick={onAtualizar}>
+            <RefreshCw size={15} aria-hidden="true" /> {atualizando ? "Medindo…" : "Atualizar uso"}
+          </Button>
+        </div>
       </div>
 
       {estourados.length > 0 && (
-        <p className="aa-hint aa-hint-strong">
-          Esta clínica está acima da cota em {estourados.length} item(ns) — e isso NÃO apagou nada. Todos os
-          registros continuam visíveis e editáveis por ela; o plano apenas impede criar novos até ela liberar espaço
-          ou subir de plano.
+        <p className="platform-notice">
+          Esta clínica está acima da cota em {estourados.length} item(ns) — e isso NÃO apagou nada. Todos os registros
+          continuam visíveis e editáveis por ela; o plano apenas impede criar novos até ela liberar espaço ou subir de
+          plano.
         </p>
       )}
 
-      <div className="aa-cotas">
-        {asArray(itens).map((item) => (
-          <LinhaDeCota item={item} key={item.key} />
-        ))}
-      </div>
+      {asArray(itens).map((item) => (
+        <LinhaDeCota item={item} key={item.key} />
+      ))}
 
       {!asArray(itens).length && (
-        <p className="aa-placeholder">
+        <p className="empty-state">
           Não foi possível medir o uso desta clínica agora. O restante da conta continua acessível.
         </p>
       )}
@@ -1003,16 +996,14 @@ function LinhaDeCota({ item }) {
   const prefixo = aproximado ? "≈ " : "";
   const usadoTexto = usado == null ? "não foi possível medir" : `${prefixo}${NUMERO.format(usado)} ${item.unit}`;
 
-  // Sem medição não há barra: desenhar uma vazia afirmaria "zero", e zero é uma
-  // afirmação que o backend não fez (ele mandou `null` = "não sei").
   if (!item.measured) {
     return (
-      <div className="aa-cota">
-        <div className="aa-cota-head">
+      <div className="platform-quota">
+        <div className="platform-quota-head">
           <strong>{item.label}</strong>
-          <span className="aa-cota-valor">{usadoTexto}</span>
+          <span>{usadoTexto}</span>
         </div>
-        <p className="aa-hint">
+        <p className="field-hint">
           A contagem falhou nesta cota. Falha de medição LIBERA a criação no backend — a clínica não fica travada por
           um erro nosso.
         </p>
@@ -1022,17 +1013,17 @@ function LinhaDeCota({ item }) {
 
   if (item.unlimited) {
     return (
-      <div className="aa-cota">
-        <div className="aa-cota-head">
+      <div className="platform-quota">
+        <div className="platform-quota-head">
           <strong>{item.label}</strong>
-          <span className="aa-cota-valor">
+          <span>
             {usadoTexto} <StatusBadge tone="info">Ilimitado</StatusBadge>
           </span>
         </div>
-        <div className="aa-bar is-unlimited" aria-hidden="true">
-          <span />
-        </div>
-        <p className="aa-hint">
+        {/* Sem `<span>` dentro: o trilho tracejado precisa ficar VAZIO, e um
+            preenchimento sem largura definida ocuparia a barra inteira. */}
+        <div className="platform-quota-bar is-unlimited" aria-hidden="true" />
+        <p className="field-hint">
           Este plano não tem cota para este item — não há teto a atingir.
           {aproximado ? " O valor é uma estimativa (ver abaixo)." : ""}
         </p>
@@ -1042,18 +1033,18 @@ function LinhaDeCota({ item }) {
   }
 
   const percent = Number(item.percent ?? 0);
-  const classe = item.over_limit ? " is-over" : percent >= ATENCAO_RATIO ? " is-near" : "";
+  const faixa = item.over_limit ? " is-over" : percent >= ATENCAO_RATIO ? " is-near" : "";
   return (
-    <div className={`aa-cota${item.over_limit ? " is-over" : ""}`}>
-      <div className="aa-cota-head">
+    <div className="platform-quota">
+      <div className="platform-quota-head">
         <strong>{item.label}</strong>
-        <span className="aa-cota-valor">
+        <span>
           {prefixo}
           {NUMERO.format(usado)} de {NUMERO.format(Number(item.limit))} {item.unit} · {percent}%
         </span>
       </div>
       <div
-        className={`aa-bar${classe}`}
+        className={`platform-quota-bar${faixa}`}
         role="progressbar"
         aria-label={item.label}
         aria-valuemin={0}
@@ -1065,7 +1056,7 @@ function LinhaDeCota({ item }) {
         <span style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
       </div>
       {item.over_limit && (
-        <p className="aa-cota-over">
+        <p className="platform-notice">
           Acima da cota. <strong>Nada foi apagado:</strong> a clínica continua vendo e editando tudo o que já
           cadastrou. O plano só impede CRIAR novos registros desta cota.
         </p>
@@ -1080,7 +1071,7 @@ function LinhaDeCota({ item }) {
 // do que exibir um número redondo que ninguém pode auditar.
 function NotaDeEstimativa() {
   return (
-    <p className="aa-hint">
+    <p className="field-hint">
       <strong>Estimativa.</strong> O espaço não é medido no disco: contamos os arquivos que a clínica referencia e
       multiplicamos por uma média por tipo. Use como ordem de grandeza, não como número exato — e evite decidir
       bloqueio por esta cota.
@@ -1100,21 +1091,16 @@ function TrocaDePlano({
   onAplicar,
 }) {
   return (
-    <section className="panel aa-block">
-      <div className="panel-heading">
-        <div>
-          <h2>Plano da clínica</h2>
-          <span>Hoje: {nomeDoPlano(planos, planoAtual)}.</span>
-        </div>
-      </div>
+    <section className="panel">
+      <CrudHeader title="Plano da clínica" subtitle={`Hoje: ${nomeDoPlano(planos, planoAtual)}.`} />
 
       {!planos.length && (
-        <p className="aa-hint aa-hint-strong">
+        <p className="platform-notice">
           Não foi possível carregar o catálogo de planos. Recarregue a página para trocar o plano desta clínica.
         </p>
       )}
 
-      <div className="aa-troca">
+      <div className="toolbar">
         <Select label="Trocar para" value={planoAlvo} onChange={onEscolher}>
           {planos.map((plano) => (
             <option key={plano.code} value={plano.code}>
@@ -1131,7 +1117,7 @@ function TrocaDePlano({
       {trocaPendente ? (
         <ResumoDaPrevisao previsao={previsao} erro={previsaoErro} carregando={carregando} />
       ) : (
-        <p className="aa-hint">Escolha outro plano para simular o que mudaria antes de aplicar.</p>
+        <p className="field-hint">Escolha outro plano para simular o que mudaria antes de aplicar.</p>
       )}
     </section>
   );
@@ -1146,22 +1132,23 @@ function TrocaDePlano({
  * super-admin de arrumar a conta de alguém.
  */
 function ResumoDaPrevisao({ previsao, erro, carregando, compacto = false }) {
-  if (carregando) return <p className="aa-hint">Simulando o plano escolhido…</p>;
+  if (carregando) return <p className="field-hint">Simulando o plano escolhido…</p>;
   if (erro) {
     return (
-      <p className="aa-hint aa-hint-strong">
-        Não foi possível simular a troca: {erro} A troca continua possível — só não dá para prever o que ficaria
-        acima da cota.
+      <p className="platform-notice">
+        Não foi possível simular a troca: {erro} A troca continua possível — só não dá para prever o que ficaria acima
+        da cota.
       </p>
     );
   }
   if (!previsao) return null;
 
-  const itens = asArray(previsao.usage);
-  const excedentes = itens.filter((item) => item.over_limit);
+  const excedentes = asArray(previsao.usage).filter((item) => item.over_limit);
 
+  // Âmbar só quando alguma cota estoura: destacar uma simulação limpa treinaria
+  // o olho a ignorar o destaque justamente quando ele importa.
   return (
-    <div className={`aa-previsao${excedentes.length ? " is-over" : ""}`}>
+    <div className={excedentes.length ? "platform-notice" : "field-hint"}>
       <strong>
         {excedentes.length
           ? `${excedentes.length} cota(s) ficariam acima do limite no plano simulado`
@@ -1184,7 +1171,7 @@ function ResumoDaPrevisao({ previsao, erro, carregando, compacto = false }) {
           "Registros acima da cota continuam visíveis e editáveis pela clínica; o plano só impede criar novos."}
       </p>
       {!compacto && (
-        <p className="aa-hint">
+        <p>
           Simulação de {previsao.plano_atual} para {previsao.plano_simulado}. Nada foi alterado ainda.
         </p>
       )}
@@ -1192,20 +1179,95 @@ function ResumoDaPrevisao({ previsao, erro, carregando, compacto = false }) {
   );
 }
 
-function CartaoDeAcao({ definicao, disponivel, indisponivelPorque, onAbrir, perigo = false }) {
+/**
+ * As cinco ações num painel só.
+ *
+ * Antes eram cinco cartões com CSS próprio; o que eles carregavam de essencial
+ * — a assimetria e o motivo de um botão estar desligado — continua na tela: a
+ * primeira no bloco de referência (e de novo dentro de cada confirmação), o
+ * segundo numa linha de nota abaixo dos botões. Suspender e cancelar ficam
+ * separados em `.platform-danger` para nunca aparecerem ao lado de "salvar".
+ */
+function AcoesDaConta({ suspensa, semAssinatura, onAbrir }) {
+  const semAssinaturaPorque = "sem linha de assinatura não há o que ajustar.";
+  const acoes = [
+    { tipo: "reativar", ok: suspensa, porque: "Reativar a clínica: ela já está ativa." },
+    { tipo: "trial", ok: !semAssinatura, porque: `Ajustar o teste grátis: ${semAssinaturaPorque}` },
+    { tipo: "forcar_status", ok: !semAssinatura, porque: `Forçar o status da assinatura: ${semAssinaturaPorque}` },
+  ];
+  const destrutivas = [
+    { tipo: "suspender", ok: !suspensa, porque: "Suspender a clínica: ela já está suspensa." },
+    {
+      tipo: "cancelar_assinatura",
+      ok: !semAssinatura,
+      porque: `Cancelar a assinatura: ${semAssinaturaPorque}`,
+    },
+  ];
+  const indisponiveis = [...acoes, ...destrutivas].filter((item) => !item.ok).map((item) => item.porque);
+
   return (
-    <article className={`aa-acao${perigo ? " is-perigo" : ""}`}>
-      <h3>{definicao.titulo}</h3>
-      <p>{definicao.resumo}</p>
-      <p className="aa-acao-naofaz">
-        <AlertTriangle size={14} aria-hidden="true" /> {definicao.naoFaz}
-      </p>
-      <div className="aa-acao-rodape">
-        <Button variant={perigo ? "danger" : "secondary"} disabled={!disponivel} onClick={onAbrir}>
-          {definicao.titulo}
-        </Button>
-        {!disponivel && <span className="aa-hint">{indisponivelPorque}</span>}
+    <section className="panel">
+      <CrudHeader title="Ações de conta" subtitle="Todas exigem motivo e confirmação. Todas vão para a auditoria." />
+
+      {/*
+        As três assimetrias juntas, antes dos botões. Elas são deliberadas no
+        backend e cada uma já causou (ou causaria) um erro operacional caro:
+        clínica suspensa continuar sendo cobrada, assinatura cancelada derrubar
+        quem já pagou, upgrade não chegar à recorrência.
+      */}
+      {/* `.field-hint` dentro do AlertBlock, como nas outras telas do painel.
+          `.alert-item` era a classe errada por duas razões: ela é o CARTÃO de
+          alerta do painel da clínica (moldura e fundo próprios, spacing outro), e
+          o `.alert-item strong` global impõe `white-space: nowrap` — o "Suspender
+          ≠ cancelar cobrança." em negrito deixava de quebrar linha.
+          Aqui a assimetria é REFERÊNCIA; o alerta de verdade é o
+          `.platform-notice` dentro de cada confirmação. */}
+      <AlertBlock icon={AlertTriangle} title="O que estas ações NÃO fazem" empty="">
+        <p className="field-hint">
+          <strong>Suspender ≠ cancelar cobrança.</strong> {ASSIMETRIAS.suspender}
+        </p>
+        <p className="field-hint">
+          <strong>Cancelar ≠ cortar acesso.</strong> {ASSIMETRIAS.cancelar}
+        </p>
+        <p className="field-hint">
+          <strong>Trocar de plano ≠ reajustar a cobrança.</strong> {ASSIMETRIAS.plano}
+        </p>
+      </AlertBlock>
+
+      {semAssinatura && (
+        <p className="platform-notice">
+          Esta clínica não tem linha de assinatura: teste grátis, status da assinatura e cancelamento ficam
+          indisponíveis até ela ser criada pelo provisionamento ou pelo checkout.
+        </p>
+      )}
+
+      {/* `.header-actions` e não `.card-actions`: a segunda repinta TODO botão
+          dentro dela como pílula neutra, o que apagaria o vermelho do
+          `danger-button` logo abaixo. */}
+      <div className="header-actions">
+        {acoes.map((item) => (
+          <Button key={item.tipo} variant="secondary" disabled={!item.ok} onClick={() => onAbrir(item.tipo)}>
+            {ACOES[item.tipo].titulo}
+          </Button>
+        ))}
       </div>
-    </article>
+
+      <div className="platform-danger">
+        <h3>Corta acesso ou encerra cobrança</h3>
+        <p>
+          As duas ações abaixo pedem, além do motivo, digitar o slug da clínica — é o que separa "errei de linha na
+          lista" de "confirmei a clínica certa".
+        </p>
+        <div className="header-actions">
+          {destrutivas.map((item) => (
+            <Button key={item.tipo} variant="danger" disabled={!item.ok} onClick={() => onAbrir(item.tipo)}>
+              {ACOES[item.tipo].titulo}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      {indisponiveis.length > 0 && <p className="field-hint">Indisponível agora — {indisponiveis.join(" ")}</p>}
+    </section>
   );
 }

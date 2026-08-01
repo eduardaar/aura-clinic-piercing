@@ -3,6 +3,13 @@
 O que o super-admin da Monitence controla em `/plataforma`: planos, contas das
 clínicas, financeiro, suporte e a landing pública.
 
+> **Antes de mexer nas telas deste painel, leia
+> [PADRAO-VISUAL.md](./PADRAO-VISUAL.md).** Elas nasceram com cinco sistemas de
+> CSS paralelos (`pa-`, `aa-`, `fa-`, `le-`, `sup-`) e hoje usam uma camada
+> única mais os componentes do projeto. O documento explica a ordem de busca
+> (componente → classe → CSS próprio), as camadas da cascata e a armadilha do
+> `.content-scroll` que derrubou a rolagem deste painel.
+
 ---
 
 ## 1. Planos: o banco virou a fonte da verdade

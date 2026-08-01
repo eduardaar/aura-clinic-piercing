@@ -1,15 +1,15 @@
 // Financeiro da PLATAFORMA (aba do painel do super-admin).
 //
 // A tela responde a uma pergunta só: a receita da Monitence está saudável? Ela é
-// a ponta visual de backend/src/services/platformFinance.js, e três decisões de
-// lá atravessam este arquivo inteiro:
+// a ponta visual de backend/src/services/platformFinance.js, e quatro decisões
+// atravessam este arquivo inteiro:
 //
-//  1. PROJEÇÃO E CAIXA NUNCA APARECEM SEM ETIQUETA. `mrr_estimado` é o preço de
-//     tabela das assinaturas ativas — dinheiro que ainda NÃO entrou.
-//     `recebido_mes` é fatura paga — dinheiro que entrou. Os dois moram em
-//     blocos separados, cada card carrega um selo ("Projeção" / "Caixa") e o
-//     texto de `notas{}` vem do backend palavra por palavra. Numa reunião de
-//     fechamento, é a etiqueta que evita somar os dois.
+//  1. PROJEÇÃO E CAIXA NÃO SE MISTURAM. `mrr_estimado` é o preço de tabela das
+//     assinaturas ativas — dinheiro que ainda NÃO entrou. `recebido_mes` é
+//     fatura paga — dinheiro que entrou. Por isso os números vêm em GRUPOS com
+//     título (`.form-section` + `.platform-metrics`), e não numa grade única:
+//     grade única convida a somar MRR com recebido, que é a conta errada mais
+//     fácil de fazer aqui.
 //
 //  2. DINHEIRO NÃO PASSA POR PONTO FLUTUANTE. O backend soma em NUMERIC e manda
 //     cada valor em dois formatos: `<campo>` (string decimal, ex. "189.80") e
@@ -21,13 +21,22 @@
 //     consulta lenta de inadimplência não pode segurar o resumo, e um erro em um
 //     bloco não pode apagar os outros quatro. Daí `useRecurso` por bloco, com o
 //     próprio "carregando", o próprio erro e o próprio botão de tentar de novo.
+//
+//  4. NADA DE DESENHO PRÓPRIO. Listagem é `<DataView>`, cartão de número é
+//     `.platform-metric`, moldura é `.panel`, filtro é `.toolbar`, erro é
+//     `.form-error`. O CSS de finance-admin.css cobre só o gráfico SVG.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ExternalLink, Info, Mail, Phone, RefreshCw } from "lucide-react";
+import { AlertTriangle, Info, RefreshCw } from "lucide-react";
 import { AlertBlock, Button, Input, Select, StatusBadge } from "../../components/common/Ui";
+import { CrudHeader } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
+import { Loading } from "../../components/common/Feedback";
 import { API } from "../../lib/api";
 import { asArray, asNumber, asObject } from "../../lib/utils";
 import { whatsappUrl } from "../shared/helpers";
+// A camada compartilhada do painel entra pelo próprio componente, e não só pelo
+// PlatformAdmin: `.platform-metrics` é dependência desta tela, não do pai.
+import "../../styles/platform-panel.css";
 import "../../styles/finance-admin.css";
 
 // ---------------------------------------------------------------------------
@@ -98,12 +107,19 @@ const STATUS_ASSINATURA = {
   suspended: "Suspensa",
 };
 
+// MESMOS tons de SUBSCRIPTION_TONES em AccountsAdmin.jsx — o mesmo status não
+// pode ter duas cores em duas abas do mesmo painel. Aqui estavam invertidos:
+// "Em atraso" em vermelho e "Cancelada" em cinza. Quem decide é o que o status
+// FAZ no backend: `overdue` não corta acesso (a clínica continua trabalhando,
+// devendo) e `canceled` corta, junto com `suspended` — daí âmbar e vermelho,
+// nesta ordem. A urgência da cobrança em si continua sendo dita pelo
+// `tomDoAtraso`, que escala com os dias de atraso.
 const TOM_ASSINATURA = {
   trial_active: "info",
   trial_expired: "warn",
   active: "ok",
-  overdue: "danger",
-  canceled: "neutral",
+  overdue: "warn",
+  canceled: "danger",
   suspended: "danger",
 };
 
@@ -116,6 +132,12 @@ function tomDoAtraso(dias) {
 }
 
 const plural = (total, singular, pluralizado) => `${total} ${total === 1 ? singular : pluralizado}`;
+
+/** "recebido_mes" -> "Recebido mes", para o título das notas do backend. */
+const humanizar = (campo) => {
+  const texto = String(campo).replace(/_/g, " ");
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
+};
 
 // ---------------------------------------------------------------------------
 // Rede
@@ -178,53 +200,75 @@ function lerPagina(payload) {
  * desenhar "carregando" e erro dentro da própria tabela, e trocar a tabela por um
  * texto a cada virada de página faria a lista piscar inteira.
  */
-function Bloco({ titulo, subtitulo, carregando, erro, onRecarregar, acoes, delegaEstado = false, children }) {
+function Bloco({ titulo, subtitulo, carregando, erro, onRecarregar, filtros, acoes, delegaEstado = false, children }) {
   return (
-    <section className="panel fa-bloco">
+    <section className="panel">
       <div className="panel-heading">
         <div>
           <h2>{titulo}</h2>
           {subtitulo && <span>{subtitulo}</span>}
         </div>
-        <div className="fa-bloco-acoes">
+        <div className="header-actions">
           {acoes}
           <Button variant="ghost" onClick={onRecarregar} disabled={carregando} aria-label={`Recarregar ${titulo}`}>
             <RefreshCw size={15} /> {carregando ? "Carregando…" : "Atualizar"}
           </Button>
         </div>
       </div>
-      {!delegaEstado && erro ? (
-        <p className="fa-erro" role="alert">
-          {erro}
-        </p>
-      ) : !delegaEstado && carregando ? (
-        <p className="empty-state" aria-live="polite">
-          Carregando…
-        </p>
-      ) : (
-        children
-      )}
+      <div className="stack">
+        {/* Controle de janela/período na `.toolbar`, a barra de filtros do
+            sistema — no cabeçalho ele empurraria a linha do título para baixo. */}
+        {filtros && <div className="toolbar">{filtros}</div>}
+        {!delegaEstado && erro ? (
+          <span className="form-error" role="alert">
+            {erro}
+          </span>
+        ) : !delegaEstado && carregando ? (
+          <Loading />
+        ) : (
+          children
+        )}
+      </div>
     </section>
   );
 }
 
 /**
- * Card de um número do resumo.
+ * Grupo de números com título e régua.
  *
- * Não usa o `Metric` de components/common porque `Metric` não tem lugar para a
- * ETIQUETA — e a etiqueta ("Projeção" vs. "Caixa") é o ponto desta tela, não um
- * enfeite. O selo em si continua sendo o `StatusBadge` do sistema.
+ * `.form-section` é a seção com título do sistema (régua em cima + `h3`); é ela
+ * que separa PROJEÇÃO de CAIXA. A etiqueta mora no TÍTULO do grupo, e não em
+ * cada cartão: um selo por cartão repetido cinco vezes vira ruído, e o que
+ * precisa ficar claro é a fronteira entre os dois blocos.
  */
-function Cartao({ rotulo, valor, etiqueta, tom, detalhe, nota }) {
+function Grupo({ titulo, explicacao, children }) {
   return (
-    <article className="fa-cartao" title={nota || undefined}>
-      <header>
-        <span className="fa-cartao-rotulo">{rotulo}</span>
-        <StatusBadge tone={tom}>{etiqueta}</StatusBadge>
-      </header>
-      <strong>{valor}</strong>
-      {detalhe && <small>{detalhe}</small>}
+    <section className="form-section">
+      <h3>{titulo}</h3>
+      {explicacao && <p className="field-hint">{explicacao}</p>}
+      {children}
+    </section>
+  );
+}
+
+/** Cartão de número do painel. `indisponivel` = o backend não sabe calcular. */
+function Numero({ rotulo, valor, detalhe, indisponivel = false }) {
+  return (
+    <article className={`platform-metric${indisponivel ? " is-unavailable" : ""}`}>
+      <span className="label">{rotulo}</span>
+      <span className="value">{valor}</span>
+      {detalhe && <span className="hint">{detalhe}</span>}
     </article>
+  );
+}
+
+/** Célula de duas linhas (nome + identificador), repetida nas três listas. */
+function Duplo({ principal, secundario }) {
+  return (
+    <div className="fin-cell">
+      <strong>{principal || "—"}</strong>
+      <small>{secundario}</small>
+    </div>
   );
 }
 
@@ -237,133 +281,102 @@ function Resumo({ dados }) {
   const notas = asObject(resumo.notas);
   const clinicas = asObject(resumo.clinicas);
 
+  // Os tons acompanham TOM_ASSINATURA acima: é a mesma leitura de status, e
+  // duas escalas de cor na mesma tela ensinariam a ignorar as duas.
   const porStatus = [
     ["Ativas", clinicas.ativa, "ok"],
     ["Em teste", clinicas.trial, "info"],
     ["Teste expirado", clinicas.trial_expirada, "warn"],
-    ["Em atraso", clinicas.atrasada, "danger"],
+    ["Em atraso", clinicas.atrasada, "warn"],
     ["Suspensas", clinicas.suspensa, "danger"],
-    ["Canceladas", clinicas.cancelada, "neutral"],
+    ["Canceladas", clinicas.cancelada, "danger"],
     ["Sem assinatura", clinicas.sem_assinatura, "neutral"],
     ["Sem cobrança no gateway", clinicas.sem_cobranca_no_gateway, "neutral"],
   ];
 
   return (
-    <div className="fa-resumo">
-      {/*
-        Dois grupos, com título: projeção de um lado, dinheiro de verdade do
-        outro. Uma grade única com os cinco números lado a lado convidaria a
-        somar MRR com recebido — que é a conta errada mais fácil de fazer aqui.
-      */}
-      <section className="fa-grupo">
-        <h3 className="fa-grupo-titulo">
-          Projeção · assinaturas ativas
-          <span>Preço de tabela do plano. Ainda NÃO entrou em conta.</span>
-        </h3>
-        <div className="fa-cartoes">
-          <Cartao
+    <div className="stack">
+      <Grupo
+        titulo="Projeção · assinaturas ativas"
+        explicacao="Preço de tabela do plano. Ainda NÃO entrou em conta."
+      >
+        <div className="platform-metrics">
+          <Numero
             rotulo="MRR estimado"
             valor={moeda(resumo.mrr_estimado, resumo.mrr_estimado_centavos)}
-            etiqueta="Projeção"
-            tom="info"
             detalhe={`${plural(asNumber(clinicas.ativa), "assinatura ativa", "assinaturas ativas")} com cobrança no gateway`}
-            nota={notas.mrr_estimado}
           />
-          <Cartao
+          <Numero
             rotulo="MRR em risco"
             valor={moeda(resumo.mrr_em_risco, resumo.mrr_em_risco_centavos)}
-            etiqueta="Projeção"
-            tom="warn"
             detalhe={`${plural(asNumber(clinicas.atrasada), "assinatura", "assinaturas")} com pagamento em atraso`}
-            nota="Parte do MRR que some se a cobrança dessas clínicas não for resolvida."
           />
         </div>
-      </section>
+      </Grupo>
 
-      <section className="fa-grupo">
-        <h3 className="fa-grupo-titulo">
-          Caixa e cobrança · faturas
-          <span>Fatos registrados em fatura, no fuso {resumo.fuso || "America/Sao_Paulo"}.</span>
-        </h3>
-        <div className="fa-cartoes">
-          <Cartao
+      <Grupo
+        titulo="Caixa e cobrança · faturas"
+        explicacao={`Fatos registrados em fatura, no fuso ${resumo.fuso || "America/Sao_Paulo"}.`}
+      >
+        <div className="platform-metrics">
+          <Numero
             rotulo="Recebido no mês"
             valor={moeda(resumo.recebido_mes, resumo.recebido_mes_centavos)}
-            etiqueta="Caixa"
-            tom="ok"
             detalhe={`${plural(asNumber(resumo.recebido_mes_faturas), "fatura paga", "faturas pagas")} neste mês`}
-            nota={notas.recebido_mes}
           />
-          <Cartao
+          <Numero
             rotulo="A receber no mês"
             valor={moeda(resumo.a_receber_mes, resumo.a_receber_mes_centavos)}
-            etiqueta="Em aberto"
-            tom="info"
             detalhe={`${plural(asNumber(resumo.a_receber_mes_faturas), "fatura vence", "faturas vencem")} até o fim do mês`}
-            nota="Faturas em aberto com vencimento entre a data base e o último dia do mês."
           />
-          <Cartao
+          <Numero
             rotulo="Vencido"
             valor={moeda(resumo.vencido, resumo.vencido_centavos)}
-            etiqueta="Atrasado"
-            tom="danger"
             detalhe={`${plural(asNumber(resumo.vencido_faturas), "fatura", "faturas")} · ${plural(asNumber(resumo.vencido_clinicas), "clínica", "clínicas")}`}
-            nota={notas.vencido}
           />
         </div>
-      </section>
+      </Grupo>
 
-      <section className="fa-grupo">
-        <h3 className="fa-grupo-titulo">Movimento do mês</h3>
-        <div className="fa-cartoes">
-          <Cartao
+      <Grupo titulo="Movimento do mês">
+        <div className="platform-metrics">
+          <Numero
             rotulo="Assinaturas novas"
             valor={String(asNumber(resumo.assinaturas_novas_mes))}
-            etiqueta="Fato"
-            tom="ok"
             detalhe="Clínicas cuja primeira fatura paga da história caiu neste mês"
-            nota={notas.assinaturas_novas_mes}
           />
           {/*
             `cancelamentos_mes` fica em zero enquanto nenhum fluxo gravar
             canceled_at. Exibir "0" seco viraria "ninguém cancelou este mês", que
-            é uma afirmação que o dado não sustenta — daí o selo de ressalva.
+            é uma afirmação que o dado não sustenta — daí a ressalva no detalhe.
           */}
-          <Cartao
+          <Numero
             rotulo="Cancelamentos"
             valor={String(asNumber(resumo.cancelamentos_mes))}
-            etiqueta="Subestimado"
-            tom="warn"
-            detalhe="Nenhum fluxo do sistema carimba a data de cancelamento ainda"
-            nota={notas.cancelamentos_mes}
+            detalhe="Subestimado: nenhum fluxo do sistema carimba a data de cancelamento ainda"
           />
           {/*
             Churn: `null` de propósito. Nem 0%, nem "—" mudo, nem uma conta
             improvisada com os dados que existem — o motivo vem escrito do
-            backend e é ele que aparece.
+            backend e é ele que aparece, no cartão tracejado de indisponível.
           */}
-          <article className="fa-cartao fa-cartao-indisponivel">
-            <header>
-              <span className="fa-cartao-rotulo">Churn do mês</span>
-              <StatusBadge tone="neutral">Não disponível</StatusBadge>
-            </header>
-            <strong>Não calculável</strong>
-            <p>{notas.churn_mes || "O backend não conseguiu calcular este indicador com os dados de hoje."}</p>
-          </article>
+          <Numero
+            rotulo="Churn do mês"
+            valor="Não calculável"
+            detalhe={notas.churn_mes || "O backend não conseguiu calcular este indicador com os dados de hoje."}
+            indisponivel
+          />
         </div>
-      </section>
+      </Grupo>
 
-      <section className="fa-grupo">
-        <h3 className="fa-grupo-titulo">Clínicas por status de assinatura</h3>
-        <div className="fa-status-linha">
+      <Grupo titulo="Clínicas por status de assinatura">
+        <div className="fin-status">
           {porStatus.map(([rotulo, valor, tom]) => (
-            <span className="fa-status-item" key={rotulo}>
-              <StatusBadge tone={tom}>{asNumber(valor)}</StatusBadge>
-              {rotulo}
+            <span key={rotulo}>
+              <StatusBadge tone={tom}>{asNumber(valor)}</StatusBadge> {rotulo}
             </span>
           ))}
         </div>
-      </section>
+      </Grupo>
 
       {/*
         As notas do backend, na íntegra. Elas são a diferença entre um painel que
@@ -371,8 +384,8 @@ function Resumo({ dados }) {
       */}
       <AlertBlock icon={Info} title="Como ler estes números" empty="Sem observações do servidor.">
         {Object.entries(notas).map(([campo, texto]) => (
-          <p className="fa-nota" key={campo}>
-            <strong>{campo.replace(/_/g, " ")}</strong> — {texto}
+          <p className="field-hint" key={campo}>
+            <strong>{humanizar(campo)}</strong> — {texto}
           </p>
         ))}
       </AlertBlock>
@@ -386,6 +399,18 @@ function Resumo({ dados }) {
 
 function contatoDaClinica(linha) {
   return [linha.telefone, linha.email].filter(Boolean).join(" · ");
+}
+
+/** Telefone e e-mail da clínica, clicáveis: quem abre esta tela abre para cobrar. */
+function Contato({ linha }) {
+  if (!linha.telefone && !linha.email) return <small>Sem contato cadastrado</small>;
+  return (
+    <div className="fin-cell">
+      {linha.responsavel && <small>{linha.responsavel}</small>}
+      {linha.telefone && <a href={`tel:${String(linha.telefone).replace(/[^\d+]/g, "")}`}>{linha.telefone}</a>}
+      {linha.email && <a href={`mailto:${linha.email}`}>{linha.email}</a>}
+    </div>
+  );
 }
 
 function Inadimplencia({ dados, carregando, erro, pagina, tamanho, onPagina, onTamanho }) {
@@ -414,12 +439,7 @@ function Inadimplencia({ dados, carregando, erro, pagina, tamanho, onPagina, onT
           label: "Clínica",
           sortable: false,
           value: (linha) => linha.clinica || "",
-          render: (linha) => (
-            <div className="fa-celula-clinica">
-              <strong>{linha.clinica || "—"}</strong>
-              <small>{linha.slug}</small>
-            </div>
-          ),
+          render: (linha) => <Duplo principal={linha.clinica} secundario={linha.slug} />,
         },
         {
           key: "dias_atraso",
@@ -474,24 +494,13 @@ function Inadimplencia({ dados, carregando, erro, pagina, tamanho, onPagina, onT
           label: "Contato",
           sortable: false,
           value: contatoDaClinica,
-          render: (linha) => (
-            <div className="fa-contato">
-              {linha.responsavel && <small>{linha.responsavel}</small>}
-              {linha.telefone && (
-                <a href={`tel:${String(linha.telefone).replace(/[^\d+]/g, "")}`}>
-                  <Phone size={13} aria-hidden="true" /> {linha.telefone}
-                </a>
-              )}
-              {linha.email && (
-                <a href={`mailto:${linha.email}`}>
-                  <Mail size={13} aria-hidden="true" /> {linha.email}
-                </a>
-              )}
-              {!linha.telefone && !linha.email && <small>Sem contato cadastrado</small>}
-            </div>
-          ),
+          render: (linha) => <Contato linha={linha} />,
         },
       ]}
+      // Ações de linha sem classe própria: `.table-actions a` (styles.css) já
+      // desenha o link como pílula, igual ao `<button>` da linha nas outras
+      // telas. Sem ícone, pelo mesmo motivo — nenhuma outra ação de linha do
+      // painel tem um, e um só aqui é a divergência que se vê primeiro.
       actions={(linha) => (
         <>
           {linha.telefone && (
@@ -512,7 +521,7 @@ function Inadimplencia({ dados, carregando, erro, pagina, tamanho, onPagina, onT
           )}
           {linha.link_fatura_mais_antiga && (
             <a href={linha.link_fatura_mais_antiga} target="_blank" rel="noreferrer">
-              Abrir fatura <ExternalLink size={12} aria-hidden="true" />
+              Abrir fatura
             </a>
           )}
         </>
@@ -531,17 +540,16 @@ function Vencimentos({ dados, carregando, erro, pagina, tamanho, onPagina, onTam
   const items = asArray(payload.items);
 
   return (
-    <>
-      {/* Com erro o destaque some: um "R$ 0,00" grande ao lado de uma mensagem de
-          falha seria lido como "nada vence nesta janela". */}
+    <div className="stack">
+      {/* Com erro o destaque some: um "R$ 0,00" grande ao lado de uma mensagem
+          de falha seria lido como "nada vence nesta janela". */}
       {!erro && (
-        <div className="fa-destaque">
-          <span>Total que vence nos próximos {asNumber(payload.dias) || 7} dias</span>
-          <strong>{carregando ? "…" : moeda(payload.valor_total, payload.valor_total_centavos)}</strong>
-          <small>
-            {plural(asNumber(payload.total), "fatura pendente", "faturas pendentes")} · o que já venceu está na lista de
-            inadimplência, não aqui
-          </small>
+        <div className="platform-metrics">
+          <Numero
+            rotulo={`Vence nos próximos ${asNumber(payload.dias) || 7} dias`}
+            valor={carregando ? "…" : moeda(payload.valor_total, payload.valor_total_centavos)}
+            detalhe={`${plural(asNumber(payload.total), "fatura pendente", "faturas pendentes")} · o que já venceu está na lista de inadimplência, não aqui`}
+          />
         </div>
       )}
       <DataView
@@ -563,14 +571,19 @@ function Vencimentos({ dados, carregando, erro, pagina, tamanho, onPagina, onTam
             label: "Clínica",
             sortable: false,
             value: (linha) => linha.clinica || "",
-            render: (linha) => (
-              <div className="fa-celula-clinica">
-                <strong>{linha.clinica || "—"}</strong>
-                <small>{linha.slug}</small>
-              </div>
-            ),
+            render: (linha) => <Duplo principal={linha.clinica} secundario={linha.slug} />,
           },
-          { key: "plan_code", label: "Plano", sortable: false, value: (linha) => linha.plan_code || "—" },
+          {
+            key: "plan_code",
+            label: "Plano",
+            sortable: false,
+            value: (linha) => linha.plan_code || "",
+            // `<code>` porque é o código do plano, não o nome comercial — mesmo
+            // tratamento que a listagem de planos dá a ele. E o `render` precisa
+            // existir: sem ele o DataView exibe `row[key]` cru e a célula fica
+            // VAZIA quando o campo falta, em vez do "—" que o resto da tela usa.
+            render: (linha) => (linha.plan_code ? <code>{linha.plan_code}</code> : "—"),
+          },
           {
             key: "vencimento",
             label: "Vencimento",
@@ -600,33 +613,33 @@ function Vencimentos({ dados, carregando, erro, pagina, tamanho, onPagina, onTam
             value: (linha) => asNumber(linha.valor_centavos),
             render: (linha) => moeda(linha.valor, linha.valor_centavos),
           },
-          { key: "billing_type", label: "Forma", sortable: false, value: (linha) => linha.billing_type || "—" },
+          {
+            key: "billing_type",
+            label: "Forma",
+            sortable: false,
+            value: (linha) => linha.billing_type || "",
+            // Mesmo motivo do "Plano" acima: sem `render`, campo ausente deixa a
+            // célula em branco em vez do "—".
+            render: (linha) => linha.billing_type || "—",
+          },
           {
             key: "contato",
             label: "Contato",
             sortable: false,
             value: contatoDaClinica,
-            render: (linha) => (
-              <div className="fa-contato">
-                {linha.telefone && (
-                  <a href={`tel:${String(linha.telefone).replace(/[^\d+]/g, "")}`}>{linha.telefone}</a>
-                )}
-                {linha.email && <a href={`mailto:${linha.email}`}>{linha.email}</a>}
-                {!linha.telefone && !linha.email && <small>Sem contato cadastrado</small>}
-              </div>
-            ),
+            render: (linha) => <Contato linha={linha} />,
           },
         ]}
         actions={(linha) =>
           linha.invoice_url ? (
             <a href={linha.invoice_url} target="_blank" rel="noreferrer">
-              Abrir fatura <ExternalLink size={12} aria-hidden="true" />
+              Abrir fatura
             </a>
           ) : null
         }
         empty="Nenhuma fatura pendente vence nesta janela."
       />
-    </>
+    </div>
   );
 }
 
@@ -671,17 +684,19 @@ function GraficoSerie({ itens }) {
   const destacado = itens[foco];
 
   return (
-    <div className="fa-grafico">
-      <div className="fa-legenda">
-        <span className="fa-legenda-item">
-          <i className="fa-swatch fa-swatch-recebido" aria-hidden="true" /> Recebido (caixa)
+    <div className="fin-chart">
+      <div className="fin-legend">
+        <span>
+          <i className="fin-recebido" aria-hidden="true" />
+          Recebido (caixa)
         </span>
-        <span className="fa-legenda-item">
-          <i className="fa-swatch fa-swatch-emitido" aria-hidden="true" /> Emitido (competência)
+        <span>
+          <i className="fin-emitido" aria-hidden="true" />
+          Emitido (competência)
         </span>
         {/* Leitura do mês sob o cursor. Sem ela o gráfico só daria a forma, e o
             valor exato é o que se leva para a reunião. */}
-        <span className="fa-legenda-leitura" aria-live="polite">
+        <span className="field-hint" aria-live="polite">
           {destacado
             ? `${destacado.mes} · recebido ${moeda(destacado.recebido, destacado.recebido_centavos)} · emitido ${moeda(destacado.emitido, destacado.emitido_centavos)}`
             : "Passe o cursor sobre um mês para ver os valores."}
@@ -689,16 +704,14 @@ function GraficoSerie({ itens }) {
       </div>
 
       <svg
-        className="fa-svg"
         viewBox={`0 0 ${largura} ${ALTURA_TOTAL}`}
         role="img"
         aria-label={`Receita mês a mês. Maior valor da série: ${moedaDeCentavos(maximo)}.`}
       >
         <title>Recebido e emitido por mês</title>
-        {/* Linha de base e teto: grade discreta, só o suficiente para dar escala. */}
-        <line className="fa-eixo" x1="0" y1={ALTURA_PLOT} x2={largura} y2={ALTURA_PLOT} />
-        <line className="fa-grade" x1="0" y1="0" x2={largura} y2="0" />
-        <text className="fa-escala" x="2" y="-4" dy="10">
+        {/* Linha de base: grade discreta, só o suficiente para dar escala. */}
+        <line className="fin-axis" x1="0" y1={ALTURA_PLOT} x2={largura} y2={ALTURA_PLOT} />
+        <text className="fin-tick" x="2" y="10">
           {moedaDeCentavos(maximo)}
         </text>
 
@@ -708,7 +721,7 @@ function GraficoSerie({ itens }) {
           const emitido = alturaDaBarra(item.emitido_centavos);
           return (
             <g
-              className={`fa-coluna${foco === indice ? " is-foco" : ""}`}
+              className={`fin-col${foco === indice ? " is-foco" : ""}`}
               key={item.mes}
               onMouseEnter={() => setFoco(indice)}
               onMouseLeave={() => setFoco(-1)}
@@ -716,13 +729,13 @@ function GraficoSerie({ itens }) {
               onBlur={() => setFoco(-1)}
             >
               {/* Alvo do cursor: a coluna inteira, não a barra fina. */}
-              <rect className="fa-alvo" x={x} y="0" width={COLUNA} height={ALTURA_PLOT} tabIndex={0}>
+              <rect className="fin-hit" x={x} y="0" width={COLUNA} height={ALTURA_PLOT} tabIndex={0}>
                 <title>
                   {`${item.mes}: recebido ${moeda(item.recebido, item.recebido_centavos)}, emitido ${moeda(item.emitido, item.emitido_centavos)}`}
                 </title>
               </rect>
               <rect
-                className="fa-barra fa-barra-recebido"
+                className="fin-recebido"
                 x={x + (COLUNA - BARRA * 2 - VAO) / 2}
                 y={ALTURA_PLOT - recebido}
                 width={BARRA}
@@ -730,14 +743,14 @@ function GraficoSerie({ itens }) {
                 rx="2"
               />
               <rect
-                className="fa-barra fa-barra-emitido"
+                className="fin-emitido"
                 x={x + (COLUNA - BARRA * 2 - VAO) / 2 + BARRA + VAO}
                 y={ALTURA_PLOT - emitido}
                 width={BARRA}
                 height={emitido}
                 rx="2"
               />
-              <text className="fa-mes" x={x + COLUNA / 2} y={ALTURA_PLOT + 16} textAnchor="middle">
+              <text className="fin-tick" x={x + COLUNA / 2} y={ALTURA_PLOT + 16} textAnchor="middle">
                 {mesCurto(item.mes)}
               </text>
             </g>
@@ -747,40 +760,47 @@ function GraficoSerie({ itens }) {
 
       {/* O gráfico dá a forma; a tabela dá o número — e é a versão que funciona
           para quem lê por leitor de tela ou precisa copiar os valores. */}
-      <details className="fa-tabela-serie">
+      <details>
         <summary>Ver os números em tabela</summary>
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Mês</th>
-                <th style={{ textAlign: "right" }}>Recebido</th>
-                <th style={{ textAlign: "right" }}>Faturas pagas</th>
-                <th style={{ textAlign: "right" }}>Emitido</th>
-                <th style={{ textAlign: "right" }}>Faturas emitidas</th>
-              </tr>
-            </thead>
-            <tbody>
-              {itens.map((item) => (
-                <tr key={item.mes}>
-                  <td data-label="Mês">{item.mes}</td>
-                  <td data-label="Recebido" style={{ textAlign: "right" }}>
-                    {moeda(item.recebido, item.recebido_centavos)}
-                  </td>
-                  <td data-label="Faturas pagas" style={{ textAlign: "right" }}>
-                    {asNumber(item.faturas_pagas)}
-                  </td>
-                  <td data-label="Emitido" style={{ textAlign: "right" }}>
-                    {moeda(item.emitido, item.emitido_centavos)}
-                  </td>
-                  <td data-label="Faturas emitidas" style={{ textAlign: "right" }}>
-                    {asNumber(item.faturas_emitidas)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataView
+          rows={itens}
+          rowKey={(item) => item.mes}
+          searchable={false}
+          paginated={false}
+          caption="Recebido e emitido, mês a mês"
+          columns={[
+            { key: "mes", label: "Mês", sortable: false },
+            {
+              key: "recebido",
+              label: "Recebido",
+              align: "right",
+              sortable: false,
+              render: (item) => moeda(item.recebido, item.recebido_centavos),
+            },
+            {
+              key: "faturas_pagas",
+              label: "Faturas pagas",
+              align: "right",
+              sortable: false,
+              render: (item) => asNumber(item.faturas_pagas),
+            },
+            {
+              key: "emitido",
+              label: "Emitido",
+              align: "right",
+              sortable: false,
+              render: (item) => moeda(item.emitido, item.emitido_centavos),
+            },
+            {
+              key: "faturas_emitidas",
+              label: "Faturas emitidas",
+              align: "right",
+              sortable: false,
+              render: (item) => asNumber(item.faturas_emitidas),
+            },
+          ]}
+          empty="Sem faturas no período."
+        />
       </details>
     </div>
   );
@@ -806,13 +826,10 @@ function PorPlano({ dados }) {
           label: "Plano",
           value: (linha) => linha.plano || linha.plan_code || "",
           render: (linha) => (
-            <div className="fa-celula-clinica">
-              <strong>{linha.plano || linha.plan_code}</strong>
-              <small>
-                {linha.plan_code} · {moeda(linha.preco, linha.preco_centavos)}/mês
-                {linha.plano_ativo ? "" : " · inativo na vitrine"}
-              </small>
-            </div>
+            <Duplo
+              principal={linha.plano || linha.plan_code}
+              secundario={`${linha.plan_code} · ${moeda(linha.preco, linha.preco_centavos)}/mês${linha.plano_ativo ? "" : " · inativo na vitrine"}`}
+            />
           ),
         },
         {
@@ -844,13 +861,16 @@ function PorPlano({ dados }) {
           key: "participacao_mrr",
           label: "Participação",
           value: (linha) => asNumber(linha.participacao_mrr),
+          // `.platform-quota-bar` é a barra de proporção do painel. Ela é
+          // geometria, não dinheiro: o percentual já vem pronto do backend,
+          // calculado sobre os centavos inteiros.
           render: (linha) => (
-            <div className="fa-participacao">
-              {/* Barra é geometria, não dinheiro: o percentual já vem pronto do
-                  backend, calculado sobre os centavos inteiros. */}
-              <i style={{ width: `${Math.min(asNumber(linha.participacao_mrr), 100)}%` }} />
-              <span>{percentual(linha.participacao_mrr)}</span>
-            </div>
+            <>
+              {percentual(linha.participacao_mrr)}
+              <div className="platform-quota-bar">
+                <span style={{ width: `${Math.min(asNumber(linha.participacao_mrr), 100)}%` }} />
+              </div>
+            </>
           ),
         },
         {
@@ -859,10 +879,10 @@ function PorPlano({ dados }) {
           align: "right",
           value: (linha) => asNumber(linha.recebido_mes_centavos),
           render: (linha) => (
-            <>
-              {moeda(linha.recebido_mes, linha.recebido_mes_centavos)}
-              <small className="fa-sub"> {plural(asNumber(linha.recebido_mes_faturas), "fatura", "faturas")}</small>
-            </>
+            <Duplo
+              principal={moeda(linha.recebido_mes, linha.recebido_mes_centavos)}
+              secundario={plural(asNumber(linha.recebido_mes_faturas), "fatura", "faturas")}
+            />
           ),
         },
       ]}
@@ -976,37 +996,35 @@ export function PlatformFinance({ token, onUnauthorized }) {
   const devedores = lerPagina(atraso.dados).total;
 
   return (
-    <div className="fa-root">
-      <div className="panel fa-intro">
-        <div>
-          <h2>Financeiro da plataforma</h2>
-          <p>
-            A saúde da receita da Monitence: quanto entrou, quanto ainda vai entrar, quem está devendo e há quanto
-            tempo. Somente leitura — nada aqui cria, altera ou baixa fatura.
+    <div className="stack">
+      <section className="panel">
+        <CrudHeader
+          title="Financeiro da plataforma"
+          subtitle="Quanto entrou, quanto ainda vai entrar e quem está devendo. Somente leitura — nada aqui cria, altera ou baixa fatura."
+        />
+        <div className="stack">
+          <div className="toolbar">
+            <Input type="date" label="Data base" value={dataBase} onChange={trocarDataBase} />
+            <Button variant="secondary" disabled={!dataBase} onClick={() => trocarDataBase("")}>
+              Voltar para hoje
+            </Button>
+          </div>
+          <p className="field-hint">
+            {cabecalho.data_base ? (
+              <>
+                Painel calculado como se hoje fosse <strong>{dataCompleta(cabecalho.data_base)}</strong> · competência{" "}
+                <strong>{cabecalho.competencia}</strong> · fuso {cabecalho.fuso}.
+              </>
+            ) : (
+              "Deixe a data base vazia para ver a situação de hoje. Preenchida, ela congela o “hoje” de todos os blocos — é o que permite conferir um fechamento passado."
+            )}
           </p>
         </div>
-        <div className="fa-controles">
-          <Input type="date" label="Data base" value={dataBase} onChange={trocarDataBase} />
-          <Button variant="secondary" disabled={!dataBase} onClick={() => trocarDataBase("")}>
-            Voltar para hoje
-          </Button>
-        </div>
-      </div>
-
-      <p className="fa-hint">
-        {cabecalho.data_base ? (
-          <>
-            Painel calculado como se hoje fosse <strong>{dataCompleta(cabecalho.data_base)}</strong> · competência{" "}
-            <strong>{cabecalho.competencia}</strong> · fuso {cabecalho.fuso}.
-          </>
-        ) : (
-          "Deixe a data base vazia para ver a situação de hoje. Preenchida, ela congela o “hoje” de todos os blocos — é o que permite conferir um fechamento passado."
-        )}
-      </p>
+      </section>
 
       <Bloco
         titulo="Resumo"
-        subtitulo="Projeção e caixa lado a lado, cada um com sua etiqueta."
+        subtitulo="Projeção e caixa em grupos separados, cada um com sua etiqueta."
         carregando={resumo.carregando}
         erro={resumo.erro}
         onRecarregar={resumo.recarregar}
@@ -1047,7 +1065,7 @@ export function PlatformFinance({ token, onUnauthorized }) {
         erro={vencimento.erro}
         onRecarregar={vencimento.recarregar}
         delegaEstado
-        acoes={
+        filtros={
           <Select label="Janela" value={dias} onChange={trocarJanela}>
             <option value="7">Próximos 7 dias</option>
             <option value="15">Próximos 15 dias</option>
@@ -1074,7 +1092,7 @@ export function PlatformFinance({ token, onUnauthorized }) {
         carregando={serie.carregando}
         erro={serie.erro}
         onRecarregar={serie.recarregar}
-        acoes={
+        filtros={
           <Select label="Período" value={meses} onChange={setMeses}>
             <option value="6">Últimos 6 meses</option>
             <option value="12">Últimos 12 meses</option>

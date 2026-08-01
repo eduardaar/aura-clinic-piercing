@@ -1,224 +1,56 @@
-/* Suporte — chamados entre a clínica e a Monitence.
+/* Suporte — chamados entre a clínica e a Monitence (as duas pontas).
  *
- * Camada própria, importada pelos dois componentes que a usam (a tela da
- * clínica e a caixa de entrada do super-admin), como em landing-editor.css:
- * styles.css já é compartilhado por todas as telas e mais um bloco lá aumenta a
- * chance de uma regra vazar para o resto do sistema. Por isso o prefixo `sup-`
- * em tudo.
+ * Antes eram 224 linhas com um sistema `sup-` inteiro: cabeçalho do chamado,
+ * barra de controles, formulário de resposta, contador, aviso de fechado, badge
+ * da aba, truncagem do assunto. Tudo isso já existia — `.platform-split` para o
+ * mestre-detalhe, `<Modal>` + `.form-grid` para responder, `.field-hint` para o
+ * texto de apoio, `.form-error` para o contador estourado, `.platform-notice`
+ * para o aviso de chamado fechado e `.tab-count` (platform-panel.css) para o
+ * contador da aba. O mestre-detalhe usa `.platform-split--wide` porque a lista
+ * de chamados tem até seis colunas e não cabe na coluna de 320px.
  *
- * As variáveis (--ink, --line, --brand…) vêm do tema global; aqui só há layout.
+ * Sobrou o que não tem equivalente: as bolhas da conversa — lado, nota interna
+ * e `pre-wrap` são regra de negócio desenhada. `@layer telas` é a mesma camada
+ * dos outros CSS de tela, para não vencer o appshell.css por acidente de ordem
+ * de importação.
  */
 
-.sup-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-width: 0;
-}
+@layer telas {
+  /* Rolagem própria: uma conversa longa empurraria o resto da coluna (e os
+     botões de ação) para fora da tela. */
+  .sup-thread { display: flex; flex-direction: column; gap: 12px; max-height: 58vh; overflow-y: auto; padding: 2px; }
 
-/* --- Conversa ------------------------------------------------------------ */
-
-/* Altura máxima com rolagem própria: uma conversa longa dentro do modal
-   empurraria os botões de responder para fora da tela, e é neles que o usuário
-   precisa chegar. */
-.sup-thread {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-height: 46vh;
-  overflow-y: auto;
-  padding: 4px 2px;
-}
-
-.sup-msg {
-  border: 1px solid var(--line, #e7ddce);
-  border-radius: 12px;
-  padding: 10px 14px;
-  background: var(--white, #fff);
-  max-width: 88%;
-}
-
-/* Quem falou se lê pelo lado, antes de qualquer rótulo. */
-.sup-msg-clinica {
-  align-self: flex-start;
-  border-top-left-radius: 4px;
-}
-
-.sup-msg-suporte {
-  align-self: flex-end;
-  border-top-right-radius: 4px;
-  background: var(--paper, #fcfbf8);
-}
-
-/* Nota interna: visualmente diferente de tudo o mais porque confundi-la com uma
-   resposta é escrever para o cliente algo que era anotação da equipe. */
-.sup-msg-nota {
-  align-self: stretch;
-  max-width: 100%;
-  border-style: dashed;
-  border-color: var(--warn, #d9a441);
-  background: rgba(217, 164, 65, 0.08);
-}
-
-.sup-msg-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.sup-msg-author {
-  font-weight: 600;
-  font-size: 13px;
-}
-
-.sup-msg-time {
-  color: var(--muted, #7a6c61);
-  font-size: 12px;
-}
-
-/* `pre-wrap` preserva as quebras de linha que o usuário digitou SEM interpretar
-   nada como marcação: o texto vem de fora e entra como texto, nunca como HTML.
-   `overflow-wrap` impede que uma URL colada estoure a largura do modal. */
-.sup-msg-body {
-  margin: 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-.sup-note-tag {
-  display: inline-block;
-  margin-bottom: 4px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--gold-dark, #a87a34);
-}
-
-/* --- Cabeçalho do chamado ------------------------------------------------ */
-
-.sup-detail-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 14px;
-  align-items: center;
-  padding-bottom: 12px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--line, #e7ddce);
-  font-size: 13px;
-  color: var(--muted, #7a6c61);
-}
-
-.sup-detail-meta strong {
-  color: var(--ink, #1a1a1a);
-}
-
-/* --- Formulário de resposta ---------------------------------------------- */
-
-.sup-reply {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding-top: 12px;
-  margin-top: 12px;
-  border-top: 1px solid var(--line, #e7ddce);
-}
-
-.sup-reply textarea {
-  min-height: 96px;
-}
-
-.sup-reply-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.sup-counter {
-  font-size: 12px;
-  color: var(--muted, #7a6c61);
-}
-
-/* Contador no vermelho ANTES do envio: descobrir o limite só na mensagem de
-   erro do servidor custa o texto já digitado. */
-.sup-counter-over {
-  color: var(--danger, #b85c5c);
-  font-weight: 600;
-}
-
-.sup-closed-note {
-  margin: 12px 0 0;
-  padding: 10px 14px;
-  border-radius: 10px;
-  background: var(--paper, #fcfbf8);
-  border: 1px solid var(--line, #e7ddce);
-  font-size: 13px;
-  color: var(--muted, #7a6c61);
-}
-
-/* --- Barra de controles do suporte --------------------------------------- */
-
-.sup-controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: flex-end;
-}
-
-.sup-controls label {
-  min-width: 180px;
-  flex: 1 1 180px;
-}
-
-/* --- Sinalização na lista ------------------------------------------------ */
-
-/* Ponto de "tem resposta nova". Fica ANTES do assunto porque é o que decide se
-   a linha precisa ser aberta. */
-.sup-unread-dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  margin-right: 8px;
-  border-radius: 50%;
-  background: var(--gold-dark, #a87a34);
-  vertical-align: middle;
-}
-
-.sup-subject {
-  display: inline-block;
-  max-width: 42ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  vertical-align: middle;
-}
-
-/* Badge do contador de abertos na aba do painel. */
-.sup-tab-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
-  margin-left: 8px;
-  border-radius: 999px;
-  background: var(--danger, #b85c5c);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1;
-}
-
-@media (max-width: 700px) {
+  /* Quem falou se lê pelo LADO, antes de qualquer rótulo. */
   .sup-msg {
-    max-width: 100%;
+    align-self: flex-start; max-width: 88%; padding: 10px 14px;
+    border: 1px solid var(--line); border-radius: 12px; background: var(--white);
+  }
+  .sup-msg.is-suporte { align-self: flex-end; background: var(--paper); }
+
+  /* Nota interna: visualmente diferente de tudo o mais porque confundi-la com
+     uma resposta é escrever para o cliente o que era anotação da equipe. */
+  .sup-msg.is-nota {
+    align-self: stretch; max-width: 100%;
+    border-style: dashed; border-color: var(--warn); background: rgba(217, 164, 65, .08);
+  }
+  .sup-msg header {
+    display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+    gap: 8px; margin-bottom: 4px; font-size: 12px; color: var(--muted);
+  }
+
+  /* `pre-wrap` preserva as quebras de linha que o usuário digitou SEM
+     interpretar nada como marcação: o texto vem de fora e entra como texto,
+     nunca como HTML. `overflow-wrap` impede que uma URL colada estoure a coluna. */
+  .sup-msg p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.5; }
+
+  /* Ponto de "tem novidade". Fica ANTES do assunto porque é o que decide se a
+     linha precisa ser aberta. */
+  .sup-dot {
+    display: inline-block; width: 8px; height: 8px; margin-right: 8px;
+    border-radius: 50%; background: var(--gold-dark); vertical-align: middle;
+  }
+
+  @media (max-width: 700px) {
+    .sup-msg { max-width: 100%; }
   }
 }

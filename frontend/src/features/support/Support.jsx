@@ -1,6 +1,13 @@
 // Suporte da clínica: abrir chamado para a Monitence e conversar com ela.
 //
-// Três decisões moldam esta tela:
+// É a mesma tela da caixa de entrada do super-admin (features/platform/SupportInbox.jsx),
+// com duas subtrações: não existe coluna de clínica (aqui só há uma) e não
+// existe controle de prioridade (quem prioriza é a Monitence). O desenho é o
+// mesmo de propósito — mestre-detalhe `.platform-split`, lista em `<DataView>`,
+// resposta em `<Modal>`: quem dá suporte e quem pede suporte devem estar
+// olhando para a mesma conversa, com a mesma cara.
+//
+// Três decisões moldam a tela:
 //
 //   1. Nada de HTML vindo de fora. Todo texto (assunto, mensagem, nome de quem
 //      escreveu) é do usuário e entra como TEXTO em JSX — nunca por
@@ -11,14 +18,21 @@
 //      página atual mentiria — pareceria dizer "não existe" sobre um chamado que
 //      existe na página seguinte. O filtro de status, esse, vai para a query.
 //   3. O detalhe é uma leitura própria (`/support/tickets/:id`), não a linha da
-//      lista: a conversa só é carregada de quem realmente abriu o chamado.
+//      lista: a conversa só é carregada de quem realmente abriu o chamado. E a
+//      rota da clínica nunca devolve nota interna — a anotação da equipe não
+//      passa por aqui em momento nenhum.
 import { useState } from "react";
 import { LifeBuoy, Lock } from "lucide-react";
 import { AlertBlock, Button, Select, StatusBadge, Textarea } from "../../components/common/Ui";
 import { CrudHeader, Modal } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
+import { Loading } from "../../components/common/Feedback";
 import { apiFetch, useFetch } from "../../lib/api";
 import { asArray, asNumber, asObject } from "../../lib/utils";
+// `.platform-split` mora na camada do painel, mas é layout genérico de
+// mestre-detalhe: esta tela usa o mesmo. Ver o relato — a classe deveria perder
+// o prefixo `platform-` e virar primitiva compartilhada.
+import "../../styles/platform-panel.css";
 import "../../styles/support.css";
 
 // Espelham os CHECKs de platform.support_tickets (backend/src/db/platformSchema.sql).
@@ -75,20 +89,18 @@ function hasUnread(ticket) {
   return new Date(ticket.last_support_message_at) > new Date(ticket.last_clinic_message_at);
 }
 
-// Uma mensagem da conversa. Componente próprio porque a mesma bolha aparece na
-// tela da clínica e na do suporte — a diferença é só o que cada lado recebe.
+// Uma mensagem da conversa. Mesma bolha da caixa de entrada do suporte — a
+// diferença é só o que cada lado recebe do backend.
 function ThreadMessage({ message }) {
-  const side = message.author_side === "suporte" ? "suporte" : "clinica";
+  const isSupport = message.author_side === "suporte";
   return (
-    <article className={`sup-msg sup-msg-${side}`}>
-      <div className="sup-msg-head">
-        <span className="sup-msg-author">
-          {side === "suporte" ? (message.author_name || "Suporte Monitence") : (message.author_name || "Você")}
-        </span>
-        <span className="sup-msg-time">{formatMoment(message.created_at)}</span>
-      </div>
+    <article className={`sup-msg${isSupport ? " is-suporte" : ""}`}>
+      <header>
+        <strong>{message.author_name || (isSupport ? "Suporte Monitence" : "Você")}</strong>
+        <span>{formatMoment(message.created_at)}</span>
+      </header>
       {/* Texto puro: o corpo é do usuário e nunca vira HTML. */}
-      <p className="sup-msg-body">{message.body}</p>
+      <p>{message.body}</p>
     </article>
   );
 }
@@ -99,6 +111,7 @@ export function Support() {
   const [filterValues, setFilterValues] = useState({});
   const [openId, setOpenId] = useState(null);
   const [showNew, setShowNew] = useState(false);
+  const [showReply, setShowReply] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [reply, setReply] = useState("");
   const [busy, setBusy] = useState("");
@@ -174,6 +187,7 @@ export function Support() {
         body: JSON.stringify({ body: reply.trim() })
       });
       setReply("");
+      setShowReply(false);
       detail.refresh();
       list.refresh();
     });
@@ -189,85 +203,149 @@ export function Support() {
   }
 
   return (
-    <section className="stack sup-stack">
-      <article className="panel">
-        <CrudHeader
-          title="Suporte"
-          subtitle="Fale com a equipe da Monitence e acompanhe as respostas"
-          actionLabel="Novo chamado"
-          onAction={() => { setForm(EMPTY_FORM); setError(""); setMessage(""); setShowNew(true); }}
-        />
+    <section className="stack">
+      <div className="platform-split platform-split--wide">
+        <article className="panel">
+          <CrudHeader
+            title="Suporte"
+            subtitle="Fale com a equipe da Monitence e acompanhe as respostas"
+            actionLabel="Novo chamado"
+            onAction={() => { setForm(EMPTY_FORM); setError(""); setMessage(""); setShowNew(true); }}
+          />
 
-        {error && !showNew && !openId && <span className="form-error">{error}</span>}
-        {message && !openId && <span className="form-success">{message}</span>}
+          {error && !showNew && !showReply && !openId && <span className="form-error">{error}</span>}
+          {message && !openId && <span className="form-success">{message}</span>}
 
-        <DataView
-          mode="server"
-          rows={tickets}
-          total={total}
-          loading={list.loading}
-          error={list.error}
-          page={page}
-          pageSize={pageSize}
-          onPageChange={setPage}
-          onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
-          // Busca desligada: o endpoint pagina no servidor e uma busca que só
-          // olhasse a página atual esconderia chamados sem avisar.
-          searchable={false}
-          filters={[{
-            key: "status",
-            label: "Status",
-            type: "select",
-            options: Object.entries(STATUS_LABEL).map(([value, text]) => ({ value, label: text }))
-          }]}
-          filterValues={filterValues}
-          onFilterChange={(values) => { setFilterValues(values); setPage(1); }}
-          columns={[
-            {
-              key: "subject",
-              label: "Assunto",
-              sortable: false,
-              render: (row) => (
-                <span>
-                  {hasUnread(row) && <span className="sup-unread-dot" title="Resposta nova do suporte" />}
-                  <span className="sup-subject" title={row.subject}>{row.subject}</span>
-                </span>
-              )
-            },
-            {
-              key: "category",
-              label: "Categoria",
-              sortable: false,
-              render: (row) => label(CATEGORY_LABEL, row.category)
-            },
-            {
+          <DataView
+            mode="server"
+            rows={tickets}
+            total={total}
+            loading={list.loading}
+            error={list.error}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+            // Busca desligada: o endpoint pagina no servidor e uma busca que só
+            // olhasse a página atual esconderia chamados sem avisar.
+            searchable={false}
+            filters={[{
               key: "status",
               label: "Status",
-              sortable: false,
-              render: (row) => (
-                <StatusBadge tone={STATUS_TONE[row.status] || "neutral"}>
-                  {label(STATUS_LABEL, row.status)}
-                </StatusBadge>
-              )
-            },
-            {
-              key: "updated_at",
-              label: "Última movimentação",
-              sortable: false,
-              render: (row) => formatMoment(row.updated_at)
-            }
-          ]}
-          actions={(row) => (
-            <button type="button" onClick={() => openTicket(row.id)}>Abrir</button>
-          )}
-          empty="Nenhum chamado aberto até agora."
-          emptyFiltered="Nenhum chamado com esse status."
-        />
-      </article>
+              type: "select",
+              options: Object.entries(STATUS_LABEL).map(([value, text]) => ({ value, label: text }))
+            }]}
+            filterValues={filterValues}
+            onFilterChange={(values) => { setFilterValues(values); setPage(1); }}
+            columns={[
+              {
+                key: "subject",
+                label: "Assunto",
+                sortable: false,
+                render: (row) => (
+                  <span>
+                    {hasUnread(row) && <span className="sup-dot" title="Resposta nova do suporte" />}
+                    {row.subject}
+                  </span>
+                )
+              },
+              {
+                key: "category",
+                label: "Categoria",
+                sortable: false,
+                render: (row) => label(CATEGORY_LABEL, row.category)
+              },
+              {
+                key: "status",
+                label: "Status",
+                sortable: false,
+                render: (row) => (
+                  <StatusBadge tone={STATUS_TONE[row.status] || "neutral"}>
+                    {label(STATUS_LABEL, row.status)}
+                  </StatusBadge>
+                )
+              },
+              {
+                key: "updated_at",
+                label: "Atualizado",
+                sortable: false,
+                render: (row) => formatMoment(row.updated_at)
+              }
+            ]}
+            actions={(row) => (
+              <button type="button" onClick={() => openTicket(row.id)}>Abrir</button>
+            )}
+            empty="Nenhum chamado aberto até agora."
+            emptyFiltered="Nenhum chamado com esse status."
+          />
+        </article>
 
-      {/* ---------------------------------------------------------------- */}
-      {/* Novo chamado                                                      */}
-      {/* ---------------------------------------------------------------- */}
+        {/* ---------------------------------------------------------------- */}
+        {/* Conversa do chamado aberto                                        */}
+        {/* ---------------------------------------------------------------- */}
+        <article className="panel">
+          {!openId ? (
+            <p className="empty-state">Escolha um chamado na lista para ler a conversa e responder.</p>
+          ) : detail.error ? (
+            <span className="form-error">{detail.error}</span>
+          ) : detail.loading ? (
+            <Loading />
+          ) : (
+            <>
+              <div className="panel-heading">
+                <div>
+                  <h2>{ticket?.subject || "Chamado"}</h2>
+                  {ticket?.id && <span>Chamado #{ticket.id}</span>}
+                </div>
+                <div className="header-actions">
+                  {!isClosed && (
+                    <>
+                      <Button variant="primary" onClick={() => { setShowReply(true); setError(""); }} disabled={isBusy}>
+                        Responder
+                      </Button>
+                      <Button variant="secondary" onClick={closeTicket} disabled={isBusy}>
+                        {busy === "close" ? "Encerrando…" : "Encerrar chamado"}
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="stack">
+                <p className="field-hint">
+                  <StatusBadge tone={STATUS_TONE[ticket?.status] || "neutral"}>
+                    {label(STATUS_LABEL, ticket?.status)}
+                  </StatusBadge>{" "}
+                  · Categoria <strong>{label(CATEGORY_LABEL, ticket?.category)}</strong>
+                  {" "}· Aberto em <strong>{formatMoment(ticket?.created_at)}</strong>
+                  {ticket?.opened_by_name ? <> por <strong>{ticket.opened_by_name}</strong></> : null}
+                </p>
+
+                <div className="sup-thread">
+                  {messages.map((item) => <ThreadMessage key={item.id} message={item} />)}
+                </div>
+
+                {message && <span className="form-success">{message}</span>}
+                {error && !showReply && <span className="form-error">{error}</span>}
+
+                {/* `.platform-notice`, igual à caixa de entrada do suporte: não é
+                    estado vazio (a conversa está logo acima), é o callout âmbar
+                    que explica por que os botões de escrever sumiram. */}
+                {isClosed && (
+                  <p className="platform-notice">
+                    Este chamado está encerrado. Se o assunto voltar, abra um novo chamado — assim o histórico de
+                    cada problema fica separado.
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+        </article>
+      </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Novo chamado                                                        */}
+      {/* ------------------------------------------------------------------ */}
       <Modal
         open={showNew}
         title="Novo chamado"
@@ -282,7 +360,9 @@ export function Support() {
           </>
         )}
       >
-        <form id="support-new-form" onSubmit={submitNew}>
+        {/* `.stack` dá o respiro entre os campos: `<form>` não é um container
+            com espaçamento próprio no sistema. */}
+        <form id="support-new-form" className="stack" onSubmit={submitNew}>
           <div className="form-grid">
             <label>
               Assunto
@@ -314,7 +394,9 @@ export function Support() {
             placeholder="Conte o que aconteceu, em que tela e o que você já tentou."
             onChange={(value) => setForm({ ...form, body: value })}
           />
-          <span className={`sup-counter ${form.body.length > MAX_BODY ? "sup-counter-over" : ""}`}>
+          {/* Contador no vermelho ANTES do envio: descobrir o limite só na
+              mensagem de erro do servidor custa o texto já digitado. */}
+          <span className={form.body.length > MAX_BODY ? "form-error" : "field-hint"}>
             {form.body.length}/{MAX_BODY} caracteres
           </span>
 
@@ -322,90 +404,57 @@ export function Support() {
         </form>
       </Modal>
 
-      {/* ---------------------------------------------------------------- */}
-      {/* Conversa                                                          */}
-      {/* ---------------------------------------------------------------- */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Responder                                                           */}
+      {/* ------------------------------------------------------------------ */}
       <Modal
-        open={Boolean(openId)}
-        size="lg"
-        title={ticket?.subject || "Chamado"}
-        subtitle={ticket?.id ? `Chamado #${ticket.id}` : ""}
-        onClose={() => setOpenId(null)}
+        open={showReply}
+        // "Responder chamado", o mesmo título da caixa de entrada do suporte.
+        title="Responder chamado"
+        subtitle={ticket?.id ? `Chamado #${ticket.id} · ${ticket.subject}` : ""}
+        onClose={() => setShowReply(false)}
         footer={(
           <>
-            {!isClosed && (
-              <Button variant="secondary" onClick={closeTicket} disabled={isBusy}>
-                {busy === "close" ? "Encerrando…" : "Encerrar chamado"}
-              </Button>
-            )}
-            <Button variant="secondary" onClick={() => setOpenId(null)}>Fechar</Button>
+            <Button variant="secondary" onClick={() => setShowReply(false)} disabled={isBusy}>Cancelar</Button>
+            <Button type="submit" form="support-reply-form" variant="primary" disabled={isBusy || !reply.trim()}>
+              {busy === "reply" ? "Enviando…" : "Enviar resposta"}
+            </Button>
           </>
         )}
       >
-        {detail.error ? (
-          <p className="form-error">{detail.error}</p>
-        ) : detail.loading ? (
-          <p className="empty-state">Carregando…</p>
-        ) : (
-          <>
-            <div className="sup-detail-meta">
-              <StatusBadge tone={STATUS_TONE[ticket?.status] || "neutral"}>
-                {label(STATUS_LABEL, ticket?.status)}
-              </StatusBadge>
-              <span>Categoria: <strong>{label(CATEGORY_LABEL, ticket?.category)}</strong></span>
-              <span>Aberto em <strong>{formatMoment(ticket?.created_at)}</strong></span>
-              {ticket?.opened_by_name && <span>por <strong>{ticket.opened_by_name}</strong></span>}
-            </div>
+        <form id="support-reply-form" className="stack" onSubmit={submitReply}>
+          <Textarea
+            label="Sua resposta"
+            rows={6}
+            required
+            value={reply}
+            placeholder="Escreva sua resposta…"
+            onChange={setReply}
+          />
+          <span className={reply.length > MAX_BODY ? "form-error" : "field-hint"}>
+            {reply.length}/{MAX_BODY} caracteres
+          </span>
 
-            <div className="sup-thread">
-              {messages.map((item) => <ThreadMessage key={item.id} message={item} />)}
-            </div>
-
-            {message && <span className="form-success">{message}</span>}
-
-            {isClosed ? (
-              <p className="sup-closed-note">
-                Este chamado está encerrado. Se o assunto voltar, abra um novo chamado — assim o histórico de
-                cada problema fica separado.
-              </p>
-            ) : (
-              <form className="sup-reply" onSubmit={submitReply}>
-                <Textarea
-                  label="Responder"
-                  rows={4}
-                  required
-                  value={reply}
-                  placeholder="Escreva sua resposta…"
-                  onChange={setReply}
-                />
-                <div className="sup-reply-actions">
-                  <span className={`sup-counter ${reply.length > MAX_BODY ? "sup-counter-over" : ""}`}>
-                    {reply.length}/{MAX_BODY} caracteres
-                  </span>
-                  <Button type="submit" variant="primary" disabled={isBusy || !reply.trim()}>
-                    {busy === "reply" ? "Enviando…" : "Enviar resposta"}
-                  </Button>
-                </div>
-                {error && <span className="form-error">{error}</span>}
-              </form>
-            )}
-          </>
-        )}
+          {error && <span className="form-error">{error}</span>}
+        </form>
       </Modal>
 
       <article className="panel">
+        {/* `.field-hint` nas linhas: é o que as outras telas do painel usam dentro
+            do AlertBlock. `<p>` nu herda a margem de 1em do navegador e o bloco
+            ficava com um respiro diferente do mesmo bloco nas outras abas. */}
         <AlertBlock icon={LifeBuoy} title="Como funciona o suporte">
-          <p>
+          <p className="field-hint">
             O chamado vai direto para a equipe da Monitence. A resposta aparece aqui mesmo, nesta tela — não é
             preciso ficar de olho no e-mail.
           </p>
-          <p>
+          <p className="field-hint">
             Um chamado por assunto: misturar dois problemas no mesmo chamado atrasa os dois. Enquanto houver
             chamados seus em aberto, resolva ou encerre algum antes de abrir muitos novos.
           </p>
         </AlertBlock>
         <AlertBlock icon={Lock} title="O que não enviar aqui">
-          <p>
+          <p className="field-hint">
             Nunca escreva senhas, chaves de API ou dados de cartão numa mensagem de suporte. A equipe nunca vai
             pedir isso — se alguém pedir, é golpe.
           </p>

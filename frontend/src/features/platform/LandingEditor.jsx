@@ -3,11 +3,16 @@
 // O super-admin edita texto, imagem, ordem e ligado/desligado de cada bloco. O
 // LAYOUT continua sendo código React em pages/Landing.jsx — aqui só se edita o
 // conteúdo, e é isso que impede o painel de quebrar a página de vendas.
+//
+// A tela usa o mesmo desenho das outras do painel: a lista de blocos é um
+// <DataView>, o formulário de um bloco é um <Modal> e cada item de lista dentro
+// do formulário é `.panel` + `.panel-heading`. O que sobrou de CSS próprio está
+// explicado no cabeçalho de styles/landing-editor.css.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, ExternalLink, ImageIcon, Plus, Trash2 } from "lucide-react";
-import { Button, Checkbox, Input, StatusBadge, Textarea } from "../../components/common/Ui";
+import { Button, Input, StatusBadge, Textarea } from "../../components/common/Ui";
 import { Modal } from "../../components/common/Crud";
-import { ApiError, Loading } from "../../components/common/Feedback";
+import { DataView } from "../../components/common/DataView";
 import { API, API_ORIGIN } from "../../lib/api";
 import { asArray, asObject } from "../../lib/utils";
 import "../../styles/landing-editor.css";
@@ -75,14 +80,21 @@ const hasChanges = (draft, saved) => JSON.stringify(draft) !== JSON.stringify(as
 export function LandingEditor({ token, onUnauthorized }) {
   const [sections, setSections] = useState(null);
   const [loadError, setLoadError] = useState("");
-  const [activeKey, setActiveKey] = useState("");
-  // Rascunhos por bloco: trocar de bloco não pode jogar fora o que foi digitado,
-  // então o que está sendo editado vive aqui até o salvamento (ou o descarte).
+  // Rascunhos por bloco. Fechar o formulário NÃO joga fora o que foi digitado: o
+  // rascunho fica aqui, a linha continua marcada como "Não salvo" e o banner do
+  // topo lista o bloco pendente. Só o salvamento ou o descarte confirmado apagam
+  // um rascunho — nenhum caminho de saída perde trabalho em silêncio.
   const [drafts, setDrafts] = useState({});
+  // Uma edição por vez: o formulário é um <Modal>, como nas outras telas.
+  const [editando, setEditando] = useState("");
+  const [descartando, setDescartando] = useState("");
   const [feedback, setFeedback] = useState({ error: "", success: "" });
-  const [savingKey, setSavingKey] = useState("");
-  const [discarding, setDiscarding] = useState("");
-  const [dragKey, setDragKey] = useState("");
+  // Erro do salvamento fica DENTRO do modal: o rodapé da página está atrás do
+  // fundo escurecido e a mensagem do backend (endereço `javascript:` recusado,
+  // por exemplo) é justamente o que explica por que o botão não funcionou.
+  const [erroForm, setErroForm] = useState("");
+  // Chave do bloco em operação (salvar, ligar/desligar, reordenar).
+  const [ocupado, setOcupado] = useState("");
 
   // O callback de 401 vem do painel e é recriado a cada render dele. Guardado em
   // ref, `request` deixa de mudar de identidade — sem isso o efeito de carga
@@ -156,11 +168,23 @@ export function LandingEditor({ token, onUnauthorized }) {
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirtyKeys.length]);
 
-  const activeSection = sectionList.find((row) => row.section_key === activeKey) || null;
-  const activeContent = activeSection ? (drafts[activeKey] ?? asObject(activeSection.content)) : null;
-  const activeDirty = dirtyKeys.includes(activeKey);
+  // A posição vira campo da linha para o DataView poder ORDENAR por ela: é a
+  // ordem da página pública, e é a ordenação inicial da tabela. As setas usam
+  // esta posição, e não a linha exibida — reordenar continua certo mesmo que a
+  // tabela esteja ordenada por outra coluna.
+  const linhas = sectionList.map((section, index) => ({
+    ...section,
+    posicao: index + 1,
+    nome: sectionName(section.section_key),
+    dica: SECTION_INFO[section.section_key]?.hint || "",
+    naoSalvo: dirtyKeys.includes(section.section_key),
+  }));
 
-  function editContent(key, nextContent) {
+  const blocoEditado = sectionList.find((row) => row.section_key === editando) || null;
+  const conteudoEditado = blocoEditado ? (drafts[editando] ?? asObject(blocoEditado.content)) : null;
+  const editandoSujo = dirtyKeys.includes(editando);
+
+  function editarRascunho(key, nextContent) {
     setDrafts((current) => ({ ...current, [key]: nextContent }));
   }
 
@@ -176,8 +200,9 @@ export function LandingEditor({ token, onUnauthorized }) {
     setSections((current) => asArray(current).map((row) => (row.section_key === updated.section_key ? { ...row, ...updated } : row)));
   }
 
-  async function saveSection(key) {
-    setSavingKey(key);
+  async function salvarBloco(key) {
+    setOcupado(key);
+    setErroForm("");
     setFeedback({ error: "", success: "" });
     try {
       const updated = await request(`/platform/landing/sections/${key}`, {
@@ -186,32 +211,36 @@ export function LandingEditor({ token, onUnauthorized }) {
       });
       replaceSection(updated);
       dropDraft(key);
+      setEditando("");
       setFeedback({ error: "", success: `Bloco "${sectionName(key)}" salvo. A página pública já mostra o novo conteúdo.` });
     } catch (error) {
-      setFeedback({ error: error.message, success: "" });
+      setErroForm(error.message);
     } finally {
-      setSavingKey("");
+      setOcupado("");
     }
   }
 
-  async function toggleEnabled(section, enabled) {
+  async function alternarBloco(section) {
+    setOcupado(section.section_key);
     setFeedback({ error: "", success: "" });
     try {
       // Só `enabled` no corpo: o backend preserva o campo omitido, então ligar um
       // bloco não atropela o rascunho nem o conteúdo salvo.
       const updated = await request(`/platform/landing/sections/${section.section_key}`, {
         method: "PUT",
-        body: JSON.stringify({ enabled }),
+        body: JSON.stringify({ enabled: !section.enabled }),
       });
       replaceSection(updated);
     } catch (error) {
       setFeedback({ error: error.message, success: "" });
+    } finally {
+      setOcupado("");
     }
   }
 
   // A lista INTEIRA vai no PATCH, na ordem final — é o contrato do endpoint e
   // evita que duas reordenações rápidas cheguem fora de ordem no servidor.
-  async function applyOrder(nextList) {
+  async function aplicarOrdem(nextList) {
     const previous = sectionList;
     setSections(nextList);
     setFeedback({ error: "", success: "" });
@@ -230,20 +259,17 @@ export function LandingEditor({ token, onUnauthorized }) {
     }
   }
 
-  function moveSection(index, direction) {
-    const nextList = moveInList(sectionList, index, direction);
+  // Reordenar é BOTÃO, e não arrastar: arrastar não funciona por teclado e é
+  // impreciso no toque.
+  async function moverBloco(row, direction) {
+    const nextList = moveInList(sectionList, row.posicao - 1, direction);
     if (nextList === sectionList) return;
-    applyOrder(nextList);
-  }
-
-  // Arrastar é COMPLEMENTO das setas ↑/↓, nunca o único caminho: arrastar não
-  // funciona por teclado e é impreciso no toque.
-  function dropOn(targetKey) {
-    const from = sectionList.findIndex((row) => row.section_key === dragKey);
-    const to = sectionList.findIndex((row) => row.section_key === targetKey);
-    setDragKey("");
-    if (from < 0 || to < 0 || from === to) return;
-    applyOrder(moveInList(sectionList, from, to - from));
+    setOcupado(row.section_key);
+    try {
+      await aplicarOrdem(nextList);
+    } finally {
+      setOcupado("");
+    }
   }
 
   const upload = useCallback(
@@ -256,159 +282,168 @@ export function LandingEditor({ token, onUnauthorized }) {
     [request],
   );
 
-  if (sections === null && !loadError) return <Loading />;
-  if (loadError) return <ApiError message={loadError} />;
-
   return (
-    <div className="le-root">
-      <div className="panel le-intro">
-        <div>
-          <h2>Landing pública</h2>
-          <p>
-            Cada bloco abaixo é uma faixa da página inicial. Ligue, desligue, reordene e edite os textos e as imagens. As
-            alterações valem para todos os visitantes assim que você salvar.
-          </p>
-        </div>
-        <a className="secondary-button le-view-link" href="/" target="_blank" rel="noreferrer">
-          <ExternalLink size={16} /> Ver a página
-        </a>
-      </div>
-
+    <div className="stack">
       {dirtyKeys.length > 0 && (
-        <p className="le-unsaved-banner" role="status">
-          Você tem alterações não salvas em: {dirtyKeys.map(sectionName).join(", ")}. Elas ficam guardadas enquanto você
-          navega entre os blocos, mas só vão para a página depois de salvar.
+        <p className="platform-notice" role="status">
+          Rascunho não salvo em: {dirtyKeys.map(sectionName).join(", ")}. O que você digitou continua guardado nesta
+          tela, mas a página pública só muda depois de salvar o bloco.
         </p>
       )}
 
       {feedback.error && <span className="form-error">{feedback.error}</span>}
       {feedback.success && <span className="form-success">{feedback.success}</span>}
 
-      <div className="le-columns">
-        <section className="panel le-list-panel">
-          <div className="panel-heading">
+      <section className="panel">
+        <div className="panel-heading">
+          <div>
             <h2>Blocos da página</h2>
-            <span>A ordem aqui é a ordem na página pública.</span>
+            <span>
+              Cada bloco é uma faixa da página inicial, e a ordem aqui é a ordem lá. Ligar, desligar e reordenar valem
+              na hora; texto e imagem só depois de salvar o bloco.
+            </span>
           </div>
+          <a className="secondary-button" href="/" target="_blank" rel="noreferrer">
+            <ExternalLink size={16} aria-hidden="true" /> Ver a página
+          </a>
+        </div>
 
-          <ul className="le-list">
-            {sectionList.map((section, index) => {
-              const key = section.section_key;
-              const info = SECTION_INFO[key] || {};
-              return (
-                <li
-                  key={key}
-                  className={`le-item${activeKey === key ? " is-active" : ""}${section.enabled ? "" : " is-off"}`}
-                  draggable
-                  onDragStart={() => setDragKey(key)}
-                  onDragEnd={() => setDragKey("")}
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={() => dropOn(key)}
-                >
-                  <div className="le-item-head">
-                    <span className="le-item-position" aria-hidden="true">
-                      {index + 1}
-                    </span>
-                    <div className="le-item-title">
-                      <strong>{info.name || key}</strong>
-                      <span>{info.hint}</span>
-                    </div>
-                    <div className="le-item-badges">
-                      <StatusBadge tone={section.enabled ? "ok" : "neutral"}>
-                        {section.enabled ? "Ligado" : "Desligado"}
-                      </StatusBadge>
-                      {dirtyKeys.includes(key) && <StatusBadge tone="warn">Não salvo</StatusBadge>}
-                    </div>
-                  </div>
-
-                  <div className="le-item-actions">
-                    <div className="le-move">
-                      <button
-                        type="button"
-                        className="icon-button"
-                        disabled={index === 0}
-                        aria-label={`Mover "${sectionName(key)}" para cima`}
-                        onClick={() => moveSection(index, -1)}
-                      >
-                        <ArrowUp size={16} />
-                      </button>
-                      <button
-                        type="button"
-                        className="icon-button"
-                        disabled={index === sectionList.length - 1}
-                        aria-label={`Mover "${sectionName(key)}" para baixo`}
-                        onClick={() => moveSection(index, 1)}
-                      >
-                        <ArrowDown size={16} />
-                      </button>
-                    </div>
-                    <Checkbox
-                      label="Mostrar na página"
-                      checked={Boolean(section.enabled)}
-                      onChange={(value) => toggleEnabled(section, value)}
-                    />
-                    <Button variant={activeKey === key ? "primary" : "secondary"} onClick={() => setActiveKey(key)}>
-                      Editar
-                    </Button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-
-        <section className="panel le-editor-panel">
-          {!activeSection ? (
-            <p className="le-placeholder">Escolha um bloco na lista para editar os textos e as imagens dele.</p>
-          ) : (
+        <DataView
+          rows={linhas}
+          rowKey={(row) => row.section_key}
+          loading={sections === null && !loadError}
+          error={loadError}
+          // Os blocos são seis e fixos (o super-admin não cria nem exclui faixa):
+          // busca, filtro e paginação só somariam barra de ferramentas sem nada
+          // para filtrar. O DataView entra pelo resto — cabeçalho ordenável,
+          // ações por linha e os estados de carregando/erro/vazio no lugar certo.
+          searchable={false}
+          paginated={false}
+          defaultSort={{ key: "posicao", dir: "asc" }}
+          caption="Blocos da página inicial pública"
+          columns={[
+            { key: "posicao", label: "Ordem", align: "right", searchable: false, value: (row) => row.posicao },
+            {
+              key: "nome",
+              label: "Bloco",
+              value: (row) => row.nome,
+              render: (row) => (
+                <>
+                  <strong>{row.nome}</strong>
+                  <span className="field-hint">{row.dica}</span>
+                </>
+              ),
+            },
+            {
+              key: "status",
+              label: "Status",
+              value: (row) => (row.enabled ? "Ligado" : "Desligado"),
+              render: (row) => (
+                <>
+                  <StatusBadge tone={row.enabled ? "ok" : "neutral"}>
+                    {row.enabled ? "Ligado" : "Desligado"}
+                  </StatusBadge>{" "}
+                  {row.naoSalvo && <StatusBadge tone="warn">Não salvo</StatusBadge>}
+                </>
+              ),
+            },
+          ]}
+          actions={(row) => (
             <>
-              <div className="panel-heading">
-                <div>
-                  <h2>{sectionName(activeKey)}</h2>
-                  <span>{SECTION_INFO[activeKey]?.hint}</span>
-                </div>
-                <div className="le-editor-actions">
-                  <Button variant="secondary" disabled={!activeDirty} onClick={() => setDiscarding(activeKey)}>
-                    Descartar
-                  </Button>
-                  <Button disabled={!activeDirty || savingKey === activeKey} onClick={() => saveSection(activeKey)}>
-                    {savingKey === activeKey ? "Salvando…" : "Salvar bloco"}
-                  </Button>
-                </div>
-              </div>
-
-              {activeDirty && (
-                <p className="le-unsaved-inline" role="status">
-                  Alterações não salvas neste bloco.
-                </p>
-              )}
-
-              <SectionFields
-                sectionKey={activeKey}
-                content={asObject(activeContent)}
-                onChange={(next) => editContent(activeKey, next)}
-                upload={upload}
-              />
+              <button type="button" className="" onClick={() => setEditando(row.section_key)}>
+                Editar
+              </button>
+              <button
+                type="button"
+                className=""
+                disabled={ocupado === row.section_key}
+                onClick={() => alternarBloco(row)}
+              >
+                {row.enabled ? "Desligar" : "Ligar"}
+              </button>
+              <button
+                type="button"
+                className=""
+                disabled={row.posicao === 1 || Boolean(ocupado)}
+                aria-label={`Mover "${row.nome}" para cima`}
+                onClick={() => moverBloco(row, -1)}
+              >
+                <ArrowUp size={15} />
+              </button>
+              <button
+                type="button"
+                className=""
+                disabled={row.posicao === linhas.length || Boolean(ocupado)}
+                aria-label={`Mover "${row.nome}" para baixo`}
+                onClick={() => moverBloco(row, 1)}
+              >
+                <ArrowDown size={15} />
+              </button>
             </>
           )}
-        </section>
-      </div>
+          empty="Nenhum bloco cadastrado na landing."
+        />
+      </section>
 
+      {/* Formulário do bloco. Fechar guarda o rascunho (a linha fica com o selo
+          "Não salvo" e o banner do topo passa a listar o bloco); jogar o
+          rascunho fora exige o "Descartar" e a confirmação logo abaixo. */}
       <Modal
-        open={Boolean(discarding)}
-        title="Descartar alterações"
-        size="sm"
-        onClose={() => setDiscarding("")}
+        open={Boolean(editando)}
+        size="lg"
+        title={sectionName(editando)}
+        subtitle={SECTION_INFO[editando]?.hint}
+        onClose={() => setEditando("")}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setDiscarding("")}>
+            <Button variant="secondary" onClick={() => setEditando("")}>
+              Fechar
+            </Button>
+            <Button variant="danger" disabled={!editandoSujo} onClick={() => setDescartando(editando)}>
+              Descartar
+            </Button>
+            <Button disabled={!editandoSujo || ocupado === editando} onClick={() => salvarBloco(editando)}>
+              {ocupado === editando ? "Salvando…" : "Salvar bloco"}
+            </Button>
+          </>
+        }
+      >
+        {editando && (
+          <>
+            {editandoSujo && (
+              <p className="platform-notice" role="status">
+                Alterações não salvas neste bloco. Fechar guarda o rascunho nesta tela; a página pública só muda depois
+                de "Salvar bloco".
+              </p>
+            )}
+            {erroForm && <span className="form-error">{erroForm}</span>}
+            <SectionFields
+              sectionKey={editando}
+              content={asObject(conteudoEditado)}
+              onChange={(next) => editarRascunho(editando, next)}
+              upload={upload}
+            />
+          </>
+        )}
+      </Modal>
+
+      {/* Este diálogo vem DEPOIS do formulário no JSX para ficar por cima dele na
+          tela: `.modal-backdrop` usa o mesmo z-index, então quem vem depois vence. */}
+      <Modal
+        open={Boolean(descartando)}
+        title="Descartar alterações"
+        size="sm"
+        onClose={() => setDescartando("")}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDescartando("")}>
               Continuar editando
             </Button>
             <Button
               variant="danger"
               onClick={() => {
-                dropDraft(discarding);
-                setDiscarding("");
+                dropDraft(descartando);
+                setDescartando("");
               }}
             >
               Descartar
@@ -417,7 +452,7 @@ export function LandingEditor({ token, onUnauthorized }) {
         }
       >
         <p>
-          As alterações não salvas do bloco "{sectionName(discarding)}" serão perdidas e o conteúdo volta ao que está
+          As alterações não salvas do bloco "{sectionName(descartando)}" serão perdidas e o conteúdo volta ao que está
           publicado.
         </p>
       </Modal>
@@ -426,10 +461,6 @@ export function LandingEditor({ token, onUnauthorized }) {
 }
 
 // --- Campos reutilizados pelos formulários -----------------------------------
-
-function FieldHint({ children }) {
-  return <p className="le-hint">{children}</p>;
-}
 
 // Imagem + alt no MESMO bloco, sempre juntos: alt escondido num "avançado" é
 // alt que ninguém preenche, e esta é a página pública do produto.
@@ -456,22 +487,22 @@ function ImageField({ label, value, alt, onChange, onAltChange, upload }) {
 
   const preview = previewSrc(value);
   return (
-    <div className="le-image-field">
-      <span className="le-image-label">{label}</span>
-      <div className="le-image-body">
+    <div className="form-section">
+      <h3>{label}</h3>
+      <div className="le-image">
         {preview ? (
-          <img className="le-image-preview" src={preview} alt={alt || "Pré-visualização da imagem escolhida"} />
+          <img src={preview} alt={alt || "Pré-visualização da imagem escolhida"} />
         ) : (
-          <div className="le-image-empty">
+          <div className="le-vazio">
             <ImageIcon size={22} aria-hidden="true" />
             <span>Nenhuma imagem</span>
           </div>
         )}
-        <div className="le-image-controls">
+        <div>
           <Input label="Endereço da imagem" value={value || ""} onChange={onChange} />
-          <FieldHint>Envie um arquivo (até 6 MB) ou cole aqui o endereço de uma imagem já publicada.</FieldHint>
-          <div className="le-image-buttons">
-            <label className="secondary-button le-file-button">
+          <p className="field-hint">Envie um arquivo (até 6 MB) ou cole aqui o endereço de uma imagem já publicada.</p>
+          <div className="header-actions">
+            <label className="secondary-button le-arquivo">
               {uploading ? "Enviando…" : "Enviar arquivo"}
               <input type="file" accept="image/*" disabled={uploading} onChange={pick} />
             </label>
@@ -481,21 +512,26 @@ function ImageField({ label, value, alt, onChange, onAltChange, upload }) {
               </Button>
             )}
           </div>
+          {/* O erro do upload fica junto do botão que falhou, e não no rodapé do
+              formulário: é a mensagem do backend que diz o motivo. */}
           {error && <span className="form-error">{error}</span>}
         </div>
       </div>
-      <Input label="Texto alternativo (alt)" value={alt || ""} onChange={onAltChange} />
-      <FieldHint>{ALT_HINT}</FieldHint>
+      <div>
+        <Input label="Texto alternativo (alt)" value={alt || ""} onChange={onAltChange} />
+        <p className="field-hint">{ALT_HINT}</p>
+      </div>
     </div>
   );
 }
 
-// Barra de cada item de lista: reordenar e (quando permitido) remover.
-function ItemToolbar({ title, index, total, onMove, onRemove }) {
+// Cabeçalho de um item de lista (card, imagem, link): título + reordenar e,
+// quando permitido, remover.
+function ItemHeading({ title, index, total, onMove, onRemove }) {
   return (
-    <div className="le-item-toolbar">
-      <strong>{title}</strong>
-      <div className="le-move">
+    <div className="panel-heading">
+      <h3>{title}</h3>
+      <div className="header-actions">
         <button
           type="button"
           className="icon-button"
@@ -515,7 +551,7 @@ function ItemToolbar({ title, index, total, onMove, onRemove }) {
           <ArrowDown size={16} />
         </button>
         {onRemove && (
-          <button type="button" className="icon-button le-remove" aria-label={`Remover ${title}`} onClick={onRemove}>
+          <button type="button" className="icon-button le-remover" aria-label={`Remover ${title}`} onClick={onRemove}>
             <Trash2 size={16} />
           </button>
         )}
@@ -536,19 +572,21 @@ function SectionFields({ sectionKey, content, onChange, upload }) {
 
   if (sectionKey === "hero") {
     return (
-      <div className="stack le-form">
+      <div className="stack">
         <div className="form-grid">
           <Input label="Etiqueta acima do título" value={content.kicker || ""} onChange={(value) => set({ kicker: value })} />
           <Input label="Título" value={content.title || ""} onChange={(value) => set({ title: value })} />
         </div>
         <Textarea label="Subtítulo" value={content.subtitle || ""} onChange={(value) => set({ subtitle: value })} />
-        <div className="form-grid">
-          <Input label="Rótulo do botão principal" value={content.primary_label || ""} onChange={(value) => set({ primary_label: value })} />
-          <Input label="Endereço do botão principal" value={content.primary_href || ""} onChange={(value) => set({ primary_href: value })} />
-          <Input label="Rótulo do botão secundário" value={content.secondary_label || ""} onChange={(value) => set({ secondary_label: value })} />
-          <Input label="Endereço do botão secundário" value={content.secondary_href || ""} onChange={(value) => set({ secondary_href: value })} />
+        <div>
+          <div className="form-grid">
+            <Input label="Rótulo do botão principal" value={content.primary_label || ""} onChange={(value) => set({ primary_label: value })} />
+            <Input label="Endereço do botão principal" value={content.primary_href || ""} onChange={(value) => set({ primary_href: value })} />
+            <Input label="Rótulo do botão secundário" value={content.secondary_label || ""} onChange={(value) => set({ secondary_label: value })} />
+            <Input label="Endereço do botão secundário" value={content.secondary_href || ""} onChange={(value) => set({ secondary_href: value })} />
+          </div>
+          <p className="field-hint">{HREF_HINT}</p>
         </div>
-        <FieldHint>{HREF_HINT}</FieldHint>
         <div className="form-grid">
           <Input label="Nota abaixo dos botões" value={content.note || ""} onChange={(value) => set({ note: value })} />
           <Input label="Legenda da imagem" value={content.caption || ""} onChange={(value) => set({ caption: value })} />
@@ -567,25 +605,27 @@ function SectionFields({ sectionKey, content, onChange, upload }) {
 
   if (sectionKey === "features") {
     return (
-      <div className="stack le-form">
-        <div className="form-grid">
-          <Input label="Título do bloco" value={content.title || ""} onChange={(value) => set({ title: value })} />
-          <Input label="Subtítulo do bloco" value={content.subtitle || ""} onChange={(value) => set({ subtitle: value })} />
+      <div className="stack">
+        <div>
+          <div className="form-grid">
+            <Input label="Título do bloco" value={content.title || ""} onChange={(value) => set({ title: value })} />
+            <Input label="Subtítulo do bloco" value={content.subtitle || ""} onChange={(value) => set({ subtitle: value })} />
+          </div>
+          <p className="field-hint">A página foi desenhada para quatro cards. Menos que isso deixa a faixa desequilibrada.</p>
         </div>
-        <FieldHint>A página foi desenhada para quatro cards. Menos que isso deixa a faixa desequilibrada.</FieldHint>
-        <div className="le-cards">
-          {items.map((item, index) => (
-            <article
-              className="le-card"
-              // biome-ignore lint/suspicious/noArrayIndexKey: os cards não têm id; a chave pela posição é o que mantém o foco no campo enquanto se digita.
-              key={index}
-            >
-              <ItemToolbar
-                title={`Card ${index + 1}`}
-                index={index}
-                total={items.length}
-                onMove={(direction) => setItems(moveInList(items, index, direction))}
-              />
+        {items.map((item, index) => (
+          <section
+            className="panel"
+            // biome-ignore lint/suspicious/noArrayIndexKey: os cards não têm id; a chave pela posição é o que mantém o foco no campo enquanto se digita.
+            key={index}
+          >
+            <ItemHeading
+              title={`Card ${index + 1}`}
+              index={index}
+              total={items.length}
+              onMove={(direction) => setItems(moveInList(items, index, direction))}
+            />
+            <div className="stack">
               <div className="form-grid">
                 <Input label="Título do card" value={item.title || ""} onChange={(value) => patchItem(index, { title: value })} />
                 <Input label="Texto do card" value={item.text || ""} onChange={(value) => patchItem(index, { text: value })} />
@@ -598,9 +638,9 @@ function SectionFields({ sectionKey, content, onChange, upload }) {
                 onAltChange={(value) => patchItem(index, { image_alt: value })}
                 upload={upload}
               />
-            </article>
-          ))}
-        </div>
+            </div>
+          </section>
+        ))}
         {items.length < 4 && (
           <Button variant="secondary" onClick={() => setItems([...items, { title: "", text: "", image: "", image_alt: "" }])}>
             <Plus size={16} /> Adicionar card
@@ -612,7 +652,7 @@ function SectionFields({ sectionKey, content, onChange, upload }) {
 
   if (sectionKey === "carousel") {
     return (
-      <div className="stack le-form">
+      <div className="stack">
         <div className="form-grid">
           <Input label="Título do bloco" value={content.title || ""} onChange={(value) => set({ title: value })} />
           <Input label="Subtítulo do bloco" value={content.subtitle || ""} onChange={(value) => set({ subtitle: value })} />
@@ -623,20 +663,20 @@ function SectionFields({ sectionKey, content, onChange, upload }) {
             onChange={(value) => set({ autoplay_seconds: value === "" ? "" : Number(value) })}
           />
         </div>
-        <div className="le-cards">
-          {items.map((item, index) => (
-            <article
-              className="le-card"
-              // biome-ignore lint/suspicious/noArrayIndexKey: as imagens não têm id; a chave pela posição é o que mantém o foco no campo enquanto se digita.
-              key={index}
-            >
-              <ItemToolbar
-                title={`Imagem ${index + 1}`}
-                index={index}
-                total={items.length}
-                onMove={(direction) => setItems(moveInList(items, index, direction))}
-                onRemove={() => setItems(items.filter((_, position) => position !== index))}
-              />
+        {items.map((item, index) => (
+          <section
+            className="panel"
+            // biome-ignore lint/suspicious/noArrayIndexKey: as imagens não têm id; a chave pela posição é o que mantém o foco no campo enquanto se digita.
+            key={index}
+          >
+            <ItemHeading
+              title={`Imagem ${index + 1}`}
+              index={index}
+              total={items.length}
+              onMove={(direction) => setItems(moveInList(items, index, direction))}
+              onRemove={() => setItems(items.filter((_, position) => position !== index))}
+            />
+            <div className="stack">
               <ImageField
                 label="Imagem"
                 value={item.image}
@@ -646,9 +686,9 @@ function SectionFields({ sectionKey, content, onChange, upload }) {
                 upload={upload}
               />
               <Input label="Legenda (opcional)" value={item.caption || ""} onChange={(value) => patchItem(index, { caption: value })} />
-            </article>
-          ))}
-        </div>
+            </div>
+          </section>
+        ))}
         <Button variant="secondary" onClick={() => setItems([...items, { image: "", image_alt: "", caption: "" }])}>
           <Plus size={16} /> Adicionar imagem
         </Button>
@@ -658,15 +698,17 @@ function SectionFields({ sectionKey, content, onChange, upload }) {
 
   if (sectionKey === "plans") {
     return (
-      <div className="stack le-form">
-        <div className="form-grid">
-          <Input label="Título do bloco" value={content.title || ""} onChange={(value) => set({ title: value })} />
-          <Input label="Subtítulo do bloco" value={content.subtitle || ""} onChange={(value) => set({ subtitle: value })} />
-          <Input label="Rótulo do botão" value={content.cta_label || ""} onChange={(value) => set({ cta_label: value })} />
-          <Input label="Endereço do botão" value={content.cta_href || ""} onChange={(value) => set({ cta_href: value })} />
+      <div className="stack">
+        <div>
+          <div className="form-grid">
+            <Input label="Título do bloco" value={content.title || ""} onChange={(value) => set({ title: value })} />
+            <Input label="Subtítulo do bloco" value={content.subtitle || ""} onChange={(value) => set({ subtitle: value })} />
+            <Input label="Rótulo do botão" value={content.cta_label || ""} onChange={(value) => set({ cta_label: value })} />
+            <Input label="Endereço do botão" value={content.cta_href || ""} onChange={(value) => set({ cta_href: value })} />
+          </div>
+          <p className="field-hint">{HREF_HINT}</p>
         </div>
-        <FieldHint>{HREF_HINT}</FieldHint>
-        <p className="le-notice">
+        <p className="platform-notice">
           Os cards de plano (nome, preço e recursos) vêm do cadastro de planos da plataforma, não desta tela. Aqui você
           edita só o título, o subtítulo e o botão da faixa.
         </p>
@@ -676,33 +718,31 @@ function SectionFields({ sectionKey, content, onChange, upload }) {
 
   if (sectionKey === "showcase_links") {
     return (
-      <div className="stack le-form">
+      <div className="stack">
         <div className="form-grid">
           <Input label="Título do bloco" value={content.title || ""} onChange={(value) => set({ title: value })} />
           <Input label="Subtítulo do bloco" value={content.subtitle || ""} onChange={(value) => set({ subtitle: value })} />
         </div>
-        <div className="le-cards">
-          {items.map((item, index) => (
-            <article
-              className="le-card"
-              // biome-ignore lint/suspicious/noArrayIndexKey: os links não têm id; a chave pela posição é o que mantém o foco no campo enquanto se digita.
-              key={index}
-            >
-              <ItemToolbar
-                title={`Link ${index + 1}`}
-                index={index}
-                total={items.length}
-                onMove={(direction) => setItems(moveInList(items, index, direction))}
-              />
-              <div className="form-grid">
-                <Input label="Título" value={item.title || ""} onChange={(value) => patchItem(index, { title: value })} />
-                <Input label="Texto" value={item.text || ""} onChange={(value) => patchItem(index, { text: value })} />
-                <Input label="Endereço" value={item.href || ""} onChange={(value) => patchItem(index, { href: value })} />
-              </div>
-            </article>
-          ))}
-        </div>
-        <FieldHint>{HREF_HINT}</FieldHint>
+        {items.map((item, index) => (
+          <section
+            className="panel"
+            // biome-ignore lint/suspicious/noArrayIndexKey: os links não têm id; a chave pela posição é o que mantém o foco no campo enquanto se digita.
+            key={index}
+          >
+            <ItemHeading
+              title={`Link ${index + 1}`}
+              index={index}
+              total={items.length}
+              onMove={(direction) => setItems(moveInList(items, index, direction))}
+            />
+            <div className="form-grid">
+              <Input label="Título" value={item.title || ""} onChange={(value) => patchItem(index, { title: value })} />
+              <Input label="Texto" value={item.text || ""} onChange={(value) => patchItem(index, { text: value })} />
+              <Input label="Endereço" value={item.href || ""} onChange={(value) => patchItem(index, { href: value })} />
+            </div>
+          </section>
+        ))}
+        <p className="field-hint">{HREF_HINT}</p>
         {items.length < 2 && (
           <Button variant="secondary" onClick={() => setItems([...items, { title: "", text: "", href: "" }])}>
             <Plus size={16} /> Adicionar link
@@ -717,38 +757,38 @@ function SectionFields({ sectionKey, content, onChange, upload }) {
     const patchImage = (index, patch) =>
       set({ images: images.map((image, position) => (position === index ? { ...image, ...patch } : image)) });
     return (
-      <div className="stack le-form">
-        <div className="form-grid">
-          <Input label="Título" value={content.title || ""} onChange={(value) => set({ title: value })} />
-          <Input label="Rótulo do botão" value={content.primary_label || ""} onChange={(value) => set({ primary_label: value })} />
-          <Input label="Endereço do botão" value={content.primary_href || ""} onChange={(value) => set({ primary_href: value })} />
-          <Input label="Nota abaixo do botão" value={content.note || ""} onChange={(value) => set({ note: value })} />
+      <div className="stack">
+        <div>
+          <div className="form-grid">
+            <Input label="Título" value={content.title || ""} onChange={(value) => set({ title: value })} />
+            <Input label="Rótulo do botão" value={content.primary_label || ""} onChange={(value) => set({ primary_label: value })} />
+            <Input label="Endereço do botão" value={content.primary_href || ""} onChange={(value) => set({ primary_href: value })} />
+            <Input label="Nota abaixo do botão" value={content.note || ""} onChange={(value) => set({ note: value })} />
+          </div>
+          <p className="field-hint">{HREF_HINT}</p>
         </div>
-        <FieldHint>{HREF_HINT}</FieldHint>
-        <div className="le-cards">
-          {images.map((image, index) => (
-            <article
-              className="le-card"
-              // biome-ignore lint/suspicious/noArrayIndexKey: as imagens não têm id; a chave pela posição é o que mantém o foco no campo enquanto se digita.
-              key={index}
-            >
-              <ItemToolbar
-                title={`Imagem ${index + 1}`}
-                index={index}
-                total={images.length}
-                onMove={(direction) => set({ images: moveInList(images, index, direction) })}
-              />
-              <ImageField
-                label="Imagem"
-                value={image.image}
-                alt={image.image_alt}
-                onChange={(value) => patchImage(index, { image: value })}
-                onAltChange={(value) => patchImage(index, { image_alt: value })}
-                upload={upload}
-              />
-            </article>
-          ))}
-        </div>
+        {images.map((image, index) => (
+          <section
+            className="panel"
+            // biome-ignore lint/suspicious/noArrayIndexKey: as imagens não têm id; a chave pela posição é o que mantém o foco no campo enquanto se digita.
+            key={index}
+          >
+            <ItemHeading
+              title={`Imagem ${index + 1}`}
+              index={index}
+              total={images.length}
+              onMove={(direction) => set({ images: moveInList(images, index, direction) })}
+            />
+            <ImageField
+              label="Imagem"
+              value={image.image}
+              alt={image.image_alt}
+              onChange={(value) => patchImage(index, { image: value })}
+              onAltChange={(value) => patchImage(index, { image_alt: value })}
+              upload={upload}
+            />
+          </section>
+        ))}
         {images.length < 2 && (
           <Button variant="secondary" onClick={() => set({ images: [...images, { image: "", image_alt: "" }] })}>
             <Plus size={16} /> Adicionar imagem
@@ -763,5 +803,5 @@ function SectionFields({ sectionKey, content, onChange, upload }) {
     );
   }
 
-  return <p className="le-placeholder">Este bloco ainda não tem editor nesta tela.</p>;
+  return <p className="empty-state">Este bloco ainda não tem editor nesta tela.</p>;
 }

@@ -262,3 +262,29 @@ efeito é pequeno — mas o gancho existe e não está plugado.
 Sem `ASAAS_API_KEY` no ambiente de teste, o caminho coberto é o de gateway
 indisponível. O laço de `try/catch` por clínica está testado só na contagem.
 Vale um teste manual no sandbox antes do lançamento.
+
+### 25. `.stack` está definida duas vezes em `styles.css`
+Linhas 2165 (`display: grid; gap: 18px`) e 5757 (`gap: clamp(...)`), ambas em
+`@layer legado`. Dentro da mesma camada vale a ordem do arquivo, então a segunda
+vence e o `gap: 18px` da primeira é letra morta.
+
+Não quebra nada hoje, mas é exatamente a duplicata que `docs/PADRAO-VISUAL.md`
+pede para não criar — e quem for editar a primeira vai mexer numa regra que não
+tem efeito. Consolidar numa só.
+
+### 26. Três decisões de frontend não estão escritas em lugar nenhum
+Levantadas ao documentar o padrão visual; nenhuma se responde lendo o código:
+
+- **Quando uma tela monta o próprio `.main-content`.** `/plataforma` monta (tem
+  sessão e shell próprios), o app da clínica monta no `main.jsx`, as telas
+  públicas não montam. Não há regra para decidir o caso novo.
+- **O destino da camada `legado`.** O cabeçalho do `styles.css` fala em "quatro
+  gerações", mas não há critério nem plano de migração.
+- **Quando `mode="server"` do `DataView` passa a ser obrigatório.** Os dois modos
+  estão documentados e `client` é chamado de "caminho de migração", mas não há
+  limiar (nº de linhas, peso da resposta) que obrigue a troca.
+
+### 27. Cor `#6d5e52` repetida sem token
+Aparece crua em `.field-hint`, `.platform-metric .label` e `.platform-fact dt`.
+É o cinza-texto secundário do painel e deveria ser uma variável no `:root`,
+junto de `--line`, `--white` e `--muted`.
