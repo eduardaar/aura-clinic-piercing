@@ -73,13 +73,14 @@ VALUES
   ('profissional', 'Pacote Profissional', 6990, 'Estúdios que querem agendamento online e ficha digital', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","anamnesis","digital_terms","basic_finance","deposits","stock_alerts","automatic_followup","message_templates","public_catalog_customization"]'::jsonb, true),
   ('studio', 'Pacote Studio', 9990, 'Estúdios com equipe e venda de joias', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","anamnesis","digital_terms","basic_finance","deposits","stock_alerts","automatic_followup","message_templates","public_catalog_customization","multi_user","commissions","monthly_reports","coupons","returns","full_client_history","jewelry_sales_report"]'::jsonb, false),
   ('premium', 'Pacote Premium', 14990, 'Operações completas com catálogo avançado', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","anamnesis","digital_terms","basic_finance","deposits","stock_alerts","automatic_followup","message_templates","public_catalog_customization","multi_user","commissions","monthly_reports","coupons","returns","full_client_history","jewelry_sales_report","advanced_catalog","featured_products","promotional_banner","campaigns","advanced_finance","variation_inventory","alert_center","courses","priority_support"]'::jsonb, false)
-ON CONFLICT (code) DO UPDATE SET
-  name = excluded.name,
-  price_cents = excluded.price_cents,
-  audience = excluded.audience,
-  trial_days = excluded.trial_days,
-  features = excluded.features,
-  is_recommended = excluded.is_recommended;
+-- DO NOTHING, e não DO UPDATE.
+--
+-- Este INSERT é SEMENTE: popula os planos no primeiro boot e nunca mais toca
+-- neles. Com DO UPDATE (como era antes), todo deploy reescreveria nome, preço e
+-- features a partir daqui — desfazendo em silêncio tudo que o super-admin
+-- tivesse editado no painel. Enquanto o código era a fonte da verdade isso era
+-- inofensivo; agora seria destruição de dado a cada deploy.
+ON CONFLICT (code) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- Cobrança da assinatura das clínicas (Monitence -> clínica) via Asaas.
@@ -333,3 +334,143 @@ INSERT INTO platform.landing_sections (section_key, enabled, sort_order, content
     "footer_link_href": "/login"
   }'::jsonb)
 ON CONFLICT (section_key) DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- Planos editáveis pelo painel: limites, ordem e ativação.
+-- ---------------------------------------------------------------------------
+--
+-- `platform.subscription_plans` já existia como espelho do que estava fixo em
+-- services/plans.js. A partir daqui o BANCO passa a ser a fonte da verdade, e o
+-- código vira semente e rede de segurança (ver o comentário em plans.js).
+
+-- Cotas do plano. `{}` = sem limite nenhum; chave ausente = aquele limite não
+-- se aplica. JSONB porque o conjunto de limites vai mudar com o produto, e uma
+-- coluna por limite exigiria migration a cada ideia nova.
+ALTER TABLE platform.subscription_plans ADD COLUMN IF NOT EXISTS limits JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+-- Plano desativado some da vitrine e do cadastro, mas continua valendo para
+-- quem já assina. É o "excluir" seguro: apagar de verdade um plano com
+-- assinante quebraria a FK de tenant_subscriptions — e, pior, deixaria clínicas
+-- pagantes sem plano.
+ALTER TABLE platform.subscription_plans ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true;
+
+-- Ordem de exibição na landing e no cadastro. Sem isto a ordem é o preço, e o
+-- super-admin não consegue destacar um plano fora dessa sequência.
+ALTER TABLE platform.subscription_plans ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE platform.subscription_plans ADD COLUMN IF NOT EXISTS badge TEXT;
+ALTER TABLE platform.subscription_plans ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE platform.subscription_plans ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+-- Ordem inicial derivada do preço, que é como a vitrine já os exibia.
+UPDATE platform.subscription_plans SET sort_order = price_cents WHERE sort_order = 0;
+
+CREATE INDEX IF NOT EXISTS ix_subscription_plans_ativo ON platform.subscription_plans (is_active, sort_order);
+
+-- Trilha de auditoria das mudanças de plano e de conta.
+--
+-- Existe porque estas ações movem dinheiro e cortam acesso: trocar o plano de
+-- uma clínica, suspender uma conta, alterar o preço de um plano com assinantes.
+-- Quando alguém perguntar "por que esta clínica caiu para o plano básico?", a
+-- resposta precisa estar registrada.
+CREATE TABLE IF NOT EXISTS platform.admin_audit (
+  id SERIAL PRIMARY KEY,
+  actor_id INTEGER REFERENCES platform.platform_users(id) ON DELETE SET NULL,
+  actor_email TEXT,
+  action TEXT NOT NULL,
+  target_type TEXT,
+  target_id TEXT,
+  detail JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS ix_admin_audit_created ON platform.admin_audit (created_at DESC);
+CREATE INDEX IF NOT EXISTS ix_admin_audit_target ON platform.admin_audit (target_type, target_id);
+
+-- ---------------------------------------------------------------------------
+-- Suporte: chamados entre as clínicas e a Monitence.
+-- ---------------------------------------------------------------------------
+--
+-- Fica no schema `platform`, e não no schema de cada clínica, porque o chamado
+-- CRUZA a fronteira: quem escreve é a clínica, quem responde é o super-admin.
+-- Guardado dentro de `tenant_<id>`, a caixa de entrada do suporte teria de
+-- varrer um schema por clínica a cada abertura de tela — e o super-admin, que
+-- não pertence a tenant nenhum, não tem search_path para chegar lá.
+CREATE TABLE IF NOT EXISTS platform.support_tickets (
+  id SERIAL PRIMARY KEY,
+  tenant_id INTEGER NOT NULL REFERENCES platform.tenants(id) ON DELETE CASCADE,
+
+  -- Autor DESNORMALIZADO de propósito: o usuário vive em `tenant_<id>.users` e
+  -- o Postgres não aceita FK entre schemas por nome dinâmico. Copiar nome e
+  -- e-mail no momento da abertura tem um efeito colateral desejável: o suporte
+  -- continua sabendo quem abriu mesmo depois de a clínica desligar o usuário.
+  opened_by_user_id INTEGER,
+  opened_by_name TEXT NOT NULL DEFAULT '',
+  opened_by_email TEXT,
+
+  subject TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'duvida'
+    CHECK (category IN ('duvida', 'problema', 'sugestao', 'financeiro', 'outro')),
+  -- A prioridade é do SUPORTE, não da clínica: se a clínica escolhesse, tudo
+  -- seria 'alta' e a fila perderia a serventia. Nasce 'normal' e só o painel de
+  -- plataforma muda.
+  priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('baixa', 'normal', 'alta')),
+  status TEXT NOT NULL DEFAULT 'aberto'
+    CHECK (status IN ('aberto', 'em_andamento', 'aguardando_cliente', 'resolvido', 'fechado')),
+
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  closed_at TIMESTAMPTZ,
+
+  -- Instante da última mensagem de CADA LADO. É o que permite calcular "tem
+  -- resposta não lida" nos dois sentidos sem varrer a tabela de mensagens:
+  -- para a clínica, resposta nova é last_support_message_at > last_clinic_...;
+  -- para o suporte, o contrário.
+  last_clinic_message_at TIMESTAMPTZ,
+  last_support_message_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS platform.support_messages (
+  id SERIAL PRIMARY KEY,
+  ticket_id INTEGER NOT NULL REFERENCES platform.support_tickets(id) ON DELETE CASCADE,
+  -- Lado que escreveu, não o id de quem escreveu: é o lado que decide a cor da
+  -- bolha na tela e, sobretudo, quem pode ler a mensagem.
+  author_side TEXT NOT NULL CHECK (author_side IN ('clinica', 'suporte')),
+  author_name TEXT NOT NULL DEFAULT '',
+  body TEXT NOT NULL,
+  -- Nota interna: rascunho do suporte sobre o caso, invisível para a clínica.
+  -- O CHECK abaixo é a garantia no nível do banco de que ela só pode existir do
+  -- lado do suporte — a rota da clínica nunca escreve 'suporte', então nenhum
+  -- caminho da API consegue criar uma nota interna atribuída à clínica.
+  internal_note BOOLEAN NOT NULL DEFAULT false CHECK (NOT internal_note OR author_side = 'suporte'),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Os três acessos que existem: a lista da clínica (por tenant), a fila do
+-- suporte (por status) e a conversa de um chamado (em ordem cronológica).
+CREATE INDEX IF NOT EXISTS ix_support_tickets_tenant
+  ON platform.support_tickets (tenant_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS ix_support_tickets_status
+  ON platform.support_tickets (status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS ix_support_messages_ticket
+  ON platform.support_messages (ticket_id, created_at);
+
+-- Reparo pontual: `visual_search` estava na lista do premium em services/plans.js
+-- (que era a fonte da verdade) mas ficou de fora da semente acima. Enquanto o
+-- código mandava, as clínicas premium TINHAM a busca visual; ao passar a fonte
+-- da verdade para o banco, ela sumiria sem ninguém perceber.
+--
+-- Idempotente: só acrescenta se faltar, e nunca remove nada que o super-admin
+-- tenha configurado.
+UPDATE platform.subscription_plans
+   SET features = features || '["visual_search"]'::jsonb
+ WHERE code = 'premium'
+   AND NOT (features @> '["visual_search"]'::jsonb);
+
+-- Recebimentos por período: "recebido no mês", a série mensal e a receita por
+-- plano (services/platformFinance.js) filtram por faixa de `paid_at`, e não
+-- havia índice nenhum nessa coluna. Parcial porque só fatura PAGA tem `paid_at`
+-- preenchido — o índice fica pequeno e cabe em memória.
+CREATE INDEX IF NOT EXISTS ix_tenant_invoices_paid_at
+  ON platform.tenant_invoices (paid_at)
+  WHERE status = 'paga';

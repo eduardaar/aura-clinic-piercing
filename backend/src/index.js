@@ -9,6 +9,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { PORT, isProduction } from "./config/index.js";
 import { ensurePlatform, applySchemaToAllTenants } from "./services/tenants.js";
+import { loadPlansFromDb } from "./services/plans.js";
 import { startReconcileWorker } from "./services/asaas/reconcile.js";
 import { apiLimiter, webhookLimiter } from "./middleware/rateLimit.js";
 
@@ -46,6 +47,10 @@ import webhookRoutes from "./routes/webhooks.js";
 import billingRoutes from "./routes/billing.js";
 import integrationsRoutes from "./routes/integrations.js";
 import landingRoutes from "./routes/landing.js";
+import planAdminRoutes from "./routes/planAdmin.js";
+import accountAdminRoutes from "./routes/accountAdmin.js";
+import platformFinanceRoutes from "./routes/platformFinance.js";
+import supportRoutes from "./routes/support.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -118,6 +123,11 @@ app.use(reportsRoutes);
 app.use(billingRoutes);
 app.use(integrationsRoutes);
 app.use(landingRoutes);
+// Painel do super-admin: planos, contas/cotas, financeiro e suporte.
+app.use(planAdminRoutes);
+app.use(accountAdminRoutes);
+app.use(platformFinanceRoutes);
+app.use(supportRoutes);
 
 // ---------- Inicialização ----------
 // 1) Garante o schema de controle `platform` (tenants + superadmin inicial).
@@ -128,6 +138,11 @@ app.use(landingRoutes);
 //    Depende do schema já aplicado, por isso vem depois dos dois passos acima.
 await ensurePlatform();
 await applySchemaToAllTenants();
+// 3) Carrega os planos do banco para o registro em memória. A partir daqui o
+//    BANCO é a fonte da verdade de preço, features e limites; se a leitura
+//    falhar, o registro fica com os planos-semente do código — nunca vazio,
+//    porque lista vazia trancaria todas as clínicas fora do sistema.
+await loadPlansFromDb();
 startReconcileWorker();
 app.listen(PORT, () => {
   console.log(`Aura Clinic API em http://localhost:${PORT}`);

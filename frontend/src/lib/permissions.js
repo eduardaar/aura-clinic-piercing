@@ -19,7 +19,7 @@
  * existem como página mas não pertencem a papel nenhum da clínica.
  * @typedef {"dashboard" | "erp" | "agenda" | "communications" | "catalog"
  *   | "catalog-customization" | "sales" | "finance" | "reports" | "client-center"
- *   | "clients" | "terms" | "postcare" | "admin" | "integrations" | "error-logs"
+ *   | "clients" | "terms" | "postcare" | "admin" | "integrations" | "support" | "error-logs"
  *   | "meu-plano"} Page
  */
 
@@ -45,7 +45,7 @@
 export function allowedPagesForRole(role) {
   /** @type {Record<Role, Page[]>} */
   const byRole = {
-    admin: ["dashboard", "agenda", "communications", "catalog", "catalog-customization", "sales", "finance", "reports", "client-center", "clients", "terms", "postcare", "admin", "integrations", "meu-plano"],
+    admin: ["dashboard", "agenda", "communications", "catalog", "catalog-customization", "sales", "finance", "reports", "client-center", "clients", "terms", "postcare", "admin", "integrations", "support", "meu-plano"],
     reception: ["agenda", "communications", "sales", "reports", "client-center", "clients"],
     finance: ["finance", "reports", "sales"],
     piercer: ["agenda", "sales", "client-center", "clients", "postcare"]
@@ -57,6 +57,10 @@ export function allowedPagesForRole(role) {
 
 // Espelha PAGE_FEATURE do backend (backend/src/services/plans.js): página -> feature
 // exigida. Páginas ausentes daqui são liberadas em qualquer plano — é o caso de
+// "support": deliberadamente FORA de PAGE_FEATURE. Trancar o atendimento atrás
+// do plano impediria justamente quem tem problema de cobrança de falar com a
+// Monitence — e um cliente sem canal de suporte é um cliente que cancela.
+//
 // "integrations": configurar o gateway é PRÉ-REQUISITO da cobrança online, então
 // trancá-la atrás do plano criaria o ciclo "não posso configurar porque não tenho
 // o recurso que só funciona configurado" (o backend a serve com `withDb`, não com
@@ -124,6 +128,7 @@ export function pageTitle(page) {
     postcare: "Pós-atendimento",
     admin: "Acessos administrativos",
     integrations: "Integrações",
+    support: "Suporte",
     "error-logs": "Monitor de erros",
     "meu-plano": "Meu plano"
   };

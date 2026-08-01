@@ -1234,3 +1234,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_payment_intents_external
   WHERE external_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_payment_intents_client ON payment_intents(client_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_payment_intents_order ON payment_intents(sales_order_id) WHERE sales_order_id IS NOT NULL;
+
+-- Contagem de agendamentos do mês corrente, usada pela cota `appointments_month`
+-- (services/planLimits.js). Sem este índice a checagem faz seq scan na tabela
+-- inteira — e ela roda a cada agendamento criado, que é o caminho mais quente
+-- do sistema.
+CREATE INDEX IF NOT EXISTS idx_appointments_created ON appointments(created_at);

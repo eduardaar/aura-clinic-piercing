@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { BarChart3, Calendar, Gem, Home, Lock, LogOut, MessageCircle, Plug, ShieldCheck, ShoppingCart, Sparkles, UsersRound, WalletCards } from "lucide-react";
+import { BarChart3, Calendar, Gem, Home, Lock, LogOut, MessageCircle, Plug, ShieldCheck, ShoppingCart, Sparkles, UsersRound, WalletCards , LifeBuoy } from "lucide-react";
 import { canAccessPage, planAllowsPage } from "../../lib/permissions";
 import { Modal } from "../common/Crud";
 
@@ -31,7 +31,8 @@ export function Sidebar({ page, role, brand, features, trialDays, setPage, open,
     ]],
     ["Sistema", [
       ["admin", ShieldCheck, "Acessos"],
-      ["integrations", Plug, "Integrações"]
+      ["integrations", Plug, "Integrações"],
+      ["support", LifeBuoy, "Suporte"]
     ]]
   ]
     .map(([label, entries]) => [label, entries.filter(([id]) => canAccessPage(role, id))])

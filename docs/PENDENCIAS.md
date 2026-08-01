@@ -206,3 +206,59 @@ interface. Deveria virar alerta na central.
 **18.5 — Sem `SIGTERM` para o worker.** `stopReconcileWorker()` existe e está
 exportada, mas o `index.js` não tem handler de encerramento. O `unref()` já
 impede que o timer segure o processo; falta o desligamento gracioso.
+
+---
+
+## Painel da plataforma (rodada de 01/08/2026)
+
+Planos editáveis, cotas, controle de contas, financeiro e suporte entraram.
+Ver `docs/PAINEL-PLATAFORMA.md`. O que ficou aberto:
+
+### 19. Trocar de plano não reajusta a cobrança no Asaas
+A troca muda o acesso da clínica **na hora**, mas a assinatura recorrente no
+gateway continua com o valor do plano antigo. A rota devolve `warning` quando
+existe `asaas_subscription_id`, e a tela exibe — mas ninguém age.
+
+É a lacuna mais cara desta rodada: uma clínica promovida para um plano mais caro
+continua pagando o barato até alguém notar. O conserto exige refazer o checkout
+ou chamar `updateSubscription` no gateway; ficou de fora por mexer em cobrança.
+
+### 20. Os guards de cota não estão ligados em nenhuma rota
+`requireWithinLimit` existe, é testado e funciona — mas nenhuma rota o chama, e
+nenhum plano tem `limits` configurado. O sistema é inerte por construção até
+alguém definir limites no painel.
+
+Ordem sugerida de ativação (do mais barato ao mais caro de medir): `users` em
+`routes/users.js`, `clients` em `routes/clients.js`, `jewelry_items` em
+`routes/jewelry.js`, `appointments_month` em `routes/appointments.js`.
+
+**Cuidado com `routes/booking.js`** (agendamento público): ali o 409 apareceria
+para o *cliente final* da clínica, que não tem como resolver. Ou o público passa
+livre, ou a mensagem precisa ser outra.
+
+### 21. `storage_mb` é estimativa, não medida
+Os uploads vão para um diretório único, sem prefixo de tenant e sem coluna de
+bytes. A conta é "arquivos referenciados × média por tipo" e subestima galerias.
+Serve como alerta, **não como bloqueio**. Vira número real com uma coluna de
+bytes em `private_files`/`jewelry_inventory`.
+
+### 22. Churn e cancelamentos dependem de histórico que não existe
+`churn_mes` vem `null` de propósito: `tenant_subscriptions` guarda uma linha por
+clínica com o status *atual*, sem log de mudanças, então a base de assinantes no
+1º do mês não é reconstruível. Assumir que todo ativo de hoje já estava lá
+inflaria o divisor justamente nos meses de crescimento.
+
+`cancelamentos_mes` fica em 0 até o fluxo de cancelamento carimbar `canceled_at`.
+
+Para os dois virarem número: (a) gravar `canceled_at` no cancelamento e (b) um
+log `(assinatura, data, de, para)`.
+
+### 23. Uso em massa não invalida o cache de cotas
+Importação de joias e exclusões em lote não chamam `invalidateUsageCache`. A
+janela é de 15s e o cache só é confiado com folga abaixo de 90% da cota, então o
+efeito é pequeno — mas o gancho existe e não está plugado.
+
+### 24. A propagação de preço nunca foi exercida contra o Asaas real
+Sem `ASAAS_API_KEY` no ambiente de teste, o caminho coberto é o de gateway
+indisponível. O laço de `try/catch` por clínica está testado só na contagem.
+Vale um teste manual no sandbox antes do lançamento.

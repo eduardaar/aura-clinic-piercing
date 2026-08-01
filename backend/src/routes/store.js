@@ -2,7 +2,7 @@ import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { query } from "../database/connection.js";
-import { SUBSCRIPTION_PLANS, planByCode, normalizePlanCode } from "../services/plans.js";
+import { listPlans, planByCode, normalizePlanCode } from "../services/plans.js";
 import { tenantSubscription, invalidateSubscriptionCache } from "../services/subscriptions.js";
 
 const router = Router();
@@ -16,7 +16,9 @@ router.get("/api/store-identity", withDb(async (req, res, db) => {
   res.json({
     tenant: tenant.rows[0],
     subscription,
-    plans: SUBSCRIPTION_PLANS,
+    // Só planos ativos: a tela de upgrade não pode oferecer um plano que a
+    // Monitence tirou de linha.
+    plans: listPlans({ onlyActive: true }),
     identity: {
       store_name: theme.brand_name || tenant.rows[0]?.name || req.tenant.name,
       short_name: tenant.rows[0]?.store_short_name || "",

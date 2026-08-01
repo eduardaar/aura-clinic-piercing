@@ -7,6 +7,13 @@ import { API } from "../../lib/api";
 import { BrandMark } from "../../components/common/BrandMark";
 import { asArray } from "../../lib/utils";
 import { LandingEditor } from "./LandingEditor";
+import { PlansAdmin } from "./PlansAdmin";
+import { AccountsAdmin } from "./AccountsAdmin";
+import { SupportInbox, SupportOpenBadge } from "./SupportInbox";
+// `PlatformFinance`, e não `FinanceAdmin`: features/finance/Finance.jsx já
+// exporta um `FinanceAdmin` (o financeiro da CLÍNICA). Dois nomes iguais no
+// mesmo grafo de imports é convite a montar a tela errada.
+import { PlatformFinance } from "./FinanceAdmin";
 
 // Painel do super-admin da plataforma (/plataforma).
 // Sessão própria em aura-platform-session (separada da aura-session das clínicas)
@@ -76,21 +83,35 @@ const planOptions = (tenants) =>
 // clínica: são duas tarefas distintas e cada uma tem sua aba.
 const TABS = [
   ["clinicas", "Clínicas"],
+  ["contas", "Contas"],
+  ["planos", "Planos"],
+  ["financeiro", "Financeiro"],
+  ["suporte", "Suporte"],
   ["landing", "Landing pública"],
 ];
 
 const TAB_HEADINGS = {
   clinicas: { title: "Clínicas", subtitle: "Gerencie as clínicas cadastradas no SaaS." },
+  contas: { title: "Contas", subtitle: "Uso x cotas, plano, assinatura e trial de cada clínica." },
+  planos: { title: "Planos", subtitle: "Preço, recursos e limites dos planos vendidos pela plataforma." },
+  financeiro: { title: "Financeiro da plataforma", subtitle: "MRR, caixa do mês, inadimplência e vencimentos das assinaturas." },
+  suporte: { title: "Suporte", subtitle: "Chamados abertos pelas clínicas." },
   landing: { title: "Landing pública", subtitle: "Edite os blocos da página inicial em /." },
 };
+
+// Abas que guardam RASCUNHO não salvo continuam montadas (só ocultas) depois de
+// abertas: desmontar jogaria fora o que alguém digitou e foi conferir outra
+// coisa. As demais (contas, financeiro, suporte) podem desmontar — toda escrita
+// nelas é imediata e confirmada em modal, não há nada a perder.
+const ABAS_COM_RASCUNHO = ["landing", "planos"];
 
 export function PlatformAdmin() {
   const [session, setSession] = useState(readPlatformSession);
   const [tab, setTab] = useState("clinicas");
-  // Depois de aberto, o editor da landing continua MONTADO (só oculto) enquanto
-  // o painel estiver aberto: desmontar jogaria fora os rascunhos não salvos de
-  // quem só foi conferir a lista de clínicas e voltou.
-  const [landingVisited, setLandingVisited] = useState(false);
+  const [visitadas, setVisitadas] = useState(() => new Set());
+  // Recarrega o contador de chamados abertos no selo da aba depois de o
+  // super-admin responder algo.
+  const [supportKey, setSupportKey] = useState(0);
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
@@ -405,18 +426,45 @@ export function PlatformAdmin() {
               className={tab === id ? "active" : ""}
               onClick={() => {
                 setTab(id);
-                if (id === "landing") setLandingVisited(true);
+                if (ABAS_COM_RASCUNHO.includes(id)) {
+                  setVisitadas((atual) => new Set(atual).add(id));
+                }
               }}
             >
               {label}
+              {id === "suporte" && (
+                <SupportOpenBadge
+                  token={token}
+                  onUnauthorized={clearPlatformSession}
+                  refreshKey={supportKey}
+                />
+              )}
             </button>
           ))}
         </nav>
 
-        {landingVisited && (
+        {visitadas.has("landing") && (
           <div hidden={tab !== "landing"}>
             <LandingEditor token={token} onUnauthorized={clearPlatformSession} />
           </div>
+        )}
+
+        {visitadas.has("planos") && (
+          <div hidden={tab !== "planos"}>
+            <PlansAdmin token={token} onUnauthorized={clearPlatformSession} />
+          </div>
+        )}
+
+        {tab === "contas" && <AccountsAdmin token={token} onUnauthorized={clearPlatformSession} />}
+
+        {tab === "financeiro" && <PlatformFinance token={token} onUnauthorized={clearPlatformSession} />}
+
+        {tab === "suporte" && (
+          <SupportInbox
+            token={token}
+            onUnauthorized={clearPlatformSession}
+            onChanged={() => setSupportKey((k) => k + 1)}
+          />
         )}
 
         {tab === "clinicas" && (
