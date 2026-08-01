@@ -40,7 +40,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { AlertBlock, Button, Input, Select, StatusBadge, Textarea } from "../../components/common/Ui";
-import { Modal } from "../../components/common/Crud";
+import { CrudHeader, Modal } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { API } from "../../lib/api";
@@ -559,12 +559,10 @@ export function AccountsAdmin({ token, onUnauthorized }) {
       */}
       <div className={tenantId ? "platform-split" : ""}>
         <section className="panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Clínicas</h2>
-              <span>Abra uma conta para ver uso, plano, assinatura e faturas.</span>
-            </div>
-          </div>
+          {/* `<CrudHeader>` e não um `.panel-heading` escrito à mão: é o mesmo
+              cabeçalho de painel das outras telas, e duas grafias da mesma coisa
+              é como o espaçamento começa a divergir entre abas. */}
+          <CrudHeader title="Clínicas" subtitle="Abra uma conta para ver uso, plano, assinatura e faturas." />
 
           <DataView
             rows={asArray(tenants)}
@@ -590,7 +588,16 @@ export function AccountsAdmin({ token, onUnauthorized }) {
                   </>
                 ),
               },
-              { key: "slug", label: "Slug", value: (item) => item.slug || "", render: (item) => item.slug || "—" },
+              {
+                key: "slug",
+                label: "Slug",
+                value: (item) => item.slug || "",
+                // Identificador técnico -> `<code>`, o mesmo que a listagem de
+                // planos faz com o código do plano. É por ele que se confirma a
+                // clínica na hora de suspender, então precisa ser copiável e não
+                // se confundir com o nome comercial.
+                render: (item) => (item.slug ? <code>{item.slug}</code> : "—"),
+              },
               {
                 key: "plan",
                 label: "Plano",
@@ -659,12 +666,7 @@ export function AccountsAdmin({ token, onUnauthorized }) {
                 />
 
                 <section className="panel">
-                  <div className="panel-heading">
-                    <div>
-                      <h2>Faturas recentes</h2>
-                      <span>As últimas cobranças desta clínica na plataforma.</span>
-                    </div>
-                  </div>
+                  <CrudHeader title="Faturas recentes" subtitle="As últimas cobranças desta clínica na plataforma." />
                   <DataView
                     rows={asArray(conta.invoices)}
                     rowKey={(fatura) => fatura.id}
@@ -678,7 +680,12 @@ export function AccountsAdmin({ token, onUnauthorized }) {
                         value: (fatura) => String(fatura.due_date || ""),
                         render: (fatura) => formatarData(fatura.due_date),
                       },
-                      { key: "plan_code", label: "Plano", render: (fatura) => fatura.plan_code || "—" },
+                      {
+                        key: "plan_code",
+                        label: "Plano",
+                        value: (fatura) => fatura.plan_code || "",
+                        render: (fatura) => (fatura.plan_code ? <code>{fatura.plan_code}</code> : "—"),
+                      },
                       {
                         key: "amount",
                         label: "Valor",
@@ -700,21 +707,19 @@ export function AccountsAdmin({ token, onUnauthorized }) {
                         value: (fatura) => String(fatura.paid_at || ""),
                         render: (fatura) => (fatura.paid_at ? formatarData(fatura.paid_at) : "—"),
                       },
-                      {
-                        key: "invoice_url",
-                        label: "Cobrança",
-                        sortable: false,
-                        searchable: false,
-                        render: (fatura) =>
-                          fatura.invoice_url ? (
-                            <a href={fatura.invoice_url} target="_blank" rel="noreferrer noopener">
-                              Abrir no Asaas
-                            </a>
-                          ) : (
-                            "—"
-                          ),
-                      },
                     ]}
+                    // A fatura sai da COLUNA e vira ação de linha, como no
+                    // financeiro da plataforma: era o mesmo "abrir a cobrança no
+                    // Asaas" escrito de dois jeitos — lá uma pílula na coluna de
+                    // ações, aqui um link nu no meio da tabela. Mesmo rótulo,
+                    // mesmo lugar. A pílula vem de `.table-actions a` (styles.css).
+                    actions={(fatura) =>
+                      fatura.invoice_url ? (
+                        <a href={fatura.invoice_url} target="_blank" rel="noreferrer">
+                          Abrir fatura
+                        </a>
+                      ) : null
+                    }
                   />
                 </section>
               </>
@@ -861,14 +866,14 @@ function ResumoDaConta({ clinica, plano, assinatura }) {
   const status = assinatura?.status || "";
   return (
     <section className="panel">
-      <div className="panel-heading">
-        <div>
-          <h2>{clinica.name || "—"}</h2>
-          <span>
-            {clinica.slug} · criada em {formatarData(clinica.created_at)}
-          </span>
-        </div>
-      </div>
+      <CrudHeader
+        title={clinica.name || "—"}
+        subtitle={
+          <>
+            <code>{clinica.slug}</code> · criada em {formatarData(clinica.created_at)}
+          </>
+        }
+      />
 
       {/* Os dois selos entram como fatos, e não soltos no cabeçalho: acesso e
           assinatura são estados independentes (a assimetria de novo), e lado a
@@ -901,8 +906,17 @@ function ResumoDaConta({ clinica, plano, assinatura }) {
           rotulo="Documento (mascarado pelo servidor)"
           valor={clinica.tax_id || (clinica.has_tax_id ? "informado" : "—")}
         />
-        <Fato rotulo="Cliente no Asaas" valor={clinica.asaas_customer_id || "—"} />
-        <Fato rotulo="Assinatura no Asaas" valor={assinatura?.asaas_subscription_id || "—"} />
+        {/* Ids do gateway em `<code>`: são identificadores técnicos que alguém
+            vai copiar para o painel do Asaas — o mesmo tratamento que o código do
+            plano e o slug recebem nas outras telas. */}
+        <Fato
+          rotulo="Cliente no Asaas"
+          valor={clinica.asaas_customer_id ? <code>{clinica.asaas_customer_id}</code> : "—"}
+        />
+        <Fato
+          rotulo="Assinatura no Asaas"
+          valor={assinatura?.asaas_subscription_id ? <code>{assinatura.asaas_subscription_id}</code> : "—"}
+        />
         <Fato
           rotulo="Teste grátis"
           valor={assinatura?.trial_ends_at ? `termina em ${formatarData(assinatura.trial_ends_at)}` : "—"}
@@ -942,9 +956,17 @@ function UsoXCotas({ itens, atualizando, onAtualizar }) {
           <h2>Uso x cotas do plano</h2>
           <span>Medido agora, direto no banco da clínica.</span>
         </div>
-        <Button variant="secondary" disabled={atualizando} onClick={onAtualizar}>
-          <RefreshCw size={16} aria-hidden="true" /> {atualizando ? "Medindo…" : "Atualizar uso"}
-        </Button>
+        {/* `.header-actions` em volta, mesmo com um botão só: é o invólucro que
+            as outras telas do painel usam no lado direito do `.panel-heading`, e
+            é ele que dá o gap quando um segundo botão aparecer aqui.
+            `ghost` e ícone de 15: é o mesmo "reler este bloco" dos cinco painéis
+            do financeiro da plataforma, e ali ele é ghost. Duas variantes para o
+            mesmo gesto faziam o botão parecer mais pesado numa aba que na outra. */}
+        <div className="header-actions">
+          <Button variant="ghost" disabled={atualizando} onClick={onAtualizar}>
+            <RefreshCw size={15} aria-hidden="true" /> {atualizando ? "Medindo…" : "Atualizar uso"}
+          </Button>
+        </div>
       </div>
 
       {estourados.length > 0 && (
@@ -1070,12 +1092,7 @@ function TrocaDePlano({
 }) {
   return (
     <section className="panel">
-      <div className="panel-heading">
-        <div>
-          <h2>Plano da clínica</h2>
-          <span>Hoje: {nomeDoPlano(planos, planoAtual)}.</span>
-        </div>
-      </div>
+      <CrudHeader title="Plano da clínica" subtitle={`Hoje: ${nomeDoPlano(planos, planoAtual)}.`} />
 
       {!planos.length && (
         <p className="platform-notice">
@@ -1190,12 +1207,7 @@ function AcoesDaConta({ suspensa, semAssinatura, onAbrir }) {
 
   return (
     <section className="panel">
-      <div className="panel-heading">
-        <div>
-          <h2>Ações de conta</h2>
-          <span>Todas exigem motivo e confirmação. Todas vão para a auditoria.</span>
-        </div>
-      </div>
+      <CrudHeader title="Ações de conta" subtitle="Todas exigem motivo e confirmação. Todas vão para a auditoria." />
 
       {/*
         As três assimetrias juntas, antes dos botões. Elas são deliberadas no
@@ -1203,14 +1215,21 @@ function AcoesDaConta({ suspensa, semAssinatura, onAbrir }) {
         clínica suspensa continuar sendo cobrada, assinatura cancelada derrubar
         quem já pagou, upgrade não chegar à recorrência.
       */}
+      {/* `.field-hint` dentro do AlertBlock, como nas outras telas do painel.
+          `.alert-item` era a classe errada por duas razões: ela é o CARTÃO de
+          alerta do painel da clínica (moldura e fundo próprios, spacing outro), e
+          o `.alert-item strong` global impõe `white-space: nowrap` — o "Suspender
+          ≠ cancelar cobrança." em negrito deixava de quebrar linha.
+          Aqui a assimetria é REFERÊNCIA; o alerta de verdade é o
+          `.platform-notice` dentro de cada confirmação. */}
       <AlertBlock icon={AlertTriangle} title="O que estas ações NÃO fazem" empty="">
-        <p className="alert-item">
+        <p className="field-hint">
           <strong>Suspender ≠ cancelar cobrança.</strong> {ASSIMETRIAS.suspender}
         </p>
-        <p className="alert-item">
+        <p className="field-hint">
           <strong>Cancelar ≠ cortar acesso.</strong> {ASSIMETRIAS.cancelar}
         </p>
-        <p className="alert-item">
+        <p className="field-hint">
           <strong>Trocar de plano ≠ reajustar a cobrança.</strong> {ASSIMETRIAS.plano}
         </p>
       </AlertBlock>

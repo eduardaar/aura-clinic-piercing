@@ -6157,6 +6157,17 @@ tbody tr:hover td {
 .table-actions button,
 .table-actions a,
 .row-actions a {
+  /* `inline-flex` porque numa mesma linha de ações convivem botões só de texto
+   * ("Editar") e botões só de ícone (as setas de reordenar): sem isto os dois
+   * ficam em alturas diferentes e a linha desalinha.
+   *
+   * Está aqui, e não em cada tela, porque TRÊS agentes trabalhando isolados
+   * criaram esta mesma regra com nomes diferentes (`.pa-row-btn`,
+   * `.le-row-btn`, e a variante do financeiro) — quando a mesma necessidade
+   * reaparece assim, o lugar dela é a primitiva, não a tela. */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   border: 1px solid rgba(200, 169, 106, .35);
   background: #fff;
   color: #1C1C1C;
@@ -6169,6 +6180,7 @@ tbody tr:hover td {
 
 .card-actions button:hover,
 .table-actions button:hover,
+.table-actions a:hover,
 .row-actions a:hover {
   border-color: #C8A96A;
   background: rgba(200, 169, 106, .12);

@@ -441,8 +441,12 @@ export function SupportInbox({ token, onUnauthorized, onChanged }) {
                   {messages.map((item) => <ThreadMessage key={item.id} message={item} />)}
                 </div>
 
+                {/* `.platform-notice` e não `.empty-state`: não há nada de vazio
+                    aqui — a conversa está logo acima. É o callout âmbar de "leia
+                    antes de clicar" do painel, o mesmo que a gestão de contas usa
+                    para dizer por que uma ação está indisponível. */}
                 {ticket.status === "fechado" && (
-                  <p className="empty-state">
+                  <p className="platform-notice">
                     Chamado fechado pela clínica. Para voltar a escrever nele, mude o status em “Responder” — assim a
                     clínica enxerga que o assunto foi reaberto.
                   </p>
@@ -461,7 +465,9 @@ export function SupportInbox({ token, onUnauthorized, onChanged }) {
       <Modal
         open={replyOpen}
         title="Responder chamado"
-        subtitle={ticket ? `#${ticket.id} · ${ticket.subject}` : ""}
+        // "Chamado #N · assunto", a mesma legenda da outra ponta (features/support):
+        // é o mesmo chamado visto de dois lados e não pode ter dois nomes.
+        subtitle={ticket ? `Chamado #${ticket.id} · ${ticket.subject}` : ""}
         onClose={() => setReplyOpen(false)}
         footer={(
           <>
@@ -472,7 +478,9 @@ export function SupportInbox({ token, onUnauthorized, onChanged }) {
               variant="primary"
               disabled={isBusy || (!temTexto && !mudouTriagem)}
             >
-              {busy === "reply" ? "Enviando…" : form.nota ? "Salvar nota" : "Enviar"}
+              {/* "Enviar resposta", e não "Enviar": é o rótulo que a tela da
+                  clínica usa para o mesmo botão do mesmo formulário. */}
+              {busy === "reply" ? "Enviando…" : form.nota ? "Salvar nota" : "Enviar resposta"}
             </Button>
           </>
         )}

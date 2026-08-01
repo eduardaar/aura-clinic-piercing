@@ -6,19 +6,15 @@
  * propagação é `.platform-danger` + `.platform-sticky-warning`, o texto de
  * apoio é `.field-hint` e o código do plano é `<code>` — todos globais.
  *
+ * A `.pa-row-btn` (alinhar o ícone das setas com o texto de "Editar") também
+ * saiu: a mesma regra apareceu em três telas com três nomes e subiu para
+ * `.table-actions button` no styles.css. Ação de linha aqui é `<button>` nu.
+ *
  * `@layer telas` é a mesma camada dos outros CSS de tela: sem camada, estas
  * regras venceriam até o appshell.css por acidente de ordem de importação.
  */
 
 @layer telas {
-  /* Ações da linha do DataView. `inline-flex` porque as setas de reordenar são
-   * só ícone e as demais só texto — sem isso as duas ficam em alturas
-   * diferentes. (O estado desabilitado já vem do `button:disabled` global.) */
-  .pa-row-btn {
-    display: inline-flex;
-    align-items: center;
-  }
-
   /* Um limite = campo + a frase que diz o valor de hoje ("Hoje: ilimitado"). */
   .pa-limit {
     display: grid;

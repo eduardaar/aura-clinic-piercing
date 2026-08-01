@@ -328,8 +328,11 @@ export function Support() {
                 {message && <span className="form-success">{message}</span>}
                 {error && !showReply && <span className="form-error">{error}</span>}
 
+                {/* `.platform-notice`, igual à caixa de entrada do suporte: não é
+                    estado vazio (a conversa está logo acima), é o callout âmbar
+                    que explica por que os botões de escrever sumiram. */}
                 {isClosed && (
-                  <p className="empty-state">
+                  <p className="platform-notice">
                     Este chamado está encerrado. Se o assunto voltar, abra um novo chamado — assim o histórico de
                     cada problema fica separado.
                   </p>
@@ -406,7 +409,8 @@ export function Support() {
       {/* ------------------------------------------------------------------ */}
       <Modal
         open={showReply}
-        title="Responder"
+        // "Responder chamado", o mesmo título da caixa de entrada do suporte.
+        title="Responder chamado"
         subtitle={ticket?.id ? `Chamado #${ticket.id} · ${ticket.subject}` : ""}
         onClose={() => setShowReply(false)}
         footer={(
@@ -436,18 +440,21 @@ export function Support() {
       </Modal>
 
       <article className="panel">
+        {/* `.field-hint` nas linhas: é o que as outras telas do painel usam dentro
+            do AlertBlock. `<p>` nu herda a margem de 1em do navegador e o bloco
+            ficava com um respiro diferente do mesmo bloco nas outras abas. */}
         <AlertBlock icon={LifeBuoy} title="Como funciona o suporte">
-          <p>
+          <p className="field-hint">
             O chamado vai direto para a equipe da Monitence. A resposta aparece aqui mesmo, nesta tela — não é
             preciso ficar de olho no e-mail.
           </p>
-          <p>
+          <p className="field-hint">
             Um chamado por assunto: misturar dois problemas no mesmo chamado atrasa os dois. Enquanto houver
             chamados seus em aberto, resolva ou encerre algum antes de abrir muitos novos.
           </p>
         </AlertBlock>
         <AlertBlock icon={Lock} title="O que não enviar aqui">
-          <p>
+          <p className="field-hint">
             Nunca escreva senhas, chaves de API ou dados de cartão numa mensagem de suporte. A equipe nunca vai
             pedir isso — se alguém pedir, é golpe.
           </p>

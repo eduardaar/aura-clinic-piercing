@@ -8,6 +8,10 @@
  * `.platform-quota-bar` para a barra de participação. Aqui ficou só o que não
  * tem equivalente: o gráfico SVG e duas ajudas de layout.
  *
+ * A pílula de ação de linha (`.fin-acao`) também saiu: `.table-actions a` do
+ * styles.css já desenha exatamente aquilo, e manter a cópia era manter duas
+ * aparências para a mesma ação — a de cá com ícone, a das outras telas sem.
+ *
  * `@layer telas` é a mesma camada dos outros CSS de tela: sem ela estas regras
  * venceriam o appshell.css por acidente de ordem de importação.
  */
@@ -18,16 +22,6 @@
 
   /* Contagem de clínicas por status: selo + rótulo, na mesma linha. */
   .fin-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; font-size: 13px; }
-
-  /* Ação de linha em forma de LINK (abrir fatura, WhatsApp): `.table-actions`
-     do styles.css só desenha `<button>`, e um link nu ao lado de um botão é a
-     inconsistência que se vê primeiro. */
-  .fin-acao {
-    display: inline-flex; align-items: center; gap: 4px;
-    padding: .55rem .75rem; border: 1px solid rgba(200, 169, 106, .35); border-radius: 999px;
-    background: var(--white); color: var(--ink); font-size: .78rem; font-weight: 700; text-decoration: none;
-  }
-  .fin-acao:hover { border-color: var(--gold); background: rgba(200, 169, 106, .12); }
 
   /* --- Gráfico de receita mês a mês ------------------------------------- */
 

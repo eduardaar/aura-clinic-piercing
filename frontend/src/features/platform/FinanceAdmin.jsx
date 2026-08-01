@@ -26,7 +26,7 @@
 //     `.platform-metric`, moldura é `.panel`, filtro é `.toolbar`, erro é
 //     `.form-error`. O CSS de finance-admin.css cobre só o gráfico SVG.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ExternalLink, Info, RefreshCw } from "lucide-react";
+import { AlertTriangle, Info, RefreshCw } from "lucide-react";
 import { AlertBlock, Button, Input, Select, StatusBadge } from "../../components/common/Ui";
 import { CrudHeader } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
@@ -107,12 +107,19 @@ const STATUS_ASSINATURA = {
   suspended: "Suspensa",
 };
 
+// MESMOS tons de SUBSCRIPTION_TONES em AccountsAdmin.jsx — o mesmo status não
+// pode ter duas cores em duas abas do mesmo painel. Aqui estavam invertidos:
+// "Em atraso" em vermelho e "Cancelada" em cinza. Quem decide é o que o status
+// FAZ no backend: `overdue` não corta acesso (a clínica continua trabalhando,
+// devendo) e `canceled` corta, junto com `suspended` — daí âmbar e vermelho,
+// nesta ordem. A urgência da cobrança em si continua sendo dita pelo
+// `tomDoAtraso`, que escala com os dias de atraso.
 const TOM_ASSINATURA = {
   trial_active: "info",
   trial_expired: "warn",
   active: "ok",
-  overdue: "danger",
-  canceled: "neutral",
+  overdue: "warn",
+  canceled: "danger",
   suspended: "danger",
 };
 
@@ -274,13 +281,15 @@ function Resumo({ dados }) {
   const notas = asObject(resumo.notas);
   const clinicas = asObject(resumo.clinicas);
 
+  // Os tons acompanham TOM_ASSINATURA acima: é a mesma leitura de status, e
+  // duas escalas de cor na mesma tela ensinariam a ignorar as duas.
   const porStatus = [
     ["Ativas", clinicas.ativa, "ok"],
     ["Em teste", clinicas.trial, "info"],
     ["Teste expirado", clinicas.trial_expirada, "warn"],
-    ["Em atraso", clinicas.atrasada, "danger"],
+    ["Em atraso", clinicas.atrasada, "warn"],
     ["Suspensas", clinicas.suspensa, "danger"],
-    ["Canceladas", clinicas.cancelada, "neutral"],
+    ["Canceladas", clinicas.cancelada, "danger"],
     ["Sem assinatura", clinicas.sem_assinatura, "neutral"],
     ["Sem cobrança no gateway", clinicas.sem_cobranca_no_gateway, "neutral"],
   ];
@@ -488,11 +497,14 @@ function Inadimplencia({ dados, carregando, erro, pagina, tamanho, onPagina, onT
           render: (linha) => <Contato linha={linha} />,
         },
       ]}
+      // Ações de linha sem classe própria: `.table-actions a` (styles.css) já
+      // desenha o link como pílula, igual ao `<button>` da linha nas outras
+      // telas. Sem ícone, pelo mesmo motivo — nenhuma outra ação de linha do
+      // painel tem um, e um só aqui é a divergência que se vê primeiro.
       actions={(linha) => (
         <>
           {linha.telefone && (
             <a
-              className="fin-acao"
               href={whatsappUrl(
                 linha.telefone,
                 `Olá! Aqui é da Monitence. Identificamos ${plural(
@@ -508,8 +520,8 @@ function Inadimplencia({ dados, carregando, erro, pagina, tamanho, onPagina, onT
             </a>
           )}
           {linha.link_fatura_mais_antiga && (
-            <a className="fin-acao" href={linha.link_fatura_mais_antiga} target="_blank" rel="noreferrer">
-              Abrir fatura <ExternalLink size={12} aria-hidden="true" />
+            <a href={linha.link_fatura_mais_antiga} target="_blank" rel="noreferrer">
+              Abrir fatura
             </a>
           )}
         </>
@@ -561,7 +573,17 @@ function Vencimentos({ dados, carregando, erro, pagina, tamanho, onPagina, onTam
             value: (linha) => linha.clinica || "",
             render: (linha) => <Duplo principal={linha.clinica} secundario={linha.slug} />,
           },
-          { key: "plan_code", label: "Plano", sortable: false, value: (linha) => linha.plan_code || "—" },
+          {
+            key: "plan_code",
+            label: "Plano",
+            sortable: false,
+            value: (linha) => linha.plan_code || "",
+            // `<code>` porque é o código do plano, não o nome comercial — mesmo
+            // tratamento que a listagem de planos dá a ele. E o `render` precisa
+            // existir: sem ele o DataView exibe `row[key]` cru e a célula fica
+            // VAZIA quando o campo falta, em vez do "—" que o resto da tela usa.
+            render: (linha) => (linha.plan_code ? <code>{linha.plan_code}</code> : "—"),
+          },
           {
             key: "vencimento",
             label: "Vencimento",
@@ -591,7 +613,15 @@ function Vencimentos({ dados, carregando, erro, pagina, tamanho, onPagina, onTam
             value: (linha) => asNumber(linha.valor_centavos),
             render: (linha) => moeda(linha.valor, linha.valor_centavos),
           },
-          { key: "billing_type", label: "Forma", sortable: false, value: (linha) => linha.billing_type || "—" },
+          {
+            key: "billing_type",
+            label: "Forma",
+            sortable: false,
+            value: (linha) => linha.billing_type || "",
+            // Mesmo motivo do "Plano" acima: sem `render`, campo ausente deixa a
+            // célula em branco em vez do "—".
+            render: (linha) => linha.billing_type || "—",
+          },
           {
             key: "contato",
             label: "Contato",
@@ -602,8 +632,8 @@ function Vencimentos({ dados, carregando, erro, pagina, tamanho, onPagina, onTam
         ]}
         actions={(linha) =>
           linha.invoice_url ? (
-            <a className="fin-acao" href={linha.invoice_url} target="_blank" rel="noreferrer">
-              Abrir fatura <ExternalLink size={12} aria-hidden="true" />
+            <a href={linha.invoice_url} target="_blank" rel="noreferrer">
+              Abrir fatura
             </a>
           ) : null
         }

@@ -643,12 +643,11 @@ export function PlansAdmin({ token, onUnauthorized }) {
           ]}
           actions={(plano) => (
             <>
-              <button type="button" className="pa-row-btn" onClick={() => abrirFormulario(plano)}>
+              <button type="button" onClick={() => abrirFormulario(plano)}>
                 Editar
               </button>
               <button
                 type="button"
-                className="pa-row-btn"
                 disabled={ocupado === plano.code}
                 onClick={() => alternarAtivo(plano)}
               >
@@ -656,7 +655,6 @@ export function PlansAdmin({ token, onUnauthorized }) {
               </button>
               <button
                 type="button"
-                className="pa-row-btn"
                 disabled={ocupado === plano.code}
                 onClick={() => abrirExclusao(plano)}
               >
@@ -664,7 +662,6 @@ export function PlansAdmin({ token, onUnauthorized }) {
               </button>
               <button
                 type="button"
-                className="pa-row-btn"
                 disabled={plano.posicao === 1}
                 aria-label={`Mover o plano "${plano.name}" para cima na vitrine`}
                 onClick={() => moverPlano(plano, -1)}
@@ -673,7 +670,6 @@ export function PlansAdmin({ token, onUnauthorized }) {
               </button>
               <button
                 type="button"
-                className="pa-row-btn"
                 disabled={plano.posicao === planList.length}
                 aria-label={`Mover o plano "${plano.name}" para baixo na vitrine`}
                 onClick={() => moverPlano(plano, 1)}
@@ -1029,7 +1025,10 @@ function RelatorioPropagacao({ dados, onDispensar }) {
             ? `Atenção: ${plural(falhas, "assinatura NÃO recebeu", "assinaturas NÃO receberam")} o preço novo`
             : "Preço propagado para as assinaturas"}
         </h3>
-        <Button variant="ghost" onClick={onDispensar}>
+        {/* `secondary`, o mesmo do "Já anotei, dispensar" dos avisos de gateway
+            na gestão de contas: é literalmente a mesma frase e o mesmo gesto, e
+            só um deles pode ser o botão apagado. */}
+        <Button variant="secondary" onClick={onDispensar}>
           {falhas ? "Já anotei, dispensar" : "Dispensar"}
         </Button>
       </div>
@@ -1065,14 +1064,15 @@ function RelatorioPropagacao({ dados, onDispensar }) {
       </section>
     );
   }
-  // O invólucro existe só para dar FUNDO OPACO ao aviso grudado no topo: o
-  // vermelho de `.platform-danger` é translúcido de propósito, e sem base as
-  // linhas que rolam por baixo atravessam o texto que precisa ser lido.
+  // As duas classes no MESMO nó, como na gestão de contas. Antes havia um <div>
+  // envolvendo a seção só para dar fundo opaco ao aviso grudado — e uma classe
+  // `pa-sticky` que nunca chegou a existir no CSS. O fundo opaco já é parte do
+  // contrato de `.platform-danger.platform-sticky-warning` (platform-panel.css),
+  // então o invólucro só servia para o mesmo aviso ter duas estruturas
+  // diferentes em duas abas.
   return (
-    <div className="platform-sticky-warning pa-sticky">
-      <section className="platform-danger" role="alert">
-        {corpo}
-      </section>
-    </div>
+    <section className="platform-danger platform-sticky-warning" role="alert">
+      {corpo}
+    </section>
   );
 }
