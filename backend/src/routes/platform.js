@@ -22,7 +22,7 @@ import {
 import { validateBody } from "../middleware/validate.js";
 import { signupSchema, platformLoginSchema, tenantStatusSchema } from "../schemas/index.js";
 import { isProduction } from "../config/index.js";
-import { PLAN_FEATURES, SUBSCRIPTION_PLANS, normalizePlanCode } from "../services/plans.js";
+import { PLAN_FEATURES, listPlans, normalizePlanCode, planByCode } from "../services/plans.js";
 import { invalidateSubscriptionCache } from "../services/subscriptions.js";
 
 const router = Router();
@@ -84,6 +84,24 @@ router.post("/api/signup", signupLimiter, async (req, res) => {
     const slug = String(b.slug || "").trim()
       ? String(b.slug).trim().toLowerCase()
       : await generateUniqueSlug(b.name);
+    // Plano desativado não pode ser assinado pelo cadastro público.
+    //
+    // A vitrine já só mostra os ativos, mas o código do plano vem do CORPO da
+    // requisição: sem esta checagem, quem enviasse na mão o código de um plano
+    // tirado de linha assinaria mesmo assim. Recusar é melhor que trocar em
+    // silêncio por outro — a pessoa acharia que contratou o que pediu.
+    //
+    // A rota equivalente do super-admin (POST /api/platform/tenants) NÃO tem
+    // esta guarda de propósito: atribuir um plano fora de linha é justamente
+    // como se honra um contrato antigo ou um acordo especial.
+    const planoPedido = String(b.plan_code || b.plan || "").trim().toLowerCase();
+    const planCode = normalizePlanCode(planoPedido);
+    if (planoPedido && planByCode(planCode).is_active === false) {
+      return res.status(400).json({
+        error: "Este plano não está mais disponível para contratação.",
+        code: "plano_indisponivel"
+      });
+    }
     const tenant = await provisionTenant({
       name: b.name,
       slug,
@@ -94,7 +112,7 @@ router.post("/api/signup", signupLimiter, async (req, res) => {
       city: b.city,
       state: b.state,
       logoUrl: b.logo_url,
-      plan: normalizePlanCode(b.plan_code || b.plan)
+      plan: planCode
     });
     // Login automático: emite um token de clínica para o admin recém-criado,
     // evitando que o usuário tenha de fazer login de novo digitando o slug.
@@ -147,8 +165,13 @@ router.post("/api/platform/login", platformLoginLimiter, async (req, res) => {
   }
 });
 
+// Vitrine pública de planos (landing e cadastro).
+//
+// `onlyActive` é o que dá sentido a desativar um plano no painel: sem ele, o
+// plano some da lista administrativa mas continua sendo oferecido a quem chega
+// pela landing — e alguém assinaria um plano que a Monitence tirou de linha.
 router.get("/api/plans", async (_req, res) => {
-  res.json({ trial_days: 7, plans: SUBSCRIPTION_PLANS });
+  res.json({ trial_days: 7, plans: listPlans({ onlyActive: true }) });
 });
 
 // Diretório público de clínicas (/catalogo e /agendar sem ?t): lista as

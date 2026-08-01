@@ -69,11 +69,18 @@ Comprovantes de pagamento e PDFs de termo — arquivos sensíveis — vão para 
 diretório compartilhado entre todos os tenants. Pendência antiga, agravada pelo
 volume atual.
 
-### 8. Sem lugar seguro para credencial por clínica
-Pré-requisito da integração com gateway de pagamento. Hoje não existe:
-`clinic_settings` é fixa, `platform.tenants` não tem coluna livre, e
-`catalog_settings` — o único KV por tenant — **vaza inteiro na rota pública**
-`GET /api/catalog`. Ver `docs/AURA-CLINIC-ERP-2.0.md` e o roadmap de pagamentos.
+### 8. Sem lugar seguro para credencial por clínica — RESOLVIDO
+~~Pré-requisito da integração com gateway de pagamento.~~
+
+Resolvido pela tabela `tenant_integrations`, no schema de cada clínica, com os
+segredos cifrados em AES-256-GCM (`backend/src/services/asaas/vault.js`). Tabela
+dedicada justamente por causa do problema apontado aqui: `catalog_settings` vaza
+inteira em `GET /api/catalog`. Ver `docs/ASAAS.md`.
+
+Fica em aberto o caso geral: hoje o cofre atende **um provedor por clínica**
+(`UNIQUE(provider)` permite vários, mas só o Asaas é lido). Outras credenciais
+(WhatsApp oficial, e-mail transacional) ainda não têm onde morar — o caminho
+natural é reusar esta tabela.
 
 ---
 
@@ -149,11 +156,109 @@ chaves inalcançáveis.
 
 ## Produto
 
-### 18. Integração com o Asaas
-O roadmap está desenhado e a fundação (transações, paginação) já foi feita.
-Faltam as fases 3 a 6: cofre de credenciais por clínica, webhook multi-tenant,
-worker, cobrança de assinatura (Monitence → clínicas) e cobrança da clínica ao
-cliente final (sinal de agendamento e venda de joias).
+### 18. Integração com o Asaas — IMPLEMENTADA (com arestas)
+Cofre de credenciais por clínica, webhook multi-tenant, cobrança de assinatura
+(Monitence → clínicas) e cobrança da clínica ao cliente final estão no ar. Ver
+`docs/ASAAS.md`.
 
-Ponto bloqueante a confirmar antes: **a conta raiz da Monitence precisa ser
-CNPJ** para o modelo de subcontas. Se for CPF, o desenho muda.
+O bloqueio do **CNPJ da conta raiz deixou de existir**: em vez de subcontas,
+cada clínica usa a própria conta Asaas e recebe direto. Não há split nem
+intermediação de recebíveis.
+
+**Resolvido na segunda rodada:** as rotas foram ligadas (o agendamento público e
+a venda do catálogo geram cobrança online quando a clínica tem gateway),
+`GET /api/payment-intents/:id/pix` e `POST /api/payment-intents/:id/sync` estão
+no ar, a venda paga por webhook agora **baixa estoque**, a idempotência do
+checkout virou `platform.idempotency_keys` (vale entre instâncias) e existe
+worker de conciliação (`ASAAS_RECONCILE_ENABLED`).
+
+O conflito entre a reserva de 30 min e o boleto de 2 dias foi resolvido por
+desenho: **cobrança que prende estoque físico é PIX com janela de 30 min**
+(`chargeModeForStock`, em `tenantCharges.js`), casando exatamente com a validade
+da reserva. Segurar joia por dois dias contra um boleto — ou liberar a peça
+antes de ele vencer — eram as duas alternativas, e nenhuma é aceitável.
+
+O que continua aberto:
+
+**18.1 — O agendamento público não coleta CPF.** O checkout do catálogo coleta
+(e agora propaga para `clients.tax_id`), mas o formulário de agendamento não.
+Sem CPF o Asaas recusa criar o pagador, então o sinal online **degrada para o
+caminho manual** (comprovante por WhatsApp). O backend já aceita `cpf`/`email`
+no corpo: falta só o campo na tela. É o que separa o fluxo do sinal de funcionar
+ponta a ponta.
+
+**18.2 — `PATCH /api/sales-orders/:id` continua sem baixar estoque.** A lacuna
+foi fechada no caminho do webhook, não no manual. Marcar um pedido como pago
+pela tela ainda não decrementa `jewelry_inventory.quantity`. Pendência antiga,
+anterior ao gateway.
+
+**18.3 — Estorno não reverte o atendimento.** No fluxo da plataforma,
+estorno/chargeback reverte a fatura e põe a assinatura em `overdue`. No fluxo da
+clínica, o intent vira `refunded` e libera as reservas, mas nada desfaz um
+atendimento já prestado.
+
+**18.4 — Pagamento que chega depois do prazo.** Se o PIX cair após o
+`expires_at` (reserva já liberada), o código confirma o pagamento assim mesmo —
+o dinheiro entrou — e emite `console.warn` pedindo conferência de estoque. É a
+escolha certa (recusar geraria reentrega infinita), mas ninguém é *avisado* na
+interface. Deveria virar alerta na central.
+
+**18.5 — Sem `SIGTERM` para o worker.** `stopReconcileWorker()` existe e está
+exportada, mas o `index.js` não tem handler de encerramento. O `unref()` já
+impede que o timer segure o processo; falta o desligamento gracioso.
+
+---
+
+## Painel da plataforma (rodada de 01/08/2026)
+
+Planos editáveis, cotas, controle de contas, financeiro e suporte entraram.
+Ver `docs/PAINEL-PLATAFORMA.md`. O que ficou aberto:
+
+### 19. Trocar de plano não reajusta a cobrança no Asaas
+A troca muda o acesso da clínica **na hora**, mas a assinatura recorrente no
+gateway continua com o valor do plano antigo. A rota devolve `warning` quando
+existe `asaas_subscription_id`, e a tela exibe — mas ninguém age.
+
+É a lacuna mais cara desta rodada: uma clínica promovida para um plano mais caro
+continua pagando o barato até alguém notar. O conserto exige refazer o checkout
+ou chamar `updateSubscription` no gateway; ficou de fora por mexer em cobrança.
+
+### 20. Os guards de cota não estão ligados em nenhuma rota
+`requireWithinLimit` existe, é testado e funciona — mas nenhuma rota o chama, e
+nenhum plano tem `limits` configurado. O sistema é inerte por construção até
+alguém definir limites no painel.
+
+Ordem sugerida de ativação (do mais barato ao mais caro de medir): `users` em
+`routes/users.js`, `clients` em `routes/clients.js`, `jewelry_items` em
+`routes/jewelry.js`, `appointments_month` em `routes/appointments.js`.
+
+**Cuidado com `routes/booking.js`** (agendamento público): ali o 409 apareceria
+para o *cliente final* da clínica, que não tem como resolver. Ou o público passa
+livre, ou a mensagem precisa ser outra.
+
+### 21. `storage_mb` é estimativa, não medida
+Os uploads vão para um diretório único, sem prefixo de tenant e sem coluna de
+bytes. A conta é "arquivos referenciados × média por tipo" e subestima galerias.
+Serve como alerta, **não como bloqueio**. Vira número real com uma coluna de
+bytes em `private_files`/`jewelry_inventory`.
+
+### 22. Churn e cancelamentos dependem de histórico que não existe
+`churn_mes` vem `null` de propósito: `tenant_subscriptions` guarda uma linha por
+clínica com o status *atual*, sem log de mudanças, então a base de assinantes no
+1º do mês não é reconstruível. Assumir que todo ativo de hoje já estava lá
+inflaria o divisor justamente nos meses de crescimento.
+
+`cancelamentos_mes` fica em 0 até o fluxo de cancelamento carimbar `canceled_at`.
+
+Para os dois virarem número: (a) gravar `canceled_at` no cancelamento e (b) um
+log `(assinatura, data, de, para)`.
+
+### 23. Uso em massa não invalida o cache de cotas
+Importação de joias e exclusões em lote não chamam `invalidateUsageCache`. A
+janela é de 15s e o cache só é confiado com folga abaixo de 90% da cota, então o
+efeito é pequeno — mas o gancho existe e não está plugado.
+
+### 24. A propagação de preço nunca foi exercida contra o Asaas real
+Sem `ASAAS_API_KEY` no ambiente de teste, o caminho coberto é o de gateway
+indisponível. O laço de `try/catch` por clínica está testado só na contagem.
+Vale um teste manual no sandbox antes do lançamento.

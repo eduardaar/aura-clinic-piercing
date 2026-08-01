@@ -344,17 +344,47 @@ export async function upsertClient(db, body) {
         full_name = COALESCE(NULLIF(?, ''), full_name),
         instagram = COALESCE(NULLIF(?, ''), instagram),
         birth_date = COALESCE(?, birth_date),
-        notes = COALESCE(NULLIF(?, ''), notes)
+        notes = COALESCE(NULLIF(?, ''), notes),
+        tax_id = COALESCE(NULLIF(?, ''), tax_id),
+        email = COALESCE(NULLIF(?, ''), email)
        WHERE id = ?`,
-      [body.full_name ?? "", body.instagram ?? "", body.birth_date || null, body.client_notes ?? "", existing.id]
+      [
+        body.full_name ?? "",
+        body.instagram ?? "",
+        body.birth_date || null,
+        body.client_notes ?? "",
+        clientTaxId(body),
+        body.email ?? body.customer_email ?? "",
+        existing.id
+      ]
     );
     return { ...existing, full_name: body.full_name || existing.full_name };
   }
   const result = await db.run(
-    "INSERT INTO clients (full_name, whatsapp, instagram, birth_date, notes) VALUES (?, ?, ?, ?, ?) RETURNING id",
-    [body.full_name, body.whatsapp, body.instagram, body.birth_date || null, body.client_notes || ""]
+    "INSERT INTO clients (full_name, whatsapp, instagram, birth_date, notes, tax_id, email) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
+    [
+      body.full_name,
+      body.whatsapp,
+      body.instagram,
+      body.birth_date || null,
+      body.client_notes || "",
+      clientTaxId(body) || null,
+      body.email ?? body.customer_email ?? null
+    ]
   );
   return { id: result.returnedId };
+}
+
+// CPF do cliente, só com dígitos.
+//
+// Existe porque o dado chega com nomes diferentes conforme a porta de entrada:
+// a agenda manda `tax_id`/`cpf`, o checkout público do catálogo manda
+// `customer_cpf`. Sem centralizar aqui, o CPF ficava preso em
+// `sales_orders.customer_cpf` e nunca chegava à tabela `clients` — e o Asaas
+// recusa criar pagador sem CPF, o que derrubaria toda cobrança online.
+function clientTaxId(body) {
+  const raw = body.tax_id ?? body.cpf ?? body.customer_cpf ?? "";
+  return String(raw).replace(/\D/g, "");
 }
 
 async function deductLegacyJewelryStock(db, appointmentId) {

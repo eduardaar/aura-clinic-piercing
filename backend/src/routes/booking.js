@@ -10,6 +10,8 @@ import { quotePromotions } from "../services/promotions.js";
 import { validateCoupon } from "../services/discounts.js";
 import { reserveAppointmentItems } from "../services/reservations.js";
 import { createPaymentIntent } from "../services/payments.js";
+import { tenantClient } from "../services/asaas/credentials.js";
+import { createAppointmentDepositCharge } from "../services/tenantCharges.js";
 import { scheduleAppointmentClientAutomations } from "../services/communications.js";
 
 const router = Router();
@@ -219,7 +221,14 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
     whatsapp: body.whatsapp,
     instagram: body.instagram || "",
     birth_date: "",
-    client_notes: body.notes || ""
+    client_notes: body.notes || "",
+    // Opcionais, e é intencional que sejam. O formulário de agendamento ainda
+    // não pede CPF (o do catálogo pede), mas o Asaas recusa criar pagador sem
+    // ele: quando o campo existir na tela, o sinal online passa a funcionar sem
+    // mexer aqui. Sem CPF a cobrança degrada para o caminho manual, que é o
+    // comportamento de sempre.
+    tax_id: body.cpf || body.tax_id || "",
+    email: body.email || ""
   });
   const referencePhoto = req.files?.reference_photo?.[0] ? `/api/private-files/${req.files.reference_photo[0].filename}` : "";
   const paymentProof = req.files?.payment_proof?.[0] ? `/api/private-files/${req.files.payment_proof[0].filename}` : "";
@@ -227,6 +236,18 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
   const multiItemSlots = await availableBookingSlots(db, { service: { ...service, duration_minutes: durationMinutes }, professionalId, date });
   if (!multiItemSlots.some((slot) => slot.time === time)) return res.status(409).json({ error: "O horário não comporta a duração total dos serviços selecionados." });
   const endTime = addMinutesToTime(time, durationMinutes);
+
+  // A clínica tem gateway configurado? A checagem é só uma leitura do cofre
+  // (sem rede) e precisa acontecer ANTES da transação, porque decide se o
+  // intent nasce como `manual` lá dentro ou como cobrança do Asaas aqui fora.
+  //
+  // Sem gateway, tudo segue exatamente como antes: comprovante por WhatsApp e
+  // conferência manual. A maioria das clínicas opera assim.
+  const onlinePayment = depositValue > 0 && Boolean(await tenantClient(db));
+  // Joia reservada = peça física presa. Manda a cobrança ser PIX com janela
+  // curta, para não segurar estoque contra um boleto de dois dias.
+  const reservesStock = bookingItems.some((item) => item.item_type === "jewelry" && item.jewelry_id);
+
   // Agendamento público: agendamento, sinal, itens, reserva de estoque e
   // intenção de pagamento entram juntos ou não entram. Antes, quando a reserva
   // falhava, o código apagava na mão o que já tinha gravado — compensação que
@@ -296,20 +317,55 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
       } catch (error) {
         throw new ReservationConflict(error.message);
       }
-      const intent = depositValue > 0 ? await createPaymentIntent(tx, {
-        appointmentId: result.returnedId,
-        clientId: client.id,
-        amount: depositValue,
-        provider: "manual",
-        idempotencyKey: `booking:${bookingKey}:deposit`
-      }) : null;
+      // Com gateway configurado o intent NÃO nasce aqui: quem o cria é o
+      // `createAppointmentDepositCharge`, depois da transação, porque ele
+      // precisa falar com o Asaas e chamada de rede não pode rodar dentro de
+      // uma transação aberta (seguraria o lock das reservas pelo tempo do
+      // round-trip, e um timeout do gateway desfaria o agendamento inteiro).
+      const intent =
+        depositValue > 0 && !onlinePayment
+          ? await createPaymentIntent(tx, {
+              appointmentId: result.returnedId,
+              clientId: client.id,
+              amount: depositValue,
+              provider: "manual",
+              idempotencyKey: `booking:${bookingKey}:deposit`
+            })
+          : null;
       return { appointmentId: result.returnedId, paymentIntent: intent };
     });
   } catch (error) {
     if (error instanceof ReservationConflict) return res.status(409).json({ error: error.message });
     throw error;
   }
-  const { appointmentId, paymentIntent } = outcome;
+  const { appointmentId } = outcome;
+  let paymentIntent = outcome.paymentIntent;
+
+  // Cobrança online FORA da transação, e best-effort.
+  //
+  // O agendamento já está gravado e as joias já estão reservadas: uma falha do
+  // Asaas a esta altura não pode desfazer nada disso. O serviço devolve o
+  // intent vivo com `online_payment_available: false` e a clínica cobra pelo
+  // caminho manual de sempre — trocar o agendamento de um cliente por uma
+  // indisponibilidade do gateway seria péssimo negócio.
+  if (onlinePayment) {
+    try {
+      paymentIntent = await createAppointmentDepositCharge(db, {
+        appointmentId,
+        clientId: client.id,
+        amount: depositValue,
+        description: `Sinal - ${service.name}`,
+        // Mesma chave do caminho manual: o reenvio do formulário (F5, clique
+        // duplo) reaproveita o intent em vez de emitir uma segunda fatura.
+        idempotencyKey: `booking:${bookingKey}:deposit`,
+        reservesStock
+      });
+    } catch (error) {
+      console.error(`[Asaas] sinal do agendamento ${appointmentId}: ${error.message}`);
+      paymentIntent = null;
+    }
+  }
+
   const appointment = await listAppointments(db, "WHERE a.id = ?", [appointmentId]).then((rows) => rows[0]);
   const proofMessage = [
     `Olá, ${professional.name}. Tudo bem?`,
@@ -340,7 +396,16 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
     items: bookingItems,
     payment_intent: paymentIntent,
     professional_whatsapp_url: professionalWhatsappUrl,
-    payment_instructions: "Envie o comprovante do sinal pelo WhatsApp. A Aura confirma o horário após conferência manual."
+    // Link da fatura hospedada pelo Asaas. É o que a tela abre para o cliente
+    // pagar; `null` quando não há gateway ou quando ele falhou na criação.
+    payment_url: paymentIntent?.invoice_url || null,
+    online_payment_available: Boolean(paymentIntent?.online_payment_available),
+    // A instrução muda com o caminho disponível: mandar o cliente enviar
+    // comprovante quando existe link de pagamento é ruído, e o contrário é pior
+    // ainda — ele ficaria esperando um link que nunca vem.
+    payment_instructions: paymentIntent?.online_payment_available
+      ? "Pague o sinal pelo link para confirmar seu horário. A confirmação é automática assim que o pagamento cair."
+      : "Envie o comprovante do sinal pelo WhatsApp. A Aura confirma o horário após conferência manual."
   });
 }));
 
