@@ -6,6 +6,7 @@ import { DataView } from "../../components/common/DataView";
 import { API } from "../../lib/api";
 import { BrandMark } from "../../components/common/BrandMark";
 import { asArray } from "../../lib/utils";
+import "../../styles/platform-panel.css";
 import { LandingEditor } from "./LandingEditor";
 import { PlansAdmin } from "./PlansAdmin";
 import { AccountsAdmin } from "./AccountsAdmin";
@@ -415,15 +416,13 @@ export function PlatformAdmin() {
             <LogOut size={16} /> Sair
           </Button>
         </div>
-      </header>
-
-      <div className="stack">
-        <nav className="customization-tabs">
+        <nav className="platform-tabs" aria-label="Áreas do painel">
           {TABS.map(([id, label]) => (
             <button
               key={id}
               type="button"
               className={tab === id ? "active" : ""}
+              aria-current={tab === id ? "page" : undefined}
               onClick={() => {
                 setTab(id);
                 if (ABAS_COM_RASCUNHO.includes(id)) {
@@ -442,6 +441,14 @@ export function PlatformAdmin() {
             </button>
           ))}
         </nav>
+      </header>
+
+      {/* `.main-content` tem height:100dvh e overflow:hidden — no app da clínica
+          quem rola é o filho `.content-scroll`. O painel usava `.main-content`
+          direto, sem esse filho: tudo abaixo da dobra ficava CORTADO e
+          inalcançável, sem barra de rolagem. */}
+      <div className="content-scroll">
+        <div className="stack">
 
         {visitadas.has("landing") && (
           <div hidden={tab !== "landing"}>
@@ -636,7 +643,8 @@ export function PlatformAdmin() {
           confirmWord={deleting?.confirmWord}
           onClose={() => setDeleting(null)}
           onConfirm={async () => { await deleting.run(); setDeleting(null); }}
-        />
+          />
+        </div>
       </div>
     </main>
   );
