@@ -111,9 +111,21 @@ jobs:
       # Sem ssh-keyscan (que abre 1 conexão por tipo de chave e ajudava a
       # tropeçar no fail2ban). accept-new confia no host no 1º contato e a
       # conexão é multiplexada pelo deploy.sh (uma só para todo o deploy).
+      # Os segredos do Asaas são repassados ao deploy.sh, que faz upsert no .env
+      # DO SERVIDOR (o rsync exclui .env de propósito). Secret ausente/vazio é
+      # pulado pelo script — nunca sobrescreve com vazio uma chave já em
+      # produção. Configure em Settings > Secrets and variables > Actions.
       - name: Deploy
         env:
           SSH_OPTS: -i ${{ github.workspace }}/.deploy_key -o UserKnownHostsFile=${{ github.workspace }}/.known_hosts -o StrictHostKeyChecking=accept-new
+          ASAAS_BASE_URL: ${{ secrets.ASAAS_BASE_URL }}
+          ASAAS_API_KEY: ${{ secrets.ASAAS_API_KEY }}
+          ASAAS_WEBHOOK_TOKEN: ${{ secrets.ASAAS_WEBHOOK_TOKEN }}
+          ASAAS_VAULT_KEY: ${{ secrets.ASAAS_VAULT_KEY }}
+          # Base SEM o /api: as rotas já declaram o caminho completo
+          # (/api/webhooks/asaas/<slug>). Usar API_URL aqui duplicaria o /api
+          # na URL que a clínica cola no painel do Asaas.
+          PUBLIC_API_URL: ${{ env.SITE_URL }}
         run: bash scripts/deploy.sh
 
       - name: Limpar chave

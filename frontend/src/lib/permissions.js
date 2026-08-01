@@ -19,7 +19,8 @@
  * existem como página mas não pertencem a papel nenhum da clínica.
  * @typedef {"dashboard" | "erp" | "agenda" | "communications" | "catalog"
  *   | "catalog-customization" | "sales" | "finance" | "reports" | "client-center"
- *   | "clients" | "terms" | "postcare" | "admin" | "error-logs" | "meu-plano"} Page
+ *   | "clients" | "terms" | "postcare" | "admin" | "integrations" | "error-logs"
+ *   | "meu-plano"} Page
  */
 
 /**
@@ -32,6 +33,10 @@
 // (backend/src/routes/erp.js) e o Monitor de erros expõe stack traces e caminhos
 // internos do servidor — nada disso é informação do cliente. Quem precisa disso
 // é a equipe da Monitence, pelo painel de plataforma.
+// "integrations" fica SÓ em `admin`, nem em `finance`: ali se cadastra a chave
+// do gateway, e quem a troca redireciona o faturamento inteiro da clínica para
+// outra conta. É a mesma regra do backend (routes/integrations.js só aceita
+// `admin`) — afrouxar aqui só criaria um item de menu que morre em 403.
 /**
  * Páginas liberadas para o papel, na ordem do menu (a primeira é a página inicial).
  * @param {Role | string | undefined} role
@@ -40,7 +45,7 @@
 export function allowedPagesForRole(role) {
   /** @type {Record<Role, Page[]>} */
   const byRole = {
-    admin: ["dashboard", "agenda", "communications", "catalog", "catalog-customization", "sales", "finance", "reports", "client-center", "clients", "terms", "postcare", "admin", "meu-plano"],
+    admin: ["dashboard", "agenda", "communications", "catalog", "catalog-customization", "sales", "finance", "reports", "client-center", "clients", "terms", "postcare", "admin", "integrations", "meu-plano"],
     reception: ["agenda", "communications", "sales", "reports", "client-center", "clients"],
     finance: ["finance", "reports", "sales"],
     piercer: ["agenda", "sales", "client-center", "clients", "postcare"]
@@ -51,7 +56,11 @@ export function allowedPagesForRole(role) {
 }
 
 // Espelha PAGE_FEATURE do backend (backend/src/services/plans.js): página -> feature
-// exigida. Páginas ausentes daqui são liberadas em qualquer plano.
+// exigida. Páginas ausentes daqui são liberadas em qualquer plano — é o caso de
+// "integrations": configurar o gateway é PRÉ-REQUISITO da cobrança online, então
+// trancá-la atrás do plano criaria o ciclo "não posso configurar porque não tenho
+// o recurso que só funciona configurado" (o backend a serve com `withDb`, não com
+// `withFeature`, pelo mesmo motivo).
 /** @type {Partial<Record<Page, Feature>>} */
 export const PAGE_FEATURE = {
   finance: "basic_finance",
@@ -114,6 +123,7 @@ export function pageTitle(page) {
     terms: "Termos digitais",
     postcare: "Pós-atendimento",
     admin: "Acessos administrativos",
+    integrations: "Integrações",
     "error-logs": "Monitor de erros",
     "meu-plano": "Meu plano"
   };

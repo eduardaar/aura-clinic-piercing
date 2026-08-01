@@ -15,6 +15,18 @@ export function requiresAuth(req) {
   // Ingestão de erros do frontend: pública (captura erros de telas sem sessão).
   // A leitura/gestão (GET/PATCH/DELETE) continua exigindo auth + papel admin.
   if (req.method === "POST" && req.path === "/api/error-logs") return false;
+  // Webhooks de gateway: o provedor posta sem sessão e sem X-Tenant. A rota se
+  // defende sozinha com o token compartilhado (ver routes/webhooks.js) e nem
+  // passa pelo withDb — está aqui por completude, caso alguém a monte depois
+  // dentro do ciclo padrão.
+  if (req.path.startsWith("/api/webhooks/")) return false;
+  // Pagamento do cliente final: ele acompanha a própria cobrança (PIX e status)
+  // a partir da tela pública de agendamento/checkout, onde não há sessão.
+  //
+  // Só estas duas — a LISTAGEM de intents continua exigindo token. O recorte é
+  // por regex e não por prefixo justamente para /api/payment-intents não virar
+  // público inteiro por descuido.
+  if (/^\/api\/payment-intents\/\d+\/(pix|sync)$/.test(req.path)) return false;
   return true;
 }
 

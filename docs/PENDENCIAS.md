@@ -69,11 +69,18 @@ Comprovantes de pagamento e PDFs de termo — arquivos sensíveis — vão para 
 diretório compartilhado entre todos os tenants. Pendência antiga, agravada pelo
 volume atual.
 
-### 8. Sem lugar seguro para credencial por clínica
-Pré-requisito da integração com gateway de pagamento. Hoje não existe:
-`clinic_settings` é fixa, `platform.tenants` não tem coluna livre, e
-`catalog_settings` — o único KV por tenant — **vaza inteiro na rota pública**
-`GET /api/catalog`. Ver `docs/AURA-CLINIC-ERP-2.0.md` e o roadmap de pagamentos.
+### 8. Sem lugar seguro para credencial por clínica — RESOLVIDO
+~~Pré-requisito da integração com gateway de pagamento.~~
+
+Resolvido pela tabela `tenant_integrations`, no schema de cada clínica, com os
+segredos cifrados em AES-256-GCM (`backend/src/services/asaas/vault.js`). Tabela
+dedicada justamente por causa do problema apontado aqui: `catalog_settings` vaza
+inteira em `GET /api/catalog`. Ver `docs/ASAAS.md`.
+
+Fica em aberto o caso geral: hoje o cofre atende **um provedor por clínica**
+(`UNIQUE(provider)` permite vários, mas só o Asaas é lido). Outras credenciais
+(WhatsApp oficial, e-mail transacional) ainda não têm onde morar — o caminho
+natural é reusar esta tabela.
 
 ---
 
@@ -149,11 +156,53 @@ chaves inalcançáveis.
 
 ## Produto
 
-### 18. Integração com o Asaas
-O roadmap está desenhado e a fundação (transações, paginação) já foi feita.
-Faltam as fases 3 a 6: cofre de credenciais por clínica, webhook multi-tenant,
-worker, cobrança de assinatura (Monitence → clínicas) e cobrança da clínica ao
-cliente final (sinal de agendamento e venda de joias).
+### 18. Integração com o Asaas — IMPLEMENTADA (com arestas)
+Cofre de credenciais por clínica, webhook multi-tenant, cobrança de assinatura
+(Monitence → clínicas) e cobrança da clínica ao cliente final estão no ar. Ver
+`docs/ASAAS.md`.
 
-Ponto bloqueante a confirmar antes: **a conta raiz da Monitence precisa ser
-CNPJ** para o modelo de subcontas. Se for CPF, o desenho muda.
+O bloqueio do **CNPJ da conta raiz deixou de existir**: em vez de subcontas,
+cada clínica usa a própria conta Asaas e recebe direto. Não há split nem
+intermediação de recebíveis.
+
+**Resolvido na segunda rodada:** as rotas foram ligadas (o agendamento público e
+a venda do catálogo geram cobrança online quando a clínica tem gateway),
+`GET /api/payment-intents/:id/pix` e `POST /api/payment-intents/:id/sync` estão
+no ar, a venda paga por webhook agora **baixa estoque**, a idempotência do
+checkout virou `platform.idempotency_keys` (vale entre instâncias) e existe
+worker de conciliação (`ASAAS_RECONCILE_ENABLED`).
+
+O conflito entre a reserva de 30 min e o boleto de 2 dias foi resolvido por
+desenho: **cobrança que prende estoque físico é PIX com janela de 30 min**
+(`chargeModeForStock`, em `tenantCharges.js`), casando exatamente com a validade
+da reserva. Segurar joia por dois dias contra um boleto — ou liberar a peça
+antes de ele vencer — eram as duas alternativas, e nenhuma é aceitável.
+
+O que continua aberto:
+
+**18.1 — O agendamento público não coleta CPF.** O checkout do catálogo coleta
+(e agora propaga para `clients.tax_id`), mas o formulário de agendamento não.
+Sem CPF o Asaas recusa criar o pagador, então o sinal online **degrada para o
+caminho manual** (comprovante por WhatsApp). O backend já aceita `cpf`/`email`
+no corpo: falta só o campo na tela. É o que separa o fluxo do sinal de funcionar
+ponta a ponta.
+
+**18.2 — `PATCH /api/sales-orders/:id` continua sem baixar estoque.** A lacuna
+foi fechada no caminho do webhook, não no manual. Marcar um pedido como pago
+pela tela ainda não decrementa `jewelry_inventory.quantity`. Pendência antiga,
+anterior ao gateway.
+
+**18.3 — Estorno não reverte o atendimento.** No fluxo da plataforma,
+estorno/chargeback reverte a fatura e põe a assinatura em `overdue`. No fluxo da
+clínica, o intent vira `refunded` e libera as reservas, mas nada desfaz um
+atendimento já prestado.
+
+**18.4 — Pagamento que chega depois do prazo.** Se o PIX cair após o
+`expires_at` (reserva já liberada), o código confirma o pagamento assim mesmo —
+o dinheiro entrou — e emite `console.warn` pedindo conferência de estoque. É a
+escolha certa (recusar geraria reentrega infinita), mas ninguém é *avisado* na
+interface. Deveria virar alerta na central.
+
+**18.5 — Sem `SIGTERM` para o worker.** `stopReconcileWorker()` existe e está
+exportada, mas o `index.js` não tem handler de encerramento. O `unref()` já
+impede que o timer segure o processo; falta o desligamento gracioso.

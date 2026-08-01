@@ -9,7 +9,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { PORT, isProduction } from "./config/index.js";
 import { ensurePlatform, applySchemaToAllTenants } from "./services/tenants.js";
-import { apiLimiter } from "./middleware/rateLimit.js";
+import { startReconcileWorker } from "./services/asaas/reconcile.js";
+import { apiLimiter, webhookLimiter } from "./middleware/rateLimit.js";
 
 // Routers por domínio.
 import healthRoutes from "./routes/health.js";
@@ -41,6 +42,9 @@ import storeRoutes from "./routes/store.js";
 import notificationsRoutes from "./routes/notifications.js";
 import paymentsRoutes from "./routes/payments.js";
 import reportsRoutes from "./routes/reports.js";
+import webhookRoutes from "./routes/webhooks.js";
+import billingRoutes from "./routes/billing.js";
+import integrationsRoutes from "./routes/integrations.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -67,6 +71,13 @@ app.use((_req, res, next) => {
   next();
 });
 app.use("/uploads", express.static(path.join(__dirname, "data", "uploads")));
+
+// Webhooks de gateway ANTES do rate limit global, com limite próprio: o Asaas
+// entrega de poucos IPs fixos e todas as clínicas caem no mesmo bucket, então
+// o teto global devolveria 429 numa rajada — e 429 faz o provedor reentregar e
+// acabar pausando a fila da conta. A rota se autentica pelo token do provedor.
+app.use("/api/webhooks", webhookLimiter);
+app.use(webhookRoutes);
 
 // Rate limit global leve em toda a API (300 req/min por IP). O /login mantém
 // o limite estrito próprio, aplicado no router de auth.
@@ -103,13 +114,19 @@ app.use(storeRoutes);
 app.use(notificationsRoutes);
 app.use(paymentsRoutes);
 app.use(reportsRoutes);
+app.use(billingRoutes);
+app.use(integrationsRoutes);
 
 // ---------- Inicialização ----------
 // 1) Garante o schema de controle `platform` (tenants + superadmin inicial).
 // 2) Aplica o schema.sql idempotente em TODOS os tenants (runner de migrations
 //    multi-schema: novas tabelas/colunas chegam a todas as clínicas no boot).
+// 3) Liga o worker de conciliação com o Asaas (rede de segurança para webhook
+//    perdido). DESLIGADO por padrão: só sobe com ASAAS_RECONCILE_ENABLED=true.
+//    Depende do schema já aplicado, por isso vem depois dos dois passos acima.
 await ensurePlatform();
 await applySchemaToAllTenants();
+startReconcileWorker();
 app.listen(PORT, () => {
   console.log(`Aura Clinic API em http://localhost:${PORT}`);
 });

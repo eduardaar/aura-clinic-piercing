@@ -13,6 +13,7 @@ O projeto é um **monorepo** com backend (Node/Express + PostgreSQL, multi-tenan
 | [API.md](./API.md) | Referência dos endpoints por domínio: método, caminho, exigência de auth e de `X-Tenant`, campos do corpo e forma da resposta. |
 | [FLUXOS.md](./FLUXOS.md) | Fluxos de uso passo a passo (cadastro de clínica, recepção, piercer, financeiro, super-admin da plataforma) e logins de teste locais. |
 | [GUIA-DEV.md](./GUIA-DEV.md) | Pré-requisitos, configuração (.env), como rodar, testes, scripts úteis (backup, migração multi-tenant, teste de isolamento), estrutura de pastas e convenções. |
+| [ASAAS.md](./ASAAS.md) | Integração com o gateway de pagamento: os dois níveis de credencial (plataforma e clínica), cofre cifrado, webhook multi-tenant (autenticidade, idempotência e o contrato de status HTTP), armadilhas do Asaas e configuração em produção. |
 
 ## Por onde começar
 
@@ -20,3 +21,4 @@ O projeto é um **monorepo** com backend (Node/Express + PostgreSQL, multi-tenan
 - **Integrando com a API?** Vá direto para [API.md](./API.md).
 - **Entendendo o banco?** Veja [MODELO-DE-DADOS.md](./MODELO-DE-DADOS.md).
 - **Entendendo o produto?** Percorra [FLUXOS.md](./FLUXOS.md).
+- **Mexendo em pagamento?** Leia [ASAAS.md](./ASAAS.md) **antes** — o contrato de status HTTP do webhook e a idempotência têm armadilhas que custam dinheiro.

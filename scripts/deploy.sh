@@ -91,6 +91,46 @@ retry_conn "sync do frontend" rsync -rlpt --delete --exclude '.DS_Store' \
   -e "${rsh}" \
   frontend/dist/ "${target}:${REMOTE_FRONT}/"
 
+# Segredos do gateway de pagamento. Ficam no .env DO SERVIDOR (que o rsync
+# exclui de propósito, para o repositório nunca virar fonte de credencial), e
+# chegam aqui como secrets do GitHub Actions.
+#
+# Upsert idempotente e CONSERVADOR: variável com valor vazio é PULADA, nunca
+# escrita. Isso é o que garante que rodar o deploy sem os secrets configurados
+# não apague uma chave que já está em produção e funcionando.
+echo "==> [3.5/5] Sincronizar segredos do Asaas (só os que vierem preenchidos)"
+asaas_env=""
+for var in ASAAS_BASE_URL ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN ASAAS_VAULT_KEY PUBLIC_API_URL; do
+  value="${!var:-}"
+  [ -n "${value}" ] || continue
+  asaas_env="${asaas_env}${var}=${value}"$'\n'
+done
+
+if [ -n "${asaas_env}" ]; then
+  # shellcheck disable=SC2087
+  printf '%s' "${asaas_env}" | ${rsh} "${target}" "REMOTE_BACKEND='${REMOTE_BACKEND}' bash -s" <<'REMOTE'
+set -euo pipefail
+env_file="${REMOTE_BACKEND}/.env"
+touch "${env_file}"
+chmod 600 "${env_file}"
+while IFS='=' read -r key value; do
+  [ -n "${key}" ] || continue
+  if grep -q "^${key}=" "${env_file}"; then
+    # Reescreve no lugar. O valor vai por variável de ambiente e não
+    # interpolado no script: uma chave do Asaas contém '$' e '/', que
+    # quebrariam ou seriam reinterpretados dentro do sed.
+    NEW_VALUE="${value}" KEY="${key}" perl -i -pe 's/^\Q$ENV{KEY}\E=.*/"$ENV{KEY}=$ENV{NEW_VALUE}"/e' "${env_file}"
+    echo "   atualizado: ${key}"
+  else
+    printf '%s=%s\n' "${key}" "${value}" >> "${env_file}"
+    echo "   adicionado: ${key}"
+  fi
+done
+REMOTE
+else
+  echo "   nenhum secret do Asaas definido — mantendo o .env do servidor como está"
+fi
+
 echo "==> [4/5] Backup do banco + rebuild + restart da API"
 # shellcheck disable=SC2087
 ${rsh} "${target}" REMOTE_COMPOSE_DIR="${REMOTE_COMPOSE_DIR}" bash -s <<'REMOTE'

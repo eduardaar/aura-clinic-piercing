@@ -36,6 +36,7 @@ const SalesWorkspace = lazy(() => import("./features/sales/Sales").then((m) => (
 const FinanceAdmin = lazy(() => import("./features/finance/Finance").then((m) => ({ default: m.FinanceAdmin })));
 const Reports = lazy(() => import("./features/reports/Reports").then((m) => ({ default: m.Reports })));
 const AccessAdmin = lazy(() => import("./features/access/AccessAdmin").then((m) => ({ default: m.AccessAdmin })));
+const Integrations = lazy(() => import("./features/integrations/Integrations").then((m) => ({ default: m.Integrations })));
 const ClientWorkspace = lazy(() => import("./features/clients/ClientsMedical").then((m) => ({ default: m.ClientWorkspace })));
 const ClientsMedical = lazy(() => import("./features/clients/ClientsMedical").then((m) => ({ default: m.ClientsMedical })));
 const DigitalTerms = lazy(() => import("./features/terms/DigitalTerms").then((m) => ({ default: m.DigitalTerms })));
@@ -302,6 +303,7 @@ function App() {
           {activePage === "terms" && <DigitalTerms />}
           {activePage === "postcare" && <PostCare />}
           {activePage === "admin" && <AccessAdmin />}
+          {activePage === "integrations" && <Integrations />}
         </Suspense>
         </div>
       </main>
