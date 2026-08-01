@@ -12,18 +12,20 @@
 //     caixinha que não existe não protege rota nenhuma.
 //  3. O relatório de propagação de preço com falhas NÃO some sozinho: cada linha
 //     de falha é uma clínica que continua sendo cobrada no valor antigo.
+//
+// A ESTRUTURA segue o padrão do painel: a lista é um <DataView> (busca,
+// ordenação, paginação e os estados de carregando/erro/vazio vêm dele) e o
+// formulário é um <Modal>. A tela antiga desenhava uma lista à mão em duas
+// colunas com editor embutido, e por isso guardava um MAPA de rascunhos por
+// plano; com o modal só existe uma edição por vez, então sobrou um rascunho só.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ArrowDown, ArrowUp, Plus } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp } from "lucide-react";
 import { AlertBlock, Button, Checkbox, Input, StatusBadge, Textarea } from "../../components/common/Ui";
 import { ConfirmDeleteModal, CrudHeader, Modal } from "../../components/common/Crud";
-import { ApiError, Loading } from "../../components/common/Feedback";
+import { DataView } from "../../components/common/DataView";
 import { API } from "../../lib/api";
 import { asArray, asObject } from "../../lib/utils";
 import "../../styles/plans-admin.css";
-
-// Chave do rascunho do plano ainda não criado. Não pode colidir com um código
-// real: `CODE_RE` no backend exige começar por letra minúscula.
-const NOVO = "__novo__";
 
 const MAX_TRIAL_DAYS = 90;
 
@@ -76,7 +78,7 @@ function reaisParaCentavos(texto) {
 }
 
 // ---------------------------------------------------------------------------
-// Rascunhos
+// Rascunho
 // ---------------------------------------------------------------------------
 
 // Um rascunho é a FOTO EDITÁVEL do plano: o preço vira texto ("149,90") e os
@@ -114,12 +116,6 @@ function planoParaRascunho(plano) {
   };
 }
 
-function rascunhoBase(code, plans) {
-  if (code === NOVO) return rascunhoVazio();
-  const plano = asArray(plans).find((item) => item.code === code);
-  return plano ? planoParaRascunho(plano) : null;
-}
-
 // ---------------------------------------------------------------------------
 // Rede
 // ---------------------------------------------------------------------------
@@ -154,21 +150,23 @@ export function PlansAdmin({ token, onUnauthorized }) {
   const [alertas, setAlertas] = useState([]);
   const [loadError, setLoadError] = useState("");
 
-  const [activeCode, setActiveCode] = useState("");
-  // Rascunhos por plano: trocar de plano na lista não pode jogar fora o que já
-  // foi digitado no outro. Mesmo desenho do editor da landing.
-  const [drafts, setDrafts] = useState({});
-  const [feedback, setFeedback] = useState({ error: "", success: "" });
+  // Uma edição por vez: `editando` guarda o código alvo ("" = criando) e a FOTO
+  // de como o plano estava ao abrir o modal — é contra essa foto que se decide
+  // se há alteração pendente, e não contra a lista, que muda sozinha a cada
+  // recarga.
+  const [editando, setEditando] = useState(null);
+  const [draft, setDraft] = useState(null);
+  const [formErro, setFormErro] = useState("");
   const [salvando, setSalvando] = useState(false);
-  const [dragCode, setDragCode] = useState("");
+  const [confirmandoDescarte, setConfirmandoDescarte] = useState(false);
 
-  const [descartando, setDescartando] = useState("");
+  const [feedback, setFeedback] = useState({ error: "", success: "" });
   const [confirmandoPreco, setConfirmandoPreco] = useState(null);
   const [propagacao, setPropagacao] = useState(null);
   const [desativando, setDesativando] = useState(null);
   const [excluindo, setExcluindo] = useState(null);
   const [emUso, setEmUso] = useState(null);
-  const [carregandoUso, setCarregandoUso] = useState("");
+  const [ocupado, setOcupado] = useState("");
 
   // O callback de 401 vem do painel e é recriado a cada render dele; em ref,
   // `request` para de mudar de identidade e o efeito de carga não dispara de
@@ -223,37 +221,31 @@ export function PlansAdmin({ token, onUnauthorized }) {
   }, [carregar]);
 
   const planList = asArray(plans);
+  const criando = editando?.code === "";
 
-  const dirtyCodes = useMemo(
-    () =>
-      Object.keys(drafts).filter((code) => JSON.stringify(drafts[code]) !== JSON.stringify(rascunhoBase(code, plans))),
-    [drafts, plans],
+  const sujo = useMemo(
+    () => Boolean(editando) && JSON.stringify(draft) !== JSON.stringify(editando.base),
+    [draft, editando],
   );
 
   // Fechar a aba com edição pendente perde trabalho sem aviso: o navegador só
   // pergunta se houver um handler registrado.
   useEffect(() => {
-    if (!dirtyCodes.length) return undefined;
+    if (!sujo) return undefined;
     const avisar = (event) => {
       event.preventDefault();
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", avisar);
     return () => window.removeEventListener("beforeunload", avisar);
-  }, [dirtyCodes.length]);
+  }, [sujo]);
 
-  const nomeDoPlano = useCallback(
-    (code) => {
-      if (code === NOVO) return drafts[NOVO]?.name?.trim() || "Novo plano";
-      return asArray(plans).find((item) => item.code === code)?.name || code;
-    },
-    [drafts, plans],
+  // A posição é calculada aqui e vira campo da linha para o DataView poder
+  // ORDENAR por ela: é a ordem da vitrine pública, e é a ordenação inicial.
+  const linhas = useMemo(
+    () => asArray(plans).map((plano, index) => ({ ...plano, posicao: index + 1 })),
+    [plans],
   );
-
-  const planoAtivo = planList.find((item) => item.code === activeCode) || null;
-  const criando = activeCode === NOVO;
-  const draft = drafts[activeCode] ?? (planoAtivo ? planoParaRascunho(planoAtivo) : null);
-  const activeDirty = dirtyCodes.includes(activeCode);
 
   const grupos = useMemo(() => {
     const mapa = new Map();
@@ -265,31 +257,39 @@ export function PlansAdmin({ token, onUnauthorized }) {
     return [...mapa.entries()].map(([nome, itens]) => ({ nome, itens }));
   }, [featureCatalog]);
 
+  // --- Abrir e fechar o formulário -----------------------------------------
+
+  function abrirFormulario(plano) {
+    const base = plano ? planoParaRascunho(plano) : rascunhoVazio();
+    setEditando({ code: plano ? plano.code : "", base, subscribers: plano?.subscribers ?? 0 });
+    setDraft(base);
+    setFormErro("");
+    setConfirmandoDescarte(false);
+  }
+
+  // Esc, clique fora e "Cancelar" passam por aqui: fechar com alteração
+  // pendente joga trabalho fora em silêncio, então antes vem a pergunta.
+  function fecharFormulario({ forcar = false } = {}) {
+    if (!forcar && sujo) {
+      setConfirmandoDescarte(true);
+      return;
+    }
+    setConfirmandoDescarte(false);
+    setEditando(null);
+    setDraft(null);
+    setFormErro("");
+    setConfirmandoPreco(null);
+  }
+
   function editarRascunho(patch) {
-    if (!draft) return;
-    setDrafts((atual) => ({ ...atual, [activeCode]: { ...draft, ...patch } }));
-  }
-
-  function descartarRascunho(code) {
-    setDrafts((atual) => {
-      const proximo = { ...atual };
-      delete proximo[code];
-      return proximo;
-    });
-  }
-
-  function abrirNovo() {
-    setFeedback({ error: "", success: "" });
-    setDrafts((atual) => ({ ...atual, [NOVO]: atual[NOVO] ?? rascunhoVazio() }));
-    setActiveCode(NOVO);
+    setDraft((atual) => ({ ...atual, ...patch }));
   }
 
   // --- Features ------------------------------------------------------------
 
   // A lista é sempre reconstruída na ORDEM DO CATÁLOGO: assim o rascunho de um
-  // plano sem alteração real continua idêntico ao que veio do servidor e a
-  // marca "não salvo" não aparece só porque as caixinhas foram clicadas fora de
-  // ordem.
+  // plano sem alteração real continua idêntico ao que veio do servidor e o botão
+  // "salvar" não acende só porque as caixinhas foram clicadas fora de ordem.
   function definirFeatures(marcadas) {
     const conjunto = new Set(marcadas);
     editarRascunho({ features: asArray(featureCatalog).filter((item) => conjunto.has(item.key)).map((item) => item.key) });
@@ -312,7 +312,7 @@ export function PlansAdmin({ token, onUnauthorized }) {
   }
 
   // Campo vazio some do rascunho (em vez de virar ""), senão digitar e apagar
-  // deixaria o plano marcado como "não salvo" sem nenhuma diferença real.
+  // deixaria o formulário marcado como alterado sem nenhuma diferença real.
   function definirLimite(key, valor) {
     const limits = { ...asObject(draft?.limits) };
     if (String(valor).trim() === "") delete limits[key];
@@ -370,26 +370,24 @@ export function PlansAdmin({ token, onUnauthorized }) {
     if (!draft) return;
     const { corpo, erro } = montarCorpo();
     if (erro) {
-      setFeedback({ error: erro, success: "" });
+      setFormErro(erro);
       return;
     }
     if (confirmarPreco) corpo.confirm_price_change = true;
 
-    const codigoEditado = activeCode;
+    const codigoEditado = editando.code;
     setSalvando(true);
-    setFeedback({ error: "", success: "" });
+    setFormErro("");
     try {
       const payload = criando
         ? await request("/platform/plans", { method: "POST", body: JSON.stringify(corpo) })
         : await request(`/platform/plans/${codigoEditado}`, { method: "PUT", body: JSON.stringify(corpo) });
 
       const salvo = asObject(payload?.plan);
-      setConfirmandoPreco(null);
-      descartarRascunho(codigoEditado);
-      setActiveCode(salvo.code || codigoEditado);
       // O relatório do gateway fica na tela até ser dispensado: com falhas, cada
       // linha é uma clínica ainda cobrada no valor antigo.
       if (payload?.propagacao) setPropagacao({ plano: salvo, relatorio: asObject(payload.propagacao) });
+      fecharFormulario({ forcar: true });
       await carregar();
       setFeedback({
         error: "",
@@ -407,16 +405,13 @@ export function PlansAdmin({ token, onUnauthorized }) {
       // Feature que o servidor não conhece = o catálogo desta tela está velho
       // (o backend mudou depois que a aba abriu). Recarregar é a correção, e as
       // caixinhas precisam refletir o catálogo de verdade antes da nova
-      // tentativa — o rascunho continua intacto.
+      // tentativa — o rascunho continua intacto, o modal continua aberto.
       if (error.code === "feature_desconhecida") {
         await carregar().catch(() => {});
-        setFeedback({
-          error: `${error.message} A lista de recursos foi recarregada do servidor — confira as marcações e salve de novo.`,
-          success: "",
-        });
+        setFormErro(`${error.message} A lista de recursos foi recarregada do servidor — confira as marcações e salve de novo.`);
         return;
       }
-      setFeedback({ error: error.message, success: "" });
+      setFormErro(error.message);
     } finally {
       setSalvando(false);
     }
@@ -450,30 +445,24 @@ export function PlansAdmin({ token, onUnauthorized }) {
     }
   }
 
-  function moverPlano(index, direcao) {
+  // A seta trabalha sobre a ORDEM REAL da vitrine, não sobre a ordem visível na
+  // tabela: ordenar a coluna "Preço" no DataView é um jeito de LER a lista, e
+  // não pode virar um jeito de reordenar a vitrine sem querer.
+  function moverPlano(plano, direcao) {
+    const index = planList.findIndex((item) => item.code === plano.code);
     const proxima = moveInList(planList, index, direcao);
     if (proxima === planList) return;
     aplicarOrdem(proxima);
   }
 
-  // Arrastar é COMPLEMENTO das setas ↑/↓, nunca o único caminho: arrastar não
-  // funciona por teclado e é impreciso no toque.
-  function soltarSobre(codeAlvo) {
-    const de = planList.findIndex((item) => item.code === dragCode);
-    const para = planList.findIndex((item) => item.code === codeAlvo);
-    setDragCode("");
-    if (de < 0 || para < 0 || de === para) return;
-    aplicarOrdem(moveInList(planList, de, para - de));
-  }
-
   // --- Ativar / desativar / excluir ----------------------------------------
 
   async function buscarUso(code) {
-    setCarregandoUso(code);
+    setOcupado(code);
     try {
       return asObject(await request(`/platform/plans/${code}/usage`));
     } finally {
-      setCarregandoUso("");
+      setOcupado("");
     }
   }
 
@@ -534,8 +523,6 @@ export function PlansAdmin({ token, onUnauthorized }) {
     try {
       await request(`/platform/plans/${plano.code}`, { method: "DELETE" });
       setExcluindo(null);
-      descartarRascunho(plano.code);
-      if (activeCode === plano.code) setActiveCode("");
       await carregar();
       setFeedback({ error: "", success: `Plano "${plano.name}" excluído.` });
     } catch (error) {
@@ -553,342 +540,340 @@ export function PlansAdmin({ token, onUnauthorized }) {
     }
   }
 
-  if (plans === null && !loadError) return <Loading />;
-  if (loadError) return <ApiError message={loadError} />;
-
   const marcadas = new Set(asArray(draft?.features));
   const precoPrevisto = draft ? reaisParaCentavos(draft.price) : null;
 
   return (
-    <div className="pa-root">
-      <div className="panel pa-intro">
-        <div>
-          <h2>Planos da plataforma</h2>
-          <p>
-            Esta é a grade de preços que aparece na vitrine pública e no cadastro de novas clínicas. O que estiver
-            marcado aqui libera (ou bloqueia) telas dentro do sistema de cada clínica.
-          </p>
-        </div>
-      </div>
+    <div className="stack">
+      {propagacao && <RelatorioPropagacao dados={propagacao} onDispensar={() => setPropagacao(null)} />}
 
       {alertas.length > 0 && (
         <AlertBlock icon={AlertTriangle} title="Confira estes pontos" empty="Nenhum alerta.">
           {alertas.map((alerta) => (
-            <p className="pa-alerta" key={alerta}>
+            <p className="field-hint" key={alerta}>
               {alerta}
             </p>
           ))}
         </AlertBlock>
       )}
 
-      {propagacao && <RelatorioPropagacao dados={propagacao} onDispensar={() => setPropagacao(null)} />}
-
-      {dirtyCodes.length > 0 && (
-        <p className="pa-unsaved-banner" role="status">
-          Você tem alterações não salvas em: {dirtyCodes.map(nomeDoPlano).join(", ")}. Elas ficam guardadas enquanto você
-          navega entre os planos, mas só valem depois de salvar.
-        </p>
-      )}
-
       {feedback.error && <span className="form-error">{feedback.error}</span>}
       {feedback.success && <span className="form-success">{feedback.success}</span>}
 
-      <div className="pa-columns">
-        <section className="panel pa-list-panel">
-          <CrudHeader
-            title="Planos"
-            subtitle="A ordem aqui é a ordem da vitrine pública."
-            actionLabel="Novo plano"
-            onAction={abrirNovo}
-          />
+      <section className="panel">
+        <CrudHeader
+          title="Planos da plataforma"
+          subtitle="Esta é a grade de preços da vitrine pública e do cadastro de novas clínicas — na ordem em que as setas ↑↓ deixarem."
+          actionLabel="Novo plano"
+          onAction={() => abrirFormulario(null)}
+        />
 
-          {drafts[NOVO] && (
-            <button
-              type="button"
-              className={`pa-new-row${activeCode === NOVO ? " is-active" : ""}`}
-              onClick={() => setActiveCode(NOVO)}
-            >
-              <Plus size={16} aria-hidden="true" />
-              <span>{nomeDoPlano(NOVO)}</span>
-              {dirtyCodes.includes(NOVO) && <StatusBadge tone="warn">Não salvo</StatusBadge>}
-            </button>
-          )}
-
-          <ul className="pa-list">
-            {planList.map((plano, index) => (
-              <li
-                key={plano.code}
-                className={`pa-item${activeCode === plano.code ? " is-active" : ""}${plano.is_active ? "" : " is-off"}`}
-                draggable
-                onDragStart={() => setDragCode(plano.code)}
-                onDragEnd={() => setDragCode("")}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={() => soltarSobre(plano.code)}
-              >
-                <div className="pa-item-head">
-                  <span className="pa-item-position" aria-hidden="true">
-                    {index + 1}
-                  </span>
-                  <div className="pa-item-title">
-                    <strong>{plano.name}</strong>
-                    <span>
-                      <code>{plano.code}</code> · {formatarPreco(plano.price_cents)}
-                    </span>
-                    <span>
-                      {plural(plano.subscribers ?? 0, "assinante", "assinantes")} ·{" "}
-                      {plural(asArray(plano.features).length, "recurso", "recursos")}
-                    </span>
-                  </div>
-                  <div className="pa-item-badges">
-                    <StatusBadge tone={plano.is_active ? "ok" : "neutral"}>
-                      {plano.is_active ? "Ativo" : "Inativo"}
-                    </StatusBadge>
-                    {plano.is_recommended && <StatusBadge tone="info">Recomendado</StatusBadge>}
-                    {dirtyCodes.includes(plano.code) && <StatusBadge tone="warn">Não salvo</StatusBadge>}
-                  </div>
-                </div>
-
-                <div className="pa-item-actions">
-                  <div className="pa-move">
-                    <button
-                      type="button"
-                      className="icon-button"
-                      disabled={index === 0}
-                      aria-label={`Mover o plano "${plano.name}" para cima`}
-                      onClick={() => moverPlano(index, -1)}
-                    >
-                      <ArrowUp size={16} />
-                    </button>
-                    <button
-                      type="button"
-                      className="icon-button"
-                      disabled={index === planList.length - 1}
-                      aria-label={`Mover o plano "${plano.name}" para baixo`}
-                      onClick={() => moverPlano(index, 1)}
-                    >
-                      <ArrowDown size={16} />
-                    </button>
-                  </div>
-                  <div className="pa-item-buttons">
-                    <Button variant="ghost" disabled={carregandoUso === plano.code} onClick={() => alternarAtivo(plano)}>
-                      {plano.is_active ? "Desativar" : "Ativar"}
-                    </Button>
-                    <Button variant="ghost" disabled={carregandoUso === plano.code} onClick={() => abrirExclusao(plano)}>
-                      Excluir
-                    </Button>
-                    <Button
-                      variant={activeCode === plano.code ? "primary" : "secondary"}
-                      onClick={() => setActiveCode(plano.code)}
-                    >
-                      Editar
-                    </Button>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-
-          {!planList.length && <p className="pa-placeholder">Nenhum plano cadastrado ainda.</p>}
-        </section>
-
-        <section className="panel pa-editor-panel">
-          {!draft ? (
-            <p className="pa-placeholder">Escolha um plano na lista para editar, ou crie um novo.</p>
-          ) : (
+        <DataView
+          rows={linhas}
+          rowKey={(plano) => plano.code}
+          loading={plans === null && !loadError}
+          error={loadError}
+          defaultSort={{ key: "posicao", dir: "asc" }}
+          searchPlaceholder="Buscar por nome ou código"
+          caption="Planos vendidos pela plataforma"
+          filters={[
+            {
+              key: "status",
+              label: "Status",
+              type: "select",
+              options: [
+                { value: "ativo", label: "Ativo" },
+                { value: "inativo", label: "Inativo" },
+              ],
+              match: (plano, valor) => (plano.is_active ? "ativo" : "inativo") === valor,
+            },
+          ]}
+          columns={[
+            { key: "posicao", label: "Ordem", align: "right", searchable: false, value: (p) => p.posicao },
+            {
+              key: "name",
+              label: "Nome",
+              value: (p) => p.name || "",
+              render: (p) => (
+                <>
+                  {p.name || "—"} {p.is_recommended && <StatusBadge tone="info">Recomendado</StatusBadge>}
+                </>
+              ),
+            },
+            {
+              key: "code",
+              label: "Código",
+              value: (p) => p.code || "",
+              render: (p) => <code>{p.code}</code>,
+            },
+            {
+              key: "price_cents",
+              label: "Preço",
+              align: "right",
+              searchable: false,
+              // Ordena pelos CENTAVOS: "R$ 1.499,90" ordenado como texto ficaria
+              // antes de "R$ 9,90".
+              value: (p) => Number(p.price_cents || 0),
+              render: (p) => formatarPreco(p.price_cents),
+            },
+            {
+              key: "features",
+              label: "Recursos",
+              align: "right",
+              searchable: false,
+              value: (p) => asArray(p.features).length,
+              render: (p) => asArray(p.features).length,
+            },
+            {
+              key: "subscribers",
+              label: "Assinantes",
+              align: "right",
+              searchable: false,
+              value: (p) => Number(p.subscribers || 0),
+              render: (p) => Number(p.subscribers || 0),
+            },
+            {
+              key: "is_active",
+              label: "Status",
+              value: (p) => (p.is_active ? "Ativo" : "Inativo"),
+              render: (p) => (
+                <StatusBadge tone={p.is_active ? "ok" : "neutral"}>{p.is_active ? "Ativo" : "Inativo"}</StatusBadge>
+              ),
+            },
+          ]}
+          actions={(plano) => (
             <>
-              <div className="panel-heading">
-                <div>
-                  <h2>{criando ? "Novo plano" : planoAtivo?.name}</h2>
-                  <span>
-                    {criando
-                      ? "O plano nasce ativo e entra no fim da vitrine."
-                      : `${plural(planoAtivo?.subscribers ?? 0, "clínica assina", "clínicas assinam")} este plano.`}
-                  </span>
-                </div>
-                <div className="pa-editor-actions">
-                  <Button
-                    variant="secondary"
-                    disabled={!activeDirty}
-                    onClick={() => setDescartando(activeCode)}
-                  >
-                    Descartar
-                  </Button>
-                  <Button disabled={!activeDirty || salvando} onClick={() => salvar()}>
-                    {salvando ? "Salvando…" : criando ? "Criar plano" : "Salvar plano"}
-                  </Button>
-                </div>
-              </div>
-
-              {activeDirty && (
-                <p className="pa-unsaved-inline" role="status">
-                  Alterações não salvas neste plano.
-                </p>
-              )}
-
-              <div className="stack pa-form">
-                <div className="form-grid">
-                  <Input label="Nome do plano" value={draft.name} onChange={(value) => editarRascunho({ name: value })} />
-                  {criando ? (
-                    <Input
-                      label="Código"
-                      value={draft.code}
-                      onChange={(value) => editarRascunho({ code: value.toLowerCase() })}
-                    />
-                  ) : (
-                    <div className="pa-code-lock">
-                      <span className="pa-code-label">Código</span>
-                      <code>{draft.code}</code>
-                    </div>
-                  )}
-                </div>
-                <p className="pa-hint">
-                  {criando
-                    ? 'De 2 a 30 caracteres, começando por letra minúscula: letras, números, "-" e "_" (ex.: "studio_plus"). ' +
-                      "O código NÃO poderá ser alterado depois: as assinaturas das clínicas passam a apontar para ele."
-                    : "O código não muda depois de criado — as assinaturas das clínicas apontam para ele. " +
-                      "Para trocar, crie um plano novo e migre as clínicas."}
-                </p>
-
-                <div className="form-grid">
-                  <Input label="Preço mensal (R$)" value={draft.price} onChange={(value) => editarRascunho({ price: value })} />
-                  <Input
-                    type="number"
-                    label="Dias de teste grátis"
-                    value={draft.trial_days}
-                    onChange={(value) => editarRascunho({ trial_days: value })}
-                  />
-                </div>
-                <p className={`pa-hint${precoPrevisto?.erro ? " is-error" : ""}`}>
-                  {precoPrevisto?.erro
-                    ? precoPrevisto.erro
-                    : `Será cobrado ${formatarPreco(precoPrevisto?.centavos)} por mês de cada clínica. ` +
-                      "Digite em reais, com vírgula nos centavos."}
-                </p>
-
-                <div className="form-grid">
-                  <Input
-                    label="Público-alvo"
-                    value={draft.audience}
-                    onChange={(value) => editarRascunho({ audience: value })}
-                  />
-                  <Input label="Selo" value={draft.badge} onChange={(value) => editarRascunho({ badge: value })} />
-                </div>
-                <p className="pa-hint">
-                  O público-alvo é a linha curta abaixo do nome na vitrine (ex.: "Para quem atende sozinho"). O selo é a
-                  etiqueta no canto do card (ex.: "Mais vendido").
-                </p>
-
-                <Textarea
-                  label="Descrição"
-                  value={draft.description}
-                  rows={4}
-                  onChange={(value) => editarRascunho({ description: value })}
-                />
-
-                <Checkbox
-                  label="Destacar como recomendado na vitrine"
-                  checked={Boolean(draft.is_recommended)}
-                  onChange={(value) => editarRascunho({ is_recommended: value })}
-                />
-
-                <section className="pa-block">
-                  <div className="pa-block-head">
-                    <h3>Recursos liberados</h3>
-                    <span>
-                      {marcadas.size} de {asArray(featureCatalog).length} marcados
-                    </span>
-                  </div>
-                  <p className="pa-hint">
-                    Cada caixinha libera uma tela dentro do sistema da clínica. Desmarcar um recurso de um plano que já
-                    tem assinantes tira o acesso delas na próxima carga da tela.
-                  </p>
-                  <div className="pa-groups">
-                    {grupos.map((grupo) => {
-                      const total = grupo.itens.length;
-                      const marcadasNoGrupo = grupo.itens.filter((item) => marcadas.has(item.key)).length;
-                      return (
-                        <fieldset className="pa-group" key={grupo.nome}>
-                          <legend>
-                            {grupo.nome} <span>({marcadasNoGrupo}/{total})</span>
-                          </legend>
-                          <Checkbox
-                            label={marcadasNoGrupo === total ? "Desmarcar o grupo inteiro" : "Marcar o grupo inteiro"}
-                            checked={marcadasNoGrupo === total}
-                            onChange={(value) => alternarGrupo(grupo.itens, value)}
-                          />
-                          <div className="pa-group-items">
-                            {grupo.itens.map((item) => (
-                              <Checkbox
-                                key={item.key}
-                                label={item.label}
-                                checked={marcadas.has(item.key)}
-                                onChange={(value) => alternarFeature(item.key, value)}
-                              />
-                            ))}
-                          </div>
-                        </fieldset>
-                      );
-                    })}
-                  </div>
-                </section>
-
-                <section className="pa-block">
-                  <div className="pa-block-head">
-                    <h3>Limites do plano</h3>
-                  </div>
-                  <p className="pa-hint pa-hint-strong">
-                    Campo VAZIO = ILIMITADO. Zero não libera: zero bloqueia a cota por completo.
-                  </p>
-                  <div className="pa-limits">
-                    {asArray(limitCatalog).map((item) => {
-                      const valor = String(asObject(draft.limits)[item.key] ?? "");
-                      return (
-                        <div className="pa-limit" key={item.key}>
-                          <Input
-                            type="number"
-                            label={`${item.label} (${item.unit})`}
-                            value={valor}
-                            onChange={(value) => definirLimite(item.key, value)}
-                          />
-                          <p className="pa-hint">
-                            {item.hint} {valor === "" ? "Hoje: ilimitado." : `Hoje: ${valor} ${item.unit}.`}
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </section>
-              </div>
+              <button type="button" className="pa-row-btn" onClick={() => abrirFormulario(plano)}>
+                Editar
+              </button>
+              <button
+                type="button"
+                className="pa-row-btn"
+                disabled={ocupado === plano.code}
+                onClick={() => alternarAtivo(plano)}
+              >
+                {plano.is_active ? "Desativar" : "Ativar"}
+              </button>
+              <button
+                type="button"
+                className="pa-row-btn"
+                disabled={ocupado === plano.code}
+                onClick={() => abrirExclusao(plano)}
+              >
+                Excluir
+              </button>
+              <button
+                type="button"
+                className="pa-row-btn"
+                disabled={plano.posicao === 1}
+                aria-label={`Mover o plano "${plano.name}" para cima na vitrine`}
+                onClick={() => moverPlano(plano, -1)}
+              >
+                <ArrowUp size={15} />
+              </button>
+              <button
+                type="button"
+                className="pa-row-btn"
+                disabled={plano.posicao === planList.length}
+                aria-label={`Mover o plano "${plano.name}" para baixo na vitrine`}
+                onClick={() => moverPlano(plano, 1)}
+              >
+                <ArrowDown size={15} />
+              </button>
             </>
           )}
-        </section>
-      </div>
+          empty="Nenhum plano cadastrado ainda."
+          emptyFiltered="Nenhum plano corresponde à busca ou ao filtro."
+        />
+      </section>
 
+      {/* Formulário do plano. Uma edição por vez — daí não haver mais mapa de
+          rascunhos —, e fechar com alteração pendente passa pela confirmação de
+          descarte logo abaixo. */}
       <Modal
-        open={Boolean(descartando)}
-        title="Descartar alterações"
-        size="sm"
-        onClose={() => setDescartando("")}
+        open={Boolean(editando)}
+        size="lg"
+        title={criando ? "Novo plano" : `Editar "${editando?.base?.name || editando?.code}"`}
+        subtitle={
+          criando
+            ? "O plano nasce ativo e entra no fim da vitrine."
+            : `Código ${editando?.code} · ${plural(editando?.subscribers ?? 0, "clínica assina", "clínicas assinam")} este plano.`
+        }
+        onClose={() => fecharFormulario()}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setDescartando("")}>
+            <Button variant="secondary" onClick={() => fecharFormulario()}>
+              Cancelar
+            </Button>
+            <Button disabled={!sujo || salvando} onClick={() => salvar()}>
+              {salvando ? "Salvando…" : criando ? "Criar plano" : "Salvar plano"}
+            </Button>
+          </>
+        }
+      >
+        {draft && (
+          <>
+            {formErro && <span className="form-error">{formErro}</span>}
+
+            <div className="form-grid">
+              <Input label="Nome do plano" value={draft.name} onChange={(value) => editarRascunho({ name: value })} />
+              {criando && (
+                <Input
+                  label="Código"
+                  value={draft.code}
+                  onChange={(value) => editarRascunho({ code: value.toLowerCase() })}
+                />
+              )}
+            </div>
+            <p className="field-hint">
+              {criando
+                ? 'De 2 a 30 caracteres, começando por letra minúscula: letras, números, "-" e "_" (ex.: "studio_plus"). ' +
+                  "O código NÃO poderá ser alterado depois: as assinaturas das clínicas passam a apontar para ele."
+                : "O código não muda depois de criado — as assinaturas das clínicas apontam para ele. " +
+                  "Para trocar, crie um plano novo e migre as clínicas."}
+            </p>
+
+            <div className="form-grid">
+              <Input label="Preço mensal (R$)" value={draft.price} onChange={(value) => editarRascunho({ price: value })} />
+              <Input
+                type="number"
+                label="Dias de teste grátis"
+                value={draft.trial_days}
+                onChange={(value) => editarRascunho({ trial_days: value })}
+              />
+            </div>
+            {/* Prévia ao vivo do que será cobrado: é o único lugar onde o
+                super-admin confere a conversão reais -> centavos antes de gravar. */}
+            <p className={precoPrevisto?.erro ? "form-error" : "field-hint"}>
+              {precoPrevisto?.erro
+                ? precoPrevisto.erro
+                : `Será cobrado ${formatarPreco(precoPrevisto?.centavos)} por mês de cada clínica. ` +
+                  "Digite em reais, com vírgula nos centavos."}
+            </p>
+
+            <div className="form-grid">
+              <Input label="Público-alvo" value={draft.audience} onChange={(value) => editarRascunho({ audience: value })} />
+              <Input label="Selo" value={draft.badge} onChange={(value) => editarRascunho({ badge: value })} />
+            </div>
+            <p className="field-hint">
+              O público-alvo é a linha curta abaixo do nome na vitrine (ex.: "Para quem atende sozinho"). O selo é a
+              etiqueta no canto do card (ex.: "Mais vendido").
+            </p>
+
+            <Textarea
+              label="Descrição"
+              value={draft.description}
+              rows={3}
+              onChange={(value) => editarRascunho({ description: value })}
+            />
+
+            <Checkbox
+              label="Destacar como recomendado na vitrine"
+              checked={Boolean(draft.is_recommended)}
+              onChange={(value) => editarRascunho({ is_recommended: value })}
+            />
+
+            <section className="panel">
+              <div className="panel-heading">
+                <h3>Recursos liberados</h3>
+                <span>
+                  {marcadas.size} de {asArray(featureCatalog).length} marcados
+                </span>
+              </div>
+              <div className="stack">
+                <p className="field-hint">
+                  Cada caixinha libera uma tela dentro do sistema da clínica. Desmarcar um recurso de um plano que já tem
+                  assinantes tira o acesso delas na próxima carga da tela.
+                </p>
+                {/* Com ~35 caixinhas, o agrupamento é o que torna a marcação
+                    possível: sem ele vira uma lista única e ninguém confere. */}
+                <div className="form-grid">
+                  {grupos.map((grupo) => {
+                    const total = grupo.itens.length;
+                    const marcadasNoGrupo = grupo.itens.filter((item) => marcadas.has(item.key)).length;
+                    return (
+                      <fieldset className="pa-group" key={grupo.nome}>
+                        <legend>
+                          {grupo.nome} ({marcadasNoGrupo}/{total})
+                        </legend>
+                        <Checkbox
+                          label={marcadasNoGrupo === total ? "Desmarcar o grupo inteiro" : "Marcar o grupo inteiro"}
+                          checked={marcadasNoGrupo === total}
+                          onChange={(value) => alternarGrupo(grupo.itens, value)}
+                        />
+                        {grupo.itens.map((item) => (
+                          <Checkbox
+                            key={item.key}
+                            label={item.label}
+                            checked={marcadas.has(item.key)}
+                            onChange={(value) => alternarFeature(item.key, value)}
+                          />
+                        ))}
+                      </fieldset>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
+
+            <section className="panel">
+              <div className="panel-heading">
+                <h3>Limites do plano</h3>
+              </div>
+              <div className="stack">
+                {/* "Vazio = ilimitado" é a regra que, se ficar subentendida, faz
+                    o super-admin digitar 0 achando que libera — e zerar a cota de
+                    uma clínica pagante. Por isso vai num bloco de alerta, e não
+                    numa linha de texto de apoio. */}
+                <AlertBlock icon={AlertTriangle} title="Campo vazio = ilimitado">
+                  <p className="field-hint">Zero não libera: zero bloqueia a cota por completo.</p>
+                </AlertBlock>
+                <div className="form-grid">
+                  {asArray(limitCatalog).map((item) => {
+                    const valor = String(asObject(draft.limits)[item.key] ?? "");
+                    return (
+                      <div className="pa-limit" key={item.key}>
+                        <Input
+                          type="number"
+                          label={`${item.label} (${item.unit})`}
+                          value={valor}
+                          onChange={(value) => definirLimite(item.key, value)}
+                        />
+                        <p className="field-hint">
+                          {item.hint} {valor === "" ? "Hoje: ilimitado." : `Hoje: ${valor} ${item.unit}.`}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
+          </>
+        )}
+      </Modal>
+
+      {/* Os diálogos abaixo do formulário no JSX ficam POR CIMA dele na tela:
+          `.modal-backdrop` usa o mesmo z-index, então quem vem depois vence. */}
+
+      <Modal
+        open={confirmandoDescarte}
+        title="Descartar alterações"
+        size="sm"
+        onClose={() => setConfirmandoDescarte(false)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirmandoDescarte(false)}>
               Continuar editando
             </Button>
-            <Button
-              variant="danger"
-              onClick={() => {
-                descartarRascunho(descartando);
-                if (descartando === NOVO) setActiveCode("");
-                setDescartando("");
-              }}
-            >
+            <Button variant="danger" onClick={() => fecharFormulario({ forcar: true })}>
               Descartar
             </Button>
           </>
         }
       >
         <p>
-          As alterações não salvas de "{nomeDoPlano(descartando)}" serão perdidas e o plano volta ao que está gravado.
+          As alterações não salvas de "{editando?.base?.name || "Novo plano"}" serão perdidas e o plano volta ao que está
+          gravado.
         </p>
       </Modal>
 
@@ -909,16 +894,16 @@ export function PlansAdmin({ token, onUnauthorized }) {
         }
       >
         <p>{confirmandoPreco?.mensagem}</p>
-        <div className="pa-price-diff">
-          <div>
-            <span>Preço atual</span>
-            <strong>{formatarPreco(confirmandoPreco?.price_cents_atual)}</strong>
+        <dl className="platform-facts">
+          <div className="platform-fact">
+            <dt>Preço atual</dt>
+            <dd>{formatarPreco(confirmandoPreco?.price_cents_atual)}</dd>
           </div>
-          <div>
-            <span>Preço novo</span>
-            <strong>{formatarPreco(confirmandoPreco?.price_cents_novo)}</strong>
+          <div className="platform-fact">
+            <dt>Preço novo</dt>
+            <dd>{formatarPreco(confirmandoPreco?.price_cents_novo)}</dd>
           </div>
-        </div>
+        </dl>
         <p>
           {plural(confirmandoPreco?.subscribers ?? 0, "clínica usa", "clínicas usam")} este plano, e{" "}
           {plural(confirmandoPreco?.cobrando ?? 0, "assinatura ativa será recobrada", "assinaturas ativas serão recobradas")}{" "}
@@ -1007,16 +992,16 @@ function ListaDeClinicas({ uso }) {
   if (!clinicas.length) return null;
   const amostra = clinicas.slice(0, 8);
   return (
-    <div className="pa-usage">
+    <div>
       <strong>{plural(uso?.total ?? clinicas.length, "clínica afetada", "clínicas afetadas")}</strong>
       <ul>
         {amostra.map((clinica) => (
           <li key={clinica.id ?? clinica.slug}>
-            {clinica.name} <span>({clinica.subscription_status || "sem assinatura"})</span>
+            {clinica.name} <span className="field-hint">({clinica.subscription_status || "sem assinatura"})</span>
           </li>
         ))}
       </ul>
-      {clinicas.length > amostra.length && <span>e mais {clinicas.length - amostra.length}…</span>}
+      {clinicas.length > amostra.length && <p className="field-hint">e mais {clinicas.length - amostra.length}…</p>}
     </div>
   );
 }
@@ -1027,19 +1012,23 @@ function ListaDeClinicas({ uso }) {
  * Fica na tela até ser dispensado à mão, e não vira "toast": cada falha é uma
  * clínica que continua sendo cobrada no valor ANTIGO até alguém agir. Um aviso
  * que some sozinho depois de 4 segundos é um aviso que ninguém leu.
+ *
+ * Com falhas ele usa a moldura vermelha compartilhada (`.platform-danger`) e
+ * gruda no topo (`.platform-sticky-warning`) para continuar visível enquanto a
+ * lista rola; sem falhas é um `.panel` comum, porque aí não há nada a corrigir.
  */
 function RelatorioPropagacao({ dados, onDispensar }) {
   const relatorio = asObject(dados?.relatorio);
   const falhas = Number(relatorio.falhas || 0);
   const erros = asArray(relatorio.erros);
-  return (
-    <div className={`pa-propagacao${falhas ? " is-falha" : ""}`} role={falhas ? "alert" : "status"}>
-      <div className="pa-propagacao-head">
-        <strong>
+  const corpo = (
+    <>
+      <div className="panel-heading">
+        <h3>
           {falhas
             ? `Atenção: ${plural(falhas, "assinatura NÃO recebeu", "assinaturas NÃO receberam")} o preço novo`
             : "Preço propagado para as assinaturas"}
-        </strong>
+        </h3>
         <Button variant="ghost" onClick={onDispensar}>
           {falhas ? "Já anotei, dispensar" : "Dispensar"}
         </Button>
@@ -1066,6 +1055,24 @@ function RelatorioPropagacao({ dados, onDispensar }) {
         </ul>
       )}
       {falhas > 0 && <p>Corrija a assinatura no gateway ou salve o plano de novo para tentar propagar outra vez.</p>}
+    </>
+  );
+
+  if (!falhas) {
+    return (
+      <section className="panel" role="status">
+        {corpo}
+      </section>
+    );
+  }
+  // O invólucro existe só para dar FUNDO OPACO ao aviso grudado no topo: o
+  // vermelho de `.platform-danger` é translúcido de propósito, e sem base as
+  // linhas que rolam por baixo atravessam o texto que precisa ser lido.
+  return (
+    <div className="platform-sticky-warning pa-sticky">
+      <section className="platform-danger" role="alert">
+        {corpo}
+      </section>
     </div>
   );
 }

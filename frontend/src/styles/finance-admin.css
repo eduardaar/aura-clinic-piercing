@@ -1,421 +1,58 @@
-/* Financeiro da plataforma (painel do super-admin).
+/* Financeiro da plataforma — o que sobrou de CSS próprio.
  *
- * Camada própria, importada pelo próprio componente — mesma decisão do
- * plans-admin.css: styles.css já é gigante e compartilhado por todas as telas do
- * sistema, e mais um bloco lá aumentaria a chance de uma regra nova vazar para o
- * resto. Todas as classes usam o prefixo `fa-` pelo mesmo motivo.
+ * Antes eram 421 linhas com um sistema `fa-` inteiro: cartão de número, grupo
+ * com título, destaque, barra de participação, célula de duas linhas, erro.
+ * Tudo isso já existia em outro lugar — `.platform-metrics`/`.platform-metric`
+ * (platform-panel.css), `.form-section`, `.panel`, `.toolbar`,
+ * `.header-actions`, `.field-hint`, `.form-error` (styles.css) e
+ * `.platform-quota-bar` para a barra de participação. Aqui ficou só o que não
+ * tem equivalente: o gráfico SVG e duas ajudas de layout.
  *
- * As variáveis (--ink, --line, --brand, --muted…) vêm do tema global; aqui só há
- * layout e as duas cores de série do gráfico.
+ * `@layer telas` é a mesma camada dos outros CSS de tela: sem ela estas regras
+ * venceriam o appshell.css por acidente de ordem de importação.
  */
 
-.fa-root {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-width: 0;
+@layer telas {
+  /* Célula de duas linhas: nome + slug, telefone + e-mail. */
+  .fin-cell { display: grid; gap: 2px; min-width: 0; font-size: 12.5px; }
 
-  /* As duas séries do gráfico. Não são as cores de status (--ok/--danger): status
-     é reservado para estado, e aqui as duas séries são IDENTIDADES, não juízos —
-     "emitido" não é pior nem melhor que "recebido". O par foi validado para
-     daltonismo sobre fundo branco: separação ΔE 20,4 (protan) e 19,8 (tritan),
-     bem acima do piso de 8, com croma suficiente para nenhuma das duas ser lida
-     como cinza. Trocar uma delas exige revalidar o par. */
-  --fa-serie-recebido: #a87a34;
-  --fa-serie-emitido: #4a73b5;
-}
+  /* Contagem de clínicas por status: selo + rótulo, na mesma linha. */
+  .fin-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; font-size: 13px; }
 
-.fa-intro {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.fa-intro h2 {
-  margin: 0 0 4px;
-}
-
-.fa-intro p {
-  margin: 0;
-  max-width: 72ch;
-  color: var(--muted, #6b7280);
-  font-size: 14px;
-}
-
-.fa-controles {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 10px;
-}
-
-.fa-hint {
-  margin: 0;
-  color: var(--muted, #6b7280);
-  font-size: 12.5px;
-  line-height: 1.5;
-}
-
-.fa-bloco {
-  min-width: 0;
-}
-
-.fa-bloco-acoes {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 10px;
-}
-
-/* O seletor de janela/período mora no cabeçalho do bloco: o rótulo fica na
-   frente do campo para não empurrar a linha do título para baixo. */
-.fa-bloco-acoes label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-  font-size: 12.5px;
-  color: var(--muted, #6b7280);
-  white-space: nowrap;
-}
-
-.fa-bloco-acoes select {
-  width: auto;
-}
-
-.fa-erro {
-  margin: 12px 0 0;
-  padding: 12px 14px;
-  border: 1px solid rgba(184, 92, 92, 0.45);
-  border-radius: 12px;
-  background: rgba(184, 92, 92, 0.1);
-  color: #a2494a;
-  font-size: 13.5px;
-}
-
-/* --- Resumo ---------------------------------------------------------------- */
-
-.fa-resumo {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  margin-top: 12px;
-}
-
-.fa-grupo {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-/* Título de grupo com a régua: é ele que separa PROJEÇÃO de CAIXA. Sem essa
-   divisão visual os cinco números viram uma grade só, e grade única convida a
-   somar o que não se soma. */
-.fa-grupo-titulo {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 10px;
-  margin: 0;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--line, #e5e7eb);
-  font-size: 14px;
-}
-
-.fa-grupo-titulo span {
-  color: var(--muted, #6b7280);
-  font-size: 12.5px;
-  font-weight: 400;
-}
-
-.fa-cartoes {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-  gap: 12px;
-}
-
-.fa-cartao {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 14px;
-  border: 1px solid var(--line, #e5e7eb);
-  border-radius: 12px;
-  background: var(--surface, #fff);
-  min-width: 0;
-}
-
-.fa-cartao header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.fa-cartao-rotulo {
-  color: var(--muted, #6b7280);
-  font-size: 12.5px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
-
-.fa-cartao strong {
-  font-size: 24px;
-  line-height: 1.2;
-  /* Números de dinheiro alinham melhor comparados na vertical. */
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
-}
-
-.fa-cartao small,
-.fa-cartao p {
-  margin: 0;
-  color: var(--muted, #6b7280);
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-/* Indicador que o backend não sabe calcular. Fica visualmente apagado de
-   propósito: não é um número ruim, é a ausência de um número. */
-.fa-cartao-indisponivel {
-  border-style: dashed;
-  background: rgba(148, 163, 184, 0.08);
-}
-
-.fa-cartao-indisponivel strong {
-  font-size: 17px;
-  color: var(--muted, #6b7280);
-}
-
-.fa-status-linha {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-}
-
-.fa-status-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-}
-
-.fa-nota {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.fa-nota strong {
-  text-transform: capitalize;
-}
-
-/* --- Listas ---------------------------------------------------------------- */
-
-.fa-celula-clinica {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.fa-celula-clinica small {
-  color: var(--muted, #6b7280);
-  font-size: 12px;
-}
-
-.fa-contato {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 12.5px;
-}
-
-.fa-contato a {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-}
-
-.fa-contato small {
-  color: var(--muted, #6b7280);
-}
-
-.fa-sub {
-  color: var(--muted, #6b7280);
-  font-size: 11.5px;
-}
-
-/* Total em dinheiro da janela: é o número principal do bloco, então tem tamanho
-   de manchete e não de célula de tabela. */
-.fa-destaque {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin: 12px 0;
-  padding: 12px 14px;
-  border: 1px solid var(--line, #e5e7eb);
-  border-radius: 12px;
-  background: rgba(148, 163, 184, 0.08);
-}
-
-.fa-destaque span {
-  color: var(--muted, #6b7280);
-  font-size: 12.5px;
-}
-
-.fa-destaque strong {
-  font-size: 26px;
-  font-variant-numeric: tabular-nums;
-}
-
-.fa-destaque small {
-  color: var(--muted, #6b7280);
-  font-size: 12px;
-}
-
-.fa-participacao {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 120px;
-}
-
-.fa-participacao i {
-  display: block;
-  height: 8px;
-  min-width: 2px;
-  border-radius: 4px;
-  background: var(--fa-serie-recebido);
-}
-
-.fa-participacao span {
-  font-size: 12.5px;
-  font-variant-numeric: tabular-nums;
-}
-
-/* --- Gráfico --------------------------------------------------------------- */
-
-.fa-grafico {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 12px;
-  min-width: 0;
-}
-
-.fa-legenda {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 16px;
-  font-size: 12.5px;
-}
-
-.fa-legenda-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* Amostra de cor da legenda. A identidade da série NUNCA fica só na cor: o
-   rótulo ao lado é que nomeia a série, e a tabela abaixo repete tudo em texto. */
-.fa-swatch {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
-}
-
-.fa-swatch-recebido {
-  background: var(--fa-serie-recebido);
-}
-
-.fa-swatch-emitido {
-  background: var(--fa-serie-emitido);
-}
-
-.fa-legenda-leitura {
-  margin-left: auto;
-  color: var(--muted, #6b7280);
-  font-variant-numeric: tabular-nums;
-}
-
-.fa-svg {
-  width: 100%;
-  height: auto;
-  max-height: 260px;
-  overflow: visible;
-}
-
-.fa-eixo {
-  stroke: var(--line, #e5e7eb);
-  stroke-width: 1;
-}
-
-/* Grade recessiva: serve de referência de escala, não compete com as barras. */
-.fa-grade {
-  stroke: var(--line, #e5e7eb);
-  stroke-width: 1;
-  stroke-dasharray: 3 4;
-}
-
-.fa-escala {
-  fill: var(--muted, #6b7280);
-  font-size: 9px;
-}
-
-.fa-mes {
-  fill: var(--muted, #6b7280);
-  font-size: 9px;
-}
-
-.fa-barra-recebido {
-  fill: var(--fa-serie-recebido);
-}
-
-.fa-barra-emitido {
-  fill: var(--fa-serie-emitido);
-}
-
-/* Alvo do cursor: cobre a coluna inteira, porque acertar uma barra de 19
-   unidades com o mouse (ou com o dedo) é pedir demais. */
-.fa-alvo {
-  fill: transparent;
-  cursor: pointer;
-}
-
-.fa-coluna.is-foco .fa-alvo {
-  fill: rgba(148, 163, 184, 0.14);
-}
-
-.fa-coluna .fa-alvo:focus-visible {
-  outline: 2px solid var(--brand, #b8894b);
-  outline-offset: -2px;
-}
-
-.fa-tabela-serie summary {
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--muted, #6b7280);
-}
-
-.fa-tabela-serie .table-wrap {
-  margin-top: 8px;
-}
-
-@media (max-width: 720px) {
-  .fa-legenda-leitura {
-    margin-left: 0;
-    width: 100%;
+  /* Ação de linha em forma de LINK (abrir fatura, WhatsApp): `.table-actions`
+     do styles.css só desenha `<button>`, e um link nu ao lado de um botão é a
+     inconsistência que se vê primeiro. */
+  .fin-acao {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: .55rem .75rem; border: 1px solid rgba(200, 169, 106, .35); border-radius: 999px;
+    background: var(--white); color: var(--ink); font-size: .78rem; font-weight: 700; text-decoration: none;
   }
+  .fin-acao:hover { border-color: var(--gold); background: rgba(200, 169, 106, .12); }
 
-  .fa-cartao strong {
-    font-size: 21px;
-  }
+  /* --- Gráfico de receita mês a mês ------------------------------------- */
+
+  /* As duas séries. Não são as cores de status (--ok/--danger): status é juízo,
+     e aqui "emitido" não é pior nem melhor que "recebido". O par foi validado
+     para daltonismo sobre fundo branco (ΔE 20,4 protan / 19,8 tritan, bem acima
+     do piso de 8) — trocar uma das duas exige revalidar o par. */
+  .fin-chart { --serie-recebido: #a87a34; --serie-emitido: #4a73b5; display: grid; gap: 10px; min-width: 0; }
+  .fin-chart svg { width: 100%; height: auto; max-height: 260px; overflow: visible; }
+  .fin-chart summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+
+  /* A MESMA classe pinta a amostra da legenda (background) e a barra (fill):
+     assim legenda e gráfico não divergem por descuido de edição. */
+  .fin-recebido { background: var(--serie-recebido); fill: var(--serie-recebido); }
+  .fin-emitido { background: var(--serie-emitido); fill: var(--serie-emitido); }
+
+  .fin-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; font-size: 12.5px; }
+  .fin-legend i { display: inline-block; width: 12px; height: 12px; margin-right: 6px; border-radius: 3px; }
+
+  .fin-axis { stroke: var(--line); }
+  .fin-tick { fill: var(--muted); font-size: 9px; }
+
+  /* Alvo do cursor: a coluna inteira, porque acertar uma barra de 19 unidades
+     com o mouse (ou com o dedo) é pedir demais. */
+  .fin-hit { fill: transparent; cursor: pointer; }
+  .fin-col.is-foco .fin-hit { fill: rgba(148, 163, 184, .14); }
+  .fin-hit:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
 }

@@ -1,403 +1,51 @@
-/* Gestão de planos (painel da plataforma).
+/* Gestão de planos (painel da plataforma) — só o que NÃO existia pronto.
  *
- * Camada própria, importada pelo próprio componente: styles.css já é gigante e
- * compartilhado por todas as telas do sistema, e mais um bloco lá aumentaria a
- * chance de uma regra nova vazar para o resto. Todas as classes usam o prefixo
- * `pa-` pelo mesmo motivo.
+ * A tela tinha 403 linhas de CSS próprio porque desenhava tudo à mão. Hoje a
+ * listagem é <DataView>, o formulário é <Modal>, os blocos são `.panel` +
+ * `.panel-heading`, o comparativo de preço é `.platform-facts`, o relatório de
+ * propagação é `.platform-danger` + `.platform-sticky-warning`, o texto de
+ * apoio é `.field-hint` e o código do plano é `<code>` — todos globais.
  *
- * As variáveis (--ink, --line, --brand…) vêm do tema global; aqui só há layout.
+ * `@layer telas` é a mesma camada dos outros CSS de tela: sem camada, estas
+ * regras venceriam até o appshell.css por acidente de ordem de importação.
  */
 
-.pa-root {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-width: 0;
-}
-
-.pa-intro h2 {
-  margin: 0 0 4px;
-}
-
-.pa-intro p {
-  margin: 0;
-  max-width: 72ch;
-  color: var(--muted, #6b7280);
-  font-size: 14px;
-}
-
-.pa-alerta {
-  margin: 0;
-  font-size: 13.5px;
-  line-height: 1.5;
-}
-
-.pa-unsaved-banner,
-.pa-unsaved-inline {
-  margin: 0;
-  padding: 10px 14px;
-  border: 1px solid rgba(202, 138, 4, 0.35);
-  border-radius: 10px;
-  background: rgba(250, 204, 21, 0.12);
-  color: #92400e;
-  font-size: 14px;
-}
-
-/* Relatório de propagação de preço. Com falhas ele vira vermelho e some só no
-   clique: cada linha é uma clínica ainda cobrada no valor antigo. */
-.pa-propagacao {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px 14px;
-  border: 1px solid var(--line, #e5e7eb);
-  border-radius: 12px;
-  background: rgba(148, 163, 184, 0.12);
-  font-size: 13.5px;
-}
-
-.pa-propagacao.is-falha {
-  border-color: rgba(185, 28, 28, 0.45);
-  background: rgba(248, 113, 113, 0.12);
-}
-
-.pa-propagacao-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.pa-propagacao p {
-  margin: 0;
-}
-
-.pa-propagacao ul {
-  margin: 0;
-  padding-left: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-/* Duas colunas: a lista de planos continua visível durante a edição.
-   `minmax(0, …)` impede que um campo largo empurre a coluna para fora da tela. */
-.pa-columns {
-  display: grid;
-  grid-template-columns: minmax(0, 400px) minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
-}
-
-@media (max-width: 1100px) {
-  .pa-columns {
-    grid-template-columns: minmax(0, 1fr);
+@layer telas {
+  /* Ações da linha do DataView. `inline-flex` porque as setas de reordenar são
+   * só ícone e as demais só texto — sem isso as duas ficam em alturas
+   * diferentes. (O estado desabilitado já vem do `button:disabled` global.) */
+  .pa-row-btn {
+    display: inline-flex;
+    align-items: center;
   }
-}
 
-.pa-list {
-  list-style: none;
-  margin: 12px 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
+  /* Um limite = campo + a frase que diz o valor de hoje ("Hoje: ilimitado"). */
+  .pa-limit {
+    display: grid;
+    gap: 6px;
+  }
 
-.pa-item {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid var(--line, #e5e7eb);
-  border-radius: 12px;
-  background: var(--surface, #fff);
-}
+  /* Grupo de recursos: <fieldset> vem com borda "groove" do navegador. */
+  .pa-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    margin: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
 
-.pa-item.is-active {
-  border-color: var(--brand, #b8894b);
-  box-shadow: 0 0 0 1px var(--brand, #b8894b) inset;
-}
+  .pa-group legend {
+    padding: 0 4px;
+    font-size: 13px;
+    font-weight: 700;
+  }
 
-/* Plano inativo continua legível — precisa ser encontrado para ser reativado —,
-   só perde destaque. */
-.pa-item.is-off {
-  opacity: 0.72;
-}
-
-.pa-item-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-}
-
-.pa-item-position {
-  flex: 0 0 auto;
-  width: 26px;
-  height: 26px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--line, #e5e7eb);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.pa-item-title {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.pa-item-title span {
-  color: var(--muted, #6b7280);
-  font-size: 12.5px;
-}
-
-.pa-item-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  justify-content: flex-end;
-}
-
-.pa-item-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  justify-content: space-between;
-}
-
-.pa-item-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.pa-move {
-  display: inline-flex;
-  gap: 6px;
-}
-
-.pa-move .icon-button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.pa-new-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  margin-top: 12px;
-  padding: 10px 12px;
-  border: 1px dashed var(--brand, #b8894b);
-  border-radius: 12px;
-  background: transparent;
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
-}
-
-.pa-new-row.is-active {
-  background: rgba(184, 137, 75, 0.1);
-}
-
-.pa-editor-panel {
-  min-width: 0;
-}
-
-.pa-editor-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.pa-placeholder {
-  margin: 0;
-  padding: 24px 0;
-  color: var(--muted, #6b7280);
-  text-align: center;
-}
-
-.pa-form {
-  gap: 14px;
-}
-
-.pa-hint {
-  margin: 0;
-  color: var(--muted, #6b7280);
-  font-size: 12.5px;
-  line-height: 1.45;
-}
-
-.pa-hint.is-error {
-  color: var(--danger, #b91c1c);
-  font-weight: 600;
-}
-
-/* "Vazio = ilimitado" é a regra que, se ficar subentendida, faz o super-admin
-   digitar 0 achando que libera — e zerar a cota de uma clínica pagante. */
-.pa-hint-strong {
-  padding: 8px 12px;
-  border: 1px solid rgba(202, 138, 4, 0.35);
-  border-radius: 10px;
-  background: rgba(250, 204, 21, 0.12);
-  color: #92400e;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.pa-code-lock {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  justify-content: center;
-}
-
-.pa-code-label {
-  font-size: 13px;
-}
-
-.pa-code-lock code,
-.pa-item-title code {
-  padding: 1px 6px;
-  border-radius: 6px;
-  background: rgba(148, 163, 184, 0.18);
-  font-size: 12.5px;
-}
-
-.pa-block {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 14px;
-  border: 1px solid var(--line, #e5e7eb);
-  border-radius: 12px;
-}
-
-.pa-block-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.pa-block-head h3 {
-  margin: 0;
-  font-size: 15px;
-}
-
-.pa-block-head span {
-  color: var(--muted, #6b7280);
-  font-size: 12.5px;
-}
-
-/* Com ~35 caixinhas, o agrupamento é o que torna a marcação possível: colunas
-   largas o bastante para o rótulo inteiro, sem virar uma lista única e enorme. */
-.pa-groups {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 12px;
-}
-
-.pa-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--line, #e5e7eb);
-  border-radius: 10px;
-  min-width: 0;
-}
-
-.pa-group legend {
-  padding: 0 4px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.pa-group legend span {
-  color: var(--muted, #6b7280);
-  font-weight: 400;
-}
-
-.pa-group > .checkbox-field {
-  padding-bottom: 6px;
-  border-bottom: 1px dashed var(--line, #e5e7eb);
-  font-size: 12.5px;
-}
-
-.pa-group-items {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.pa-limits {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 12px;
-}
-
-.pa-limit {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.pa-price-diff {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin: 10px 0;
-}
-
-.pa-price-diff div {
-  flex: 1 1 140px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 10px 12px;
-  border: 1px solid var(--line, #e5e7eb);
-  border-radius: 10px;
-}
-
-.pa-price-diff span {
-  color: var(--muted, #6b7280);
-  font-size: 12.5px;
-}
-
-.pa-price-diff strong {
-  font-size: 18px;
-}
-
-.pa-usage {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 10px;
-  padding: 10px 12px;
-  border: 1px solid var(--line, #e5e7eb);
-  border-radius: 10px;
-  font-size: 13px;
-}
-
-.pa-usage ul {
-  margin: 0;
-  padding-left: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.pa-usage span {
-  color: var(--muted, #6b7280);
+  /* Separa o "marcar o grupo inteiro" dos recursos que ele controla. */
+  .pa-group > .checkbox-field:first-of-type {
+    padding-bottom: 6px;
+    border-bottom: 1px dashed var(--line);
+  }
 }

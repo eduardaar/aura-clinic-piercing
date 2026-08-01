@@ -147,8 +147,16 @@
     align-items: start;
   }
 
+  /* A coluna de 320px foi dimensionada para uma lista de nomes. Quando a
+   * listagem tem muitas colunas (chamados de suporte), ela precisa de espaço —
+   * senão o conteúdo rola dentro de uma faixa estreita e fica ilegível. */
+  .platform-split--wide {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
   @media (max-width: 1100px) {
-    .platform-split {
+    .platform-split,
+    .platform-split--wide {
       grid-template-columns: minmax(0, 1fr);
     }
   }
@@ -213,6 +221,12 @@
     border: 1px dashed var(--line);
   }
 
+  /* Faixa de atenção (>=80%). Só "dentro" e "acima" não bastava: acima da cota
+   * já é tarde — quem ainda dá para avisar é quem está chegando perto. */
+  .platform-quota-bar.is-near > span {
+    background: #c98a04;
+  }
+
   .platform-quota-bar.is-over > span {
     background: #c0392b;
   }
@@ -236,11 +250,40 @@
     color: #a5342a;
   }
 
+  /* "Leia antes de clicar": sem assinatura, cota estourada, simulação
+   * indisponível. Âmbar e não vermelho porque NENHUMA dessas situações é erro —
+   * vermelho competiria com `.platform-danger` e gastaria o alarme à toa. */
+  .platform-notice {
+    padding: 10px 12px;
+    border: 1px solid rgba(201, 138, 4, .35);
+    border-left-width: 3px;
+    border-radius: 8px;
+    background: rgba(201, 138, 4, .07);
+    font-size: 13px;
+    color: #6b5300;
+  }
+
   /* Aviso que NÃO pode sumir sozinho (falha de propagação de preço, cobrança
-   * pendurada). Toast desaparece; dinheiro em risco precisa de dispensa. */
-  .platform-sticky-warning {
+   * pendurada). Toast desaparece; dinheiro em risco precisa de dispensa.
+   *
+   * O fundo opaco é parte do contrato, não enfeite: sem ele o conteúdo que rola
+   * por baixo atravessa o aviso e o torna ilegível justamente enquanto se
+   * procura a informação que ele reporta. */
+  .platform-sticky-warning,
+  .platform-danger.platform-sticky-warning {
     position: sticky;
     top: 0;
     z-index: 2;
+    background: var(--white);
+    border-radius: 10px;
+  }
+
+  /* O bloco vermelho é grid com gap; a margem padrão do <p> soma por cima. */
+  .platform-danger p {
+    margin: 0 0 10px;
+  }
+
+  .platform-danger p:last-child {
+    margin-bottom: 0;
   }
 }

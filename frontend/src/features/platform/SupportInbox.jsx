@@ -8,18 +8,30 @@
 // (`aura-platform-session`) e não manda `X-Tenant`, então nada aqui pode passar
 // pelo `apiFetch` de lib/api.js, que injeta a sessão da clínica.
 //
-// Duas regras que não podem escorregar nesta tela:
+// A tela é um mestre-detalhe (`.platform-split`): a fila à esquerda, a conversa
+// do chamado aberto à direita. Trabalhar na fila é ler uma linha, responder e
+// voltar — com a lista dentro de um modal, cada resposta custava fechar e
+// reabrir o contexto.
+//
+// Três regras que não podem escorregar nesta tela:
 //   1. Nota interna é anotação da EQUIPE. Ela aparece aqui com marcação
 //      própria, e a rota da clínica nunca a devolve — mas quem escreve precisa
 //      enxergar, sem ambiguidade, o que é nota e o que vai para o cliente.
 //   2. Todo texto vindo da clínica entra como TEXTO em JSX. Nenhum
 //      `dangerouslySetInnerHTML`: o corpo da mensagem é escrito por terceiros.
+//   3. A busca é do SERVIDOR e com atraso (debounce). Buscar a cada tecla
+//      dispararia uma requisição por letra, e buscar só na página atual mentiria
+//      sobre chamados que existem na página seguinte.
 import { useCallback, useEffect, useState } from "react";
 import { Button, Checkbox, Select, StatusBadge, Textarea } from "../../components/common/Ui";
 import { CrudHeader, Modal } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
+import { Loading } from "../../components/common/Feedback";
 import { API } from "../../lib/api";
 import { asArray, asNumber, asObject } from "../../lib/utils";
+// A camada compartilhada do painel entra pelo próprio componente: `.platform-split`
+// e `.tab-count` são dependência desta tela, não do PlatformAdmin.
+import "../../styles/platform-panel.css";
 import "../../styles/support.css";
 
 // Espelham os CHECKs de platform.support_tickets. Código desconhecido aparece
@@ -89,9 +101,15 @@ function usePlatformFetch(token, onUnauthorized) {
   }, [token, onUnauthorized]);
 }
 
-// Badge com o número de chamados que ainda dependem de alguém. Exportado
-// separado para o painel poder pendurá-lo no rótulo da aba sem montar a caixa
-// de entrada inteira (que traz a lista e as clínicas).
+/**
+ * Contador de chamados em aberto, pendurado no botão da aba "Suporte".
+ *
+ * Renderiza `.tab-count` — a pastilha que o menu superior do painel já
+ * desenha (platform-panel.css) — e NADA quando o contador é zero: badge com "0"
+ * é ruído que treina o olho a ignorar a pastilha justamente quando ela acende.
+ *
+ * @param {{ token: string, onUnauthorized?: () => void, refreshKey?: number }} props
+ */
 export function SupportOpenBadge({ token, onUnauthorized, refreshKey = 0 }) {
   const platformFetch = usePlatformFetch(token, onUnauthorized);
   const [count, setCount] = useState(0);
@@ -108,22 +126,22 @@ export function SupportOpenBadge({ token, onUnauthorized, refreshKey = 0 }) {
   }, [token, platformFetch, refreshKey]);
 
   if (!count) return null;
-  return <span className="sup-tab-badge" title={`${count} chamado(s) em aberto`}>{count}</span>;
+  return <span className="tab-count" title={`${count} chamado(s) em aberto`}>{count}</span>;
 }
 
+/** Uma bolha da conversa. O lado (e a nota interna) é o que se lê primeiro. */
 function ThreadMessage({ message }) {
   const isNote = message.internal_note === true;
-  const side = message.author_side === "suporte" ? "suporte" : "clinica";
+  const isSupport = message.author_side === "suporte";
   return (
-    <article className={`sup-msg sup-msg-${side}${isNote ? " sup-msg-nota" : ""}`}>
-      {isNote && <span className="sup-note-tag">Nota interna · a clínica não vê</span>}
-      <div className="sup-msg-head">
-        <span className="sup-msg-author">
-          {side === "suporte" ? (message.author_name || "Suporte") : (message.author_name || "Clínica")}
-        </span>
-        <span className="sup-msg-time">{formatMoment(message.created_at)}</span>
-      </div>
-      <p className="sup-msg-body">{message.body}</p>
+    <article className={`sup-msg${isSupport ? " is-suporte" : ""}${isNote ? " is-nota" : ""}`}>
+      <header>
+        <strong>{message.author_name || (isSupport ? "Suporte" : "Clínica")}</strong>
+        {isNote && <StatusBadge tone="warn">Nota interna · a clínica não vê</StatusBadge>}
+        <span>{formatMoment(message.created_at)}</span>
+      </header>
+      {/* Texto puro: o corpo é escrito por terceiros e nunca vira HTML. */}
+      <p>{message.body}</p>
     </article>
   );
 }
@@ -153,8 +171,11 @@ export function SupportInbox({ token, onUnauthorized, onChanged }) {
   const [openId, setOpenId] = useState(null);
   const [ticket, setTicket] = useState(null);
   const [detailError, setDetailError] = useState("");
-  const [reply, setReply] = useState("");
-  const [internalNote, setInternalNote] = useState(false);
+  const [replyOpen, setReplyOpen] = useState(false);
+  // Um formulário só para responder E mexer em status/prioridade: as três coisas
+  // são a mesma decisão ("o que eu faço com este chamado agora"), e separá-las em
+  // controles que salvam sozinhos fazia cada clique virar uma requisição.
+  const [form, setForm] = useState({ status: "aberto", priority: "normal", body: "", nota: false });
   const [busy, setBusy] = useState("");
   const [actionError, setActionError] = useState("");
 
@@ -221,10 +242,16 @@ export function SupportInbox({ token, onUnauthorized, onChanged }) {
   function openTicket(id) {
     setOpenId(id);
     setTicket(null);
-    setReply("");
-    setInternalNote(false);
     setActionError("");
     loadTicket(id);
+  }
+
+  function openReply() {
+    // O formulário nasce com o estado ATUAL do chamado: assim "salvar" sem mexer
+    // nos selects não muda status nem prioridade sem querer.
+    setForm({ status: ticket.status || "aberto", priority: ticket.priority || "normal", body: "", nota: false });
+    setActionError("");
+    setReplyOpen(true);
   }
 
   async function run(action, task) {
@@ -246,28 +273,27 @@ export function SupportInbox({ token, onUnauthorized, onChanged }) {
     return payload;
   }
 
+  const mudouTriagem = Boolean(ticket) && (form.status !== ticket.status || form.priority !== ticket.priority);
+  const temTexto = Boolean(form.body.trim());
+
   function submitReply(event) {
     event.preventDefault();
     return run("reply", async () => {
-      const updated = await send(`/platform/support/tickets/${openId}/messages`, {
-        method: "POST",
-        body: JSON.stringify({ body: reply.trim(), internal_note: internalNote })
-      });
-      setTicket(updated);
-      setReply("");
-      setInternalNote(false);
-      loadTickets();
-      onChanged?.();
-    });
-  }
-
-  function patchTicket(changes) {
-    return run("patch", async () => {
-      const updated = await send(`/platform/support/tickets/${openId}`, {
-        method: "PATCH",
-        body: JSON.stringify(changes)
-      });
-      setTicket(updated);
+      // Triagem primeiro: se a mensagem falhar depois, o texto continua na caixa
+      // e o operador reenvia — mas a fila já mostra o chamado no lugar certo.
+      if (mudouTriagem) {
+        setTicket(await send(`/platform/support/tickets/${openId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: form.status, priority: form.priority })
+        }));
+      }
+      if (temTexto) {
+        setTicket(await send(`/platform/support/tickets/${openId}/messages`, {
+          method: "POST",
+          body: JSON.stringify({ body: form.body.trim(), internal_note: form.nota })
+        }));
+      }
+      setReplyOpen(false);
       loadTickets();
       onChanged?.();
     });
@@ -277,197 +303,218 @@ export function SupportInbox({ token, onUnauthorized, onChanged }) {
   const messages = asArray(asObject(ticket).messages);
 
   return (
-    <section className="stack sup-stack">
-      <article className="panel">
-        <CrudHeader
-          title="Chamados das clínicas"
-          subtitle="Fila de suporte da plataforma"
-        />
+    <section className="stack">
+      <div className="platform-split platform-split--wide">
+        <article className="panel">
+          <CrudHeader title="Chamados das clínicas" subtitle="Fila de suporte da plataforma" />
 
-        {actionError && !openId && <span className="form-error">{actionError}</span>}
-
-        <DataView
-          mode="server"
-          rows={rows}
-          total={total}
-          loading={tickets === null && !listError}
-          error={listError}
-          page={page}
-          pageSize={pageSize}
-          onPageChange={setPage}
-          onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
-          search={search}
-          onSearchChange={setSearch}
-          searchPlaceholder="Buscar por assunto, quem abriu ou clínica"
-          filters={[
-            {
-              key: "status",
-              label: "Status",
-              type: "select",
-              // "Em aberto" não é um status do banco: é a pergunta que a fila
-              // realmente faz, e o backend a traduz para os três status vivos.
-              options: [
-                { value: "abertos", label: "Em aberto (todos)" },
-                ...Object.entries(STATUS_LABEL).map(([value, text]) => ({ value, label: text }))
-              ]
-            },
-            {
-              key: "tenant_id",
-              label: "Clínica",
-              type: "select",
-              options: clinics.map((clinic) => ({ value: String(clinic.id), label: clinic.name || clinic.slug }))
-            }
-          ]}
-          filterValues={filterValues}
-          onFilterChange={(values) => { setFilterValues(values); setPage(1); }}
-          columns={[
-            {
-              key: "subject",
-              label: "Assunto",
-              sortable: false,
-              render: (row) => (
-                <span>
-                  {waitingForUs(row) && <span className="sup-unread-dot" title="Aguardando resposta do suporte" />}
-                  <span className="sup-subject" title={row.subject}>{row.subject}</span>
-                </span>
-              )
-            },
-            {
-              key: "tenant_name",
-              label: "Clínica",
-              sortable: false,
-              render: (row) => row.tenant_name || row.tenant_slug || "—"
-            },
-            {
-              key: "category",
-              label: "Categoria",
-              sortable: false,
-              render: (row) => label(CATEGORY_LABEL, row.category)
-            },
-            {
-              key: "priority",
-              label: "Prioridade",
-              sortable: false,
-              render: (row) => (
-                <StatusBadge tone={PRIORITY_TONE[row.priority] || "neutral"}>
-                  {label(PRIORITY_LABEL, row.priority)}
-                </StatusBadge>
-              )
-            },
-            {
-              key: "status",
-              label: "Status",
-              sortable: false,
-              render: (row) => (
-                <StatusBadge tone={STATUS_TONE[row.status] || "neutral"}>
-                  {label(STATUS_LABEL, row.status)}
-                </StatusBadge>
-              )
-            },
-            {
-              key: "updated_at",
-              label: "Movimentado em",
-              sortable: false,
-              render: (row) => formatMoment(row.updated_at)
-            }
-          ]}
-          actions={(row) => (
-            <button type="button" onClick={() => openTicket(row.id)}>Abrir</button>
-          )}
-          empty="Nenhum chamado na fila."
-          emptyFiltered="Nenhum chamado corresponde aos filtros aplicados."
-        />
-      </article>
-
-      <Modal
-        open={Boolean(openId)}
-        size="lg"
-        title={asObject(ticket).subject || "Chamado"}
-        subtitle={asObject(ticket).id
-          ? `Chamado #${asObject(ticket).id} · ${asObject(ticket).tenant_name || asObject(ticket).tenant_slug || ""}`
-          : ""}
-        onClose={() => { setOpenId(null); setTicket(null); }}
-        footer={<Button variant="secondary" onClick={() => { setOpenId(null); setTicket(null); }}>Fechar</Button>}
-      >
-        {detailError ? (
-          <p className="form-error">{detailError}</p>
-        ) : !ticket ? (
-          <p className="empty-state">Carregando…</p>
-        ) : (
-          <>
-            <div className="sup-detail-meta">
-              <StatusBadge tone={STATUS_TONE[ticket.status] || "neutral"}>
-                {label(STATUS_LABEL, ticket.status)}
-              </StatusBadge>
-              <span>Categoria: <strong>{label(CATEGORY_LABEL, ticket.category)}</strong></span>
-              <span>Aberto em <strong>{formatMoment(ticket.created_at)}</strong></span>
-              <span>
-                por <strong>{ticket.opened_by_name || "—"}</strong>
-                {ticket.opened_by_email ? ` (${ticket.opened_by_email})` : ""}
-              </span>
-            </div>
-
-            <div className="sup-controls">
-              <Select
-                label="Status"
-                value={ticket.status || "aberto"}
-                onChange={(value) => patchTicket({ status: value })}
-              >
-                {Object.entries(STATUS_LABEL).map(([value, text]) => (
-                  <option key={value} value={value}>{text}</option>
-                ))}
-              </Select>
-              <Select
-                label="Prioridade"
-                value={ticket.priority || "normal"}
-                onChange={(value) => patchTicket({ priority: value })}
-              >
-                {Object.entries(PRIORITY_LABEL).map(([value, text]) => (
-                  <option key={value} value={value}>{text}</option>
-                ))}
-              </Select>
-            </div>
-
-            <div className="sup-thread">
-              {messages.map((item) => <ThreadMessage key={item.id} message={item} />)}
-            </div>
-
-            {ticket.status === "fechado" ? (
-              <p className="sup-closed-note">
-                Chamado fechado pela clínica. Para voltar a escrever nele, mude o status acima — assim a clínica
-                enxerga que o assunto foi reaberto.
-              </p>
-            ) : (
-              <form className="sup-reply" onSubmit={submitReply}>
-                <Textarea
-                  label={internalNote ? "Nota interna (a clínica não vê)" : "Resposta para a clínica"}
-                  rows={4}
-                  required
-                  value={reply}
-                  placeholder={internalNote
-                    ? "Anotação da equipe sobre este caso…"
-                    : "Escreva a resposta que a clínica vai ler…"}
-                  onChange={setReply}
-                />
-                <Checkbox
-                  label="Registrar como nota interna (não vai para a clínica e não marca o chamado como respondido)"
-                  checked={internalNote}
-                  onChange={setInternalNote}
-                />
-                <div className="sup-reply-actions">
-                  <span className={`sup-counter ${reply.length > MAX_BODY ? "sup-counter-over" : ""}`}>
-                    {reply.length}/{MAX_BODY} caracteres
+          <DataView
+            mode="server"
+            rows={rows}
+            total={total}
+            loading={tickets === null && !listError}
+            error={listError}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Buscar por assunto, quem abriu ou clínica"
+            filters={[
+              {
+                key: "status",
+                label: "Status",
+                type: "select",
+                // "Em aberto" não é um status do banco: é a pergunta que a fila
+                // realmente faz, e o backend a traduz para os três status vivos.
+                options: [
+                  { value: "abertos", label: "Em aberto (todos)" },
+                  ...Object.entries(STATUS_LABEL).map(([value, text]) => ({ value, label: text }))
+                ]
+              },
+              {
+                key: "tenant_id",
+                label: "Clínica",
+                type: "select",
+                options: clinics.map((clinic) => ({ value: String(clinic.id), label: clinic.name || clinic.slug }))
+              }
+            ]}
+            filterValues={filterValues}
+            onFilterChange={(values) => { setFilterValues(values); setPage(1); }}
+            columns={[
+              {
+                key: "subject",
+                label: "Assunto",
+                sortable: false,
+                render: (row) => (
+                  <span>
+                    {waitingForUs(row) && <span className="sup-dot" title="Aguardando resposta do suporte" />}
+                    {row.subject}
                   </span>
-                  <Button type="submit" variant="primary" disabled={isBusy || !reply.trim()}>
-                    {busy === "reply" ? "Enviando…" : internalNote ? "Salvar nota" : "Enviar resposta"}
-                  </Button>
-                </div>
-              </form>
+                )
+              },
+              {
+                key: "tenant_name",
+                label: "Clínica",
+                sortable: false,
+                render: (row) => row.tenant_name || row.tenant_slug || "—"
+              },
+              {
+                key: "category",
+                label: "Categoria",
+                sortable: false,
+                render: (row) => label(CATEGORY_LABEL, row.category)
+              },
+              {
+                key: "priority",
+                label: "Prioridade",
+                sortable: false,
+                render: (row) => (
+                  <StatusBadge tone={PRIORITY_TONE[row.priority] || "neutral"}>
+                    {label(PRIORITY_LABEL, row.priority)}
+                  </StatusBadge>
+                )
+              },
+              {
+                key: "status",
+                label: "Status",
+                sortable: false,
+                render: (row) => (
+                  <StatusBadge tone={STATUS_TONE[row.status] || "neutral"}>
+                    {label(STATUS_LABEL, row.status)}
+                  </StatusBadge>
+                )
+              },
+              {
+                key: "updated_at",
+                label: "Atualizado",
+                sortable: false,
+                render: (row) => formatMoment(row.updated_at)
+              }
+            ]}
+            actions={(row) => (
+              <button type="button" onClick={() => openTicket(row.id)}>Abrir</button>
             )}
+            empty="Nenhum chamado na fila."
+            emptyFiltered="Nenhum chamado corresponde aos filtros aplicados."
+          />
+        </article>
 
-            {actionError && <span className="form-error">{actionError}</span>}
+        {/* ---------------------------------------------------------------- */}
+        {/* Conversa do chamado aberto                                        */}
+        {/* ---------------------------------------------------------------- */}
+        <article className="panel">
+          {!openId ? (
+            <p className="empty-state">Escolha um chamado na lista para ler a conversa e responder.</p>
+          ) : detailError ? (
+            <span className="form-error">{detailError}</span>
+          ) : !ticket ? (
+            <Loading />
+          ) : (
+            <>
+              <div className="panel-heading">
+                <div>
+                  <h2>{ticket.subject}</h2>
+                  <span>Chamado #{ticket.id} · {ticket.tenant_name || ticket.tenant_slug || "—"}</span>
+                </div>
+                <div className="header-actions">
+                  <Button variant="primary" onClick={openReply} disabled={isBusy}>Responder</Button>
+                </div>
+              </div>
+
+              <div className="stack">
+                <p className="field-hint">
+                  <StatusBadge tone={STATUS_TONE[ticket.status] || "neutral"}>
+                    {label(STATUS_LABEL, ticket.status)}
+                  </StatusBadge>{" "}
+                  <StatusBadge tone={PRIORITY_TONE[ticket.priority] || "neutral"}>
+                    {label(PRIORITY_LABEL, ticket.priority)}
+                  </StatusBadge>{" "}
+                  · Categoria <strong>{label(CATEGORY_LABEL, ticket.category)}</strong>
+                  {" "}· Aberto em <strong>{formatMoment(ticket.created_at)}</strong>
+                  {" "}por <strong>{ticket.opened_by_name || "—"}</strong>
+                  {ticket.opened_by_email ? ` (${ticket.opened_by_email})` : ""}
+                </p>
+
+                <div className="sup-thread">
+                  {messages.map((item) => <ThreadMessage key={item.id} message={item} />)}
+                </div>
+
+                {ticket.status === "fechado" && (
+                  <p className="empty-state">
+                    Chamado fechado pela clínica. Para voltar a escrever nele, mude o status em “Responder” — assim a
+                    clínica enxerga que o assunto foi reaberto.
+                  </p>
+                )}
+
+                {actionError && !replyOpen && <span className="form-error">{actionError}</span>}
+              </div>
+            </>
+          )}
+        </article>
+      </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Responder / triar                                                   */}
+      {/* ------------------------------------------------------------------ */}
+      <Modal
+        open={replyOpen}
+        title="Responder chamado"
+        subtitle={ticket ? `#${ticket.id} · ${ticket.subject}` : ""}
+        onClose={() => setReplyOpen(false)}
+        footer={(
+          <>
+            <Button variant="secondary" onClick={() => setReplyOpen(false)} disabled={isBusy}>Cancelar</Button>
+            <Button
+              type="submit"
+              form="support-reply-form"
+              variant="primary"
+              disabled={isBusy || (!temTexto && !mudouTriagem)}
+            >
+              {busy === "reply" ? "Enviando…" : form.nota ? "Salvar nota" : "Enviar"}
+            </Button>
           </>
         )}
+      >
+        {/* `.stack` dá o respiro entre os campos: `<form>` não é um container
+            com espaçamento próprio no sistema, e sem ele os campos se encostam. */}
+        <form id="support-reply-form" className="stack" onSubmit={submitReply}>
+          <div className="form-grid">
+            <Select label="Status" value={form.status} onChange={(value) => setForm({ ...form, status: value })}>
+              {Object.entries(STATUS_LABEL).map(([value, text]) => (
+                <option key={value} value={value}>{text}</option>
+              ))}
+            </Select>
+            <Select label="Prioridade" value={form.priority} onChange={(value) => setForm({ ...form, priority: value })}>
+              {Object.entries(PRIORITY_LABEL).map(([value, text]) => (
+                <option key={value} value={value}>{text}</option>
+              ))}
+            </Select>
+          </div>
+
+          <Textarea
+            label={form.nota ? "Nota interna (a clínica não vê)" : "Resposta para a clínica"}
+            rows={6}
+            value={form.body}
+            placeholder={form.nota
+              ? "Anotação da equipe sobre este caso…"
+              : "Escreva a resposta que a clínica vai ler…"}
+            onChange={(value) => setForm({ ...form, body: value })}
+          />
+          <Checkbox
+            label="Registrar como nota interna (não vai para a clínica e não marca o chamado como respondido)"
+            checked={form.nota}
+            onChange={(checked) => setForm({ ...form, nota: checked })}
+          />
+          {/* Contador no vermelho ANTES do envio: descobrir o limite só na
+              mensagem de erro do servidor custa o texto já digitado. */}
+          <span className={form.body.length > MAX_BODY ? "form-error" : "field-hint"}>
+            {form.body.length}/{MAX_BODY} caracteres
+          </span>
+
+          {actionError && <span className="form-error">{actionError}</span>}
+        </form>
       </Modal>
     </section>
   );
