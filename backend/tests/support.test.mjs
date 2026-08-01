@@ -126,7 +126,13 @@ test("Suporte: chamados da clínica e caixa de entrada da plataforma", async (t)
   });
 
   await t.test("sem token nenhuma das duas pontas responde", async () => {
-    assert.equal((await req("/support/tickets")).status, 401);
+    // O `tenant` vai junto de propósito: sem ele a requisição morre ANTES da
+    // autenticação, em "informe a clínica" (400), e o teste passaria a medir a
+    // resolução de tenant em vez da exigência de sessão — que é o que interessa
+    // aqui. Numa máquina com DEFAULT_TENANT no .env isso fica invisível, porque
+    // o tenant é resolvido sozinho; foi assim que passou local e falhou na CI.
+    assert.equal((await req("/support/tickets", { tenant: clinicaA.slug })).status, 401);
+    // A ponta da plataforma não tem tenant nenhum: ela não passa por withDb.
     assert.equal((await req("/platform/support/tickets")).status, 401);
   });
 
