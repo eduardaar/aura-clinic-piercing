@@ -68,6 +68,68 @@ retry_conn() {
   done
 }
 
+# Health check por DENTRO do servidor (via a conexão SSH já aberta): bate direto
+# no container aura-api e checa o index do front. Não passa pelo Cloudflare, que
+# responde 403 para IPs de datacenter (ex.: runners do GitHub Actions).
+health_check() {
+  local ok=0 health front
+  for i in 1 2 3 4 5 6; do
+    sleep 3
+    health="$(${rsh} "${target}" 'docker exec aura-api wget -qO- http://127.0.0.1:4000/api/health 2>/dev/null || true')"
+    front="$(${rsh} "${target}" "test -f ${REMOTE_FRONT}/index.html && echo ok || echo missing")"
+    echo "   tentativa ${i}: api=${health:-vazio} | front=${front}"
+    case "${health}" in *'"ok":true'*) [ "${front}" = "ok" ] && { ok=1; break; } ;; esac
+  done
+  [ "${ok}" = "1" ] || { echo "!! Health check FALHOU"; exit 1; }
+}
+
+# ---------------------------------------------------------------------------
+# Modo rollback (ROLLBACK=true)
+# ---------------------------------------------------------------------------
+#
+# O deploy normal já marcava a imagem em uso como `aura-api:rollback` antes de
+# publicar a nova — mas nada no projeto sabia usá-la. Um ponto de restauração
+# que ninguém consegue invocar não é um ponto de restauração.
+#
+# ESCOPO, e ele é limitado de propósito: isto volta APENAS a imagem da API.
+# Não desfaz o frontend já publicado, nem migrations, nem o .env. É a
+# ferramenta para "a API subiu quebrada, me devolve a anterior agora", não um
+# desfazer completo. Para reverter de verdade, o caminho é `git revert` +
+# deploy normal.
+#
+# As migrations são idempotentes e só acrescentam (CREATE/ALTER ... IF NOT
+# EXISTS), então a imagem anterior convive com o schema novo — ela apenas
+# ignora as colunas que não conhece.
+if [ "${ROLLBACK:-false}" = "true" ]; then
+  echo "==> ROLLBACK: voltando a API para a imagem anterior (aura-api:rollback)"
+  echo "    ATENÇÃO: o frontend publicado e o schema do banco NÃO voltam."
+  # shellcheck disable=SC2087
+  ${rsh} "${target}" REMOTE_COMPOSE_DIR="${REMOTE_COMPOSE_DIR}" bash -s <<'REMOTE'
+set -euo pipefail
+cd "${REMOTE_COMPOSE_DIR}"
+
+if ! docker image inspect aura-api:rollback >/dev/null 2>&1; then
+  echo "!! Não existe imagem aura-api:rollback neste servidor — nada a reverter."
+  echo "   (ela só passa a existir depois do primeiro deploy bem-sucedido)"
+  exit 1
+fi
+
+# Troca as tags mantendo o caminho de volta: a que está no ar agora vira a
+# nova `rollback`, para um segundo disparo desfazer o desfazer.
+docker tag aura-api:latest aura-api:previous-failed 2>/dev/null || true
+docker tag aura-api:rollback aura-api:latest
+docker tag aura-api:previous-failed aura-api:rollback 2>/dev/null || true
+
+docker compose up -d redis aura-api
+docker ps --filter name=aura-api --format 'aura-api: {{.Status}}'
+REMOTE
+
+  echo "==> Health check pós-rollback"
+  health_check
+  echo "==> Rollback concluído: ${SITE_URL}"
+  exit 0
+fi
+
 echo "==> [1/5] Build do frontend (VITE_API_URL=${API_URL})"
 (
   cd frontend
@@ -107,25 +169,47 @@ for var in ASAAS_BASE_URL ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN ASAAS_VAULT_KEY PUBL
 done
 
 if [ -n "${asaas_env}" ]; then
+  # DUAS chamadas, e não uma só com pipe.
+  #
+  # A tentação é `printf ... | ssh host bash -s <<'REMOTE'`, mas isso não
+  # funciona: o heredoc É a entrada padrão do comando remoto (é dele que o
+  # `bash -s` lê o script), então ele SOBRESCREVE o pipe e os valores nunca
+  # chegam do outro lado — falha silenciosa, com o deploy passando verde e o
+  # .env intacto. (shellcheck SC2259.)
+  #
+  # Também não passamos os segredos na linha de comando do ssh: eles ficariam
+  # visíveis em `ps` no servidor enquanto o comando roda.
+  #
+  # Então: primeiro o conteúdo viaja por stdin puro para um arquivo temporário
+  # com permissão restrita; depois o script o consome e apaga.
+  remote_tmp="/tmp/.aura-asaas-env.$$"
+  printf '%s' "${asaas_env}" \
+    | ${rsh} "${target}" "umask 077 && cat > '${remote_tmp}'"
+
   # shellcheck disable=SC2087
-  printf '%s' "${asaas_env}" | ${rsh} "${target}" "REMOTE_BACKEND='${REMOTE_BACKEND}' bash -s" <<'REMOTE'
+  ${rsh} "${target}" REMOTE_BACKEND="${REMOTE_BACKEND}" ASAAS_TMP="${remote_tmp}" bash -s <<'REMOTE'
 set -euo pipefail
+# O temporário some aconteça o que acontecer — inclusive se o script falhar no
+# meio. Deixar segredo em /tmp seria pior que não ter feito o upsert.
+trap 'rm -f "${ASAAS_TMP}"' EXIT
+
 env_file="${REMOTE_BACKEND}/.env"
 touch "${env_file}"
 chmod 600 "${env_file}"
+
 while IFS='=' read -r key value; do
   [ -n "${key}" ] || continue
   if grep -q "^${key}=" "${env_file}"; then
-    # Reescreve no lugar. O valor vai por variável de ambiente e não
-    # interpolado no script: uma chave do Asaas contém '$' e '/', que
-    # quebrariam ou seriam reinterpretados dentro do sed.
+    # Reescreve no lugar. Chave e valor vão por variável de ambiente, e não
+    # interpolados no padrão: uma chave do Asaas contém '$', '/' e ':', que
+    # quebrariam ou seriam reinterpretados dentro de um sed.
     NEW_VALUE="${value}" KEY="${key}" perl -i -pe 's/^\Q$ENV{KEY}\E=.*/"$ENV{KEY}=$ENV{NEW_VALUE}"/e' "${env_file}"
     echo "   atualizado: ${key}"
   else
     printf '%s=%s\n' "${key}" "${value}" >> "${env_file}"
     echo "   adicionado: ${key}"
   fi
-done
+done < "${ASAAS_TMP}"
 REMOTE
 else
   echo "   nenhum secret do Asaas definido — mantendo o .env do servidor como está"
@@ -159,18 +243,7 @@ docker image prune -f >/dev/null 2>&1 || true
 docker ps --filter name=aura-api --format 'aura-api: {{.Status}}'
 REMOTE
 
-# Health check por DENTRO do servidor (via a conexão SSH já aberta): bate direto
-# no container aura-api e checa o index do front. Não passa pelo Cloudflare, que
-# responde 403 para IPs de datacenter (ex.: runners do GitHub Actions).
 echo "==> [5/5] Health check (via SSH, direto no container)"
-ok=0
-for i in 1 2 3 4 5 6; do
-  sleep 3
-  health="$(${rsh} "${target}" 'docker exec aura-api wget -qO- http://127.0.0.1:4000/api/health 2>/dev/null || true')"
-  front="$(${rsh} "${target}" "test -f ${REMOTE_FRONT}/index.html && echo ok || echo missing")"
-  echo "   tentativa ${i}: api=${health:-vazio} | front=${front}"
-  case "${health}" in *'"ok":true'*) [ "${front}" = "ok" ] && { ok=1; break; } ;; esac
-done
-[ "${ok}" = "1" ] || { echo "!! Health check FALHOU"; exit 1; }
+health_check
 
 echo "==> Deploy concluído com sucesso: ${SITE_URL}"
