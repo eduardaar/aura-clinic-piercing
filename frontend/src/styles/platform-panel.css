@@ -8,11 +8,13 @@
  *
  * A REGRA
  * Antes de acrescentar qualquer coisa aqui, procure a primitiva que já existe:
- *   layout de página ....... .stack, .content-scroll   (styles/appshell.css)
- *   bloco de conteúdo ...... .panel, .panel-heading    (styles.css)
- *   listagem ............... <DataView>                (components/common)
- *   formulário ............. <Modal> + Input/Select/Textarea
- *   barra de filtros ....... .toolbar
+ *   coluna rolável ......... .content-scroll             (styles/appshell.css)
+ *   empilhamento ........... .stack                      (styles.css)
+ *   bloco de conteúdo ...... .panel, .panel-heading      (styles.css)
+ *   listagem ............... <DataView>                  (components/common)
+ *   formulário ............. <Modal> + Input/Select      (components/common)
+ *   barra de filtros ....... .toolbar                    (styles.css)
+ *   texto de apoio ......... .field-hint                 (styles.css, @layer base)
  * Só entra aqui o que NÃO tem equivalente. Um estilo a mais neste arquivo é
  * melhor que um arquivo novo; um componente reusado é melhor que os dois.
  *
