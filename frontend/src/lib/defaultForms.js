@@ -291,6 +291,7 @@ export function defaultSalesOrderForm() {
     instagram: "",
     appointment_id: "",
     payment_method: "Pix",
+    coupon_code: "",
     status: "concluida",
     notes: ""
   };

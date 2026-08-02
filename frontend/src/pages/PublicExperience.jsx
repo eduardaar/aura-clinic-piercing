@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CheckCircle2,
   ChevronLeft,
@@ -78,6 +78,7 @@ function readCatalogStorage(key, fallback = []) {
 }
 
 export function PublicCatalog() {
+  const discoveryRef = useRef(null);
   const { data } = usePublicFetch("/catalog");
   const initialQuery = new URLSearchParams(window.location.search);
   const [activeCategory, setActiveCategory] = useState(initialQuery.get("category") || "Todos");
@@ -287,7 +288,7 @@ function addToOrder(item) {
             <span>{theme.slogan || data.slogan || "Piercing e joias selecionadas"}</span>
           </a>
           <div className="catalog-top-actions">
-            <label className="catalog-search">
+            <label className="catalog-search catalog-search-desktop">
               <Search size={17} />
               <input
                 value={search}
@@ -321,16 +322,24 @@ function addToOrder(item) {
           onChange={setBannerIndex}
         />
 
-        <section className="catalog-category-strip" style={layoutStyle("categories", 2)}>
+        <section ref={discoveryRef} className="catalog-discovery" style={{ order: -10 }}>
+          <label className="catalog-search catalog-search-mobile">
+            <Search size={17} />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar joia, SKU, material ou tamanho" />
+          </label>
+        <div className="catalog-category-strip">
           {categories.map(({ name, icon: Icon }) => (
-            <button key={name} className={activeCategory === name ? "active" : ""} onClick={() => setActiveCategory(name)}>
+            <button key={name} className={activeCategory === name ? "active" : ""} onClick={() => {
+              setActiveCategory(name);
+              requestAnimationFrame(() => discoveryRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+            }}>
               <Icon size={25} />
               <span>{cleanDisplayText(name)}</span>
             </button>
           ))}
-        </section>
+        </div>
 
-        <section className="catalog-filters" style={{ order: 3 }}>
+        <div className="catalog-filters">
           <span className="catalog-filter-label">Refinar</span>
           <CatalogSelect label="Material" value={filters.material} options={options.materials} onChange={(value) => setFilters({ ...filters, material: value })} />
           <CatalogSelect label="Observação de cor" value={filters.color} options={options.colors} onChange={(value) => setFilters({ ...filters, color: value })} />
@@ -349,6 +358,7 @@ function addToOrder(item) {
               <option value="estoque">Em estoque primeiro</option>
             </select>
           </label>
+        </div>
         </section>
 
         <section className="catalog-trust-strip" aria-label="Diferenciais do estúdio" style={{ order: 4 }}>
@@ -656,8 +666,13 @@ function CatalogBookingWidget() {
   );
 }
 
+export function hasRenderableCatalogContent(section) {
+  if (!section || !Boolean(section.active)) return false;
+  return Boolean(String(section.title || section.text || section.media_url || "").trim());
+}
+
 function CatalogContentSections({ sections }) {
-  const active = asArray(sections).filter((section) => Boolean(section?.active));
+  const active = asArray(sections).filter(hasRenderableCatalogContent);
   if (!active.length) return null;
   return (
     <section className="catalog-content-sections">

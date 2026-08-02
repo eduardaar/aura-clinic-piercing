@@ -42,6 +42,8 @@ export function SalesWorkspace() {
   const [line, setLine] = useState(defaultSalesLine());
   const [items, setItems] = useState([]);
   const [error, setError] = useState("");
+  const [priceQuote, setPriceQuote] = useState(null);
+  const [couponMessage, setCouponMessage] = useState("");
   const safeOrders = asArray(orders);
   const safeServices = asArray(services);
   const safeJewelry = asArray(jewelry);
@@ -127,6 +129,20 @@ export function SalesWorkspace() {
 
   function removeLine(index) {
     setItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    setPriceQuote(null);
+  }
+
+  const productSubtotal = items.filter((item) => item.item_type === "produto").reduce((sum, item) => sum + Number(item.unit_price) * Number(item.quantity), 0);
+  const serviceSubtotal = items.filter((item) => item.item_type === "servico").reduce((sum, item) => sum + Number(item.unit_price) * Number(item.quantity), 0);
+  const saleSubtotal = productSubtotal + serviceSubtotal;
+  const saleTotal = priceQuote?.valid ? Number(priceQuote.final_amount) : saleSubtotal;
+
+  async function applyCoupon() {
+    setError(""); setCouponMessage("");
+    const response = await apiFetch("/catalog/price-quote", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ coupon_code: form.coupon_code, items }) });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) { setPriceQuote(null); setError(payload.error || "Cupom inválido ou não aplicável."); return; }
+    setPriceQuote(payload); setCouponMessage("Cupom aplicado com sucesso.");
   }
 
   async function saveOrder(event) {
@@ -385,6 +401,21 @@ export function SalesWorkspace() {
               </article>
             )) : <p className="empty-state">Nenhum item adicionado ainda.</p>}
           </div>
+          <div className="soft-card sales-financial-summary">
+            <strong>Resumo financeiro</strong>
+            <span>Produtos <b>{currency.format(productSubtotal)}</b></span>
+            <span>Serviços <b>{currency.format(serviceSubtotal)}</b></span>
+            <span>Subtotal <b>{currency.format(saleSubtotal)}</b></span>
+            {priceQuote?.promotion_discount > 0 && <span>Promoções <b>−{currency.format(priceQuote.promotion_discount)}</b></span>}
+            {priceQuote?.coupon_discount > 0 && <span>Cupom <b>−{currency.format(priceQuote.coupon_discount)}</b></span>}
+            <span className="total">Total final <b>{currency.format(saleTotal)}</b></span>
+          </div>
+          <div className="catalog-coupon-field">
+            <Input label="Cupom" value={form.coupon_code || ""} onChange={(value) => { setForm({ ...form, coupon_code: value.toUpperCase() }); setPriceQuote(null); setCouponMessage(""); }} />
+            <Button type="button" variant="secondary" onClick={applyCoupon} disabled={!form.coupon_code?.trim() || !items.length}>Aplicar cupom</Button>
+            {priceQuote && <Button type="button" variant="secondary" onClick={() => { setForm({ ...form, coupon_code: "" }); setPriceQuote(null); setCouponMessage(""); }}>Remover</Button>}
+          </div>
+          {couponMessage && <span className="form-success">{couponMessage}</span>}
 
           <label>Observações da venda
             <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
