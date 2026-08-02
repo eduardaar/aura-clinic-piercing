@@ -10,6 +10,7 @@ import { JEWELRY_CATEGORY_OPTIONS } from "../lib/defaultForms";
 import { catalogContentSections, defaultContentSection } from "../features/catalog/catalogUtils";
 import { DEFAULT_IMAGE_TRANSFORM, ImageEditor, imageTransformStyle, normalizeImageTransform } from "../components/common/ImageEditor";
 import { SmartCombobox } from "../components/common/SmartCombobox";
+import { publicLinkForTenant } from "../lib/publicRoutes";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -70,10 +71,10 @@ function catalogImageUrl(url) {
 function CatalogPublicLinks() {
   const slug = tenantSlug();
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const links = [
-    { label: "Catálogo online", url: `${origin}/catalogo?t=${slug}` },
-    { label: "Agendamento online", url: `${origin}/agendar?t=${slug}` }
-  ];
+  const links = slug ? [
+    { label: "Catálogo online", url: publicLinkForTenant("/catalogo", slug, origin) },
+    { label: "Agendamento online", url: publicLinkForTenant("/agendar", slug, origin) }
+  ] : [];
   const [copied, setCopied] = useState("");
 
   async function copy(url) {
@@ -91,6 +92,7 @@ function CatalogPublicLinks() {
         <span>Código da clínica: <b>{slug}</b> — compartilhe estes endereços com seus clientes.</span>
       </div>
       <div className="catalog-links-grid">
+        {!links.length && <span className="form-error">Cadastre um slug público para compartilhar catálogo e agendamento.</span>}
         {links.map((item) => (
           <div key={item.url} className="catalog-link-row">
             <div>

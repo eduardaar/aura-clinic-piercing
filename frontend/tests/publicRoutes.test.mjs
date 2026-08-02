@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { catalogUrl, publicUrl, replaceCatalogState } from "../src/lib/publicRoutes.js";
+import { catalogUrl, publicLinkForTenant, publicUrl, replaceCatalogState } from "../src/lib/publicRoutes.js";
 
 function withLocation(pathname, search, callback) {
   const calls = [];
@@ -14,6 +14,12 @@ function withLocation(pathname, search, callback) {
   callback(calls);
   delete global.window;
 }
+
+test("links compartilháveis sempre incluem o tenant e rejeitam slug vazio", () => {
+  assert.equal(publicLinkForTenant("/catalogo", "clinica-a", "https://aura.test"), "https://aura.test/catalogo?t=clinica-a");
+  assert.equal(publicLinkForTenant("/agendar", "clínica b", "https://aura.test"), "https://aura.test/agendar?t=cl%C3%ADnica+b");
+  assert.throws(() => publicLinkForTenant("/catalogo", "", "https://aura.test"), /slug público/);
+});
 
 test("produto mantém tenant e estado do catálogo", () => {
   withLocation("/catalogo", "?t=aura-clinic&category=Argolas&q=ouro&sort=nome-az", () => {

@@ -24,6 +24,14 @@ export function publicUrl(path, values = {}, { preserveCatalogState = false } = 
   return `${path}${query ? `?${query}` : ""}`;
 }
 
+export function publicLinkForTenant(path, tenant, origin = window.location.origin) {
+  const url = new URL(path, origin);
+  const slug = String(tenant || "").trim();
+  if (!slug) throw new Error("A clínica não possui um slug público válido.");
+  url.searchParams.set("t", slug);
+  return url.toString();
+}
+
 export function catalogUrl(path = "/catalogo", values = {}) {
   return publicUrl(path, values, { preserveCatalogState: true });
 }
