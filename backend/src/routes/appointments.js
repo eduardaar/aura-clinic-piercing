@@ -262,4 +262,45 @@ router.patch("/api/appointments/:id", withDb(async (req, res, db) => {
   res.json(updated);
 }));
 
+async function appointmentDeletionImpact(db, id) {
+  const row = await db.get(`SELECT
+    (SELECT COUNT(*) FROM payments WHERE appointment_id = ?) AS payments,
+    (SELECT COUNT(*) FROM sales_orders WHERE appointment_id = ?) AS sales,
+    (SELECT COUNT(*) FROM client_medical_records WHERE appointment_id = ?) AS medical_records,
+    (SELECT COUNT(*) FROM digital_terms WHERE appointment_id = ?) AS terms,
+    (SELECT COUNT(*) FROM post_care_followups WHERE appointment_id = ?) AS followups,
+    (SELECT COUNT(*) FROM coupon_usages WHERE appointment_id = ?) AS coupon_usages,
+    (SELECT COUNT(*) FROM promotion_usages WHERE appointment_id = ?) AS promotion_usages,
+    (SELECT COUNT(*) FROM loyalty_points WHERE appointment_id = ?) AS loyalty_points,
+    (SELECT COUNT(*) FROM payment_intents WHERE appointment_id = ?) AS payment_intents,
+    (SELECT COUNT(*) FROM inventory_reservations WHERE appointment_id = ? AND status IN ('confirmed','active')) AS inventory_links
+  `, [id, id, id, id, id, id, id, id, id, id]);
+  return Object.fromEntries(Object.entries(row || {}).map(([key, value]) => [key, Number(value || 0)]));
+}
+
+router.get("/api/appointments/:id/deletion-impact", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin"])) return;
+  const appointment = await db.get("SELECT id FROM appointments WHERE id = ?", [req.params.id]);
+  if (!appointment) return res.status(404).json({ error: "Agendamento não encontrado." });
+  const impact = await appointmentDeletionImpact(db, req.params.id);
+  res.json({ impact, can_delete: !Object.values(impact).some(Number) });
+}));
+
+router.delete("/api/appointments/:id", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin"])) return;
+  if (req.body?.confirmation !== "EXCLUIR AGENDAMENTO") return res.status(400).json({ error: "Digite EXCLUIR AGENDAMENTO para confirmar." });
+  const reason = String(req.body?.reason || "").trim();
+  if (!reason) return res.status(400).json({ error: "Informe o motivo da exclusão." });
+  const appointment = await db.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
+  if (!appointment) return res.status(404).json({ error: "Agendamento não encontrado." });
+  const impact = await appointmentDeletionImpact(db, req.params.id);
+  if (Object.values(impact).some(Number)) return res.status(409).json({ error: "Este agendamento possui vínculos financeiros, clínicos ou de estoque e não pode ser apagado. Cancele ou arquive preservando o histórico.", impact });
+  await db.transaction(async (tx) => {
+    await tx.run("DELETE FROM notification_queue WHERE appointment_id = ?", [req.params.id]);
+    await tx.run("DELETE FROM appointments WHERE id = ?", [req.params.id]);
+    await tx.run("INSERT INTO administrative_audit_logs (entity_type, entity_id, action, reason, user_id, snapshot) VALUES ('appointment', ?, 'hard_delete', ?, ?, ?)", [req.params.id, reason, req.user?.id || null, JSON.stringify({ appointment, impact })]);
+  });
+  res.json({ ok: true, deleted: true });
+}));
+
 export default router;

@@ -258,16 +258,20 @@ test("GET /erp/overview (ou raiz erp) com finance → 403", async () => {
   assert.notEqual(status, 200, "finance não deveria conseguir 200 no ERP admin-only");
 });
 
-// -- Clientes: DELETE restrito a admin/reception -------------------------
+// -- Exclusões administrativas: somente admin e confirmação forte --------
 test("DELETE /clients/:id com piercer → 403", async () => {
-  const { status } = await req("/clients/999999", { token: ctx.tokens.piercer, method: "DELETE" });
+  const { status } = await req("/clients/999999", { token: ctx.tokens.piercer, method: "DELETE", body: { confirmation: "EXCLUIR CLIENTE", reason: "QA" } });
   assert.equal(status, 403);
 });
 
-test("DELETE /clients/:id com reception → permitido (200, mesmo sem existir a linha)", async () => {
-  // reception está na allowlist; o DELETE roda mesmo que o id não exista.
-  const { status } = await req("/clients/999999", { token: ctx.tokens.reception, method: "DELETE" });
-  assert.equal(status, 200);
+test("DELETE /clients/:id com reception → 403", async () => {
+  const { status } = await req("/clients/999999", { token: ctx.tokens.reception, method: "DELETE", body: { confirmation: "EXCLUIR CLIENTE", reason: "QA" } });
+  assert.equal(status, 403);
+});
+
+test("DELETE /appointments/:id com reception → 403", async () => {
+  const { status } = await req("/appointments/999999", { token: ctx.tokens.reception, method: "DELETE", body: { confirmation: "EXCLUIR AGENDAMENTO", reason: "QA" } });
+  assert.equal(status, 403);
 });
 
 test("recepção não cria prontuário clínico e piercer não altera cadastro civil", async () => {

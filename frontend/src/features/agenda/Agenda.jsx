@@ -6,7 +6,7 @@ import { Modal, CrudHeader, ConfirmDeleteModal } from "../../components/common/C
 import { DataView } from "../../components/common/DataView";
 import { Loading } from "../../components/common/Feedback";
 import { asArray, asNumber, asObject, formatDate } from "../../lib/utils";
-import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
+import { apiFetch, readStoredSession, useApiInvalidate, useFetch } from "../../lib/api";
 import { buildCalendar, buildTimeSlots, dateKey, movePeriod } from "../../lib/calendarUtils";
 import { defaultAppointment, defaultProcedureForm, defaultProfessionalForm, defaultScheduleBlock, defaultServiceForm } from "../../lib/defaultForms";
 import { appointmentWhatsAppMessage, calcRemaining, currency, personName, statusClass, statuses, weekdayLabel, whatsappUrl } from "../../features/shared/helpers";
@@ -706,6 +706,7 @@ export function AppointmentQuickModal({ appointment, onClose, onSaved }) {
   const [payments, setPayments] = useState([{ method: "Pix", amount: 0, status: "pago", installments: 1, fee_amount: 0, expected_receipt_date: "" }]);
   const [financialNotes, setFinancialNotes] = useState("");
   const [error, setError] = useState("");
+  const [deletion, setDeletion] = useState(null);
 
   useEffect(() => {
     if (!appointment) return;
@@ -718,7 +719,27 @@ export function AppointmentQuickModal({ appointment, onClose, onSaved }) {
     setPayments([{ method: appointment.remaining_payment_method || "Pix", amount: Math.max(0, Number(appointment.remaining_value || 0)), status: "pago", installments: 1, fee_amount: 0, expected_receipt_date: "" }]);
     setFinancialNotes(appointment.financial_notes || "");
     setError("");
+    setDeletion(null);
   }, [appointment]);
+
+  async function openDeletion() {
+    setError("");
+    const response = await apiFetch(`/appointments/${appointment.id}/deletion-impact`);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return setError(payload.error || "Não foi possível analisar o agendamento.");
+    setDeletion({ impact: payload.impact || {}, canDelete: payload.can_delete, confirmation: "", reason: "", busy: false });
+  }
+
+  async function deleteAppointment() {
+    setDeletion({ ...deletion, busy: true });
+    const response = await apiFetch(`/appointments/${appointment.id}`, { method: "DELETE", body: JSON.stringify({ confirmation: deletion.confirmation, reason: deletion.reason }) });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setDeletion({ ...deletion, busy: false });
+      return setError(payload.error || "Não foi possível excluir o agendamento.");
+    }
+    onSaved?.();
+  }
 
   async function saveAppointment(patch = {}) {
     if (!appointment?.id) return;
@@ -792,7 +813,11 @@ export function AppointmentQuickModal({ appointment, onClose, onSaved }) {
             <button type="button" className="secondary-button danger" onClick={() => saveAppointment({ status: "cancelado" })}>Cancelar</button>
             <button type="button" className="primary-button" onClick={completeAppointment}>Revisar e finalizar</button>
           </div>
+          {readStoredSession()?.user?.role === "admin" && <button type="button" className="secondary-button danger" onClick={openDeletion}>Excluir definitivamente</button>}
           {error && <span className="form-error">{error}</span>}
+          <Modal open={!!deletion} title="Excluir definitivamente" subtitle="Esta ação exige análise e confirmação" onClose={() => !deletion?.busy && setDeletion(null)} footer={<><button type="button" className="secondary-button" onClick={() => setDeletion(null)}>Voltar</button><button type="button" className="primary-button danger" disabled={!deletion?.canDelete || deletion?.busy || deletion?.confirmation !== "EXCLUIR AGENDAMENTO" || !deletion?.reason?.trim()} onClick={deleteAppointment}>{deletion?.busy ? "Excluindo…" : "Excluir agendamento"}</button></>}>
+            {deletion && <div className="stack"><div className="soft-card"><strong>{deletion.canDelete ? "Agendamento de teste sem vínculos" : "Exclusão bloqueada"}</strong><p>{deletion.canDelete ? "A exclusão é irreversível e ficará registrada na auditoria." : "Existem vínculos financeiros, clínicos ou de estoque. Cancele o agendamento para preservar o histórico."}</p></div><div className="summary-grid">{Object.entries(deletion.impact).map(([key, value]) => <span key={key}>{key.replaceAll("_", " ")}: <strong>{value}</strong></span>)}</div><Input label="Motivo obrigatório" value={deletion.reason} onChange={(reason) => setDeletion({ ...deletion, reason })} /><Input label="Digite EXCLUIR AGENDAMENTO" value={deletion.confirmation} onChange={(confirmation) => setDeletion({ ...deletion, confirmation })} /></div>}
+          </Modal>
         </div>
       )}
     </Modal>
