@@ -68,26 +68,51 @@ router.put("/api/clients/:id", withDb(updateClient));
 router.patch("/api/clients/:id", withDb(updateClient));
 
 router.delete("/api/clients/:id", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!requireRole(req, res, ["admin"])) return;
   const id = req.params.id;
-  const linked = await db.get(`
+  if (req.body?.confirmation !== "EXCLUIR CLIENTE") return res.status(400).json({ error: "Digite EXCLUIR CLIENTE para confirmar." });
+  const reason = String(req.body?.reason || "").trim();
+  if (!reason) return res.status(400).json({ error: "Informe o motivo da exclusão." });
+  const client = await db.get("SELECT * FROM clients WHERE id = ? AND deleted_at IS NULL", [id]);
+  if (!client) return res.status(404).json({ error: "Cliente não encontrado." });
+  const linked = await clientDeletionImpact(db, id);
+  const total = Object.values(linked).reduce((sum, value) => sum + Number(value || 0), 0);
+  const action = total > 0 ? "anonymize" : "hard_delete";
+  await db.transaction(async (tx) => {
+    if (action === "anonymize") {
+      await tx.run(`UPDATE clients SET full_name = ?, whatsapp = ?, phone = '', instagram = '', email = '', birth_date = '', cpf = '', notes = '', deleted_at = ?, anonymized_at = ?, updated_at = ? WHERE id = ?`, [`Cliente anonimizado #${id}`, `anonimizado-${id}`, new Date().toISOString(), new Date().toISOString(), new Date().toISOString(), id]);
+    } else {
+      await tx.run("DELETE FROM clients WHERE id = ?", [id]);
+    }
+    await tx.run("INSERT INTO administrative_audit_logs (entity_type, entity_id, action, reason, user_id, snapshot) VALUES ('client', ?, ?, ?, ?, ?)", [id, action, reason, req.user?.id || null, JSON.stringify({ client, impact: linked })]);
+  });
+  res.json({ ok: true, action, impact: linked });
+}));
+
+async function clientDeletionImpact(db, id) {
+  const row = await db.get(`
     SELECT
-      (SELECT COUNT(*) FROM appointments WHERE client_id = ?) +
-      (SELECT COUNT(*) FROM payments WHERE client_id = ?) +
-      (SELECT COUNT(*) FROM sales_orders WHERE client_id = ?) +
-      (SELECT COUNT(*) FROM client_medical_records WHERE client_id = ?) +
-      (SELECT COUNT(*) FROM digital_terms WHERE client_id = ?) +
-      (SELECT COUNT(*) FROM loyalty_points WHERE client_id = ?) +
-      (SELECT COUNT(*) FROM loyalty_redemptions WHERE client_id = ?) +
-      (SELECT COUNT(*) FROM post_care_followups WHERE client_id = ?) AS total
-  `, [id, id, id, id, id, id, id, id]);
-  if (Number(linked?.total || 0) > 0) {
-    return res.status(409).json({
-      error: "Este cliente possui historico e nao pode ser excluido."
-    });
-  }
-  await db.run("DELETE FROM clients WHERE id = ?", [id]);
-  res.json({ ok: true });
+      (SELECT COUNT(*) FROM appointments WHERE client_id = ?) AS appointments,
+      (SELECT COUNT(*) FROM payments WHERE client_id = ?) AS payments,
+      (SELECT COUNT(*) FROM sales_orders WHERE client_id = ?) AS sales,
+      (SELECT COUNT(*) FROM client_medical_records WHERE client_id = ?) AS medical_records,
+      (SELECT COUNT(*) FROM digital_terms WHERE client_id = ?) AS terms,
+      (SELECT COUNT(*) FROM post_care_followups WHERE client_id = ?) AS followups,
+      (SELECT COUNT(*) FROM loyalty_points WHERE client_id = ?) AS loyalty_points,
+      (SELECT COUNT(*) FROM loyalty_redemptions WHERE client_id = ?) AS loyalty_redemptions,
+      (SELECT COUNT(*) FROM coupon_usages WHERE client_id = ?) AS coupon_usages,
+      (SELECT COUNT(*) FROM promotion_usages WHERE client_id = ?) AS promotion_usages,
+      (SELECT COUNT(*) FROM payment_intents WHERE client_id = ?) AS payment_intents
+  `, [id, id, id, id, id, id, id, id, id, id, id]);
+  return Object.fromEntries(Object.entries(row || {}).map(([key, value]) => [key, Number(value || 0)]));
+}
+
+router.get("/api/clients/:id/deletion-impact", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin"])) return;
+  const client = await db.get("SELECT id FROM clients WHERE id = ? AND deleted_at IS NULL", [req.params.id]);
+  if (!client) return res.status(404).json({ error: "Cliente não encontrado." });
+  const impact = await clientDeletionImpact(db, req.params.id);
+  res.json({ impact, action: Object.values(impact).some(Number) ? "anonymize" : "hard_delete" });
 }));
 
 // Listagem ENXUTA: só as colunas da própria tabela `clients`, que é o que a
@@ -102,7 +127,8 @@ router.get("/api/clients", withDb(async (req, res, db) => {
     clauses.push("(full_name ILIKE ? OR whatsapp ILIKE ? OR phone ILIKE ? OR email ILIKE ? OR instagram ILIKE ? OR cpf ILIKE ?)");
     params.push(...Array(6).fill(`%${req.query.search}%`));
   }
-  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  clauses.unshift("deleted_at IS NULL");
+  const where = `WHERE ${clauses.join(" AND ")}`;
   const paging = parsePaging(req.query, {
     sortable: CLIENT_SORTABLE,
     tieBreak: "id",
@@ -122,6 +148,7 @@ router.get("/api/clients", withDb(async (req, res, db) => {
 router.get("/api/clients/:id", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
   const client = await getClientWithDetails(db, req.params.id);
+  if (client?.deleted_at) return res.status(404).json({ error: "Cliente nao encontrado." });
   if (!client) return res.status(404).json({ error: "Cliente nao encontrado." });
   // Recepção não enxerga prontuário nem termo (mesma regra da listagem antiga).
   const visible = req.user?.role === "reception"

@@ -25,6 +25,17 @@ CREATE TABLE IF NOT EXISTS admin_audit_logs (
   created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
 
+CREATE TABLE IF NOT EXISTS administrative_audit_logs (
+  id SERIAL PRIMARY KEY,
+  entity_type TEXT NOT NULL,
+  entity_id INTEGER NOT NULL,
+  action TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  user_id INTEGER,
+  snapshot TEXT,
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
 CREATE TABLE IF NOT EXISTS clinic_settings (
   id INTEGER PRIMARY KEY DEFAULT 1,
   default_price_multiplier DOUBLE PRECISION NOT NULL DEFAULT 3,
@@ -66,6 +77,10 @@ CREATE TABLE IF NOT EXISTS clients (
   birth_date TEXT,
   created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS deleted_at TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS anonymized_at TEXT;
+CREATE INDEX IF NOT EXISTS idx_clients_active_name ON clients(full_name) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_administrative_audit_entity ON administrative_audit_logs(entity_type, entity_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS jewelry_inventory (
   id SERIAL PRIMARY KEY,
