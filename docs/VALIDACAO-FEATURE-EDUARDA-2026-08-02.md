@@ -23,7 +23,7 @@ A branch reúne as entregas anteriores de busca reutilizável de joias, desempen
 - `npm run typecheck`: aprovado.
 - `npm --prefix frontend test`: 72 testes aprovados.
 - `npm run build`: aprovado (1.690 módulos).
-- `npm --prefix backend test`: 365 testes aprovados.
+- `npm --prefix backend test`: 366 testes aprovados na validação final da `main`.
 - Navegador: catálogo validado em viewport mobile (375 px efetivos) e desktop (1.425 px efetivos), sem overflow horizontal, bloco preto anômalo ou erro de console.
 - O lint global continua informativo no pipeline e reporta o passivo legado já documentado; os arquivos desta rodada não adicionam erros bloqueantes.
 
