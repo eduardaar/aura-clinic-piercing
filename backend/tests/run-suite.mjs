@@ -10,7 +10,14 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import "dotenv/config";
+import dotenv from "dotenv";
+
+// O backend aceita o .env na raiz do monorepo, mas o processo de testes era
+// iniciado dentro de backend/. Testes que abrem uma conexão direta herdavam
+// DATABASE_URL vazio e falhavam em SCRAM, embora o servidor tivesse carregado
+// a mesma configuração alguns instantes depois.
+dotenv.config();
+dotenv.config({ path: path.join(process.cwd(), "../.env") });
 
 const PORT = process.env.TEST_PORT || 4199;
 const target = process.argv[2];
