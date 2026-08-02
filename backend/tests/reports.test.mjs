@@ -32,3 +32,15 @@ test("analytics público valida sessão e aparece no relatório de conversão", 
   assert.equal(report.status, 200, JSON.stringify(report.json));
   assert.ok(report.json.rows.some((row) => row.event_type === "catalog_view"));
 });
+
+test("desempenho por profissional expoe producao, disponibilidade e taxas", async () => {
+  const created = await req("/professionals", { method: "POST", tenant: context.slug, token: context.token, body: { name: "Profissional Relatorio", commission_percentage: 12, active: true } });
+  assert.equal(created.status, 201, JSON.stringify(created.json));
+  const report = await req(`/reports/professionals?from=2026-08-01&to=2026-08-31&professional_id=${created.json.id}`, { tenant: context.slug, token: context.token });
+  assert.equal(report.status, 200, JSON.stringify(report.json));
+  assert.equal(report.json.rows.length, 1);
+  const row = report.json.rows[0];
+  for (const field of ["worked_days", "available_hours", "occupied_hours", "completed_appointments", "cancellations", "no_shows", "jewelry_sold", "service_revenue", "revenue", "average_ticket", "commission", "occupancy_rate", "attendance_rate"]) {
+    assert.ok(Object.hasOwn(row, field), `campo ausente: ${field}`);
+  }
+});
