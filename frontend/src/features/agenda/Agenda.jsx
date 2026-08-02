@@ -449,14 +449,38 @@ function AppointmentItemsEditor({ form, services, procedures = [], jewelry, onCh
 
 function AppointmentValueSummary({ form, services, jewelry }) {
   const values = appointmentValueParts(form, services, jewelry);
+  const [quote, setQuote] = useState(null);
+  const [couponError, setCouponError] = useState("");
+  useEffect(() => {
+    const code = String(form.coupon_code || "").trim();
+    if (!code) { setQuote(null); setCouponError(""); return; }
+    const timer = setTimeout(async () => {
+      const items = normalizeAppointmentFormItems(form, services, jewelry).map((item) => ({
+        product_id: item.jewelry_id || null,
+        service_id: item.service_id || null,
+        unit_price: asNumber(item.procedure_price) + asNumber(item.jewelry_unit_price),
+        quantity: Math.max(1, asNumber(item.quantity, 1))
+      }));
+      const response = await apiFetch("/catalog/price-quote", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ coupon_code: code, items }) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) { setQuote(null); setCouponError(payload.error || "Cupom inválido ou não aplicável."); return; }
+      setQuote(payload); setCouponError("");
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [form.coupon_code, values.totalValue]);
   if (!form.service_id && !form.jewelry_id) return null;
+  const finalTotal = quote?.valid ? asNumber(quote.final_amount) : values.totalValue;
   return (
     <div className="soft-card appointment-value-summary">
       <span>Procedimento: <strong>{currency.format(values.procedureValue)}</strong></span>
       <span>Joalheria: <strong>{currency.format(values.jewelryValue)}</strong></span>
       <span>Sinal: <strong>{currency.format(values.depositValue)}</strong></span>
-      <span>Restante: <strong>{currency.format(values.remainingValue)}</strong></span>
-      <span>Total: <strong>{currency.format(values.totalValue)}</strong></span>
+      <span>Subtotal: <strong>{currency.format(values.totalValue)}</strong></span>
+      {quote?.discount_amount > 0 && <span>Cupom aplicado: <strong>−{currency.format(quote.discount_amount)}</strong></span>}
+      <span>Restante: <strong>{currency.format(Math.max(finalTotal - values.depositValue, 0))}</strong></span>
+      <span>Total final: <strong>{currency.format(finalTotal)}</strong></span>
+      {quote?.discount_amount > 0 && <small className="form-success">Cupom aplicado com sucesso.</small>}
+      {couponError && <small className="form-error">{couponError}</small>}
     </div>
   );
 }
