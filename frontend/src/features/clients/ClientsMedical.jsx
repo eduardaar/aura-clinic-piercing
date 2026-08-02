@@ -2,11 +2,11 @@
 import { useState } from "react";
 import { ChevronRight, FileSignature, HeartPulse, UsersRound } from "lucide-react";
 import { Button, Input, SecureImage, Select, StatusBadge } from "../../components/common/Ui";
-import { Modal, CrudHeader, ConfirmDeleteModal } from "../../components/common/Crud";
+import { Modal, CrudHeader } from "../../components/common/Crud";
 import { DataView, MONTH_OPTIONS } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, dateInputValue, formatDate, formatLongDate } from "../../lib/utils";
-import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
+import { apiFetch, readStoredSession, useApiInvalidate, useFetch } from "../../lib/api";
 import { defaultMedicalRecord } from "../../lib/defaultForms";
 import { currency, personName, whatsappUrl } from "../../features/shared/helpers";
 import { DigitalTerms } from "../terms/DigitalTerms";
@@ -66,12 +66,26 @@ export function ClientsMedical() {
     setModalOpen(true);
   }
 
-  async function removeClient(client) {
+  const isAdmin = readStoredSession()?.user?.role === "admin";
+
+  async function openDeletion(client) {
     setError("");
-    const response = await apiFetch(`/clients/${client.id}`, { method: "DELETE" });
+    const response = await apiFetch(`/clients/${client.id}/deletion-impact`);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return setError(payload.error || "Não foi possível analisar o cadastro.");
+    setDeleting({ client, impact: payload.impact || {}, action: payload.action, confirmation: "", reason: "", busy: false });
+  }
+
+  async function removeClient() {
+    const client = deleting?.client;
+    if (!client) return;
+    setDeleting({ ...deleting, busy: true });
+    setError("");
+    const response = await apiFetch(`/clients/${client.id}`, { method: "DELETE", body: JSON.stringify({ confirmation: deleting.confirmation, reason: deleting.reason }) });
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
       setError(payload.error || "Não foi possível excluir o cliente.");
+      setDeleting({ ...deleting, busy: false });
       return;
     }
     if (editing && editing.id === client.id) {
@@ -79,6 +93,7 @@ export function ClientsMedical() {
       setModalOpen(false);
     }
     refresh();
+    setDeleting(null);
   }
 
   return (
@@ -139,7 +154,7 @@ export function ClientsMedical() {
               <button type="button" onClick={() => setProfile(client)}>Perfil completo</button>
               <a className="secondary-button" href={whatsappUrl(client.whatsapp, `Olá, ${personName(client)}, tudo bem? Aqui é da Aura Clinic. Estamos entrando em contato para confirmar informações, acompanhar seu atendimento ou informar uma atualização importante.`)} target="_blank" rel="noreferrer">WhatsApp</a>
               <button type="button" onClick={() => openEdit(client)}>Editar</button>
-              <button type="button" onClick={() => setDeleting({ message: `Excluir ${personName(client)}?`, run: () => removeClient(client) })}>Excluir</button>
+              {isAdmin && <button type="button" className="danger" onClick={() => openDeletion(client)}>Excluir cliente</button>}
             </>
           )}
           empty="Você ainda não possui clientes cadastrados."
@@ -170,12 +185,14 @@ export function ClientsMedical() {
         />
       </Modal>
 
-      <ConfirmDeleteModal
-        open={!!deleting}
-        message={deleting?.message}
-        onClose={() => setDeleting(null)}
-        onConfirm={async () => { await deleting.run(); setDeleting(null); }}
-      />
+      <Modal open={!!deleting} title="Excluir cliente" subtitle="Análise segura do histórico" onClose={() => !deleting?.busy && setDeleting(null)} footer={<><Button variant="secondary" onClick={() => setDeleting(null)} disabled={deleting?.busy}>Cancelar</Button><Button variant="danger" onClick={removeClient} disabled={deleting?.busy || deleting?.confirmation !== "EXCLUIR CLIENTE" || !deleting?.reason?.trim()}>{deleting?.busy ? "Processando…" : deleting?.action === "anonymize" ? "Anonimizar e arquivar" : "Excluir definitivamente"}</Button></>}>
+        {deleting && <div className="stack">
+          <div className="soft-card"><strong>{personName(deleting.client)}</strong><p>{deleting.action === "anonymize" ? "Há histórico vinculado. Os dados pessoais serão anonimizados e o histórico financeiro/clínico será preservado." : "Não há histórico vinculado. O cadastro será excluído definitivamente."}</p></div>
+          <div className="summary-grid">{Object.entries(deleting.impact).map(([key, value]) => <span key={key}>{key.replaceAll("_", " ")}: <strong>{value}</strong></span>)}</div>
+          <Input label="Motivo obrigatório" value={deleting.reason} onChange={(reason) => setDeleting({ ...deleting, reason })} />
+          <Input label="Digite EXCLUIR CLIENTE" value={deleting.confirmation} onChange={(confirmation) => setDeleting({ ...deleting, confirmation })} />
+        </div>}
+      </Modal>
       {profile && (
         <Modal open title={personName(profile)} subtitle="Timeline, histórico clínico e relacionamento" size="lg" onClose={() => setProfile(null)}
           footer={<Button variant="secondary" onClick={() => setProfile(null)}>Fechar</Button>}>
