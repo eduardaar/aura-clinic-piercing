@@ -1,49 +1,395 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronRight } from "lucide-react";
-import { API } from "../lib/api";
-import { asArray } from "../lib/utils";
+import { API, API_ORIGIN } from "../lib/api";
+import { asArray, asNumber, asObject } from "../lib/utils";
 import { featureLabel } from "../lib/planFeatures";
 import { BrandMark } from "../components/common/BrandMark";
 import { PublicTopNav } from "../components/layout/PublicTopNav";
+import { DEFAULT_LANDING_SECTIONS, LANDING_DEFAULTS } from "./landingDefaults";
+import "../styles/landing-carousel.css";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
-// 4 recursos — os mais fortes do produto, uma linha de texto cada.
-// Sem ícone: cada card já tem foto própria, e o ícone genérico ao lado do título
-// só competia com ela.
-const FEATURES = [
-  {
-    title: "Agendamento online",
-    text: "Seus clientes marcam horário sozinhos por um link só seu.",
-    img: "/assets/landing/feature-agenda.jpg",
-    alt: "Recepcionista de estúdio atendendo com um tablet em uma recepção clara",
-    w: 1200, h: 900
-  },
-  {
-    title: "Catálogo de joias",
-    text: "Uma vitrine online da sua marca, pronta pra compartilhar.",
-    img: "/assets/landing/feature-jewelry.jpg",
-    alt: "Argolas douradas de piercing sobre uma base de pedra clara",
-    w: 1200, h: 900
-  },
-  {
-    title: "Ficha digital",
-    text: "Anamnese e termo de consentimento assinados sem papel.",
-    img: "/assets/landing/feature-care.jpg",
-    alt: "Orelha com vários piercings cicatrizados no hélix e no lóbulo",
-    w: 1200, h: 900
-  },
-  {
-    title: "Financeiro e estoque",
-    text: "Caixa, vendas e alertas de estoque baixo no mesmo lugar.",
-    img: "/assets/landing/showcase-1.jpg",
-    alt: "Brinco dourado texturizado em close-up",
-    w: 900, h: 900
+// O conteúdo traz só a URL da imagem: quem manda no formato é o CSS
+// (`aspect-ratio` + `object-fit: cover`). Estes números existem para o
+// navegador reservar o espaço antes de a foto chegar — sem `width`/`height` a
+// página pula a cada imagem carregada, e a landing é justamente onde o visitante
+// está lendo enquanto o resto baixa.
+const IMAGE_SIZE = {
+  hero: { width: 1600, height: 1000 },
+  feature: { width: 1200, height: 900 },
+  carousel: { width: 1600, height: 1000 },
+  shot: { width: 900, height: 900 }
+};
+
+// Imagem enviada pelo painel chega como "/uploads/...", servida pelo backend —
+// em dev o front roda em outra porta, então o caminho relativo daria 404.
+// Caminho do próprio site (/assets/...) e URL absoluta passam intactos.
+function imageUrl(url) {
+  const value = String(url || "").trim();
+  return value.startsWith("/uploads") ? `${API_ORIGIN}${value}` : value;
+}
+
+// Mescla o que veio da API sobre o conteúdo embutido.
+//
+// Campo ausente OU vazio volta ao default: o painel salva bloco a bloco e um
+// título apagado por engano viraria um buraco (ou um "undefined") na página
+// pública. `autoplay_seconds: 0` é valor legítimo e passa — só string em branco
+// e lista vazia contam como "não preenchido".
+function mergeContent(sectionKey, rawContent) {
+  const merged = { ...asObject(LANDING_DEFAULTS[sectionKey]) };
+  for (const [field, value] of Object.entries(asObject(rawContent))) {
+    if (value === null || value === undefined) continue;
+    if (typeof value === "string" && !value.trim()) continue;
+    if (Array.isArray(value) && !value.length) continue;
+    merged[field] = value;
   }
-];
+  return merged;
+}
+
+// Lista de itens de um bloco, já sem as linhas que o painel deixou pela metade.
+//
+// Cada item ganha um `key` estável derivado do próprio conteúdo (e não da
+// posição): o painel reordena e remove itens, e uma chave posicional faria o
+// React reaproveitar o slide errado — imagem de um item aparecendo com a
+// legenda de outro. O sufixo cobre o caso legítimo de dois itens idênticos.
+function contentItems(content, field, requiredField) {
+  const seen = new Map();
+  return asArray(content[field])
+    .map((item) => asObject(item))
+    .filter((item) => String(item[requiredField] || "").trim())
+    .map((item) => {
+      const base = String(item[requiredField]);
+      const repeated = (seen.get(base) || 0) + 1;
+      seen.set(base, repeated);
+      return { ...item, key: repeated > 1 ? `${base}#${repeated}` : base };
+    });
+}
+
+/* ---------- blocos ------------------------------------------------------- */
+
+function HeroSection({ content }) {
+  return (
+    <section className="au-l-hero">
+      <div className="au-l-hero-inner">
+        <div className="au-l-hero-copy">
+          {content.kicker && <span className="au-l-kicker">{content.kicker}</span>}
+          <h1>{content.title}</h1>
+          <p>{content.subtitle}</p>
+          <div className="au-l-hero-actions">
+            <a className="au-l-btn au-l-btn-primary" href={content.primary_href}>
+              {content.primary_label} <ChevronRight size={18} aria-hidden="true" />
+            </a>
+            {content.secondary_label && (
+              <a className="au-l-btn au-l-btn-ghost" href={content.secondary_href}>{content.secondary_label}</a>
+            )}
+          </div>
+          {content.note && <span className="au-l-note">{content.note}</span>}
+        </div>
+
+        <figure className="au-l-hero-media">
+          <img
+            src={imageUrl(content.image)}
+            alt={content.image_alt}
+            width={IMAGE_SIZE.hero.width}
+            height={IMAGE_SIZE.hero.height}
+            fetchpriority="high"
+            decoding="async"
+          />
+          {content.caption && <figcaption className="au-l-hero-strip">{content.caption}</figcaption>}
+        </figure>
+      </div>
+    </section>
+  );
+}
+
+function FeaturesSection({ content }) {
+  const items = contentItems(content, "items", "title");
+  if (!items.length) return null;
+  return (
+    <section className="au-l-sec" id="recursos">
+      <div className="au-l-sec-head">
+        <h2>{content.title}</h2>
+        {content.subtitle && <p>{content.subtitle}</p>}
+      </div>
+      <div className="au-l-features">
+        {items.map((item) => (
+          <article key={item.key} className="au-l-feature">
+            <div className="au-l-feature-media">
+              <img
+                src={imageUrl(item.image)}
+                alt={item.image_alt || ""}
+                width={IMAGE_SIZE.feature.width}
+                height={IMAGE_SIZE.feature.height}
+                loading="lazy"
+                decoding="async"
+              />
+            </div>
+            <div className="au-l-feature-body">
+              <h3>{item.title}</h3>
+              <p>{item.text}</p>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// Preferência de sistema, lida ao vivo: quem liga "reduzir movimento" no meio da
+// visita para o autoplay na hora, sem recarregar a página.
+function usePrefersReducedMotion() {
+  const [reduced, setReduced] = useState(() => {
+    try {
+      return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    let media;
+    try {
+      media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    } catch {
+      return;
+    }
+    const onChange = (event) => setReduced(event.matches);
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
+  return reduced;
+}
+
+function CarouselSection({ content }) {
+  const items = contentItems(content, "items", "image");
+  const [active, setActive] = useState(0);
+  // Hover e foco pausam: ninguém consegue ler uma legenda (nem clicar num ponto)
+  // que troca sozinha embaixo do cursor.
+  const [paused, setPaused] = useState(false);
+  const reducedMotion = usePrefersReducedMotion();
+
+  const seconds = asNumber(content.autoplay_seconds, 0);
+  // Uma imagem só não é carrossel: sem pontos e sem rotação.
+  const canRotate = items.length > 1 && seconds > 0 && !paused && !reducedMotion;
+  const total = items.length;
+
+  useEffect(() => {
+    if (!canRotate) return;
+    const timer = window.setInterval(() => {
+      setActive((current) => (current + 1) % total);
+    }, seconds * 1000);
+    return () => window.clearInterval(timer);
+  }, [canRotate, seconds, total]);
+
+  if (!total) return null;
+  // O painel pode ter removido imagens desde o último clique nos pontos.
+  const current = active % total;
+
+  return (
+    <section
+      className="au-l-sec au-l-carousel-sec"
+      aria-roledescription="carrossel"
+      aria-label={content.title || "Galeria"}
+    >
+      <div className="au-l-sec-head">
+        <h2>{content.title}</h2>
+        {content.subtitle && <p>{content.subtitle}</p>}
+      </div>
+
+      <div
+        className="au-l-carousel"
+        onMouseEnter={() => setPaused(true)}
+        onMouseLeave={() => setPaused(false)}
+        onFocus={() => setPaused(true)}
+        onBlur={() => setPaused(false)}
+      >
+        <div className="au-l-carousel-stage">
+          {items.map((item, index) => (
+            <figure
+              key={item.key}
+              className={`au-l-carousel-slide ${index === current ? "is-active" : ""}`}
+              aria-hidden={index === current ? undefined : "true"}
+            >
+              <img
+                src={imageUrl(item.image)}
+                alt={item.image_alt || ""}
+                width={IMAGE_SIZE.carousel.width}
+                height={IMAGE_SIZE.carousel.height}
+                loading="lazy"
+                decoding="async"
+              />
+              {item.caption && <figcaption className="au-l-carousel-caption">{item.caption}</figcaption>}
+            </figure>
+          ))}
+        </div>
+
+        {total > 1 && (
+          <div className="au-l-carousel-dots">
+            {items.map((item, index) => (
+              <button
+                key={item.key}
+                type="button"
+                className={index === current ? "is-active" : ""}
+                aria-label={`Ver imagem ${index + 1} de ${total}`}
+                aria-current={index === current ? "true" : undefined}
+                onClick={() => setActive(index)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+// Os planos continuam vindo de `GET /api/plans` — preço e recursos são dado
+// vivo da plataforma, não texto de marketing. Do conteúdo editável vêm só o
+// título, o subtítulo e o rótulo/destino do botão.
+function PlansSection({ content, plans }) {
+  return (
+    <section className="au-l-sec au-l-sec-plans" id="planos">
+      <div className="au-l-sec-head">
+        <h2>{content.title}</h2>
+        {content.subtitle && <p>{content.subtitle}</p>}
+      </div>
+      <div className="au-l-plan-scroller">
+        <div className="au-l-plan-grid">
+          {plans.map((plan) => (
+            <article key={plan.code} className={`au-l-plan ${plan.highlight || plan.is_recommended ? "is-featured" : ""}`}>
+              {(plan.badge || plan.is_recommended) && (
+                <span className="au-l-plan-badge">{plan.badge || "Recomendado"}</span>
+              )}
+              <h3>{plan.name}</h3>
+              <p className="au-l-plan-price">
+                {currency.format(Number(plan.price_cents || 0) / 100)}<small>/mês</small>
+              </p>
+              <p className="au-l-plan-aud">{plan.audience}</p>
+              <ul className="au-l-plan-list">
+                {asArray(plan.features).slice(0, 4).map((f) => <li key={f}>{featureLabel(f)}</li>)}
+              </ul>
+              <a className="au-l-btn au-l-btn-plan" href={content.cta_href}>{content.cta_label}</a>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// Vitrines públicas da plataforma: quem chega pela landing pode ver as clínicas
+// já usando o sistema antes de decidir criar a própria. Seção própria — dentro
+// do bloco de planos os cards não alinhavam com a grade e ficavam espremidos
+// contra ela.
+function ShowcaseLinksSection({ content }) {
+  const items = contentItems(content, "items", "title");
+  if (!items.length) return null;
+  return (
+    <section className="au-l-sec au-l-sec-links">
+      <div className="au-l-sec-head">
+        <h2>{content.title}</h2>
+        {content.subtitle && <p>{content.subtitle}</p>}
+      </div>
+      <div className="au-l-links">
+        {items.map((item) => (
+          <a key={item.key} className="au-l-link-card" href={item.href || "#"}>
+            <span className="au-l-link-body">
+              <strong>{item.title}</strong>
+              <span>{item.text}</span>
+            </span>
+            <ChevronRight size={18} aria-hidden="true" />
+          </a>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ClosingSection({ content }) {
+  const shots = contentItems(content, "images", "image");
+  // Fotos sem texto alternativo são enfeite: escondê-las do leitor de tela evita
+  // anunciar "imagem" três vezes sem dizer nada. Se o painel descrever alguma,
+  // ela passa a contar como conteúdo.
+  const decorative = shots.every((shot) => !String(shot.image_alt || "").trim());
+
+  return (
+    <section className="au-l-close">
+      <div className="au-l-close-inner">
+        <div className="au-l-close-copy">
+          <h2>{content.title}</h2>
+          <a className="au-l-btn au-l-btn-primary" href={content.primary_href}>
+            {content.primary_label} <ChevronRight size={18} aria-hidden="true" />
+          </a>
+          {content.note && <span className="au-l-note">{content.note}</span>}
+        </div>
+        {shots.length > 0 && (
+          <div className="au-l-shots" aria-hidden={decorative ? "true" : undefined}>
+            {shots.map((shot) => (
+              <img
+                key={shot.key}
+                src={imageUrl(shot.image)}
+                alt={shot.image_alt || ""}
+                width={IMAGE_SIZE.shot.width}
+                height={IMAGE_SIZE.shot.height}
+                loading="lazy"
+                decoding="async"
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <footer className="au-l-foot">
+        <div className="au-l-brand">
+          <BrandMark className="au-l-mark" size={34} />
+          <strong>Aura</strong>
+        </div>
+        <span className="au-l-foot-text">{content.footer_text}</span>
+        <a className="au-l-foot-link" href={content.footer_link_href}>{content.footer_link_label}</a>
+      </footer>
+    </section>
+  );
+}
+
+// Um componente por tipo de bloco. Chave fora desta tabela é ignorada em
+// silêncio: o backend pode ganhar um bloco novo antes de o frontend saber
+// desenhá-lo, e nesse intervalo a landing tem de continuar de pé.
+const SECTION_COMPONENTS = {
+  hero: HeroSection,
+  features: FeaturesSection,
+  carousel: CarouselSection,
+  plans: PlansSection,
+  showcase_links: ShowcaseLinksSection,
+  closing: ClosingSection
+};
 
 export function Landing() {
+  // Começa JÁ com o conteúdo embutido, não com lista vazia. A landing é a porta
+  // de entrada de quem vai assinar: API fora, lenta ou devolvendo lista vazia
+  // não pode virar tela branca — isso é venda perdida na hora. Quando a resposta
+  // chega, ela substitui o embutido; até lá a página está inteira.
+  const [sections, setSections] = useState(DEFAULT_LANDING_SECTIONS);
   const [plans, setPlans] = useState([]);
+
+  useEffect(() => {
+    let active = true;
+    // Rota pública, sem token e sem tenant — a landing é da plataforma, não de
+    // uma clínica.
+    fetch(`${API}/landing`)
+      .then((response) => response.json())
+      .then((payload) => {
+        const received = asArray(payload?.sections)
+          .map((section) => asObject(section))
+          .filter((section) => SECTION_COMPONENTS[section.section_key]);
+        // Lista vazia = mantém o embutido. Melhor a página de ontem que página
+        // nenhuma.
+        if (active && received.length) setSections(received);
+      })
+      .catch(() => {
+        // Silêncio proposital: o visitante não tem o que fazer com um erro de
+        // API, e a página embutida já está na tela.
+      });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     fetch(`${API}/plans`)
@@ -62,135 +408,18 @@ export function Landing() {
       <PublicTopNav current="landing" />
 
       <main className="au-l-root">
-        <section className="au-l-hero">
-          <div className="au-l-hero-inner">
-            <div className="au-l-hero-copy">
-              <span className="au-l-kicker">Para estúdios de piercing</span>
-              <h1>Gestão premium para quem vive da perfuração.</h1>
-              <p>Agenda, catálogo de joias, ficha digital e financeiro — num sistema só.</p>
-              <div className="au-l-hero-actions">
-                <a className="au-l-btn au-l-btn-primary" href="/cadastro">
-                  Criar minha clínica <ChevronRight size={18} aria-hidden="true" />
-                </a>
-                <a className="au-l-btn au-l-btn-ghost" href="/login">Já tenho conta</a>
-              </div>
-              <span className="au-l-note">7 dias grátis · sem cartão de crédito</span>
-            </div>
-  
-            <figure className="au-l-hero-media">
-              <img
-                src="/assets/landing/hero-studio.jpg"
-                alt="Close de orelha com piercings de joias douradas no lóbulo"
-                width="1600"
-                height="1000"
-                fetchpriority="high"
-                decoding="async"
-              />
-              <figcaption className="au-l-hero-strip">
-                Agenda, catálogo e ficha digital num link só seu
-              </figcaption>
-            </figure>
-          </div>
-        </section>
-  
-        <section className="au-l-sec" id="recursos">
-          <div className="au-l-sec-head">
-            <h2>Tudo que o estúdio precisa</h2>
-          </div>
-          <div className="au-l-features">
-            {FEATURES.map(({ title, text, img, alt, w, h }) => (
-              <article key={title} className="au-l-feature">
-                <div className="au-l-feature-media">
-                  <img src={img} alt={alt} width={w} height={h} loading="lazy" decoding="async" />
-                </div>
-                <div className="au-l-feature-body">
-                  <h3>{title}</h3>
-                  <p>{text}</p>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-  
-        <section className="au-l-sec au-l-sec-plans" id="planos">
-          <div className="au-l-sec-head">
-            <h2>Planos para cada fase</h2>
-            <p>Todos começam com 7 dias grátis. Troque quando quiser.</p>
-          </div>
-          <div className="au-l-plan-scroller">
-            <div className="au-l-plan-grid">
-              {orderedPlans.map((plan) => (
-                <article key={plan.code} className={`au-l-plan ${plan.highlight || plan.is_recommended ? "is-featured" : ""}`}>
-                  {(plan.badge || plan.is_recommended) && (
-                    <span className="au-l-plan-badge">{plan.badge || "Recomendado"}</span>
-                  )}
-                  <h3>{plan.name}</h3>
-                  <p className="au-l-plan-price">
-                    {currency.format(Number(plan.price_cents || 0) / 100)}<small>/mês</small>
-                  </p>
-                  <p className="au-l-plan-aud">{plan.audience}</p>
-                  <ul className="au-l-plan-list">
-                    {asArray(plan.features).slice(0, 4).map((f) => <li key={f}>{featureLabel(f)}</li>)}
-                  </ul>
-                  <a className="au-l-btn au-l-btn-plan" href="/cadastro">Começar grátis</a>
-                </article>
-              ))}
-            </div>
-          </div>
-
-        </section>
-
-        {/* Vitrines públicas da plataforma: quem chega pela landing pode ver as
-            clínicas já usando o sistema antes de decidir criar a própria.
-            Seção própria — dentro do bloco de planos os cards não alinhavam
-            com a grade e ficavam espremidos contra ela. */}
-        <section className="au-l-sec au-l-sec-links">
-          <div className="au-l-sec-head">
-            <h2>Veja quem já usa</h2>
-            <p>Explore as vitrines públicas das clínicas na plataforma.</p>
-          </div>
-          <div className="au-l-links">
-            <a className="au-l-link-card" href="/catalogo">
-              <span className="au-l-link-body">
-                <strong>Catálogo online</strong>
-                <span>Veja as clínicas usando e abra a vitrine de joias de cada uma.</span>
-              </span>
-              <ChevronRight size={18} aria-hidden="true" />
-            </a>
-            <a className="au-l-link-card" href="/agendar">
-              <span className="au-l-link-body">
-                <strong>Agendamento online</strong>
-                <span>Encontre um estúdio e marque horário direto na agenda dele.</span>
-              </span>
-              <ChevronRight size={18} aria-hidden="true" />
-            </a>
-          </div>
-        </section>
-
-        <section className="au-l-close">
-          <div className="au-l-close-inner">
-            <div className="au-l-close-copy">
-              <h2>Pronto para profissionalizar seu estúdio?</h2>
-              <a className="au-l-btn au-l-btn-primary" href="/cadastro">
-                Criar minha clínica <ChevronRight size={18} aria-hidden="true" />
-              </a>
-              <span className="au-l-note">7 dias grátis · sem cartão de crédito</span>
-            </div>
-            <div className="au-l-shots" aria-hidden="true">
-              <img src="/assets/landing/showcase-2.jpg" alt="" width="900" height="900" loading="lazy" decoding="async" />
-              <img src="/assets/landing/showcase-3.jpg" alt="" width="900" height="900" loading="lazy" decoding="async" />
-            </div>
-          </div>
-  
-          <footer className="au-l-foot">
-            <div className="au-l-brand">
-              <BrandMark className="au-l-mark" size={34} />
-              <strong>Aura</strong>
-            </div>
-            <span className="au-l-foot-text">Plataforma de gestão para estúdios de piercing.</span>
-            <a className="au-l-foot-link" href="/login">Entrar na minha conta</a>
-          </footer>
-        </section>
+        {/* Ordem da API (já vem ordenada); sem ela, a ordem do embutido. */}
+        {sections.map((section) => {
+          const Section = SECTION_COMPONENTS[section.section_key];
+          if (!Section) return null;
+          return (
+            <Section
+              key={section.section_key}
+              content={mergeContent(section.section_key, section.content)}
+              plans={orderedPlans}
+            />
+          );
+        })}
       </main>
     </div>
   );

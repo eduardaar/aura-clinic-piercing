@@ -30,6 +30,24 @@ export const loginLimiter = rateLimit({
   message: { error: "Muitas tentativas de login. Tente novamente em alguns minutos." }
 });
 
+// Rate limit dos webhooks de gateway: 600 req/min por IP.
+//
+// Limite PRÓPRIO, e generoso, por um motivo concreto: o Asaas entrega de um
+// punhado de IPs fixos, então todas as clínicas caem no mesmo bucket. Sob o
+// limite global (300/min) uma rajada de fechamento de mês devolveria 429 — e
+// 429 não é 2xx, o que faz o Asaas reentregar e, após falhas consecutivas,
+// PAUSAR a fila de webhooks da conta. O limite existe só como teto contra
+// inundação; a autenticidade quem garante é o token.
+export const webhookLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: clientKey,
+  skip,
+  message: { error: "Muitas requisições." }
+});
+
 // Rate limit global leve para toda a API (/api): 300 req/min por IP.
 // Camada de proteção adicional ao limite estrito do /login. Resposta em JSON.
 export const apiLimiter = rateLimit({

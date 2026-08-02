@@ -4,6 +4,8 @@ import { withDb } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { createSalesOrder, listSalesOrders, countSalesOrders, getSalesOrder, SalesOrderValidationError } from "../services/sales.js";
 import { parsePaging, pageResponse } from "../services/pagination.js";
+import { tenantClient } from "../services/asaas/credentials.js";
+import { createSalesOrderCharge } from "../services/tenantCharges.js";
 
 const router = Router();
 
@@ -66,7 +68,42 @@ router.post("/api/sales-orders/public", withDb(async (req, res, db) => {
     throw error;
   }
   if (!order) return res.status(400).json({ error: "Não foi possível criar a venda." });
-  res.status(201).json(order);
+
+  // Cobrança online do pedido, quando a clínica tem gateway configurado.
+  //
+  // Fica FORA da transação de `createSalesOrder` de propósito: é uma chamada de
+  // rede, e prendê-la ali seguraria o lock das reservas de estoque pelo tempo
+  // do round-trip. Se o Asaas falhar, o pedido continua de pé e a clínica cobra
+  // pelo caminho de sempre — o serviço devolve `online_payment_available:
+  // false` em vez de lançar.
+  //
+  // Só pedido que ainda não está pago: venda registrada como paga (balcão) não
+  // precisa de link.
+  let paymentIntent = null;
+  if (["pendente", "aberta"].includes(String(order.status)) && Number(order.total_value) > 0) {
+    try {
+      if (await tenantClient(db)) {
+        paymentIntent = await createSalesOrderCharge(db, {
+          salesOrderId: order.id,
+          clientId: order.client_id,
+          amount: order.total_value,
+          description: `Pedido #${order.id}`,
+          // Mesma chave do pedido: reenvio do formulário reaproveita a cobrança
+          // em vez de emitir uma segunda fatura para o mesmo carrinho.
+          idempotencyKey: `sales-order:${order.id}`
+        });
+      }
+    } catch (error) {
+      console.error(`[Asaas] cobrança do pedido ${order.id}: ${error.message}`);
+    }
+  }
+
+  res.status(201).json({
+    ...order,
+    payment_intent: paymentIntent,
+    payment_url: paymentIntent?.invoice_url || null,
+    online_payment_available: Boolean(paymentIntent?.online_payment_available)
+  });
 }));
 
 router.patch("/api/sales-orders/:id", withDb(async (req, res, db) => {

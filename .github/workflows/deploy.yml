@@ -1,16 +1,46 @@
-name: Deploy (produção)
+name: CI e Deploy
 
-# Deploy automático da Aura Clinic a cada push na main.
-# Também pode ser disparado manualmente em Actions > Deploy (produção) > Run workflow.
+# Um workflow, dois papéis:
+#
+#   PULL REQUEST  roda só `validate`. É o portão: nenhum merge entra sem os
+#                 testes, o typecheck e o build passando.
+#   PUSH NA MAIN  roda `validate` e, se passar, publica em produção.
+#
+# Antes, o workflow disparava APENAS em push na main — o que significava que
+# um PR não tinha verificação nenhuma e a única forma de descobrir que a branch
+# quebrou algo era ela já estar indo para o ar.
 on:
   push:
     branches: [main]
-  workflow_dispatch: {}
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      rollback:
+        description: "Voltar a API para a imagem anterior em vez de publicar a atual"
+        type: boolean
+        default: false
 
-# Nunca deixa dois deploys rodarem ao mesmo tempo (o segundo espera o primeiro).
+# Privilégio mínimo para o GITHUB_TOKEN. O default de muitos repositórios é
+# permissivo; aqui o workflow só precisa LER o código — ele não abre issue, não
+# comenta em PR e não publica pacote.
+permissions:
+  contents: read
+
 concurrency:
-  group: deploy-producao
-  cancel-in-progress: false
+  # Dois regimes, porque a consequência de cancelar é oposta em cada um:
+  #
+  #   PR      um grupo por branch, cancelando a execução anterior — um commit
+  #           novo invalida a verificação do antigo, e deixá-la terminar só
+  #           gasta runner.
+  #   PRODUÇÃO  fila única, NUNCA cancelada no meio: abortar um deploy entre o
+  #           rsync e o restart deixaria o servidor em estado inconsistente.
+  #
+  # Isto também conserta um problema real do desenho anterior, em que PR e
+  # deploy dividiam o mesmo grupo `deploy-producao` com `cancel-in-progress:
+  # false`: a verificação de um PR ficava presa na fila atrás de um deploy.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.head_ref || 'producao' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   SERVER_HOST: 187.77.225.233
@@ -23,7 +53,11 @@ env:
 
 jobs:
   validate:
+    name: Testes, tipos e build
     runs-on: ubuntu-latest
+    # A suíte leva ~2 min; 20 é folga generosa. Sem teto, um teste pendurado
+    # ocuparia o runner por 6 horas (o default do GitHub) antes de desistir.
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16-alpine
@@ -45,6 +79,10 @@ jobs:
       PLATFORM_ADMIN_EMAIL: superadmin@aura.local
       PLATFORM_ADMIN_PASSWORD: superadmin123
       ALLOW_PUBLIC_SIGNUP: "true"
+      # Nenhuma credencial do Asaas aqui, de PROPÓSITO: sem elas a integração
+      # sobe desligada, e é justamente esse estado que os testes exercitam (o
+      # webhook precisa REJEITAR quando não há token configurado). Pôr uma chave
+      # real na CI também faria a suíte bater no gateway de verdade.
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -62,6 +100,12 @@ jobs:
         run: |
           npm --prefix backend ci
           npm --prefix frontend ci
+          npm ci
+
+      # Verificação de tipos (checkJs + JSDoc). Passa limpo hoje, então entra
+      # como bloqueante: era a metade que faltava da pendência 9 das docs.
+      - name: Verificação de tipos
+        run: npm run typecheck
 
       - name: Testes do backend e migrations multi-tenant
         run: npm --prefix backend test
@@ -71,27 +115,65 @@ jobs:
           npm --prefix frontend test
           npm --prefix frontend run build
 
+      # Informativo, NÃO bloqueante: o repositório carrega ~84 achados antigos
+      # (pendência 12) e reprovar o PR por eles pararia o trabalho de todo mundo
+      # sem relação com a mudança. Fica visível no log para a dívida não crescer
+      # em silêncio; vira bloqueante quando o passivo for zerado.
+      - name: Lint (informativo)
+        continue-on-error: true
+        run: npm run lint
+
   # Sem o secret da chave SSH não há como deployar — pula (verde) com um aviso,
   # em vez de falhar. Assim o primeiro push não quebra antes da configuração.
   guard:
+    name: Pré-requisitos do deploy
     needs: validate
+    # PR nunca publica: valida e para.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       ready: ${{ steps.check.outputs.ready }}
     steps:
       - id: check
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          ASAAS_API_KEY: ${{ secrets.ASAAS_API_KEY }}
+          ASAAS_WEBHOOK_TOKEN: ${{ secrets.ASAAS_WEBHOOK_TOKEN }}
         run: |
-          if [ -n "${{ secrets.DEPLOY_SSH_KEY }}" ]; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          else
+          # Os secrets vêm por env, e não interpolados no script: um valor com
+          # aspas ou quebra de linha quebraria o shell se fosse colado no corpo.
+          if [ -z "${DEPLOY_SSH_KEY}" ]; then
             echo "::warning::Secret DEPLOY_SSH_KEY ausente — deploy pulado. Configure em Settings > Secrets and variables > Actions e rode de novo."
             echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
+          # Par indivisível: a API recusa subir em produção com chave e sem
+          # token (o webhook ficaria aberto). Melhor avisar aqui do que deixar o
+          # container reiniciar em laço depois do deploy.
+          if [ -n "${ASAAS_API_KEY}" ] && [ -z "${ASAAS_WEBHOOK_TOKEN}" ]; then
+            echo "::error::ASAAS_API_KEY configurada sem ASAAS_WEBHOOK_TOKEN. Sem o token o webhook do Asaas fica aberto e a API recusa subir em produção."
+            exit 1
+          fi
+          if [ -z "${ASAAS_API_KEY}" ]; then
+            echo "::notice::Asaas não configurado — a cobrança online sobe desligada. Isso é esperado até os secrets serem preenchidos."
+          fi
+
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
   deploy:
+    name: Deploy (produção)
     needs: [validate, guard]
-    if: needs.guard.outputs.ready == 'true'
+    if: github.event_name != 'pull_request' && needs.guard.outputs.ready == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # Ambiente do GitHub: dá histórico de deploys, mostra a URL no PR e permite
+    # exigir aprovação manual (Settings > Environments > production) sem tocar
+    # neste arquivo. Enquanto nenhuma regra for criada, não muda nada.
+    environment:
+      name: production
+      url: https://auraclinic.monitence.com
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -104,16 +186,32 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Configurar chave SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
           install -m 600 /dev/null "$GITHUB_WORKSPACE/.deploy_key"
-          echo "${{ secrets.DEPLOY_SSH_KEY }}" > "$GITHUB_WORKSPACE/.deploy_key"
+          printf '%s\n' "${DEPLOY_SSH_KEY}" > "$GITHUB_WORKSPACE/.deploy_key"
 
       # Sem ssh-keyscan (que abre 1 conexão por tipo de chave e ajudava a
       # tropeçar no fail2ban). accept-new confia no host no 1º contato e a
       # conexão é multiplexada pelo deploy.sh (uma só para todo o deploy).
+      #
+      # Os segredos do Asaas são repassados ao deploy.sh, que faz upsert no .env
+      # DO SERVIDOR (o rsync exclui .env de propósito). Secret ausente/vazio é
+      # pulado pelo script — nunca sobrescreve com vazio uma chave já em
+      # produção. Configure em Settings > Secrets and variables > Actions.
       - name: Deploy
         env:
           SSH_OPTS: -i ${{ github.workspace }}/.deploy_key -o UserKnownHostsFile=${{ github.workspace }}/.known_hosts -o StrictHostKeyChecking=accept-new
+          ROLLBACK: ${{ inputs.rollback }}
+          ASAAS_BASE_URL: ${{ secrets.ASAAS_BASE_URL }}
+          ASAAS_API_KEY: ${{ secrets.ASAAS_API_KEY }}
+          ASAAS_WEBHOOK_TOKEN: ${{ secrets.ASAAS_WEBHOOK_TOKEN }}
+          ASAAS_VAULT_KEY: ${{ secrets.ASAAS_VAULT_KEY }}
+          # Base SEM o /api: as rotas já declaram o caminho completo
+          # (/api/webhooks/asaas/<slug>). Usar API_URL aqui duplicaria o /api
+          # na URL que a clínica cola no painel do Asaas.
+          PUBLIC_API_URL: ${{ env.SITE_URL }}
         run: bash scripts/deploy.sh
 
       - name: Limpar chave

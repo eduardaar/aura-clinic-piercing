@@ -47,6 +47,28 @@ async function findTenantBySlug(slug) {
   return tenant;
 }
 
+// Busca por slug para quem NÃO vem do ciclo normal de requisição — hoje, o
+// webhook do Asaas, que identifica a clínica pela URL cadastrada no painel
+// dela. Reaproveita o mesmo cache de 60s.
+//
+// Diferença deliberada em relação ao resolveTenant: clínica SUSPENSA não é
+// recusada. O pagamento aconteceu no mundo real de qualquer forma; recusar o
+// evento só faria o Asaas reentregar em laço e, no fim, pausar a fila da conta.
+// Quem chama decide o que fazer com o status.
+export async function tenantBySlug(slug) {
+  const normalized = String(slug || "").trim().toLowerCase();
+  if (!TENANT_SLUG_REGEX.test(normalized)) return null;
+  const tenant = await findTenantBySlug(normalized);
+  if (!tenant) return null;
+  return {
+    id: tenant.id,
+    name: tenant.name,
+    slug: tenant.slug,
+    status: tenant.status,
+    schema: `tenant_${tenant.id}`
+  };
+}
+
 function slugFromHost(host = "") {
   const hostname = String(host || "").split(":")[0].toLowerCase();
   if (!hostname || hostname === "localhost" || hostname === "127.0.0.1") return "";

@@ -1171,3 +1171,72 @@ CREATE INDEX IF NOT EXISTS idx_services_active_name ON services(active_online_bo
 CREATE INDEX IF NOT EXISTS idx_users_name ON users(name);
 CREATE INDEX IF NOT EXISTS idx_schedule_blocks_start ON schedule_blocks(start_datetime DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_schedule_blocks_professional_start ON schedule_blocks(professional_id, start_datetime DESC);
+
+-- ---------------------------------------------------------------------------
+-- Integração com gateway de pagamento (Asaas): cofre de credenciais da clínica
+-- e rastro dos ids do provedor. Cada clínica cobra o cliente final com a
+-- PRÓPRIA conta Asaas — o dinheiro cai direto na conta dela, sem split nem
+-- subconta.
+-- ---------------------------------------------------------------------------
+
+-- Cofre de credenciais por clínica. A chave da API NUNCA é gravada em claro:
+-- `secret_encrypted` guarda AES-256-GCM (ver services/asaas/vault.js) e as
+-- rotas devolvem apenas `secret_hint` (últimos 4 dígitos), nunca o segredo.
+--
+-- Tabela dedicada, e não `catalog_settings`: aquela vaza inteira na rota
+-- pública GET /api/catalog. Uma credencial de pagamento não pode viver ao lado
+-- de dado que é servido sem autenticação.
+CREATE TABLE IF NOT EXISTS tenant_integrations (
+  id SERIAL PRIMARY KEY,
+  provider TEXT NOT NULL,
+  environment TEXT NOT NULL DEFAULT 'sandbox' CHECK (environment IN ('sandbox', 'production')),
+  -- Chave da API (access_token) cifrada. Formato: v1:<iv>:<tag>:<ciphertext>.
+  secret_encrypted TEXT,
+  -- Dica para a interface confirmar QUAL chave está salva sem exibi-la.
+  secret_hint TEXT,
+  -- Token que a clínica cadastra no painel do Asaas e que volta no header
+  -- `asaas-access-token` de cada webhook. Também cifrado: quem o lê consegue
+  -- forjar "pagamento confirmado" para essa clínica.
+  webhook_token_encrypted TEXT,
+  enabled INTEGER NOT NULL DEFAULT 0,
+  -- Diagnóstico do último handshake com o provedor (exibido na tela de ajustes).
+  last_check_at TIMESTAMP,
+  last_check_status TEXT,
+  last_check_detail TEXT,
+  updated_by INTEGER REFERENCES users(id),
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(provider)
+);
+
+-- Identidade do cliente da clínica como pagador na conta Asaas DELA.
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS asaas_customer_id TEXT;
+-- O Asaas recusa criar cliente sem CPF/CNPJ; guardamos para não pedir de novo.
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS tax_id TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS email TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_clients_asaas_customer
+  ON clients (asaas_customer_id)
+  WHERE asaas_customer_id IS NOT NULL;
+
+-- payment_intents já existia com `external_id` genérico; o índice único abaixo
+-- é o que torna o webhook idempotente de verdade (um payment.id <-> um intent).
+ALTER TABLE payment_intents ADD COLUMN IF NOT EXISTS invoice_url TEXT;
+ALTER TABLE payment_intents ADD COLUMN IF NOT EXISTS billing_type TEXT;
+ALTER TABLE payment_intents ADD COLUMN IF NOT EXISTS due_date DATE;
+ALTER TABLE payment_intents ADD COLUMN IF NOT EXISTS sales_order_id INTEGER;
+ALTER TABLE payment_intents ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP;
+-- O sinal do agendamento existia; a venda de joias no catálogo público não.
+ALTER TABLE payment_intents ADD COLUMN IF NOT EXISTS description TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_payment_intents_external
+  ON payment_intents (provider, external_id)
+  WHERE external_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_payment_intents_client ON payment_intents(client_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_payment_intents_order ON payment_intents(sales_order_id) WHERE sales_order_id IS NOT NULL;
+
+-- Contagem de agendamentos do mês corrente, usada pela cota `appointments_month`
+-- (services/planLimits.js). Sem este índice a checagem faz seq scan na tabela
+-- inteira — e ela roda a cada agendamento criado, que é o caminho mais quente
+-- do sistema.
+CREATE INDEX IF NOT EXISTS idx_appointments_created ON appointments(created_at);

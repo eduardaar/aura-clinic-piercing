@@ -1,0 +1,15 @@
+/* Gestão de contas.
+ *
+ * O arquivo tinha 448 linhas de um sistema `aa-` paralelo: listagem, barra de
+ * busca, pares rótulo/valor, barras de progresso e cartões de ação, todos
+ * redesenhados do zero. Hoje a listagem é <DataView>, a escrita é <Modal>, o
+ * mestre-detalhe/fatos/cotas/bloco destrutivo vêm de styles/platform-panel.css,
+ * o texto de apoio é `.field-hint` e o callout âmbar é `.platform-notice` —
+ * ambos globais.
+ *
+ * Não sobrou nada exclusivo desta tela. O arquivo continua existindo (vazio, e
+ * importado pelo componente) para que a próxima regra realmente específica de
+ * Contas tenha um lugar óbvio, em vez de ser empurrada para a camada comum.
+ */
+@layer telas {
+}

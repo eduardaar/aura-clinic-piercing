@@ -1,0 +1,56 @@
+/* Suporte — chamados entre a clínica e a Monitence (as duas pontas).
+ *
+ * Antes eram 224 linhas com um sistema `sup-` inteiro: cabeçalho do chamado,
+ * barra de controles, formulário de resposta, contador, aviso de fechado, badge
+ * da aba, truncagem do assunto. Tudo isso já existia — `.platform-split` para o
+ * mestre-detalhe, `<Modal>` + `.form-grid` para responder, `.field-hint` para o
+ * texto de apoio, `.form-error` para o contador estourado, `.platform-notice`
+ * para o aviso de chamado fechado e `.tab-count` (platform-panel.css) para o
+ * contador da aba. O mestre-detalhe usa `.platform-split--wide` porque a lista
+ * de chamados tem até seis colunas e não cabe na coluna de 320px.
+ *
+ * Sobrou o que não tem equivalente: as bolhas da conversa — lado, nota interna
+ * e `pre-wrap` são regra de negócio desenhada. `@layer telas` é a mesma camada
+ * dos outros CSS de tela, para não vencer o appshell.css por acidente de ordem
+ * de importação.
+ */
+
+@layer telas {
+  /* Rolagem própria: uma conversa longa empurraria o resto da coluna (e os
+     botões de ação) para fora da tela. */
+  .sup-thread { display: flex; flex-direction: column; gap: 12px; max-height: 58vh; overflow-y: auto; padding: 2px; }
+
+  /* Quem falou se lê pelo LADO, antes de qualquer rótulo. */
+  .sup-msg {
+    align-self: flex-start; max-width: 88%; padding: 10px 14px;
+    border: 1px solid var(--line); border-radius: 12px; background: var(--white);
+  }
+  .sup-msg.is-suporte { align-self: flex-end; background: var(--paper); }
+
+  /* Nota interna: visualmente diferente de tudo o mais porque confundi-la com
+     uma resposta é escrever para o cliente o que era anotação da equipe. */
+  .sup-msg.is-nota {
+    align-self: stretch; max-width: 100%;
+    border-style: dashed; border-color: var(--warn); background: rgba(217, 164, 65, .08);
+  }
+  .sup-msg header {
+    display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+    gap: 8px; margin-bottom: 4px; font-size: 12px; color: var(--muted);
+  }
+
+  /* `pre-wrap` preserva as quebras de linha que o usuário digitou SEM
+     interpretar nada como marcação: o texto vem de fora e entra como texto,
+     nunca como HTML. `overflow-wrap` impede que uma URL colada estoure a coluna. */
+  .sup-msg p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.5; }
+
+  /* Ponto de "tem novidade". Fica ANTES do assunto porque é o que decide se a
+     linha precisa ser aberta. */
+  .sup-dot {
+    display: inline-block; width: 8px; height: 8px; margin-right: 8px;
+    border-radius: 50%; background: var(--gold-dark); vertical-align: middle;
+  }
+
+  @media (max-width: 700px) {
+    .sup-msg { max-width: 100%; }
+  }
+}

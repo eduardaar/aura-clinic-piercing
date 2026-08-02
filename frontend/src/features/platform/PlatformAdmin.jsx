@@ -6,6 +6,15 @@ import { DataView } from "../../components/common/DataView";
 import { API } from "../../lib/api";
 import { BrandMark } from "../../components/common/BrandMark";
 import { asArray } from "../../lib/utils";
+import "../../styles/platform-panel.css";
+import { LandingEditor } from "./LandingEditor";
+import { PlansAdmin } from "./PlansAdmin";
+import { AccountsAdmin } from "./AccountsAdmin";
+import { SupportInbox, SupportOpenBadge } from "./SupportInbox";
+// `PlatformFinance`, e não `FinanceAdmin`: features/finance/Finance.jsx já
+// exporta um `FinanceAdmin` (o financeiro da CLÍNICA). Dois nomes iguais no
+// mesmo grafo de imports é convite a montar a tela errada.
+import { PlatformFinance } from "./FinanceAdmin";
 
 // Painel do super-admin da plataforma (/plataforma).
 // Sessão própria em aura-platform-session (separada da aura-session das clínicas)
@@ -71,8 +80,39 @@ const planOptions = (tenants) =>
     .sort()
     .map((plan) => ({ value: plan, label: planLabel(plan) }));
 
+// Áreas do painel. A landing é conteúdo público da plataforma, não cadastro de
+// clínica: são duas tarefas distintas e cada uma tem sua aba.
+const TABS = [
+  ["clinicas", "Clínicas"],
+  ["contas", "Contas"],
+  ["planos", "Planos"],
+  ["financeiro", "Financeiro"],
+  ["suporte", "Suporte"],
+  ["landing", "Landing pública"],
+];
+
+const TAB_HEADINGS = {
+  clinicas: { title: "Clínicas", subtitle: "Gerencie as clínicas cadastradas no SaaS." },
+  contas: { title: "Contas", subtitle: "Uso x cotas, plano, assinatura e trial de cada clínica." },
+  planos: { title: "Planos", subtitle: "Preço, recursos e limites dos planos vendidos pela plataforma." },
+  financeiro: { title: "Financeiro da plataforma", subtitle: "MRR, caixa do mês, inadimplência e vencimentos das assinaturas." },
+  suporte: { title: "Suporte", subtitle: "Chamados abertos pelas clínicas." },
+  landing: { title: "Landing pública", subtitle: "Edite os blocos da página inicial em /." },
+};
+
+// Abas que guardam RASCUNHO não salvo continuam montadas (só ocultas) depois de
+// abertas: desmontar jogaria fora o que alguém digitou e foi conferir outra
+// coisa. As demais (contas, financeiro, suporte) podem desmontar — toda escrita
+// nelas é imediata e confirmada em modal, não há nada a perder.
+const ABAS_COM_RASCUNHO = ["landing", "planos"];
+
 export function PlatformAdmin() {
   const [session, setSession] = useState(readPlatformSession);
+  const [tab, setTab] = useState("clinicas");
+  const [visitadas, setVisitadas] = useState(() => new Set());
+  // Recarrega o contador de chamados abertos no selo da aba depois de o
+  // super-admin responder algo.
+  const [supportKey, setSupportKey] = useState(0);
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
@@ -100,7 +140,15 @@ export function PlatformAdmin() {
   // Fetch da plataforma: Bearer do token de plataforma, sem X-Tenant.
   const platformFetch = useCallback(async (path, options = {}) => {
     const headers = new Headers(options.headers || {});
-    if (options.body !== undefined && !headers.has("Content-Type")) {
+    // FormData fica de fora: definir o Content-Type na mão apaga o `boundary`
+    // que o navegador geraria, e sem ele o multer não consegue separar as
+    // partes do multipart — o upload chega ao servidor como "nenhum arquivo
+    // enviado". Mesma regra do `apiFetch` em lib/api.js.
+    if (
+      !(options.body instanceof FormData) &&
+      options.body !== undefined &&
+      !headers.has("Content-Type")
+    ) {
       headers.set("Content-Type", "application/json");
     }
     if (token) headers.set("Authorization", `Bearer ${token}`);
@@ -360,17 +408,73 @@ export function PlatformAdmin() {
       <header className="topbar">
         <div className="topbar-title">
           <span className="eyebrow">Aura Clinic · Plataforma</span>
-          <h1>Clínicas</h1>
-          <p>Gerencie as clínicas cadastradas no SaaS.</p>
+          <h1>{TAB_HEADINGS[tab].title}</h1>
+          <p>{TAB_HEADINGS[tab].subtitle}</p>
         </div>
         <div className="topbar-actions">
           <Button variant="secondary" onClick={clearPlatformSession}>
             <LogOut size={16} /> Sair
           </Button>
         </div>
+        <nav className="platform-tabs" aria-label="Áreas do painel">
+          {TABS.map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              className={tab === id ? "active" : ""}
+              aria-current={tab === id ? "page" : undefined}
+              onClick={() => {
+                setTab(id);
+                if (ABAS_COM_RASCUNHO.includes(id)) {
+                  setVisitadas((atual) => new Set(atual).add(id));
+                }
+              }}
+            >
+              {label}
+              {id === "suporte" && (
+                <SupportOpenBadge
+                  token={token}
+                  onUnauthorized={clearPlatformSession}
+                  refreshKey={supportKey}
+                />
+              )}
+            </button>
+          ))}
+        </nav>
       </header>
 
-      <div className="stack">
+      {/* `.main-content` tem height:100dvh e overflow:hidden — no app da clínica
+          quem rola é o filho `.content-scroll`. O painel usava `.main-content`
+          direto, sem esse filho: tudo abaixo da dobra ficava CORTADO e
+          inalcançável, sem barra de rolagem. */}
+      <div className="content-scroll">
+        <div className="stack">
+
+        {visitadas.has("landing") && (
+          <div hidden={tab !== "landing"}>
+            <LandingEditor token={token} onUnauthorized={clearPlatformSession} />
+          </div>
+        )}
+
+        {visitadas.has("planos") && (
+          <div hidden={tab !== "planos"}>
+            <PlansAdmin token={token} onUnauthorized={clearPlatformSession} />
+          </div>
+        )}
+
+        {tab === "contas" && <AccountsAdmin token={token} onUnauthorized={clearPlatformSession} />}
+
+        {tab === "financeiro" && <PlatformFinance token={token} onUnauthorized={clearPlatformSession} />}
+
+        {tab === "suporte" && (
+          <SupportInbox
+            token={token}
+            onUnauthorized={clearPlatformSession}
+            onChanged={() => setSupportKey((k) => k + 1)}
+          />
+        )}
+
+        {tab === "clinicas" && (
         <section className="panel">
           <CrudHeader
             title="Clínicas cadastradas"
@@ -446,6 +550,7 @@ export function PlatformAdmin() {
             emptyFiltered="Nenhuma clínica corresponde aos filtros aplicados."
           />
         </section>
+        )}
 
         <Modal
           open={showCreate}
@@ -486,7 +591,7 @@ export function PlatformAdmin() {
           </form>
         </Modal>
 
-        {metricList.length > 0 && (
+        {tab === "clinicas" && metricList.length > 0 && (
           <section className="panel">
             <div className="panel-heading">
               <h2>Métricas por clínica</h2>
@@ -538,7 +643,8 @@ export function PlatformAdmin() {
           confirmWord={deleting?.confirmWord}
           onClose={() => setDeleting(null)}
           onConfirm={async () => { await deleting.run(); setDeleting(null); }}
-        />
+          />
+        </div>
       </div>
     </main>
   );

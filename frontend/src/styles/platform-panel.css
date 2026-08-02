@@ -1,0 +1,291 @@
+/* Camada única do painel da plataforma (/plataforma).
+ *
+ * POR QUE ELA EXISTE
+ * O painel foi construído por partes, e cada tela nasceu com um CSS próprio
+ * (`pa-`, `aa-`, `fa-`, `le-`, `sup-`): cinco sistemas, ~1.800 linhas, cinco
+ * jeitos de desenhar a mesma coisa. O resultado é o que se vê — cada aba com
+ * uma cara. Este arquivo é o lugar ÚNICO do que é compartilhado.
+ *
+ * A REGRA
+ * Antes de acrescentar qualquer coisa aqui, procure a primitiva que já existe:
+ *   coluna rolável ......... .content-scroll             (styles/appshell.css)
+ *   empilhamento ........... .stack                      (styles.css)
+ *   bloco de conteúdo ...... .panel, .panel-heading      (styles.css)
+ *   listagem ............... <DataView>                  (components/common)
+ *   formulário ............. <Modal> + Input/Select      (components/common)
+ *   barra de filtros ....... .toolbar                    (styles.css)
+ *   texto de apoio ......... .field-hint                 (styles.css, @layer base)
+ * Só entra aqui o que NÃO tem equivalente. Um estilo a mais neste arquivo é
+ * melhor que um arquivo novo; um componente reusado é melhor que os dois.
+ *
+ * A camada `telas` é a mesma dos outros CSS de tela, para não vencer o
+ * appshell.css por acidente de ordem de importação.
+ */
+
+@layer telas {
+  /* ---------------------------------------------------------------------
+   * Menu superior
+   * ------------------------------------------------------------------- */
+
+  /* As abas moram no CABEÇALHO FIXO, não no conteúdo rolável: navegar entre
+   * áreas não pode exigir rolar de volta ao topo. */
+  .platform-tabs {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin: 0 calc(var(--shell-gutter) * -1);
+    padding: 0 var(--shell-gutter);
+    border-top: 1px solid var(--line);
+  }
+
+  .platform-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .platform-tabs button {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 14px;
+    border: 0;
+    /* Sublinhado no lugar de pílula: com seis áreas, seis pastilhas pretas
+     * competem entre si e nenhuma parece a atual. */
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    background: none;
+    color: #6d5e52;
+    font-weight: 700;
+    font-size: 14px;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .platform-tabs button:hover {
+    color: var(--black);
+  }
+
+  .platform-tabs button.active {
+    color: var(--black);
+    border-bottom-color: var(--black);
+  }
+
+  /* Contador de pendências na própria aba (ex.: chamados abertos). */
+  .platform-tabs .tab-count {
+    min-width: 20px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: #c0392b;
+    color: #fff;
+    font-size: 11px;
+    line-height: 18px;
+    text-align: center;
+  }
+
+  /* ---------------------------------------------------------------------
+   * Indicadores
+   * ------------------------------------------------------------------- */
+
+  /* Grade de números do topo das telas (financeiro, uso de cotas).
+   * `auto-fit` + `minmax` para caber de 1 a 5 por linha sem media query. */
+  .platform-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 12px;
+  }
+
+  .platform-metric {
+    padding: 14px 16px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--white);
+  }
+
+  .platform-metric .label {
+    display: block;
+    font-size: 12px;
+    font-weight: 700;
+    color: #6d5e52;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+
+  .platform-metric .value {
+    display: block;
+    margin-top: 4px;
+    font-size: 24px;
+    font-weight: 850;
+    color: var(--black);
+    /* Números alinham na vertical entre cartões e não "dançam" ao atualizar. */
+    font-variant-numeric: tabular-nums;
+  }
+
+  .platform-metric .hint {
+    display: block;
+    margin-top: 2px;
+    font-size: 12px;
+    color: #8a7a6d;
+  }
+
+  /* Número que o backend não sabe calcular (ex.: churn sem histórico de
+   * status). Tracejado e apagado: ausência de número, não número ruim. */
+  .platform-metric.is-unavailable {
+    border-style: dashed;
+    opacity: .75;
+  }
+
+  /* ---------------------------------------------------------------------
+   * Detalhe mestre-detalhe (contas, suporte)
+   * ------------------------------------------------------------------- */
+
+  .platform-split {
+    display: grid;
+    /* `minmax(0, …)` nas duas colunas: sem isso uma tabela larga empurra a
+     * grade e estoura a página no lugar de rolar dentro da própria coluna. */
+    grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+  }
+
+  /* A coluna de 320px foi dimensionada para uma lista de nomes. Quando a
+   * listagem tem muitas colunas (chamados de suporte), ela precisa de espaço —
+   * senão o conteúdo rola dentro de uma faixa estreita e fica ilegível. */
+  .platform-split--wide {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  @media (max-width: 1100px) {
+    .platform-split,
+    .platform-split--wide {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  /* ---------------------------------------------------------------------
+   * Pares rótulo/valor (resumo de conta, dados da assinatura)
+   * ------------------------------------------------------------------- */
+
+  .platform-facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 10px 20px;
+  }
+
+  .platform-fact dt {
+    font-size: 12px;
+    font-weight: 700;
+    color: #6d5e52;
+  }
+
+  .platform-fact dd {
+    margin: 2px 0 0;
+    font-size: 15px;
+    color: var(--black);
+    /* Id do gateway e slug são longos e sem espaço: sem isto vazam da coluna. */
+    overflow-wrap: anywhere;
+  }
+
+  /* ---------------------------------------------------------------------
+   * Barra de progresso de cota
+   * ------------------------------------------------------------------- */
+
+  .platform-quota + .platform-quota {
+    margin-top: 12px;
+  }
+
+  .platform-quota-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 13px;
+  }
+
+  .platform-quota-bar {
+    height: 8px;
+    margin-top: 6px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, .07);
+    overflow: hidden;
+  }
+
+  .platform-quota-bar > span {
+    display: block;
+    height: 100%;
+    background: var(--black);
+  }
+
+  /* Sem limite: trilho tracejado e VAZIO. Barra cheia sugeriria cota estourada
+   * e barra vazia sugeriria cota zerada — as duas leituras erradas. */
+  .platform-quota-bar.is-unlimited {
+    background: none;
+    border: 1px dashed var(--line);
+  }
+
+  /* Faixa de atenção (>=80%). Só "dentro" e "acima" não bastava: acima da cota
+   * já é tarde — quem ainda dá para avisar é quem está chegando perto. */
+  .platform-quota-bar.is-near > span {
+    background: #c98a04;
+  }
+
+  .platform-quota-bar.is-over > span {
+    background: #c0392b;
+  }
+
+  /* ---------------------------------------------------------------------
+   * Ações destrutivas
+   * ------------------------------------------------------------------- */
+
+  /* Separadas do resto por moldura vermelha: suspender conta e excluir plano
+   * não podem estar visualmente ao lado de "salvar". */
+  .platform-danger {
+    border: 1px solid rgba(192, 57, 43, .35);
+    border-radius: 10px;
+    padding: 14px 16px;
+    background: rgba(192, 57, 43, .04);
+  }
+
+  .platform-danger h3 {
+    margin: 0 0 4px;
+    font-size: 15px;
+    color: #a5342a;
+  }
+
+  /* "Leia antes de clicar": sem assinatura, cota estourada, simulação
+   * indisponível. Âmbar e não vermelho porque NENHUMA dessas situações é erro —
+   * vermelho competiria com `.platform-danger` e gastaria o alarme à toa. */
+  .platform-notice {
+    padding: 10px 12px;
+    border: 1px solid rgba(201, 138, 4, .35);
+    border-left-width: 3px;
+    border-radius: 8px;
+    background: rgba(201, 138, 4, .07);
+    font-size: 13px;
+    color: #6b5300;
+  }
+
+  /* Aviso que NÃO pode sumir sozinho (falha de propagação de preço, cobrança
+   * pendurada). Toast desaparece; dinheiro em risco precisa de dispensa.
+   *
+   * O fundo opaco é parte do contrato, não enfeite: sem ele o conteúdo que rola
+   * por baixo atravessa o aviso e o torna ilegível justamente enquanto se
+   * procura a informação que ele reporta. */
+  .platform-sticky-warning,
+  .platform-danger.platform-sticky-warning {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--white);
+    border-radius: 10px;
+  }
+
+  /* O bloco vermelho é grid com gap; a margem padrão do <p> soma por cima. */
+  .platform-danger p {
+    margin: 0 0 10px;
+  }
+
+  .platform-danger p:last-child {
+    margin-bottom: 0;
+  }
+}

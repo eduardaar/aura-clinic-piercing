@@ -1,0 +1,47 @@
+/* Gestão de planos (painel da plataforma) — só o que NÃO existia pronto.
+ *
+ * A tela tinha 403 linhas de CSS próprio porque desenhava tudo à mão. Hoje a
+ * listagem é <DataView>, o formulário é <Modal>, os blocos são `.panel` +
+ * `.panel-heading`, o comparativo de preço é `.platform-facts`, o relatório de
+ * propagação é `.platform-danger` + `.platform-sticky-warning`, o texto de
+ * apoio é `.field-hint` e o código do plano é `<code>` — todos globais.
+ *
+ * A `.pa-row-btn` (alinhar o ícone das setas com o texto de "Editar") também
+ * saiu: a mesma regra apareceu em três telas com três nomes e subiu para
+ * `.table-actions button` no styles.css. Ação de linha aqui é `<button>` nu.
+ *
+ * `@layer telas` é a mesma camada dos outros CSS de tela: sem camada, estas
+ * regras venceriam até o appshell.css por acidente de ordem de importação.
+ */
+
+@layer telas {
+  /* Um limite = campo + a frase que diz o valor de hoje ("Hoje: ilimitado"). */
+  .pa-limit {
+    display: grid;
+    gap: 6px;
+  }
+
+  /* Grupo de recursos: <fieldset> vem com borda "groove" do navegador. */
+  .pa-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    margin: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+
+  .pa-group legend {
+    padding: 0 4px;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  /* Separa o "marcar o grupo inteiro" dos recursos que ele controla. */
+  .pa-group > .checkbox-field:first-of-type {
+    padding-bottom: 6px;
+    border-bottom: 1px dashed var(--line);
+  }
+}

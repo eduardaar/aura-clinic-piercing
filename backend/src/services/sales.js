@@ -51,7 +51,10 @@ async function authoritativePublicItems(db, submitted) {
   return items;
 }
 
-async function deductSoldProductStock(db, item, orderId) {
+// Exportada porque a venda deixou de ser sempre paga no ato: quando o
+// pagamento chega depois (webhook do gateway confirmando PIX), a baixa precisa
+// acontecer NAQUELE momento, e não na criação do pedido.
+export async function deductSoldProductStock(db, item, orderId) {
   if (item.item_type !== "produto" || !item.product_id) return;
   const quantity = Number(item.quantity || 1);
   let variantId = item.product_variant_id;
@@ -134,7 +137,13 @@ export async function createSalesOrder(db, body, user) {
       whatsapp,
       instagram: body.instagram || "",
       birth_date: body.birth_date || "",
-      client_notes: body.notes || body.client_notes || ""
+      client_notes: body.notes || body.client_notes || "",
+      // O checkout do catálogo já pedia CPF e e-mail, mas eles paravam em
+      // `sales_orders.customer_cpf/customer_email` e nunca chegavam à ficha do
+      // cliente. Sem CPF em `clients`, o Asaas recusa criar o pagador e a
+      // cobrança online do pedido não sai.
+      tax_id: body.cpf || body.customer_cpf || body.tax_id || "",
+      email: body.email || body.customer_email || ""
     });
     if (!client?.id) return null;
 

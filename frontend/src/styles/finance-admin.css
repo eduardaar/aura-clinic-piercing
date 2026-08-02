@@ -1,0 +1,52 @@
+/* Financeiro da plataforma — o que sobrou de CSS próprio.
+ *
+ * Antes eram 421 linhas com um sistema `fa-` inteiro: cartão de número, grupo
+ * com título, destaque, barra de participação, célula de duas linhas, erro.
+ * Tudo isso já existia em outro lugar — `.platform-metrics`/`.platform-metric`
+ * (platform-panel.css), `.form-section`, `.panel`, `.toolbar`,
+ * `.header-actions`, `.field-hint`, `.form-error` (styles.css) e
+ * `.platform-quota-bar` para a barra de participação. Aqui ficou só o que não
+ * tem equivalente: o gráfico SVG e duas ajudas de layout.
+ *
+ * A pílula de ação de linha (`.fin-acao`) também saiu: `.table-actions a` do
+ * styles.css já desenha exatamente aquilo, e manter a cópia era manter duas
+ * aparências para a mesma ação — a de cá com ícone, a das outras telas sem.
+ *
+ * `@layer telas` é a mesma camada dos outros CSS de tela: sem ela estas regras
+ * venceriam o appshell.css por acidente de ordem de importação.
+ */
+
+@layer telas {
+  /* Célula de duas linhas: nome + slug, telefone + e-mail. */
+  .fin-cell { display: grid; gap: 2px; min-width: 0; font-size: 12.5px; }
+
+  /* Contagem de clínicas por status: selo + rótulo, na mesma linha. */
+  .fin-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; font-size: 13px; }
+
+  /* --- Gráfico de receita mês a mês ------------------------------------- */
+
+  /* As duas séries. Não são as cores de status (--ok/--danger): status é juízo,
+     e aqui "emitido" não é pior nem melhor que "recebido". O par foi validado
+     para daltonismo sobre fundo branco (ΔE 20,4 protan / 19,8 tritan, bem acima
+     do piso de 8) — trocar uma das duas exige revalidar o par. */
+  .fin-chart { --serie-recebido: #a87a34; --serie-emitido: #4a73b5; display: grid; gap: 10px; min-width: 0; }
+  .fin-chart svg { width: 100%; height: auto; max-height: 260px; overflow: visible; }
+  .fin-chart summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+
+  /* A MESMA classe pinta a amostra da legenda (background) e a barra (fill):
+     assim legenda e gráfico não divergem por descuido de edição. */
+  .fin-recebido { background: var(--serie-recebido); fill: var(--serie-recebido); }
+  .fin-emitido { background: var(--serie-emitido); fill: var(--serie-emitido); }
+
+  .fin-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; font-size: 12.5px; }
+  .fin-legend i { display: inline-block; width: 12px; height: 12px; margin-right: 6px; border-radius: 3px; }
+
+  .fin-axis { stroke: var(--line); }
+  .fin-tick { fill: var(--muted); font-size: 9px; }
+
+  /* Alvo do cursor: a coluna inteira, porque acertar uma barra de 19 unidades
+     com o mouse (ou com o dedo) é pedir demais. */
+  .fin-hit { fill: transparent; cursor: pointer; }
+  .fin-col.is-foco .fin-hit { fill: rgba(148, 163, 184, .14); }
+  .fin-hit:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+}

@@ -1,0 +1,50 @@
+/* Editor da landing pública (painel da plataforma) — o que sobrou de CSS próprio.
+ *
+ * Antes eram 294 linhas com um sistema `le-` inteiro: cabeçalho da tela, banner
+ * de pendência, grade de duas colunas, lista de blocos com cartão/posição/selos,
+ * painel lateral de edição, cartão de item, barra de item, aviso e texto de
+ * apoio. Tudo isso já existia em outro lugar — a listagem é <DataView>, o
+ * formulário é <Modal>, cada item de lista é `.panel` + `.panel-heading`, o
+ * campo de imagem é `.form-section`, o aviso de rascunho pendente é
+ * `.platform-notice` (styles/platform-panel.css), o texto de apoio é
+ * `.field-hint` e a linha de botões é `.header-actions` (styles.css).
+ *
+ * Sobrou só o campo de imagem: prévia ao lado dos controles, moldura de
+ * proporção fixa e o rótulo que faz as vezes de botão de arquivo.
+ *
+ * `@layer telas` é a mesma camada dos outros CSS de tela: sem ela estas regras
+ * venceriam o appshell.css por acidente de ordem de importação.
+ */
+
+@layer telas {
+  /* Prévia ao LADO dos controles: conferir a imagem e colar/enviar o endereço
+     são a mesma tarefa, e separá-las obrigaria a rolar para ver o resultado. */
+  .le-image { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; align-items: start; }
+
+  /* Coluna dos controles. `min-width: 0` faz um endereço longo rolar dentro do
+     campo em vez de empurrar a grade para fora da tela. */
+  .le-image > div { display: grid; gap: 8px; min-width: 0; }
+
+  /* Moldura de proporção fixa nos DOIS estados (com e sem imagem): sem ela o
+     formulário salta de altura a cada arquivo enviado. */
+  .le-image img,
+  .le-vazio {
+    width: 100%; aspect-ratio: 4 / 3; object-fit: cover;
+    border: 1px solid var(--line); border-radius: 10px; background: var(--paper);
+  }
+
+  .le-vazio { display: grid; place-content: center; justify-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+
+  /* O <input type="file"> nativo não é estilizável: o rótulo faz o papel do
+     botão e o input fica escondido dentro dele — clique e teclado continuam
+     chegando ao input através do próprio rótulo. */
+  .le-arquivo { cursor: pointer; }
+  .le-arquivo input { display: none; }
+
+  /* Remover item: vermelho para não ser lido como mais uma seta de reordenar. */
+  .le-remover { color: var(--danger); }
+
+  @media (max-width: 640px) {
+    .le-image { grid-template-columns: minmax(0, 1fr); }
+  }
+}
