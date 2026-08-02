@@ -56,13 +56,57 @@ export async function buildReport(db, type, filters = {}) {
     `);
   } else if (type === "professionals" || type === "commissions") {
     rows = await db.all(`
-      SELECT p.id, p.name AS professional, COUNT(a.id) AS appointments,
-        COALESCE(SUM(CASE WHEN a.status='atendido' THEN a.total_value ELSE 0 END),0) AS revenue,
+      WITH calendar AS (
+        SELECT d::date AS work_date, EXTRACT(DOW FROM d)::integer AS weekday
+        FROM generate_series(?::date, ?::date, interval '1 day') d
+      ), availability AS (
+        SELECT pa.professional_id,
+          COUNT(DISTINCT c.work_date) AS availability_days,
+          COALESCE(SUM(EXTRACT(EPOCH FROM (pa.end_time::time-pa.start_time::time))/3600
+            - CASE WHEN pa.lunch_start IS NOT NULL AND pa.lunch_end IS NOT NULL
+              THEN EXTRACT(EPOCH FROM (pa.lunch_end::time-pa.lunch_start::time))/3600 ELSE 0 END),0) AS available_hours
+        FROM professional_availability pa JOIN calendar c ON c.weekday=pa.weekday
+        WHERE pa.is_active=1 GROUP BY pa.professional_id
+      ), production AS (
+        SELECT a.professional_id,
+          COUNT(*) AS appointments,
+          COUNT(*) FILTER (WHERE a.status='atendido') AS completed_appointments,
+          COUNT(*) FILTER (WHERE a.status IN ('cancelado','recusado')) AS cancellations,
+          COUNT(*) FILTER (WHERE a.status IN ('falta','nao_compareceu')) AS no_shows,
+          COUNT(DISTINCT a.appointment_date) AS appointment_days,
+          COALESCE(SUM(a.duration_minutes) FILTER (WHERE a.status='atendido'),0)/60.0 AS occupied_hours,
+          COALESCE(SUM(a.service_value) FILTER (WHERE a.status='atendido'),0) AS service_revenue,
+          COALESCE(SUM(a.jewelry_value) FILTER (WHERE a.status='atendido'),0) AS jewelry_revenue,
+          COALESCE(SUM(a.total_value) FILTER (WHERE a.status='atendido'),0) AS revenue
+        FROM appointments a WHERE a.appointment_date BETWEEN ? AND ? GROUP BY a.professional_id
+      ), sold AS (
+        SELECT a.professional_id,
+          COALESCE(SUM(soi.quantity) FILTER (WHERE soi.item_type='produto'),0) AS products_sold,
+          COALESCE(SUM(soi.quantity) FILTER (WHERE soi.product_id IS NOT NULL),0) AS jewelry_sold
+        FROM sales_orders so JOIN appointments a ON a.id=so.appointment_id
+        JOIN sales_order_items soi ON soi.sales_order_id=so.id
+        WHERE SUBSTRING(so.created_at,1,10) BETWEEN ? AND ? AND so.status IN ('concluida','pago')
+        GROUP BY a.professional_id
+      )
+      SELECT p.id, p.name AS professional,
+        GREATEST(COALESCE(av.availability_days,0),COALESCE(pr.appointment_days,0)) AS worked_days,
+        ROUND(COALESCE(av.available_hours,0)::numeric,2) AS available_hours,
+        ROUND(COALESCE(pr.occupied_hours,0)::numeric,2) AS occupied_hours,
+        COALESCE(pr.appointments,0) AS appointments,
+        COALESCE(pr.completed_appointments,0) AS completed_appointments,
+        COALESCE(pr.cancellations,0) AS cancellations, COALESCE(pr.no_shows,0) AS no_shows,
+        COALESCE(s.jewelry_sold,0) AS jewelry_sold, COALESCE(s.products_sold,0) AS products_sold,
+        COALESCE(pr.service_revenue,0) AS service_revenue, COALESCE(pr.jewelry_revenue,0) AS jewelry_revenue,
+        COALESCE(pr.revenue,0) AS revenue,
+        CASE WHEN COALESCE(pr.completed_appointments,0)>0 THEN pr.revenue/pr.completed_appointments ELSE 0 END AS average_ticket,
         COALESCE(p.commission_percentage,0) AS commission_percentage,
-        COALESCE(SUM(CASE WHEN a.status='atendido' THEN a.total_value ELSE 0 END),0) * COALESCE(p.commission_percentage,0) / 100 AS commission
-      FROM professionals p LEFT JOIN appointments a ON a.professional_id=p.id AND a.appointment_date BETWEEN ? AND ?
-      ${professionalId ? "WHERE p.id=?" : ""} GROUP BY p.id ORDER BY revenue DESC
-    `, professionalId ? [from, to, professionalId] : [from, to]);
+        COALESCE(pr.revenue,0)*COALESCE(p.commission_percentage,0)/100 AS commission,
+        CASE WHEN COALESCE(av.available_hours,0)>0 THEN LEAST(100,pr.occupied_hours*100/av.available_hours) ELSE 0 END AS occupancy_rate,
+        CASE WHEN COALESCE(pr.appointments,0)>0 THEN pr.completed_appointments*100.0/pr.appointments ELSE 0 END AS attendance_rate
+      FROM professionals p LEFT JOIN availability av ON av.professional_id=p.id
+      LEFT JOIN production pr ON pr.professional_id=p.id LEFT JOIN sold s ON s.professional_id=p.id
+      ${professionalId ? "WHERE p.id=?" : ""} ORDER BY revenue DESC, p.name
+    `, professionalId ? [from, to, from, to, from, to, professionalId] : [from, to, from, to, from, to]);
   } else if (type === "appointments" || type === "cancellations") {
     const clauses = ["a.appointment_date BETWEEN ? AND ?"];
     const params = [from, to];

@@ -70,6 +70,18 @@ const COLUMN_LABELS = {
   professional: "Profissional",
   commission_percentage: "Comissão",
   commission: "Valor da comissão",
+  worked_days: "Dias trabalhados",
+  available_hours: "Horas disponíveis",
+  occupied_hours: "Horas ocupadas",
+  completed_appointments: "Atendimentos finalizados",
+  cancellations: "Cancelamentos",
+  no_shows: "Faltas",
+  jewelry_sold: "Joias vendidas",
+  products_sold: "Produtos vendidos",
+  service_revenue: "Faturamento em serviços",
+  jewelry_revenue: "Faturamento em joias",
+  occupancy_rate: "Taxa de ocupação",
+  attendance_rate: "Taxa de comparecimento",
   // Agendamentos e cancelamentos
   appointment_date: "Data",
   appointment_time: "Hora",
@@ -121,7 +133,11 @@ const COLUMN_KINDS = {
   usage_limit: "count",
   uses: "count",
   events: "count",
-  unique_sessions: "count"
+  unique_sessions: "count",
+  worked_days: "count", available_hours: "count", occupied_hours: "count",
+  completed_appointments: "count", cancellations: "count", no_shows: "count",
+  jewelry_sold: "count", products_sold: "count", occupancy_rate: "percent", attendance_rate: "percent",
+  service_revenue: "money", jewelry_revenue: "money"
 };
 
 const NUMERIC_KINDS = new Set(["money", "count", "percent", "discount"]);
@@ -239,8 +255,9 @@ function buildColumns(rows) {
 
 export function Reports() {
   const today = new Date().toISOString().slice(0, 10);
-  const [filters, setFilters] = useState({ type: "sales", from: `${today.slice(0, 7)}-01`, to: today, status: "" });
-  const params = new URLSearchParams({ from: filters.from, to: filters.to, ...(filters.status ? { status: filters.status } : {}) });
+  const [filters, setFilters] = useState({ type: "sales", from: `${today.slice(0, 7)}-01`, to: today, status: "", professional_id: "" });
+  const { data: professionals } = useFetch("/professionals");
+  const params = new URLSearchParams({ from: filters.from, to: filters.to, ...(filters.status ? { status: filters.status } : {}), ...(filters.professional_id ? { professional_id: filters.professional_id } : {}) });
   // Período e status continuam sendo filtro de servidor: mudam a consulta e o
   // arquivo exportado. A DataView cuida só do que já veio (busca, ordenação e
   // paginação), por isso mode="client".
@@ -274,6 +291,7 @@ export function Reports() {
           <Input type="date" label="De" value={filters.from} onChange={(value) => setFilters({ ...filters, from: value })} />
           <Input type="date" label="Até" value={filters.to} onChange={(value) => setFilters({ ...filters, to: value })} />
           <Input label="Status (opcional)" value={filters.status} onChange={(value) => setFilters({ ...filters, status: value })} />
+          {["professionals", "commissions", "appointments", "cancellations"].includes(filters.type) && <Select label="Profissional" value={filters.professional_id} onChange={(value) => setFilters({ ...filters, professional_id: value })}><option value="">Todos</option>{asArray(professionals).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</Select>}
         </div>
       </div>
       <div className="panel">
