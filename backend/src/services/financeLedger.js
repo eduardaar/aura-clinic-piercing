@@ -95,7 +95,7 @@ export async function ledgerReport(db, { from, to, filters = [], filterParams = 
       params
     )
     : entries;
-  const active = summary.filter((item) => item.status !== "canceled");
+  const active = summary.filter((item) => item.status !== "canceled" && (item.lifecycle_status || "active") === "active");
   const incomes = active.filter((item) => ["income", "receivable"].includes(item.entry_type));
   const expenses = active.filter((item) => ["expense", "payable"].includes(item.entry_type));
   const received = incomes.reduce((sum, item) => sum + Number(item.paid_amount || 0), 0);

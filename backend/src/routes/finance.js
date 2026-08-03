@@ -22,6 +22,29 @@ const LEDGER_SORTABLE = {
   category: "e.category"
 };
 
+const LIFECYCLE_ACTIONS = new Set(["test", "cancel", "restore"]);
+
+function financeLifecycleRole(req, res) {
+  return requireRole(req, res, ["admin", "finance"]);
+}
+
+async function changeLifecycle(db, entry, action, reason, userId) {
+  const target = action === "restore" ? "active" : action;
+  if (!LIFECYCLE_ACTIONS.has(action)) throw new Error("Ação financeira inválida.");
+  if (!String(reason || "").trim()) throw new Error("A justificativa é obrigatória.");
+  if (action === "restore" && (entry.lifecycle_status || "active") === "active") throw new Error("O lançamento já está ativo.");
+  if (action !== "restore" && (entry.lifecycle_status || "active") !== "active") throw new Error("O lançamento já foi desconsiderado.");
+  if (action === "restore" && entry.status === "refunded") throw new Error("Pagamento estornado não pode ser restaurado automaticamente.");
+  const before = { ...entry };
+  await db.run(`UPDATE financial_entries SET lifecycle_status=?, lifecycle_reason=?, lifecycle_changed_at=CURRENT_TIMESTAMP,
+    lifecycle_changed_by=?, original_status=COALESCE(original_status, status), original_paid_amount=COALESCE(original_paid_amount, paid_amount),
+    updated_at=CURRENT_TIMESTAMP WHERE id=?`, [target, String(reason).trim(), userId || null, entry.id]);
+  const after = await db.get("SELECT * FROM financial_entries WHERE id=?", [entry.id]);
+  await db.run("INSERT INTO financial_entry_audit (entry_id, user_id, action, before_data, after_data) VALUES (?, ?, ?, ?, ?)",
+    [entry.id, userId || null, action, JSON.stringify(before), JSON.stringify(after)]);
+  return after;
+}
+
 router.get("/api/finance", withFeature("basic_finance", async (_req, res, db) => {
   if (!requireRole(_req, res, ["admin", "finance"])) return;
   const finance = await buildFinanceReport(db);
@@ -88,6 +111,10 @@ router.get("/api/finance/ledger", withFeature("advanced_finance", async (req, re
     filters.push("e.entry_type = ?");
     filterParams.push(req.query.entry_type);
   }
+  if (req.query.lifecycle_status) {
+    filters.push("COALESCE(e.lifecycle_status, 'active') = ?");
+    filterParams.push(req.query.lifecycle_status);
+  }
   if (req.query.cost_center_id) {
     filters.push("e.cost_center_id = ?");
     filterParams.push(req.query.cost_center_id);
@@ -109,6 +136,51 @@ router.get("/api/finance/ledger", withFeature("advanced_finance", async (req, re
     paging
   });
   res.json(paging.paginated ? { ...report, total, limit: paging.limit, offset: paging.offset } : report);
+}));
+
+router.get("/api/finance/entries/:id/details", withFeature("advanced_finance", async (req, res, db) => {
+  if (!financeLifecycleRole(req, res)) return;
+  const entry = await db.get(`SELECT e.*, c.name AS cost_center_name, u.name AS responsible_user_name
+    FROM financial_entries e LEFT JOIN financial_cost_centers c ON c.id=e.cost_center_id
+    LEFT JOIN users u ON u.id=e.responsible_user_id WHERE e.id=?`, [req.params.id]);
+  if (!entry) return res.status(404).json({ error: "Lançamento não encontrado." });
+  const audit = await db.all(`SELECT a.*, u.name AS user_name FROM financial_entry_audit a
+    LEFT JOIN users u ON u.id=a.user_id WHERE a.entry_id=? ORDER BY a.created_at DESC, a.id DESC`, [entry.id]);
+  res.json({ ...entry, audit });
+}));
+
+router.post("/api/finance/entries/:id/lifecycle", withFeature("advanced_finance", async (req, res, db) => {
+  if (!financeLifecycleRole(req, res)) return;
+  const entry = await db.get("SELECT * FROM financial_entries WHERE id=?", [req.params.id]);
+  if (!entry) return res.status(404).json({ error: "Lançamento não encontrado." });
+  await db.run("BEGIN");
+  try {
+    const updated = await changeLifecycle(db, entry, req.body?.action, req.body?.reason, req.user?.id);
+    await db.run("COMMIT");
+    res.json(updated);
+  } catch (error) {
+    await db.run("ROLLBACK").catch(() => {});
+    res.status(400).json({ error: error.message });
+  }
+}));
+
+router.post("/api/finance/entries/bulk-lifecycle", withFeature("advanced_finance", async (req, res, db) => {
+  if (!financeLifecycleRole(req, res)) return;
+  const ids = [...new Set((Array.isArray(req.body?.ids) ? req.body.ids : []).map(Number).filter(Number.isInteger))];
+  if (!ids.length || ids.length > 200) return res.status(400).json({ error: "Selecione de 1 a 200 lançamentos." });
+  if (!String(req.body?.reason || "").trim()) return res.status(400).json({ error: "A justificativa é obrigatória." });
+  await db.run("BEGIN");
+  try {
+    const entries = await db.all(`SELECT * FROM financial_entries WHERE id IN (${ids.map(() => "?").join(",")}) ORDER BY id FOR UPDATE`, ids);
+    if (entries.length !== ids.length) throw new Error("Um ou mais lançamentos não foram encontrados.");
+    const updated = [];
+    for (const entry of entries) updated.push(await changeLifecycle(db, entry, req.body?.action || "test", req.body.reason, req.user?.id));
+    await db.run("COMMIT");
+    res.json({ ok: true, count: updated.length, entries: updated });
+  } catch (error) {
+    await db.run("ROLLBACK").catch(() => {});
+    res.status(400).json({ error: error.message });
+  }
 }));
 
 router.post("/api/finance/entries", withFeature("advanced_finance", async (req, res, db) => {

@@ -681,6 +681,17 @@ CREATE TABLE IF NOT EXISTS financial_entry_audit (
   created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
 
+-- Ciclo de vida administrativo separado do status de liquidação. Isso evita
+-- reescrever pagamentos antigos e permite teste/cancelamento/restauração com
+-- auditoria reversível.
+ALTER TABLE financial_entries ADD COLUMN IF NOT EXISTS lifecycle_status TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE financial_entries ADD COLUMN IF NOT EXISTS lifecycle_reason TEXT;
+ALTER TABLE financial_entries ADD COLUMN IF NOT EXISTS lifecycle_changed_at TEXT;
+ALTER TABLE financial_entries ADD COLUMN IF NOT EXISTS lifecycle_changed_by INTEGER REFERENCES users(id);
+ALTER TABLE financial_entries ADD COLUMN IF NOT EXISTS original_status TEXT;
+ALTER TABLE financial_entries ADD COLUMN IF NOT EXISTS original_paid_amount DOUBLE PRECISION;
+CREATE INDEX IF NOT EXISTS idx_financial_entries_lifecycle ON financial_entries(lifecycle_status, competence_date);
+
 CREATE TABLE IF NOT EXISTS financial_goals (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
