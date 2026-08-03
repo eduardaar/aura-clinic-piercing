@@ -47,3 +47,50 @@ test("Financeiro 2.0 cria parcelas, baixa parcialmente e evita recorrência dupl
   assert.ok(ledger.json.entries.some((item) => item.description === "Plano de tratamento"));
   assert.ok(ledger.json.receivable > 0);
 });
+
+test("ciclo financeiro preserva histórico, exclui testes dos indicadores e restaura com justificativa", async () => {
+  const created = await api("/finance/entries", {
+    method: "POST",
+    body: { entry_type: "income", description: "Lançamento QA", amount: 125, paid_amount: 125, due_date: "2026-08-12", status: "paid" }
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.json));
+  const id = created.json[0].id;
+
+  const withoutReason = await api(`/finance/entries/${id}/lifecycle`, { method: "POST", body: { action: "test" } });
+  assert.equal(withoutReason.status, 400);
+
+  const marked = await api(`/finance/entries/${id}/lifecycle`, {
+    method: "POST", body: { action: "test", reason: "Registro criado para validar o fluxo" }
+  });
+  assert.equal(marked.status, 200, JSON.stringify(marked.json));
+  assert.equal(marked.json.lifecycle_status, "test");
+
+  const ledger = await api("/finance/ledger?from=2026-08-01&to=2026-08-31");
+  assert.equal(ledger.status, 200, JSON.stringify(ledger.json));
+  assert.ok(ledger.json.entries.some((item) => item.id === id));
+  assert.equal(ledger.json.cashflow.received, 40);
+
+  const details = await api(`/finance/entries/${id}/details`);
+  assert.equal(details.status, 200, JSON.stringify(details.json));
+  assert.equal(details.json.audit[0].action, "test");
+
+  const restored = await api(`/finance/entries/${id}/lifecycle`, {
+    method: "POST", body: { action: "restore", reason: "Validação concluída" }
+  });
+  assert.equal(restored.status, 200, JSON.stringify(restored.json));
+  assert.equal(restored.json.lifecycle_status, "active");
+});
+
+test("ação em massa é atômica", async () => {
+  const created = await api("/finance/entries", {
+    method: "POST",
+    body: { entry_type: "expense", description: "Lote QA", amount: 30, due_date: "2026-08-15", installment_count: 2 }
+  });
+  const ids = created.json.map((item) => item.id);
+  const bulk = await api("/finance/entries/bulk-lifecycle", {
+    method: "POST", body: { ids, action: "test", reason: "Massa de testes automatizados" }
+  });
+  assert.equal(bulk.status, 200, JSON.stringify(bulk.json));
+  assert.equal(bulk.json.count, 2);
+  assert.ok(bulk.json.entries.every((item) => item.lifecycle_status === "test"));
+});

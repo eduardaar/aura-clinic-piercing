@@ -9,6 +9,7 @@ import { asArray, asNumber, asObject } from "../../lib/utils";
 import { apiFetch, downloadApiFile, useApiInvalidate, useFetch } from "../../lib/api";
 import { defaultExpense } from "../../lib/defaultForms";
 import { currency } from "../../features/shared/helpers";
+import { FINANCE_ENTRY_LABELS, FINANCE_STATUS_LABELS, financeLabel } from "../../lib/financeLabels";
 
 // `formatDate` de lib/utils devolve dd/MM sem ano: em listas financeiras com
 // vencimentos de anos diferentes as linhas ficariam indistinguíveis.
@@ -21,15 +22,8 @@ function formatDateWithYear(date) {
 
 const EXPENSE_TYPE_LABELS = { fixa: "fixa", variavel: "variável" };
 
-const ENTRY_TYPE_LABELS = {
-  payable: "Conta a pagar", receivable: "Conta a receber",
-  expense: "Despesa", income: "Receita",
-};
-
-const ENTRY_STATUS_LABELS = {
-  pending: "Pendente", partially_paid: "Parcialmente liquidado", paid: "Liquidado",
-  overdue: "Vencido", canceled: "Cancelado", refunded: "Estornado",
-};
+const ENTRY_TYPE_LABELS = FINANCE_ENTRY_LABELS;
+const ENTRY_STATUS_LABELS = FINANCE_STATUS_LABELS;
 
 // Sentinela para filtrar lançamentos sem centro de custo (o select do DataView
 // usa string vazia como "Todos").
@@ -275,6 +269,8 @@ function AdvancedFinance() {
   const [payment, setPayment] = useState(null);
   const [centerForm, setCenterForm] = useState(null);
   const [goalForm, setGoalForm] = useState(null);
+  const [details, setDetails] = useState(null);
+  const [lifecycle, setLifecycle] = useState(null);
 
   if (!data) return <Loading />;
   if (data.error) {
@@ -338,6 +334,25 @@ function AdvancedFinance() {
     refresh();
   }
 
+  async function openDetails(item) {
+    setDetails({ loading: true, ...item });
+    const response = await apiFetch(`/finance/entries/${item.id}/details`);
+    const payload = await response.json().catch(() => ({}));
+    setDetails(response.ok ? payload : { ...item, error: payload.error || "Não foi possível abrir os detalhes." });
+  }
+
+  async function submitLifecycle(event) {
+    event.preventDefault();
+    const response = await apiFetch(`/finance/entries/${lifecycle.item.id}/lifecycle`, {
+      method: "POST", body: JSON.stringify({ action: lifecycle.action, reason: lifecycle.reason })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return setLifecycle((current) => ({ ...current, error: payload.error }));
+    setLifecycle(null);
+    setDetails(null);
+    refresh();
+  }
+
   return (
     <>
       <section className="panel stack">
@@ -381,19 +396,48 @@ function AdvancedFinance() {
           ]}
           columns={[
             { key: "description", label: "Lançamento" },
-            { key: "entry_type", label: "Tipo" },
+            { key: "entry_type", label: "Tipo", render: (item) => financeLabel(item.entry_type) },
             { key: "cost_center_name", label: "Centro", value: (item) => item.cost_center_name || "", render: (item) => item.cost_center_name || "—" },
             { key: "due_date", label: "Vencimento", value: (item) => String(item.due_date || "").slice(0, 10), render: (item) => formatDateWithYear(item.due_date) },
             { key: "amount", label: "Valor", align: "right", value: (item) => asNumber(item.amount), render: (item) => currency.format(item.amount) },
             { key: "paid_amount", label: "Liquidado", align: "right", value: (item) => asNumber(item.paid_amount), render: (item) => currency.format(item.paid_amount) },
-            { key: "status", label: "Status", value: (item) => item.status || "", render: (item) => <StatusBadge status={item.status}>{item.status}</StatusBadge> }
+            { key: "status", label: "Status", value: (item) => item.status || "", render: (item) => <StatusBadge status={item.status}>{financeLabel(item.status)}</StatusBadge> },
+            { key: "lifecycle_status", label: "Uso nos indicadores", render: (item) => financeLabel(item.lifecycle_status || "active") }
           ]}
           actions={(item) => (
-            <>{!["paid", "canceled", "refunded"].includes(item.status) && <button type="button" onClick={() => openPayment(item)}>Baixar valor</button>}</>
+            <>
+              <button type="button" onClick={() => openDetails(item)}>Detalhes</button>
+              {(item.lifecycle_status || "active") === "active" && <button type="button" onClick={() => setLifecycle({ item, action: "test", reason: "" })}>Marcar teste</button>}
+              {(item.lifecycle_status || "active") !== "active" && <button type="button" onClick={() => setLifecycle({ item, action: "restore", reason: "" })}>Restaurar</button>}
+              {!["paid", "canceled", "refunded"].includes(item.status) && (item.lifecycle_status || "active") === "active" && <button type="button" onClick={() => openPayment(item)}>Baixar valor</button>}
+            </>
           )}
           empty="Nenhum lançamento no período."
         />
       </section>
+      <Modal open={!!details} title="Detalhes da movimentação" onClose={() => setDetails(null)}>
+        {details?.loading ? <Loading /> : <div className="stack">
+          {details?.error && <span className="form-error">{details.error}</span>}
+          <div className="form-grid">
+            <div><small>Descrição</small><strong>{details?.description}</strong></div>
+            <div><small>Origem</small><strong>{financeLabel(details?.source_type || "manual")}</strong></div>
+            <div><small>Valor</small><strong>{currency.format(asNumber(details?.amount))}</strong></div>
+            <div><small>Pago</small><strong>{currency.format(asNumber(details?.paid_amount))}</strong></div>
+            <div><small>Forma</small><strong>{details?.payment_method || "Não informada"}</strong></div>
+            <div><small>Responsável</small><strong>{details?.responsible_user_name || "Não informado"}</strong></div>
+          </div>
+          <h3>Histórico de alterações</h3>
+          {asArray(details?.audit).map((item) => <p key={item.id}><strong>{financeLabel(item.action)}</strong> · {item.user_name || "Sistema"} · {item.created_at}</p>)}
+        </div>}
+      </Modal>
+      <Modal open={!!lifecycle} title={lifecycle?.action === "restore" ? "Restaurar movimentação" : "Marcar como teste"}
+        onClose={() => setLifecycle(null)} footer={<><Button variant="secondary" onClick={() => setLifecycle(null)}>Voltar</Button><Button type="submit" form="lifecycle-form">Confirmar</Button></>}>
+        <form id="lifecycle-form" onSubmit={submitLifecycle} className="stack">
+          <p>O registro será preservado na auditoria e {lifecycle?.action === "restore" ? "voltará aos indicadores" : "será desconsiderado de caixa, DRE e metas"}.</p>
+          <label>Justificativa obrigatória<textarea required value={lifecycle?.reason || ""} onChange={(event) => setLifecycle((current) => ({ ...current, reason: event.target.value }))} /></label>
+          {lifecycle?.error && <span className="form-error">{lifecycle.error}</span>}
+        </form>
+      </Modal>
       <Modal open={modalOpen} title="Novo lançamento financeiro" subtitle="Parcelas são criadas mês a mês." onClose={() => setModalOpen(false)}
         footer={<><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button><Button type="submit" form="ledger-form">Salvar</Button></>}>
         <form id="ledger-form" onSubmit={save} className="stack">
