@@ -248,14 +248,17 @@ if docker ps --format '{{.Names}}' | grep -q '^monitence-postgres$'; then
     echo "ERRO: o backup gerado está corrompido. Deploy abortado." >&2
     exit 1
   fi
-  bytes="$(stat -c %s "${dump}" 2>/dev/null || echo 0)"
-  # Um dump real deste banco passa de 1 MB. O piso existe para pegar o dump que
-  # "funcionou" mas saiu vazio — falha de permissão, banco errado, disco cheio.
-  if [ "${bytes}" -lt 1048576 ]; then
-    echo "ERRO: backup com apenas ${bytes} bytes; pequeno demais para ser íntegro. Deploy abortado." >&2
+  # Completude pelo MARCADOR, não pelo tamanho. O pg_dump fecha todo dump bem
+  # sucedido com "PostgreSQL database dump complete"; se o processo morreu no
+  # meio (disco cheio, conexão caída, OOM), o .gz continua válido e legível mas
+  # não tem essa linha. Tamanho é proxy ruim: a primeira versão desta guarda
+  # exigia 1 MB e abortou um deploy contra um dump íntegro de 213 KB.
+  if ! gzip -dc "${dump}" | tail -n 20 | grep -q 'PostgreSQL database dump complete'; then
+    echo "ERRO: o backup não tem o marcador de fim do pg_dump — dump truncado. Deploy abortado." >&2
     exit 1
   fi
-  echo "   backup verificado: ${dump} (${bytes} bytes)"
+  bytes="$(stat -c %s "${dump}" 2>/dev/null || echo 0)"
+  echo "   backup verificado: ${dump} (${bytes} bytes, marcador de fim presente)"
   ls -t /root/pg-backups/aura-clinic-deploy-*.sql.gz 2>/dev/null | tail -n +11 | xargs -r rm -f
 else
   echo "ERRO: container monitence-postgres não está no ar; sem backup possível. Deploy abortado." >&2
