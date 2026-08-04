@@ -9993,6 +9993,16 @@ body,
   text-align: center;
 }
 
+.catalog-footer-signature img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: min(100%, var(--footer-logo-width, 180px));
+  max-height: var(--footer-logo-height, 96px);
+  margin: 0 auto 8px;
+  object-fit: contain;
+}
+
 @media (max-width: 1100px) {
   .real-alerts-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
