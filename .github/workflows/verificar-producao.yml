@@ -121,12 +121,32 @@ jobs:
           echo
 
           echo "=============================================================="
-          echo "5) API: AVISOS DE BOOT"
+          echo "5) VARIAVEIS QUE O PROCESSO ENXERGA"
           echo "=============================================================="
-          echo "-- ultimas linhas relevantes do log do container:"
-          docker logs aura-api --since 24h </dev/null 2>&1 \
+          # O .dockerignore exclui .env da imagem, então o que vale é o que o
+          # compose injeta. Só os NOMES: nenhum valor de segredo é impresso.
+          echo "-- presentes no processo (nome, sem valor):"
+          docker exec aura-api printenv </dev/null 2>/dev/null \
+            | cut -d= -f1 \
+            | grep -E '^(DATABASE_URL|AUTH_SECRET|PUBLIC_API_URL|ASAAS_|R2_)' \
+            | sort | sed 's/^/   /' || echo "   (nenhuma)"
+          echo
+          echo "-- ausentes, das que importam:"
+          for v in DATABASE_URL AUTH_SECRET PUBLIC_API_URL ASAAS_VAULT_KEY ASAAS_BASE_URL ASAAS_API_KEY; do
+            docker exec aura-api printenv "$v" </dev/null >/dev/null 2>&1 || echo "   FALTA: $v"
+          done
+          echo
+
+          echo "=============================================================="
+          echo "6) BOOT ATUAL"
+          echo "=============================================================="
+          echo "-- container iniciado em:"
+          docker inspect -f '   {{.State.StartedAt}}  (running={{.State.Running}})' aura-api </dev/null
+          echo
+          echo "-- avisos COM data (para separar boot atual de boot antigo):"
+          docker logs aura-api --timestamps --since 60m </dev/null 2>&1 \
             | grep -Ei 'ATENÇÃO|ATENCAO|\[storage\]|\[Asaas\]|error|erro|falhou' \
-            | tail -20 || echo "   (nenhum aviso nas ultimas 24h)"
+            | tail -20 || echo "   (nenhum aviso na ultima hora)"
           echo
           echo "-- container:"
           docker ps --filter name=aura-api --format '   aura-api: {{.Status}}'
