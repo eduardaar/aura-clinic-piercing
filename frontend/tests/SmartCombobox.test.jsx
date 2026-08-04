@@ -43,13 +43,13 @@ describe("SmartCombobox", () => {
     ["preço", () => screen.getByText("R$ 197,31")],
     ["estoque", () => screen.getByText("Estoque: 3 unidades")],
     ["área do card", (option) => option]
-  ])("seleciona imediatamente pelo pointerdown em %s", (_, targetFor) => {
+  ])("seleciona com um único clique em %s", (_, targetFor) => {
     const onChange = vi.fn();
     const onSelect = vi.fn();
     render(<SmartCombobox label="Joia" value="" onChange={onChange} onSelect={onSelect} options={[{ ...options[0], photo_url: "https://example.test/jewel.jpg", sale_value: 197.31 }]} />);
     fireEvent.focus(screen.getByRole("combobox"));
     const option = screen.getByRole("option", { name: /Argola Coração/ });
-    fireEvent.pointerDown(targetFor(option));
+    fireEvent.click(targetFor(option));
     expect(onChange).toHaveBeenCalledWith("1");
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 1, sku: "ARG-001" }));
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();

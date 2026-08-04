@@ -105,24 +105,23 @@ export function SmartCombobox({ label, value, onChange, onSelect, options = [], 
   const matches = useMemo(() => options.filter((item) => smartSearchMatches(optionText(item), debounced)).slice(0, MAX_RESULTS), [options, debounced]);
   const filtered = matches.slice(0, visible);
 
-  function select(item) {
+  function select(item, close = true) {
     if (isDisabled(item)) return;
     onChange(String(item.id));
     onSelect?.(item);
     setQuery(getLabel(item));
-    setOpen(false);
+    if (close) setOpen(false);
   }
 
-  function selectOnPress(event, item) {
+  function selectOnPress(event) {
     event.preventDefault();
     event.stopPropagation();
-    select(item);
   }
 
   function selectOnClick(event, item) {
     event.preventDefault();
     event.stopPropagation();
-    if (event.detail === 0) select(item);
+    select(item);
   }
 
   function keyDown(event) {
@@ -140,7 +139,7 @@ export function SmartCombobox({ label, value, onChange, onSelect, options = [], 
       <span className="smart-combobox-input" aria-busy={loading}>
         <Search size={16} className="smart-combobox-search-icon" />
         <input id={id} role="combobox" aria-expanded={open} aria-controls={`${id}-list`} aria-autocomplete="list" aria-activedescendant={open && filtered[active] ? `${id}-option-${filtered[active].id}` : undefined} required={required} value={query} placeholder={placeholder} onFocus={() => setOpen(true)} onChange={(event) => { setQuery(event.target.value); setOpen(true); }} onKeyDown={keyDown} />
-        {loading ? <LoaderCircle className="smart-combobox-spinner" size={16} aria-label="Carregando" /> : (value || query) ? <button type="button" aria-label="Limpar seleção" onClick={() => { onChange(""); setQuery(""); setOpen(true); }}><X size={15} /></button> : <button type="button" aria-label="Abrir lista" tabIndex={-1} className="smart-combobox-chevron-button"><ChevronDown size={15} /></button>}
+        {loading ? <LoaderCircle className="smart-combobox-spinner" size={16} aria-label="Carregando" /> : (value || query) ? <button type="button" aria-label="Limpar seleção" onClick={() => { onChange(""); setQuery(""); setOpen(true); }}><X size={15} /></button> : <button type="button" aria-label="Abrir lista" tabIndex={-1} className="smart-combobox-chevron-button" onClick={() => setOpen(true)}><ChevronDown size={15} /></button>}
       </span>
       {open && createPortal(
         <div className="smart-combobox-list" id={`${id}-list`} role="listbox" style={popupStyle}>
@@ -154,7 +153,7 @@ export function SmartCombobox({ label, value, onChange, onSelect, options = [], 
             const displayMeta = [meta, compactMeasure(item)].filter(Boolean).join(" • ");
             const labelText = getLabel(item) || "Joia sem nome";
             const picture = imageUrl(item);
-            return <button id={`${id}-option-${item.id}`} type="button" role="option" aria-selected={String(item.id) === String(value)} aria-disabled={disabled} disabled={disabled} className={index === active ? "active" : ""} key={item.id} onMouseEnter={() => setActive(index)} onPointerDown={(event) => selectOnPress(event, item)} onClick={(event) => selectOnClick(event, item)}>
+            return <button id={`${id}-option-${item.id}`} type="button" role="option" aria-selected={String(item.id) === String(value)} aria-disabled={disabled} disabled={disabled} className={index === active ? "active" : ""} key={item.id} onMouseEnter={() => setActive(index)} onPointerDown={selectOnPress} onClick={(event) => selectOnClick(event, item)}>
               <span className="smart-combobox-thumb">{picture ? <img src={picture} alt={labelText} /> : <span aria-hidden="true">◇</span>}</span>
               <span className="smart-combobox-copy">
                 <strong>{labelText}</strong>
