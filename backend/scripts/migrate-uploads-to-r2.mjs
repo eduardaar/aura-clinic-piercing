@@ -98,7 +98,12 @@ const options = {
   maxBackupAgeHours: Number(value("max-backup-age-hours", "24")),
   onlyTenant: value("only-tenant") ? Number(value("only-tenant")) : null,
   scanAllColumns: flag("scan-all-columns"),
-  flatCategory: flag("flat-category"),
+  // Achatado é o PADRÃO, por decisão de 04/08/2026: nenhuma rota do app grava
+  // em joias/catalogo/banners/logo — `routes/uploads.js` passa `geral` fixo.
+  // Migrar em categorias deixaria o parque antigo organizado e todo arquivo novo
+  // em `geral`, que é o pior dos dois mundos. `--categorias` reverte, e só faz
+  // sentido junto com ensinar as rotas a passar a categoria certa.
+  flatCategory: !flag("categorias"),
   concurrency: Math.max(1, Math.min(16, Number(value("concurrency", "4")) || 4)),
   report: value("report"),
   // Onde os anexos estão DE VERDADE. O padrão é o que `config/index.js` calcula
@@ -122,9 +127,11 @@ Migra os anexos do disco para o Cloudflare R2.
   --only-tenant=<id>          Migra só uma clínica (útil para o primeiro apply).
   --scan-all-columns          Varre TODA coluna de texto/JSON, não só as de nome
                               sugestivo. Mais lento, pega coluna esquecida.
-  --flat-category             Joga todo público em <tenant>/geral/ em vez de
-                              usar joias/catalogo/banners/logo. Ver nota sobre
-                              routes/uploads.js:16 em docs/R2.md.
+  --categorias                Usa joias/catalogo/banners/logo em vez de jogar
+                              todo público em <tenant>/geral/. NÃO é o padrão:
+                              nenhuma rota do app grava nessas pastas hoje, então
+                              isso só faz sentido junto com ensinar
+                              routes/uploads.js a receber a categoria.
   --concurrency=N             Uploads simultâneos (padrão: 4, máx: 16).
   --report=<arquivo.json>     Onde gravar o relatório (padrão: backend/backups/).
   --uploads-dir=<dir>         Origem dos públicos (padrão: backend/src/data/uploads).
@@ -1160,7 +1167,9 @@ async function main() {
   log(`  Disco público ... ${PUBLIC_DIR}`);
   log(`  Disco privado ... ${PRIVATE_DIR}`);
   if (options.onlyTenant) log(`  Recorte ......... SOMENTE tenant ${options.onlyTenant} (varredura parcial)`);
-  if (options.flatCategory) log("  Categorias ...... ACHATADAS em \"geral\" (--flat-category)");
+  log(options.flatCategory
+    ? "  Categorias ...... todas em \"geral\" (padrão; --categorias muda)"
+    : "  Categorias ...... joias/catalogo/banners/logo (--categorias)");
   if (options.scanAllColumns) log("  Varredura ....... TODAS as colunas de texto/JSON");
   log("");
 
