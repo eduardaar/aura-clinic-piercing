@@ -4,6 +4,7 @@ import { requireRole } from "../middleware/auth.js";
 import { query } from "../database/connection.js";
 import { listPlans, planByCode, normalizePlanCode } from "../services/plans.js";
 import { tenantSubscription, invalidateSubscriptionCache } from "../services/subscriptions.js";
+import { syncSubscriptionPrice, subscriptionSyncWarning } from "../services/platformBilling.js";
 
 const router = Router();
 
@@ -98,7 +99,18 @@ router.patch("/api/subscription", withDb(async (req, res, db) => {
   );
   await query("UPDATE platform.tenants SET plan = $1 WHERE id = $2", [planCode, req.tenant.id]);
   invalidateSubscriptionCache(req.tenant.id);
-  res.json({ ok: true, subscription: await tenantSubscription(req.tenant.id), plan: planByCode(planCode) });
+  // Este é o terceiro caminho de troca de plano (os outros dois são do painel da
+  // plataforma) e o único em que a própria clínica se promove. Sem propagar, a
+  // assinatura no gateway continuaria com o valor do plano antigo — a clínica
+  // ganharia o acesso caro pagando o preço barato.
+  const gateway = await syncSubscriptionPrice(req.tenant.id);
+  res.json({
+    ok: true,
+    subscription: await tenantSubscription(req.tenant.id),
+    plan: planByCode(planCode),
+    gateway,
+    warning: subscriptionSyncWarning(gateway)
+  });
 }));
 
 export default router;

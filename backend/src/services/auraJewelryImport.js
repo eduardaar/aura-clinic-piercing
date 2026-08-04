@@ -1,4 +1,5 @@
 import { AURA_JEWELRY_CATEGORIES, AURA_JEWELRY_SEED } from "../data/auraJewelrySeed.js";
+import { invalidateUsageCache } from "./planLimits.js";
 
 const CATEGORY_CODES = {
   "Labret": "LAB",
@@ -240,7 +241,18 @@ async function syncImportedProduct(db, productId) {
   );
 }
 
-export async function importAuraJewelry(db, { logger = console } = {}) {
+/**
+ * Importa o catálogo Aura no schema já apontado pelo `db`.
+ *
+ * @param {any} db conexão já no schema da clínica.
+ * @param {{ logger?: any, tenantId?: number|null }} [options] `tenantId` serve
+ *   só para descartar a medição de cota da clínica ao final: uma importação
+ *   cria centenas de joias de uma vez, e o número contado antes dela ficaria
+ *   valendo por mais 15s. Sem o id, a medição de TODAS as clínicas é descartada
+ *   — mais caro, mas nunca errado (o cache é só atalho; o próximo cadastro
+ *   remede).
+ */
+export async function importAuraJewelry(db, { logger = console, tenantId = null } = {}) {
   const summary = {
     categoriesCreated: 0,
     categoriesExisting: 0,
@@ -304,6 +316,10 @@ export async function importAuraJewelry(db, { logger = console } = {}) {
     await db.run("ROLLBACK").catch(() => {});
     throw error;
   }
+
+  // Depois do COMMIT: até aqui nada foi criado de verdade, e invalidar antes só
+  // faria a próxima medição pegar o número antigo de novo.
+  invalidateUsageCache(tenantId);
 
   const publicSummary = { ...summary };
   delete publicSummary._seenExistingProducts;

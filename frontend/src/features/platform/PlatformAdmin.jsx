@@ -122,6 +122,10 @@ export function PlatformAdmin() {
   const [metrics, setMetrics] = useState(null);
   const [listError, setListError] = useState("");
   const [actionError, setActionError] = useState("");
+  // Aviso de gateway: a ativação/renovação reenvia o valor do plano à assinatura
+  // no Asaas, e esse envio pode não completar. Não é erro (a clínica FOI
+  // ativada), mas é dinheiro pendurado — some só na próxima ação, nunca sozinho.
+  const [actionWarning, setActionWarning] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState(EMPTY_TENANT_FORM);
   const [createError, setCreateError] = useState("");
@@ -289,6 +293,7 @@ export function PlatformAdmin() {
 
   async function activateOrRenewTenant(tenant) {
     setActionError("");
+    setActionWarning("");
     try {
       const response = await platformFetch(`/platform/tenants/${tenant.id}/plan`, {
         method: "PATCH",
@@ -299,6 +304,10 @@ export function PlatformAdmin() {
         if (response.status !== 401) setActionError(payload.error || "Não foi possível ativar ou renovar a clínica.");
         return;
       }
+      // A rota também reajusta a recorrência no Asaas para o valor do plano. Só
+      // vem `warning` quando esse reajuste NÃO chegou lá — e aí a clínica segue
+      // sendo cobrada pelo valor anterior até alguém agir.
+      if (payload.warning) setActionWarning(payload.warning);
       loadTenants();
     } catch {
       setActionError("Não foi possível conectar ao servidor.");
@@ -484,6 +493,7 @@ export function PlatformAdmin() {
           />
 
           {actionError && <span className="form-error">{actionError}</span>}
+          {actionWarning && <p className="platform-notice">{actionWarning}</p>}
 
           <DataView
             rows={tenantList}

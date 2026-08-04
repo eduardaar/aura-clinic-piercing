@@ -482,10 +482,23 @@ async function transitionSaleIntent(db, { intent, status, providerEventId, paylo
       // A guarda em `marcou.changes` é o que impede baixa dupla: um segundo
       // evento confirmando o mesmo pedido não encontra mais status
       // 'pendente'/'aberta' e não decrementa nada.
+      // Estoque que não cobre o item NÃO derruba a confirmação. A baixa passou a
+      // lançar em vez de zerar o saldo (venda de balcão precisa ser recusada),
+      // mas aqui o dinheiro já entrou: propagar a exceção desfaria a transação
+      // inteira, o pagamento nunca seria registrado e o Asaas reentregaria o
+      // evento para sempre — o mesmo raciocínio já escrito no bloco de `paid`
+      // logo abaixo. O pedido fica pago e o aviso pede a conferência humana.
       if (marcou.changes) {
         const itens = await tx.all("SELECT * FROM sales_order_items WHERE sales_order_id=?", [orderId]);
         for (const item of itens) {
-          await deductSoldProductStock(tx, item, orderId);
+          try {
+            await deductSoldProductStock(tx, item, orderId);
+          } catch (error) {
+            console.warn(
+              `[Asaas] pedido ${orderId} foi pago, mas a baixa de "${item.item_name}" falhou: ${error.message} ` +
+                "Confira o estoque — a peça pode ter sido vendida entre a reserva e a confirmação."
+            );
+          }
         }
       }
     }

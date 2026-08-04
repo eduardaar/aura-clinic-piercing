@@ -292,10 +292,15 @@ export async function requireWithinLimit(req, res, limitKey, db = null) {
 
   const meta = limitMeta(limitKey);
   const plan = planByCode(outcome.plan_code);
+  // A mensagem é lida por quem está com o cadastro aberto na tela — muitas vezes
+  // a recepção, que não decide plano. Por isso ela diz QUAL limite acabou, o
+  // número, e para quem falar. Nada de nome de tabela, chave de cota ou plano
+  // interno no texto: o que a tela precisa para reagir vai nos campos abaixo.
   res.status(409).json({
     error:
-      `Seu plano (${plan.name}) permite até ${outcome.limit} ${meta.unit || meta.label.toLowerCase()} ` +
-      `e você já tem ${outcome.used}. Faça upgrade para cadastrar mais — nada do que já existe será removido.`,
+      `O limite de ${meta.label.toLowerCase()} do seu plano (${plan.name}) foi atingido: ` +
+      `${outcome.used} de ${outcome.limit}. Fale com o administrador da clínica para fazer ` +
+      `upgrade de plano e continuar cadastrando — nada do que já existe será removido.`,
     code: "plan_limit_reached",
     limit_key: meta.key,
     limit_label: meta.label,

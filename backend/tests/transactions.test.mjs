@@ -18,7 +18,9 @@ function fakeClient() {
   return {
     executed,
     async query(text) {
-      const sql = String(text).trim();
+      // Queries com parâmetro chegam como { text, values, types } (é o formato
+      // que carrega o conversor de NUMERIC); BEGIN/COMMIT/SAVEPOINT vêm crus.
+      const sql = String(typeof text === "string" ? text : text.text).trim();
       executed.push(sql);
       if (sql.includes("EXPLODE")) throw new Error("falha simulada no banco");
       return { rows: [{ id: 7 }], rowCount: 1 };
@@ -309,6 +311,106 @@ test("atendimento marcado 'atendido' que falha no meio não deixa nenhuma das 5 
   assert.equal((await api("/sales-orders")).json.length, pedidosAntes + 1, "ordem de serviço gerada");
   const postCareDepois = await api("/post-care");
   assert.equal(postCareDepois.json.filter((item) => Number(item.appointment_id) === Number(appointmentId)).length, 3);
+});
+
+// --------------------------------------------------- estoque x quantidade ---
+//
+// Pendência #1: a venda aceitava quantidade que não existe em estoque. A
+// checagem antiga só rodava para linha COM variação informada; sem variação não
+// havia checagem nenhuma e `Math.max(0, ...)` zerava o saldo em silêncio.
+
+// Joia própria por teste: os casos abaixo mexem no saldo até o limite e não
+// podem depender da ordem em que a suíte rodou os outros testes.
+async function criaJoia(nome, quantidade) {
+  const criada = await api("/jewelry", {
+    method: "POST",
+    body: { name: nome, category: "Labret", material: "Titanio", color: "Prata", quantity: quantidade, cost_value: 10, sale_value: 50 },
+  });
+  assert.equal(criada.status, 201, JSON.stringify(criada.json));
+  return { id: criada.json.id, variantId: criada.json.variants[0].id };
+}
+
+async function estoqueDe(jewelryId) {
+  const list = await api("/jewelry");
+  return Number(list.json.find((item) => Number(item.id) === Number(jewelryId))?.quantity ?? -1);
+}
+
+test("venda com variação acima do estoque é recusada com 400 e não grava nada", async () => {
+  const joia = await criaJoia("Joia Estoque Variacao", 3);
+  const pedidosAntes = (await api("/sales-orders")).json.length;
+  const clientesAntes = (await api("/clients")).json.length;
+
+  const venda = await api("/sales-orders", {
+    method: "POST",
+    body: {
+      full_name: "Cliente Estoque A", whatsapp: "11900001111", payment_method: "Pix",
+      items: [{ item_name: "Joia Estoque Variacao", product_id: joia.id, product_variant_id: joia.variantId, quantity: 50, unit_price: 50 }],
+    },
+  });
+  assert.equal(venda.status, 400, JSON.stringify(venda.json));
+  assert.match(venda.json.error, /Estoque insuficiente/i);
+  assert.match(venda.json.error, /3 un\./, "a mensagem precisa dizer o saldo disponível");
+
+  assert.equal(await estoqueDe(joia.id), 3, "o estoque não pode ter sido tocado");
+  assert.equal((await api("/sales-orders")).json.length, pedidosAntes, "nenhum pedido pode ter sobrado");
+  assert.equal((await api("/clients")).json.length, clientesAntes, "nenhum cliente pode ter sobrado");
+});
+
+test("venda SEM variação informada acima do estoque também é recusada", async () => {
+  const joia = await criaJoia("Joia Estoque Sem Variacao", 3);
+  const pedidosAntes = (await api("/sales-orders")).json.length;
+
+  const venda = await api("/sales-orders", {
+    method: "POST",
+    body: {
+      full_name: "Cliente Estoque B", whatsapp: "11900002222", payment_method: "Pix",
+      items: [{ item_name: "Joia Estoque Sem Variacao", product_id: joia.id, quantity: 50, unit_price: 50 }],
+    },
+  });
+  assert.equal(venda.status, 400, JSON.stringify(venda.json));
+  assert.match(venda.json.error, /Estoque insuficiente/i);
+  assert.equal(await estoqueDe(joia.id), 3, "o saldo não pode ir a zero");
+  assert.equal((await api("/sales-orders")).json.length, pedidosAntes);
+});
+
+test("duas linhas do mesmo produto somam contra o mesmo saldo", async () => {
+  const joia = await criaJoia("Joia Estoque Duas Linhas", 3);
+  const venda = await api("/sales-orders", {
+    method: "POST",
+    body: {
+      full_name: "Cliente Estoque C", whatsapp: "11900003333", payment_method: "Pix",
+      items: [
+        { item_name: "Joia Estoque Duas Linhas", product_id: joia.id, product_variant_id: joia.variantId, quantity: 2, unit_price: 50 },
+        { item_name: "Joia Estoque Duas Linhas", product_id: joia.id, product_variant_id: joia.variantId, quantity: 2, unit_price: 50 },
+      ],
+    },
+  });
+  assert.equal(venda.status, 400, JSON.stringify(venda.json));
+  assert.equal(await estoqueDe(joia.id), 3, "2 + 2 sobre saldo 3 não pode passar");
+});
+
+test("venda da quantidade exata do estoque continua passando e zera o saldo", async () => {
+  const joia = await criaJoia("Joia Estoque Exato", 3);
+  const venda = await api("/sales-orders", {
+    method: "POST",
+    body: {
+      full_name: "Cliente Estoque D", whatsapp: "11900004444", payment_method: "Pix",
+      items: [{ item_name: "Joia Estoque Exato", product_id: joia.id, product_variant_id: joia.variantId, quantity: 3, unit_price: 50 }],
+    },
+  });
+  assert.equal(venda.status, 201, JSON.stringify(venda.json));
+  assert.equal(await estoqueDe(joia.id), 0, "o limite exato é venda válida");
+
+  // E a próxima unidade, aí sim, não existe mais.
+  const excedente = await api("/sales-orders", {
+    method: "POST",
+    body: {
+      full_name: "Cliente Estoque D", whatsapp: "11900004444", payment_method: "Pix",
+      items: [{ item_name: "Joia Estoque Exato", product_id: joia.id, product_variant_id: joia.variantId, quantity: 1, unit_price: 50 }],
+    },
+  });
+  assert.equal(excedente.status, 400, JSON.stringify(excedente.json));
+  assert.equal(await estoqueDe(joia.id), 0, "estoque não pode ficar negativo");
 });
 
 test("erro dentro da transação não devolve o client ao pool com transação aberta", async () => {

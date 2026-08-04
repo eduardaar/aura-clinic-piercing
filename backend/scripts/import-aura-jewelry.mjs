@@ -43,7 +43,7 @@ try {
   await applySchemaSql(client);
   await client.query(`SET search_path TO "${schema}", public`);
   const db = createDb(client);
-  const summary = await importAuraJewelry(db);
+  const summary = await importAuraJewelry(db, { tenantId: tenant.id });
   console.log(JSON.stringify({ tenant: tenant.slug, schema, ...summary }, null, 2));
 } finally {
   try {

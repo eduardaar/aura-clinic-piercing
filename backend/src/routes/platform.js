@@ -23,6 +23,7 @@ import { validateBody } from "../middleware/validate.js";
 import { signupSchema, platformLoginSchema, tenantStatusSchema } from "../schemas/index.js";
 import { isProduction } from "../config/index.js";
 import { PLAN_FEATURES, listPlans, normalizePlanCode, planByCode } from "../services/plans.js";
+import { subscriptionSyncWarning, syncSubscriptionPrice } from "../services/platformBilling.js";
 import { invalidateSubscriptionCache } from "../services/subscriptions.js";
 
 const router = Router();
@@ -260,7 +261,14 @@ router.patch("/api/platform/tenants/:id", requirePlatform, async (req, res) => {
 
 // Troca de plano pelo super-admin. Além de trocar o plano, ATIVA a assinatura
 // (status 'active' + período de 30 dias) — é a forma de liberar/renovar uma
-// clínica cujo trial expirou, já que ainda não há gateway de pagamento.
+// clínica cujo trial expirou sem passar pelo gateway.
+//
+// O reajuste da recorrência no Asaas acontece aqui também, e não só na rota
+// equivalente de `/api/platform/accounts/:id/plan`: as duas trocam o plano de
+// verdade, e uma delas que não propagasse deixaria a clínica no plano novo
+// pagando o preço velho — exatamente o buraco que a propagação veio tapar. É
+// best-effort e vem DEPOIS da escrita: gateway fora do ar não pode impedir a
+// liberação de uma clínica.
 router.patch("/api/platform/tenants/:id/plan", requirePlatform, async (req, res) => {
   try {
     const planCode = normalizePlanCode(req.body?.plan_code, "");
@@ -278,7 +286,16 @@ router.patch("/api/platform/tenants/:id/plan", requirePlatform, async (req, res)
     );
     invalidateSubscriptionCache(tenant.id);
     invalidateTenantCache(tenant.slug);
-    res.json({ ok: true, id: tenant.id, plan: planCode, status: "active" });
+
+    const gateway = await syncSubscriptionPrice(tenant.id);
+    res.json({
+      ok: true,
+      id: tenant.id,
+      plan: planCode,
+      status: "active",
+      gateway,
+      warning: subscriptionSyncWarning(gateway)
+    });
   } catch (error) {
     handleServiceError(res, error);
   }

@@ -9,6 +9,7 @@ import { getClientWithDetails } from "../services/clients.js";
 import { parsePaging, fetchPage, pageResponse } from "../services/pagination.js";
 import { validateBody } from "../middleware/validate.js";
 import { clientCreateSchema, clientUpdateSchema } from "../schemas/index.js";
+import { invalidateUsageCache, requireWithinLimit } from "../services/planLimits.js";
 
 const router = Router();
 
@@ -43,6 +44,12 @@ router.post("/api/clients", withDb(async (req, res, db) => {
   const b = normalizeClientBody(req.body);
   req.body = { ...req.body, full_name: b.full_name, whatsapp: b.whatsapp };
   if (!validateBody(clientCreateSchema, req, res)) return;
+  // Cota do plano — só na criação. Editar e listar cliente que já existe nunca
+  // passa por aqui: cota não esconde nem trava o que a clínica já cadastrou.
+  //
+  // Este guard NÃO vale para o agendamento público (routes/booking.js): lá quem
+  // receberia o 409 é o cliente final da clínica, que não tem como resolver.
+  if (!(await requireWithinLimit(req, res, "clients", db))) return;
   const result = await db.run(
     "INSERT INTO clients (full_name, phone, whatsapp, instagram, email, birth_date, cpf, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
     [b.full_name, b.phone, b.whatsapp, b.instagram, b.email, b.birth_date, b.cpf, b.notes]
@@ -86,6 +93,9 @@ router.delete("/api/clients/:id", withDb(async (req, res, db) => {
     }
     await tx.run("INSERT INTO administrative_audit_logs (entity_type, entity_id, action, reason, user_id, snapshot) VALUES ('client', ?, ?, ?, ?, ?)", [id, action, reason, req.user?.id || null, JSON.stringify({ client, impact: linked })]);
   });
+  // Só a exclusão de verdade muda a contagem da cota — a anonimização preserva
+  // a linha (e o vínculo com agendamentos, pagamentos e prontuários).
+  if (action === "hard_delete") invalidateUsageCache(req.tenant?.id);
   res.json({ ok: true, action, impact: linked });
 }));
 

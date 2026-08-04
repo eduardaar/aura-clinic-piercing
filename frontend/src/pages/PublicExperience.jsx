@@ -44,6 +44,79 @@ import { imageTransformStyle, normalizeImageTransform } from "../components/comm
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
+// --- CPF/CNPJ do cliente final ----------------------------------------------
+//
+// Um único jeito para as duas portas públicas (checkout do catálogo e
+// agendamento): antes só o checkout tinha o campo, sem máscara nem validação, e
+// o agendamento não tinha campo nenhum — o que derrubava o sinal online para o
+// caminho manual mesmo com gateway configurado.
+//
+// A validação de verdade é a do backend (`services/taxId.js`, mesma regra). Esta
+// existe para o erro aparecer no campo, antes do envio, em vez de voltar como
+// 400 depois de o formulário inteiro ter sido preenchido.
+
+function taxIdDigits(value) {
+  return String(value ?? "").replace(/\D/g, "").slice(0, 14);
+}
+
+/** Máscara progressiva: CPF até 11 dígitos, CNPJ acima disso. */
+export function formatTaxId(value) {
+  const digits = taxIdDigits(value);
+  if (digits.length <= 11) {
+    return digits
+      .replace(/^(\d{3})(\d)/, "$1.$2")
+      .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
+      .replace(/^(\d{3})\.(\d{3})\.(\d{3})(\d)/, "$1.$2.$3-$4");
+  }
+  return digits
+    .replace(/^(\d{2})(\d)/, "$1.$2")
+    .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
+    .replace(/^(\d{2})\.(\d{3})\.(\d{3})(\d)/, "$1.$2.$3/$4")
+    .replace(/^(\d{2})\.(\d{3})\.(\d{3})\/(\d{4})(\d)/, "$1.$2.$3/$4-$5");
+}
+
+function taxIdCheckDigit(digits, length) {
+  let sum = 0;
+  for (let index = 0; index < length; index++) sum += Number(digits[index]) * (length + 1 - index);
+  const rest = (sum * 10) % 11;
+  return rest === 10 ? 0 : rest;
+}
+
+function companyCheckDigit(digits, length) {
+  let sum = 0;
+  let weight = length - 7;
+  for (let index = 0; index < length; index++) {
+    sum += Number(digits[index]) * weight;
+    weight = weight - 1 < 2 ? 9 : weight - 1;
+  }
+  const rest = sum % 11;
+  return rest < 2 ? 0 : 11 - rest;
+}
+
+/**
+ * @param {string} value Documento digitado, com ou sem máscara.
+ * @param {boolean} [required] Quando o campo em branco já é erro.
+ * @returns {string} Mensagem de erro, ou string vazia quando está tudo certo.
+ */
+export function taxIdError(value, required = false) {
+  const digits = taxIdDigits(value);
+  if (!digits) return required ? "Informe o CPF para gerar o link do sinal." : "";
+  // Repetidos (111.111.111-11) passam no módulo 11 mas não existem.
+  if (digits.length === 11) {
+    const valido = !/^(\d)\1{10}$/.test(digits)
+      && taxIdCheckDigit(digits, 9) === Number(digits[9])
+      && taxIdCheckDigit(digits, 10) === Number(digits[10]);
+    return valido ? "" : "CPF inválido. Confira os números digitados.";
+  }
+  if (digits.length === 14) {
+    const valido = !/^(\d)\1{13}$/.test(digits)
+      && companyCheckDigit(digits, 12) === Number(digits[12])
+      && companyCheckDigit(digits, 13) === Number(digits[13]);
+    return valido ? "" : "CNPJ inválido. Confira os números digitados.";
+  }
+  return `Documento deve ter 11 dígitos (CPF) ou 14 (CNPJ); você digitou ${digits.length}.`;
+}
+
 function catalogSessionKey() {
   const key = "aura-catalog-session";
   try {
@@ -1081,6 +1154,11 @@ export function PublicCheckout() {
       setError("Seu pedido está vazio.");
       return;
     }
+    // CPF continua opcional aqui, mas errado ele não passa: o backend guardaria
+    // um documento inválido em `clients.tax_id` e a recusa só apareceria na
+    // primeira cobrança online daquele cliente.
+    const cpfError = taxIdError(form.cpf);
+    if (cpfError) return setError(cpfError);
     if (!form.accepted_policies) return setError("Aceite as políticas para concluir o pedido.");
     if (form.fulfillment_method === "delivery" && !form.delivery_address.trim()) return setError("Informe o endereço de entrega.");
     const response = await publicApiFetch("/sales-orders/public", {
@@ -1158,7 +1236,7 @@ export function PublicCheckout() {
             <div className="form-grid">
               <Input label="Nome completo" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} required />
               <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => setForm({ ...form, whatsapp: value })} required />
-              <Input label="CPF" value={form.cpf} onChange={(value) => setForm({ ...form, cpf: value })} />
+              <Input label="CPF (opcional)" value={form.cpf} onChange={(value) => setForm({ ...form, cpf: formatTaxId(value) })} />
               <Input label="E-mail" type="email" value={form.email} onChange={(value) => setForm({ ...form, email: value })} />
               <Input label="Instagram" value={form.instagram} onChange={(value) => setForm({ ...form, instagram: value })} />
               <Select label="Forma de pagamento" value={form.payment_method} onChange={(value) => setForm({ ...form, payment_method: value })}>
@@ -1224,7 +1302,9 @@ export function PublicBooking() {
     const params = new URLSearchParams(window.location.search);
     return params.get("appointment_time") ? 5 : params.get("appointment_date") ? 4 : params.get("professional_id") ? 3 : params.get("service_id") ? 2 : 1;
   });
-  const [form, setForm] = useState(defaultPublicBooking());
+  // `cpf`/`email` ficam fora de `defaultPublicBooking()` porque nascem sempre
+  // vazios: são digitados na etapa 5 e não vêm por query string como o resto.
+  const [form, setForm] = useState(() => ({ ...defaultPublicBooking(), cpf: "", email: "" }));
   const [slots, setSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -1250,6 +1330,13 @@ export function PublicBooking() {
   const selectedTotal = selectedServiceValue + (bookingOrderItems.length ? orderJewelryValue : selectedJewelryValue);
   const selectedDeposit = asNumber(selectedService?.deposit_value || 25);
   const selectedRemaining = Math.max(selectedTotal - selectedDeposit, 0);
+  // Sinal online = clínica com gateway configurado E solicitação que gera sinal.
+  // Só nesse caso o CPF é barreira: o Asaas recusa criar o pagador sem ele e o
+  // link de pagamento nunca existiria. Sem gateway o campo continua opcional —
+  // pedir documento para agendar um horário que será pago no balcão afasta
+  // cliente sem nenhum ganho.
+  const onlineDeposit = Boolean(asObject(safeData.payment).gateway_enabled) && selectedDeposit > 0;
+  const cpfError = taxIdError(form.cpf, onlineDeposit);
 
   useEffect(() => {
     if (!form.professional_id) return;
@@ -1275,6 +1362,9 @@ export function PublicBooking() {
 
   async function submit() {
     if (submitting) return;
+    // Última barreira antes do envio: a etapa 5 pode ter sido pulada por link
+    // com query string, e o backend devolveria 400 depois do resumo inteiro.
+    if (cpfError) return setError(`${cpfError} Volte à etapa "Dados" para corrigir.`);
     setError("");
     setSubmitting(true);
     const body = new FormData();
@@ -1392,11 +1482,23 @@ export function PublicBooking() {
             <div className="form-grid">
               <Input label="Nome" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} required />
               <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => setForm({ ...form, whatsapp: value })} required />
+              <Input label={onlineDeposit ? "CPF" : "CPF (opcional)"} value={form.cpf} onChange={(value) => setForm({ ...form, cpf: formatTaxId(value) })} required={onlineDeposit} />
+              {/* E-mail é opcional no gateway (`email: client.email || undefined`),
+                  então ele não vira barreira — mas é por onde o Asaas manda a
+                  fatura e o recibo do sinal. */}
+              <Input label="E-mail (opcional)" type="email" value={form.email} onChange={(value) => setForm({ ...form, email: value })} />
               <Input label="Instagram" value={form.instagram} onChange={(value) => setForm({ ...form, instagram: value })} />
               <label>Foto de referência<input type="file" accept="image/*" onChange={(event) => setForm({ ...form, reference_photo: event.target.files?.[0] })} /></label>
             </div>
+            <span className={cpfError && form.cpf ? "field-hint is-error" : "field-hint"}>
+              {cpfError && form.cpf
+                ? cpfError
+                : onlineDeposit
+                  ? "O CPF é obrigatório para emitir o link do sinal — o gateway não cria a cobrança sem documento. O e-mail recebe o comprovante."
+                  : "Sem CPF o sinal não pode ser cobrado online: você envia o comprovante do Pix pelo WhatsApp e a equipe confirma na mão."}
+            </span>
             <label>Observações<textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
-            <button className="primary-button booking-wide-button" disabled={!form.full_name || !form.whatsapp} onClick={() => setStep(6)}>Ver Resumo</button>
+            <button className="primary-button booking-wide-button" disabled={!form.full_name || !form.whatsapp || Boolean(cpfError)} onClick={() => setStep(6)}>Ver Resumo</button>
           </section>
         )}
         {step === 6 && (
@@ -1426,10 +1528,15 @@ export function PublicBooking() {
             <CheckCircle2 size={42} />
             <span className="booking-section-kicker">Solicitação enviada</span>
             <h2>Solicitação Enviada</h2>
-            <p>Seu horário ficou aguardando o comprovante do sinal. Envie o comprovante pelo WhatsApp da profissional para a Aura confirmar manualmente.</p>
+            {/* O texto vem do backend porque só ele sabe qual caminho de fato
+                existiu: com link de pagamento, mandar enviar comprovante é
+                ruído; sem link, prometer pagamento online deixa o cliente
+                esperando algo que nunca chega. */}
+            <p>{confirmed?.payment_instructions || "Seu horário ficou aguardando o comprovante do sinal. Envie o comprovante pelo WhatsApp da profissional para a Aura confirmar manualmente."}</p>
             <strong>{confirmed?.procedure}  {formatLongDate(confirmed?.appointment_date)} às {confirmed?.appointment_time}</strong>
             <p><strong>Sinal:</strong> {currency.format(asNumber(confirmed?.deposit_value || selectedDeposit))} · <strong>Restante:</strong> {currency.format(asNumber(confirmed?.remaining_value || selectedRemaining))}</p>
-            {confirmed?.professional_whatsapp_url && <a className="primary-button booking-wide-button" href={confirmed.professional_whatsapp_url} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Enviar comprovante pelo WhatsApp</a>}
+            {confirmed?.online_payment_available && confirmed?.payment_url && <a className="primary-button booking-wide-button" href={confirmed.payment_url} target="_blank" rel="noreferrer"><CircleDollarSign size={16} /> Pagar o sinal agora</a>}
+            {confirmed?.professional_whatsapp_url && <a className={confirmed?.online_payment_available ? "secondary-button booking-wide-button" : "primary-button booking-wide-button"} href={confirmed.professional_whatsapp_url} target="_blank" rel="noreferrer"><MessageCircle size={16} /> {confirmed?.online_payment_available ? "Falar com a profissional" : "Enviar comprovante pelo WhatsApp"}</a>}
             <a className="primary-button booking-wide-button" href={catalogUrl()}>Voltar Ao Catálogo</a>
           </section>
         )}

@@ -8,8 +8,26 @@ encontrado e conscientemente adiado.
 
 ## Bugs
 
-### 1. Venda aceita quantidade que não existe em estoque
-A validação de estoque na linha de venda só roda para produto **com variação**:
+### 1. Venda aceita quantidade que não existe em estoque — RESOLVIDO (04/08/2026)
+A checagem passou a rodar como primeira instrução dentro da transação, antes de
+qualquer gravação, e soma as linhas que debitam o mesmo saldo (2 + 2 sobre um
+estoque de 3 é recusado). Os dois `Math.max(0, ...)` saíram: a baixa virou o
+último portão e **lança** em vez de zerar o saldo. `POST /api/sales-orders`
+também não capturava `SalesOrderValidationError` — recusa de regra de negócio
+virava 500.
+
+Um caso teve de ser excepcionado: no webhook do Asaas
+(`tenantCharges.js`), a falha de baixa é capturada por item e só gera aviso. Ali
+o dinheiro já entrou, e propagar a exceção desfaria a transação inteira — o
+pagamento nunca seria gravado e o gateway reentregaria o evento para sempre. É o
+mesmo raciocínio já escrito no item 18.4.
+
+**Fica aberto:** oversell entre canais. `deductSoldProductStock` olha `quantity`
+cru, enquanto o catálogo público usa `availableStock` (que desconta reservas
+ativas), então uma venda de balcão ainda consegue consumir estoque reservado por
+um pedido online pendente.
+
+~~A validação de estoque na linha de venda só roda para produto **com variação**:~~
 `line.item_type === "produto" && variant && quantity > variant.quantity`. Produto
 sem variação não passa por checagem nenhuma, e `backend/src/services/sales.js`
 usa `Math.max(0, ...)` em vez de rejeitar. Vender 50 unidades de um produto com
@@ -180,7 +198,21 @@ antes de ele vencer — eram as duas alternativas, e nenhuma é aceitável.
 
 O que continua aberto:
 
-**18.1 — O agendamento público não coleta CPF.** O checkout do catálogo coleta
+**18.1 — RESOLVIDO (04/08/2026).** O agendamento ganhou CPF e e-mail, e
+`GET /api/booking/config` passou a expor `payment.gateway_enabled` — era o dado
+que faltava para a tela saber *quando* o CPF é barreira. Sem gateway o campo é
+opcional e não trava o agendamento; com gateway e sinal, é obrigatório (400).
+
+Duas coisas vieram junto, porque sem elas a correção não teria efeito visível: a
+tela de confirmação passou a oferecer "Pagar o sinal agora" quando o backend
+devolve `payment_url`, e o checkout do catálogo — que tinha campo de CPF **sem
+máscara nem validação** — passou a usar o mesmo helper.
+
+**Fica aberto:** `POST /api/sales-orders/public` (checkout do catálogo) continua
+sem *exigir* CPF quando há gateway. A máscara e a validação estão lá; a regra de
+obrigatoriedade só existe no agendamento.
+
+~~O checkout do catálogo coleta~~
 (e agora propaga para `clients.tax_id`), mas o formulário de agendamento não.
 Sem CPF o Asaas recusa criar o pagador, então o sinal online **degrada para o
 caminho manual** (comprovante por WhatsApp). O backend já aceita `cpf`/`email`
@@ -214,8 +246,28 @@ impede que o timer segure o processo; falta o desligamento gracioso.
 Planos editáveis, cotas, controle de contas, financeiro e suporte entraram.
 Ver `docs/PAINEL-PLATAFORMA.md`. O que ficou aberto:
 
-### 19. Trocar de plano não reajusta a cobrança no Asaas
-A troca muda o acesso da clínica **na hora**, mas a assinatura recorrente no
+### 19. Trocar de plano não reajusta a cobrança no Asaas — RESOLVIDO (04/08/2026)
+`syncSubscriptionPrice()` (`services/platformBilling.js`) é o único ponto de
+propagação, com credencial da **plataforma**. Nunca lança — o acesso já mudou, e
+gateway fora do ar não pode desfazer nem travar a troca; lê a assinatura antes de
+escrever e não escreve se o valor já bate. O `warning` agora diz o que de fato
+aconteceu, e existe **"Reenviar ajuste ao Asaas"** no painel para o caso de falha.
+
+O levantamento achou **três** caminhos de troca de plano, não um: as duas rotas
+do painel (`PATCH /api/platform/accounts/:id/plan` e a antiga
+`PATCH /api/platform/tenants/:id/plan`, usada pelo botão de ativar/renovar) e
+`PATCH /api/subscription` em `routes/store.js` — a troca **self-service**, pela
+qual a própria clínica se promove. Os três propagam.
+
+Não usa `runIdempotent`: ele existe para requisição que **cria** cobrança, e aqui
+só há `POST /subscriptions/{id}` com valor absoluto sobre assinatura existente.
+
+**Fica aberto:** plano com `price_cents = 0` gera `plano_sem_preco` (o Asaas
+recusa assinatura de valor zero); a mesma armadilha existe em
+`planAdmin.js::propagarPrecoNoAsaas`. E o item 24 continua de pé — nada disso foi
+exercido contra o Asaas real.
+
+~~A troca muda o acesso da clínica **na hora**, mas a assinatura recorrente no~~
 gateway continua com o valor do plano antigo. A rota devolve `warning` quando
 existe `asaas_subscription_id`, e a tela exibe — mas ninguém age.
 
@@ -223,8 +275,22 @@ existe `asaas_subscription_id`, e a tela exibe — mas ninguém age.
 continua pagando o barato até alguém notar. O conserto exige refazer o checkout
 ou chamar `updateSubscription` no gateway; ficou de fora por mexer em cobrança.
 
-### 20. Os guards de cota não estão ligados em nenhuma rota
-`requireWithinLimit` existe, é testado e funciona — mas nenhuma rota o chama, e
+### 20. Os guards de cota não estão ligados em nenhuma rota — RESOLVIDO (04/08/2026)
+`requireWithinLimit` ligado nas quatro rotas de **criação**, na ordem sugerida:
+`POST /api/users`, `/clients`, `/jewelry` e `/appointments`. Sempre depois do
+`validateBody` (payload torto continua 400, não 409) e antes da parte cara do
+handler — em joias, antes do `BEGIN`, para o 409 não abortar uma transação que já
+gravou SKU e variações. `PATCH`/`PUT`/`GET`/`DELETE` seguem livres.
+
+O caso que mais importava está testado explicitamente: clínica com plano sem
+`limits` — o estado de 100% das clínicas hoje — continua criando nas quatro
+rotas. Ligar os guards não bloqueia ninguém até alguém definir limites no painel.
+
+`routes/booking.js` ficou de fora de propósito, com o motivo registrado em
+comentário nos dois pontos onde importa. `storage_mb` segue só informativo: a
+medição é aproximada demais para bloquear criação.
+
+~~`requireWithinLimit` existe, é testado e funciona — mas nenhuma rota o chama, e~~
 nenhum plano tem `limits` configurado. O sistema é inerte por construção até
 alguém definir limites no painel.
 
@@ -253,8 +319,15 @@ inflaria o divisor justamente nos meses de crescimento.
 Para os dois virarem número: (a) gravar `canceled_at` no cancelamento e (b) um
 log `(assinatura, data, de, para)`.
 
-### 23. Uso em massa não invalida o cache de cotas
-Importação de joias e exclusões em lote não chamam `invalidateUsageCache`. A
+### 23. Uso em massa não invalida o cache de cotas — RESOLVIDO (04/08/2026)
+`invalidateUsageCache` plugado em `importAuraJewelry` (depois do COMMIT, com
+`tenantId`) e nas exclusões que de fato mudam a contagem: usuários, clientes (só
+`hard_delete` — anonimização preserva a linha), joias (só quando apaga, não
+quando arquiva) e agendamentos. Não existem rotas de exclusão em lote: o único
+endpoint "bulk" do backend é `POST /api/finance/entries/bulk-lifecycle`, que não
+mexe em cota nenhuma.
+
+~~Importação de joias e exclusões em lote não chamam `invalidateUsageCache`. A~~
 janela é de 15s e o cache só é confiado com folga abaixo de 90% da cota, então o
 efeito é pequeno — mas o gancho existe e não está plugado.
 

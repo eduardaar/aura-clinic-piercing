@@ -26,12 +26,13 @@
 //     confirmação e o botão só habilita quando ele está preenchido: pedir o
 //     motivo depois de o clique já ter falhado transformaria a regra em ruído.
 //
-//  2. AS TRÊS ASSIMETRIAS FICAM ESCRITAS NA TELA. Suspender não cancela a
-//     cobrança; cancelar a assinatura não corta o acesso; trocar de plano não
-//     reajusta a recorrência. São deliberadas no backend, e escondê-las custa
-//     dinheiro (clínica cobrada errado) ou acesso indevido. Por isso aparecem
-//     duas vezes: num bloco fixo acima das ações e DENTRO da confirmação de
-//     cada uma — que é o instante em que a decisão é tomada.
+//  2. AS ASSIMETRIAS FICAM ESCRITAS NA TELA. Suspender não cancela a cobrança;
+//     cancelar a assinatura não corta o acesso; trocar de plano reajusta a
+//     recorrência mas o reajuste pode não chegar ao gateway. São deliberadas no
+//     backend, e escondê-las custa dinheiro (clínica cobrada errado) ou acesso
+//     indevido. Por isso aparecem duas vezes: num bloco fixo acima das ações e
+//     DENTRO da confirmação de cada uma — que é o instante em que a decisão é
+//     tomada.
 //
 //  3. COTA NÃO APAGA DADO. Todo item acima do limite vem com a frase de que
 //     nada foi removido e a clínica continua editando o que já tem. É o
@@ -143,9 +144,10 @@ const ASSIMETRIAS = {
     "Cancelar a assinatura NÃO suspende a conta: a clínica continua entrando e trabalhando normalmente, porque " +
     "o período já pago é dela. Para tirar o acesso é preciso suspender, que é outra ação nesta mesma tela.",
   plano:
-    "Trocar de plano NÃO reajusta a cobrança recorrente: recursos e cotas mudam na hora, mas a assinatura no " +
-    "Asaas continua no valor do plano anterior até alguém refazer o checkout ou ajustar a recorrência no painel " +
-    "do gateway.",
+    "Trocar de plano reajusta a cobrança recorrente, mas as duas coisas não acontecem no mesmo lugar: recursos e " +
+    "cotas mudam no banco (sempre), e o valor novo é enviado ao Asaas em seguida (pode falhar). Quando o envio " +
+    "não completa, o aviso vermelho aparece e a clínica continua sendo cobrada pelo valor anterior até alguém " +
+    'usar "Reenviar ajuste ao Asaas" — que pode ser clicado quantas vezes for preciso.',
 };
 
 // ---------------------------------------------------------------------------
@@ -211,8 +213,9 @@ const ACOES = {
   plano: {
     titulo: "Trocar o plano da clínica",
     resumo:
-      "A troca vale na hora para recursos e cotas. O status da assinatura não muda: uma clínica inadimplente que " +
-      "troca de plano continua inadimplente.",
+      "A troca vale na hora para recursos e cotas, e o valor do plano novo é enviado à assinatura no Asaas (com as " +
+      "cobranças pendentes junto). O status da assinatura não muda: uma clínica inadimplente que troca de plano " +
+      "continua inadimplente.",
     naoFaz: ASSIMETRIAS.plano,
     confirmar: "Trocar plano",
     exigeCodigo: false,
@@ -265,6 +268,7 @@ export function AccountsAdmin({ token, onUnauthorized }) {
   const [trialForm, setTrialForm] = useState({ days: "7", mode: "extend" });
   const [statusAlvo, setStatusAlvo] = useState("active");
   const [executando, setExecutando] = useState(false);
+  const [sincronizando, setSincronizando] = useState(false);
   const [erroDaAcao, setErroDaAcao] = useState({ mensagem: "", dica: "" });
 
   const [feedback, setFeedback] = useState({ error: "", success: "" });
@@ -438,6 +442,36 @@ export function AccountsAdmin({ token, onUnauthorized }) {
     }
   }
 
+  // Reprocesso do reajuste que não chegou ao gateway.
+  //
+  // Sem confirmação e sem motivo, ao contrário de todas as ações de escrita
+  // desta tela: aqui nada NOSSO muda: a rota só faz o Asaas concordar com o
+  // plano que já está gravado (e cuja troca já foi para a auditoria com o
+  // motivo dela). É idempotente do lado do backend — ele lê a assinatura antes
+  // de escrever e não faz nada se o valor já estiver certo —, então clicar duas
+  // vezes não cobra duas vezes.
+  async function reenviarAjusteAoGateway() {
+    if (!tenantId) return;
+    setSincronizando(true);
+    setFeedback({ error: "", success: "" });
+    try {
+      const payload = asObject(
+        await request(`/platform/accounts/${tenantId}/sync-subscription`, { method: "POST" }),
+      );
+      adicionarAviso("Pendência no gateway de pagamento", payload.warning);
+      const gateway = asObject(payload.gateway);
+      setFeedback({
+        error: "",
+        success: gateway.detalhe || "Ajuste reenviado ao Asaas.",
+      });
+      await carregarConta(tenantId);
+    } catch (error) {
+      setFeedback({ error: error.message, success: "" });
+    } finally {
+      setSincronizando(false);
+    }
+  }
+
   // Monta a requisição de cada ação. Fica separado do `executar` para o fluxo de
   // erro/sucesso ser um só, qualquer que seja o botão clicado.
   function requisicaoDaAcao(tipo, reason) {
@@ -475,7 +509,13 @@ export function AccountsAdmin({ token, onUnauthorized }) {
       return `Status da assinatura forçado para "${rotulo.split(" —")[0]}".`;
     }
     if (tipo === "plano") {
-      return `Plano trocado para "${payload.plan_name || planoAlvo}". Recursos e cotas já valem; a cobrança recorrente não.`;
+      // O que aconteceu com a COBRANÇA vem do backend por escrito (`gateway.detalhe`)
+      // em vez de ser deduzido aqui: "atualizado", "já estava sincronizado" e
+      // "esta clínica não tem recorrência" são três finais diferentes para o
+      // mesmo clique, e adivinhar qual foi é como a tela passa a mentir.
+      const gateway = asObject(payload.gateway);
+      const cobranca = gateway.detalhe || "Recursos e cotas já valem.";
+      return `Plano trocado para "${payload.plan_name || planoAlvo}". ${cobranca}`;
     }
     return trialForm.mode === "restart"
       ? `Teste reiniciado por ${payload.days} dia(s).`
@@ -497,8 +537,9 @@ export function AccountsAdmin({ token, onUnauthorized }) {
       const payload = asObject(await request(path, { method, body: JSON.stringify(body) }));
 
       // Avisos do backend viram bloco fixo na tela, não texto de sucesso: o
-      // `warning` da troca de plano é a recorrência no valor antigo, e o do
-      // cancelamento é uma cobrança que pode continuar viva no gateway.
+      // `warning` da troca de plano é o reajuste que NÃO chegou à recorrência, e
+      // o do cancelamento é uma cobrança que pode continuar viva no gateway. O
+      // que deu certo não vira aviso — vai na mensagem de sucesso.
       adicionarAviso("Pendência no gateway de pagamento", payload.warning);
       if (payload.gateway_error && !payload.warning) {
         adicionarAviso("Falha ao falar com o Asaas", payload.gateway_error);
@@ -662,6 +703,9 @@ export function AccountsAdmin({ token, onUnauthorized }) {
                 <AcoesDaConta
                   suspensa={clinica.status === "suspenso"}
                   semAssinatura={semAssinatura}
+                  assinaturaNoGateway={assinatura?.asaas_subscription_id || ""}
+                  sincronizando={sincronizando}
+                  onSincronizar={reenviarAjusteAoGateway}
                   onAbrir={abrirAcao}
                 />
 
@@ -1180,7 +1224,7 @@ function ResumoDaPrevisao({ previsao, erro, carregando, compacto = false }) {
 }
 
 /**
- * As cinco ações num painel só.
+ * As cinco ações (mais o reenvio do ajuste ao gateway) num painel só.
  *
  * Antes eram cinco cartões com CSS próprio; o que eles carregavam de essencial
  * — a assimetria e o motivo de um botão estar desligado — continua na tela: a
@@ -1188,7 +1232,7 @@ function ResumoDaPrevisao({ previsao, erro, carregando, compacto = false }) {
  * segundo numa linha de nota abaixo dos botões. Suspender e cancelar ficam
  * separados em `.platform-danger` para nunca aparecerem ao lado de "salvar".
  */
-function AcoesDaConta({ suspensa, semAssinatura, onAbrir }) {
+function AcoesDaConta({ suspensa, semAssinatura, assinaturaNoGateway, sincronizando, onSincronizar, onAbrir }) {
   const semAssinaturaPorque = "sem linha de assinatura não há o que ajustar.";
   const acoes = [
     { tipo: "reativar", ok: suspensa, porque: "Reativar a clínica: ela já está ativa." },
@@ -1230,9 +1274,26 @@ function AcoesDaConta({ suspensa, semAssinatura, onAbrir }) {
           <strong>Cancelar ≠ cortar acesso.</strong> {ASSIMETRIAS.cancelar}
         </p>
         <p className="field-hint">
-          <strong>Trocar de plano ≠ reajustar a cobrança.</strong> {ASSIMETRIAS.plano}
+          <strong>Trocar de plano reajusta a cobrança — se o gateway responder.</strong> {ASSIMETRIAS.plano}
         </p>
       </AlertBlock>
+
+      {/* O reprocesso mora ao lado das assimetrias porque é a resposta à
+          terceira delas. Fora do bloco vermelho e sem confirmação: reenviar o
+          valor que já está gravado não corta acesso, não cria cobrança e pode
+          ser repetido à vontade — o backend só escreve no gateway se o valor de
+          lá estiver diferente. */}
+      <div className="header-actions">
+        <Button variant="secondary" disabled={!assinaturaNoGateway || sincronizando} onClick={onSincronizar}>
+          <RefreshCw size={15} aria-hidden="true" />{" "}
+          {sincronizando ? "Reenviando…" : "Reenviar ajuste ao Asaas"}
+        </Button>
+      </div>
+      <p className="field-hint">
+        {assinaturaNoGateway
+          ? `Reenvia à assinatura ${assinaturaNoGateway} o valor do plano vigente, junto das cobranças pendentes. Use quando a troca de plano avisar que o reajuste não chegou ao gateway.`
+          : "Reenviar ajuste ao Asaas: indisponível porque esta clínica não tem assinatura recorrente no gateway — não há cobrança a reajustar."}
+      </p>
 
       {semAssinatura && (
         <p className="platform-notice">
