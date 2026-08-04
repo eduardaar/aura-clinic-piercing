@@ -1,0 +1,135 @@
+# Verificação SOMENTE LEITURA da base de produção.
+#
+# Existe porque "o deploy passou" não é a mesma pergunta que "o banco ficou
+# correto". As migrations rodam no boot do container e são idempotentes, então
+# a API subir já prova que nenhuma delas lançou — mas não mostra o resultado.
+# Este workflow mostra.
+#
+# Roda só sob demanda (workflow_dispatch). Não escreve nada: todo comando é
+# SELECT em information_schema ou contagem. Nenhum dado de cliente é impresso.
+name: Verificar produção
+
+on:
+  workflow_dispatch:
+
+env:
+  SERVER_HOST: 187.77.225.233
+  SERVER_USER: root
+  API_URL: https://auraclinic.monitence.com/api
+
+jobs:
+  verificar:
+    name: Conferir base de produção
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Configurar chave SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          install -m 600 /dev/null "$GITHUB_WORKSPACE/.deploy_key"
+          printf '%s\n' "${DEPLOY_SSH_KEY}" > "$GITHUB_WORKSPACE/.deploy_key"
+
+      - name: Conferir
+        env:
+          SSH_OPTS: -i ${{ github.workspace }}/.deploy_key -o UserKnownHostsFile=${{ github.workspace }}/.known_hosts -o StrictHostKeyChecking=accept-new
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2086
+          ssh ${SSH_OPTS} "${SERVER_USER}@${SERVER_HOST}" bash -s <<'REMOTE'
+          set -euo pipefail
+          psql() { docker exec -i monitence-postgres psql -U aura -d aura_clinic -qtAX "$@"; }
+
+          echo "=============================================================="
+          echo "1) CLINICAS E SCHEMAS"
+          echo "=============================================================="
+          psql -c "SELECT 'clinicas cadastradas: ' || count(*) FROM platform.tenants;"
+          psql -c "SELECT 'schemas de clinica:   ' || count(*) FROM information_schema.schemata WHERE schema_name ~ '^tenant_[0-9]+$';"
+          echo
+          echo "Um schema por clinica é o esperado. Divergência = provisionamento incompleto."
+          echo
+
+          echo "=============================================================="
+          echo "2) DINHEIRO EM NUMERIC (migração #13)"
+          echo "=============================================================="
+          echo "-- colunas monetarias que AINDA estao em double precision (deve ser 0):"
+          psql -c "
+            SELECT count(*)
+              FROM information_schema.columns
+             WHERE table_schema ~ '^tenant_[0-9]+\$'
+               AND data_type = 'double precision'
+               AND column_name IN (
+                 'total_value','deposit_value','remaining_value','service_value',
+                 'jewelry_value','subtotal_value','discount_value','procedure_price',
+                 'jewelry_unit_price','subtotal','amount','fee_amount','net_amount',
+                 'paid_amount','original_paid_amount','unit_price','minimum_amount',
+                 'maximum_discount','original_amount','discount_amount','final_amount',
+                 'fixed_promotional_price','cost_value','sale_value','price',
+                 'target_amount','statement_amount','commission_percentage');"
+          echo
+          echo "-- colunas monetarias JA convertidas para numeric:"
+          psql -c "
+            SELECT count(*)
+              FROM information_schema.columns
+             WHERE table_schema ~ '^tenant_[0-9]+\$'
+               AND data_type = 'numeric'
+               AND column_name IN (
+                 'total_value','deposit_value','remaining_value','service_value',
+                 'jewelry_value','subtotal_value','discount_value','procedure_price',
+                 'jewelry_unit_price','subtotal','amount','fee_amount','net_amount',
+                 'paid_amount','original_paid_amount','unit_price','minimum_amount',
+                 'maximum_discount','original_amount','discount_amount','final_amount',
+                 'fixed_promotional_price','cost_value','sale_value','price',
+                 'target_amount','statement_amount','commission_percentage');"
+          echo
+          echo "-- por clinica (schema | numeric | double restante):"
+          psql -c "
+            SELECT table_schema || ' | ' ||
+                   count(*) FILTER (WHERE data_type='numeric') || ' | ' ||
+                   count(*) FILTER (WHERE data_type='double precision')
+              FROM information_schema.columns
+             WHERE table_schema ~ '^tenant_[0-9]+\$'
+               AND column_name IN (
+                 'total_value','amount','paid_amount','unit_price','sale_value',
+                 'cost_value','price','discount_value','commission_percentage')
+             GROUP BY table_schema ORDER BY table_schema;"
+          echo
+
+          echo "=============================================================="
+          echo "3) EXCLUSOES ADMINISTRATIVAS (feature eduarda)"
+          echo "=============================================================="
+          echo "-- schemas com clients.deleted_at / clients.anonymized_at / administrative_audit_logs:"
+          psql -c "SELECT 'clients.deleted_at .......... ' || count(*) FROM information_schema.columns WHERE table_schema ~ '^tenant_[0-9]+\$' AND table_name='clients' AND column_name='deleted_at';"
+          psql -c "SELECT 'clients.anonymized_at ....... ' || count(*) FROM information_schema.columns WHERE table_schema ~ '^tenant_[0-9]+\$' AND table_name='clients' AND column_name='anonymized_at';"
+          psql -c "SELECT 'administrative_audit_logs ... ' || count(*) FROM information_schema.tables WHERE table_schema ~ '^tenant_[0-9]+\$' AND table_name='administrative_audit_logs';"
+          echo
+          echo "-- cofre de credenciais por clinica (tenant_integrations):"
+          psql -c "SELECT 'tabela presente em ' || count(*) || ' schema(s)' FROM information_schema.tables WHERE table_schema ~ '^tenant_[0-9]+\$' AND table_name='tenant_integrations';"
+          echo
+
+          echo "=============================================================="
+          echo "4) SCHEMA DE CONTROLE (platform)"
+          echo "=============================================================="
+          psql -c "SELECT 'tabelas em platform: ' || count(*) FROM information_schema.tables WHERE table_schema='platform';"
+          psql -c "SELECT 'colunas double precision em platform (deve ser 0): ' || count(*) FROM information_schema.columns WHERE table_schema='platform' AND data_type='double precision';"
+          psql -c "SELECT 'planos cadastrados: ' || count(*) FROM platform.subscription_plans;"
+          echo
+
+          echo "=============================================================="
+          echo "5) API: AVISOS DE BOOT"
+          echo "=============================================================="
+          echo "-- ultimas linhas relevantes do log do container:"
+          docker logs aura-api --since 24h 2>&1 \
+            | grep -Ei 'ATENÇÃO|ATENCAO|\[storage\]|\[Asaas\]|error|erro|falhou' \
+            | tail -20 || echo "   (nenhum aviso nas ultimas 24h)"
+          echo
+          echo "-- container:"
+          docker ps --filter name=aura-api --format '   aura-api: {{.Status}}'
+          echo
+          echo "-- backups recentes:"
+          ls -lh /root/pg-backups/*.sql.gz 2>/dev/null | tail -3 || echo "   (nenhum)"
+          REMOTE
+
+      - name: Limpar chave
+        if: always()
+        run: rm -f "$GITHUB_WORKSPACE/.deploy_key" "$GITHUB_WORKSPACE/.known_hosts"
