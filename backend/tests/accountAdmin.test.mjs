@@ -149,17 +149,36 @@ before(async () => {
   invalidateUsageCache(ctx.quota.id);
 });
 
+// Cada passo é isolado: um `after` que interrompe no primeiro erro deixa para
+// trás clínica e plano de teste, e o FK entre eles derruba os ARQUIVOS SEGUINTES
+// da suíte com falhas que não têm nada a ver com o que estão testando. Foi o que
+// aconteceu em 04/08/2026 — cinco clínicas órfãs e o plano `qa-cotas` vivos no
+// banco local produziram de 3 a 15 falhas variando por execução.
+async function semQuebrar(rotulo, acao) {
+  try {
+    await acao();
+  } catch (error) {
+    console.warn(`[accountAdmin] limpeza de "${rotulo}" falhou: ${error.message}`);
+  }
+}
+
 after(async () => {
-  if (ctx.account?.id) await deleteTenant(ctx.platformToken, ctx.account.id, ctx.account.slug);
-  if (ctx.free?.id) await deleteTenant(ctx.platformToken, ctx.free.id, ctx.free.slug);
+  await semQuebrar("conta", () => ctx.account?.id && deleteTenant(ctx.platformToken, ctx.account.id, ctx.account.slug));
+  await semQuebrar("clínica livre", () => ctx.free?.id && deleteTenant(ctx.platformToken, ctx.free.id, ctx.free.slug));
   // A clínica sai primeiro: a assinatura dela referencia o plano de teste por FK.
-  if (ctx.quota?.id) await deleteTenant(ctx.platformToken, ctx.quota.id, ctx.quota.slug);
+  await semQuebrar("clínica de cota", () => ctx.quota?.id && deleteTenant(ctx.platformToken, ctx.quota.id, ctx.quota.slug));
   // O plano de folga sai do banco ANTES do outro: a exclusão do `qa-cotas` pela
   // rota do painel recarrega o registro em memória do SERVIDOR, e é o que
   // garante que nenhum plano de teste sobreviva lá para o próximo arquivo.
-  await query("DELETE FROM platform.subscription_plans WHERE code = $1", [SLACK_PLAN]);
-  await platformApi(`/platform/plans/${QUOTA_PLAN}`, { method: "DELETE" });
-  await query("DELETE FROM platform.subscription_plans WHERE code = $1", [QUOTA_PLAN]);
+  await semQuebrar("plano de folga", () => query("DELETE FROM platform.subscription_plans WHERE code = $1", [SLACK_PLAN]));
+  await semQuebrar("plano de cota (painel)", () => platformApi(`/platform/plans/${QUOTA_PLAN}`, { method: "DELETE" }));
+  // Varredura final: mata a assinatura que segura o plano por FK e só então o
+  // plano. Sem isto, uma exclusão de clínica que falhou acima deixaria o plano
+  // impossível de apagar, e ele contaminaria a próxima execução inteira.
+  await semQuebrar("assinaturas do plano de cota", () =>
+    query("DELETE FROM platform.tenant_subscriptions WHERE plan_code = $1", [QUOTA_PLAN])
+  );
+  await semQuebrar("plano de cota", () => query("DELETE FROM platform.subscription_plans WHERE code = $1", [QUOTA_PLAN]));
 });
 
 // ---------------------------------------------------------------------------
