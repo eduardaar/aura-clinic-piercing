@@ -311,17 +311,29 @@ interface. Deveria virar alerta na central.
 exportada, mas o `index.js` não tem handler de encerramento. O `unref()` já
 impede que o timer segure o processo; falta o desligamento gracioso.
 
-**18.6 — `ASAAS_VAULT_KEY` não tem guarda nenhuma no boot, e a ordem é
-irreversível.** Ausente, o cofre das credenciais das clínicas deriva do
-`AUTH_SECRET`. Isso significa que (a) rotacionar o `AUTH_SECRET` depois torna
-ilegível toda chave já guardada, e (b) **definir o `ASAAS_VAULT_KEY` depois que a
-primeira clínica salvou a chave dela muda a derivação e invalida o cofre inteiro**
-— sem aviso, e o erro só aparece na primeira cobrança.
+**18.6 — `ASAAS_VAULT_KEY` e a ordem irreversível — RESOLVIDO (04/08/2026).**
+Ausente, o cofre derivava do `AUTH_SECRET`, e definir a variável **depois** que
+uma clínica salvasse a chave dela invalidaria o cofre inteiro — sem aviso, com o
+erro aparecendo só na primeira cobrança.
 
-Hoje não está configurado em lugar nenhum: nem no `.env` local, nem como secret
-do GitHub. **Precisa ser definido antes de a primeira clínica configurar gateway.**
-A guarda mínima é um aviso no boot, ao lado da de `PUBLIC_API_URL`
-(`config/index.js`, ~linha 80).
+Em vez de tratar como corrida contra o relógio ("defina antes que alguém
+configure"), a ordem deixou de importar: `vault.js` passou a manter uma **lista**
+de chaves — a primeira cifra, todas decifram. Introduzir `ASAAS_VAULT_KEY` a
+qualquer momento é seguro, porque o que já estava salvo continua sendo lido pela
+derivação antiga.
+
+E não fica meio-a-meio: `needsRewrap()` marca a linha cifrada com chave legada, e
+`readIntegration()` **regrava sozinho** na primeira leitura. Sem isso o cofre só
+sobreviveria enquanto a chave legada seguisse na lista, e uma rotação futura do
+`AUTH_SECRET` quebraria tudo de uma vez.
+
+Coberto por `backend/tests/vaultRotation.test.mjs`, que roda cada caso em
+subprocesso (a chave é derivada uma vez no boot do módulo; mudar `process.env`
+depois do import não teria efeito e o teste passaria por acidente). O caso
+negativo está lá: chave de cofre **errada** continua não decifrando.
+
+A chave foi gerada e configurada como secret `ASAAS_VAULT_KEY` no GitHub. O aviso
+de boot também entrou, ao lado do de `PUBLIC_API_URL`.
 
 **18.7 — A guarda de sandbox é frouxa.** `config/index.js:63` decide por
 `ASAAS_BASE_URL.includes("sandbox")`. Foi verificada nos dois sentidos e não está

@@ -83,6 +83,17 @@ if (isProduction && !process.env.PUBLIC_API_URL) {
   );
 }
 
+// Sem ASAAS_VAULT_KEY o cofre das credenciais das clínicas deriva do
+// AUTH_SECRET. Não quebra nada hoje, e definir a variável depois é seguro (o
+// cofre lê pelas duas chaves e regrava sozinho — ver services/asaas/vault.js).
+// O que continua valendo é o acoplamento: enquanto ela não existir, rotacionar o
+// AUTH_SECRET torna ilegível toda credencial já salva.
+if (isProduction && !process.env.ASAAS_VAULT_KEY) {
+  console.warn(
+    "[Asaas] ASAAS_VAULT_KEY não definida: o cofre das credenciais das clínicas está derivado do AUTH_SECRET. Defina uma chave dedicada — enquanto não definir, trocar o AUTH_SECRET obriga cada clínica a recadastrar a chave do gateway."
+  );
+}
+
 // Diretório onde os uploads (fotos, PDFs de termos) são gravados/servidos.
 // __dirname aqui é src/config, então subimos um nível para src/data/uploads.
 //
