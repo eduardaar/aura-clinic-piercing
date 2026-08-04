@@ -159,5 +159,14 @@ export function createDb(client) {
 // "public", para os IF NOT EXISTS não serem enganados por tabelas homônimas).
 export async function applySchemaSql(client) {
   const sql = fs.readFileSync(path.join(__dirname, "schema.sql"), "utf8");
-  await client.query(sql);
+  // CREATE TABLE IF NOT EXISTS is not race-safe when two application processes
+  // initialize the same schema at once: PostgreSQL can collide while creating
+  // the table's implicit composite type (pg_type_typname_nsp_index). Serialize
+  // schema installation per tenant across processes, not only in this Node VM.
+  await client.query("SELECT pg_advisory_lock(hashtext('aura:schema:' || current_schema()))");
+  try {
+    await client.query(sql);
+  } finally {
+    await client.query("SELECT pg_advisory_unlock(hashtext('aura:schema:' || current_schema()))");
+  }
 }
