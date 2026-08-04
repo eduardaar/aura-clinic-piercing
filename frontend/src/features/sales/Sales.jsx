@@ -335,12 +335,11 @@ export function SalesWorkspace() {
                   {safeServices.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
                 </Select>
               ) : (
-                <SmartCombobox label="Joia" value={line.product_id} options={safeJewelry} onChange={(value) => {
-                  const selected = safeJewelry.find((item) => String(item.id) === String(value));
+                <SmartCombobox label="Joia" value={line.product_id} options={safeJewelry} onChange={(value) => { if (!value) setLine({ ...line, product_id: "", product_variant_id: "", item_name: "", unit_price: 0 }); }} onSelect={(selected) => {
                   const firstVariant = asArray(selected?.variants).find((variant) => Number(variant.quantity || 0) > 0) || asArray(selected?.variants)[0];
                   setLine({
                     ...line,
-                    product_id: value,
+                    product_id: String(selected.id),
                     product_variant_id: firstVariant?.id ? String(firstVariant.id) : "",
                     item_name: selected?.name || "",
                     unit_price: firstVariant?.sale_value || selected?.sale_value || 0
