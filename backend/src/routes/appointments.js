@@ -25,6 +25,7 @@ import { validateBody } from "../middleware/validate.js";
 import { appointmentCreateSchema } from "../schemas/index.js";
 import { queueAppointmentReminderNotifications } from "../services/notifications.js";
 import { requireRole } from "../middleware/auth.js";
+import { invalidateUsageCache, requireWithinLimit } from "../services/planLimits.js";
 
 const router = Router();
 
@@ -109,6 +110,12 @@ router.post("/api/appointments", withDb(async (req, res, db) => {
   // Payload chega como multipart (multer já populou req.body). Valida os
   // obrigatórios (profissional/data/hora) preservando os demais campos.
   if (!validateBody(appointmentCreateSchema, req, res)) return;
+  // Cota do plano — a mais cara das quatro (conta o mês corrente numa coluna
+  // TEXT sem índice), por isso fica depois da validação e antes de qualquer
+  // consulta de negócio. Vale só para a agenda interna: o agendamento público
+  // (routes/booking.js) não passa por aqui, e é de propósito — o 409 chegaria
+  // ao cliente final da clínica, que não tem como resolver.
+  if (!(await requireWithinLimit(req, res, "appointments_month", db))) return;
   const body = normalizeAppointment(req.body);
   // Bloqueia horários já ocupados para o mesmo profissional.
   const conflict = await db.get(
@@ -300,6 +307,9 @@ router.delete("/api/appointments/:id", withDb(async (req, res, db) => {
     await tx.run("DELETE FROM appointments WHERE id = ?", [req.params.id]);
     await tx.run("INSERT INTO administrative_audit_logs (entity_type, entity_id, action, reason, user_id, snapshot) VALUES ('appointment', ?, 'hard_delete', ?, ?, ?)", [req.params.id, reason, req.user?.id || null, JSON.stringify({ appointment, impact })]);
   });
+  // A cota conta agendamentos CRIADOS no mês; apagar um do mês corrente devolve
+  // a vaga, então a medição cacheada não serve mais.
+  invalidateUsageCache(req.tenant?.id);
   res.json({ ok: true, deleted: true });
 }));
 

@@ -6,6 +6,7 @@ import { requireRole } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
 import { userCreateSchema, userUpdateSchema } from "../schemas/index.js";
 import { parsePaging, fetchPage, pageResponse } from "../services/pagination.js";
+import { invalidateUsageCache, requireWithinLimit } from "../services/planLimits.js";
 
 const router = Router();
 const LAST_ADMIN_MESSAGE = "Não é possível remover o acesso do último administrador geral. Cadastre ou promova outro administrador antes de alterar esta conta.";
@@ -59,6 +60,10 @@ router.post("/api/users", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   // Valida presença/tipo dos campos e exige senha com no mínimo 8 caracteres.
   if (!validateBody(userCreateSchema, req, res)) return;
+  // Cota do plano. Depois da validação (payload torto é 400, não 409) e antes do
+  // bcrypt, que é a parte cara deste handler. Plano sem cota de usuários não
+  // custa nem uma consulta: o guard sai antes de medir.
+  if (!(await requireWithinLimit(req, res, "users", db))) return;
   const { name, email, password, role } = req.body;
   const passwordHash = await bcrypt.hash(password, 10);
   const result = await db.run(
@@ -98,6 +103,9 @@ router.delete("/api/users/:id", withDb(async (req, res, db) => {
     if (continuityError) return res.status(409).json({ error: continuityError });
   }
   await db.run("DELETE FROM users WHERE id = ?", [req.params.id]);
+  // Liberou uma vaga na cota: o número medido há segundos ficou velho, e quem
+  // apagou um usuário costuma cadastrar outro em seguida.
+  invalidateUsageCache(req.tenant?.id);
   res.json({ ok: true });
 }));
 

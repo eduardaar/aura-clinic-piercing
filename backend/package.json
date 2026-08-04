@@ -8,12 +8,16 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "backup": "bash scripts/backup.sh",
+    "backup:uploads": "bash scripts/backup-uploads.sh",
+    "migrate:r2": "node scripts/migrate-uploads-to-r2.mjs",
     "restore-admin": "node scripts/restore-admin.mjs",
     "import:aura-jewelry": "node scripts/import-aura-jewelry.mjs",
     "audit:product-images": "node scripts/audit-product-images.mjs",
     "test": "node tests/run-suite.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1102.0",
+    "@aws-sdk/s3-request-presigner": "^3.1102.0",
     "bcryptjs": "^3.0.2",
     "bwip-js": "^4.11.2",
     "cors": "^2.8.5",

@@ -389,6 +389,60 @@ test("3h. agendamento publico cria solicitacao aguardando sinal, evita duplicida
   assert.equal(duplicate.json.id, ctx.publicAppointmentId);
   assert.equal(duplicate.json.idempotent, true);
 
+  // --- CPF do agendamento público -----------------------------------------
+  //
+  // O formulário passou a coletar CPF porque o Asaas recusa criar o pagador sem
+  // ele — e sem pagador não existe link de sinal. A regra tem dois lados, e os
+  // dois importam: documento errado nunca entra em `clients.tax_id` (o erro só
+  // apareceria na primeira cobrança daquele cliente), mas documento AUSENTE não
+  // pode bloquear quem agenda numa clínica sem gateway, que é a maioria.
+  const bookingConfig = await req(`/booking/config?t=${ctx.slug}`);
+  assert.equal(bookingConfig.status, 200, JSON.stringify(bookingConfig.json));
+  assert.equal(bookingConfig.json.payment.gateway_enabled, false, "clinica de teste nao tem Asaas configurado");
+  // A solicitação acima foi criada SEM CPF e passou: é a prova do lado permissivo.
+  assert.equal(create.status, 201);
+
+  const livres = await req(`/booking/slots?t=${ctx.slug}&service_id=${ctx.serviceId}&professional_id=${ctx.professionalId}&date=${sunday}`);
+  const horarioLivre = livres.json.slots?.[0]?.time;
+  assert.ok(horarioLivre, `precisa sobrar horario para os testes de CPF: ${JSON.stringify(livres.json)}`);
+
+  // Sem joia: estas solicitações são sobre o CPF, e reservar estoque aqui
+  // mudaria a contagem que os testes de inventário conferem mais adiante.
+  const bodySemJoia = { ...body };
+  delete bodySemJoia.jewelry_id;
+  delete bodySemJoia.jewelry_variant_id;
+  delete bodySemJoia.selected_color;
+
+  const cpfInvalido = await req(`/booking/requests?t=${ctx.slug}`, {
+    method: "POST",
+    body: { ...bodySemJoia, appointment_time: horarioLivre, idempotency_key: `${idempotency}-cpf-invalido`, cpf: "111.111.111-11" }
+  });
+  assert.equal(cpfInvalido.status, 400, JSON.stringify(cpfInvalido.json));
+  assert.match(cpfInvalido.json.error, /CPF inválido/);
+
+  // Mesmo WhatsApp da solicitação anterior: `upsertClient` casa por telefone e
+  // cai no UPDATE. É o caminho que mais importa — é nele que o CPF poderia
+  // simplesmente não ser gravado sem ninguém perceber.
+  const comCpf = await req(`/booking/requests?t=${ctx.slug}`, {
+    method: "POST",
+    body: {
+      ...bodySemJoia,
+      appointment_time: horarioLivre,
+      idempotency_key: `${idempotency}-cpf`,
+      cpf: "529.982.247-25",
+      email: "cpf@qa.local"
+    }
+  });
+  assert.equal(comCpf.status, 201, JSON.stringify(comCpf.json));
+
+  const clientesComCpf = await api("/clients?search=11988887777");
+  const clienteComCpf = (clientesComCpf.json.items || clientesComCpf.json).find((item) => item.whatsapp === "11988887777");
+  assert.ok(clienteComCpf, "cliente do agendamento com CPF deve existir");
+  // Só dígitos: é o formato que o gateway aceita e o que evita o mesmo
+  // documento gravado de três jeitos conforme a máscara do formulário.
+  assert.equal(clienteComCpf.tax_id, "52998224725");
+  assert.equal(clienteComCpf.email, "cpf@qa.local");
+
   const pending = await api("/appointments?status=pendente");
   assert.equal(pending.status, 200, JSON.stringify(pending.json));
   assert.ok(pending.json.some((item) => Number(item.id) === Number(ctx.publicAppointmentId)), "solicitacao publica deve aparecer como pendente");
@@ -799,7 +853,7 @@ test("9b. erp responde 200 com métricas coerentes", async () => {
   const erp = await api("/erp");
   assert.equal(erp.status, 200, JSON.stringify(erp.json));
   assert.equal(Number(erp.json.metrics.clients), 2, "deve haver 2 clientes, incluindo o cliente do link publico");
-  assert.equal(Number(erp.json.metrics.appointments), 3, "deve haver 3 agendamentos, incluindo solicitacao publica e horario ocupado do teste de slots");
+  assert.equal(Number(erp.json.metrics.appointments), 4, "deve haver 4 agendamentos: interno, horario ocupado do teste de slots e as duas solicitacoes publicas (sem e com CPF)");
   const expectedJewelryCount = [ctx.publicJewelryId, ctx.jewelryId, ctx.extraJewelryId, ctx.pricingJewelryId].filter(Boolean).length;
   assert.equal(Number(erp.json.metrics.jewelry), expectedJewelryCount, "quantidade de joias coerente com o que foi criado");
   // Receita paga = 40 sinal interno + 140 restante + 120 da venda.

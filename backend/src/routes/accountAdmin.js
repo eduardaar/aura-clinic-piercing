@@ -22,6 +22,7 @@ import {
   changeAccountPlan,
   forceSubscriptionStatus,
   platformActor,
+  resyncAccountSubscription,
   setAccountStatus
 } from "../services/accountAdmin.js";
 import { tenantUsageReport } from "../services/planLimits.js";
@@ -131,12 +132,34 @@ router.get("/api/platform/accounts/:id/limits-preview", requirePlatform, async (
 // ---------------------------------------------------------------------------
 
 // Troca de plano imediata. NÃO mexe no status da assinatura — para liberar uma
-// conta inadimplente use /subscription-status.
+// conta inadimplente use /subscription-status. Propaga o valor do plano novo
+// para a recorrência no Asaas (best-effort: o resultado vem em `gateway`, e o
+// que exigir ação do operador, em `warning`).
 router.patch("/api/platform/accounts/:id/plan", requirePlatform, async (req, res) => {
   try {
     res.json(
       await changeAccountPlan(req.params.id, {
         planCode: req.body?.plan_code,
+        reason: req.body?.reason,
+        actor: await actorOf(req)
+      })
+    );
+  } catch (error) {
+    handleAccountError(res, error);
+  }
+});
+
+// Reenvia ao Asaas o valor do plano vigente — o reprocesso do `warning` acima.
+//
+// POST e não PATCH porque não altera nenhum recurso NOSSO: só faz o gateway
+// concordar com o que já está gravado aqui. É idempotente (a sincronização lê
+// antes de escrever e nunca cria assinatura ou cobrança), então repetir o
+// clique não duplica cobrança — não precisa de `Idempotency-Key`, que existe
+// para o checkout, onde o replay criaria uma segunda recorrência.
+router.post("/api/platform/accounts/:id/sync-subscription", requirePlatform, async (req, res) => {
+  try {
+    res.json(
+      await resyncAccountSubscription(req.params.id, {
         reason: req.body?.reason,
         actor: await actorOf(req)
       })

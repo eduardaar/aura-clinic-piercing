@@ -716,6 +716,227 @@ export async function syncInvoice(invoiceId) {
   return applyPlatformPaymentEvent({ action, payment });
 }
 
+// ---------------------------------------------------------------------------
+// Reajuste da recorrência (a assinatura Monitence -> clínica)
+// ---------------------------------------------------------------------------
+
+// Estados possíveis da propagação. Ficam listados aqui porque a tela e a
+// auditoria leem este campo, e um estado inventado no meio do caminho viraria
+// "status desconhecido" para quem precisa decidir o que fazer.
+export const SUBSCRIPTION_SYNC_STATUSES = [
+  "atualizado", // o gateway passou a cobrar o valor do plano vigente
+  "ja_sincronizado", // já cobrava esse valor; nada foi escrito
+  "sem_assinatura", // clínica sem recorrência no Asaas — não há o que reajustar
+  "assinatura_cancelada", // cancelada aqui; reajustar reviveria uma cobrança encerrada
+  "plano_sem_preco", // plano gratuito: o Asaas recusa assinatura de valor zero
+  "gateway_indisponivel", // sem credencial da plataforma neste ambiente
+  "falhou" // o Asaas respondeu erro (ou não respondeu)
+];
+
+function reais(centavos) {
+  return `R$ ${(Number(centavos || 0) / 100).toFixed(2).replace(".", ",")}`;
+}
+
+/**
+ * Faz a assinatura recorrente no Asaas concordar com o plano vigente da clínica.
+ *
+ * É a peça que faltava na troca de plano: mudar `plan_code` libera recursos na
+ * hora, mas a recorrência no gateway continua emitindo o valor antigo — uma
+ * clínica promovida seguiria pagando o plano barato até alguém reparar na
+ * fatura.
+ *
+ * Três decisões guiam a função:
+ *
+ *  1. NUNCA LANÇA. Quem chama já mudou o plano no banco (o acesso da clínica
+ *     JÁ mudou) e não pode desfazer isso porque o gateway está fora do ar.
+ *     Toda saída é um relatório com `status` — inclusive a de erro.
+ *  2. É IDEMPOTENTE POR CONSTRUÇÃO. Só faz `POST /subscriptions/{id}` sobre uma
+ *     assinatura que já existe, com o valor ABSOLUTO do plano; não cria
+ *     assinatura nem cobrança, então repetir não duplica nada. A leitura antes
+ *     da escrita é o mesmo tipo de guarda de estado que os handlers de webhook
+ *     usam (`if (invoice.status === "paga") return`): se o gateway já cobra o
+ *     valor certo, a chamada de escrita nem acontece. Por isso não passa por
+ *     `services/idempotency.js`, que existe para o caso oposto — requisições
+ *     que CRIAM cobrança e cujo replay cobraria duas vezes.
+ *  3. CREDENCIAL DA PLATAFORMA, sempre. Quem cobra a assinatura é a Monitence;
+ *     a chave da clínica cobra o cliente final dela e não tem nada a ver com
+ *     esta recorrência.
+ *
+ * @param {number} tenantId
+ * @param {{ gateway?: object }} [options] `gateway` é ponto de injeção para os
+ *   testes exercitarem o caminho de SUCESSO sem credencial real. Nenhuma rota
+ *   passa esse parâmetro: o cliente do Asaas nunca pode vir de fora.
+ */
+export async function syncSubscriptionPrice(tenantId, { gateway = null } = {}) {
+  const found = await query(
+    `SELECT id, tenant_id, plan_code, status, asaas_subscription_id
+       FROM platform.tenant_subscriptions
+      WHERE tenant_id = $1`,
+    [tenantId]
+  );
+  const row = found.rows[0] || null;
+  const plan = planByCode(row?.plan_code);
+
+  const base = {
+    tenant_id: Number(tenantId),
+    plan_code: row?.plan_code ?? null,
+    plan_name: plan.name,
+    price_cents: plan.price_cents,
+    asaas_subscription_id: row?.asaas_subscription_id ?? null,
+    valor_esperado: plan.price_cents / 100,
+    valor_no_gateway: null,
+    erro: null
+  };
+
+  if (!row || !row.asaas_subscription_id) {
+    return {
+      ...base,
+      status: "sem_assinatura",
+      detalhe: "Esta clínica não tem assinatura recorrente no Asaas; não há cobrança a reajustar."
+    };
+  }
+  if (row.status === "canceled") {
+    return {
+      ...base,
+      status: "assinatura_cancelada",
+      detalhe:
+        `A assinatura ${row.asaas_subscription_id} está cancelada aqui e não foi reajustada: ` +
+        "mexer no valor de uma recorrência encerrada só faria sentido se a intenção fosse recobrar."
+    };
+  }
+  // O Asaas recusa assinatura de valor zero (e `toAsaasValue` barra antes
+  // disso). Plano gratuito não é erro de configuração — é um caso em que a
+  // recorrência precisa ser CANCELADA, não reajustada.
+  if (!(plan.price_cents > 0)) {
+    return {
+      ...base,
+      status: "plano_sem_preco",
+      detalhe:
+        `O plano "${plan.name}" não tem preço, e o gateway não aceita assinatura de valor zero. ` +
+        `A recorrência ${row.asaas_subscription_id} continua com o valor anterior.`
+    };
+  }
+  // A guarda é sobre a CREDENCIAL, não sobre o ambiente: quem injeta um cliente
+  // (os testes) já trouxe o próprio meio de falar com o gateway, e `platformClient()`
+  // sem chave só produziria um erro tardio de "credencial não configurada".
+  if (!gateway && !isPlatformEnabled()) {
+    return {
+      ...base,
+      status: "gateway_indisponivel",
+      detalhe:
+        "O gateway da plataforma não está configurado neste ambiente; " +
+        `a assinatura ${row.asaas_subscription_id} continua com o valor anterior.`
+    };
+  }
+
+  const asaas = gateway || platformClient();
+
+  // Leitura antes da escrita: além de tornar o reprocesso um no-op de verdade,
+  // é ela que dá ao operador o "de X para Y" no relatório. Falhar aqui NÃO
+  // aborta a operação — o que importa é a escrita, e uma leitura perdida não
+  // pode ser motivo para deixar a clínica sendo cobrada errado.
+  let valorAtual = null;
+  try {
+    const remoto = await asaas.getSubscription(row.asaas_subscription_id);
+    const valor = Number(remoto?.value);
+    if (Number.isFinite(valor)) valorAtual = valor;
+  } catch (error) {
+    logGatewayError(
+      `falha ao ler a assinatura ${row.asaas_subscription_id} do tenant ${tenantId} antes do reajuste`,
+      error
+    );
+  }
+
+  if (valorAtual !== null && Math.round(valorAtual * 100) === plan.price_cents) {
+    return {
+      ...base,
+      status: "ja_sincronizado",
+      valor_no_gateway: valorAtual,
+      detalhe:
+        `A assinatura ${row.asaas_subscription_id} já cobra ${reais(plan.price_cents)} ` +
+        `(plano "${plan.name}"). Nada foi enviado ao gateway.`
+    };
+  }
+
+  try {
+    const atualizada = await asaas.updateSubscription(row.asaas_subscription_id, {
+      // price_cents -> reais. A divisão que, esquecida, cobra cem vezes o plano.
+      value: plan.price_cents / 100,
+      // As cobranças já emitidas e ainda não pagas precisam acompanhar, senão a
+      // clínica recebe no mês que vem uma fatura com o preço velho.
+      updatePendingPayments: true
+    });
+    const valorDepois = Number(atualizada?.value);
+    return {
+      ...base,
+      status: "atualizado",
+      valor_anterior: valorAtual,
+      valor_no_gateway: Number.isFinite(valorDepois) ? valorDepois : plan.price_cents / 100,
+      detalhe:
+        `Assinatura ${row.asaas_subscription_id} reajustada para ${reais(plan.price_cents)} ` +
+        `(plano "${plan.name}"), inclusive nas cobranças pendentes.`
+    };
+  } catch (error) {
+    const mensagem = error instanceof AsaasError ? error.message : String(error?.message || error);
+    logGatewayError(
+      `falha ao reajustar a assinatura ${row.asaas_subscription_id} do tenant ${tenantId} ` +
+        `para o plano ${plan.code}`,
+      error
+    );
+    return {
+      ...base,
+      status: "falhou",
+      erro: mensagem,
+      valor_no_gateway: valorAtual,
+      detalhe:
+        `O gateway recusou o reajuste da assinatura ${row.asaas_subscription_id}: ${mensagem}. ` +
+        "A cobrança recorrente continua com o valor anterior."
+    };
+  }
+}
+
+/**
+ * O aviso que o operador precisa LER E AGIR, ou `null`.
+ *
+ * Só vira aviso o que deixa dinheiro pendurado. Sucesso, "já estava certo" e
+ * "esta clínica não tem recorrência" são estados normais e viajam em
+ * `gateway.detalhe`, que a tela mostra junto da mensagem de sucesso — um alerta
+ * vermelho para cada troca de plano em ambiente sem gateway treinaria o
+ * super-admin a fechar o aviso sem ler, justamente o que ele não pode fazer no
+ * dia em que a propagação falhar de verdade.
+ */
+export function subscriptionSyncWarning(outcome) {
+  if (!outcome) return null;
+  const id = outcome.asaas_subscription_id;
+  switch (outcome.status) {
+    case "falhou":
+      return (
+        `Não foi possível reajustar a assinatura ${id} no Asaas: ${outcome.erro}. ` +
+        `O plano novo já vale para a clínica, mas a cobrança recorrente continua no valor anterior — ` +
+        `use "Reenviar ajuste ao Asaas" para tentar de novo.`
+      );
+    case "gateway_indisponivel":
+      return (
+        `O gateway não está configurado neste ambiente: a assinatura ${id} continua cobrando o valor ` +
+        `anterior, não ${reais(outcome.price_cents)}. Reenvie o ajuste num ambiente com a chave da ` +
+        "plataforma, ou corrija o valor no painel do Asaas."
+      );
+    case "assinatura_cancelada":
+      return (
+        `A assinatura ${id} está cancelada aqui e não foi tocada no gateway. Se a recorrência ainda ` +
+        "estiver viva no Asaas, ela continua cobrando o valor antigo — cancele-a no painel."
+      );
+    case "plano_sem_preco":
+      return (
+        `O plano "${outcome.plan_name}" é gratuito e o Asaas não aceita assinatura de valor zero: a ` +
+        `recorrência ${id} continua cobrando o valor anterior. Cancele-a no painel do gateway se a ` +
+        "clínica não deve mais ser cobrada."
+      );
+    default:
+      return null;
+  }
+}
+
 /** Faturas da clínica, da mais recente para a mais antiga. */
 export async function listTenantInvoices(tenantId, { limit = 20, offset = 0 } = {}) {
   const size = Math.min(Math.max(Number(limit) || 20, 1), 100);

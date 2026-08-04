@@ -1,5 +1,18 @@
 // Serviço de relatório financeiro consolidado (pagamentos + vendas + despesas).
+//
+// Todos os SUM daqui rodam sobre colunas NUMERIC(12,2) (`payments.amount`,
+// `expenses.amount`, `appointments.total_value`), então o somatório é decimal
+// exato dentro do Postgres. A camada `db` converte o resultado para Number na
+// saída (ver db/postgres.js): cada total individual cabe em Number sem perda; o
+// que não pode voltar é somar linha a linha em JavaScript.
 import { localDate } from "./utils.js";
+
+// Único ponto deste arquivo em que dois totais se encontram fora do SQL. Como
+// os dois já chegam exatos, arredondar o resultado para centavos elimina o
+// resíduo de IEEE-754 da subtração (1234.56 - 789.01 = 445.55000000000007).
+function reais(valor) {
+  return Math.round(Number(valor || 0) * 100) / 100;
+}
 
 export async function buildFinanceReport(db) {
   const today = localDate();
@@ -64,7 +77,7 @@ export async function buildFinanceReport(db) {
     deposits: { monthTotal: deposits.total || 0 },
     forecast,
     expensesSummary,
-    profit: { estimated: monthRevenue - (expensesSummary.total || 0) },
+    profit: { estimated: reais(Number(monthRevenue || 0) - Number(expensesSummary.total || 0)) },
     mostUsedMethod: methods[0]?.method || "Sem registros",
     methods,
     expenses,

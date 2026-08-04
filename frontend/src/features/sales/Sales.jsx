@@ -53,6 +53,28 @@ export function SalesWorkspace() {
   const paymentOptions = [...new Set(safeOrders.map((order) => order.payment_method || "Pix"))].sort();
   const selectedProduct = safeJewelry.find((item) => String(item.id) === String(line.product_id));
   const selectedVariants = asArray(selectedProduct?.variants).filter((variant) => Number(variant.is_active ?? 1));
+  // Espelha a regra de baixa do backend (`resolveStockTarget` em services/sales.js):
+  // sem variação escolhida a venda debita a primeira variação ativa com saldo e,
+  // se o produto não tem variação nenhuma, debita o saldo do próprio produto.
+  const stockVariant = line.product_variant_id
+    ? selectedVariants.find((variant) => String(variant.id) === String(line.product_variant_id)) || null
+    : selectedVariants.find((variant) => Number(variant.quantity || 0) > 0) || null;
+  const stockKey = stockVariant ? `variant:${stockVariant.id}` : `product:${line.product_id}`;
+  // O que já está no carrinho conta contra o mesmo saldo: duas linhas de 2 un.
+  // sobre um estoque de 3 são recusadas pelo backend, então a tela também soma.
+  const reservedInCart = items
+    .filter((item) => item.item_type === "produto" && item.stock_key === stockKey)
+    .reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+  const productStock = stockVariant
+    ? Number(stockVariant.quantity || 0)
+    : Number(selectedProduct?.inventory_quantity ?? selectedProduct?.quantity ?? 0);
+  // Saldo que a PRÓXIMA linha ainda pode consumir. `null` quando a pergunta não
+  // faz sentido (serviço, ou nenhuma joia escolhida ainda).
+  const availableQuantity = line.item_type === "produto" && selectedProduct
+    ? Math.max(0, productStock - reservedInCart)
+    : null;
+  const requestedQuantity = Math.max(1, Number(line.quantity || 1));
+  const exceedsStock = availableQuantity !== null && requestedQuantity > availableQuantity;
 
   useEffect(() => {
     setLine((current) => ({ ...current, item_type: tab === "servico" ? "servico" : "produto" }));
@@ -107,13 +129,17 @@ export function SalesWorkspace() {
        safeServices.find((item) => String(item.id) === String(line.service_id))
       : safeJewelry.find((item) => String(item.id) === String(line.product_id));
     if (!entry) return;
-    const variant = line.item_type === "produto"
-      ? asArray(entry.variants).find((item) => String(item.id) === String(line.product_variant_id))
-      : null;
-    if (line.item_type === "produto" && variant && quantity > Number(variant.quantity || 0)) {
-      setError("Quantidade maior que o estoque disponivel da variacao.");
+    // A variação usada é a MESMA que o backend vai debitar (inclusive quando o
+    // caixa deixou "Sem variação"): é o que faz o aviso da tela e a recusa do
+    // servidor falarem do mesmo saldo.
+    const variant = line.item_type === "produto" ? stockVariant : null;
+    // Produto sem variação nenhuma nunca passava por checagem: era exatamente
+    // por aí que 50 unidades de um estoque de 3 entravam na venda.
+    if (line.item_type === "produto" && availableQuantity !== null && quantity > availableQuantity) {
+      setError(`Estoque insuficiente para ${entry.name}: ${availableQuantity} un. disponível(is)${reservedInCart ? ` (${reservedInCart} un. já nesta venda)` : ""}.`);
       return;
     }
+    setError("");
     setItems((current) => [...current, {
       item_type: line.item_type,
       product_id: line.item_type === "produto" ? Number(entry.id) : null,
@@ -121,6 +147,9 @@ export function SalesWorkspace() {
       item_name: variant ? `${entry.name} - ${variant.variation_name || variant.sku}` : entry.name,
       quantity,
       product_variant_id: variant ? Number(variant.id) : null,
+      // Só para a tela somar o que já foi adicionado contra o mesmo saldo; o
+      // backend ignora campos que não conhece.
+      stock_key: line.item_type === "produto" ? stockKey : null,
       unit_price: Number(line.unit_price || variant?.sale_value || entry.sale_value || entry.base_price || entry.price || 0),
       notes: line.notes || ""
     }]);
@@ -380,13 +409,22 @@ export function SalesWorkspace() {
                   ))}
                 </Select>
               )}
-              <Input type="number" label="Quantidade" value={line.quantity} onChange={(value) => setLine({ ...line, quantity: value })} />
+              <div>
+                <Input type="number" label="Quantidade" value={line.quantity} onChange={(value) => setLine({ ...line, quantity: value })} />
+                {availableQuantity !== null && (
+                  <span className={exceedsStock ? "field-hint is-error" : "field-hint"}>
+                    {availableQuantity > 0
+                      ? `${availableQuantity} un. disponível(is) em estoque${reservedInCart ? ` (${reservedInCart} un. já nesta venda)` : ""}.`
+                      : "Sem saldo em estoque para este item."}
+                  </span>
+                )}
+              </div>
               <Input type="number" label="Valor unitário" value={line.unit_price} onChange={(value) => setLine({ ...line, unit_price: value })} />
             </div>
             <label>Observações do item
               <textarea value={line.notes} onChange={(event) => setLine({ ...line, notes: event.target.value })} />
             </label>
-            <Button variant="secondary" type="button" onClick={addLineItem}>Adicionar item</Button>
+            <Button variant="secondary" type="button" onClick={addLineItem} disabled={exceedsStock}>Adicionar item</Button>
           </div>
 
           <div className="sales-items-list">

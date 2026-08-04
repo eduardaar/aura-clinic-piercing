@@ -54,7 +54,15 @@ router.get("/api/sales-orders", withDb(async (req, res, db) => {
 
 router.post("/api/sales-orders", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "finance", "reception", "piercer"])) return;
-  const order = await createSalesOrder(db, req.body || {}, req.user);
+  let order;
+  try {
+    order = await createSalesOrder(db, req.body || {}, req.user);
+  } catch (error) {
+    // Recusa de regra de negócio (estoque insuficiente, cupom inválido) é 400
+    // com o motivo em texto: sem isto virava 500 e a tela só dizia "erro".
+    if (error instanceof SalesOrderValidationError) return res.status(error.status).json({ error: error.message });
+    throw error;
+  }
   if (!order) return res.status(400).json({ error: "Não foi possível criar a venda." });
   res.status(201).json(order);
 }));

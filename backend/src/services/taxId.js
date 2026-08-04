@@ -69,6 +69,37 @@ export function parseTaxId(input) {
   };
 }
 
+/**
+ * Regra do CPF no agendamento público.
+ *
+ * O documento é OPCIONAL por padrão — a maioria das clínicas opera sem gateway,
+ * cobra o sinal por Pix e confere o comprovante na mão; exigir CPF ali só
+ * afastaria cliente. Ele vira OBRIGATÓRIO quando a solicitação nasce com sinal
+ * e a clínica tem gateway configurado: o Asaas recusa criar o pagador sem
+ * documento (`invalid_cpfCnpj`), e sem pagador não existe link de pagamento.
+ *
+ * Sem esta guarda o pedido seria aceito, a cobrança falharia depois da
+ * transação (é best-effort, de propósito) e o cliente terminaria numa tela que
+ * promete link e entrega WhatsApp. Melhor pedir o campo antes.
+ *
+ * @param {{ value?: unknown, requiresOnlineCharge?: boolean }} input
+ * @returns {{ ok: true, value: string } | { ok: false, error: string }}
+ */
+export function bookingTaxId({ value, requiresOnlineCharge = false } = {}) {
+  const raw = String(value ?? "").trim();
+  if (!raw) {
+    return requiresOnlineCharge
+      ? {
+          ok: false,
+          error: "Informe o CPF: sem ele o gateway não cria o pagador e o sinal online não pode ser gerado."
+        }
+      : { ok: true, value: "" };
+  }
+  // Preenchido é sempre validado, com ou sem gateway: guardar um CPF errado em
+  // `clients.tax_id` só adia o erro para a primeira cobrança daquele cliente.
+  return parseTaxId(raw);
+}
+
 // Máscara para exibir na tela sem mostrar o documento inteiro.
 // Guarda os quatro últimos dígitos, que bastam para a pessoa reconhecer o seu.
 export function maskTaxId(input) {

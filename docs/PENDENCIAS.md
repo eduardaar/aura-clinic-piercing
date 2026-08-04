@@ -8,8 +8,26 @@ encontrado e conscientemente adiado.
 
 ## Bugs
 
-### 1. Venda aceita quantidade que não existe em estoque
-A validação de estoque na linha de venda só roda para produto **com variação**:
+### 1. Venda aceita quantidade que não existe em estoque — RESOLVIDO (04/08/2026)
+A checagem passou a rodar como primeira instrução dentro da transação, antes de
+qualquer gravação, e soma as linhas que debitam o mesmo saldo (2 + 2 sobre um
+estoque de 3 é recusado). Os dois `Math.max(0, ...)` saíram: a baixa virou o
+último portão e **lança** em vez de zerar o saldo. `POST /api/sales-orders`
+também não capturava `SalesOrderValidationError` — recusa de regra de negócio
+virava 500.
+
+Um caso teve de ser excepcionado: no webhook do Asaas
+(`tenantCharges.js`), a falha de baixa é capturada por item e só gera aviso. Ali
+o dinheiro já entrou, e propagar a exceção desfaria a transação inteira — o
+pagamento nunca seria gravado e o gateway reentregaria o evento para sempre. É o
+mesmo raciocínio já escrito no item 18.4.
+
+**Fica aberto:** oversell entre canais. `deductSoldProductStock` olha `quantity`
+cru, enquanto o catálogo público usa `availableStock` (que desconta reservas
+ativas), então uma venda de balcão ainda consegue consumir estoque reservado por
+um pedido online pendente.
+
+~~A validação de estoque na linha de venda só roda para produto **com variação**:~~
 `line.item_type === "produto" && variant && quantity > variant.quantity`. Produto
 sem variação não passa por checagem nenhuma, e `backend/src/services/sales.js`
 usa `Math.max(0, ...)` em vez de rejeitar. Vender 50 unidades de um produto com
@@ -69,6 +87,53 @@ Comprovantes de pagamento e PDFs de termo — arquivos sensíveis — vão para 
 diretório compartilhado entre todos os tenants. Pendência antiga, agravada pelo
 volume atual.
 
+**CÓDIGO PRONTO, NÃO ATIVADO (04/08/2026).** A camada de storage em Cloudflare
+R2 entrou (`services/storage/`), com dois buckets — público e privado — e prefixo
+`tenant_<id>/` em ambos. O migrador (`backend/scripts/migrate-uploads-to-r2.mjs`)
+e o runbook (`docs/R2.md`) também.
+
+**O sistema continua em disco em produção**, de propósito: sem `R2_BUCKET_*`
+configurado, a camada opera em modo disco e avisa no boot. Nomear um bucket é a
+declaração de intenção; a partir daí o conjunto das seis variáveis é indivisível
+e a configuração pela metade derruba o boot.
+
+Falta, e depende de decisão humana:
+- criar os dois buckets na Cloudflare e uma chave S3 com acesso aos **dois** (a
+  chave atual é escopada e devolve 403 em `ListBuckets`);
+- definir o domínio do CDN — ele fica **gravado dentro das URLs no banco** na
+  migração, então trocar depois exige outra passada de reescrita;
+- rodar `--dry-run`, conferir o plano, e só então `--apply`.
+
+### 7.1 Arquivo excluído continua no bucket
+Nenhuma rota chama `deleteObject`. Excluir cliente, agendamento ou pós-atendimento
+(`clients.js:194-195`, `appointments.js:130`, `postcare.js:77`, `booking.js:258-259`)
+apaga a linha e deixa o objeto para sempre.
+
+Em disco isso era lixo; em bucket passa a custar dinheiro e, pior, **contradiz a
+exclusão administrativa** que esta mesma branch construiu — ela promete apagar o
+cadastro, e o comprovante e a foto continuam lá. É questão de LGPD, não de
+arrumação. Deveria entrar junto com a ativação do R2.
+
+### 7.2 Categorias de arquivo público não são usadas pelas rotas
+`routes/uploads.js` passa `category: "geral"` fixo e `routes/landing.js` não passa
+nenhuma, então `joias`, `catalogo`, `banners` e `logo` existem na convenção e
+nunca são gravadas. Por isso a migração roda achatada em `geral` por padrão
+(decidido em 04/08/2026) — ver `docs/R2.md`, capítulo 2.
+
+Para usar as categorias de verdade, `POST /api/uploads` precisa receber a
+categoria validada contra a lista, e os pontos do frontend que sabem o contexto
+precisam passá-la. Não exige re-migrar o que já subiu: as URLs ficam absolutas.
+
+### 7.3 `visualSearch.js` busca a própria imagem pela rede
+`imageBuffer` (`services/visualSearch.js:36-55`) lê caminho `/uploads/` do disco e
+qualquer outra coisa por `fetch` com checagem de SSRF. Com o R2 ligado, a imagem
+do **nosso** bucket cai no ramo remoto: funciona, mas faz ida e volta pela rede,
+com timeout de 5s, para ler arquivo que a camada de storage entregaria direto.
+Não está quebrado — está caro e frágil.
+
+`backend/scripts/audit-product-images.mjs` tem o problema irmão: audita só caminho
+em disco e fica cego para imagem em bucket.
+
 ### 8. Sem lugar seguro para credencial por clínica — RESOLVIDO
 ~~Pré-requisito da integração com gateway de pagamento.~~
 
@@ -121,9 +186,34 @@ stale closure, mas mexer em array de deps muda comportamento), 55
 `noUnusedImports` (26 são `import React`, inofensivos pelo runtime automático de
 JSX) e 11 `noArrayIndexKey`.
 
-### 13. Dinheiro em `DOUBLE PRECISION`
-Todos os valores monetários usam ponto flutuante; somatórios financeiros
-acumulam erro. Migrar para `NUMERIC(12,2)`. Ver `docs/AUDIT-DATA-MODEL.md`.
+### 13. Dinheiro em `DOUBLE PRECISION` — MIGRADO NO CÓDIGO (04/08/2026)
+46 colunas em 20 tabelas viraram `NUMERIC(12,2)`; 11 continuam `DOUBLE PRECISION`
+por não serem dinheiro (peso, dimensão, score de confiança, multiplicador de
+preço). `commission_percentage` virou `NUMERIC(5,2)` — é percentual, mas
+multiplica dinheiro dentro do SQL, então precisa ser exato.
+
+Como `CREATE TABLE IF NOT EXISTS` não altera tabela existente, a conversão vive
+num bloco `DO $$` idempotente, um `ALTER TABLE` por tabela.
+
+**A armadilha:** o driver `pg` devolve `NUMERIC` como **string**, e um somatório
+em JS viraria concatenação. O conversor foi anexado por query em `createDb()`, e
+não como parser global, porque `services/platformFinance.js` devolve dinheiro
+como string decimal de propósito e tem teste que exige isso. Resultado: schema de
+clínica → `number` (o JSON da API não mudou, frontend intocado); schema
+`platform` → string. **Não adicione `setTypeParser(1700, …)` global.**
+
+A precisão exata é a do banco: somatório grande se faz em SQL. `financeLedger.js`
+passou a somar em SQL, o que corrigiu de tabela um bug — o caminho paginado não
+trazia `lifecycle_status`, então lançamento marcado como teste ou cancelado
+entrava nas somas de uma versão e não da outra.
+
+`platformSchema.sql` não precisou de nada: suas duas colunas monetárias já
+estavam certas (`NUMERIC(12,2)` e `INTEGER` de centavos).
+
+**Ainda NÃO aplicado em produção.** Ver `docs/MIGRACAO-NUMERIC.md` para o passo a
+passo — em especial: o rollback de imagem sem rollback de banco quebra em
+silêncio (o código anterior receberia string onde espera número), e o backup do
+`deploy.sh` termina em `|| true`, então precisa ser feito e conferido à mão.
 
 ---
 
@@ -180,7 +270,21 @@ antes de ele vencer — eram as duas alternativas, e nenhuma é aceitável.
 
 O que continua aberto:
 
-**18.1 — O agendamento público não coleta CPF.** O checkout do catálogo coleta
+**18.1 — RESOLVIDO (04/08/2026).** O agendamento ganhou CPF e e-mail, e
+`GET /api/booking/config` passou a expor `payment.gateway_enabled` — era o dado
+que faltava para a tela saber *quando* o CPF é barreira. Sem gateway o campo é
+opcional e não trava o agendamento; com gateway e sinal, é obrigatório (400).
+
+Duas coisas vieram junto, porque sem elas a correção não teria efeito visível: a
+tela de confirmação passou a oferecer "Pagar o sinal agora" quando o backend
+devolve `payment_url`, e o checkout do catálogo — que tinha campo de CPF **sem
+máscara nem validação** — passou a usar o mesmo helper.
+
+**Fica aberto:** `POST /api/sales-orders/public` (checkout do catálogo) continua
+sem *exigir* CPF quando há gateway. A máscara e a validação estão lá; a regra de
+obrigatoriedade só existe no agendamento.
+
+~~O checkout do catálogo coleta~~
 (e agora propaga para `clients.tax_id`), mas o formulário de agendamento não.
 Sem CPF o Asaas recusa criar o pagador, então o sinal online **degrada para o
 caminho manual** (comprovante por WhatsApp). O backend já aceita `cpf`/`email`
@@ -207,6 +311,24 @@ interface. Deveria virar alerta na central.
 exportada, mas o `index.js` não tem handler de encerramento. O `unref()` já
 impede que o timer segure o processo; falta o desligamento gracioso.
 
+**18.6 — `ASAAS_VAULT_KEY` não tem guarda nenhuma no boot, e a ordem é
+irreversível.** Ausente, o cofre das credenciais das clínicas deriva do
+`AUTH_SECRET`. Isso significa que (a) rotacionar o `AUTH_SECRET` depois torna
+ilegível toda chave já guardada, e (b) **definir o `ASAAS_VAULT_KEY` depois que a
+primeira clínica salvou a chave dela muda a derivação e invalida o cofre inteiro**
+— sem aviso, e o erro só aparece na primeira cobrança.
+
+Hoje não está configurado em lugar nenhum: nem no `.env` local, nem como secret
+do GitHub. **Precisa ser definido antes de a primeira clínica configurar gateway.**
+A guarda mínima é um aviso no boot, ao lado da de `PUBLIC_API_URL`
+(`config/index.js`, ~linha 80).
+
+**18.7 — A guarda de sandbox é frouxa.** `config/index.js:63` decide por
+`ASAAS_BASE_URL.includes("sandbox")`. Foi verificada nos dois sentidos e não está
+invertida, mas só reconhece o engano típico: `https://api.asaas.com.br/v3`, um
+proxy interno ou um typo de domínio passam calados. A guarda estrita compararia
+com a URL de produção. Mitigado em parte no job `guard` do workflow.
+
 ---
 
 ## Painel da plataforma (rodada de 01/08/2026)
@@ -214,8 +336,28 @@ impede que o timer segure o processo; falta o desligamento gracioso.
 Planos editáveis, cotas, controle de contas, financeiro e suporte entraram.
 Ver `docs/PAINEL-PLATAFORMA.md`. O que ficou aberto:
 
-### 19. Trocar de plano não reajusta a cobrança no Asaas
-A troca muda o acesso da clínica **na hora**, mas a assinatura recorrente no
+### 19. Trocar de plano não reajusta a cobrança no Asaas — RESOLVIDO (04/08/2026)
+`syncSubscriptionPrice()` (`services/platformBilling.js`) é o único ponto de
+propagação, com credencial da **plataforma**. Nunca lança — o acesso já mudou, e
+gateway fora do ar não pode desfazer nem travar a troca; lê a assinatura antes de
+escrever e não escreve se o valor já bate. O `warning` agora diz o que de fato
+aconteceu, e existe **"Reenviar ajuste ao Asaas"** no painel para o caso de falha.
+
+O levantamento achou **três** caminhos de troca de plano, não um: as duas rotas
+do painel (`PATCH /api/platform/accounts/:id/plan` e a antiga
+`PATCH /api/platform/tenants/:id/plan`, usada pelo botão de ativar/renovar) e
+`PATCH /api/subscription` em `routes/store.js` — a troca **self-service**, pela
+qual a própria clínica se promove. Os três propagam.
+
+Não usa `runIdempotent`: ele existe para requisição que **cria** cobrança, e aqui
+só há `POST /subscriptions/{id}` com valor absoluto sobre assinatura existente.
+
+**Fica aberto:** plano com `price_cents = 0` gera `plano_sem_preco` (o Asaas
+recusa assinatura de valor zero); a mesma armadilha existe em
+`planAdmin.js::propagarPrecoNoAsaas`. E o item 24 continua de pé — nada disso foi
+exercido contra o Asaas real.
+
+~~A troca muda o acesso da clínica **na hora**, mas a assinatura recorrente no~~
 gateway continua com o valor do plano antigo. A rota devolve `warning` quando
 existe `asaas_subscription_id`, e a tela exibe — mas ninguém age.
 
@@ -223,8 +365,22 @@ existe `asaas_subscription_id`, e a tela exibe — mas ninguém age.
 continua pagando o barato até alguém notar. O conserto exige refazer o checkout
 ou chamar `updateSubscription` no gateway; ficou de fora por mexer em cobrança.
 
-### 20. Os guards de cota não estão ligados em nenhuma rota
-`requireWithinLimit` existe, é testado e funciona — mas nenhuma rota o chama, e
+### 20. Os guards de cota não estão ligados em nenhuma rota — RESOLVIDO (04/08/2026)
+`requireWithinLimit` ligado nas quatro rotas de **criação**, na ordem sugerida:
+`POST /api/users`, `/clients`, `/jewelry` e `/appointments`. Sempre depois do
+`validateBody` (payload torto continua 400, não 409) e antes da parte cara do
+handler — em joias, antes do `BEGIN`, para o 409 não abortar uma transação que já
+gravou SKU e variações. `PATCH`/`PUT`/`GET`/`DELETE` seguem livres.
+
+O caso que mais importava está testado explicitamente: clínica com plano sem
+`limits` — o estado de 100% das clínicas hoje — continua criando nas quatro
+rotas. Ligar os guards não bloqueia ninguém até alguém definir limites no painel.
+
+`routes/booking.js` ficou de fora de propósito, com o motivo registrado em
+comentário nos dois pontos onde importa. `storage_mb` segue só informativo: a
+medição é aproximada demais para bloquear criação.
+
+~~`requireWithinLimit` existe, é testado e funciona — mas nenhuma rota o chama, e~~
 nenhum plano tem `limits` configurado. O sistema é inerte por construção até
 alguém definir limites no painel.
 
@@ -253,8 +409,15 @@ inflaria o divisor justamente nos meses de crescimento.
 Para os dois virarem número: (a) gravar `canceled_at` no cancelamento e (b) um
 log `(assinatura, data, de, para)`.
 
-### 23. Uso em massa não invalida o cache de cotas
-Importação de joias e exclusões em lote não chamam `invalidateUsageCache`. A
+### 23. Uso em massa não invalida o cache de cotas — RESOLVIDO (04/08/2026)
+`invalidateUsageCache` plugado em `importAuraJewelry` (depois do COMMIT, com
+`tenantId`) e nas exclusões que de fato mudam a contagem: usuários, clientes (só
+`hard_delete` — anonimização preserva a linha), joias (só quando apaga, não
+quando arquiva) e agendamentos. Não existem rotas de exclusão em lote: o único
+endpoint "bulk" do backend é `POST /api/finance/entries/bulk-lifecycle`, que não
+mexe em cota nenhuma.
+
+~~Importação de joias e exclusões em lote não chamam `invalidateUsageCache`. A~~
 janela é de 15s e o cache só é confiado com folga abaixo de 90% da cota, então o
 efeito é pequeno — mas o gancho existe e não está plugado.
 

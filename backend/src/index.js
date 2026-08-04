@@ -76,6 +76,11 @@ app.use((_req, res, next) => {
   res.charset = "utf-8";
   next();
 });
+// TRANSITÓRIO: com o R2 ligado, upload novo nenhum passa por aqui — a escrita
+// vai toda para o bucket e a URL devolvida é a do CDN. Este static continua no
+// ar porque o banco está cheio de `/uploads/<arquivo>` gravados antes da
+// migração, e a migração roda DEPOIS do deploy. Só pode ser removido quando
+// nenhuma linha de imagem apontar mais para um caminho relativo.
 app.use("/uploads", express.static(path.join(__dirname, "data", "uploads")));
 
 // Webhooks de gateway ANTES do rate limit global, com limite próprio: o Asaas

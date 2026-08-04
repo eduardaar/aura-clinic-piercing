@@ -153,22 +153,26 @@ retry_conn "sync do frontend" rsync -rlpt --delete --exclude '.DS_Store' \
   -e "${rsh}" \
   frontend/dist/ "${target}:${REMOTE_FRONT}/"
 
-# Segredos do gateway de pagamento. Ficam no .env DO SERVIDOR (que o rsync
-# exclui de propósito, para o repositório nunca virar fonte de credencial), e
-# chegam aqui como secrets do GitHub Actions.
+# Segredos de infraestrutura: gateway de pagamento (Asaas) e armazenamento de
+# arquivos (Cloudflare R2). Ficam no .env DO SERVIDOR (que o rsync exclui de
+# propósito, para o repositório nunca virar fonte de credencial), e chegam aqui
+# como secrets do GitHub Actions.
 #
 # Upsert idempotente e CONSERVADOR: variável com valor vazio é PULADA, nunca
 # escrita. Isso é o que garante que rodar o deploy sem os secrets configurados
 # não apague uma chave que já está em produção e funcionando.
-echo "==> [3.5/5] Sincronizar segredos do Asaas (só os que vierem preenchidos)"
-asaas_env=""
-for var in ASAAS_BASE_URL ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN ASAAS_VAULT_KEY PUBLIC_API_URL; do
+echo "==> [3.5/5] Sincronizar segredos de Asaas e R2 (só os que vierem preenchidos)"
+secret_env=""
+for var in \
+  ASAAS_BASE_URL ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN ASAAS_VAULT_KEY PUBLIC_API_URL \
+  R2_ENDPOINT R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY \
+  R2_BUCKET_PUBLIC R2_BUCKET_PRIVATE R2_PUBLIC_BASE_URL; do
   value="${!var:-}"
   [ -n "${value}" ] || continue
-  asaas_env="${asaas_env}${var}=${value}"$'\n'
+  secret_env="${secret_env}${var}=${value}"$'\n'
 done
 
-if [ -n "${asaas_env}" ]; then
+if [ -n "${secret_env}" ]; then
   # DUAS chamadas, e não uma só com pipe.
   #
   # A tentação é `printf ... | ssh host bash -s <<'REMOTE'`, mas isso não
@@ -182,16 +186,16 @@ if [ -n "${asaas_env}" ]; then
   #
   # Então: primeiro o conteúdo viaja por stdin puro para um arquivo temporário
   # com permissão restrita; depois o script o consome e apaga.
-  remote_tmp="/tmp/.aura-asaas-env.$$"
-  printf '%s' "${asaas_env}" \
+  remote_tmp="/tmp/.aura-secrets-env.$$"
+  printf '%s' "${secret_env}" \
     | ${rsh} "${target}" "umask 077 && cat > '${remote_tmp}'"
 
   # shellcheck disable=SC2087
-  ${rsh} "${target}" REMOTE_BACKEND="${REMOTE_BACKEND}" ASAAS_TMP="${remote_tmp}" bash -s <<'REMOTE'
+  ${rsh} "${target}" REMOTE_BACKEND="${REMOTE_BACKEND}" SECRETS_TMP="${remote_tmp}" bash -s <<'REMOTE'
 set -euo pipefail
 # O temporário some aconteça o que acontecer — inclusive se o script falhar no
 # meio. Deixar segredo em /tmp seria pior que não ter feito o upsert.
-trap 'rm -f "${ASAAS_TMP}"' EXIT
+trap 'rm -f "${SECRETS_TMP}"' EXIT
 
 env_file="${REMOTE_BACKEND}/.env"
 touch "${env_file}"
@@ -209,10 +213,10 @@ while IFS='=' read -r key value; do
     printf '%s=%s\n' "${key}" "${value}" >> "${env_file}"
     echo "   adicionado: ${key}"
   fi
-done < "${ASAAS_TMP}"
+done < "${SECRETS_TMP}"
 REMOTE
 else
-  echo "   nenhum secret do Asaas definido — mantendo o .env do servidor como está"
+  echo "   nenhum secret de Asaas/R2 definido — mantendo o .env do servidor como está"
 fi
 
 echo "==> [4/5] Backup do banco + rebuild + restart da API"
@@ -223,10 +227,39 @@ cd "${REMOTE_COMPOSE_DIR}"
 
 ts="$(date +%Y%m%d-%H%M%S)"
 # Restore point por deploy (mantém os 10 dumps mais recentes).
+#
+# FAIL-CLOSED, e isto é deliberado. Antes o pg_dump terminava em `|| true`: um
+# backup que falhasse passava batido e o deploy seguia assim mesmo. Como as
+# migrations idempotentes rodam no BOOT do container (logo abaixo), e algumas
+# delas reescrevem tabela — a conversão de dinheiro para NUMERIC(12,2) é o caso
+# — deployar sem restore point é subir uma alteração de esquema sem volta.
+#
+# `pipefail` já está ligado, mas o pipe com gzip mascararia a falha do pg_dump
+# se não fosse pelo teste de tamanho: dump vazio ou truncado gera .gz válido.
 if docker ps --format '{{.Names}}' | grep -q '^monitence-postgres$'; then
-  docker exec monitence-postgres pg_dump -U aura -d aura_clinic \
-    | gzip > "/root/pg-backups/aura-clinic-deploy-${ts}.sql.gz" || true
+  dump="/root/pg-backups/aura-clinic-deploy-${ts}.sql.gz"
+  mkdir -p /root/pg-backups
+  if ! docker exec monitence-postgres pg_dump -U aura -d aura_clinic | gzip > "${dump}"; then
+    echo "ERRO: pg_dump falhou. Deploy abortado ANTES de tocar na aplicação." >&2
+    rm -f "${dump}"
+    exit 1
+  fi
+  if ! gzip -t "${dump}" 2>/dev/null; then
+    echo "ERRO: o backup gerado está corrompido. Deploy abortado." >&2
+    exit 1
+  fi
+  bytes="$(stat -c %s "${dump}" 2>/dev/null || echo 0)"
+  # Um dump real deste banco passa de 1 MB. O piso existe para pegar o dump que
+  # "funcionou" mas saiu vazio — falha de permissão, banco errado, disco cheio.
+  if [ "${bytes}" -lt 1048576 ]; then
+    echo "ERRO: backup com apenas ${bytes} bytes; pequeno demais para ser íntegro. Deploy abortado." >&2
+    exit 1
+  fi
+  echo "   backup verificado: ${dump} (${bytes} bytes)"
   ls -t /root/pg-backups/aura-clinic-deploy-*.sql.gz 2>/dev/null | tail -n +11 | xargs -r rm -f
+else
+  echo "ERRO: container monitence-postgres não está no ar; sem backup possível. Deploy abortado." >&2
+  exit 1
 fi
 
 # Ponto de rollback da imagem (a que está no ar agora vira :rollback).
