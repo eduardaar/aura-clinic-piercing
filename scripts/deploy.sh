@@ -227,10 +227,39 @@ cd "${REMOTE_COMPOSE_DIR}"
 
 ts="$(date +%Y%m%d-%H%M%S)"
 # Restore point por deploy (mantém os 10 dumps mais recentes).
+#
+# FAIL-CLOSED, e isto é deliberado. Antes o pg_dump terminava em `|| true`: um
+# backup que falhasse passava batido e o deploy seguia assim mesmo. Como as
+# migrations idempotentes rodam no BOOT do container (logo abaixo), e algumas
+# delas reescrevem tabela — a conversão de dinheiro para NUMERIC(12,2) é o caso
+# — deployar sem restore point é subir uma alteração de esquema sem volta.
+#
+# `pipefail` já está ligado, mas o pipe com gzip mascararia a falha do pg_dump
+# se não fosse pelo teste de tamanho: dump vazio ou truncado gera .gz válido.
 if docker ps --format '{{.Names}}' | grep -q '^monitence-postgres$'; then
-  docker exec monitence-postgres pg_dump -U aura -d aura_clinic \
-    | gzip > "/root/pg-backups/aura-clinic-deploy-${ts}.sql.gz" || true
+  dump="/root/pg-backups/aura-clinic-deploy-${ts}.sql.gz"
+  mkdir -p /root/pg-backups
+  if ! docker exec monitence-postgres pg_dump -U aura -d aura_clinic | gzip > "${dump}"; then
+    echo "ERRO: pg_dump falhou. Deploy abortado ANTES de tocar na aplicação." >&2
+    rm -f "${dump}"
+    exit 1
+  fi
+  if ! gzip -t "${dump}" 2>/dev/null; then
+    echo "ERRO: o backup gerado está corrompido. Deploy abortado." >&2
+    exit 1
+  fi
+  bytes="$(stat -c %s "${dump}" 2>/dev/null || echo 0)"
+  # Um dump real deste banco passa de 1 MB. O piso existe para pegar o dump que
+  # "funcionou" mas saiu vazio — falha de permissão, banco errado, disco cheio.
+  if [ "${bytes}" -lt 1048576 ]; then
+    echo "ERRO: backup com apenas ${bytes} bytes; pequeno demais para ser íntegro. Deploy abortado." >&2
+    exit 1
+  fi
+  echo "   backup verificado: ${dump} (${bytes} bytes)"
   ls -t /root/pg-backups/aura-clinic-deploy-*.sql.gz 2>/dev/null | tail -n +11 | xargs -r rm -f
+else
+  echo "ERRO: container monitence-postgres não está no ar; sem backup possível. Deploy abortado." >&2
+  exit 1
 fi
 
 # Ponto de rollback da imagem (a que está no ar agora vira :rollback).

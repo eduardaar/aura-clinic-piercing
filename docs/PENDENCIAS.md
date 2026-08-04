@@ -87,13 +87,52 @@ Comprovantes de pagamento e PDFs de termo — arquivos sensíveis — vão para 
 diretório compartilhado entre todos os tenants. Pendência antiga, agravada pelo
 volume atual.
 
-**Em andamento nesta branch:** migração do armazenamento para o Cloudflare R2,
-com prefixo por clínica e bucket privado separado do público. Os segredos
-(`R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_PUBLIC`,
-`R2_BUCKET_PRIVATE`, `R2_PUBLIC_BASE_URL`) já estão documentados em
-`backend/.env.example` e o `scripts/deploy.sh` já os sincroniza com o `.env` do
-servidor. **Não está pronto** — o item continua aberto até a camada de storage
-entrar e os arquivos existentes serem migrados.
+**CÓDIGO PRONTO, NÃO ATIVADO (04/08/2026).** A camada de storage em Cloudflare
+R2 entrou (`services/storage/`), com dois buckets — público e privado — e prefixo
+`tenant_<id>/` em ambos. O migrador (`backend/scripts/migrate-uploads-to-r2.mjs`)
+e o runbook (`docs/R2.md`) também.
+
+**O sistema continua em disco em produção**, de propósito: sem `R2_BUCKET_*`
+configurado, a camada opera em modo disco e avisa no boot. Nomear um bucket é a
+declaração de intenção; a partir daí o conjunto das seis variáveis é indivisível
+e a configuração pela metade derruba o boot.
+
+Falta, e depende de decisão humana:
+- criar os dois buckets na Cloudflare e uma chave S3 com acesso aos **dois** (a
+  chave atual é escopada e devolve 403 em `ListBuckets`);
+- definir o domínio do CDN — ele fica **gravado dentro das URLs no banco** na
+  migração, então trocar depois exige outra passada de reescrita;
+- rodar `--dry-run`, conferir o plano, e só então `--apply`.
+
+### 7.1 Arquivo excluído continua no bucket
+Nenhuma rota chama `deleteObject`. Excluir cliente, agendamento ou pós-atendimento
+(`clients.js:194-195`, `appointments.js:130`, `postcare.js:77`, `booking.js:258-259`)
+apaga a linha e deixa o objeto para sempre.
+
+Em disco isso era lixo; em bucket passa a custar dinheiro e, pior, **contradiz a
+exclusão administrativa** que esta mesma branch construiu — ela promete apagar o
+cadastro, e o comprovante e a foto continuam lá. É questão de LGPD, não de
+arrumação. Deveria entrar junto com a ativação do R2.
+
+### 7.2 Categorias de arquivo público não são usadas pelas rotas
+`routes/uploads.js` passa `category: "geral"` fixo e `routes/landing.js` não passa
+nenhuma, então `joias`, `catalogo`, `banners` e `logo` existem na convenção e
+nunca são gravadas. Por isso a migração roda achatada em `geral` por padrão
+(decidido em 04/08/2026) — ver `docs/R2.md`, capítulo 2.
+
+Para usar as categorias de verdade, `POST /api/uploads` precisa receber a
+categoria validada contra a lista, e os pontos do frontend que sabem o contexto
+precisam passá-la. Não exige re-migrar o que já subiu: as URLs ficam absolutas.
+
+### 7.3 `visualSearch.js` busca a própria imagem pela rede
+`imageBuffer` (`services/visualSearch.js:36-55`) lê caminho `/uploads/` do disco e
+qualquer outra coisa por `fetch` com checagem de SSRF. Com o R2 ligado, a imagem
+do **nosso** bucket cai no ramo remoto: funciona, mas faz ida e volta pela rede,
+com timeout de 5s, para ler arquivo que a camada de storage entregaria direto.
+Não está quebrado — está caro e frágil.
+
+`backend/scripts/audit-product-images.mjs` tem o problema irmão: audita só caminho
+em disco e fica cego para imagem em bucket.
 
 ### 8. Sem lugar seguro para credencial por clínica — RESOLVIDO
 ~~Pré-requisito da integração com gateway de pagamento.~~
@@ -271,6 +310,24 @@ interface. Deveria virar alerta na central.
 **18.5 — Sem `SIGTERM` para o worker.** `stopReconcileWorker()` existe e está
 exportada, mas o `index.js` não tem handler de encerramento. O `unref()` já
 impede que o timer segure o processo; falta o desligamento gracioso.
+
+**18.6 — `ASAAS_VAULT_KEY` não tem guarda nenhuma no boot, e a ordem é
+irreversível.** Ausente, o cofre das credenciais das clínicas deriva do
+`AUTH_SECRET`. Isso significa que (a) rotacionar o `AUTH_SECRET` depois torna
+ilegível toda chave já guardada, e (b) **definir o `ASAAS_VAULT_KEY` depois que a
+primeira clínica salvou a chave dela muda a derivação e invalida o cofre inteiro**
+— sem aviso, e o erro só aparece na primeira cobrança.
+
+Hoje não está configurado em lugar nenhum: nem no `.env` local, nem como secret
+do GitHub. **Precisa ser definido antes de a primeira clínica configurar gateway.**
+A guarda mínima é um aviso no boot, ao lado da de `PUBLIC_API_URL`
+(`config/index.js`, ~linha 80).
+
+**18.7 — A guarda de sandbox é frouxa.** `config/index.js:63` decide por
+`ASAAS_BASE_URL.includes("sandbox")`. Foi verificada nos dois sentidos e não está
+invertida, mas só reconhece o engano típico: `https://api.asaas.com.br/v3`, um
+proxy interno ou um typo de domínio passam calados. A guarda estrita compararia
+com a URL de produção. Mitigado em parte no job `guard` do workflow.
 
 ---
 
