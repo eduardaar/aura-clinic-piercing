@@ -87,6 +87,14 @@ Comprovantes de pagamento e PDFs de termo — arquivos sensíveis — vão para 
 diretório compartilhado entre todos os tenants. Pendência antiga, agravada pelo
 volume atual.
 
+**Em andamento nesta branch:** migração do armazenamento para o Cloudflare R2,
+com prefixo por clínica e bucket privado separado do público. Os segredos
+(`R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_PUBLIC`,
+`R2_BUCKET_PRIVATE`, `R2_PUBLIC_BASE_URL`) já estão documentados em
+`backend/.env.example` e o `scripts/deploy.sh` já os sincroniza com o `.env` do
+servidor. **Não está pronto** — o item continua aberto até a camada de storage
+entrar e os arquivos existentes serem migrados.
+
 ### 8. Sem lugar seguro para credencial por clínica — RESOLVIDO
 ~~Pré-requisito da integração com gateway de pagamento.~~
 

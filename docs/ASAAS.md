@@ -240,6 +240,37 @@ worker acabaria batendo no gateway a cada `npm test`.
 O `sync` é a saída para o webhook que se perdeu ("paguei e continua atrasada"):
 relê a cobrança no Asaas e reaplica o efeito.
 
+#### Troca de plano propaga o preço no gateway
+
+Resolvido nesta branch (`docs/PENDENCIAS.md`, item 19). Antes, promover uma
+clínica mudava o acesso **na hora** e deixava a assinatura recorrente no Asaas
+cobrando o valor do plano antigo — ela usava o plano caro pagando o barato até
+alguém notar.
+
+`syncSubscriptionPrice()` (`services/platformBilling.js`) é o **único** ponto de
+propagação, sempre com a credencial da **plataforma**, e está ligado nos **três**
+caminhos que trocam plano — o levantamento achou três, não um:
+
+| Caminho | Onde |
+| --- | --- |
+| `PATCH /api/platform/accounts/:id/plan` | `services/accountAdmin.js` |
+| `PATCH /api/platform/tenants/:id/plan` (botão de ativar/renovar) | `routes/platform.js` |
+| `PATCH /api/subscription` (self-service da própria clínica) | `routes/store.js` |
+
+Propriedades que importam:
+
+- **Nunca lança.** O acesso já mudou; gateway fora do ar não pode desfazer nem
+  travar a troca. O resultado vira `warning` na resposta e a tela exibe.
+- **Idempotente:** lê a assinatura antes de escrever e não escreve se o valor já
+  bate.
+- Existe **"Reenviar ajuste ao Asaas"** no painel para o caso de falha.
+- Não usa `runIdempotent`: ele serve a requisição que **cria** cobrança, e aqui
+  só há `POST /subscriptions/{id}` com valor absoluto sobre assinatura existente.
+
+**Ainda aberto:** plano com `price_cents = 0` devolve `plano_sem_preco` (o Asaas
+recusa assinatura de valor zero), e nada disso foi exercido contra o gateway real
+(item 24 das pendências) — vale um teste manual logo depois da virada.
+
 ---
 
 ## 5. Armadilhas do Asaas que o código já trata
@@ -280,15 +311,32 @@ Gere os segredos com:
 node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 ```
 
-Guardas de boot (`backend/src/config/index.js`):
+Guardas de boot (`backend/src/config/index.js`) — os três comportamentos abaixo
+foram **verificados executando o boot** com cada combinação:
 
-- `ASAAS_API_KEY` sem `ASAAS_WEBHOOK_TOKEN` em produção → **derruba o boot**. O
-  par é indivisível: sem o token, o webhook seria uma rota pública capaz de
-  marcar assinatura como paga.
-- Sandbox em produção → **aviso alto**, sem derrubar (pode ser homologação
-  intencional).
-- `PUBLIC_API_URL` ausente em produção → **aviso**: a URL entregue às clínicas
-  apontaria para `localhost` e nenhuma confirmação de pagamento chegaria.
+| Cenário | Efeito |
+| --- | --- |
+| `ASAAS_API_KEY` sem `ASAAS_WEBHOOK_TOKEN`, em produção | **derruba o boot** |
+| `ASAAS_BASE_URL=https://api.asaas.com/v3`, em produção | silêncio (correto) |
+| `ASAAS_BASE_URL` contendo `sandbox` (ou ausente), em produção | **aviso alto** |
+| `PUBLIC_API_URL` ausente, em produção | aviso |
+
+O par chave+token é indivisível: sem o token, o webhook seria uma rota pública
+capaz de marcar assinatura como paga. Já o sandbox só avisa, sem derrubar,
+porque homologação em produção é caso legítimo.
+
+> **Limite conhecido da guarda de sandbox:** ela testa `includes("sandbox")`, ou
+> seja, só reconhece o *engano típico*. Uma URL simplesmente errada
+> (`https://api.asaas.com.br/v3`, um proxy interno, um domínio com typo) passa
+> calada — o boot só descobre na primeira cobrança recusada. A guarda estrita
+> seria comparar com a URL de produção. O pipeline cobre parte disso: o job
+> `guard` do workflow avisa quando há `ASAAS_API_KEY` e `ASAAS_BASE_URL` não é
+> exatamente `https://api.asaas.com/v3`.
+
+> **`ASAAS_VAULT_KEY` não tem guarda nenhuma.** Ausente, o cofre das clínicas
+> deriva do `AUTH_SECRET` e uma rotação futura desse segredo torna ilegíveis
+> todas as chaves guardadas — sem aviso no boot e sem erro até a primeira
+> cobrança falhar. Trate como obrigatória em produção.
 
 ### Produção (pipeline)
 
@@ -299,17 +347,92 @@ repositório nunca virar fonte de credencial).
 Configure em *Settings > Secrets and variables > Actions*:
 `ASAAS_BASE_URL`, `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN`, `ASAAS_VAULT_KEY`.
 
+O mesmo laço da etapa `[3.5/5]` sincroniza também os segredos do **Cloudflare
+R2** (`R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`,
+`R2_BUCKET_PUBLIC`, `R2_BUCKET_PRIVATE`, `R2_PUBLIC_BASE_URL`) — mesma
+mecânica, mesma regra conservadora. Ver `backend/.env.example`.
+
 O upsert é **conservador**: secret vazio ou ausente é *pulado*, nunca escrito.
 Rodar o deploy sem os secrets configurados não apaga uma chave que já está em
-produção e funcionando.
+produção e funcionando. O corolário incômodo é o oposto: **não existe como
+apagar uma variável pelo pipeline** — para remover uma chave do servidor é
+preciso editar o `.env` dele à mão.
+
+### Checklist de virada para produção
+
+A ordem importa: os passos 1–3 preparam, o 4 vira a chave e os 5–7 provam que
+virou.
+
+**1. Conta do Asaas (Monitence).** Conta aprovada (`status: APPROVED` em
+`GET /myAccount`) e com dados bancários cadastrados — sem eles o dinheiro entra
+no saldo Asaas e não sai de lá.
+
+**2. Gerar a chave de produção.** Painel do Asaas > *Integrações > API*, com a
+conta em modo **produção** (a chave de produção começa com `$aact_prod_`; a de
+sandbox, não). Ela é mostrada **uma única vez**.
+
+**3. Cadastrar os secrets** em *Settings > Secrets and variables > Actions*:
+
+| Secret | Valor |
+| --- | --- |
+| `ASAAS_BASE_URL` | `https://api.asaas.com/v3` — **é este o passo que vira a chave** |
+| `ASAAS_API_KEY` | a chave de produção do passo 2 |
+| `ASAAS_WEBHOOK_TOKEN` | valor forte gerado por você (o mesmo do passo 5) |
+| `ASAAS_VAULT_KEY` | valor forte gerado por você, **antes** de qualquer clínica cadastrar chave |
+
+`ASAAS_BASE_URL` não é opcional: o default do código é o **sandbox**, então
+deixar o secret vazio publica a produção cobrando de mentira.
+
+`ASAAS_VAULT_KEY` precisa ser definida **antes** de a primeira clínica salvar a
+chave dela. Introduzi-la depois muda a derivação e invalida tudo que já estava
+no cofre.
+
+**4. Rodar o deploy** (push na `main`, ou *Actions > Run workflow*). O job
+`guard` avisa se a `ASAAS_BASE_URL` não for a de produção e falha se houver
+chave sem token. Depois, confira no log do container que **não** apareceu
+`[Asaas] ATENÇÃO: rodando em produção apontando para o SANDBOX`.
+
+**5. Cadastrar o webhook da plataforma** no painel do Asaas (ver abaixo). Sem
+este passo o checkout funciona, o cliente paga — e a fatura fica eternamente
+"pendente", porque quem a baixa é o webhook.
+
+**6. Conferir depois do deploy:**
+
+- `GET /api/health` respondendo `{"ok":true}`.
+- Painel do Asaas > *Integrações > Webhooks*: fila **ativa**, sem entregas
+  falhadas acumuladas. Fila pausada congela a confirmação de **todas** as
+  cobranças da conta.
+- Uma assinatura de teste com valor baixo, paga por PIX, aparecendo como paga em
+  `GET /api/platform/invoices` sem intervenção manual.
+- `platform.webhook_events` com linhas chegando (é a prova de que o token bate;
+  token errado devolve 401 e não grava nada).
+
+**7. Se algo não baixar:** `POST /api/platform/invoices/:id/sync` relê a cobrança
+no gateway e reaplica o efeito. Se for preciso usar isso com frequência, o
+problema está no webhook, não na fatura.
 
 ### Painel do Asaas (plataforma)
 
 *Integrações > Webhooks > Adicionar*:
 
-- URL: `https://seu-dominio.com/api/webhooks/asaas`
-- Token de autenticação: o mesmo valor de `ASAAS_WEBHOOK_TOKEN`
-- Eventos: os de cobrança (`PAYMENT_*`)
+- **Nome:** `Aura Clinic — plataforma`
+- **URL:** `https://auraclinic.monitence.com/api/webhooks/asaas`
+  (é `PUBLIC_API_URL` + `/api/webhooks/asaas`; a `PUBLIC_API_URL` vem do
+  `SITE_URL` do workflow, **sem** `/api` no final — o caminho já traz o dele)
+- **E-mail:** um endereço monitorado; é para lá que o Asaas escreve quando
+  **pausa a fila**
+- **Versão:** v3
+- **Token de autenticação:** exatamente o valor de `ASAAS_WEBHOOK_TOKEN`
+- **Tipo de envio:** sequencial
+- **Eventos:** os de cobrança (`PAYMENT_*`). Basta os tratados —
+  `PAYMENT_CREATED`, `PAYMENT_CONFIRMED`, `PAYMENT_RECEIVED`,
+  `PAYMENT_RECEIVED_IN_CASH`, `PAYMENT_APPROVED_BY_RISK_ANALYSIS`,
+  `PAYMENT_OVERDUE`, `PAYMENT_DELETED`, `PAYMENT_REFUNDED`,
+  `PAYMENT_CHARGEBACK_REQUESTED`, `PAYMENT_REPROVED_BY_RISK_ANALYSIS` — mas
+  marcar todos é seguro: o que não é tratado vira no-op com 200.
+
+Não existe evento de assinatura: o ciclo recorrente inteiro chega como evento de
+**cobrança** (§5, item 7).
 
 ### Painel do Asaas (cada clínica)
 

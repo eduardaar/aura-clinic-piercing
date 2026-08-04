@@ -153,22 +153,26 @@ retry_conn "sync do frontend" rsync -rlpt --delete --exclude '.DS_Store' \
   -e "${rsh}" \
   frontend/dist/ "${target}:${REMOTE_FRONT}/"
 
-# Segredos do gateway de pagamento. Ficam no .env DO SERVIDOR (que o rsync
-# exclui de propósito, para o repositório nunca virar fonte de credencial), e
-# chegam aqui como secrets do GitHub Actions.
+# Segredos de infraestrutura: gateway de pagamento (Asaas) e armazenamento de
+# arquivos (Cloudflare R2). Ficam no .env DO SERVIDOR (que o rsync exclui de
+# propósito, para o repositório nunca virar fonte de credencial), e chegam aqui
+# como secrets do GitHub Actions.
 #
 # Upsert idempotente e CONSERVADOR: variável com valor vazio é PULADA, nunca
 # escrita. Isso é o que garante que rodar o deploy sem os secrets configurados
 # não apague uma chave que já está em produção e funcionando.
-echo "==> [3.5/5] Sincronizar segredos do Asaas (só os que vierem preenchidos)"
-asaas_env=""
-for var in ASAAS_BASE_URL ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN ASAAS_VAULT_KEY PUBLIC_API_URL; do
+echo "==> [3.5/5] Sincronizar segredos de Asaas e R2 (só os que vierem preenchidos)"
+secret_env=""
+for var in \
+  ASAAS_BASE_URL ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN ASAAS_VAULT_KEY PUBLIC_API_URL \
+  R2_ENDPOINT R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY \
+  R2_BUCKET_PUBLIC R2_BUCKET_PRIVATE R2_PUBLIC_BASE_URL; do
   value="${!var:-}"
   [ -n "${value}" ] || continue
-  asaas_env="${asaas_env}${var}=${value}"$'\n'
+  secret_env="${secret_env}${var}=${value}"$'\n'
 done
 
-if [ -n "${asaas_env}" ]; then
+if [ -n "${secret_env}" ]; then
   # DUAS chamadas, e não uma só com pipe.
   #
   # A tentação é `printf ... | ssh host bash -s <<'REMOTE'`, mas isso não
@@ -182,16 +186,16 @@ if [ -n "${asaas_env}" ]; then
   #
   # Então: primeiro o conteúdo viaja por stdin puro para um arquivo temporário
   # com permissão restrita; depois o script o consome e apaga.
-  remote_tmp="/tmp/.aura-asaas-env.$$"
-  printf '%s' "${asaas_env}" \
+  remote_tmp="/tmp/.aura-secrets-env.$$"
+  printf '%s' "${secret_env}" \
     | ${rsh} "${target}" "umask 077 && cat > '${remote_tmp}'"
 
   # shellcheck disable=SC2087
-  ${rsh} "${target}" REMOTE_BACKEND="${REMOTE_BACKEND}" ASAAS_TMP="${remote_tmp}" bash -s <<'REMOTE'
+  ${rsh} "${target}" REMOTE_BACKEND="${REMOTE_BACKEND}" SECRETS_TMP="${remote_tmp}" bash -s <<'REMOTE'
 set -euo pipefail
 # O temporário some aconteça o que acontecer — inclusive se o script falhar no
 # meio. Deixar segredo em /tmp seria pior que não ter feito o upsert.
-trap 'rm -f "${ASAAS_TMP}"' EXIT
+trap 'rm -f "${SECRETS_TMP}"' EXIT
 
 env_file="${REMOTE_BACKEND}/.env"
 touch "${env_file}"
@@ -209,10 +213,10 @@ while IFS='=' read -r key value; do
     printf '%s=%s\n' "${key}" "${value}" >> "${env_file}"
     echo "   adicionado: ${key}"
   fi
-done < "${ASAAS_TMP}"
+done < "${SECRETS_TMP}"
 REMOTE
 else
-  echo "   nenhum secret do Asaas definido — mantendo o .env do servidor como está"
+  echo "   nenhum secret de Asaas/R2 definido — mantendo o .env do servidor como está"
 fi
 
 echo "==> [4/5] Backup do banco + rebuild + restart da API"
