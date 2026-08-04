@@ -400,6 +400,8 @@ function AppointmentItemsEditor({ form, services, procedures = [], jewelry, onCh
       </div>
       {items.map((item, index) => {
         const selectedJewelry = asArray(jewelry).find((product) => String(product.id) === String(item.jewelry_id));
+        const selectedVariant = asArray(selectedJewelry?.variants).find((variant) => String(variant.id) === String(item.jewelry_variant_id));
+        const selectedStock = selectedVariant ? asNumber(selectedVariant.quantity) : asNumber(selectedJewelry?.inventory_quantity ?? selectedJewelry?.quantity);
         const selectedService = asArray(services).find((service) => String(service.id) === String(item.service_id));
         return (
           <div className={`appointment-item-row ${compact ? "compact" : ""}`} key={`${index}-${item.service_id}-${item.jewelry_id}`}>
@@ -428,7 +430,10 @@ function AppointmentItemsEditor({ form, services, procedures = [], jewelry, onCh
               {asArray(procedures).filter((procedure) => !item.service_id || String(procedure.service_id) === String(item.service_id)).map((procedure) => <option key={procedure.id} value={procedure.id}>{procedure.name}</option>)}
             </Select>
             <Input label="Região" value={item.region} onChange={(value) => updateItem(index, { region: value })} required={index === 0} />
-            <SmartCombobox label="Joia" value={item.jewelry_id} options={asArray(jewelry)} onChange={(value) => { if (!value) updateItem(index, { jewelry_id: "", jewelry_variant_id: "", jewelry_unit_price: 0 }); }} onSelect={(product) => updateItem(index, { jewelry_id: String(product.id), jewelry_variant_id: "", jewelry_unit_price: asNumber(product.sale_value || 0) })} getMeta={(product) => [product.category, product.material, product.sku].filter(Boolean).join(" · ")} isDisabled={(product) => asArray(product.variants).length ? !asArray(product.variants).some((variant) => asNumber(variant.quantity) > 0) : asNumber(product.inventory_quantity ?? product.quantity) <= 0} />
+            <SmartCombobox label="Joia" value={item.jewelry_id} options={asArray(jewelry)} onChange={(value) => { if (!value) updateItem(index, { jewelry_id: "", jewelry_variant_id: "", jewelry_unit_price: 0 }); }} onSelect={(product) => {
+              const variant = asArray(product.variants).find((option) => asNumber(option.quantity) > 0) || asArray(product.variants)[0];
+              updateItem(index, { jewelry_id: String(product.id), jewelry_variant_id: variant?.id ? String(variant.id) : "", jewelry_unit_price: asNumber(variant?.sale_value || product.sale_value || 0) });
+            }} getMeta={(product) => [product.category, product.material, product.sku].filter(Boolean).join(" · ")} isDisabled={(product) => asArray(product.variants).length ? !asArray(product.variants).some((variant) => asNumber(variant.quantity) > 0) : asNumber(product.inventory_quantity ?? product.quantity) <= 0} />
             <Select label="Variação" value={item.jewelry_variant_id} onChange={(value) => {
               const variant = asArray(selectedJewelry?.variants).find((option) => String(option.id) === String(value));
               updateItem(index, { jewelry_variant_id: value, jewelry_unit_price: asNumber(variant?.sale_value || selectedJewelry?.sale_value || 0) });
@@ -440,6 +445,12 @@ function AppointmentItemsEditor({ form, services, procedures = [], jewelry, onCh
             </Select>
             <Input type="number" label="Qtd." value={item.quantity} onChange={(value) => updateItem(index, { quantity: value })} />
             <button type="button" className="secondary-button danger" onClick={() => removeItem(index)} disabled={items.length === 1}>Remover</button>
+            {selectedJewelry && <div className="appointment-jewelry-selected" data-product-id={selectedJewelry.id}>
+              <strong>{selectedJewelry.name}</strong><span>ID {selectedJewelry.id}</span>
+              <span>{selectedVariant ? `Variação: ${selectedVariant.variation_name || selectedVariant.sku}` : "Sem variação"}</span>
+              <span>Qtd. {Math.max(1, asNumber(item.quantity, 1))}</span><span>Preço {currency.format(asNumber(item.jewelry_unit_price))}</span>
+              <span>Estoque {selectedStock} un.</span><span>Subtotal {currency.format(asNumber(item.jewelry_unit_price) * Math.max(1, asNumber(item.quantity, 1)))}</span>
+            </div>}
           </div>
         );
       })}
@@ -544,6 +555,9 @@ export function VisualCalendar() {
       />
       <AppointmentQuickModal
         appointment={selectedAppointment}
+        options={safeOptions}
+        services={services}
+        procedures={procedures}
         onClose={() => setSelectedAppointment(null)}
         onSaved={() => {
           setSelectedAppointment(null);
@@ -725,26 +739,43 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
   );
 }
 
-export function AppointmentQuickModal({ appointment, onClose, onSaved }) {
+export function AppointmentQuickModal({ appointment, options, services, procedures, onClose, onSaved }) {
   const [form, setForm] = useState({ appointment_date: "", appointment_time: "", status: "pendente", notes: "" });
   const [payments, setPayments] = useState([{ method: "Pix", amount: 0, status: "pago", installments: 1, fee_amount: 0, expected_receipt_date: "" }]);
   const [financialNotes, setFinancialNotes] = useState("");
   const [error, setError] = useState("");
   const [deletion, setDeletion] = useState(null);
+  const safeServices = asArray(services);
+  const safeProcedures = asArray(procedures);
+  const safeJewelry = asArray(asObject(options).jewelry);
 
   useEffect(() => {
     if (!appointment) return;
-    setForm({
+    const seededItems = asArray(appointment.appointment_items).length
+      ? appointment.appointment_items
+      : [emptyAppointmentItem({
+          ...appointment,
+          region: appointment.piercing_region,
+          procedure_price: appointment.service_value,
+          jewelry_unit_price: appointment.jewelry_value
+        })];
+    setForm(priceAppointmentDraft({
       appointment_date: appointment.appointment_date || "",
       appointment_time: appointment.appointment_time || "",
       status: appointment.status || "pendente",
-      notes: appointment.notes || ""
-    });
+      notes: appointment.notes || "",
+      deposit_value: appointment.deposit_value || 0,
+      appointment_items: seededItems
+    }, safeServices, safeJewelry));
     setPayments([{ method: appointment.remaining_payment_method || "Pix", amount: Math.max(0, Number(appointment.remaining_value || 0)), status: "pago", installments: 1, fee_amount: 0, expected_receipt_date: "" }]);
     setFinancialNotes(appointment.financial_notes || "");
     setError("");
     setDeletion(null);
-  }, [appointment]);
+  }, [appointment, services, options]);
+
+  function updatePricedForm(nextForm) {
+    setForm(priceAppointmentDraft(nextForm, safeServices, safeJewelry));
+  }
 
   async function openDeletion() {
     setError("");
@@ -768,7 +799,12 @@ export function AppointmentQuickModal({ appointment, onClose, onSaved }) {
   async function saveAppointment(patch = {}) {
     if (!appointment?.id) return;
     setError("");
-    const payload = { ...form, ...patch };
+    const pricedForm = priceAppointmentDraft(form, safeServices, safeJewelry);
+    const payload = {
+      ...pricedForm,
+      ...patch,
+      appointment_items: normalizeAppointmentFormItems(pricedForm, safeServices, safeJewelry)
+    };
     const response = await apiFetch(`/appointments/${appointment.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -784,6 +820,19 @@ export function AppointmentQuickModal({ appointment, onClose, onSaved }) {
 
   async function completeAppointment() {
     setError("");
+    const pricedForm = priceAppointmentDraft(form, safeServices, safeJewelry);
+    const updateResponse = await apiFetch(`/appointments/${appointment.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...pricedForm,
+        appointment_items: normalizeAppointmentFormItems(pricedForm, safeServices, safeJewelry)
+      })
+    });
+    if (!updateResponse.ok) {
+      const updateData = await updateResponse.json().catch(() => ({}));
+      return setError(updateData.error || "Não foi possível salvar os itens do atendimento.");
+    }
     const response = await apiFetch(`/appointments/${appointment.id}/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ payments, financial_notes: financialNotes }) });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) return setError(data.error || "Não foi possível concluir o atendimento.");
@@ -816,6 +865,15 @@ export function AppointmentQuickModal({ appointment, onClose, onSaved }) {
             <Input type="time" label="Horário" value={form.appointment_time} onChange={(value) => setForm({ ...form, appointment_time: value })} />
             <StatusSelect value={form.status} onChange={(value) => setForm({ ...form, status: value })} />
           </div>
+          <AppointmentItemsEditor
+            form={form}
+            services={safeServices}
+            procedures={safeProcedures}
+            jewelry={safeJewelry}
+            onChange={updatePricedForm}
+            compact
+          />
+          <AppointmentValueSummary form={form} services={safeServices} jewelry={safeJewelry} />
           <label>Observação
             <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
           </label>

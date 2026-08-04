@@ -32,7 +32,11 @@ export function Modal({ open, title, subtitle, onClose, children, footer, size =
 
   if (!open) return null;
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" onClick={(event) => {
+      // Conteúdo renderizado em portal (como o seletor de joias) continua
+      // propagando pelo tree React. Só o clique no backdrop real deve fechar.
+      if (event.target === event.currentTarget) onClose?.();
+    }}>
       <div
         className={`modal-card modal-${size}`}
         role="dialog"

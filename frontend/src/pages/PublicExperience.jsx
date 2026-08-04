@@ -153,6 +153,7 @@ function readCatalogStorage(key, fallback = []) {
 
 export function PublicCatalog() {
   const discoveryRef = useRef(null);
+  const productsRef = useRef(null);
   const { data } = usePublicFetch("/catalog");
   const initialQuery = new URLSearchParams(window.location.search);
   const [activeCategory, setActiveCategory] = useState(initialQuery.get("category") || "Todos");
@@ -411,7 +412,7 @@ function addToOrder(item) {
           onChange={setBannerIndex}
         />
 
-        <section ref={discoveryRef} className="catalog-discovery" style={{ order: -10 }}>
+        <section ref={discoveryRef} className="catalog-discovery" style={{ order: 2 }}>
           <label className="catalog-search catalog-search-mobile">
             <Search size={17} />
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar joia, SKU, material ou tamanho" />
@@ -420,7 +421,7 @@ function addToOrder(item) {
           {categories.map(({ name, icon: Icon }) => (
             <button key={name} className={activeCategory === name ? "active" : ""} onClick={() => {
               setActiveCategory(name);
-              requestAnimationFrame(() => discoveryRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+              requestAnimationFrame(() => productsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
             }}>
               <Icon size={25} />
               <span>{cleanDisplayText(name)}</span>
@@ -450,6 +451,17 @@ function addToOrder(item) {
         </div>
         </section>
 
+        <section ref={productsRef} className="catalog-results" style={{ order: 3 }}>
+          <div className="catalog-results-heading">
+            <div><span className="eyebrow">Resultados</span><h2>{cleanDisplayText(activeCategory)}</h2></div>
+            <strong>{items.length} {items.length === 1 ? "joia encontrada" : "joias encontradas"}</strong>
+          </div>
+          <div className="catalog-grid" id="catalog-products">
+            {items.map((item) => <CatalogProductCard item={item} favorite={favoriteIds.includes(item.id)} onToggleFavorite={() => toggleFavorite(item)} theme={theme} settings={settings} promotion={catalogPromotionForItem(item, data.promotions || [])} onAddToOrder={() => { addToOrder(item); setDrawer("order"); }} key={item.id} />)}
+          </div>
+          {!items.length && <p className="empty-state catalog-empty">Nenhuma joia encontrada em {cleanDisplayText(activeCategory)} com os filtros selecionados.</p>}
+        </section>
+
         <section className="catalog-trust-strip" aria-label="Diferenciais do estúdio" style={{ order: 4 }}>
           <span><ShieldCheck size={20} /><strong>Curadoria profissional</strong><small>Joias selecionadas com cuidado</small></span>
           <span><Gem size={20} /><strong>Materiais premium</strong><small>Titânio, ouro e peças seguras</small></span>
@@ -464,31 +476,6 @@ function addToOrder(item) {
 
         <div style={layoutStyle("booking_cta", 10)}><CatalogBookingWidget /></div>
         <div style={layoutStyle("custom_content", 11)}><CatalogContentSections sections={contentSections} /></div>
-
-        <section className="catalog-grid" id="catalog-products" style={layoutStyle("featured_products", 12)}>
-          {items.map((item) => (
-            <CatalogProductCard
-              item={item}
-              favorite={favoriteIds.includes(item.id)}
-              onToggleFavorite={() => toggleFavorite(item)}
-              theme={theme}
-              settings={settings}
-              promotion={catalogPromotionForItem(item, data.promotions || [])}
-              onAddToOrder={() => {
-                addToOrder(item);
-                setDrawer("order");
-              }}
-              key={item.id}
-            />
-          ))}
-        </section>
-        {!items.length && (
-          <p className="empty-state catalog-empty">
-            {filters.availability === "false"
-              ? "Nenhuma joia esgotada encontrada para os filtros selecionados."
-              : "Nenhuma joia disponível para os filtros selecionados."}
-          </p>
-        )}
 
         <section className="catalog-guide-section">
           <article>

@@ -75,21 +75,7 @@ export function SalesWorkspace() {
     : null;
   const requestedQuantity = Math.max(1, Number(line.quantity || 1));
   const exceedsStock = availableQuantity !== null && requestedQuantity > availableQuantity;
-  const defaultProduct = safeJewelry[0];
   const defaultService = safeServices[0];
-
-  useEffect(() => {
-    if (defaultProduct && tab !== "servico" && !line.product_id) {
-      const firstVariant = asArray(defaultProduct.variants).find((variant) => Number(variant.quantity || 0) > 0) || asArray(defaultProduct.variants)[0];
-      setLine((current) => ({
-        ...current,
-        product_id: String(defaultProduct.id),
-        product_variant_id: firstVariant?.id ? String(firstVariant.id) : "",
-        item_name: defaultProduct.name,
-        unit_price: firstVariant?.sale_value || defaultProduct.sale_value || 0
-      }));
-    }
-  }, [defaultProduct, tab, line.product_id]);
 
   useEffect(() => {
     if (defaultService && tab === "servico" && !line.service_id) {
@@ -113,16 +99,31 @@ export function SalesWorkspace() {
       return;
     }
 
-    const firstVariant = asArray(defaultProduct?.variants).find((variant) => Number(variant.quantity || 0) > 0)
-      || asArray(defaultProduct?.variants)[0];
     setLine({
       ...defaultSalesLine(),
       item_type: "produto",
-      product_id: defaultProduct?.id ? String(defaultProduct.id) : "",
-      product_variant_id: firstVariant?.id ? String(firstVariant.id) : "",
-      item_name: defaultProduct?.name || "",
-      unit_price: firstVariant?.sale_value || defaultProduct?.sale_value || 0
+      product_id: "",
+      product_variant_id: "",
+      item_name: "",
+      unit_price: 0
     });
+  }
+
+  function addSelectedJewelry(product) {
+    const variant = asArray(product?.variants).find((option) => Number(option.quantity || 0) > 0) || asArray(product?.variants)[0];
+    const unitPrice = Number(variant?.sale_value || product?.sale_value || 0);
+    const availableStock = variant ? Number(variant.quantity || 0) : Number(product?.inventory_quantity ?? product?.quantity ?? 0);
+    setLine({ ...defaultSalesLine(), item_type: "produto", product_id: String(product.id), product_variant_id: variant?.id ? String(variant.id) : "", item_name: product.name, unit_price: unitPrice });
+    setItems((current) => [...current, {
+      item_type: "produto", product_id: Number(product.id), service_id: null,
+      item_name: variant ? `${product.name} - ${variant.variation_name || variant.sku}` : product.name,
+      quantity: 1, product_variant_id: variant ? Number(variant.id) : null,
+      variation_name: variant?.variation_name || variant?.sku || "",
+      stock_key: variant ? `variant:${variant.id}` : `product:${product.id}`,
+      available_stock: availableStock, unit_price: unitPrice, notes: ""
+    }]);
+    setPriceQuote(null);
+    setError("");
   }
 
   // A lista carrega sozinha: só a tabela espera pelos pedidos, o resto da tela
@@ -406,17 +407,7 @@ export function SalesWorkspace() {
                   {safeServices.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
                 </Select>
               ) : (
-                <SmartCombobox label="Joia" value={line.product_id} options={safeJewelry} onChange={(value) => {
-                  const selected = safeJewelry.find((item) => String(item.id) === String(value));
-                  const firstVariant = asArray(selected?.variants).find((variant) => Number(variant.quantity || 0) > 0) || asArray(selected?.variants)[0];
-                  setLine({
-                    ...line,
-                    product_id: value,
-                    product_variant_id: firstVariant?.id ? String(firstVariant.id) : "",
-                    item_name: selected?.name || "",
-                    unit_price: firstVariant?.sale_value || selected?.sale_value || 0
-                  });
-                }} getMeta={(item) => [item.category, item.material, item.sku].filter(Boolean).join(" · ")} isDisabled={(item) => asArray(item.variants).length ? !asArray(item.variants).some((variant) => Number(variant.quantity || 0) > 0) : Number(item.inventory_quantity ?? item.quantity ?? 0) <= 0} />
+                <SmartCombobox label="Joia" value={line.product_id} options={safeJewelry} onChange={(value) => { if (!value) setLine({ ...defaultSalesLine(), item_type: "produto" }); }} onSelect={addSelectedJewelry} getMeta={(item) => [item.category, item.material, item.sku].filter(Boolean).join(" · ")} isDisabled={(item) => asArray(item.variants).length ? !asArray(item.variants).some((variant) => Number(variant.quantity || 0) > 0) : Number(item.inventory_quantity ?? item.quantity ?? 0) <= 0} />
               )}
               {line.item_type === "produto" && (
                 <Select label="Variação" value={line.product_variant_id} onChange={(value) => {
@@ -459,6 +450,8 @@ export function SalesWorkspace() {
                 <div>
                   <strong>{item.item_name}</strong>
                   <span>{saleItemLabel(item.item_type)} · {item.quantity}x · {currency.format(item.unit_price)}</span>
+                  {item.product_id && <small>ID {item.product_id} · {item.variation_name ? `Variação: ${item.variation_name} · ` : ""}Estoque: {item.available_stock ?? "—"} un.</small>}
+                  <small>Subtotal: {currency.format(Number(item.unit_price) * Number(item.quantity))}</small>
                   {item.notes && <small>{item.notes}</small>}
                 </div>
                 <button type="button" onClick={() => removeLine(index)}>Remover</button>
