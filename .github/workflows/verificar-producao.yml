@@ -38,7 +38,12 @@ jobs:
           # shellcheck disable=SC2086
           ssh ${SSH_OPTS} "${SERVER_USER}@${SERVER_HOST}" bash -s <<'REMOTE'
           set -euo pipefail
-          psql() { docker exec -i monitence-postgres psql -U aura -d aura_clinic -qtAX "$@"; }
+          # SEM `-i` e com stdin fechado, e isso é o ponto todo: este script
+          # chega no servidor PELO stdin (`bash -s <<'REMOTE'`). Um `docker exec
+          # -i` aqui leria stdin e engoliria o resto do próprio script — a
+          # primeira consulta rodava, e todas as seguintes desapareciam sem erro
+          # nenhum. É a mesma armadilha (SC2259) que o deploy.sh já documenta.
+          psql() { docker exec monitence-postgres psql -U aura -d aura_clinic -qtAX "$@" </dev/null; }
 
           echo "=============================================================="
           echo "1) CLINICAS E SCHEMAS"
@@ -119,7 +124,7 @@ jobs:
           echo "5) API: AVISOS DE BOOT"
           echo "=============================================================="
           echo "-- ultimas linhas relevantes do log do container:"
-          docker logs aura-api --since 24h 2>&1 \
+          docker logs aura-api --since 24h </dev/null 2>&1 \
             | grep -Ei 'ATENÇÃO|ATENCAO|\[storage\]|\[Asaas\]|error|erro|falhou' \
             | tail -20 || echo "   (nenhum aviso nas ultimas 24h)"
           echo
