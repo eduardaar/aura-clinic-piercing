@@ -155,6 +155,27 @@ jobs:
           echo "-- container:"
           docker ps --filter name=aura-api --format '   aura-api: {{.Status}}'
           echo
+          echo "=============================================================="
+          echo "7) COMO O COMPOSE INJETA AMBIENTE"
+          echo "=============================================================="
+          # Só ESTRUTURA e NOMES de chave. Nenhum valor é impresso: o compose
+          # tem AUTH_SECRET e DATABASE_URL em claro.
+          compose_file="$(ls /home/auraclinic/docker-compose.y*ml /home/auraclinic/compose.y*ml 2>/dev/null | head -1)"
+          if [ -n "${compose_file}" ]; then
+            echo "   arquivo: ${compose_file}"
+            echo "   -- linhas de env (valores mascarados):"
+            grep -nE 'env_file|environment|^\s{4,}[A-Za-z_][A-Za-z0-9_]*\s*[:=]' "${compose_file}" \
+              | sed -E 's/([:=])[[:space:]]*[^[:space:]].*/\1 <valor>/' | sed 's/^/      /'
+            echo "   -- o serviço aura-api tem env_file?"
+            grep -q 'env_file' "${compose_file}" && echo "      SIM" || echo "      NAO"
+          else
+            echo "   compose não encontrado em /home/auraclinic"
+          fi
+          echo
+          echo "-- .env do servidor (só os NOMES das chaves):"
+          cut -d= -f1 /home/auraclinic/backend/.env 2>/dev/null | grep -E '^[A-Z]' | sed 's/^/      /' || echo "      (sem .env)"
+          echo
+
           echo "-- backups recentes:"
           ls -lh /root/pg-backups/*.sql.gz 2>/dev/null | tail -3 || echo "   (nenhum)"
           REMOTE
