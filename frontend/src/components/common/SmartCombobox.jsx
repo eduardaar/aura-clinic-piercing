@@ -60,7 +60,7 @@ function stockStatus(item) {
   return { label: "Disponível", tone: "stock-ok", text: `Disponível · ${quantity} ${quantity === 1 ? "unidade" : "unidades"}` };
 }
 
-export function SmartCombobox({ label, value, onChange, options = [], placeholder = "Buscar joia, SKU ou medida", emptyLabel = "Nenhuma joia encontrada", required = false, loading = false, getLabel = (item) => item.name, getMeta, isDisabled = (item) => stock(item) <= 0 }) {
+export function SmartCombobox({ label, value, onChange, onSelect, options = [], placeholder = "Buscar joia, SKU ou medida", emptyLabel = "Nenhuma joia encontrada", required = false, loading = false, getLabel = (item) => item.name, getMeta, isDisabled = (item) => stock(item) <= 0 }) {
   const id = useId();
   const root = useRef(null);
   const selected = options.find((item) => String(item.id) === String(value));
@@ -108,8 +108,21 @@ export function SmartCombobox({ label, value, onChange, options = [], placeholde
   function select(item) {
     if (isDisabled(item)) return;
     onChange(String(item.id));
+    onSelect?.(item);
     setQuery(getLabel(item));
     setOpen(false);
+  }
+
+  function selectOnPress(event, item) {
+    event.preventDefault();
+    event.stopPropagation();
+    select(item);
+  }
+
+  function selectOnClick(event, item) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.detail === 0) select(item);
   }
 
   function keyDown(event) {
@@ -141,7 +154,7 @@ export function SmartCombobox({ label, value, onChange, options = [], placeholde
             const displayMeta = [meta, compactMeasure(item)].filter(Boolean).join(" • ");
             const labelText = getLabel(item) || "Joia sem nome";
             const picture = imageUrl(item);
-            return <button id={`${id}-option-${item.id}`} type="button" role="option" aria-selected={String(item.id) === String(value)} aria-disabled={disabled} disabled={disabled} className={index === active ? "active" : ""} key={item.id} onMouseEnter={() => setActive(index)} onClick={() => select(item)}>
+            return <button id={`${id}-option-${item.id}`} type="button" role="option" aria-selected={String(item.id) === String(value)} aria-disabled={disabled} disabled={disabled} className={index === active ? "active" : ""} key={item.id} onMouseEnter={() => setActive(index)} onPointerDown={(event) => selectOnPress(event, item)} onClick={(event) => selectOnClick(event, item)}>
               <span className="smart-combobox-thumb">{picture ? <img src={picture} alt={labelText} /> : <span aria-hidden="true">◇</span>}</span>
               <span className="smart-combobox-copy">
                 <strong>{labelText}</strong>

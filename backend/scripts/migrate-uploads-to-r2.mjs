@@ -71,8 +71,7 @@ import {
   ORPHAN_PREFIX,
   PLATFORM_PREFIX,
   buildKey,
-  folderForPurpose,
-  sanitizeFilename
+  folderForPurpose
 } from "../src/services/storage/keys.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1102,7 +1101,7 @@ async function writeReport(results) {
 
   // CSV do mapeamento arquivo -> chave: é o que alguém abre no dia em que
   // precisa achar UM arquivo específico, e `grep` resolve.
-  const escape = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const csvEscape = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const lines = ["escopo,chave,arquivo,bytes,dono,referenciado_por,status,verificacao,erro"];
   for (const f of results.files) {
     lines.push(
@@ -1117,7 +1116,7 @@ async function writeReport(results) {
         f.verificacao,
         f.erro
       ]
-        .map(escape)
+        .map(csvEscape)
         .join(",")
     );
   }

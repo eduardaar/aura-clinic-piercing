@@ -75,29 +75,55 @@ export function SalesWorkspace() {
     : null;
   const requestedQuantity = Math.max(1, Number(line.quantity || 1));
   const exceedsStock = availableQuantity !== null && requestedQuantity > availableQuantity;
+  const defaultProduct = safeJewelry[0];
+  const defaultService = safeServices[0];
 
   useEffect(() => {
-    setLine((current) => ({ ...current, item_type: tab === "servico" ? "servico" : "produto" }));
-  }, [tab]);
-
-  useEffect(() => {
-    if (safeJewelry.length && tab !== "servico" && !line.product_id) {
-      const firstVariant = asArray(safeJewelry[0].variants).find((variant) => Number(variant.quantity || 0) > 0) || asArray(safeJewelry[0].variants)[0];
+    if (defaultProduct && tab !== "servico" && !line.product_id) {
+      const firstVariant = asArray(defaultProduct.variants).find((variant) => Number(variant.quantity || 0) > 0) || asArray(defaultProduct.variants)[0];
       setLine((current) => ({
         ...current,
-        product_id: String(safeJewelry[0].id),
+        product_id: String(defaultProduct.id),
         product_variant_id: firstVariant?.id ? String(firstVariant.id) : "",
-        item_name: safeJewelry[0].name,
-        unit_price: firstVariant?.sale_value || safeJewelry[0].sale_value || 0
+        item_name: defaultProduct.name,
+        unit_price: firstVariant?.sale_value || defaultProduct.sale_value || 0
       }));
     }
-  }, [safeJewelry.length]);
+  }, [defaultProduct, tab, line.product_id]);
 
   useEffect(() => {
-    if (safeServices.length && (tab === "servico" || tab === "ordem")) {
-      setLine((current) => ({ ...current, service_id: String(safeServices[0].id), item_name: safeServices[0].name, unit_price: safeServices[0].base_price || safeServices[0].price || 0 }));
+    if (defaultService && tab === "servico" && !line.service_id) {
+      setLine((current) => ({ ...current, service_id: String(defaultService.id), item_name: defaultService.name, unit_price: defaultService.base_price || defaultService.price || 0 }));
     }
-  }, [safeServices.length, tab]);
+  }, [defaultService, tab, line.service_id]);
+
+  function handleTabChange(nextTab) {
+    setTab(nextTab);
+    setItems([]);
+    setError("");
+
+    if (nextTab === "servico") {
+      setLine({
+        ...defaultSalesLine(),
+        item_type: "servico",
+        service_id: defaultService?.id ? String(defaultService.id) : "",
+        item_name: defaultService?.name || "",
+        unit_price: defaultService?.base_price || defaultService?.price || 0
+      });
+      return;
+    }
+
+    const firstVariant = asArray(defaultProduct?.variants).find((variant) => Number(variant.quantity || 0) > 0)
+      || asArray(defaultProduct?.variants)[0];
+    setLine({
+      ...defaultSalesLine(),
+      item_type: "produto",
+      product_id: defaultProduct?.id ? String(defaultProduct.id) : "",
+      product_variant_id: firstVariant?.id ? String(firstVariant.id) : "",
+      item_name: defaultProduct?.name || "",
+      unit_price: firstVariant?.sale_value || defaultProduct?.sale_value || 0
+    });
+  }
 
   // A lista carrega sozinha: só a tabela espera pelos pedidos, o resto da tela
   // (métricas e modal de cadastro) não fica bloqueado pelos outros fetches.
@@ -318,7 +344,7 @@ export function SalesWorkspace() {
             ["servico", "Venda de serviço"],
             ["ordem", "Ordem de serviço"]
           ].map(([id, label]) => (
-            <button key={id} type="button" className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}</button>
+            <button key={id} type="button" className={tab === id ? "active" : ""} onClick={() => handleTabChange(id)}>{label}</button>
           ))}
         </div>
 

@@ -35,6 +35,7 @@ import {
   catalogStockText,
   cleanDisplayText,
   elegantProductName,
+  hasRenderableContent,
   promotionalPrice,
   splitColorOptions
 } from "../features/catalog/catalogUtils";
@@ -284,6 +285,21 @@ export function PublicCatalog() {
     "--catalog-border": settings.border_color || theme.secondary_color || "#d8c3a5",
     fontFamily: theme.body_font || "Inter"
   };
+  const footerLogo = settings.footer_logo_url || theme.logo_url;
+  const footerDisplayName = settings.footer_display_name || theme.brand_name || settings.company_display_name || data.brand_name;
+  const showFooter = settings.footer_enabled !== "0" && hasRenderableContent({
+    type: "footer",
+    institutional_text: settings.institutional_text,
+    whatsapp_phone: settings.whatsapp_phone,
+    company_instagram: settings.company_instagram,
+    company_email: settings.company_email,
+    company_hours: settings.company_hours,
+    company_address: settings.company_address,
+    logo_url: footerLogo,
+    display_name: settings.footer_show_business_name !== "0" ? footerDisplayName : "",
+    slogan: settings.footer_show_slogan !== "0" ? (settings.footer_slogan || theme.slogan) : "",
+    copyright_text: settings.footer_copyright_text || theme.footer_text || settings.footer_text
+  });
 
   function toggleFavorite(item) {
     setFavoriteIds((current) => {
@@ -487,7 +503,7 @@ function addToOrder(item) {
           </div>
         </section>
 
-        {settings.footer_enabled !== "0" && <footer
+        {showFooter && <footer
           className="catalog-footer-benefits catalog-dynamic-footer"
           style={{ ...layoutStyle("footer", 20), ...catalogFooterStyle(settings, theme) }}
         >
@@ -533,10 +549,10 @@ function addToOrder(item) {
             )}
           </div>
           <div className="catalog-footer-signature">
-            {(settings.footer_logo_url || theme.logo_url) && <img src={catalogImageUrl(settings.footer_logo_url || theme.logo_url)} alt={settings.footer_display_name || theme.brand_name || data.brand_name || "Marca do estúdio"} />}
-            {settings.footer_show_business_name !== "0" && <strong>{settings.footer_display_name || theme.brand_name || settings.company_display_name || data.brand_name || "Estúdio"}</strong>}
+            {footerLogo && <img src={catalogImageUrl(footerLogo)} alt={footerDisplayName || "Marca do estúdio"} />}
+            {settings.footer_show_business_name !== "0" && <strong>{footerDisplayName || "Estúdio"}</strong>}
             {settings.footer_show_slogan !== "0" && (settings.footer_slogan || theme.slogan) && <small>{settings.footer_slogan || theme.slogan}</small>}
-            {(settings.footer_copyright_text || theme.footer_text) && <small>{settings.footer_copyright_text || theme.footer_text}</small>}
+            {(settings.footer_copyright_text || theme.footer_text || settings.footer_text) && <small>{settings.footer_copyright_text || theme.footer_text || settings.footer_text}</small>}
           </div>
         </footer>}
         {Boolean(Number(theme.show_whatsapp_button || 1)) && <a className="floating-whatsapp" href={whatsappCatalogUrl(data.whatsapp_message, data.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle size={24} /><span>WhatsApp</span></a>}
@@ -640,6 +656,7 @@ function catalogFooterStyle(settings, theme) {
     backgroundSize: settings.footer_background_size || "cover",
     borderRadius: `${Number(settings.footer_border_radius || 24)}px`,
     padding: `${Number(settings.footer_spacing || 40)}px`,
+    width: "100%",
     maxWidth: `${Number(settings.footer_container_width || 1280)}px`,
     marginInline: "auto"
   };

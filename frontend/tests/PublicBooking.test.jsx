@@ -49,6 +49,13 @@ function mockApi({ gatewayEnabled }) {
 describe("PublicBooking · CPF", () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
+    const storedValues = new Map();
+    vi.stubGlobal("localStorage", {
+      clear: () => storedValues.clear(),
+      getItem: (key) => storedValues.get(String(key)) ?? null,
+      removeItem: (key) => storedValues.delete(String(key)),
+      setItem: (key, value) => storedValues.set(String(key), String(value))
+    });
     localStorage.clear();
     abrirNaEtapaDeDados();
   });
