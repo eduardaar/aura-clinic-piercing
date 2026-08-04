@@ -139,9 +139,34 @@ stale closure, mas mexer em array de deps muda comportamento), 55
 `noUnusedImports` (26 são `import React`, inofensivos pelo runtime automático de
 JSX) e 11 `noArrayIndexKey`.
 
-### 13. Dinheiro em `DOUBLE PRECISION`
-Todos os valores monetários usam ponto flutuante; somatórios financeiros
-acumulam erro. Migrar para `NUMERIC(12,2)`. Ver `docs/AUDIT-DATA-MODEL.md`.
+### 13. Dinheiro em `DOUBLE PRECISION` — MIGRADO NO CÓDIGO (04/08/2026)
+46 colunas em 20 tabelas viraram `NUMERIC(12,2)`; 11 continuam `DOUBLE PRECISION`
+por não serem dinheiro (peso, dimensão, score de confiança, multiplicador de
+preço). `commission_percentage` virou `NUMERIC(5,2)` — é percentual, mas
+multiplica dinheiro dentro do SQL, então precisa ser exato.
+
+Como `CREATE TABLE IF NOT EXISTS` não altera tabela existente, a conversão vive
+num bloco `DO $$` idempotente, um `ALTER TABLE` por tabela.
+
+**A armadilha:** o driver `pg` devolve `NUMERIC` como **string**, e um somatório
+em JS viraria concatenação. O conversor foi anexado por query em `createDb()`, e
+não como parser global, porque `services/platformFinance.js` devolve dinheiro
+como string decimal de propósito e tem teste que exige isso. Resultado: schema de
+clínica → `number` (o JSON da API não mudou, frontend intocado); schema
+`platform` → string. **Não adicione `setTypeParser(1700, …)` global.**
+
+A precisão exata é a do banco: somatório grande se faz em SQL. `financeLedger.js`
+passou a somar em SQL, o que corrigiu de tabela um bug — o caminho paginado não
+trazia `lifecycle_status`, então lançamento marcado como teste ou cancelado
+entrava nas somas de uma versão e não da outra.
+
+`platformSchema.sql` não precisou de nada: suas duas colunas monetárias já
+estavam certas (`NUMERIC(12,2)` e `INTEGER` de centavos).
+
+**Ainda NÃO aplicado em produção.** Ver `docs/MIGRACAO-NUMERIC.md` para o passo a
+passo — em especial: o rollback de imagem sem rollback de banco quebra em
+silêncio (o código anterior receberia string onde espera número), e o backup do
+`deploy.sh` termina em `|| true`, então precisa ser feito e conferido à mão.
 
 ---
 

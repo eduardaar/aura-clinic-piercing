@@ -16,6 +16,21 @@ if (!connectionString) {
   );
 }
 
+// NUMERIC AQUI CONTINUA STRING — e isso é deliberado.
+//
+// Este módulo é a porta do schema `platform` (planos, assinaturas, faturas) e
+// de qualquer consulta feita fora do ciclo de requisição da clínica. O painel
+// financeiro da plataforma (`services/platformFinance.js`) trata dinheiro como
+// string decimal de ponta a ponta, exatamente para nunca passar por ponto
+// flutuante; `tenant_invoices.amount` já é NUMERIC(12,2) e o comportamento
+// padrão do driver (OID 1700 → string) é o que sustenta esse contrato.
+//
+// Por isso NÃO existe aqui um `pg.types.setTypeParser(1700, …)` global: ele
+// alcançaria também o painel da plataforma e converteria em `Number` justamente
+// o dinheiro que foi mantido fora do float de propósito. A conversão para
+// `Number` que o código das clínicas espera vive uma camada abaixo, por query,
+// em `db/postgres.js` (createDb) — veja a nota longa lá.
+//
 // Pool exportado: o middleware withDb pega um client POR REQUISIÇÃO para
 // definir o search_path do tenant (isolamento multi-tenant por schema).
 export const pool = new Pool({
