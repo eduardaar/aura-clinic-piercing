@@ -35,8 +35,12 @@ jobs:
           SSH_OPTS: -i ${{ github.workspace }}/.deploy_key -o UserKnownHostsFile=${{ github.workspace }}/.known_hosts -o StrictHostKeyChecking=accept-new
         run: |
           set -euo pipefail
-          # shellcheck disable=SC2086
-          ssh ${SSH_OPTS} "${SERVER_USER}@${SERVER_HOST}" bash -s <<'REMOTE'
+
+          # O servidor tem fail2ban e recusa conexão sob rajada — o deploy.sh já
+          # convive com isso (`retry_conn`). Aqui o script vai por stdin, então a
+          # repetição precisa reler o arquivo a cada tentativa, e não o heredoc
+          # (que se esgota na primeira leitura).
+          cat > /tmp/verificar.sh <<'REMOTE'
           set -euo pipefail
           # SEM `-i` e com stdin fechado, e isso é o ponto todo: este script
           # chega no servidor PELO stdin (`bash -s <<'REMOTE'`). Um `docker exec
@@ -154,6 +158,19 @@ jobs:
           echo "-- backups recentes:"
           ls -lh /root/pg-backups/*.sql.gz 2>/dev/null | tail -3 || echo "   (nenhum)"
           REMOTE
+
+          for tentativa in 1 2 3 4 5; do
+            # shellcheck disable=SC2086
+            if ssh ${SSH_OPTS} -o ConnectTimeout=20 "${SERVER_USER}@${SERVER_HOST}" bash -s < /tmp/verificar.sh; then
+              exit 0
+            fi
+            [ "${tentativa}" -lt 5 ] || break
+            espera=$(( tentativa * 30 ))
+            echo "::warning::conexão SSH falhou (tentativa ${tentativa}/5). Nova tentativa em ${espera}s."
+            sleep "${espera}"
+          done
+          echo "::error::não consegui conectar ao servidor em 5 tentativas."
+          exit 1
 
       - name: Limpar chave
         if: always()
