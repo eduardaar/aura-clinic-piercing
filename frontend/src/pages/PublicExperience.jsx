@@ -573,6 +573,7 @@ function catalogFooterStyle(settings, theme) {
     backgroundSize: settings.footer_background_size || "cover",
     borderRadius: `${Number(settings.footer_border_radius || 24)}px`,
     padding: `${Number(settings.footer_spacing || 40)}px`,
+    width: "100%",
     maxWidth: `${Number(settings.footer_container_width || 1280)}px`,
     marginInline: "auto"
   };
