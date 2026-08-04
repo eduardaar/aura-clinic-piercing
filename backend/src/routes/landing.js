@@ -106,9 +106,16 @@ router.post("/api/platform/landing/uploads", requirePlatform, async (req, res) =
   try {
     await parseUpload(upload.single("file"), req, res);
     if (!req.file) return res.status(400).json({ error: "Nenhum arquivo enviado." });
-    // `path.basename` como defesa em profundidade: o nome é gerado pelo multer,
-    // mas nada aqui deve poder montar um caminho para fora de /uploads.
-    res.status(201).json({ url: `/uploads/${path.basename(req.file.filename)}` });
+    // Em modo R2 a camada de storage já subiu o arquivo e devolve a URL do CDN;
+    // em modo disco não existe `publicUrl` e o caminho relativo continua valendo.
+    // Devolver o caminho relativo nos dois casos apontaria, no R2, para um disco
+    // onde o arquivo não está.
+    //
+    // `path.basename` segue como defesa em profundidade no ramo de disco: o nome
+    // é gerado pelo multer, mas nada aqui deve poder montar um caminho para fora
+    // de /uploads.
+    const url = req.file.publicUrl || `/uploads/${path.basename(req.file.filename)}`;
+    res.status(201).json({ url });
   } catch (error) {
     handleLandingError(res, error);
   }

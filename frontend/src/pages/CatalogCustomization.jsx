@@ -1477,7 +1477,12 @@ export function ImageUploadField({ label, value, onChange, onTransformChange, tr
     if (!nextValue) onTransformChange?.(normalizeImageTransform({}, aspectRatio), "");
   }
 
-  const internalUpload = String(value || "").startsWith("/uploads/");
+  // Duas formas de "arquivo nosso", uma por modo de armazenamento: caminho
+  // relativo (disco) e URL absoluta do CDN (R2). No R2 a chave sempre começa por
+  // `tenant_<id>/` ou `plataforma/` — é a convenção de `services/storage/keys.js`.
+  // Sem reconhecer a segunda, uma imagem enviada pelo próprio painel voltaria a
+  // aparecer como "URL externa", num campo de texto editável.
+  const internalUpload = /^\/uploads\//.test(String(value || "")) || /\/(?:tenant_\d+|plataforma)\//.test(String(value || ""));
   return (
     <div className="image-upload-field">
       <span className="image-upload-label">{label}</span>
