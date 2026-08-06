@@ -1,0 +1,15 @@
+AURA CLINIC — O QUE FOI ENTREGUE
+
+1. Relatórios legíveis — datas e valores apareciam crus ("2026-07-27T00:00:00.000Z", números sem formato) e os títulos das colunas vinham em nome técnico. Agora tudo formatado e em português, nos 13 relatórios.
+
+2. Painel de clínicas — busca, filtros e ordenação na lista, e as métricas por clínica viraram colunas ordenáveis em vez de texto corrido.
+
+3. Mais telas rápidas — pós-atendimento, termos, notificações, cupons e razão financeiro passaram a carregar por página. A tela de pós-atendimento baixava 388 KB de uma vez e agora baixa 6 KB.
+
+4. O sistema deixou de rebaixar o que já tinha — trocar de aba e voltar refazia o download inteiro. Agora reaproveita.
+
+5. Operações de dinheiro à prova de falha — se algo falhar no meio de uma venda ou de um atendimento, nada é gravado pela metade. Antes, uma falha podia deixar o estoque baixado sem o pagamento registrado.
+
+6. Tela "Aura ERP" removida — mostrava informações de exemplo (influenciadores, consultorias, alunos, calendário) que nunca foram dados do estúdio.
+
+7. Qualidade — 283 testes automatizados, verificação de tipos e organização do código de estilo. Nada disso aparece na tela; serve para que o que já funciona não quebre nas próximas entregas.

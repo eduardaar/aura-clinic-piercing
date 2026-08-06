@@ -11,6 +11,7 @@
     "backup:uploads": "bash scripts/backup-uploads.sh",
     "migrate:r2": "node scripts/migrate-uploads-to-r2.mjs",
     "restore-admin": "node scripts/restore-admin.mjs",
+    "seed:demo": "node scripts/seed-demo-data.mjs",
     "import:aura-jewelry": "node scripts/import-aura-jewelry.mjs",
     "audit:product-images": "node scripts/audit-product-images.mjs",
     "audit:catalog-sections": "node scripts/audit-catalog-sections.mjs",
