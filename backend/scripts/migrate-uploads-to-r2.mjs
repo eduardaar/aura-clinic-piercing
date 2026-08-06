@@ -170,6 +170,17 @@ const CATEGORY_BY_COLUMN = {
   // professionals.photo_url, financial_entries.attachment_url, e o que aparecer.
 };
 
+// Registros antigos de agendamento chegaram antes de a rota usar
+// `privateUpload`. Embora ainda apontem para `/uploads/<arquivo>`, comprovante
+// de pagamento e foto de referência são dados clínicos/financeiros: migrá-los
+// para o CDN público perpetuaria a exposição. A migração os promove para
+// `private_files` e troca a URL pela rota autenticada. Uploads novos nessas
+// rotas já nascem privados; este mapa existe apenas para corrigir o legado.
+const LEGACY_PRIVATE_COLUMNS = {
+  "appointments.reference_photo_url": { purpose: "appointment_reference" },
+  "appointments.payment_proof_url": { purpose: "appointment_reference" }
+};
+
 // Colunas que casam com o filtro de nome mas NUNCA guardam caminho de arquivo
 // local. Ficam de fora da varredura só por economia — o filtro real é o valor
 // conter `/uploads/`, então incluí-las não causaria dano, apenas trabalho.
@@ -495,6 +506,7 @@ async function buildPlan(client, storage, diskPublic, diskPrivate, ledger) {
       colunas: []
     };
     const chavesPublicas = new Set();
+    const chavesPrivadas = new Set();
     plan.tenants.push(resumo);
     if (!exists.length) {
       warn(`  [aviso] tenant ${tenant.id} (${tenant.slug}) não tem schema ${schema}. Pulado.`);
@@ -538,7 +550,7 @@ async function buildPlan(client, storage, diskPublic, diskPrivate, ledger) {
         folder: folderForPurpose(file.purpose),
         referencedBy: `private_files(${file.purpose})`
       });
-      resumo.privados += 1;
+      chavesPrivadas.add(key);
     }
 
     // ---- públicos: varre as colunas atrás de /uploads/<arquivo> -------------
@@ -550,10 +562,17 @@ async function buildPlan(client, storage, diskPublic, diskPrivate, ledger) {
       for (const name of migrated) claimedPublic.add(name);
       if (!filenames.length) continue;
 
+      const legacyPrivate = LEGACY_PRIVATE_COLUMNS[col.ref];
       const category = options.flatCategory
         ? DEFAULT_PUBLIC_CATEGORY
         : CATEGORY_BY_COLUMN[col.ref] || DEFAULT_PUBLIC_CATEGORY;
-      const detalhe = { coluna: col.ref, categoria: category, arquivos: 0, ausentes: 0, linhas: rows };
+      const detalhe = {
+        coluna: col.ref,
+        categoria: legacyPrivate ? `privado:${legacyPrivate.purpose}` : category,
+        arquivos: 0,
+        ausentes: 0,
+        linhas: rows
+      };
 
       for (const filename of filenames) {
         const disk = diskPublic.get(filename);
@@ -570,6 +589,44 @@ async function buildPlan(client, storage, diskPublic, diskPrivate, ledger) {
           continue;
         }
         claimedPublic.add(filename);
+        if (legacyPrivate) {
+          const contentType = guessContentType(filename, disk.path);
+          const key = buildKey({
+            scope: "private",
+            tenantId: tenant.id,
+            purpose: legacyPrivate.purpose,
+            filename
+          });
+          addObject(plan, {
+            scope: "private",
+            key,
+            filename,
+            sourcePath: disk.path,
+            bytes: disk.bytes,
+            contentType,
+            owner: { kind: "tenant", tenantId: tenant.id, slug: tenant.slug },
+            purpose: legacyPrivate.purpose,
+            folder: folderForPurpose(legacyPrivate.purpose),
+            referencedBy: `${schema}.${col.ref} (legado privado)`
+          });
+          addRewrite(plan, schema, {
+            table: col.table,
+            column: col.column,
+            dataType: col.dataType,
+            filename,
+            objectId: `private|${key}`,
+            oldUrl: `/uploads/${filename}`,
+            newUrl: `/api/private-files/${filename}`,
+            privateFile: {
+              purpose: legacyPrivate.purpose,
+              mimeType: contentType,
+              originalName: filename
+            }
+          });
+          chavesPrivadas.add(key);
+          detalhe.arquivos += 1;
+          continue;
+        }
         const key = buildKey({ scope: "public", tenantId: tenant.id, category, filename });
         addObject(plan, {
           scope: "public",
@@ -599,6 +656,7 @@ async function buildPlan(client, storage, diskPublic, diskPrivate, ledger) {
       resumo.colunas.push(detalhe);
     }
     resumo.publicos = chavesPublicas.size;
+    resumo.privados = chavesPrivadas.size;
   }
 
   // ---- schema `platform` ---------------------------------------------------
@@ -946,6 +1004,15 @@ async function rewriteUrls(plan, results) {
       for (const r of aplicaveis) {
         const qualified = `${quoteIdent(schema)}.${quoteIdent(r.table)}`;
         const column = quoteIdent(r.column);
+        if (r.privateFile) {
+          await client.query(
+            `INSERT INTO ${quoteIdent(schema)}.private_files
+               (filename, original_name, mime_type, purpose)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (filename) DO NOTHING`,
+            [r.filename, r.privateFile.originalName, r.privateFile.mimeType, r.privateFile.purpose]
+          );
+        }
         const json = r.dataType === "json" || r.dataType === "jsonb";
         const asText = json ? `${column}::text` : column;
         const pattern = `${escapeRegex(`/uploads/${r.filename}`)}(?![A-Za-z0-9._-])`;
