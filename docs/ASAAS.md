@@ -345,7 +345,9 @@ deles no `.env` **do servidor** (o rsync exclui `.env` de propósito, para o
 repositório nunca virar fonte de credencial).
 
 Configure em *Settings > Secrets and variables > Actions*:
-`ASAAS_BASE_URL`, `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN`, `ASAAS_VAULT_KEY`.
+
+- em **Variables**: `ASAAS_BASE_URL`;
+- em **Secrets**: `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN` e `ASAAS_VAULT_KEY`.
 
 O mesmo laço da etapa `[3.5/5]` sincroniza também os segredos do **Cloudflare
 R2** (`R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`,
@@ -371,17 +373,17 @@ no saldo Asaas e não sai de lá.
 conta em modo **produção** (a chave de produção começa com `$aact_prod_`; a de
 sandbox, não). Ela é mostrada **uma única vez**.
 
-**3. Cadastrar os secrets** em *Settings > Secrets and variables > Actions*:
+**3. Cadastrar a variável e os secrets** em *Settings > Secrets and variables > Actions*:
 
-| Secret | Valor |
-| --- | --- |
-| `ASAAS_BASE_URL` | `https://api.asaas.com/v3` — **é este o passo que vira a chave** |
-| `ASAAS_API_KEY` | a chave de produção do passo 2 |
-| `ASAAS_WEBHOOK_TOKEN` | valor forte gerado por você (o mesmo do passo 5) |
-| `ASAAS_VAULT_KEY` | valor forte gerado por você, **antes** de qualquer clínica cadastrar chave |
+| Tipo | Nome | Valor |
+| --- | --- | --- |
+| Variable | `ASAAS_BASE_URL` | `https://api.asaas.com/v3` — **é este o passo que vira a chave** |
+| Secret | `ASAAS_API_KEY` | a chave de produção do passo 2 |
+| Secret | `ASAAS_WEBHOOK_TOKEN` | valor forte gerado por você (o mesmo do passo 5) |
+| Secret | `ASAAS_VAULT_KEY` | valor forte gerado por você, **antes** de qualquer clínica cadastrar chave |
 
 `ASAAS_BASE_URL` não é opcional: o default do código é o **sandbox**, então
-deixar o secret vazio publica a produção cobrando de mentira.
+deixar a variável vazia publica a produção cobrando de mentira.
 
 `ASAAS_VAULT_KEY` precisa ser definida **antes** de a primeira clínica salvar a
 chave dela. Introduzi-la depois muda a derivação e invalida tudo que já estava

@@ -140,7 +140,7 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           ASAAS_API_KEY: ${{ secrets.ASAAS_API_KEY }}
           ASAAS_WEBHOOK_TOKEN: ${{ secrets.ASAAS_WEBHOOK_TOKEN }}
-          ASAAS_BASE_URL: ${{ secrets.ASAAS_BASE_URL }}
+          ASAAS_BASE_URL: ${{ vars.ASAAS_BASE_URL }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -237,7 +237,7 @@ jobs:
         env:
           SSH_OPTS: -i ${{ github.workspace }}/.deploy_key -o UserKnownHostsFile=${{ github.workspace }}/.known_hosts -o StrictHostKeyChecking=accept-new
           ROLLBACK: ${{ inputs.rollback }}
-          ASAAS_BASE_URL: ${{ secrets.ASAAS_BASE_URL }}
+          ASAAS_BASE_URL: ${{ vars.ASAAS_BASE_URL }}
           ASAAS_API_KEY: ${{ secrets.ASAAS_API_KEY }}
           ASAAS_WEBHOOK_TOKEN: ${{ secrets.ASAAS_WEBHOOK_TOKEN }}
           ASAAS_VAULT_KEY: ${{ secrets.ASAAS_VAULT_KEY }}
