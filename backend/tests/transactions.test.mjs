@@ -177,7 +177,7 @@ before(async () => {
   ctx.professionalId = professional.json.id;
   const jewelry = await api("/jewelry", {
     method: "POST",
-    body: { name: "Joia TX", category: "Labret", material: "Titanio", color: "Prata", quantity: 10, cost_value: 15, sale_value: 60 },
+    body: { name: "Joia TX", category: "Labret", material: "Titânio", color: "Prata", quantity: 10, cost_value: 15, sale_value: 60 },
   });
   ctx.jewelryId = jewelry.json.id;
   ctx.variantId = jewelry.json.variants[0].id;
@@ -324,7 +324,7 @@ test("atendimento marcado 'atendido' que falha no meio não deixa nenhuma das 5 
 async function criaJoia(nome, quantidade) {
   const criada = await api("/jewelry", {
     method: "POST",
-    body: { name: nome, category: "Labret", material: "Titanio", color: "Prata", quantity: quantidade, cost_value: 10, sale_value: 50 },
+    body: { name: nome, category: "Labret", material: "Titânio", color: "Prata", quantity: quantidade, cost_value: 10, sale_value: 50 },
   });
   assert.equal(criada.status, 201, JSON.stringify(criada.json));
   return { id: criada.json.id, variantId: criada.json.variants[0].id };

@@ -100,7 +100,6 @@ export function catalogCategories(names = []) {
     "Ouro 14k": Gem,
     "Ouro 18k": Gem,
     "Titânio": CircleDollarSign,
-    Titanio: CircleDollarSign,
     Opalas: Gem,
     "Lançamentos": Star,
     Lancamentos: Star
@@ -154,8 +153,7 @@ export function subcategoryOptions(category = "") {
 export function generateLocalSku(item = {}) {
   const materialCode = {
     "titânio grau implante": "TIT",
-    "titanio grau implante": "TIT",
-    "titanio astm f136": "TIT",
+    "titânio astm f136": "TIT",
     "ouro 14k": "G14",
     "ouro 18k": "G18",
     aco: "ACO",

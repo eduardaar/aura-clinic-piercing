@@ -357,18 +357,28 @@ export async function ensureSalesOrderForAppointment(db, appointmentId, user) {
   `, [appointmentId]);
   const fallbackServiceValue = Number(appointment.service_price || 0);
   const fallbackProductValue = appointment.jewelry_id ? Number(appointment.variant_sale_value || appointment.jewelry_sale_value || 0) : 0;
-  const total = appointmentItems.length
+  const grossTotal = appointmentItems.length
     ? appointmentItems.reduce((sum, item) => sum + Number(item.procedure_price || 0) + Number(item.jewelry_unit_price || 0) * Number(item.quantity || 1), 0)
     : fallbackServiceValue + fallbackProductValue;
+  // A ordem de serviço é o snapshot documental do atendimento, não uma nova
+  // receita. Seu total precisa preservar o líquido realizado do agendamento;
+  // os itens continuam registrando o bruto para explicar o desconto.
+  const total = Number(appointment.total_value || Math.max(0, grossTotal - Number(appointment.discount_value || 0)));
   const result = await db.run(
     `INSERT INTO sales_orders
-    (client_id, appointment_id, order_type, source, status, payment_method, total_value, notes, created_by_user_id)
-    VALUES (?, ?, 'ordem_servico', 'agenda', 'concluida', ?, ?, ?, ?) RETURNING id`,
+    (client_id, appointment_id, order_type, source, status, payment_method, subtotal_value, discount_value,
+     total_value, coupon_id, coupon_code, coupon_snapshot, notes, created_by_user_id)
+    VALUES (?, ?, 'ordem_servico', 'agenda', 'concluida', ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     [
       appointment.client_id,
       appointment.id,
       appointment.remaining_payment_method || appointment.deposit_payment_method || "Pix",
+      grossTotal,
+      Number(appointment.discount_value || 0),
       total,
+      appointment.coupon_id || null,
+      appointment.coupon_code || null,
+      appointment.coupon_snapshot || null,
       `Ordem gerada automaticamente ao finalizar o atendimento #${appointment.id}`,
       user?.id || null
     ]

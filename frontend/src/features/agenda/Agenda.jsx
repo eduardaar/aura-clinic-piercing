@@ -1,7 +1,7 @@
 ﻿// Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useMemo, useState } from "react";
 import { Calendar, CheckCircle2, ChevronLeft, ChevronRight, Clock, ShieldCheck, XCircle } from "lucide-react";
-import { Button, Input, PaymentSelect, Select, StatusBadge, StatusSelect } from "../../components/common/Ui";
+import { Button, FinancialSummary, Input, PaymentSelect, Select, StatusBadge, StatusSelect } from "../../components/common/Ui";
 import { Modal, CrudHeader, ConfirmDeleteModal } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { Loading } from "../../components/common/Feedback";
@@ -481,15 +481,25 @@ function AppointmentValueSummary({ form, services, jewelry }) {
   }, [form.coupon_code, values.totalValue]);
   if (!form.service_id && !form.jewelry_id) return null;
   const finalTotal = quote?.valid ? asNumber(quote.final_amount) : values.totalValue;
+  const discountAmount = asNumber(quote?.discount_amount || 0);
+  const depositPaid = ["pago", "confirmado"].includes(String(form.deposit_status || "pendente").toLowerCase())
+    ? values.depositValue
+    : 0;
+  const summary = {
+    serviceSubtotal: values.procedureValue,
+    productSubtotal: values.jewelryValue,
+    grossTotal: values.totalValue,
+    couponCode: String(form.coupon_code || "").trim() || null,
+    discountTotal: discountAmount,
+    netTotal: finalTotal,
+    depositPaid,
+    otherPayments: 0,
+    totalPaid: depositPaid,
+    outstandingBalance: Math.max(finalTotal - depositPaid, 0)
+  };
   return (
     <div className="soft-card appointment-value-summary">
-      <span>Procedimento: <strong>{currency.format(values.procedureValue)}</strong></span>
-      <span>Joalheria: <strong>{currency.format(values.jewelryValue)}</strong></span>
-      <span>Sinal: <strong>{currency.format(values.depositValue)}</strong></span>
-      <span>Subtotal: <strong>{currency.format(values.totalValue)}</strong></span>
-      {quote?.discount_amount > 0 && <span>Cupom aplicado: <strong>−{currency.format(quote.discount_amount)}</strong></span>}
-      <span>Restante: <strong>{currency.format(Math.max(finalTotal - values.depositValue, 0))}</strong></span>
-      <span>Total final: <strong>{currency.format(finalTotal)}</strong></span>
+      <FinancialSummary summary={summary} />
       {quote?.discount_amount > 0 && <small className="form-success">Cupom aplicado com sucesso.</small>}
       {couponError && <small className="form-error">{couponError}</small>}
     </div>
@@ -765,6 +775,8 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
       status: appointment.status || "pendente",
       notes: appointment.notes || "",
       deposit_value: appointment.deposit_value || 0,
+      deposit_status: appointment.deposit_status || "pendente",
+      coupon_code: appointment.coupon_code || "",
       appointment_items: seededItems
     }, safeServices, safeJewelry));
     setPayments([{ method: appointment.remaining_payment_method || "Pix", amount: Math.max(0, Number(appointment.remaining_value || 0)), status: "pago", installments: 1, fee_amount: 0, expected_receipt_date: "" }]);
@@ -1196,7 +1208,7 @@ export function BookingAdmin() {
     });
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
-      return setProfessionalError(payload.error || "NÃ£o foi possÃ­vel salvar o profissional.");
+      return setProfessionalError(payload.error || "Não foi possível salvar o profissional.");
     }
     setProfessionalForm(defaultProfessionalForm());
     setEditingProfessionalId(null);
@@ -1212,7 +1224,7 @@ export function BookingAdmin() {
         const response = await apiFetch(`/professionals/${professional.id}`, { method: "DELETE" });
         if (!response.ok) {
           const payload = await response.json().catch(() => ({}));
-          return setProfessionalError(payload.error || "NÃ£o foi possÃ­vel excluir o profissional.");
+          return setProfessionalError(payload.error || "Não foi possível excluir o profissional.");
         }
         refreshProfessionals();
         refreshAvailability();
@@ -1257,8 +1269,8 @@ export function BookingAdmin() {
     event.preventDefault();
     setReadinessMessage("");
     if (!activeProfessionals.length) return setReadinessMessage("Cadastre e ative pelo menos um profissional antes de configurar a agenda semanal.");
-    if (!activeServices.length) return setReadinessMessage("Cadastre e ative pelo menos um serviÃ§o antes de configurar a agenda semanal.");
-    if (!activeProcedures.length) return setReadinessMessage("Cadastre e ative pelo menos um procedimento vinculado ao serviÃ§o.");
+    if (!activeServices.length) return setReadinessMessage("Cadastre e ative pelo menos um serviço antes de configurar a agenda semanal.");
+    if (!activeProcedures.length) return setReadinessMessage("Cadastre e ative pelo menos um procedimento vinculado ao serviço.");
     if (!weeklyProfessionalId) return setReadinessMessage("Escolha o profissional da agenda semanal.");
     const response = await apiFetch("/availability/generate-weekly", {
       method: "POST",
@@ -1285,7 +1297,7 @@ export function BookingAdmin() {
     if (isBookingReady) return;
     event.preventDefault();
     const missing = asArray(readinessData.missing);
-    setReadinessMessage(`Agendamento online ainda nÃ£o estÃ¡ pronto. Falta: ${missing.join(", ")}.`);
+    setReadinessMessage(`Agendamento online ainda não está pronto. Falta: ${missing.join(", ")}.`);
   }
 
   function openNewBlock() {

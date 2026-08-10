@@ -120,7 +120,7 @@ test("joia com SKU manual duplicado → 409", async () => {
   const body = {
     name: "Labret SKU Unico",
     category: "Labret",
-    material: "Titanio",
+    material: "Titânio",
     color: "Natural",
     sku: "TEST-SKU-DUP-001",
     quantity: 1,

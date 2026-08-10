@@ -43,9 +43,9 @@ export async function generateSku(db, body = {}) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "");
   const materialCode = {
-    titanio: "TIT",
-    titanioimplante: "TIT",
-    titanioastmf136: "TIT",
+    titânio: "TIT",
+    titânioimplante: "TIT",
+    titânioastmf136: "TIT",
     ouro14k: "G14",
     ouro18k: "G18",
     aco: "ACO",

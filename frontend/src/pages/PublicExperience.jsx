@@ -1609,7 +1609,6 @@ function catalogCategories(names = []) {
     "Ouro 14k": Gem,
     "Ouro 18k": Gem,
     "Titânio": CircleDollarSign,
-    Titanio: CircleDollarSign,
     Opalas: Gem,
     "Lançamentos": Star,
     Lancamentos: Star

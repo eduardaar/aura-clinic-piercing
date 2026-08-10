@@ -46,6 +46,38 @@ export function Metric({ label, value }) {
   );
 }
 
+/** @param {{ summary?: Record<string, any> }} props */
+export function FinancialSummary({ summary = {} }) {
+  const gross = Number(summary.grossTotal ?? summary.gross_total ?? summary.total_bruto ?? 0);
+  const discount = Number(summary.discountTotal ?? summary.discount_value ?? summary.discount ?? 0);
+  const net = Number(summary.netTotal ?? summary.net_total ?? summary.total_liquido ?? gross - discount);
+  const deposit = Number(summary.depositPaid ?? summary.deposit_value ?? summary.sinal ?? 0);
+  const otherPayments = Number(summary.otherPayments ?? summary.other_payments ?? 0);
+  const totalPaid = Number(summary.totalPaid ?? summary.total_paid ?? deposit + otherPayments);
+  const outstanding = Number(summary.outstandingBalance ?? summary.outstanding_balance ?? Math.max(net - totalPaid, 0));
+  const overpayment = Number(summary.overpaymentAmount ?? summary.overpayment_amount ?? Math.max(totalPaid - net, 0));
+  const status = String(summary.paymentStatus ?? summary.status ?? (outstanding > 0 ? "pendente" : "pago"));
+
+  return (
+    <section className="soft-card financial-summary">
+      <div className="section-inline-header"><strong>Resumo financeiro</strong><span className="status-badge tone-info">{status}</span></div>
+      <div className="summary-grid">
+        <span>Serviços <strong>{Number(summary.serviceSubtotal ?? summary.service_value ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong></span>
+        <span>Produtos <strong>{Number(summary.productSubtotal ?? summary.product_value ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong></span>
+        <span>Valor bruto <strong>{gross.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong></span>
+        <span>Cupom <strong>{summary.couponCode || "—"}</strong></span>
+        <span>Desconto <strong>-{discount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong></span>
+        <span>Valor líquido <strong>{net.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong></span>
+        <span>Sinal pago <strong>{deposit.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong></span>
+        <span>Outros pagamentos <strong>{otherPayments.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong></span>
+        <span>Total pago <strong>{totalPaid.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong></span>
+        <span>Saldo <strong>{outstanding.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong></span>
+        {overpayment > 0 && <span>Pagamento excedente <strong>{overpayment.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong></span>}
+      </div>
+    </section>
+  );
+}
+
 // Campo controlado: `onChange` recebe o VALOR já extraído, não o evento.
 /**
  * @param {object} props

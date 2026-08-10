@@ -45,7 +45,7 @@ hoje exige limpeza direta no banco.
 
 ### 3. Busca de joias não acha acento
 O filtro `search` de `GET /api/jewelry` usa `LIKE` sensível a caixa e acento:
-`?search=titanio` devolve zero, porque o dado é "Titânio". Os filtros de busca
+`?search=titânio` devolve zero, porque o dado é "Titânio". Os filtros de busca
 criados depois (clientes, agendamentos, vendas) usam `ILIKE` e não têm o
 problema. Corrigir exige `ILIKE` + normalização, ou `pg_trgm` com índice GIN.
 

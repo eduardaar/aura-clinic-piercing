@@ -91,15 +91,15 @@ export function cleanDisplayText(value = "") {
     .replace(/varia\?\?o/gi, "variação")
     .replace(/dispon\?vel/gi, "disponível")
     .replace(/observa\?\?o/gi, "observação")
-    .replace(/ÃƒÂ¢/g, "â")
-    .replace(/ÃƒÂ£/g, "ã")
-    .replace(/ÃƒÂ§/g, "ç")
-    .replace(/ÃƒÂ©/g, "é")
-    .replace(/ÃƒÂ­/g, "í")
-    .replace(/ÃƒÂ³/g, "ó")
-    .replace(/ÃƒÂµ/g, "õ")
-    .replace(/ÃƒÂº/g, "ú")
-    .replace(/Ã‚Â·/g, "·")
+    .replace(/ÃÂ¢/g, "â")
+    .replace(/ÃÂ£/g, "ã")
+    .replace(/ÃÂ§/g, "ç")
+    .replace(/ÃÂ©/g, "é")
+    .replace(/ÃÂ­/g, "í")
+    .replace(/ÃÂ³/g, "ó")
+    .replace(/ÃÂµ/g, "õ")
+    .replace(/ú/g, "ú")
+    .replace(/·/g, "·")
     .trim();
 }
 
@@ -107,7 +107,7 @@ export function elegantProductName(value = "") {
   const smallWords = new Set(["de", "da", "do", "das", "dos", "e", "com", "para"]);
   const normalized = cleanDisplayText(value)
     .replace(/^Joias Premium\b/i, "Joia Premium")
-    .replace(/\bTitanio\b/gi, "Titânio")
+    .replace(/\bTitânio\b/gi, "Titânio")
     .replace(/\bZirconia\b/gi, "Zircônia")
     .replace(/\s+/g, " ")
     .trim();
@@ -128,7 +128,7 @@ export function splitColorOptions(value = "") {
 
 export function normalizeJewelryMaterial(value = "") {
   const normalized = removeAccents(String(value).toLowerCase());
-  if (normalized.includes("titanio")) return "Titânio ASTM F136";
+  if (normalized.includes("titânio")) return "Titânio ASTM F136";
   if (normalized.includes("ouro 14")) return "Ouro 14k";
   if (normalized.includes("ouro 18")) return "Ouro 18k";
   if (normalized.includes("aco")) return "Aço";
