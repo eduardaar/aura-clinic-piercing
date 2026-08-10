@@ -50,7 +50,7 @@ test("APIs principais mantêm latência local mensurável", async (t) => {
   const results = {
     catalog: await measure("/catalog"),
     dashboard: await measure("/dashboard?days=30"),
-    inventory_search: await measure("/jewelry?search=titanio"),
+    inventory_search: await measure("/jewelry?search=titânio"),
     reports: await measure("/reports/stock")
   };
   t.diagnostic(`PERFORMANCE ${JSON.stringify(results)}`);

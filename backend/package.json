@@ -14,6 +14,7 @@
     "import:aura-jewelry": "node scripts/import-aura-jewelry.mjs",
     "audit:product-images": "node scripts/audit-product-images.mjs",
     "audit:catalog-sections": "node scripts/audit-catalog-sections.mjs",
+    "audit:financial": "node scripts/audit-financial.mjs",
     "test": "node tests/run-suite.mjs"
   },
   "dependencies": {

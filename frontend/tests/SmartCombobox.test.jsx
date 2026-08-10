@@ -12,7 +12,7 @@ describe("SmartCombobox", () => {
     const onChange = vi.fn();
     render(<SmartCombobox label="Joia" value="" onChange={onChange} options={options} />);
     const input = screen.getByRole("combobox");
-    fireEvent.change(input, { target: { value: "coracao titanio" } });
+    fireEvent.change(input, { target: { value: "coracao titânio" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onChange).toHaveBeenCalledWith("1");
   });

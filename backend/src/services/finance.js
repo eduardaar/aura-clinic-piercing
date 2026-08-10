@@ -14,6 +14,96 @@ function reais(valor) {
   return Math.round(Number(valor || 0) * 100) / 100;
 }
 
+// Fonte oficial da camada financeira para o fluxo de agendamento/atendimento.
+// O objetivo é receber uma leitura compatível com o modelo atual e devolver um
+// único resumo financeiro end-to-end para o mesmo atendimento.
+export function calculateOperationTotals(input = {}) {
+  const toCents = (value) => Math.round(Number(value || 0) * 100);
+  const fromCents = (value) => value / 100;
+  const serviceCents = Math.max(0, toCents(input.serviceSubtotal ?? input.service_value ?? input.serviceValue));
+  const productCents = Math.max(0, toCents(input.productSubtotal ?? input.product_value ?? input.productValue));
+  const grossCents = serviceCents + productCents;
+  const discountCents = Math.min(Math.max(0, toCents(input.discountTotal ?? input.discount_value ?? input.discount)), grossCents);
+  const netCents = grossCents - discountCents;
+
+  const payments = Array.isArray(input.payments) ? input.payments : [];
+  const confirmedPayments = payments.filter((payment) => String(payment?.status || "").toLowerCase() === "pago" || String(payment?.status || "").toLowerCase() === "confirmado");
+  const depositRows = confirmedPayments.filter((payment) => String(payment?.payment_type || payment?.type || "").toLowerCase() === "sinal" || String(payment?.payment_type || payment?.type || "").toLowerCase() === "deposit");
+  const otherRows = confirmedPayments.filter((payment) => !depositRows.includes(payment));
+  const depositCents = depositRows.reduce((sum, item) => sum + Math.max(0, toCents(item.amount ?? item.value)), 0);
+  const otherCents = otherRows.reduce((sum, item) => sum + Math.max(0, toCents(item.amount ?? item.value)), 0);
+  const totalPaidCents = depositCents + otherCents;
+  const balanceCents = netCents - totalPaidCents;
+  const outstandingCents = Math.max(0, balanceCents);
+  const overpaymentCents = Math.max(0, -balanceCents);
+  const paymentStatus = overpaymentCents > 0
+    ? "excedente"
+    : outstandingCents === 0
+      ? "liquidado"
+      : totalPaidCents > 0 ? "parcial" : "nao_pago";
+
+  return {
+    serviceSubtotal: fromCents(serviceCents),
+    productSubtotal: fromCents(productCents),
+    grossTotal: fromCents(grossCents),
+    discountTotal: fromCents(discountCents),
+    netTotal: fromCents(netCents),
+    depositPaid: fromCents(depositCents),
+    otherPayments: fromCents(otherCents),
+    totalPaid: fromCents(totalPaidCents),
+    outstandingBalance: fromCents(outstandingCents),
+    overpaymentAmount: fromCents(overpaymentCents),
+    balance: fromCents(balanceCents),
+    paymentStatus,
+    closed: outstandingCents === 0
+  };
+}
+
+export async function getAppointmentFinancialSnapshot(db, appointmentId) {
+  const appointment = await db.get("SELECT * FROM appointments WHERE id = ?", [appointmentId]);
+  if (!appointment) return null;
+  const payments = await db.all("SELECT * FROM payments WHERE appointment_id = ? AND status IN ('pago', 'confirmado')", [appointmentId]);
+  const items = await db.all("SELECT * FROM appointment_items WHERE appointment_id = ?", [appointmentId]);
+  const itemServiceSubtotal = items.reduce((sum, item) => sum + Number(item.procedure_price || 0), 0);
+  const itemProductSubtotal = items.reduce((sum, item) => sum + Number(item.jewelry_unit_price || 0) * Number(item.quantity || 1), 0);
+  const hasPricedItems = items.length > 0 && itemServiceSubtotal + itemProductSubtotal > 0;
+  const serviceSubtotal = hasPricedItems
+    ? itemServiceSubtotal
+    : Number(appointment.service_value || 0);
+  const productSubtotal = hasPricedItems
+    ? itemProductSubtotal
+    : Number(appointment.jewelry_value || 0);
+  const discountTotal = Number(appointment.discount_value || 0);
+  const storedGross = Number(appointment.subtotal_value || 0) || Number(appointment.total_value || 0) + discountTotal;
+  const snapshot = calculateOperationTotals({
+    serviceSubtotal: serviceSubtotal + productSubtotal > 0 ? serviceSubtotal : storedGross,
+    productSubtotal,
+    discountTotal,
+    payments: payments.map((entry) => ({
+      status: entry.status,
+      payment_type: entry.payment_type,
+      amount: entry.amount
+    }))
+  });
+  return {
+    appointmentId,
+    appointmentTotal: Number(appointment.total_value || 0),
+    appointmentNetTotal: Number(snapshot.netTotal || appointment.total_value || 0),
+    couponCode: appointment.coupon_code || null,
+    discountTotal: snapshot.discountTotal,
+    grossTotal: snapshot.grossTotal,
+    netTotal: snapshot.netTotal,
+    depositPaid: snapshot.depositPaid,
+    otherPayments: snapshot.otherPayments,
+    totalPaid: snapshot.totalPaid,
+    outstandingBalance: snapshot.outstandingBalance,
+    overpaymentAmount: snapshot.overpaymentAmount,
+    balance: snapshot.balance,
+    paymentStatus: snapshot.paymentStatus,
+    items
+  };
+}
+
 export async function buildFinanceReport(db) {
   const today = localDate();
   const month = today.slice(0, 7);
