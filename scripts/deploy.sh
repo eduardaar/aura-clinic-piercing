@@ -201,16 +201,29 @@ env_file="${REMOTE_BACKEND}/.env"
 touch "${env_file}"
 chmod 600 "${env_file}"
 
+# O Docker Compose interpola `$VAR` em valores sem aspas ou com aspas duplas.
+# A chave de produção do Asaas começa com `$aact_prod_`; gravá-la crua faria o
+# Compose procurar uma variável `aact_prod_...` e entregar uma chave vazia ao
+# container. A sintaxe com aspas simples preserva o valor literalmente. Barra
+# invertida e apóstrofo também são escapados conforme o formato de env do
+# Compose, para que isto valha para todos os secrets sincronizados.
+dotenv_literal() {
+  printf "'"
+  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e "s/'/\\\\'/g"
+  printf "'"
+}
+
 while IFS='=' read -r key value; do
   [ -n "${key}" ] || continue
+  literal_value="$(dotenv_literal "${value}")"
   if grep -q "^${key}=" "${env_file}"; then
     # Reescreve no lugar. Chave e valor vão por variável de ambiente, e não
-    # interpolados no padrão: uma chave do Asaas contém '$', '/' e ':', que
-    # quebrariam ou seriam reinterpretados dentro de um sed.
-    NEW_VALUE="${value}" KEY="${key}" perl -i -pe 's/^\Q$ENV{KEY}\E=.*/"$ENV{KEY}=$ENV{NEW_VALUE}"/e' "${env_file}"
+    # interpolados no padrão do Perl; URL e chaves podem conter caracteres
+    # que seriam reinterpretados pelo comando de substituição.
+    NEW_VALUE="${literal_value}" KEY="${key}" perl -i -pe 's/^\Q$ENV{KEY}\E=.*/"$ENV{KEY}=$ENV{NEW_VALUE}"/e' "${env_file}"
     echo "   atualizado: ${key}"
   else
-    printf '%s=%s\n' "${key}" "${value}" >> "${env_file}"
+    printf '%s=%s\n' "${key}" "${literal_value}" >> "${env_file}"
     echo "   adicionado: ${key}"
   fi
 done < "${SECRETS_TMP}"

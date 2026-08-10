@@ -360,6 +360,10 @@ produção e funcionando. O corolário incômodo é o oposto: **não existe como
 apagar uma variável pelo pipeline** — para remover uma chave do servidor é
 preciso editar o `.env` dele à mão.
 
+Os valores são gravados entre aspas simples: isso é necessário porque a chave
+de produção do Asaas começa com `$`, que o Docker Compose interpolaria e
+transformaria em valor vazio se estivesse sem aspas.
+
 ### Checklist de virada para produção
 
 A ordem importa: os passos 1–3 preparam, o 4 vira a chave e os 5–7 provam que
