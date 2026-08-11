@@ -115,7 +115,7 @@ router.post("/api/sales-orders/public", withDb(async (req, res, db) => {
 }));
 
 router.patch("/api/sales-orders/:id", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "finance", "reception"])) return;
+  if (!requireRole(req, res, ["admin", "finance", "reception", "piercer"])) return;
   const current = await db.get("SELECT * FROM sales_orders WHERE id = ?", [req.params.id]);
   if (!current) return res.status(404).json({ error: "Venda não encontrada." });
   await db.run(

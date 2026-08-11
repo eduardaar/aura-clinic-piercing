@@ -138,6 +138,8 @@ export function defaultDigitalTerm() {
     document_number: "",
     birth_date: "",
     whatsapp: "",
+    phone: "",
+    email: "",
     instagram: "",
     address: "",
     procedure: "",

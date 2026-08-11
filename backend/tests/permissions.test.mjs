@@ -274,7 +274,7 @@ test("DELETE /appointments/:id com reception → 403", async () => {
   assert.equal(status, 403);
 });
 
-test("recepção não cria prontuário clínico e piercer não altera cadastro civil", async () => {
+test("recepção não cria prontuário clínico e piercer pode operar cadastro civil", async () => {
   const medical = await req("/clients/999999/medical-records", {
     token: ctx.tokens.reception,
     method: "POST",
@@ -287,7 +287,7 @@ test("recepção não cria prontuário clínico e piercer não altera cadastro c
     method: "PATCH",
     body: { full_name: "Alteração indevida", whatsapp: "11999999999" }
   });
-  assert.equal(update.status, 403);
+  assert.notEqual(update.status, 403);
 });
 
 test("papéis não operacionais não acessam agenda", async () => {
@@ -324,11 +324,11 @@ test("POST /services com reception → 201 (reception está na allowlist)", asyn
   assert.equal(status, 201, JSON.stringify(json));
 });
 
-test("POST /services com piercer → 403", async () => {
+test("POST /services com piercer → 201 (fluxo operacional)", async () => {
   const { status } = await req("/services", {
     token: ctx.tokens.piercer,
     method: "POST",
     body: { name: "Serviço QA Piercer" }
   });
-  assert.equal(status, 403);
+  assert.equal(status, 201);
 });

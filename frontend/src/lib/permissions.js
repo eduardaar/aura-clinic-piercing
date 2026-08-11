@@ -48,7 +48,7 @@ export function allowedPagesForRole(role) {
     admin: ["dashboard", "agenda", "communications", "catalog", "catalog-customization", "sales", "finance", "reports", "client-center", "clients", "terms", "postcare", "admin", "integrations", "support", "meu-plano"],
     reception: ["agenda", "communications", "sales", "reports", "client-center", "clients"],
     finance: ["finance", "reports", "sales"],
-    piercer: ["agenda", "sales", "client-center", "clients", "postcare"]
+    piercer: ["agenda", "communications", "sales", "client-center", "clients", "terms", "postcare"]
   };
   // Fallback SEGURO para papéis desconhecidos: acesso mínimo, sem áreas
   // administrativas (admin/finance).

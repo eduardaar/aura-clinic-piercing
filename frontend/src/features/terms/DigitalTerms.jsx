@@ -43,6 +43,8 @@ export function DigitalTerms() {
       client_id: selectedAppointment.client_id,
       full_name: current.full_name || personName(selectedAppointment),
       whatsapp: current.whatsapp || selectedAppointment.whatsapp,
+      phone: current.phone || selectedAppointment.phone || "",
+      email: current.email || selectedAppointment.email || "",
       instagram: current.instagram || selectedAppointment.instagram || "",
       procedure: current.procedure || selectedAppointment.procedure,
       piercing_region: current.piercing_region || selectedAppointment.piercing_region,
@@ -143,6 +145,8 @@ export function DigitalTerms() {
             <Input label="CPF / RG" value={form.document_number} onChange={(value) => updateField("document_number", value)} />
             <Input type="date" label="Data De Nascimento" value={form.birth_date} onChange={(value) => updateField("birth_date", value)} />
             <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => updateField("whatsapp", value)} />
+            <Input label="Telefone" value={form.phone} onChange={(value) => updateField("phone", value)} />
+            <Input type="email" label="E-mail" value={form.email} onChange={(value) => updateField("email", value)} />
             <Input label="Instagram" value={form.instagram} onChange={(value) => updateField("instagram", value)} />
           </div>
           <Input label="Endereço" value={form.address} onChange={(value) => updateField("address", value)} />
@@ -184,33 +188,6 @@ export function DigitalTerms() {
           </div>
         </section>
 
-        <section className="term-section">
-          <h3>Informações do Atendimento</h3>
-          <div className="form-grid">
-            <Input label="Procedimento" value={form.procedure} onChange={(value) => updateField("procedure", value)} />
-            <Input label="Região da Perfuração" value={form.piercing_region} onChange={(value) => updateField("piercing_region", value)} />
-            <Input label="Local da Aplicação" value={form.form_data.information.application_location} onChange={(value) => updateFormData("information", "application_location", value)} />
-            <Input label="Joia" value={form.form_data.information.jewelry} onChange={(value) => updateFormData("information", "jewelry", value)} />
-            <Input label="Valor" value={form.form_data.information.value} onChange={(value) => updateFormData("information", "value", value)} />
-          </div>
-          <label className="term-notes">
-            Observação
-            <textarea
-              value={form.form_data.information.observation}
-              onChange={(event) => updateFormData("information", "observation", event.target.value)}
-              placeholder="Alergias, medicamentos, gestação, queloide, observações clínicas ou qualquer detalhe importante."
-            />
-          </label>
-          <label className="term-notes">
-            Declaração de Saúde e Observações
-            <textarea
-              value={form.health_declaration}
-              onChange={(event) => updateField("health_declaration", event.target.value)}
-              placeholder="Texto complementar livre, se necessário."
-            />
-          </label>
-        </section>
-
         <section className="term-section term-consent-section">
           <label className="checkbox-line">
             <input type="checkbox" checked={form.orientations_confirmed} onChange={(event) => updateField("orientations_confirmed", event.target.checked)} />
@@ -241,6 +218,19 @@ export function DigitalTerms() {
         </section>
 
         <SignaturePad onChange={(signature) => updateField("signature_data_url", signature)} clearKey={form.appointment_id || "empty"} />
+        <section className="term-section term-operational-section">
+          <h3>Informações do Atendimento</h3>
+          <p className="field-hint">Contexto operacional do atendimento. Os valores financeiros oficiais continuam no agendamento, pagamentos e financeiro.</p>
+          <div className="form-grid">
+            <Input label="Procedimento" value={form.procedure} onChange={(value) => updateField("procedure", value)} />
+            <Input label="Região da Perfuração" value={form.piercing_region} onChange={(value) => updateField("piercing_region", value)} />
+            <Input label="Local da Aplicação" value={form.form_data.information.application_location} onChange={(value) => updateFormData("information", "application_location", value)} />
+            <Input label="Joia" value={form.form_data.information.jewelry} onChange={(value) => updateFormData("information", "jewelry", value)} />
+            <Input label="Valor informado no contexto" value={form.form_data.information.value} onChange={(value) => updateFormData("information", "value", value)} />
+          </div>
+          <label className="term-notes">Observação operacional<textarea value={form.form_data.information.observation} onChange={(event) => updateFormData("information", "observation", event.target.value)} /></label>
+          <label className="term-notes">Declaração de Saúde e Observações<textarea value={form.health_declaration} onChange={(event) => updateField("health_declaration", event.target.value)} /></label>
+        </section>
         {error && <span className="form-error">{error}</span>}
         <div className="modal-actions">
           {fileError && <span className="form-error" role="alert">{fileError}</span>}

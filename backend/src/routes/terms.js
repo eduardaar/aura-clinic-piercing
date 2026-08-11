@@ -7,6 +7,19 @@ import { parsePaging, pageResponse } from "../services/pagination.js";
 
 const router = Router();
 
+function meaningful(value) {
+  return value !== null && value !== undefined && String(value).trim() !== "";
+}
+
+async function syncClientRegistration(db, client, body) {
+  const candidates = { full_name: body.full_name, phone: body.phone, whatsapp: body.whatsapp, instagram: body.instagram, email: body.email, birth_date: body.birth_date, cpf: body.document_number };
+  const next = { ...client };
+  for (const [field, value] of Object.entries(candidates)) if (meaningful(value)) next[field] = String(value).trim();
+  await db.run(`UPDATE clients SET full_name=?, phone=?, whatsapp=?, instagram=?, email=?, birth_date=?, cpf=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+    [next.full_name, next.phone || "", next.whatsapp || "", next.instagram || "", next.email || "", next.birth_date || "", next.cpf || "", client.id]);
+  return db.get("SELECT * FROM clients WHERE id=?", [client.id]);
+}
+
 // Whitelist de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
 const TERM_SORTABLE = {
   signed_at: "t.signed_at",
@@ -67,8 +80,12 @@ router.post("/api/digital-terms", withFeature("digital_terms", async (req, res, 
     return res.status(404).json({ error: "Agendamento nao encontrado." });
   }
 
-  const client = body.client_id
-    ? await db.get("SELECT * FROM clients WHERE id = ?", [body.client_id])
+  const linkedClientId = appointment?.client_id || body.client_id;
+  if (appointment?.client_id && body.client_id && String(appointment.client_id) !== String(body.client_id)) {
+    return res.status(409).json({ error: "A anamnese deve usar o cliente vinculado ao agendamento." });
+  }
+  let client = linkedClientId
+    ? await db.get("SELECT * FROM clients WHERE id = ?", [linkedClientId])
     : await upsertClient(db, {
       full_name: body.full_name,
       whatsapp: body.whatsapp || "",
@@ -79,6 +96,7 @@ router.post("/api/digital-terms", withFeature("digital_terms", async (req, res, 
   if (!client?.id) {
     return res.status(400).json({ error: "Nao foi possivel vincular o cliente ao termo." });
   }
+  client = await syncClientRegistration(db, client, body);
 
   const result = await db.run(
     `INSERT INTO digital_terms

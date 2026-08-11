@@ -40,7 +40,7 @@ function clientResponse(client) {
 }
 
 router.post("/api/clients", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
   const b = normalizeClientBody(req.body);
   req.body = { ...req.body, full_name: b.full_name, whatsapp: b.whatsapp };
   if (!validateBody(clientCreateSchema, req, res)) return;
@@ -58,7 +58,7 @@ router.post("/api/clients", withDb(async (req, res, db) => {
 }));
 
 async function updateClient(req, res, db) {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
   const current = await db.get("SELECT * FROM clients WHERE id = ?", [req.params.id]);
   if (!current) return res.status(404).json({ error: "Cliente nao encontrado." });
   const b = normalizeClientBody(req.body, current);

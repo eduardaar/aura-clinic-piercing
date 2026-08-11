@@ -1,6 +1,6 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useState } from "react";
-import { Button, Input, Metric, Select, StatusBadge } from "../../components/common/Ui";
+import { Button, FinancialSummary, Input, Metric, Select, StatusBadge } from "../../components/common/Ui";
 import { Modal, CrudHeader } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { asArray, formatDate } from "../../lib/utils";
@@ -458,15 +458,7 @@ export function SalesWorkspace() {
               </article>
             )) : <p className="empty-state">Nenhum item adicionado ainda.</p>}
           </div>
-          <div className="soft-card sales-financial-summary">
-            <strong>Resumo financeiro</strong>
-            <span>Produtos <b>{currency.format(productSubtotal)}</b></span>
-            <span>Serviços <b>{currency.format(serviceSubtotal)}</b></span>
-            <span>Subtotal <b>{currency.format(saleSubtotal)}</b></span>
-            {priceQuote?.promotion_discount > 0 && <span>Promoções <b>−{currency.format(priceQuote.promotion_discount)}</b></span>}
-            {priceQuote?.coupon_discount > 0 && <span>Cupom <b>−{currency.format(priceQuote.coupon_discount)}</b></span>}
-            <span className="total">Total final <b>{currency.format(saleTotal)}</b></span>
-          </div>
+          <FinancialSummary summary={{ grossTotal: saleSubtotal, serviceSubtotal, productSubtotal, discountTotal: Number(priceQuote?.promotion_discount || 0) + Number(priceQuote?.coupon_discount || 0), netTotal: saleTotal, depositPaid: 0, otherPayments: 0, totalPaid: 0, outstandingBalance: saleTotal, paymentStatus: "pendente", couponCode: priceQuote?.coupon?.code || form.coupon_code || "" }} />
           <div className="catalog-coupon-field">
             <Input label="Cupom" value={form.coupon_code || ""} onChange={(value) => { setForm({ ...form, coupon_code: value.toUpperCase() }); setPriceQuote(null); setCouponMessage(""); }} />
             <Button type="button" variant="secondary" onClick={applyCoupon} disabled={!form.coupon_code?.trim() || !items.length}>Aplicar cupom</Button>
