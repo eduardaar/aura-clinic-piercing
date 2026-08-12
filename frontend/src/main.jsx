@@ -1,7 +1,7 @@
-import React, { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Bell, Calendar, Menu, PanelLeftClose, PanelLeftOpen, UserRound } from "lucide-react";
+import { Bell, Calendar, ChevronDown, Menu, MessageCircle, PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
 import "./styles.css";
 import "./styles/topnav.css";
 import "./styles/landing.css";
@@ -82,6 +82,8 @@ function App() {
     });
   }
   const [alertsOpen, setAlertsOpen] = useState(false);
+  const [globalSearch, setGlobalSearch] = useState("");
+  const globalSearchRef = useRef(null);
   const [alertsData, setAlertsData] = useState({ count: 0, items: [] });
   const [alertsLoading, setAlertsLoading] = useState(false);
   // Identidade da clínica logada (nome + logo), para o app exibir a marca do
@@ -128,6 +130,17 @@ function App() {
   useEffect(() => {
     setUiTheme(applyUiTheme(readUiTheme(normalizedSession?.user?.id)));
   }, [normalizedSession?.user?.id]);
+
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        globalSearchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   function changeUiTheme(nextTheme) {
     setUiTheme(saveUiTheme(normalizedSession?.user?.id, nextTheme));
@@ -314,29 +327,34 @@ function App() {
             <Menu size={20} className="nav-toggle-mobile" />
             {navCollapsed ? <PanelLeftOpen size={20} className="nav-toggle-desk" /> : <PanelLeftClose size={20} className="nav-toggle-desk" />}
           </button>
-          <div className="topbar-title">
-            <span className="eyebrow">{brandName}</span>
-            <h1>{activePage === "dashboard" ? `Olá, ${firstName(normalizedSession.user?.name || "Usuário")}!` : pageTitle(activePage)}</h1>
-            {activePage === "dashboard" && <p>Bem-vindo(a) ao painel administrativo{identity?.store_name ? ` da ${identity.store_name}` : ""}.</p>}
+          <form className="global-search" role="search" onSubmit={(event) => event.preventDefault()}>
+            <Search size={19} aria-hidden="true" />
+            <input
+              ref={globalSearchRef}
+              type="search"
+              value={globalSearch}
+              onChange={(event) => setGlobalSearch(event.target.value)}
+              placeholder="Buscar cliente, agendamento, serviço…"
+              aria-label="Busca global"
+            />
+            <kbd>⌘ K</kbd>
+          </form>
+          <div className="topbar-page-context">
+            <span>{brandName}</span>
+            <strong>{activePage === "dashboard" ? "Visão geral" : pageTitle(activePage)}</strong>
           </div>
           <div className="topbar-actions">
             <button className="notification-button" aria-label="Notificações" onClick={openAlerts}>
               <Bell size={19} />
               {asNumber(alertsData.count) > 0 && <span>{asNumber(alertsData.count)}</span>}
             </button>
-            <div className="date-card">
-              <Calendar size={21} />
-              <div>
-                <strong>{new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}</strong>
-                <span>{new Date().toLocaleDateString("pt-BR", { weekday: "long" })}, {new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
-              </div>
-            </div>
-          {/* Primeiro nome apenas: o nome completo somado ao papel não cabia no
-              chip e era cortado no meio da palavra. */}
-          <div className="user-chip" title={`${normalizedSession.user?.name || "Usuário"} · ${roleLabel(normalizedSession.user?.role)}`}>
-            <UserRound size={16} />
-            {firstName(normalizedSession.user?.name || "Usuário")} · {roleLabel(normalizedSession.user?.role)}
-          </div>
+            <button type="button" className="topbar-icon-action" onClick={() => navigate("agenda")} aria-label="Abrir agenda" title="Agenda"><Calendar size={20} /></button>
+            <button type="button" className="topbar-icon-action" onClick={() => navigate("communications")} aria-label="Abrir comunicações" title="Comunicações"><MessageCircle size={20} /></button>
+            <button type="button" className="user-chip" onClick={() => navigate("settings")} title={`${normalizedSession.user?.name || "Usuário"} · ${roleLabel(normalizedSession.user?.role)}`}>
+              <span className="user-avatar">{firstName(normalizedSession.user?.name || "U").charAt(0).toUpperCase()}</span>
+              <span className="user-chip-copy"><strong>{normalizedSession.user?.name || "Usuário"}</strong><small>{roleLabel(normalizedSession.user?.role)}</small></span>
+              <ChevronDown size={16} aria-hidden="true" />
+            </button>
           </div>
         </header>
         {/* Único elemento com rolagem: o menu lateral e o topo ficam fixos. */}
