@@ -97,7 +97,7 @@ export function JewelryCards({ items, onOpen, onEdit, onMovement, onArchive }) {
 
 export function Inventory2({ area = "produtos" }) {
   const [view, setView] = useState("table");
-  const [sectionTab, setSectionTab] = useState(area === "estoque" ? "unidades" : "produtos");
+  const [sectionTab, setSectionTab] = useState("produtos");
   const [inventoryMode] = useState("internal");
   const [editingJewelry, setEditingJewelry] = useState(null);
   const [movementTarget, setMovementTarget] = useState(null);
@@ -207,7 +207,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
     { id: "inteligencia", label: "Inteligência", icon: SlidersHorizontal }
   ];
   const mainTabs = area === "estoque"
-    ? allTabs.filter((tab) => ["unidades", "abc", "inteligencia"].includes(tab.id))
+    ? allTabs.filter((tab) => tab.id === "produtos")
     : allTabs.filter((tab) => ["produtos", "categorias"].includes(tab.id));
 
   useEffect(() => {
