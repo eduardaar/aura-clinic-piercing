@@ -59,9 +59,8 @@
    sumir sobre o fundo preto. Cada âncora define a própria cor. */
 .au-nav a { text-decoration: none; }
 
-/* A landing abre e fecha com o mesmo azul-escuro da faixa de valor. Login e
-   cadastro permanecem claros para não transformar telas de tarefa em peça de
-   marketing. */
+/* Todas as telas públicas compartilham o azul-escuro da landing: navegar para
+   entrar ou criar uma conta não quebra a identidade visual da plataforma. */
 .au-nav.au-nav-dark {
   background: var(--ink);
   border-bottom-color: rgb(255 255 255 / .12);
