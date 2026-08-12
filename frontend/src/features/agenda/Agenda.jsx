@@ -1595,8 +1595,9 @@ export function BookingAdmin({ onBack, initialTab }) {
           <article className="panel">
             <div className="panel-heading">
               <h2>Agenda semanal</h2>
-              <span>Salve os horários fixos antes de liberar o link público.</span>
+              <span>Defina os horários fixos de cada profissional.</span>
             </div>
+            {readinessMessage && <p className={readinessMessage.includes("sucesso") ? "form-success" : "form-error"}>{readinessMessage}</p>}
             <form onSubmit={saveWeeklyAvailability}>
               <div className="form-grid">
                 <Select label="Profissional" value={weeklyProfessionalId} onChange={(value) => setWeeklyProfessionalId(value)}>
