@@ -75,12 +75,12 @@
 .au-nav.au-nav-dark .au-nav-login:hover { color: var(--gold-light); }
 
 .au-nav.au-nav-dark .au-nav-cta {
-  background: var(--gold);
-  color: var(--ink);
-  box-shadow: 0 10px 24px rgb(0 0 0 / .2);
+  background: #25d366;
+  color: #073b20;
+  box-shadow: 0 10px 24px rgb(0 0 0 / .24);
 }
 
-.au-nav.au-nav-dark .au-nav-cta:hover { background: var(--gold-light); }
+.au-nav.au-nav-dark .au-nav-cta:hover { background: #32df76; }
 .au-nav.au-nav-dark a:focus-visible { outline-color: var(--gold-light); }
 
 .au-nav-inner {

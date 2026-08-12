@@ -98,7 +98,7 @@ function HeroSection({ content }) {
           <h1>{content.title}</h1>
           <p>{content.subtitle}</p>
           <div className="au-l-hero-actions">
-            <a className="au-l-btn au-l-btn-primary" href={content.primary_href}>
+            <a className="au-l-btn au-l-btn-primary au-l-btn-conversion" href={content.primary_href}>
               {content.primary_label} <ChevronRight size={18} aria-hidden="true" />
             </a>
             {content.secondary_label && (
@@ -321,7 +321,7 @@ function PlansSection({ content, plans }) {
                 {visibleFeatures(plan).map((f) => <li key={f}>{featureLabel(f)}</li>)}
               </ul>
               {asArray(plan.features).length > 5 && <span className="au-l-plan-more">E mais recursos para sua operação.</span>}
-              <a className="au-l-btn au-l-btn-plan" href={content.cta_href}>{content.cta_label}</a>
+              <a className="au-l-btn au-l-btn-plan au-l-btn-conversion" href={content.cta_href}>{content.cta_label}</a>
             </article>
           ))}
         </div>
@@ -339,7 +339,7 @@ function PlansSection({ content, plans }) {
                 <tbody>{allFeatures.map((feature) => <tr key={feature}><th>{featureLabel(feature)}</th>{plans.map((plan) => <td key={plan.code}>{asArray(plan.features).includes(feature) ? <Check size={18} aria-label="Incluído" /> : "—"}</td>)}</tr>)}</tbody>
               </table>
             </div>
-            <div className="au-l-plan-modal-actions"><button type="button" className="au-l-btn au-l-btn-ghost" onClick={() => setComparisonOpen(false)}>Fechar</button><a className="au-l-btn au-l-btn-primary" href={content.cta_href}>{content.cta_label}</a></div>
+            <div className="au-l-plan-modal-actions"><button type="button" className="au-l-btn au-l-btn-ghost" onClick={() => setComparisonOpen(false)}>Fechar</button><a className="au-l-btn au-l-btn-primary au-l-btn-conversion" href={content.cta_href}>{content.cta_label}</a></div>
           </section>
         </div>
       )}
@@ -359,7 +359,7 @@ function ClosingSection({ content }) {
       <div className="au-l-close-inner">
         <div className="au-l-close-copy">
           <h2>{content.title}</h2>
-          <a className="au-l-btn au-l-btn-primary" href={content.primary_href}>
+          <a className="au-l-btn au-l-btn-primary au-l-btn-conversion" href={content.primary_href}>
             {content.primary_label} <ChevronRight size={18} aria-hidden="true" />
           </a>
           {content.note && <span className="au-l-note">{content.note}</span>}

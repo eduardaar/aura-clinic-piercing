@@ -153,6 +153,23 @@
   transform: translateY(-1px);
 }
 
+/* Verde é reservado para a próxima ação comercial: abrir o teste gratuito.
+   Assim ele cria variedade, mas não compete com navegação e ações de leitura. */
+.au-l-root .au-l-btn-conversion {
+  background: #25d366;
+  border-color: #25d366;
+  color: #073b20;
+  box-shadow: 0 10px 24px rgb(7 59 32 / .22);
+}
+
+.au-l-root .au-l-btn-conversion:hover,
+.au-l-root .au-l-btn-conversion:focus-visible {
+  background: #32df76;
+  border-color: #32df76;
+  color: #073b20;
+  box-shadow: 0 14px 28px rgb(7 59 32 / .28);
+}
+
 .au-l-root .au-l-btn-ghost {
   background: transparent;
   color: var(--ink);
@@ -547,6 +564,13 @@
   background: var(--brown-dark);
   border-color: var(--brown-dark);
 }
+
+.au-l-root .au-l-btn-plan.au-l-btn-conversion { background: #25d366; border-color: #25d366; color: #073b20; }
+.au-l-root .au-l-btn-plan.au-l-btn-conversion:hover,
+.au-l-root .au-l-btn-plan.au-l-btn-conversion:focus-visible { background: #32df76; border-color: #32df76; color: #073b20; }
+.au-l-root .au-l-plan.is-featured .au-l-btn-plan.au-l-btn-conversion { background: #25d366; border-color: #25d366; color: #073b20; }
+.au-l-root .au-l-plan.is-featured .au-l-btn-plan.au-l-btn-conversion:hover,
+.au-l-root .au-l-plan.is-featured .au-l-btn-plan.au-l-btn-conversion:focus-visible { background: #32df76; border-color: #32df76; color: #073b20; }
 
 /* ---------- fechamento + footer (bloco único) ------------------------ */
 
