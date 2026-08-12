@@ -174,7 +174,7 @@ router.patch("/api/automation-rules/:id", withFeature("message_templates", async
 
 router.post("/api/automations/process", withFeature("message_templates", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
-  res.json({ ok: true, ready: await processDueCommunications(db, req.body?.limit) });
+  res.json({ ok: true, ready: await processDueCommunications(db, req.body?.limit, req.tenant.id) });
 }));
 
 router.get("/api/automation-runs", withFeature("message_templates", async (req, res, db) => {

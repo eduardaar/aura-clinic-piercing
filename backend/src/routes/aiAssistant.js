@@ -1,9 +1,15 @@
 import { Router } from "express";
+import crypto from "crypto";
 import { z } from "zod";
 import { withDb } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
 import { AiAssistantError, AI_TASKS, getAiProviderStatus, runAiAssistantTask } from "../services/aiAssistant.js";
+import {
+  consumeCommunicationCredit,
+  releaseCommunicationCredit,
+  reserveCommunicationCredits
+} from "../services/communicationCredits.js";
 
 const router = Router();
 
@@ -30,14 +36,27 @@ router.get("/api/ai-assistant/status", withDb(async (req, res) => {
   res.json(getAiProviderStatus());
 }));
 
-router.post("/api/ai-assistant", withDb(async (req, res) => {
+router.post("/api/ai-assistant", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   if (!validateBody(assistantSchema, req, res)) return;
+  let reservation = null;
   try {
     // Não há ferramentas nem instruções livres: o serviço aceita apenas as
     // tarefas allowlisted e retorna texto para revisão humana.
-    res.json(await runAiAssistantTask(req.body));
+    reservation = await reserveCommunicationCredits(db, req.tenant.id, {
+      channel: "ai",
+      credits: 1,
+      referenceKey: `ai:${crypto.randomUUID()}`,
+      metadata: { task: req.body.task, user_id: req.user.id }
+    });
+    const result = await runAiAssistantTask(req.body);
+    await consumeCommunicationCredit(db, {
+      reservationId: reservation.id,
+      metadata: { provider: result.provider, usage: result.usage || {} }
+    });
+    res.json(result);
   } catch (error) {
+    if (reservation) await releaseCommunicationCredit(db, { reservationId: reservation.id, metadata: { reason: "provider_failure" } });
     handleAiError(res, error);
   }
 }));

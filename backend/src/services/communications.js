@@ -1,5 +1,10 @@
 import { normalizeWhatsappNumber, whatsappLink } from "./notifications.js";
-import { sendWhatsAppCloudText } from "./whatsappCloud.js";
+import { sendWhatsAppCloudText, whatsappCloudStatus } from "./whatsappCloud.js";
+import {
+  consumeCommunicationCredit,
+  releaseCommunicationCredit,
+  reserveCommunicationCredits
+} from "./communicationCredits.js";
 
 export const TEMPLATE_VARIABLES = [
   "cliente", "profissional", "estudio", "servico", "joias", "data", "horario", "total",
@@ -36,7 +41,7 @@ export async function queueTemplateNotification(db, {
   return uniqueKey ? db.get("SELECT * FROM notification_queue WHERE unique_key=?", [uniqueKey]) : null;
 }
 
-export async function processDueCommunications(db, limit = 100) {
+export async function processDueCommunications(db, limit = 100, tenantId = null) {
   const due = await db.all(
     "SELECT * FROM notification_queue WHERE status='pending' AND scheduled_at <= ? ORDER BY scheduled_at, id LIMIT ?",
     [new Date().toISOString(), Math.min(Math.max(Number(limit || 100), 1), 500)]
@@ -45,17 +50,34 @@ export async function processDueCommunications(db, limit = 100) {
     let status = "ready";
     let details = { channel: item.channel, automatic_send: false };
     let lastError = "";
+    let reservation = null;
     try {
       // `null` significa que a clínica ainda não ativou a Cloud API: mantém a
       // mensagem pronta para abertura manual pelo wa.me, como era antes.
+      // A mensagem manual continua gratuita para a plataforma. Quando existe
+      // envio oficial, a reserva é feita ANTES da chamada externa: assim não
+      // há mensagem paga sem saldo, nem saldo perdido em falha da Meta.
+      const officialWhatsApp = item.channel === "whatsapp" ? await whatsappCloudStatus(db) : null;
+      if (officialWhatsApp?.enabled && tenantId) {
+        reservation = await reserveCommunicationCredits(db, tenantId, {
+          channel: "whatsapp",
+          credits: 1,
+          referenceKey: `notification:${item.id}:whatsapp`,
+          metadata: { notification_id: item.id, provider: "whatsapp_cloud" }
+        });
+      }
       const sent = item.channel === "whatsapp"
         ? await sendWhatsAppCloudText(db, { destination: item.destination, message: item.message })
         : null;
       if (sent) {
+        if (reservation) await consumeCommunicationCredit(db, { reservationId: reservation.id, metadata: { message_id: sent.messageId } });
         status = "sent";
         details = { channel: item.channel, automatic_send: true, provider: "whatsapp_cloud", message_id: sent.messageId };
       }
     } catch (error) {
+      // Se a reserva foi criada mas a chamada ao provedor falhou, o próximo
+      // processamento não pode encontrar um saldo artificialmente menor.
+      if (reservation) await releaseCommunicationCredit(db, { reservationId: reservation.id, metadata: { reason: "provider_failure" } });
       status = "failed";
       lastError = error?.message || "Falha ao enviar pela API oficial do WhatsApp.";
       details = { channel: item.channel, automatic_send: true, provider: "whatsapp_cloud", error: lastError };
