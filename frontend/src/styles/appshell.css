@@ -106,12 +106,7 @@
 /* Marca — compacta de propósito. A versão anterior usava 46px fixos e o nome
    de um tenant com 3 palavras cobria o primeiro item do menu. */
 .sidebar-brand {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 12px;
-  min-height: var(--shell-topbar-h);
-  padding: 0 18px;
+  display: none;
   margin: 0;
   border: 0;
   border-radius: 0;
@@ -169,38 +164,38 @@
 .sidebar nav {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 14px 12px 8px;
+  gap: 5px;
+  padding: 28px 10px 14px;
   margin: 0;
   flex: 1;
 }
 
 .nav-group-label {
-  padding: 14px 10px 6px;
+  padding: 22px 14px 7px;
   font-family: var(--body-font);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: .14em;
   text-transform: uppercase;
-  color: rgb(189 203 217 / .46);
+  color: rgb(226 234 243 / .67);
 }
-.nav-group-label:first-child { padding-top: 2px; }
+.nav-group-label:first-child { padding-top: 6px; }
 
 .sidebar nav button {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 14px;
   width: 100%;
-  min-height: 40px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 9px;
+  min-height: 48px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: 11px;
   background: transparent;
   box-shadow: none;
   color: var(--shell-nav-text);
   font-family: var(--body-font);
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 16px;
+  font-weight: 600;
   letter-spacing: 0;
   text-align: left;
   text-transform: none;
@@ -211,14 +206,14 @@
 
 .sidebar nav button svg {
   flex: none;
-  width: 18px;
-  height: 18px;
-  opacity: .72;
+  width: 21px;
+  height: 21px;
+  opacity: .86;
   transition: opacity .15s ease;
 }
 
 .sidebar nav button:hover {
-  background: rgba(255, 255, 255, .055);
+  background: rgba(255, 255, 255, .07);
   color: #f8fafc;
   transform: none;
 }
@@ -227,8 +222,9 @@
 /* Estado ativo discreto: barra dourada + fundo suave. O preenchimento sólido
    anterior competia visualmente com o conteúdo da página. */
 .sidebar nav button.active {
-  background: rgb(from var(--gold) r g b / .14);
-  color: var(--gold-light);
+  border-color: rgba(255,255,255,.04);
+  background: linear-gradient(135deg, rgba(96, 114, 138, .42), rgba(68, 85, 108, .48));
+  color: #fff;
   font-weight: 600;
   box-shadow: none;
 }
@@ -236,11 +232,11 @@
 .sidebar nav button.active::before {
   content: "";
   position: absolute;
-  left: -12px;
+  left: -10px;
   top: 50%;
   transform: translateY(-50%);
-  width: 3px;
-  height: 20px;
+  width: 2px;
+  height: 30px;
   border-radius: 0 3px 3px 0;
   background: var(--gold);
 }
@@ -262,14 +258,15 @@
   bottom: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 10px 12px 14px;
+  gap: 6px;
+  padding: 12px 10px 14px;
   border-top: 1px solid var(--shell-nav-line);
   background: var(--shell-nav-2);
 }
 
 .sidebar-foot .plan-link,
-.sidebar-foot .logout-button {
+.sidebar-foot .logout-button,
+.sidebar-foot .support-link {
   display: flex;
   align-items: center;
   gap: 11px;
@@ -288,6 +285,19 @@
   cursor: pointer;
   transition: background-color .15s ease, color .15s ease;
 }
+.sidebar-foot .support-link {
+  min-height: 76px;
+  padding: 12px 14px;
+  border: 1px solid rgba(202, 216, 231, .2);
+  border-radius: 11px;
+  background: rgba(9, 24, 42, .28);
+  color: #f2f6fa;
+}
+.sidebar-foot .support-link > svg { color: var(--gold-light); }
+.sidebar-foot .support-link .nav-label { display: grid; gap: 2px; }
+.sidebar-foot .support-link strong { font-size: 15px; font-weight: 700; }
+.sidebar-foot .support-link small { color: var(--shell-nav-text); font-size: 12px; }
+.sidebar-foot .support-link:hover { background: rgba(255,255,255,.06); color: #fff; }
 .sidebar-foot .plan-link:hover { background: rgb(from var(--gold) r g b / .12); color: var(--gold-light); }
 .sidebar-foot .logout-button:hover { background: rgba(184, 92, 92, .16); color: #ecc0c0; }
 .sidebar-foot .plan-link svg,

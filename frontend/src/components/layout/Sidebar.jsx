@@ -9,35 +9,36 @@ export function Sidebar({ page, role, brand, features, trialDays, setPage, open,
   const brandShort = brand?.short || (brand?.name ? "" : "Clinic Piercing");
   const brandLogo = brand?.logoUrl || "";
 
-  // Menu em blocos por área de trabalho. Uma lista plana de 11 itens obriga a
-  // ler tudo para achar qualquer coisa; agrupado, o olho vai direto ao bloco.
-  // Um bloco só aparece se sobrar algum item depois do filtro por papel.
+  // Estrutura curta e previsível: os títulos são marcos visuais, enquanto os
+  // itens continuam a respeitar as permissões e recursos do plano.
   const groups = [
-    ["Visão geral", [
-      ["dashboard", Home, "Dashboard"],
+    ["", [
+      ["dashboard", Home, "Visão geral"],
       ["onboarding", Sparkles, "Onboarding"]
     ]],
-    ["Atendimento", [
-      ["agenda", Calendar, "Agenda"],
-      ["client-center", UsersRound, "Clientes"]
-    ]],
-    ["Comercial", [
-      ["products", Package, "Produtos e estoque"],
-      ["catalog", Gem, "Catálogo"],
-      ["sales", ShoppingCart, "Vendas"],
-      ["communications", MessageCircle, "Comunicações"]
-    ]],
     ["Gestão", [
+      ["agenda", Calendar, "Agenda"],
+      ["client-center", UsersRound, "Clientes"],
+      ["catalog", Gem, "Piercings"],
+      ["sales", ShoppingCart, "Vendas"]
+    ]],
+    ["Estoque", [
+      ["products", Package, "Inventário"],
+      ["catalog-customization", Gem, "Catálogo online"]
+    ]],
+    ["Financeiro", [
       ["receivables", ArrowDownToLine, "Contas a receber"],
       ["payables", ArrowUpFromLine, "Contas a pagar"],
+      ["communications", MessageCircle, "Comunicação"]
+    ]],
+    ["Relatórios", [
       ["reports", BarChart3, "Relatórios"]
     ]],
-      ["Sistema", [
-        ["admin", ShieldCheck, "Acessos"],
-        ["integrations", Plug, "Integrações"],
-        ["support", LifeBuoy, "Suporte"],
-        ["settings", Settings, "Configurações"]
-      ]]
+    ["Configurações", [
+      ["settings", Settings, "Configurações"],
+      ["admin", ShieldCheck, "Usuários"],
+      ["integrations", Plug, "Integrações"]
+    ]]
   ]
     .map(([label, entries]) => [label, entries.filter(([id]) => canAccessPage(role, id))])
     .filter(([, entries]) => entries.length > 0);
@@ -96,6 +97,10 @@ export function Sidebar({ page, role, brand, features, trialDays, setPage, open,
             {typeof trialDays === "number" && <span className="trial-badge">{trialDays}d</span>}
           </button>
         )}
+        {canAccessPage(role, "support") && <button className={`support-link ${page === "support" ? "active" : ""}`} onClick={() => setPage("support")} title="Central de ajuda">
+          <LifeBuoy size={20} />
+          <span className="nav-label"><strong>Suporte</strong><small>Central de ajuda</small></span>
+        </button>}
         <button className="logout-button" onClick={onLogout} title="Sair">
           <LogOut size={18} />
           <span className="nav-label">Sair</span>
