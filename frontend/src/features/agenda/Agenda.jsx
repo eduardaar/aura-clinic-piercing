@@ -79,9 +79,8 @@ function PublicBookingLink() {
 
   return (
     <div className="agenda-public-link">
-      <span className="agenda-public-link-label">Link público</span>
+      <span className="agenda-public-link-label">Agendamento público</span>
       {url ? <>
-        <code title={url}>{url}</code>
         <button type="button" className="agenda-link-copy" onClick={copy} title="Copiar link público"><Copy size={15} /> {copied ? "Copiado!" : "Copiar"}</button>
         <a className="agenda-link-open" href={url} target="_blank" rel="noreferrer" title="Abrir agendamento público" aria-label="Abrir agendamento público"><ExternalLink size={16} /></a>
       </> : <span className="form-error">Defina o código público da clínica.</span>}
