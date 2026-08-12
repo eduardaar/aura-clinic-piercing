@@ -12,7 +12,7 @@ before(async () => {
   Object.assign(context, await createTenant("catalog-builder"));
   context.platformToken = await platformLogin();
   context.token = (await loginTenant(context.slug, context.adminEmail, context.adminPassword)).token;
-  const plan = await api("/subscription", { method: "PATCH", body: { plan_code: "premium" } });
+  const plan = await api("/subscription", { method: "PATCH", body: { plan_code: "studio" } });
   assert.equal(plan.status, 200, JSON.stringify(plan.json));
 });
 
@@ -207,7 +207,7 @@ test("integrações nativas ficam no draft, publicam junto da revisão e rejeita
   assert.equal(invalid.json.code, "catalog_plugins_invalid");
 });
 
-test("plugins ativos respeitam a cota do plano e Google Analytics exige Premium", async () => {
+test("plugins ativos respeitam a cota do plano e Google Analytics exige Studio", async () => {
   const professional = await api("/subscription", { method: "PATCH", body: { plan_code: "profissional" } });
   assert.equal(professional.status, 200, JSON.stringify(professional.json));
 
@@ -248,8 +248,8 @@ test("plugins ativos respeitam a cota do plano e Google Analytics exige Premium"
   assert.equal(analyticsBlocked.status, 403, JSON.stringify(analyticsBlocked.json));
   assert.equal(analyticsBlocked.json.code, "catalog_plugin_feature_unavailable");
 
-  const premium = await api("/subscription", { method: "PATCH", body: { plan_code: "premium" } });
-  assert.equal(premium.status, 200, JSON.stringify(premium.json));
+  const studio = await api("/subscription", { method: "PATCH", body: { plan_code: "studio" } });
+  assert.equal(studio.status, 200, JSON.stringify(studio.json));
   const analyticsSaved = await api("/catalog-customization", {
     method: "PATCH",
     body: {

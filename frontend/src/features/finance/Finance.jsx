@@ -274,7 +274,7 @@ function AdvancedFinance() {
 
   if (!data) return <Loading />;
   if (data.error) {
-    return <section className="panel"><div className="panel-heading"><h2>Financeiro 2.0</h2><span>Fluxo de caixa, DRE e conciliação estão disponíveis no plano Premium.</span></div></section>;
+    return <section className="panel"><div className="panel-heading"><h2>Financeiro 2.0</h2><span>Fluxo de caixa, DRE e conciliação estão disponíveis no plano Studio.</span></div></section>;
   }
   const ledger = asObject(data);
   const cashflow = asObject(ledger.cashflow);
@@ -550,4 +550,3 @@ export function MonthlyChart({ data = [] }) {
     </div>
   );
 }
-

@@ -36,9 +36,9 @@ A troca preservou a garantia antiga através de três decisões:
 
 Ambos teriam causado estrago silencioso em produção:
 
-- **O seed divergia do código.** `visual_search` estava no plano premium em
+- **O seed divergia do código.** `visual_search` estava no plano Studio em
   `plans.js` mas faltava no `platformSchema.sql`. Como o código mandava, as
-  clínicas premium *tinham* a feature; inverter sem reparar a removeria sem
+  clínicas Studio *tinham* a feature; inverter sem reparar a removeria sem
   ninguém notar. Há um `UPDATE` idempotente de reparo no schema.
 - **O seed usava `ON CONFLICT DO UPDATE`.** Todo boot reescrevia nome, preço e
   features a partir do código. Inofensivo enquanto o código mandava; com o

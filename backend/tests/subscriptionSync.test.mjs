@@ -98,22 +98,22 @@ test("Assinatura: o plano novo chega à recorrência do Asaas", async (t) => {
   ]);
 
   const profissional = planByCode("profissional");
-  const premium = planByCode("premium");
+  const studio = planByCode("studio");
 
   await t.test("troca de plano reajusta a assinatura — em REAIS, com as pendentes junto", async () => {
     const gateway = gatewayFalso({ valorRemoto: profissional.price_cents / 100 });
 
     const resultado = await changeAccountPlan(tenantId, {
-      planCode: "premium",
+      planCode: "studio",
       reason: "Upgrade contratado por telefone",
       actor: ATOR,
       gateway
     });
 
-    assert.equal(resultado.plan_code, "premium");
+    assert.equal(resultado.plan_code, "studio");
     assert.equal(resultado.gateway.status, "atualizado");
     // O erro clássico da integração: mandar centavos. 14990 viraria R$ 14.990.
-    assert.equal(resultado.gateway.valor_no_gateway, premium.price_cents / 100);
+    assert.equal(resultado.gateway.valor_no_gateway, studio.price_cents / 100);
     assert.equal(resultado.gateway.valor_anterior, profissional.price_cents / 100);
     // Sucesso NÃO vira aviso vermelho: o que aconteceu vai em `detalhe`.
     assert.equal(resultado.warning, null);
@@ -122,24 +122,24 @@ test("Assinatura: o plano novo chega à recorrência do Asaas", async (t) => {
     assert.equal(gateway.chamadas.update.length, 1, "uma única escrita no gateway");
     const escrita = gateway.chamadas.update[0];
     assert.equal(escrita.id, idNoGateway, "a assinatura reajustada tem de ser a DESTA clínica");
-    assert.equal(escrita.value, premium.price_cents / 100);
+    assert.equal(escrita.value, studio.price_cents / 100);
     // Sem isto, a fatura já emitida do mês continua com o preço velho.
     assert.equal(escrita.updatePendingPayments, true);
 
     const linha = await assinaturaDoBanco(tenantId);
-    assert.equal(linha.plan_code, "premium");
-    assert.equal(linha.tenant_plan, "premium", "as duas colunas de plano contam a mesma história");
+    assert.equal(linha.plan_code, "studio");
+    assert.equal(linha.tenant_plan, "studio", "as duas colunas de plano contam a mesma história");
 
     const auditoria = await ultimaAuditoria(tenantId, "conta.plano_propagado_no_gateway");
     assert.ok(auditoria, "a tentativa de propagação precisa estar na auditoria");
     assert.equal(auditoria.gateway.status, "atualizado");
     assert.equal(auditoria.de, "profissional");
-    assert.equal(auditoria.para, "premium");
+    assert.equal(auditoria.para, "studio");
   });
 
   await t.test("reenviar o ajuste é idempotente: a segunda chamada não escreve nada", async () => {
     // O gateway já está no valor certo depois do teste anterior.
-    const gateway = gatewayFalso({ valorRemoto: premium.price_cents / 100 });
+    const gateway = gatewayFalso({ valorRemoto: studio.price_cents / 100 });
 
     const primeiro = await resyncAccountSubscription(tenantId, { actor: ATOR, gateway });
     assert.equal(primeiro.gateway.status, "ja_sincronizado");
@@ -163,7 +163,7 @@ test("Assinatura: o plano novo chega à recorrência do Asaas", async (t) => {
     // A leitura é conveniência (é dela que sai o "de X para Y"); quem resolve o
     // problema é a escrita. Perder o GET não pode deixar a clínica cobrada
     // errado.
-    const gateway = gatewayFalso({ valorRemoto: premium.price_cents / 100, lerFalha: true });
+    const gateway = gatewayFalso({ valorRemoto: studio.price_cents / 100, lerFalha: true });
 
     const resultado = await changeAccountPlan(tenantId, {
       planCode: "profissional",
@@ -189,7 +189,7 @@ test("Assinatura: o plano novo chega à recorrência do Asaas", async (t) => {
     });
 
     const resultado = await changeAccountPlan(tenantId, {
-      planCode: "premium",
+      planCode: "studio",
       reason: "Upgrade com o gateway fora do ar",
       actor: ATOR,
       gateway
@@ -203,8 +203,8 @@ test("Assinatura: o plano novo chega à recorrência do Asaas", async (t) => {
     // O acesso já mudou e continua mudado: reverter o plano por causa do
     // gateway tiraria da clínica o que ela acabou de contratar.
     const linha = await assinaturaDoBanco(tenantId);
-    assert.equal(linha.plan_code, "premium");
-    assert.equal(linha.tenant_plan, "premium");
+    assert.equal(linha.plan_code, "studio");
+    assert.equal(linha.tenant_plan, "studio");
 
     const auditoria = await ultimaAuditoria(tenantId, "conta.plano_propagado_no_gateway");
     assert.equal(auditoria.gateway.status, "falhou");
@@ -223,8 +223,8 @@ test("Assinatura: o plano novo chega à recorrência do Asaas", async (t) => {
     assert.equal(resultado.gateway.status, "atualizado");
     assert.equal(resultado.warning, null);
     assert.equal(gateway.chamadas.update.length, 1);
-    assert.equal(gateway.chamadas.update[0].value, premium.price_cents / 100);
-    assert.equal(gateway.valorAtual, premium.price_cents / 100, "o gateway passou a cobrar o plano vigente");
+    assert.equal(gateway.chamadas.update[0].value, studio.price_cents / 100);
+    assert.equal(gateway.valorAtual, studio.price_cents / 100, "o gateway passou a cobrar o plano vigente");
   });
 
   await t.test("assinatura cancelada não é reajustada — recobrar seria pior", async () => {

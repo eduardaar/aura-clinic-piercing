@@ -86,7 +86,7 @@ test("1. login do admin retorna token e role admin", async () => {
 test("1b. planos e identidade da loja carregam tenant proprio", async () => {
   const plans = await req("/plans");
   assert.equal(plans.status, 200, JSON.stringify(plans.json));
-  assert.ok(plans.json.plans.some((plan) => plan.code === "profissional" && Number(plan.price_cents) === 6990), "plano profissional deve existir com preco correto");
+  assert.ok(plans.json.plans.some((plan) => plan.code === "profissional" && Number(plan.price_cents) === 8990), "plano profissional deve existir com preco correto");
 
   const identity = await api("/store-identity");
   assert.equal(identity.status, 200, JSON.stringify(identity.json));

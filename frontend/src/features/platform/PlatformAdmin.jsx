@@ -46,7 +46,6 @@ const PLAN_LABELS = {
   start: "Start",
   profissional: "Profissional",
   studio: "Studio",
-  premium: "Premium",
   padrao: "Padrão",
 };
 

@@ -28,7 +28,7 @@ const MARCO = "2026-03";
 const FEVEREIRO = "2026-02";
 
 // Preço de tabela dos planos-semente, em centavos (platformSchema.sql).
-const PRECO = { start: 3990, profissional: 6990, studio: 9990, premium: 14990 };
+const PRECO = { start: 4990, profissional: 8990, studio: 14990 };
 
 // Sufixo único por execução: dois runs simultâneos não podem colidir no índice
 // único de asaas_payment_id nem no de asaas_subscription_id.
@@ -147,13 +147,13 @@ test("Financeiro da plataforma: resumo, inadimplência, vencimentos, série e pl
   });
 
   // B) Primeira fatura paga da história caindo em março: é uma assinatura nova.
-  const novaPagante = await novaClinica("finnova", { status: "active", planCode: "premium" });
+  const novaPagante = await novaClinica("finnova", { status: "active", planCode: "studio" });
   await criarFatura(novaPagante, {
     valor: "99.90",
     status: "paga",
     vencimento: "2026-03-10",
     pagoEm: "2026-03-10T15:00:00Z",
-    planCode: "premium"
+    planCode: "studio"
   });
 
   // C) As duas faturas da VIRADA DE MÊS, que provam o fuso do painel.
@@ -190,10 +190,11 @@ test("Financeiro da plataforma: resumo, inadimplência, vencimentos, série e pl
   // D) Trial que nunca passou pelo checkout: sem recorrência no gateway.
   await novaClinica("fintrial", { status: "trial_active", planCode: "profissional", gateway: false });
 
-  // E) Cancelada dentro do mês.
+  // E) Cancelada dentro do mês. Compartilha o plano Profissional com outra
+  // fixture ativa para provar que status, e não só código do plano, decide MRR.
   await novaClinica("fincanc", {
     status: "canceled",
-    planCode: "studio",
+    planCode: "profissional",
     canceladaEm: "2026-03-12T12:00:00Z"
   });
 
@@ -218,10 +219,10 @@ test("Financeiro da plataforma: resumo, inadimplência, vencimentos, série e pl
   });
 
   await t.test("MRR estimado soma só assinatura ativa COM cobrança no gateway", async () => {
-    // profissional + premium + start. A clínica em trial (sem
+    // profissional + studio + start. A clínica em trial (sem
     // asaas_subscription_id) e a cancelada não entram: trial não é receita
     // recorrente, e cancelada deixou de ser.
-    const esperado = PRECO.profissional + PRECO.premium + PRECO.start;
+    const esperado = PRECO.profissional + PRECO.studio + PRECO.start;
     assert.equal(delta("mrr_estimado_centavos"), esperado);
     assert.match(depois.resumo.mrr_estimado, /^\d+\.\d{2}$/, "dinheiro sai como string decimal");
   });
@@ -394,14 +395,14 @@ test("Financeiro da plataforma: resumo, inadimplência, vencimentos, série e pl
 
     assert.equal(deltaPlano("profissional", "assinantes_ativos"), 1);
     assert.equal(deltaPlano("profissional", "mrr_estimado_centavos"), PRECO.profissional);
-    assert.equal(deltaPlano("premium", "mrr_estimado_centavos"), PRECO.premium);
+    assert.equal(deltaPlano("studio", "assinantes_ativos"), 1);
+    assert.equal(deltaPlano("studio", "mrr_estimado_centavos"), PRECO.studio);
     assert.equal(deltaPlano("start", "mrr_estimado_centavos"), PRECO.start);
-    // A clínica do plano studio está cancelada: nem assinante ativo, nem MRR.
-    assert.equal(deltaPlano("studio", "assinantes_ativos"), 0);
-    assert.equal(deltaPlano("studio", "mrr_estimado_centavos"), 0);
+    // A cancelada compartilha o Profissional com uma ativa e, por isso,
+    // não adiciona assinante ativo nem MRR além do valor já conferido acima.
 
     // Caixa do mês, por plano.
-    assert.equal(deltaPlano("premium", "recebido_mes_centavos"), 9990);
+    assert.equal(deltaPlano("studio", "recebido_mes_centavos"), 9990);
     assert.equal(deltaPlano("start", "recebido_mes_centavos"), 1000);
     assert.equal(deltaPlano("profissional", "recebido_mes_centavos"), 0);
   });
@@ -410,7 +411,7 @@ test("Financeiro da plataforma: resumo, inadimplência, vencimentos, série e pl
     // É o dado que responde "este plano vende?" — some se a consulta partir das
     // assinaturas em vez dos planos.
     const codigos = depois.planos.items.map((item) => item.plan_code);
-    for (const codigo of ["start", "profissional", "studio", "premium"]) {
+    for (const codigo of ["start", "profissional", "studio"]) {
       assert.ok(codigos.includes(codigo), `o plano ${codigo} precisa aparecer`);
     }
     const start = depois.planos.items.find((item) => item.plan_code === "start");

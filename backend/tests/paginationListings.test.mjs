@@ -36,8 +36,8 @@ before(async () => {
   ctx.token = (await loginTenant(created.slug, created.adminEmail, created.adminPassword)).token;
   ctx.platformToken = await platformLogin();
 
-  // Cupons, campanhas e financeiro avançado só existem no plano premium.
-  const plano = await api("/subscription", { method: "PATCH", body: { plan_code: "premium" } });
+  // Cupons, campanhas e financeiro avançado só existem no plano studio.
+  const plano = await api("/subscription", { method: "PATCH", body: { plan_code: "studio" } });
   assert.equal(plano.status, 200, JSON.stringify(plano.json));
 
   const prof = await api("/professionals", { method: "POST", body: { name: "Prof Lista 00", specialty: "Piercer" } });

@@ -104,9 +104,9 @@ exibe avaliações de terceiros. Não há scripts, pacotes, HTML, CSS ou JavaScr
 enviados pela clínica.
 
 As integrações respeitam a feature e a cota do plano. Por padrão, Profissional
-permite 2 plugins ativos, Studio 5 e Premium 12; uma clínica que fez downgrade
+permite 0 plugins ativos, Profissional 3 e Studio 12; uma clínica que fez downgrade
 continua podendo editar/remover o que já tinha, mas não pode aumentar o uso
-acima da nova cota. Analytics é um recurso do Premium (`catalog_analytics`).
+acima da nova cota. Analytics é um recurso do Studio (`catalog_analytics`).
 
 ## Próximas evoluções planejadas
 

@@ -15,7 +15,7 @@ const featureLabels = {
   multi_user: "Multiusuários", commissions: "Comissões", monthly_reports: "Relatórios mensais",
   coupons: "Cupons", returns: "Trocas e devoluções", full_client_history: "Histórico completo do cliente",
   jewelry_sales_report: "Relatório de vendas de joias", advanced_catalog: "Catálogo avançado",
-  featured_products: "Produtos em destaque", promotional_banner: "Banner promocional", campaigns: "Campanhas",
+  catalog_analytics: "Google Analytics no catálogo", featured_products: "Produtos em destaque", promotional_banner: "Banner promocional", campaigns: "Campanhas",
   advanced_finance: "Financeiro avançado", variation_inventory: "Estoque por variação",
   alert_center: "Central de alertas", courses: "Cursos", priority_support: "Suporte prioritário"
 };

@@ -426,7 +426,7 @@ estruturado. Os IDs atuais são `whatsapp_cta`, `instagram_profile`,
 `maps_location`, `faq`, `seo_metadata`, `google_analytics` e
 `google_review_link`; a validação de backend rejeita campos livres,
 HTML/CSS/JS, event handlers e URLs fora da allowlist. Analytics guarda somente
-o Measurement ID e exige a feature Premium `catalog_analytics`; avaliações
+o Measurement ID e exige a feature Studio `catalog_analytics`; avaliações
 guardam Place ID, do qual a vitrine constrói o link oficial do Google.
 
 #### `catalog_media_assets` — biblioteca de mídia do catálogo

@@ -22,11 +22,19 @@ function slugPreview(value) {
 }
 
 const fallbackPlans = [
-  { code: "start", name: "Pacote Start", price_cents: 3990, audience: "Piercers iniciantes ou autônomos", features: ["clients", "agenda", "procedures", "basic_catalog", "whatsapp_link"] },
-  { code: "profissional", name: "Pacote Profissional", price_cents: 6990, audience: "Estúdios que querem agendamento online", badge: "Mais recomendado", highlight: true, features: ["online_booking", "anamnesis", "digital_terms", "basic_finance", "stock_alerts"] },
-  { code: "studio", name: "Pacote Studio", price_cents: 9990, audience: "Estúdios com equipe", features: ["multi_user", "commissions", "monthly_reports", "coupons"] },
-  { code: "premium", name: "Pacote Premium", price_cents: 14990, audience: "Operações completas", features: ["advanced_catalog", "campaigns", "advanced_finance", "priority_support"] }
+  { code: "start", name: "Pacote Start", price_cents: 4990, audience: "Para quem está organizando a operação solo", features: ["clients", "agenda", "basic_catalog", "basic_reports"] },
+  { code: "profissional", name: "Pacote Profissional", price_cents: 8990, audience: "Para transformar atendimento em uma operação profissional", badge: "Mais recomendado", highlight: true, features: ["online_booking", "basic_finance", "digital_terms", "public_catalog_customization"] },
+  { code: "studio", name: "Pacote Studio", price_cents: 14990, audience: "Para estúdios com equipe, vendas e crescimento", features: ["multi_user", "advanced_catalog", "campaigns", "catalog_analytics"] }
 ];
+
+// A tela de contratação deve responder "o que eu levo?" antes de a pessoa
+// criar a conta. As features vêm da API; estes pontos traduzem limites e valor
+// comercial em linguagem direta, sem expor códigos internos ao cliente.
+const PLAN_HIGHLIGHTS = {
+  start: ["1 usuário", "300 clientes", "100 agendamentos/mês", "1 GB de armazenamento", "Estoque e catálogo básicos"],
+  profissional: ["Até 3 usuários", "Clientes e agendamentos ilimitados", "Financeiro, termos e agendamento online", "5 GB + 3 integrações de catálogo", "Catálogo personalizável"],
+  studio: ["Até 10 usuários", "Clientes e agendamentos ilimitados", "Financeiro avançado e comissões", "20 GB + 12 integrações de catálogo", "Campanhas, Analytics e suporte prioritário"]
+};
 
 const STEP_LABELS = ["Sua clínica", "Plano"];
 
@@ -173,7 +181,7 @@ export function Signup() {
               <>
                 <div className="au-a-head">
                   <h1 className="au-a-title">Crie sua clínica</h1>
-                  <p className="au-a-subtitle">Teste grátis por 7 dias. Só o essencial — o resto você ajusta depois.</p>
+                  <p className="au-a-subtitle">Teste grátis de 7 dias em todos os recursos do plano escolhido. Sem cartão agora.</p>
                 </div>
 
                 <div className="au-a-field">
@@ -241,6 +249,7 @@ export function Signup() {
                   {plans.map((plan) => {
                     const active = form.plan_code === plan.code;
                     const badge = plan.badge || (plan.is_recommended ? "Mais recomendado" : "");
+                    const highlights = PLAN_HIGHLIGHTS[plan.code] || asArray(plan.features).slice(0, 5).map(featureLabel);
                     return (
                       <button
                         key={plan.code}
@@ -257,11 +266,9 @@ export function Signup() {
                           <span className="au-a-plan-price">{currency.format(Number(plan.price_cents || 0) / 100)}<span>/mês</span></span>
                         </span>
                         <span className="au-a-plan-audience">{plan.audience}</span>
-                        <span className="au-a-plan-features">
-                          {asArray(plan.features).slice(0, 3).map((feature) => (
-                            <span key={feature}>{featureLabel(feature)}</span>
-                          ))}
-                        </span>
+                        <ul className="au-a-plan-features">
+                          {highlights.map((highlight) => <li key={highlight}>{highlight}</li>)}
+                        </ul>
                       </button>
                     );
                   })}
@@ -269,8 +276,9 @@ export function Signup() {
 
                 <p className="au-a-review">
                   <span><strong>{form.name}</strong> · /{slug}</span>
-                  <span><strong>{selectedPlan?.name}</strong> · 7 dias grátis</span>
+                  <span><strong>{selectedPlan?.name}</strong> · 7 dias grátis · depois {currency.format(Number(selectedPlan?.price_cents || 0) / 100)}/mês</span>
                 </p>
+                <p className="au-a-plan-roles">Papéis disponíveis conforme o limite do plano: administrador, piercer, recepção e financeiro. Dados nunca são apagados ao trocar de plano.</p>
               </>
             )}
 

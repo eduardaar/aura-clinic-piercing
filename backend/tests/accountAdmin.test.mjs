@@ -203,11 +203,13 @@ test("visão da conta traz clínica, assinatura, plano, uso x cotas e faturas", 
   assert.equal(visao.json.subscription.status, "trial_active");
   assert.ok(Array.isArray(visao.json.invoices));
 
-  // Uma linha por cota do catálogo; o Start não tem limites configurados.
+  // Uma linha por cota do catálogo; o Start expõe as cotas comerciais.
   const chaves = visao.json.usage.map((item) => item.key);
   assert.deepEqual(chaves, ["users", "clients", "appointments_month", "jewelry_items", "catalog_plugins", "storage_mb"]);
-  assert.ok(visao.json.usage.every((item) => item.unlimited === true));
-  // Ilimitado não impede medir: a tela precisa mostrar o número mesmo assim.
+  assert.deepEqual(
+    Object.fromEntries(visao.json.usage.map((item) => [item.key, item.limit])),
+    { users: 1, clients: 300, appointments_month: 100, jewelry_items: 100, catalog_plugins: 0, storage_mb: 1024 }
+  );
   assert.equal(visao.json.usage.find((item) => item.key === "users").used, 1);
 
   const inexistente = await platformApi("/platform/accounts/99999999");
@@ -581,11 +583,15 @@ test("cota de plugins não bloqueia as quatro rotas operacionais guardadas", asy
   });
   assert.equal(agendamento.status, 201, JSON.stringify(agendamento.json));
 
-  // E o painel confirma o porquê: as cotas operacionais seguem ilimitadas;
-  // `catalog_plugins` é uma cota separada, aplicada no Catalog Builder.
+  // Clientes e agenda permanecem livres no Profissional; equipe, estoque,
+  // integrações e armazenamento seguem as cotas comerciais do plano.
   const relatorio = await tenantUsageReport(ctx.free.id, "profissional");
-  assert.ok(relatorio.filter((linha) => linha.key !== "catalog_plugins").every((linha) => linha.unlimited === true), JSON.stringify(relatorio));
-  assert.equal(relatorio.find((linha) => linha.key === "catalog_plugins")?.limit, 2);
+  assert.equal(relatorio.find((linha) => linha.key === "clients")?.unlimited, true);
+  assert.equal(relatorio.find((linha) => linha.key === "appointments_month")?.unlimited, true);
+  assert.equal(relatorio.find((linha) => linha.key === "users")?.limit, 3);
+  assert.equal(relatorio.find((linha) => linha.key === "jewelry_items")?.limit, 500);
+  assert.equal(relatorio.find((linha) => linha.key === "storage_mb")?.limit, 5120);
+  assert.equal(relatorio.find((linha) => linha.key === "catalog_plugins")?.limit, 3);
 });
 
 test("com cota estourada, as rotas de criação param — e a mensagem diz o que fazer", async () => {

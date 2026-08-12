@@ -250,21 +250,21 @@ entrada.
 
 ## Matriz de recursos validada
 
-| Área | Start | Profissional | Studio | Premium |
-| --- | --- | --- | --- | --- |
-| Clientes, agenda, procedimentos e estoque básico | Sim | Sim | Sim | Sim |
-| Catálogo, WhatsApp por link e relatórios básicos | Sim | Sim | Sim | Sim |
-| Agenda online, termos, financeiro e pós-atendimento | Não | Sim | Sim | Sim |
-| Personalização pública e modelos de mensagem | Não | Sim | Sim | Sim |
-| Equipe, comissões, cupons e relatórios mensais | Não | Não | Sim | Sim |
-| Promoções, busca visual e Financeiro 2.0 | Não | Não | Não | Sim |
+| Área | Start | Profissional | Studio |
+| --- | --- | --- | --- |
+| Clientes, agenda, procedimentos e estoque básico | Sim | Sim | Sim |
+| Catálogo, WhatsApp por link e relatórios básicos | Sim | Sim | Sim |
+| Agenda online, termos, financeiro e pós-atendimento | Não | Sim | Sim |
+| Personalização pública e modelos de mensagem | Não | Sim | Sim |
+| Equipe, comissões, cupons e relatórios mensais | Não | Não | Sim |
+| Campanhas, busca visual, Analytics e Financeiro avançado | Não | Não | Sim |
 
 O frontend espelha a matriz, mas o backend decide o acesso com `withFeature`.
 Testes verificam herança cumulativa, duplicidades e recursos exclusivos.
 
 ## Performance medida localmente
 
-Referência: Node em modo de produção local, PostgreSQL local, tenant Premium
+Referência: Node em modo de produção local, PostgreSQL local, tenant Studio
 vazio e 15 requisições sequenciais por endpoint em 27/07/2026.
 
 | Operação | p50 | p95 |
