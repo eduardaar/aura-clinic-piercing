@@ -129,7 +129,15 @@ try {
     other_tenants_affected: 0,
   };
   console.log("AURA_DRY_RUN_BEGIN");
-  console.log(JSON.stringify({ summary, ambiguities: ambiguousRows, comparison: results }, null, 2));
+  console.log(JSON.stringify({
+    summary,
+    ambiguities: ambiguousRows,
+    comparison: results,
+    inventory_snapshot: products.map((product) => ({
+      ...product,
+      variants: variants.filter((variant) => Number(variant.jewelry_id) === Number(product.id)),
+    })),
+  }, null, 2));
   console.log("AURA_DRY_RUN_END");
 } finally {
   await client.query("SET search_path TO public").catch(() => {});
