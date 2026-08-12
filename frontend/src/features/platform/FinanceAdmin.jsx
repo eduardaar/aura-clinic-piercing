@@ -26,8 +26,8 @@
 //     `.platform-metric`, moldura é `.panel`, filtro é `.toolbar`, erro é
 //     `.form-error`. O CSS de finance-admin.css cobre só o gráfico SVG.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Info, RefreshCw } from "lucide-react";
-import { AlertBlock, Button, Input, Select, StatusBadge } from "../../components/common/Ui";
+import { AlertTriangle, RefreshCw } from "lucide-react";
+import { Button, Input, Select, StatusBadge } from "../../components/common/Ui";
 import { CrudHeader, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { Loading } from "../../components/common/Feedback";
@@ -132,12 +132,6 @@ function tomDoAtraso(dias) {
 }
 
 const plural = (total, singular, pluralizado) => `${total} ${total === 1 ? singular : pluralizado}`;
-
-/** "recebido_mes" -> "Recebido mes", para o título das notas do backend. */
-const humanizar = (campo) => {
-  const texto = String(campo).replace(/_/g, " ");
-  return texto.charAt(0).toUpperCase() + texto.slice(1);
-};
 
 // ---------------------------------------------------------------------------
 // Rede
@@ -278,21 +272,7 @@ function Duplo({ principal, secundario }) {
 
 function Resumo({ dados }) {
   const resumo = asObject(dados);
-  const notas = asObject(resumo.notas);
   const clinicas = asObject(resumo.clinicas);
-
-  // Os tons acompanham TOM_ASSINATURA acima: é a mesma leitura de status, e
-  // duas escalas de cor na mesma tela ensinariam a ignorar as duas.
-  const porStatus = [
-    ["Ativas", clinicas.ativa, "ok"],
-    ["Em teste", clinicas.trial, "info"],
-    ["Teste expirado", clinicas.trial_expirada, "warn"],
-    ["Em atraso", clinicas.atrasada, "warn"],
-    ["Suspensas", clinicas.suspensa, "danger"],
-    ["Canceladas", clinicas.cancelada, "danger"],
-    ["Sem assinatura", clinicas.sem_assinatura, "neutral"],
-    ["Sem cobrança no gateway", clinicas.sem_cobranca_no_gateway, "neutral"],
-  ];
 
   return (
     <div className="stack">
@@ -354,41 +334,14 @@ function Resumo({ dados }) {
             valor={String(asNumber(resumo.cancelamentos_mes))}
             detalhe="Subestimado: nenhum fluxo do sistema carimba a data de cancelamento ainda"
           />
-          {/*
-            Churn: `null` de propósito. Nem 0%, nem "—" mudo, nem uma conta
-            improvisada com os dados que existem — o motivo vem escrito do
-            backend e é ele que aparece, no cartão tracejado de indisponível.
-          */}
           <Numero
             rotulo="Churn do mês"
             valor="Não calculável"
-            detalhe={notas.churn_mes || "O backend não conseguiu calcular este indicador com os dados de hoje."}
+            detalhe="Disponível quando houver histórico suficiente."
             indisponivel
           />
         </div>
       </Grupo>
-
-      <Grupo titulo="Clínicas por status de assinatura">
-        <div className="fin-status">
-          {porStatus.map(([rotulo, valor, tom]) => (
-            <span key={rotulo}>
-              <StatusBadge tone={tom}>{asNumber(valor)}</StatusBadge> {rotulo}
-            </span>
-          ))}
-        </div>
-      </Grupo>
-
-      {/*
-        As notas do backend, na íntegra. Elas são a diferença entre um painel que
-        informa e um painel que engana: cada uma diz o que o número NÃO inclui.
-      */}
-      <AlertBlock icon={Info} title="Como ler estes números" empty="Sem observações do servidor.">
-        {Object.entries(notas).map(([campo, texto]) => (
-          <p className="field-hint" key={campo}>
-            <strong>{humanizar(campo)}</strong> — {texto}
-          </p>
-        ))}
-      </AlertBlock>
     </div>
   );
 }
