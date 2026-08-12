@@ -1,6 +1,6 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useState } from "react";
-import { ChevronRight, FileSignature, HeartPulse, UsersRound } from "lucide-react";
+import { FileSignature, HeartPulse } from "lucide-react";
 import { Button, Input, SecureImage, Select, StatusBadge } from "../../components/common/Ui";
 import { Modal, CrudHeader, RowActions } from "../../components/common/Crud";
 import { DataView, MONTH_OPTIONS } from "../../components/common/DataView";
@@ -9,32 +9,16 @@ import { asArray, dateInputValue, formatDate, formatLongDate } from "../../lib/u
 import { apiFetch, readStoredSession, useApiInvalidate, useFetch } from "../../lib/api";
 import { defaultMedicalRecord } from "../../lib/defaultForms";
 import { currency, personName, whatsappUrl } from "../../features/shared/helpers";
-import { DigitalTerms } from "../terms/DigitalTerms";
-import { PostCare } from "../postcare/PostCare";
 
-export function ClientWorkspace() {
-  const [tab, setTab] = useState("clientes");
-  const tabs = [
-    { id: "clientes", title: "Clientes", description: "Histórico, prontuários, pagamentos e fidelidade.", icon: UsersRound },
-    { id: "termos", title: "Termos digitais", description: "Assinatura, aceite, PDF e vínculo ao agendamento.", icon: FileSignature },
-    { id: "retornos", title: "Pós-atendimento", description: "Lembretes, fotos, status de cicatrização e retornos.", icon: HeartPulse }
-  ];
+export function ClientWorkspace({ onNavigate }) {
   return (
-    <section className="workspace-page">
-      <div className="workspace-hub">
-        {tabs.map(({ id, title, description, icon: Icon }) => (
-          <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>
-            <Icon size={20} />
-            <span><strong>{title}</strong><small>{description}</small></span>
-            <ChevronRight size={17} />
-          </button>
-        ))}
+    <section className="stack client-workspace">
+      <div className="client-module-shortcuts" aria-label="Configurações relacionadas aos clientes">
+        <span>Configurações relacionadas</span>
+        <Button variant="secondary" onClick={() => onNavigate?.("terms")}><FileSignature size={16} /> Termos digitais</Button>
+        <Button variant="secondary" onClick={() => onNavigate?.("postcare")}><HeartPulse size={16} /> Pós-atendimento</Button>
       </div>
-      <div className="workspace-panel">
-        {tab === "clientes" && <ClientsMedical />}
-        {tab === "termos" && <DigitalTerms />}
-        {tab === "retornos" && <PostCare />}
-      </div>
+      <ClientsMedical />
     </section>
   );
 }

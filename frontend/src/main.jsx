@@ -322,7 +322,7 @@ function App() {
           {activePage === "onboarding" && <Onboarding onOpenAgendaSettings={(tab) => { setAgendaTarget(tab); setPage("agenda"); }} />}
           {activePage === "communications" && <Communications />}
           {activePage === "catalog" && <CatalogWorkspace />}
-          {activePage === "client-center" && <ClientWorkspace />}
+          {activePage === "client-center" && <ClientWorkspace onNavigate={setPage} />}
           {activePage === "catalog-customization" && <CatalogCustomization />}
           {activePage === "sales" && <SalesWorkspace />}
           {activePage === "finance" && <FinanceAdmin />}

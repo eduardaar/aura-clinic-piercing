@@ -8734,11 +8734,17 @@ body {
 .weekly-schedule-advanced[open] summary { grid-column: 1 / -1; padding: 5px 0 0; }
 .weekly-schedule-advanced[open] > label { padding: 2px 0 0; }
 
+.client-module-shortcuts { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 0 2px; }
+.client-module-shortcuts > span { margin-right: auto; color: var(--muted); font-size: 13px; font-weight: 700; }
+.client-module-shortcuts button { min-height: 38px; }
+
 @media (max-width: 900px) {
   .weekly-schedule-toolbar { align-items: stretch; flex-direction: column; }
   .weekly-schedule-toolbar label, .weekly-schedule-toolbar button { width: 100%; }
   .weekly-schedule-row { grid-template-columns: minmax(130px, 1fr) repeat(2, minmax(95px, 1fr)); }
   .weekly-schedule-advanced { justify-self: end; }
+  .client-module-shortcuts { align-items: stretch; flex-wrap: wrap; }
+  .client-module-shortcuts > span { width: 100%; }
 }
 
 @media (max-width: 560px) {
