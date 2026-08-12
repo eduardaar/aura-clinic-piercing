@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BellRing, Check, Instagram, Mail, MessageCircle, Sparkles, X } from "lucide-react";
+import { BellRing, Check, ChevronRight, Instagram, Mail, MessageCircle, Sparkles, X } from "lucide-react";
 import { API, API_ORIGIN } from "../lib/api";
 import { asArray, asNumber, asObject } from "../lib/utils";
 import { featureLabel } from "../lib/planFeatures";
@@ -350,6 +350,9 @@ function ClosingSection({ content }) {
       <div className="au-l-close-inner au-l-close-dark">
         <div className="au-l-close-copy">
           <h2>{content.title}</h2>
+          <a className="au-l-btn au-l-final-cta" href={content.primary_href}>
+            {content.primary_label} <ChevronRight size={18} aria-hidden="true" />
+          </a>
           {content.note && <span className="au-l-note">{content.note}</span>}
         </div>
         {shots.length > 0 && (

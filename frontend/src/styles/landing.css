@@ -540,6 +540,21 @@
 
 .au-l-root .au-l-close-dark .au-l-note { color: rgb(255 255 255 / .72); }
 
+.au-l-root .au-l-final-cta {
+  background: #25d366;
+  border-color: #25d366;
+  color: #073b20;
+  box-shadow: 0 10px 24px rgb(0 0 0 / .24);
+}
+
+.au-l-root .au-l-final-cta:hover,
+.au-l-root .au-l-final-cta:focus-visible {
+  background: #32df76;
+  border-color: #32df76;
+  color: #073b20;
+  transform: translateY(-1px);
+}
+
 .au-l-root .au-l-close-copy { min-width: 0; }
 
 .au-l-root .au-l-close-copy h2 {
