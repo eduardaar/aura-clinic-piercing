@@ -565,13 +565,6 @@
   border-color: var(--brown-dark);
 }
 
-.au-l-root .au-l-btn-plan.au-l-btn-conversion { background: #25d366; border-color: #25d366; color: #073b20; }
-.au-l-root .au-l-btn-plan.au-l-btn-conversion:hover,
-.au-l-root .au-l-btn-plan.au-l-btn-conversion:focus-visible { background: #32df76; border-color: #32df76; color: #073b20; }
-.au-l-root .au-l-plan.is-featured .au-l-btn-plan.au-l-btn-conversion { background: #25d366; border-color: #25d366; color: #073b20; }
-.au-l-root .au-l-plan.is-featured .au-l-btn-plan.au-l-btn-conversion:hover,
-.au-l-root .au-l-plan.is-featured .au-l-btn-plan.au-l-btn-conversion:focus-visible { background: #32df76; border-color: #32df76; color: #073b20; }
-
 /* ---------- fechamento + footer (bloco único) ------------------------ */
 
 .au-l-root .au-l-close {
