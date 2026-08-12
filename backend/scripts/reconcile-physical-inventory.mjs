@@ -152,6 +152,72 @@ try {
   for (const [variantId, rows] of duplicateKeys) if (rows.length > 1) {
     for (const r of results.filter((item) => item.variant_id === variantId)) { r.action = "ambiguous"; r.ambiguity = `Variação ${variantId} recebeu múltiplas linhas da planilha: ${rows.join(", ")}`; }
   }
+  const setResult = (sourceRow, patch) => Object.assign(results.find((r) => r.source_row === sourceRow), patch);
+  const existing = (sourceRow, productId, variantId, productName, variantName, currentQuantity, note = "") => setResult(sourceRow, {
+    action: "update_variant", product_id: productId, variant_id: variantId, matched_product: productName,
+    matched_variant: variantName, current_quantity: currentQuantity,
+    difference: Number(results.find((r) => r.source_row === sourceRow).physical_quantity) - Number(currentQuantity), ambiguity: "", notes: note,
+  });
+  const newVariant = (sourceRow, productId, productName, note = "") => setResult(sourceRow, {
+    action: "create_variant", product_id: productId, variant_id: null, matched_product: productName,
+    matched_variant: null, current_quantity: null, difference: null, ambiguity: "", notes: note,
+  });
+  const newProduct = (sourceRow, note = "") => setResult(sourceRow, {
+    action: "create_product_and_variant", product_id: null, variant_id: null, matched_product: null,
+    matched_variant: null, current_quantity: null, difference: null, ambiguity: "", notes: note,
+  });
+  const human = (sourceRow, note) => setResult(sourceRow, {
+    action: "ambiguous", product_id: null, variant_id: null, matched_product: null,
+    matched_variant: null, current_quantity: null, difference: null, ambiguity: note,
+  });
+
+  // Decisões técnicas confirmadas após revisão humana do primeiro relatório.
+  // Ferradura: duas linhas físicas, uma única atualização final (3 unidades).
+  existing(65, 84, 104, "Ferradura Clássica Em Titânio Grau Implante", "Ferradura 8mm", 5, "Quantidade consolidada: 2 completas + 1 somente haste; estoque final 3.");
+  setResult(65, { physical_quantity: 3, difference: -2 });
+  setResult(66, { action: "update_variant", product_id: 84, variant_id: 104, matched_product: "Ferradura Clássica Em Titânio Grau Implante", matched_variant: "Ferradura 8mm", current_quantity: null, physical_quantity: null, difference: null, ambiguity: "", notes: "Linha consolidada na linha 65; não gera atualização independente." });
+
+  existing(83, 15, 28, "Ponto de Luz", "Topo 2.0mm", 5, "Tamanho do topo 2,0 mm; compatibilidade 1,2 mm.");
+  existing(84, 15, 29, "Ponto de Luz", "Topo 2.5mm", 4, "Tamanho do topo 2,5 mm; compatibilidade 1,2 mm.");
+  existing(85, 15, 30, "Ponto de Luz", "Topo 3.0mm", 5, "Variação específica de topo 3,0 mm; estoque físico zero.");
+  newProduct(105, "Anzol/Nostril ponto de luz é modelo distinto; nenhum produto específico inequívoco encontrado.");
+  for (const row of [75, 77, 78, 100]) newProduct(row, "Modelo ornamental distinto de Ponto de Luz; nenhum cadastro específico inequívoco encontrado.");
+
+  // Transversal: produto principal existente, mas a única variação atual é 1,6 mm.
+  for (const row of [62, 63, 64]) newVariant(row, 37, "Industrial Barbell (scaffold) Em Titânio Grau Implante – Rosca Interna", "Criar variação 1,2 mm no produto Transversal existente; manter 30/32/34 mm como variações.");
+
+  existing(16, 65, 83, "Argola Clicker Lateral Zircônia Em Titânio Grau Implante", "Variação 1", 0, "Modelo lateral, 8 mm, 1,2 mm, titânio compatíveis.");
+  existing(27, 23, 39, "Argola Clicker Ondulada com Zircônias – Titânio Grau Implante", "Variação 2", 1, "Torcida/ondulada, 10 mm, 1,2 mm e zircônias compatíveis.");
+  newVariant(28, 65, "Argola Clicker Lateral Zircônia Em Titânio Grau Implante", "Modelo lateral compatível; criar medida 12 mm.");
+  newProduct(25, "Segmento coração cravejado é formato ornamental próprio; nenhum cadastro equivalente inequívoco.");
+  newProduct(26, "Composição especial de zircônias não corresponde inequivocamente aos clickers genéricos.");
+  human(29, "Segmento cravejado genérico 8 mm: mais de um desenho cadastrado tecnicamente compatível; requer identificação visual.");
+  human(30, "Segmento cravejado genérico 10 mm: mais de um desenho cadastrado tecnicamente compatível; requer identificação visual.");
+
+  human(10, "Labret 8 mm / 1,6 mm em Ouro: Trio, Lotus, Flor e Trinity são desenhos diferentes; imagens/descrições não identificam o modelo físico com segurança.");
+  newProduct(38, "Candidato Produto 1 é 1,2 mm e rosca externa; incompatível com 14 mm / 1,6 mm / Push Pin.");
+
+  newProduct(48, "Navel haste Push Pin: cadastros encontrados usam rosca interna; conflito crítico de encaixe.");
+  newProduct(49, "Navel completo topo 5 zircônias: nenhum modelo cadastrado descreve inequivocamente cinco zircônias e Push Pin.");
+  human(50, "Navel básico cravejado sem comprimento/desenho suficiente; Crown e Halo são modelos distintos possíveis.");
+  human(51, "Navel duplo pingente redondo pode lembrar Cascata Dupla, mas o formato redondo não está comprovado no cadastro.");
+  human(52, "Navel básico cravejado circular pode lembrar Halo/Crown, mas o desenho não é inequívoco.");
+  human(53, "Navel coração pingente duplo: existem Corações com Pingente e Corações em Cascata; requer identificação visual.");
+  human(54, "Navel cravejado plano: nenhum cadastro comprova inequivocamente a construção plana.");
+  newProduct(55, "Navel flor cravejado: nenhum produto Navel floral inequívoco encontrado.");
+  existing(56, 46, 62, "Barbell Curvo Solar com Pedra Ônix Em Titânio Grau Implante – Rosca Interna", "Variação 1", 1, "Modelo Solar, pedra Ônix, 1,2 mm e titânio compatíveis.");
+  human(57, "Navel opala azul com 4 zircônias: Navel Halo aceita opala, mas quatro zircônias e ausência de topo não estão comprovadas.");
+  newProduct(58, "Barbell curvo de umbigo básico 1,6 mm: produtos genéricos existentes possuem modelo/material técnico divergente ou ornamentação específica.");
+  newProduct(59, "Floating Navel ponto de luz 1,2 mm: Navels ponto de luz existentes são tradicionais e 1,6 mm; conflito crítico de construção/espessura.");
+
+  // Recalcula duplicidades somente depois das decisões explícitas. Linhas consolidadas
+  // de Ferradura são a única repetição intencional e não representam duas escritas.
+  const finalVariantRows = new Map();
+  for (const r of results.filter((item) => item.action === "update_variant" && item.variant_id && item.source_row !== 66)) {
+    const prior = finalVariantRows.get(r.variant_id);
+    if (prior) { human(prior.source_row, `A mesma variação ${r.variant_id} recebeu linhas independentes ${prior.source_row} e ${r.source_row}.`); human(r.source_row, `A mesma variação ${r.variant_id} recebeu linhas independentes ${prior.source_row} e ${r.source_row}.`); }
+    else finalVariantRows.set(r.variant_id, r);
+  }
   const createRows = results.filter((r) => r.action === "create_product_and_variant");
   const createVariantRows = results.filter((r) => r.action === "create_variant");
   const updateRows = results.filter((r) => r.action === "update_variant");
