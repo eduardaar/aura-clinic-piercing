@@ -593,6 +593,17 @@
   .topbar-icon-action { display: none; }
   .topbar-actions .notification-button { width: 36px; height: 36px; }
   .content-scroll { padding-top: 20px; }
+  .content-scroll { padding-right: 14px; padding-left: 14px; padding-bottom: 36px; }
+  .panel { border-radius: 13px; }
+  .metric-grid, .premium-metric-grid { grid-template-columns: 1fr; }
+  .premium-dashboard-grid, .premium-lower-grid, .premium-ranking-grid { grid-template-columns: 1fr; gap: 14px; }
+  .toolbar, .inventory-filter-row.simplified { align-items: stretch; }
+  .toolbar > *, .inventory-filter-row.simplified > * { max-width: none; }
+  .agenda-page-actions { flex-wrap: wrap; }
+  .agenda-page-actions > * { min-width: calc(50% - 4px); }
+  .products-crud-header { padding: 16px; }
+  .product-shortcuts { display: grid; grid-template-columns: 1fr; width: 100%; }
+  .product-shortcuts > * { width: 100%; justify-content: center; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1227,6 +1238,9 @@
   .dataview-search { max-width: none; }
   .dataview-pagination { gap: 10px; }
   .dataview-pager { margin-left: 0; width: 100%; justify-content: space-between; }
+  .dataview-toolbar { align-items: stretch; }
+  .dataview-filter-toggle { justify-content: center; }
+  .dataview-table { font-size: 13px; }
 }
 
 /* Cabeçalho volta a aparecer nos cartões de gerenciamento (Tamanhos, Espessuras,

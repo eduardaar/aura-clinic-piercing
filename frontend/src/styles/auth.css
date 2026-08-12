@@ -57,6 +57,12 @@
   min-width: 0;
 }
 
+@media (max-width: 420px) {
+  .au-a-root .au-a-panel { padding: 22px 16px 28px; }
+  .au-a-root .au-a-title { font-size: 24px; }
+  .au-a-root .au-a-form { gap: 14px; }
+}
+
 /* ---------- Títulos ---------- */
 
 .au-a-root .au-a-title {

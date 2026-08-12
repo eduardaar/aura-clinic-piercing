@@ -650,6 +650,21 @@
 .au-l-root .au-l-foot-link:hover { color: var(--brown-dark); }
 .au-l-root .au-l-foot-links { display:flex; flex-wrap:wrap; gap:0 14px; }
 
+/* Proteções específicas para telas estreitas. A landing usa carrossel e
+   tabelas comparativas: estes elementos precisam rolar dentro do bloco, nunca
+   ampliar a largura da página. */
+@media (max-width: 480px) {
+  .au-l-root { --au-l-pad: 16px; }
+  .au-l-root .au-l-hero-inner { padding-top: 18px; gap: 22px; }
+  .au-l-root .au-l-hero-copy h1 { font-size: clamp(29px, 9vw, 38px); }
+  .au-l-root .au-l-sec { padding-inline: var(--au-l-pad); }
+  .au-l-root .au-l-btn { width: 100%; }
+  .au-l-root .au-l-hero-actions { width: 100%; }
+  .au-l-root .au-l-plan-compare-scroll { margin-inline: -4px; padding-inline: 4px; overflow-x: auto; }
+  .au-l-root .au-l-close-inner { padding: 28px 20px; }
+  .au-l-whatsapp-float { width: 50px; height: 50px; right: 14px; bottom: 14px; }
+}
+
 /* =========================================================================
    >= 640px — tablets pequenos
    ========================================================================= */

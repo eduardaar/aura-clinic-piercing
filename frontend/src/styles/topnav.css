@@ -149,7 +149,7 @@
 }
 
 .au-nav-login {
-  display: none;      /* mobile: só o CTA, para não espremer a barra */
+  display: inline-flex;
   align-items: center;
   min-height: 44px;
   font-size: 15px;
@@ -224,6 +224,18 @@
 }
 
 .au-nav-cta[aria-current="page"]:hover { transform: none; box-shadow: none; }
+
+/* O caminho de entrada é essencial também no celular. Em vez de escondê-lo,
+   compactamos a barra sem reduzir a área de toque dos links. */
+@media (max-width: 639px) {
+  .au-nav-inner { padding: 8px 16px; gap: 8px; }
+  .au-nav-brand { gap: 7px; min-height: 40px; }
+  .au-nav-mark { width: 30px; height: 30px; }
+  .au-nav-brand strong { font-size: 18px; }
+  .au-nav-actions { gap: 10px; }
+  .au-nav-login { min-height: 40px; font-size: 13px; }
+  .au-nav-cta { min-height: 40px; padding: 8px 11px; font-size: 12px; }
+}
 
 /* ---------- >= 640px ---------- */
 
