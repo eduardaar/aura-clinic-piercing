@@ -20,6 +20,7 @@ export function PublicTopNav({ current }) {
         <nav className="au-nav-links" aria-label="Navegação principal">
           <a className="au-nav-link" href="/#recursos">Recursos</a>
           <a className="au-nav-link" href="/#planos">Planos</a>
+          <a className="au-nav-link" href="/sobre" aria-current={current === "about" ? "page" : undefined}>Sobre nós</a>
         </nav>
 
         <div className="au-nav-actions">

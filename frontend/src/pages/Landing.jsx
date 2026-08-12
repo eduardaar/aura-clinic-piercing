@@ -167,7 +167,7 @@ function FeaturesSection({ content }) {
   );
 }
 
-function AboutSection({ content }) {
+export function AboutSection({ content }) {
   return <section className="au-l-about" id="sobre">
     <div className="au-l-about-inner">
       <div className="au-l-sec-head">
@@ -435,11 +435,29 @@ function ClosingSection({ content }) {
 const SECTION_COMPONENTS = {
   hero: HeroSection,
   features: FeaturesSection,
-  about: AboutSection,
   carousel: CarouselSection,
   plans: PlansSection,
   closing: ClosingSection
 };
+
+export function AboutPage() {
+  const [content, setContent] = useState(LANDING_DEFAULTS.about);
+  useEffect(() => {
+    let active = true;
+    fetch(`${API}/landing`)
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((payload) => {
+        const about = asArray(payload.sections).find((section) => section.section_key === "about");
+        if (active && about) setContent(mergeContent("about", about.content));
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+  return <div className="au-shell">
+    <PublicTopNav current="about" />
+    <main className="au-l-root"><AboutSection content={content} /></main>
+  </div>;
+}
 
 export function Landing() {
   // Começa JÁ com o conteúdo embutido, não com lista vazia. A landing é a porta

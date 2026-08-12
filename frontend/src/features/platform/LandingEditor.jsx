@@ -29,8 +29,8 @@ const SECTION_INFO = {
     hint: "Os quatro cards que explicam o que a plataforma faz.",
   },
   about: {
-    name: "Sobre a Aura e Monitence",
-    hint: "Apresentação institucional exibida entre os recursos e os planos.",
+    name: "Página Sobre nós",
+    hint: "Conteúdo da página pública /sobre, sobre a Aura Clinic e a Monitence.",
   },
   carousel: {
     name: "Carrossel de imagens",

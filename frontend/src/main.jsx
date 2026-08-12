@@ -56,6 +56,7 @@ const Signup = lazy(() => import("./features/platform/Signup").then((m) => ({ de
 const PlatformAdmin = lazy(() => import("./features/platform/PlatformAdmin").then((m) => ({ default: m.PlatformAdmin })));
 const MyPlan = lazy(() => import("./features/platform/MyPlan").then((m) => ({ default: m.MyPlan })));
 const Landing = lazy(() => import("./pages/Landing").then((m) => ({ default: m.Landing })));
+const AboutPage = lazy(() => import("./pages/Landing").then((m) => ({ default: m.AboutPage })));
 const LegalDocument = lazy(() => import("./pages/LegalDocument").then((m) => ({ default: m.LegalDocument })));
 const CatalogDirectory = lazy(() => import("./pages/PublicDirectory").then((m) => ({ default: m.CatalogDirectory })));
 const BookingDirectory = lazy(() => import("./pages/PublicDirectory").then((m) => ({ default: m.BookingDirectory })));
@@ -114,6 +115,7 @@ function App() {
   const isPublicBooking = currentPathname.startsWith("/agendar");
   const isPublicCheckout = currentPathname.startsWith("/comprar");
   const isSignup = currentPathname.startsWith("/cadastro");
+  const isAbout = currentPathname === "/sobre";
   const legalDocumentKey = currentPathname === "/termos-de-uso" ? "terms_of_use" : currentPathname === "/politica-de-privacidade" ? "privacy_policy" : null;
   const isLegalPage = Boolean(legalDocumentKey);
   const isPlatform = currentPathname.startsWith("/plataforma");
@@ -223,15 +225,16 @@ function App() {
   // Se não tem sessão e não está em rota pública (nem na landing "/"),
   // redireciona para login.
   useEffect(() => {
-    if (!normalizedSession && !isLanding && !isPublicCatalog && !isPublicBooking && !isPublicCheckout && !isSignup && !isPlatform && !isLegalPage && !isLoginPath) {
+    if (!normalizedSession && !isLanding && !isAbout && !isPublicCatalog && !isPublicBooking && !isPublicCheckout && !isSignup && !isPlatform && !isLegalPage && !isLoginPath) {
       window.location.href = "/login";
     }
-  }, [normalizedSession, isLanding, isPublicCatalog, isPublicBooking, isPublicCheckout, isSignup, isPlatform, isLegalPage, isLoginPath]);
+  }, [normalizedSession, isLanding, isAbout, isPublicCatalog, isPublicBooking, isPublicCheckout, isSignup, isPlatform, isLegalPage, isLoginPath]);
 
   // Landing pública na raiz "/" quando não há sessão.
   if (isLanding && !normalizedSession) {
     return <Suspense fallback={<Loading />}><Landing /></Suspense>;
   }
+  if (isAbout) return <Suspense fallback={<Loading />}><AboutPage /></Suspense>;
 
   // Se está em /login, renderizar APENAS login (sem app shell)
   if (isLoginPath) {
