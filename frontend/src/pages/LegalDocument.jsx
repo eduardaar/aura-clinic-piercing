@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { API } from "../lib/api";
 import { PublicTopNav } from "../components/layout/PublicTopNav";
+import { PublicFooter } from "../components/layout/PublicFooter";
 import "../styles/legal.css";
 
 const FALLBACK = {
@@ -34,5 +35,6 @@ export function LegalDocument({ documentKey }) {
         <div className="legal-content">{String(document.content || "").split(/\n\s*\n/).map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>
       </article>
     </main>
+    <PublicFooter />
   </div>;
 }

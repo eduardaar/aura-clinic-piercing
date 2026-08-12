@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { BellRing, Check, ChevronLeft, ChevronRight, Instagram, Mail, MessageCircle, Sparkles, X } from "lucide-react";
+import { BellRing, Check, ChevronLeft, ChevronRight, MessageCircle, Sparkles, X } from "lucide-react";
 import { API, API_ORIGIN } from "../lib/api";
 import { asArray, asNumber, asObject } from "../lib/utils";
 import { featureLabel } from "../lib/planFeatures";
-import { BrandMark } from "../components/common/BrandMark";
 import { PublicTopNav } from "../components/layout/PublicTopNav";
+import { PublicFooter } from "../components/layout/PublicFooter";
 import { DEFAULT_LANDING_SECTIONS, LANDING_DEFAULTS } from "./landingDefaults";
 import "../styles/landing-carousel.css";
 
@@ -406,25 +406,7 @@ function ClosingSection({ content }) {
         )}
       </div>
 
-      <footer className="au-l-foot">
-        <div className="au-l-foot-brand">
-          <div className="au-l-brand">
-            <BrandMark className="au-l-mark" size={34} />
-            <strong>Aura</strong>
-          </div>
-          <span className="au-l-foot-text">{content.footer_text}</span>
-        </div>
-        <div className="au-l-contact" aria-label="Canais de contato">
-          {content.contact_whatsapp && <a href={whatsappUrl(content.contact_whatsapp)} target="_blank" rel="noreferrer"><MessageCircle size={18} aria-hidden="true" /> WhatsApp</a>}
-          {content.contact_email && <a href={`mailto:${content.contact_email}`}><Mail size={18} aria-hidden="true" /> E-mail</a>}
-          {content.contact_instagram && <a href={content.contact_instagram} target="_blank" rel="noreferrer"><Instagram size={18} aria-hidden="true" /> Instagram</a>}
-        </div>
-        <div className="au-l-foot-links">
-          <a className="au-l-foot-link" href="/termos-de-uso">Termos de uso</a>
-          <a className="au-l-foot-link" href="/politica-de-privacidade">Privacidade</a>
-          <a className="au-l-foot-link" href={content.footer_link_href}>{content.footer_link_label}</a>
-        </div>
-      </footer>
+      <PublicFooter content={content} />
     </section>
   );
 }
@@ -456,6 +438,7 @@ export function AboutPage() {
   return <div className="au-shell">
     <PublicTopNav current="about" />
     <main className="au-l-root"><AboutSection content={content} /></main>
+    <PublicFooter />
   </div>;
 }
 

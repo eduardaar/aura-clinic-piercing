@@ -191,6 +191,19 @@
   border-radius: 8px;
 }
 
+/* Rodapé comum das páginas públicas: os contatos vêm do editor da landing,
+   mantendo uma única fonte para WhatsApp, e-mail e Instagram. */
+.au-public-footer { flex:0 0 auto; border-top:1px solid var(--line); background:var(--white); font-family:var(--body-font); }
+.au-public-footer-inner { width:min(100% - 40px, 1160px); margin:0 auto; padding:22px 0; display:grid; gap:14px; }
+.au-public-footer-brand { display:grid; gap:5px; }
+.au-public-footer-brand > div { display:inline-flex; align-items:center; gap:9px; }
+.au-public-footer-brand strong { font-family:var(--title-font); font-size:18px; color:var(--ink); }
+.au-public-footer-brand span { color:var(--muted); font-size:13px; line-height:1.45; }
+.au-public-footer-contact,.au-public-footer-links { display:flex; flex-wrap:wrap; gap:6px 14px; }
+.au-public-footer a { display:inline-flex; align-items:center; gap:6px; min-height:36px; color:var(--muted); font-size:13px; font-weight:600; text-decoration:none; }
+.au-public-footer a:hover { color:var(--gold-dark); }
+@media (min-width: 760px) { .au-public-footer-inner { grid-template-columns:minmax(220px,1fr) auto auto; align-items:center; gap:24px; } }
+
 /* Tela atual: o menu não oferece um caminho onde o usuário já está. */
 .au-nav-login[aria-current="page"] {
   color: var(--gold-dark);

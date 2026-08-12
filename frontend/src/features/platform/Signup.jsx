@@ -4,6 +4,7 @@ import { API, setTenantSlug } from "../../lib/api";
 import { asArray } from "../../lib/utils";
 import { featureLabel } from "../../lib/planFeatures";
 import { PublicTopNav } from "../../components/layout/PublicTopNav";
+import { PublicFooter } from "../../components/layout/PublicFooter";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -171,6 +172,7 @@ export function Signup() {
           </div>
           </section>
         </main>
+        <PublicFooter />
       </div>
     );
   }
@@ -346,6 +348,7 @@ export function Signup() {
         </div>
         </section>
       </main>
+      <PublicFooter />
     </div>
   );
 }

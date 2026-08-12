@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ChevronRight, Eye, EyeOff } from "lucide-react";
 import { apiFetch, setTenantSlug, tenantSlug } from "../../lib/api";
 import { PublicTopNav } from "../layout/PublicTopNav";
+import { PublicFooter } from "../layout/PublicFooter";
 
 export function Login({ onLogin }) {
   const [form, setForm] = useState({
@@ -146,6 +147,7 @@ export function Login({ onLogin }) {
           <p className="au-a-aside-quote">Gestão inteligente para quem vive da perfuração.</p>
         </aside>
       </main>
+      <PublicFooter />
     </div>
   );
 }
