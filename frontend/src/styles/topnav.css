@@ -193,16 +193,21 @@
 
 /* Rodapé comum das páginas públicas: os contatos vêm do editor da landing,
    mantendo uma única fonte para WhatsApp, e-mail e Instagram. */
-.au-public-footer { flex:0 0 auto; width:100%; border-top:1px solid rgb(255 255 255 / .12); background:var(--ink); color:var(--paper); font-family:var(--body-font); }
+.au-public-footer { flex:0 0 auto; width:100%; border-top:1px solid var(--line); background:var(--paper); color:var(--ink); font-family:var(--body-font); }
 .au-public-footer-inner { width:min(100% - 40px, 1160px); margin:0 auto; padding:22px 0; display:grid; gap:14px; }
 .au-public-footer-brand { display:grid; gap:5px; }
 .au-public-footer-brand > div { display:inline-flex; align-items:center; gap:9px; }
-.au-public-footer-brand strong { font-family:var(--title-font); font-size:18px; color:var(--paper); }
-.au-public-footer-brand span { color:rgb(255 255 255 / .68); font-size:13px; line-height:1.45; }
-.au-public-footer-contact,.au-public-footer-links { display:flex; flex-wrap:wrap; gap:6px 14px; }
-.au-public-footer a { display:inline-flex; align-items:center; gap:6px; min-height:36px; color:rgb(255 255 255 / .78); font-size:13px; font-weight:600; text-decoration:none; }
-.au-public-footer a:hover { color:var(--gold-light); }
-@media (min-width: 760px) { .au-public-footer-inner { grid-template-columns:minmax(220px,1fr) auto auto; align-items:center; gap:24px; } }
+.au-public-footer-brand strong { font-family:var(--title-font); font-size:18px; color:var(--ink); }
+.au-public-footer-brand span { color:var(--muted); font-size:13px; line-height:1.45; }
+.au-public-footer-group { display:flex; flex-wrap:wrap; align-items:center; gap:6px 14px; }
+.au-public-footer-group > span { flex-basis:100%; color:var(--gold-dark); font-size:10px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; }
+.au-public-footer a { display:inline-flex; align-items:center; gap:6px; min-height:36px; color:var(--muted); font-size:13px; font-weight:600; text-decoration:none; }
+.au-public-footer a:hover { color:var(--gold-dark); }
+@media (min-width: 760px) {
+  .au-public-footer-inner { grid-template-columns:minmax(220px,1fr) auto auto; align-items:center; gap:24px; }
+  .au-public-footer-group { min-height:44px; align-content:center; }
+  .au-public-footer-links { padding-left:24px; border-left:1px solid var(--line); }
+}
 
 /* Tela atual: o menu não oferece um caminho onde o usuário já está. */
 .au-nav-login[aria-current="page"] {
