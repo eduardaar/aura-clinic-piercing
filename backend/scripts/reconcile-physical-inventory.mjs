@@ -233,7 +233,7 @@ try {
     new_variants_in_existing_products: createVariantRows.length,
     products_to_update: new Set(updateRows.map((r) => r.product_id)).size,
     variants_to_update: updateRows.length,
-    variants_to_zero: results.filter((r) => r.physical_quantity === 0 && r.action !== "ambiguous").length,
+    variants_to_zero: source.rows.filter((r) => Number(r.quantity) === 0).length,
     possible_duplicates_remaining: ambiguousRows.length,
     unresolved_ambiguities: ambiguousRows.length,
     classification_total: updateRows.length + createVariantRows.length + createRows.length + ambiguousRows.length,
