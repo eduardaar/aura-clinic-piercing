@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { GripVertical, ImageIcon, Plus, Redo2, Undo2 } from "lucide-react";
 import { Loading, ApiError } from "../components/common/Feedback";
 import { Input, Select, StatusBadge } from "../components/common/Ui";
-import { ConfirmDeleteModal, Modal } from "../components/common/Crud";
+import { ConfirmDeleteModal, Modal, RowActions } from "../components/common/Crud";
 import { DataView } from "../components/common/DataView";
 import { API_ORIGIN, apiFetch, tenantSlug, useFetch } from "../lib/api";
 import { asArray, asObject } from "../lib/utils";
@@ -1071,16 +1071,10 @@ function CouponManager() {
           }
         ]}
         actions={(coupon) => (
-          <>
-            <button type="button" onClick={() => edit(coupon)}>Editar</button>
-            <button
-              type="button"
-              className="danger-link"
-              onClick={() => setDeleting({ message: `Excluir o cupom ${coupon.code}?`, run: () => remove(coupon) })}
-            >
-              Excluir
-            </button>
-          </>
+          <RowActions actions={[
+            { label: "Editar", onClick: () => edit(coupon), primary: true },
+            { label: "Excluir", onClick: () => setDeleting({ message: `Excluir o cupom ${coupon.code}?`, run: () => remove(coupon) }), danger: true }
+          ]} />
         )}
         empty="Nenhum cupom cadastrado ainda."
         emptyFiltered="Nenhum cupom corresponde à busca ou aos filtros."
@@ -1271,20 +1265,18 @@ function PromotionManager() {
           }
         ]}
         actions={(promotion) => (
-          <>
-            <button type="button" onClick={() => edit(promotion)}>Editar</button>
-            <button type="button" onClick={() => request(`/promotions/${promotion.id}/duplicate`, { method: "POST" }, "Promoção duplicada.")}>Duplicar</button>
-            <button
-              type="button"
-              className="danger-link"
-              onClick={() => setEnding({
+          <RowActions actions={[
+            { label: "Editar", onClick: () => edit(promotion), primary: true },
+            { label: "Duplicar", onClick: () => request(`/promotions/${promotion.id}/duplicate`, { method: "POST" }, "Promoção duplicada.") },
+            {
+              label: "Excluir",
+              danger: true,
+              onClick: () => setEnding({
                 message: `Excluir a promoção ${promotion.name}? Ela será encerrada e sai da lista de campanhas.`,
                 run: () => request(`/promotions/${promotion.id}`, { method: "DELETE" }, "Promoção encerrada.")
-              })}
-            >
-              Excluir
-            </button>
-          </>
+              })
+            }
+          ]} />
         )}
         empty="Nenhuma promoção cadastrada ainda."
         emptyFiltered="Nenhuma promoção corresponde à busca ou aos filtros."

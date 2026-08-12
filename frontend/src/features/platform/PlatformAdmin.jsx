@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronRight, Eye, EyeOff, LogOut } from "lucide-react";
 import { Button, StatusBadge } from "../../components/common/Ui";
-import { Modal, CrudHeader, ConfirmDeleteModal } from "../../components/common/Crud";
+import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { API } from "../../lib/api";
 import { BrandMark } from "../../components/common/BrandMark";
@@ -546,13 +546,13 @@ export function PlatformAdmin() {
               },
             ]}
             actions={(tenant) => (
-              <>
-                <button type="button" onClick={() => activateOrRenewTenant(tenant)}>Ativar/Renovar</button>
-                <button type="button" onClick={() => toggleStatus(tenant)}>
-                  {tenant.status === "suspenso" ? "Reativar" : "Suspender"}
-                </button>
-                <button type="button" onClick={() => removeTenant(tenant)}>Excluir</button>
-              </>
+              <RowActions
+                actions={[
+                  { label: "Ativar/Renovar", onClick: () => activateOrRenewTenant(tenant), primary: true },
+                  { label: tenant.status === "suspenso" ? "Reativar" : "Suspender", onClick: () => toggleStatus(tenant) },
+                  { label: "Excluir", onClick: () => removeTenant(tenant), danger: true },
+                ]}
+              />
             )}
             empty="Nenhuma clínica cadastrada até o momento."
             emptyFiltered="Nenhuma clínica corresponde aos filtros aplicados."

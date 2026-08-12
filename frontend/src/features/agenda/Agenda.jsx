@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Calendar, CheckCircle2, ChevronLeft, ChevronRight, Clock, ShieldCheck, XCircle } from "lucide-react";
 import { Button, FinancialSummary, Input, PaymentSelect, Select, StatusBadge, StatusSelect } from "../../components/common/Ui";
-import { Modal, CrudHeader, ConfirmDeleteModal } from "../../components/common/Crud";
+import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { Loading } from "../../components/common/Feedback";
 import { asArray, asNumber, asObject, formatDate } from "../../lib/utils";
@@ -1435,12 +1435,10 @@ export function BookingAdmin() {
               { key: "service_ids", label: "Serviços", value: (professional) => asArray(professional.service_ids).length, render: (professional) => asArray(professional.service_ids).length ? `${asArray(professional.service_ids).length} serviço(s)` : "Sem vínculo" },
               { key: "active", label: "Status", value: (professional) => professional.active ? "Ativo" : "Inativo", render: (professional) => <StatusBadge status={professional.active ? "Ativo" : "Inativo"} /> },
             ]}
-            actions={(professional) => (
-              <>
-                <button type="button" onClick={() => editProfessional(professional)}>Editar</button>
-                <button type="button" onClick={() => removeProfessional(professional)}>Excluir</button>
-              </>
-            )}
+            actions={(professional) => <RowActions actions={[
+              { label: "Editar", onClick: () => editProfessional(professional), primary: true },
+              { label: "Excluir", onClick: () => removeProfessional(professional), danger: true },
+            ]} />}
             empty="Cadastre pelo menos um profissional para liberar o agendamento online."
             emptyFiltered="Nenhum profissional corresponde aos filtros aplicados."
           />
@@ -1514,12 +1512,10 @@ export function BookingAdmin() {
                 { key: "base_price", label: "Preço base", value: (service) => asNumber(service.base_price), render: (service) => currency.format(service.base_price || 0) },
                 { key: "is_active", label: "Status", value: (service) => service.is_active ? "Ativo" : "Inativo", render: (service) => <StatusBadge status={service.is_active ? "Ativo" : "Inativo"} /> },
               ]}
-              actions={(service) => (
-                <>
-                  <button type="button" onClick={() => editService(service)}>Editar</button>
-                  <button type="button" onClick={() => removeService(service)}>Excluir</button>
-                </>
-              )}
+              actions={(service) => <RowActions actions={[
+                { label: "Editar", onClick: () => editService(service), primary: true },
+                { label: "Excluir", onClick: () => removeService(service), danger: true },
+              ]} />}
               empty="Você ainda não possui serviços cadastrados."
               emptyFiltered="Nenhum serviço corresponde aos filtros aplicados."
             />
@@ -1567,12 +1563,10 @@ export function BookingAdmin() {
                 { key: "price", label: "Preço", value: (procedure) => asNumber(procedure.price), render: (procedure) => currency.format(procedure.price || 0) },
                 { key: "is_active", label: "Status", value: (procedure) => procedure.is_active ? "Ativo" : "Inativo", render: (procedure) => <StatusBadge status={procedure.is_active ? "Ativo" : "Inativo"} /> },
               ]}
-              actions={(procedure) => (
-                <>
-                  <button type="button" onClick={() => editProcedure(procedure)}>Editar</button>
-                  <button type="button" onClick={() => removeProcedure(procedure)}>Excluir</button>
-                </>
-              )}
+              actions={(procedure) => <RowActions actions={[
+                { label: "Editar", onClick: () => editProcedure(procedure), primary: true },
+                { label: "Excluir", onClick: () => removeProcedure(procedure), danger: true },
+              ]} />}
               empty="Você ainda não possui procedimentos cadastrados."
               emptyFiltered="Nenhum procedimento corresponde aos filtros aplicados."
             />
@@ -1738,12 +1732,10 @@ export function BookingAdmin() {
                 { key: "start_datetime", label: "Início", render: (block) => new Date(block.start_datetime).toLocaleString("pt-BR") },
                 { key: "end_datetime", label: "Final", render: (block) => new Date(block.end_datetime).toLocaleString("pt-BR") },
               ]}
-              actions={(block) => (
-                <>
-                  <button type="button" onClick={() => editBlock(block)}>Editar</button>
-                  <button type="button" onClick={() => removeBlock(block)}>Excluir</button>
-                </>
-              )}
+              actions={(block) => <RowActions actions={[
+                { label: "Editar", onClick: () => editBlock(block), primary: true },
+                { label: "Excluir", onClick: () => removeBlock(block), danger: true },
+              ]} />}
               empty="Nenhuma regra avançada cadastrada ainda."
               emptyFiltered="Nenhuma regra corresponde aos filtros aplicados."
             />
@@ -1912,22 +1904,12 @@ export function AppointmentList({ appointments = [], onChanged, compact }) {
         }
       ]}
       actions={compact ? undefined : (item) => (
-        <>
-          <a
-            className="secondary-button"
-            title="WhatsApp"
-            aria-label={`Abrir WhatsApp de ${personName(item)}`}
-            href={whatsappUrl(item.whatsapp, appointmentWhatsAppMessage(item))}
-            target="_blank"
-            rel="noreferrer"
-          >WhatsApp</a>
-          <button
-            type="button"
-            title="Cancelar"
-            aria-label={`Cancelar o atendimento de ${personName(item)}`}
-            onClick={() => updateAppointment(item.id, { status: "cancelado" }, onChanged)}
-          ><XCircle size={16} /></button>
-        </>
+        <RowActions
+          actions={[
+            { label: "WhatsApp", href: whatsappUrl(item.whatsapp, appointmentWhatsAppMessage(item)), target: "_blank", rel: "noreferrer", primary: true },
+            { label: "Cancelar atendimento", onClick: () => updateAppointment(item.id, { status: "cancelado" }, onChanged), danger: true },
+          ]}
+        />
       )}
       empty="Nenhum atendimento encontrado."
       emptyFiltered="Nenhum atendimento corresponde aos filtros aplicados."
@@ -1943,4 +1925,3 @@ export async function updateAppointment(id, body, refresh) {
   });
   refresh?.();
 }
-

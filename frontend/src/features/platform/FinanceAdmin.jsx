@@ -28,7 +28,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Info, RefreshCw } from "lucide-react";
 import { AlertBlock, Button, Input, Select, StatusBadge } from "../../components/common/Ui";
-import { CrudHeader } from "../../components/common/Crud";
+import { CrudHeader, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { Loading } from "../../components/common/Feedback";
 import { API } from "../../lib/api";
@@ -497,34 +497,31 @@ function Inadimplencia({ dados, carregando, erro, pagina, tamanho, onPagina, onT
           render: (linha) => <Contato linha={linha} />,
         },
       ]}
-      // Ações de linha sem classe própria: `.table-actions a` (styles.css) já
-      // desenha o link como pílula, igual ao `<button>` da linha nas outras
-      // telas. Sem ícone, pelo mesmo motivo — nenhuma outra ação de linha do
-      // painel tem um, e um só aqui é a divergência que se vê primeiro.
       actions={(linha) => (
-        <>
-          {linha.telefone && (
-            <a
-              href={whatsappUrl(
+        <RowActions
+          actions={[
+            linha.telefone && {
+              label: "WhatsApp",
+              href: whatsappUrl(
                 linha.telefone,
                 `Olá! Aqui é da Monitence. Identificamos ${plural(
                   asNumber(linha.faturas_vencidas),
                   "fatura em aberto",
                   "faturas em aberto",
                 )} da ${linha.clinica}, no total de ${moeda(linha.valor_devido, linha.valor_devido_centavos)}. Podemos ajudar a regularizar?`,
-              )}
-              target="_blank"
-              rel="noreferrer"
-            >
-              WhatsApp
-            </a>
-          )}
-          {linha.link_fatura_mais_antiga && (
-            <a href={linha.link_fatura_mais_antiga} target="_blank" rel="noreferrer">
-              Abrir fatura
-            </a>
-          )}
-        </>
+              ),
+              target: "_blank",
+              rel: "noreferrer",
+              primary: true,
+            },
+            linha.link_fatura_mais_antiga && {
+              label: "Abrir fatura",
+              href: linha.link_fatura_mais_antiga,
+              target: "_blank",
+              rel: "noreferrer",
+            },
+          ]}
+        />
       )}
       empty="Nenhuma clínica com fatura vencida na data base."
     />
@@ -630,13 +627,9 @@ function Vencimentos({ dados, carregando, erro, pagina, tamanho, onPagina, onTam
             render: (linha) => <Contato linha={linha} />,
           },
         ]}
-        actions={(linha) =>
-          linha.invoice_url ? (
-            <a href={linha.invoice_url} target="_blank" rel="noreferrer">
-              Abrir fatura
-            </a>
-          ) : null
-        }
+        actions={(linha) => linha.invoice_url
+          ? <RowActions actions={[{ label: "Abrir fatura", href: linha.invoice_url, target: "_blank", rel: "noreferrer", primary: true }]} />
+          : null}
         empty="Nenhuma fatura pendente vence nesta janela."
       />
     </div>

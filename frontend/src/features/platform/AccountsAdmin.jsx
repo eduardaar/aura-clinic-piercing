@@ -41,7 +41,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { AlertBlock, Button, Input, Select, StatusBadge, Textarea } from "../../components/common/Ui";
-import { CrudHeader, Modal } from "../../components/common/Crud";
+import { CrudHeader, Modal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { API } from "../../lib/api";
@@ -666,13 +666,12 @@ export function AccountsAdmin({ token, onUnauthorized }) {
               },
             ]}
             actions={(item) => (
-              <button
-                type="button"
-                aria-current={item.id === tenantId ? "true" : undefined}
-                onClick={() => setTenantId(item.id)}
-              >
-                {item.id === tenantId ? "Gerenciando" : "Gerenciar"}
-              </button>
+              <RowActions actions={[{
+                label: item.id === tenantId ? "Gerenciando" : "Gerenciar",
+                onClick: () => setTenantId(item.id),
+                primary: true,
+                disabled: item.id === tenantId,
+              }]} />
             )}
           />
         </section>
@@ -757,13 +756,9 @@ export function AccountsAdmin({ token, onUnauthorized }) {
                     // Asaas" escrito de dois jeitos — lá uma pílula na coluna de
                     // ações, aqui um link nu no meio da tabela. Mesmo rótulo,
                     // mesmo lugar. A pílula vem de `.table-actions a` (styles.css).
-                    actions={(fatura) =>
-                      fatura.invoice_url ? (
-                        <a href={fatura.invoice_url} target="_blank" rel="noreferrer">
-                          Abrir fatura
-                        </a>
-                      ) : null
-                    }
+                    actions={(fatura) => fatura.invoice_url
+                      ? <RowActions actions={[{ label: "Abrir fatura", href: fatura.invoice_url, target: "_blank", rel: "noreferrer", primary: true }]} />
+                      : null}
                   />
                 </section>
               </>

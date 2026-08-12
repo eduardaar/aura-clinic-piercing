@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Gem, ImageIcon, LayoutGrid, ListFilter, Pencil, Search, ShoppingCart, SlidersHorizontal, Sparkles, Table2, Trash2, X } from "lucide-react";
 import { Button, Input, Metric, Select, StatusBadge } from "../../components/common/Ui";
-import { Modal, CrudHeader, ConfirmDeleteModal } from "../../components/common/Crud";
+import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { asArray, asObject, formatDate, removeAccents } from "../../lib/utils";
 import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
@@ -1801,13 +1801,11 @@ function CategoryManagementTable({ rows = [], onEdit, onToggleStatus, onDelete }
           }
         ]}
         actions={(category) => (
-          <>
-            <button type="button" onClick={() => onEdit(category)}>Editar</button>
-            <button type="button" onClick={() => onToggleStatus(category)}>
-              {Number(category.is_active ?? 1) ? "Desativar" : "Ativar"}
-            </button>
-            <button type="button" onClick={() => onDelete(category)}>Excluir</button>
-          </>
+          <RowActions actions={[
+            { label: "Editar", onClick: () => onEdit(category) },
+            { label: Number(category.is_active ?? 1) ? "Desativar" : "Ativar", onClick: () => onToggleStatus(category) },
+            { label: "Excluir", onClick: () => onDelete(category), danger: true }
+          ]} />
         )}
         empty="Nenhuma categoria cadastrada ainda."
       />
@@ -1873,10 +1871,10 @@ export function OptionManager({ title, type, items = [], onChanged, placeholder 
         searchPlaceholder={`Buscar em ${title.toLowerCase()}`}
         columns={[{ key: "name", label: "Nome" }]}
         actions={(item) => (
-          <>
-            <button type="button" onClick={() => openEdit(item)}>Editar</button>
-            <button type="button" onClick={() => remove(item)}>Excluir</button>
-          </>
+          <RowActions actions={[
+            { label: "Editar", onClick: () => openEdit(item) },
+            { label: "Excluir", onClick: () => remove(item), danger: true }
+          ]} />
         )}
         empty="Nenhum registro cadastrado ainda."
       />
@@ -1968,10 +1966,10 @@ export function ProfessionalManager({ professionals = [], onChanged }) {
           { key: "specialty", label: "Especialidade", render: (professional) => professional.specialty || "—" }
         ]}
         actions={(professional) => (
-          <>
-            <button type="button" onClick={() => openEdit(professional)}>Editar</button>
-            <button type="button" onClick={() => remove(professional)}>Excluir</button>
-          </>
+          <RowActions actions={[
+            { label: "Editar", onClick: () => openEdit(professional) },
+            { label: "Excluir", onClick: () => remove(professional), danger: true }
+          ]} />
         )}
         empty="Nenhum profissional cadastrado ainda."
       />
@@ -2062,16 +2060,15 @@ export function JewelryTable({ items, onOpen, onEdit, onMovement, onArchive }) {
           }
         ]}
         actions={(item) => (
-          <>
-            {onMovement && <button type="button" onClick={() => onMovement(item, "Entrada")}>Entrada</button>}
-            {onMovement && <button type="button" onClick={() => onMovement(item, "Saída")}>Saída</button>}
-            <button type="button" onClick={() => onEdit?.(item)}>Editar</button>
-            {onArchive && <button type="button" onClick={() => onArchive(item)}>Arquivar</button>}
-          </>
+          <RowActions actions={[
+            { label: "Editar", onClick: () => onEdit?.(item) },
+            onMovement ? { label: "Entrada", onClick: () => onMovement(item, "Entrada") } : null,
+            onMovement ? { label: "Saída", onClick: () => onMovement(item, "Saída") } : null,
+            onArchive ? { label: "Arquivar", onClick: () => onArchive(item), danger: true } : null
+          ].filter(Boolean)} />
         )}
         empty="Nenhuma joia cadastrada ainda."
       />
     </div>
   );
 }
-

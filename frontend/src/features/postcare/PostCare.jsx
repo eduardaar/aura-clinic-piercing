@@ -1,7 +1,7 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useState } from "react";
 import { Button, Metric, SecureImage, Select, StatusBadge } from "../../components/common/Ui";
-import { Modal } from "../../components/common/Crud";
+import { Modal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray } from "../../lib/utils";
@@ -131,9 +131,7 @@ export function PostCare() {
               render: (item) => <StatusBadge status={item.status}>{item.status === "concluido" ? "concluído" : item.status}</StatusBadge>
             }
           ]}
-          actions={(item) => (
-            <button type="button" onClick={() => setEditing(item)}>Editar</button>
-          )}
+          actions={(item) => <RowActions actions={[{ label: "Editar", onClick: () => setEditing(item), primary: true }]} />}
           empty="Nenhum acompanhamento registrado ainda."
           emptyFiltered="Nenhum acompanhamento corresponde à busca ou aos filtros."
         />

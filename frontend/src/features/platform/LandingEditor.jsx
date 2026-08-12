@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, ExternalLink, ImageIcon, Plus, Trash2 } from "lucide-react";
 import { Button, Input, StatusBadge, Textarea } from "../../components/common/Ui";
-import { Modal } from "../../components/common/Crud";
+import { Modal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { API, API_ORIGIN } from "../../lib/api";
 import { asArray, asObject } from "../../lib/utils";
@@ -349,37 +349,14 @@ export function LandingEditor({ token, onUnauthorized }) {
             },
           ]}
           actions={(row) => (
-            <>
-              <button type="button" className="" onClick={() => setEditando(row.section_key)}>
-                Editar
-              </button>
-              <button
-                type="button"
-                className=""
-                disabled={ocupado === row.section_key}
-                onClick={() => alternarBloco(row)}
-              >
-                {row.enabled ? "Desligar" : "Ligar"}
-              </button>
-              <button
-                type="button"
-                className=""
-                disabled={row.posicao === 1 || Boolean(ocupado)}
-                aria-label={`Mover "${row.nome}" para cima`}
-                onClick={() => moverBloco(row, -1)}
-              >
-                <ArrowUp size={15} />
-              </button>
-              <button
-                type="button"
-                className=""
-                disabled={row.posicao === linhas.length || Boolean(ocupado)}
-                aria-label={`Mover "${row.nome}" para baixo`}
-                onClick={() => moverBloco(row, 1)}
-              >
-                <ArrowDown size={15} />
-              </button>
-            </>
+            <RowActions
+              actions={[
+                { label: "Editar", onClick: () => setEditando(row.section_key), primary: true },
+                { label: row.enabled ? "Desligar" : "Ligar", onClick: () => alternarBloco(row), disabled: ocupado === row.section_key },
+                { label: "Mover para cima", onClick: () => moverBloco(row, -1), disabled: row.posicao === 1 || Boolean(ocupado) },
+                { label: "Mover para baixo", onClick: () => moverBloco(row, 1), disabled: row.posicao === linhas.length || Boolean(ocupado) },
+              ]}
+            />
           )}
           empty="Nenhum bloco cadastrado na landing."
         />

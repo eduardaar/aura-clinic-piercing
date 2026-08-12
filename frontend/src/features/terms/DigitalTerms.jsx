@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { Download, } from "lucide-react";
 import { Button, Input, Select, StatusBadge } from "../../components/common/Ui";
+import { RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { asArray, asObject, formatDate } from "../../lib/utils";
 import { apiFetch, downloadApiFile, openApiFile, useFetch } from "../../lib/api";
@@ -291,16 +292,14 @@ export function DigitalTerms() {
               value: (term) => String(term.signed_at || ""),
               render: (term) => formatDateWithYear(term.signed_at)
             },
-            {
-              key: "pdf_url",
-              label: "PDF",
-              sortable: false,
-              searchable: false,
-              render: (term) => (term.pdf_url
-                ? <span className="inline-actions"><Button variant="secondary" type="button" onClick={() => handlePdf("open", term)}>Abrir</Button><Button variant="secondary" type="button" onClick={() => handlePdf("download", term)}>Baixar</Button></span>
-                : "—")
-            }
+            { key: "pdf_url", label: "PDF", sortable: false, searchable: false, render: (term) => term.pdf_url ? "Disponível" : "—" }
           ]}
+          actions={(term) => term.pdf_url ? <RowActions
+            actions={[
+              { label: "Abrir PDF", onClick: () => handlePdf("open", term), primary: true },
+              { label: "Baixar PDF", onClick: () => handlePdf("download", term) },
+            ]}
+          /> : null}
           empty="Nenhum termo assinado ainda."
           emptyFiltered="Nenhum termo corresponde à busca ou ao período."
         />
@@ -438,4 +437,3 @@ export function SignaturePad({ onChange, clearKey }) {
     </div>
   );
 }
-

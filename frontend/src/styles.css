@@ -6421,6 +6421,75 @@ tbody tr:hover td {
   background: rgba(200, 169, 106, .12);
 }
 
+/* Ações em listas: uma ação direta para o trabalho mais provável e um menu
+ * curto para o restante. Todas as tabelas passam a ter o mesmo comportamento,
+ * sem transformar a última coluna numa faixa de botões no mobile. */
+.row-actions-menu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  position: relative;
+}
+.table-actions .row-actions-menu { margin-left: auto; }
+.row-action-primary,
+.row-actions-more summary,
+.row-actions-popover button,
+.row-actions-popover a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  border: 1px solid rgba(200, 169, 106, .35);
+  border-radius: 9px;
+  background: #fff;
+  color: #1C1C1C;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 700;
+  line-height: 1.1;
+  text-decoration: none;
+  cursor: pointer;
+}
+.row-action-primary { border-color: rgba(164, 123, 47, .5); }
+.row-actions-more { position: relative; }
+.row-actions-more summary { list-style: none; padding: 7px; }
+.row-actions-more summary::-webkit-details-marker { display: none; }
+.row-actions-more summary:hover,
+.row-action-primary:hover,
+.row-actions-popover button:hover,
+.row-actions-popover a:hover { border-color: #C8A96A; background: rgba(200, 169, 106, .12); }
+.row-actions-more summary:focus-visible,
+.row-action-primary:focus-visible,
+.row-actions-popover button:focus-visible,
+.row-actions-popover a:focus-visible { outline: 2px solid #a47b2f; outline-offset: 2px; }
+.row-actions-popover {
+  position: absolute;
+  z-index: 12;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  min-width: max-content;
+  padding: 6px;
+  border: 1px solid rgba(116, 88, 53, .18);
+  border-radius: 12px;
+  background: #fffdf9;
+  box-shadow: 0 14px 30px rgba(47, 31, 17, .18);
+}
+.row-actions-popover button,
+.row-actions-popover a { justify-content: flex-start; border-color: transparent; }
+.row-actions-popover .danger { color: #9d3025; }
+.row-actions-popover .danger:hover { border-color: rgba(157, 48, 37, .26); background: #fff0ed; }
+
+@media (max-width: 620px) {
+  .row-action-primary,
+  .row-actions-more summary { min-height: 40px; }
+  .row-actions-popover { position: fixed; right: 12px; left: 12px; top: auto; bottom: 12px; }
+  .row-actions-popover button,
+  .row-actions-popover a { min-height: 42px; font-size: .88rem; }
+}
+
 .jewelry-editor,
 .client-edit-form {
   border: 1px solid rgba(200, 169, 106, .22);

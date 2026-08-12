@@ -3,6 +3,7 @@ import { MessageCircle, Play, Save } from "lucide-react";
 import { apiFetch, useFetch } from "../../lib/api";
 import { asArray } from "../../lib/utils";
 import { Checkbox, Input, Select, StatusBadge, Textarea } from "../../components/common/Ui";
+import { RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 
 // Opções vindas das próprias notificações: nenhum filtro oferecido devolve
@@ -179,7 +180,7 @@ export function Communications() {
             }
           ]}
           actions={(item) => (item.whatsapp_link
-            ? <a className="secondary-button" href={item.whatsapp_link} target="_blank" rel="noreferrer">Abrir WhatsApp</a>
+            ? <RowActions actions={[{ label: "Abrir WhatsApp", href: item.whatsapp_link, target: "_blank", rel: "noreferrer", primary: true }]} />
             : "—")}
           empty="Nenhuma comunicação registrada."
           emptyFiltered="Nenhuma comunicação corresponde à busca ou aos filtros."

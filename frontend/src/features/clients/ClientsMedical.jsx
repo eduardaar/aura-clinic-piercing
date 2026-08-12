@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { ChevronRight, FileSignature, HeartPulse, UsersRound } from "lucide-react";
 import { Button, Input, SecureImage, Select, StatusBadge } from "../../components/common/Ui";
-import { Modal, CrudHeader } from "../../components/common/Crud";
+import { Modal, CrudHeader, RowActions } from "../../components/common/Crud";
 import { DataView, MONTH_OPTIONS } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, dateInputValue, formatDate, formatLongDate } from "../../lib/utils";
@@ -150,12 +150,14 @@ export function ClientsMedical() {
             },
           ]}
           actions={(client) => (
-            <>
-              <button type="button" onClick={() => setProfile(client)}>Perfil completo</button>
-              <a className="secondary-button" href={whatsappUrl(client.whatsapp, `Olá, ${personName(client)}, tudo bem? Aqui é da Aura Clinic. Estamos entrando em contato para confirmar informações, acompanhar seu atendimento ou informar uma atualização importante.`)} target="_blank" rel="noreferrer">WhatsApp</a>
-              <button type="button" onClick={() => openEdit(client)}>Editar</button>
-              {isAdmin && <button type="button" className="danger" onClick={() => openDeletion(client)}>Excluir cliente</button>}
-            </>
+            <RowActions
+              actions={[
+                { label: "Ver perfil", onClick: () => setProfile(client), primary: true },
+                { label: "Editar", onClick: () => openEdit(client) },
+                { label: "WhatsApp", href: whatsappUrl(client.whatsapp, `Olá, ${personName(client)}, tudo bem? Aqui é da Aura Clinic. Estamos entrando em contato para confirmar informações, acompanhar seu atendimento ou informar uma atualização importante.`), target: "_blank", rel: "noreferrer" },
+                ...(isAdmin ? [{ label: "Excluir cliente", onClick: () => openDeletion(client), danger: true }] : []),
+              ]}
+            />
           )}
           empty="Você ainda não possui clientes cadastrados."
         />
@@ -421,4 +423,3 @@ export function MedicalRecordTimeline({ client, onChanged }) {
     </div>
   );
 }
-

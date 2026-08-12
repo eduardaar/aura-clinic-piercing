@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { Download } from "lucide-react";
 import { Button, Input, Metric, PaymentSelect, Select, StatusBadge } from "../../components/common/Ui";
-import { Modal, CrudHeader, ConfirmDeleteModal } from "../../components/common/Crud";
+import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, asNumber, asObject } from "../../lib/utils";
@@ -183,12 +183,13 @@ export function FinanceAdmin() {
             { key: "status", label: "Status", value: (item) => item.status || "", render: (item) => <StatusBadge status={item.status} tone={item.status === "paga" ? "ok" : "warn"} /> }
           ]}
           actions={(item) => (
-            <>
-              <button type="button" onClick={() => openEdit(item)}>Editar</button>
-              {item.status !== "paga" && <button type="button" onClick={async () => { await apiFetch(`/expenses/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "paga", paid_at: new Date().toISOString() }) }); refresh(); }}>Marcar como paga</button>}
-              {item.status === "paga" && <button type="button" onClick={async () => { await apiFetch(`/expenses/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "pendente" }) }); refresh(); }}>Desfazer pagamento</button>}
-              <button type="button" onClick={() => setDeleting({ message: `Excluir esta despesa?`, run: () => removeExpense(item.id) })}>Excluir</button>
-            </>
+            <RowActions actions={[
+              { label: "Editar", onClick: () => openEdit(item) },
+              item.status !== "paga"
+                ? { label: "Marcar como paga", onClick: async () => { await apiFetch(`/expenses/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "paga", paid_at: new Date().toISOString() }) }); refresh(); } }
+                : { label: "Desfazer pagamento", onClick: async () => { await apiFetch(`/expenses/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "pendente" }) }); refresh(); } },
+              { label: "Excluir", onClick: () => setDeleting({ message: "Excluir esta despesa?", run: () => removeExpense(item.id) }), danger: true }
+            ]} />
           )}
           empty="Nenhuma despesa lançada ainda."
         />
@@ -405,12 +406,15 @@ function AdvancedFinance() {
             { key: "lifecycle_status", label: "Uso nos indicadores", render: (item) => financeLabel(item.lifecycle_status || "active") }
           ]}
           actions={(item) => (
-            <>
-              <button type="button" onClick={() => openDetails(item)}>Detalhes</button>
-              {(item.lifecycle_status || "active") === "active" && <button type="button" onClick={() => setLifecycle({ item, action: "test", reason: "" })}>Marcar teste</button>}
-              {(item.lifecycle_status || "active") !== "active" && <button type="button" onClick={() => setLifecycle({ item, action: "restore", reason: "" })}>Restaurar</button>}
-              {!["paid", "canceled", "refunded"].includes(item.status) && (item.lifecycle_status || "active") === "active" && <button type="button" onClick={() => openPayment(item)}>Baixar valor</button>}
-            </>
+            <RowActions actions={[
+              { label: "Detalhes", onClick: () => openDetails(item) },
+              !["paid", "canceled", "refunded"].includes(item.status) && (item.lifecycle_status || "active") === "active"
+                ? { label: "Baixar valor", onClick: () => openPayment(item) }
+                : null,
+              (item.lifecycle_status || "active") === "active"
+                ? { label: "Marcar teste", onClick: () => setLifecycle({ item, action: "test", reason: "" }) }
+                : { label: "Restaurar", onClick: () => setLifecycle({ item, action: "restore", reason: "" }) }
+            ].filter(Boolean)} />
           )}
           empty="Nenhum lançamento no período."
         />

@@ -1,7 +1,7 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useState } from "react";
 import { Button, FinancialSummary, Input, Metric, Select, StatusBadge } from "../../components/common/Ui";
-import { Modal, CrudHeader } from "../../components/common/Crud";
+import { Modal, CrudHeader, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { asArray, formatDate } from "../../lib/utils";
 import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
@@ -317,10 +317,10 @@ export function SalesWorkspace() {
             }
           ]}
           actions={(order) => (
-            <>
-              <button type="button" onClick={() => updateStatus(order.id, "concluida")}>Concluir</button>
-              <button type="button" onClick={() => updateStatus(order.id, "cancelada")}>Cancelar</button>
-            </>
+            <RowActions actions={[
+              { label: "Concluir", onClick: () => updateStatus(order.id, "concluida") },
+              { label: "Cancelar", onClick: () => updateStatus(order.id, "cancelada"), danger: true }
+            ]} />
           )}
           empty="Nenhuma venda registrada ainda."
         />

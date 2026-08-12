@@ -1,7 +1,7 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useState } from "react";
 import { Button, Input, Select, StatusBadge } from "../../components/common/Ui";
-import { Modal, CrudHeader, ConfirmDeleteModal } from "../../components/common/Crud";
+import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray } from "../../lib/utils";
@@ -115,10 +115,12 @@ export function AccessAdmin() {
             { key: "role", label: "Nível", value: (user) => roleLabel(user.role), render: (user) => <StatusBadge status={roleLabel(user.role)} /> },
           ]}
           actions={(user) => (
-            <>
-              <button type="button" onClick={() => openEdit(user)}>Editar</button>
-              <button type="button" disabled={isProtectedLastAdmin(user)} onClick={() => setDeleting({ message: `Remover o acesso de ${user.name}?`, run: () => remove(user) })}>Excluir</button>
-            </>
+            <RowActions
+              actions={[
+                { label: "Editar", onClick: () => openEdit(user), primary: true },
+                { label: "Excluir", onClick: () => setDeleting({ message: `Remover o acesso de ${user.name}?`, run: () => remove(user) }), danger: true, disabled: isProtectedLastAdmin(user) },
+              ]}
+            />
           )}
           empty="Nenhum usuário cadastrado ainda."
         />
@@ -191,4 +193,3 @@ export function AccessAdmin() {
     </section>
   );
 }
-
