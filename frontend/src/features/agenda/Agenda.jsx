@@ -79,14 +79,12 @@ function PublicBookingLink() {
 
   return (
     <div className="agenda-public-link">
-      <div>
-        <span className="agenda-public-link-label">Link público de agendamento</span>
-        {url ? <code title={url}>{url}</code> : <span className="form-error">Defina o código público da clínica para gerar o link.</span>}
-      </div>
-      {url && <div className="agenda-public-link-actions">
-        <Button variant="secondary" onClick={copy}><Copy size={16} /> {copied ? "Copiado!" : "Copiar link"}</Button>
-        <a className="primary-button" href={url} target="_blank" rel="noreferrer"><ExternalLink size={16} /> Abrir</a>
-      </div>}
+      <span className="agenda-public-link-label">Link público</span>
+      {url ? <>
+        <code title={url}>{url}</code>
+        <button type="button" className="agenda-link-copy" onClick={copy} title="Copiar link público"><Copy size={15} /> {copied ? "Copiado!" : "Copiar"}</button>
+        <a className="agenda-link-open" href={url} target="_blank" rel="noreferrer" title="Abrir agendamento público" aria-label="Abrir agendamento público"><ExternalLink size={16} /></a>
+      </> : <span className="form-error">Defina o código público da clínica.</span>}
     </div>
   );
 }
@@ -525,16 +523,15 @@ export function VisualCalendar({ onOpenSettings }) {
     <section className="stack">
       <div className="panel agenda-page-heading">
         <div>
-          <span className="eyebrow">Rotina de atendimento</span>
+          <span className="eyebrow">Gestão de agenda</span>
           <h2>Agenda</h2>
-          <p>Visualize, cadastre e acompanhe todos os atendimentos em um só lugar.</p>
         </div>
         <div className="agenda-page-actions">
+          <PublicBookingLink />
           <Button variant="secondary" onClick={onOpenSettings}><Settings2 size={16} /> Configurações</Button>
           <Button onClick={() => setCreateSeed({})}><Plus size={16} /> Novo agendamento</Button>
         </div>
       </div>
-      <PublicBookingLink />
       <div className="toolbar">
         <div className="segmented">
           {[["mensal", "Mensal"], ["semanal", "Semanal"], ["diario", "Diário"], ["lista", "Lista"]].map(([mode, label]) => <button key={mode} className={filters.mode === mode ? "active" : ""} onClick={() => setFilters({ ...filters, mode })}>{mode === "lista" && <List size={15} />}{label}</button>)}
