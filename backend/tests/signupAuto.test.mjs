@@ -24,7 +24,7 @@ test("signup sem slug deriva o código do nome e retorna token que autentica", a
   // Cadastro SEM enviar slug.
   const signup = await req("/signup", {
     method: "POST",
-    body: { name, admin_email: adminEmail, admin_password: adminPassword, plan_code: "profissional" },
+    body: { name, admin_email: adminEmail, admin_password: adminPassword, plan_code: "profissional", legal_acceptances: { terms_of_use: 1, privacy_policy: 1 } },
   });
   assert.equal(signup.status, 201, `esperava 201, veio ${signup.status} ${JSON.stringify(signup.json)}`);
 
@@ -46,7 +46,7 @@ test("signup sem slug deriva o código do nome e retorna token que autentica", a
 test("dois cadastros com o mesmo nome geram slugs distintos", async () => {
   const suffix = Math.floor(performance.now() * 1000) % 1000000;
   const name = `Clinica Repetida ${suffix}`;
-  const base = { admin_password: "SenhaForte123", plan_code: "start" };
+  const base = { admin_password: "SenhaForte123", plan_code: "start", legal_acceptances: { terms_of_use: 1, privacy_policy: 1 } };
 
   const a = await req("/signup", { method: "POST", body: { ...base, name, admin_email: `a${suffix}@rep.test` } });
   const b = await req("/signup", { method: "POST", body: { ...base, name, admin_email: `b${suffix}@rep.test` } });

@@ -44,6 +44,7 @@ export async function createTenant(prefix = "qa") {
       state: "SP",
       logo_url: "/uploads/logo-qa.png",
       plan: "profissional",
+      legal_acceptances: { terms_of_use: 1, privacy_policy: 1 },
     },
   });
   if (status !== 201) throw new Error(`Falha ao criar tenant ${slug}: ${status} ${JSON.stringify(json)}`);

@@ -603,6 +603,22 @@
   text-align: center;
 }
 
+.au-a-root .au-a-legal {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .72);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.au-a-root .au-a-legal label { display:flex; align-items:flex-start; gap:9px; cursor:pointer; }
+.au-a-root .au-a-legal input { width:16px; height:16px; margin:2px 0 0; accent-color:var(--gold-dark); }
+.au-a-root .au-a-legal a { color:var(--brown-dark); font-weight:700; }
+
 /* Ações do wizard */
 
 .au-a-root .au-a-actions {

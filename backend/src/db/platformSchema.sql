@@ -275,6 +275,37 @@ CREATE TABLE IF NOT EXISTS platform.landing_sections (
 
 CREATE INDEX IF NOT EXISTS ix_landing_sections_order ON platform.landing_sections (sort_order);
 
+-- Documentos legais da plataforma. O conteúdo é texto simples para que o
+-- painel seja seguro de editar: a página pública nunca interpreta HTML vindo
+-- do banco. Cada edição relevante incrementa `version` no endpoint.
+CREATE TABLE IF NOT EXISTS platform.legal_documents (
+  document_key TEXT PRIMARY KEY CHECK (document_key IN ('terms_of_use', 'privacy_policy')),
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_by INTEGER REFERENCES platform.platform_users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS platform.legal_acceptances (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id INTEGER NOT NULL REFERENCES platform.tenants(id) ON DELETE CASCADE,
+  user_email TEXT NOT NULL,
+  document_key TEXT NOT NULL CHECK (document_key IN ('terms_of_use', 'privacy_policy')),
+  document_version INTEGER NOT NULL,
+  accepted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  ip_address INET,
+  user_agent TEXT,
+  UNIQUE (tenant_id, user_email, document_key, document_version)
+);
+
+CREATE INDEX IF NOT EXISTS ix_legal_acceptances_tenant ON platform.legal_acceptances (tenant_id, accepted_at DESC);
+
+INSERT INTO platform.legal_documents (document_key, title, content, version) VALUES
+  ('terms_of_use', 'Termos de Uso', 'Estes Termos de Uso regulam o acesso e a utilização da plataforma Aura. Ao criar uma conta, você declara que leu e concorda com estas condições.\n\nA conta deve ser usada de forma lícita e com informações verdadeiras. Você é responsável por proteger suas credenciais e pelos dados inseridos por sua equipe.\n\nA Aura pode atualizar recursos, preços e estes termos mediante aviso pelos canais oficiais. O uso continuado após a publicação de uma nova versão representa a concordância com ela.', 1),
+  ('privacy_policy', 'Política de Privacidade', 'A Aura trata os dados necessários para operar a plataforma, prestar suporte, processar cobranças e manter a segurança do serviço.\n\nOs dados dos clientes da sua clínica permanecem sob sua responsabilidade. A Aura atua como operadora quando processa esses dados para disponibilizar os recursos contratados.\n\nVocê pode solicitar informações sobre seus dados pelos canais oficiais. Mantemos medidas técnicas e organizacionais adequadas para proteger os dados contra acesso não autorizado.', 1)
+ON CONFLICT (document_key) DO NOTHING;
+
 -- Semente com EXATAMENTE o conteúdo que hoje está fixo no Landing.jsx.
 --
 -- `ON CONFLICT DO NOTHING` é o que torna isto seguro: a semente popula o banco

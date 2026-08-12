@@ -6,6 +6,7 @@ import { API } from "../../lib/api";
 import { BrandMark } from "../../components/common/BrandMark";
 import "../../styles/platform-panel.css";
 import { LandingEditor } from "./LandingEditor";
+import { LegalEditor } from "./LegalEditor";
 import { PlansAdmin } from "./PlansAdmin";
 import { AccountsAdmin } from "./AccountsAdmin";
 import { SupportInbox, SupportOpenBadge } from "./SupportInbox";
@@ -38,6 +39,7 @@ const TABS = [
   ["planos", "Planos"],
   ["suporte", "Suporte"],
   ["landing", "Landing pública"],
+  ["legal", "Termos e privacidade"],
 ];
 
 const PLATFORM_BASE_PATH = "/plataforma";
@@ -54,6 +56,7 @@ const TAB_HEADINGS = {
   planos: { title: "Planos", subtitle: "Preço, recursos e limites dos planos vendidos pela plataforma." },
   suporte: { title: "Suporte", subtitle: "Chamados abertos pelas clínicas." },
   landing: { title: "Landing pública", subtitle: "Edite os blocos da página inicial em /." },
+  legal: { title: "Termos e privacidade", subtitle: "Textos legais e versões aceitas durante o cadastro." },
 };
 
 // Abas que guardam RASCUNHO não salvo continuam montadas (só ocultas) depois de
@@ -339,6 +342,8 @@ export function PlatformAdmin() {
             <LandingEditor token={token} onUnauthorized={clearPlatformSession} />
           </div>
         )}
+
+        {tab === "legal" && <LegalEditor token={token} onUnauthorized={clearPlatformSession} />}
 
         {visitadas.has("planos") && (
           <div hidden={tab !== "planos"}>

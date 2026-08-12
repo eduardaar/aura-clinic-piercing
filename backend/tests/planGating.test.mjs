@@ -16,7 +16,7 @@ before(async () => {
   ctx.password = "SenhaForte123";
   const signup = await req("/signup", {
     method: "POST",
-    body: { name: `Clinica Gate ${suffix}`, slug: ctx.slug, admin_email: ctx.email, admin_password: ctx.password, plan_code: "start" },
+    body: { name: `Clinica Gate ${suffix}`, slug: ctx.slug, admin_email: ctx.email, admin_password: ctx.password, plan_code: "start", legal_acceptances: { terms_of_use: 1, privacy_policy: 1 } },
   });
   assert.equal(signup.status, 201, JSON.stringify(signup.json));
   ctx.tenantId = signup.json.tenant.id;

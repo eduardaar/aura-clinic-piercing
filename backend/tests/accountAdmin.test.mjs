@@ -61,7 +61,7 @@ async function novaClinica(prefixo, plano) {
   const password = "SenhaForte123";
   const signup = await req("/signup", {
     method: "POST",
-    body: { name: `Clinica ${slug}`, slug, admin_email: email, admin_password: password, plan_code: plano }
+    body: { name: `Clinica ${slug}`, slug, admin_email: email, admin_password: password, plan_code: plano, legal_acceptances: { terms_of_use: 1, privacy_policy: 1 } }
   });
   assert.equal(signup.status, 201, JSON.stringify(signup.json));
   return { slug, email, password, id: signup.json.tenant.id, token: signup.json.token };

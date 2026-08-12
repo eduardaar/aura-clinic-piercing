@@ -51,6 +51,8 @@ export function Signup() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [createdTenant, setCreatedTenant] = useState(null);
+  const [legalDocuments, setLegalDocuments] = useState([]);
+  const [legalAccepted, setLegalAccepted] = useState({ terms_of_use: false, privacy_policy: false });
   const selectedPlan = useMemo(
     () => plans.find((plan) => plan.code === form.plan_code) || plans.find((plan) => plan.code === "profissional") || plans[0],
     [plans, form.plan_code]
@@ -62,6 +64,13 @@ export function Signup() {
       .then((response) => response.json())
       .then((payload) => setPlans(asArray(payload.plans).length ? payload.plans : fallbackPlans))
       .catch(() => setPlans(fallbackPlans));
+  }, []);
+
+  useEffect(() => {
+    fetch(`${API}/legal-documents`)
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((payload) => setLegalDocuments(asArray(payload.documents)))
+      .catch(() => setLegalDocuments([]));
   }, []);
 
   function next() {
@@ -82,6 +91,11 @@ export function Signup() {
       setStep(1);
       return setError("Preencha nome da clínica, e-mail e senha (mín. 8 caracteres).");
     }
+    const terms = legalDocuments.find((document) => document.key === "terms_of_use");
+    const privacy = legalDocuments.find((document) => document.key === "privacy_policy");
+    if (!legalAccepted.terms_of_use || !legalAccepted.privacy_policy || !terms || !privacy) {
+      return setError("Leia e aceite os Termos de Uso e a Política de Privacidade para criar a conta.");
+    }
     setLoading(true);
     try {
       const response = await fetch(`${API}/signup`, {
@@ -93,7 +107,8 @@ export function Signup() {
           admin_name: form.admin_name.trim() || undefined,
           admin_email: form.admin_email.trim(),
           admin_password: form.admin_password,
-          plan_code: form.plan_code
+          plan_code: form.plan_code,
+          legal_acceptances: { terms_of_use: terms.version, privacy_policy: privacy.version }
         })
       });
       const payload = await response.json().catch(() => ({}));
@@ -279,6 +294,16 @@ export function Signup() {
                   <span><strong>{selectedPlan?.name}</strong> · 7 dias grátis · depois {currency.format(Number(selectedPlan?.price_cents || 0) / 100)}/mês</span>
                 </p>
                 <p className="au-a-plan-roles">Papéis disponíveis conforme o limite do plano: administrador, piercer, recepção e financeiro. Dados nunca são apagados ao trocar de plano.</p>
+                <div className="au-a-legal" aria-label="Aceites obrigatórios">
+                  <label>
+                    <input type="checkbox" checked={legalAccepted.terms_of_use} onChange={(event) => setLegalAccepted((current) => ({ ...current, terms_of_use: event.target.checked }))} />
+                    <span>Li e aceito os <a href="/termos-de-uso" target="_blank" rel="noreferrer">Termos de Uso</a>.</span>
+                  </label>
+                  <label>
+                    <input type="checkbox" checked={legalAccepted.privacy_policy} onChange={(event) => setLegalAccepted((current) => ({ ...current, privacy_policy: event.target.checked }))} />
+                    <span>Li e aceito a <a href="/politica-de-privacidade" target="_blank" rel="noreferrer">Política de Privacidade</a>.</span>
+                  </label>
+                </div>
               </>
             )}
 

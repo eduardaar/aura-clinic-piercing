@@ -15,7 +15,8 @@ before(async () => {
       slug: ctx.slug,
       admin_email: `admin@${ctx.slug}.test`,
       admin_password: "SenhaForte123",
-      plan_code: "studio"
+      plan_code: "studio",
+      legal_acceptances: { terms_of_use: 1, privacy_policy: 1 }
     }
   });
   assert.equal(signup.status, 201, JSON.stringify(signup.json));

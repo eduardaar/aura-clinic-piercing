@@ -32,6 +32,19 @@ const router = Router();
 // Desliga rate limit apenas na suíte de testes (nunca em produção).
 const skipRateLimit = () => process.env.DISABLE_RATE_LIMIT === "true";
 
+async function validateLegalAcceptance(acceptances) {
+  const received = acceptances && typeof acceptances === "object" ? acceptances : {};
+  const result = await query(
+    "SELECT document_key, version FROM platform.legal_documents WHERE document_key IN ('terms_of_use', 'privacy_policy')"
+  );
+  const current = Object.fromEntries(result.rows.map((row) => [row.document_key, Number(row.version)]));
+  const valid = current.terms_of_use
+    && current.privacy_policy
+    && Number(received.terms_of_use) === current.terms_of_use
+    && Number(received.privacy_policy) === current.privacy_policy;
+  return { valid, current };
+}
+
 const signupLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 5,
@@ -81,6 +94,14 @@ router.post("/api/signup", signupLimiter, async (req, res) => {
     }
     if (!validateBody(signupSchema, req, res)) return;
     const b = req.body;
+    const legal = await validateLegalAcceptance(b.legal_acceptances);
+    if (!legal.valid) {
+      return res.status(400).json({
+        error: "Leia e aceite os Termos de Uso e a Política de Privacidade para continuar.",
+        code: "legal_acceptance_required",
+        documents: legal.current
+      });
+    }
     // Cadastro público: o slug não é digitado — deriva-se do nome da clínica.
     const slug = String(b.slug || "").trim()
       ? String(b.slug).trim().toLowerCase()
@@ -118,6 +139,11 @@ router.post("/api/signup", signupLimiter, async (req, res) => {
     // Login automático: emite um token de clínica para o admin recém-criado,
     // evitando que o usuário tenha de fazer login de novo digitando o slug.
     const token = tenant.admin ? createToken(tenant.admin, tenant) : null;
+    await query(
+      `INSERT INTO platform.legal_acceptances (tenant_id, user_email, document_key, document_version, ip_address, user_agent)
+       VALUES ($1, $2, 'terms_of_use', $3, $4, $5), ($1, $2, 'privacy_policy', $6, $4, $5)`,
+      [tenant.id, String(b.admin_email).trim().toLowerCase(), legal.current.terms_of_use, clientIp(req), req.get("user-agent") || null, legal.current.privacy_policy]
+    );
     res.status(201).json({
       tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, plan: tenant.plan },
       token,

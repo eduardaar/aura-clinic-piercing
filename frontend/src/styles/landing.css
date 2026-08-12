@@ -626,6 +626,7 @@
 }
 
 .au-l-root .au-l-foot-link:hover { color: var(--brown-dark); }
+.au-l-root .au-l-foot-links { display:flex; flex-wrap:wrap; gap:0 14px; }
 
 /* =========================================================================
    >= 640px — tablets pequenos

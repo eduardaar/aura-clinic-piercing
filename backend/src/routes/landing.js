@@ -11,6 +11,7 @@ import path from "path";
 import { verifyPlatformToken } from "../middleware/auth.js";
 import { upload, parseUpload } from "../middleware/upload.js";
 import { isProduction } from "../config/index.js";
+import { query } from "../database/connection.js";
 import {
   LandingError,
   listLandingSections,
@@ -57,6 +58,31 @@ router.get("/api/landing", async (_req, res) => {
   }
 });
 
+const LEGAL_DOCUMENT_KEYS = ["terms_of_use", "privacy_policy"];
+
+function normalizeLegalDocument(row) {
+  return {
+    key: row.document_key,
+    title: row.title,
+    content: row.content,
+    version: Number(row.version),
+    updated_at: row.updated_at
+  };
+}
+
+// Textos públicos, usados tanto pelos links do rodapé quanto pelo cadastro.
+router.get("/api/legal-documents", async (_req, res) => {
+  try {
+    const result = await query(
+      "SELECT document_key, title, content, version, updated_at FROM platform.legal_documents ORDER BY document_key"
+    );
+    res.json({ documents: result.rows.map(normalizeLegalDocument) });
+  } catch (error) {
+    console.error(`[legal] falha ao ler documentos públicos: ${error.message}`);
+    res.status(503).json({ error: "Os documentos legais estão indisponíveis no momento." });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Painel da plataforma
 // ---------------------------------------------------------------------------
@@ -66,6 +92,39 @@ router.get("/api/landing", async (_req, res) => {
 router.get("/api/platform/landing", requirePlatform, async (_req, res) => {
   try {
     res.json({ sections: await listLandingSections({ onlyEnabled: false }) });
+  } catch (error) {
+    handleLandingError(res, error);
+  }
+});
+
+router.get("/api/platform/legal-documents", requirePlatform, async (_req, res) => {
+  try {
+    const result = await query(
+      "SELECT document_key, title, content, version, updated_at FROM platform.legal_documents ORDER BY document_key"
+    );
+    res.json({ documents: result.rows.map(normalizeLegalDocument) });
+  } catch (error) {
+    handleLandingError(res, error);
+  }
+});
+
+router.put("/api/platform/legal-documents/:key", requirePlatform, async (req, res) => {
+  const key = String(req.params.key || "");
+  const title = String(req.body?.title || "").trim();
+  const content = String(req.body?.content || "").trim();
+  if (!LEGAL_DOCUMENT_KEYS.includes(key)) return res.status(404).json({ error: "Documento legal não encontrado." });
+  if (!title || !content) return res.status(400).json({ error: "Informe título e conteúdo do documento." });
+  if (title.length > 160 || content.length > 30000) return res.status(400).json({ error: "O documento excede o tamanho permitido." });
+  try {
+    const result = await query(
+      `UPDATE platform.legal_documents
+       SET title = $1, content = $2, version = version + 1, updated_at = now(), updated_by = $3
+       WHERE document_key = $4
+       RETURNING document_key, title, content, version, updated_at`,
+      [title, content, req.platformUser?.sub || null, key]
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: "Documento legal não encontrado." });
+    res.json({ document: normalizeLegalDocument(result.rows[0]) });
   } catch (error) {
     handleLandingError(res, error);
   }

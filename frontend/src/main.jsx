@@ -5,6 +5,7 @@ import { Bell, Calendar, Menu, PanelLeftClose, PanelLeftOpen, UserRound } from "
 import "./styles.css";
 import "./styles/topnav.css";
 import "./styles/landing.css";
+import "./styles/legal.css";
 import "./styles/auth.css";
 import "./styles/directory.css";
 import "./styles/settings.css";
@@ -55,6 +56,7 @@ const Signup = lazy(() => import("./features/platform/Signup").then((m) => ({ de
 const PlatformAdmin = lazy(() => import("./features/platform/PlatformAdmin").then((m) => ({ default: m.PlatformAdmin })));
 const MyPlan = lazy(() => import("./features/platform/MyPlan").then((m) => ({ default: m.MyPlan })));
 const Landing = lazy(() => import("./pages/Landing").then((m) => ({ default: m.Landing })));
+const LegalDocument = lazy(() => import("./pages/LegalDocument").then((m) => ({ default: m.LegalDocument })));
 const CatalogDirectory = lazy(() => import("./pages/PublicDirectory").then((m) => ({ default: m.CatalogDirectory })));
 const BookingDirectory = lazy(() => import("./pages/PublicDirectory").then((m) => ({ default: m.BookingDirectory })));
 const Settings = lazy(() => import("./features/settings/Settings").then((m) => ({ default: m.Settings })));
@@ -112,6 +114,8 @@ function App() {
   const isPublicBooking = currentPathname.startsWith("/agendar");
   const isPublicCheckout = currentPathname.startsWith("/comprar");
   const isSignup = currentPathname.startsWith("/cadastro");
+  const legalDocumentKey = currentPathname === "/termos-de-uso" ? "terms_of_use" : currentPathname === "/politica-de-privacidade" ? "privacy_policy" : null;
+  const isLegalPage = Boolean(legalDocumentKey);
   const isPlatform = currentPathname.startsWith("/plataforma");
   const isInternalApp = isAppPath(currentPathname);
   // Landing de marketing: raiz "/" sem sessão. Com sessão, "/" é o app.
@@ -219,10 +223,10 @@ function App() {
   // Se não tem sessão e não está em rota pública (nem na landing "/"),
   // redireciona para login.
   useEffect(() => {
-    if (!normalizedSession && !isLanding && !isPublicCatalog && !isPublicBooking && !isPublicCheckout && !isSignup && !isPlatform && !isLoginPath) {
+    if (!normalizedSession && !isLanding && !isPublicCatalog && !isPublicBooking && !isPublicCheckout && !isSignup && !isPlatform && !isLegalPage && !isLoginPath) {
       window.location.href = "/login";
     }
-  }, [normalizedSession, isLanding, isPublicCatalog, isPublicBooking, isPublicCheckout, isSignup, isPlatform, isLoginPath]);
+  }, [normalizedSession, isLanding, isPublicCatalog, isPublicBooking, isPublicCheckout, isSignup, isPlatform, isLegalPage, isLoginPath]);
 
   // Landing pública na raiz "/" quando não há sessão.
   if (isLanding && !normalizedSession) {
@@ -253,6 +257,7 @@ function App() {
       : <Suspense fallback={<Loading />}><BookingDirectory /></Suspense>;
   }
   if (isPublicCheckout) return <Suspense fallback={<Loading />}><PublicCheckout /></Suspense>;
+  if (legalDocumentKey) return <Suspense fallback={<Loading />}><LegalDocument documentKey={legalDocumentKey} /></Suspense>;
   if (isSignup) return <Suspense fallback={<Loading />}><Signup /></Suspense>;
   if (isPlatform) return <Suspense fallback={<Loading />}><PlatformAdmin /></Suspense>;
   

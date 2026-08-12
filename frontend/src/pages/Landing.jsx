@@ -394,7 +394,11 @@ function ClosingSection({ content }) {
           {content.contact_email && <a href={`mailto:${content.contact_email}`}><Mail size={18} aria-hidden="true" /> E-mail</a>}
           {content.contact_instagram && <a href={content.contact_instagram} target="_blank" rel="noreferrer"><Instagram size={18} aria-hidden="true" /> Instagram</a>}
         </div>
-        <a className="au-l-foot-link" href={content.footer_link_href}>{content.footer_link_label}</a>
+        <div className="au-l-foot-links">
+          <a className="au-l-foot-link" href="/termos-de-uso">Termos de uso</a>
+          <a className="au-l-foot-link" href="/politica-de-privacidade">Privacidade</a>
+          <a className="au-l-foot-link" href={content.footer_link_href}>{content.footer_link_label}</a>
+        </div>
       </footer>
     </section>
   );
