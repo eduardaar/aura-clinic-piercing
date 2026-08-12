@@ -8,7 +8,7 @@ import { BrandMark } from "../common/BrandMark";
 // não parecer que oferece um caminho onde o usuário já está.
 export function PublicTopNav({ current }) {
   return (
-    <header className="au-nav">
+    <header className={`au-nav${current === "landing" ? " au-nav-dark" : ""}`}>
       <div className="au-nav-inner">
         <a className="au-nav-brand" href="/" aria-label="Aura — página inicial">
           <BrandMark size={34} className="au-nav-mark" />

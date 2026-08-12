@@ -59,6 +59,30 @@
    sumir sobre o fundo preto. Cada âncora define a própria cor. */
 .au-nav a { text-decoration: none; }
 
+/* A landing abre e fecha com o mesmo azul-escuro da faixa de valor. Login e
+   cadastro permanecem claros para não transformar telas de tarefa em peça de
+   marketing. */
+.au-nav.au-nav-dark {
+  background: var(--ink);
+  border-bottom-color: rgb(255 255 255 / .12);
+}
+
+.au-nav.au-nav-dark .au-nav-brand,
+.au-nav.au-nav-dark .au-nav-login { color: var(--paper); }
+
+.au-nav.au-nav-dark .au-nav-link { color: rgb(255 255 255 / .72); }
+.au-nav.au-nav-dark .au-nav-link:hover,
+.au-nav.au-nav-dark .au-nav-login:hover { color: var(--gold-light); }
+
+.au-nav.au-nav-dark .au-nav-cta {
+  background: var(--gold);
+  color: var(--ink);
+  box-shadow: 0 10px 24px rgb(0 0 0 / .2);
+}
+
+.au-nav.au-nav-dark .au-nav-cta:hover { background: var(--gold-light); }
+.au-nav.au-nav-dark a:focus-visible { outline-color: var(--gold-light); }
+
 .au-nav-inner {
   width: 100%;
   max-width: 1160px;
