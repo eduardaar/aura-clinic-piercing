@@ -10,6 +10,7 @@
     "backup": "bash scripts/backup.sh",
     "backup:uploads": "bash scripts/backup-uploads.sh",
     "migrate:r2": "node scripts/migrate-uploads-to-r2.mjs",
+    "migrate:landing-assets:r2": "node scripts/migrate-landing-assets-to-r2.mjs",
     "restore-admin": "node scripts/restore-admin.mjs",
     "seed:demo": "node scripts/seed-demo-data.mjs",
     "import:aura-jewelry": "node scripts/import-aura-jewelry.mjs",

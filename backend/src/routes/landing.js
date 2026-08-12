@@ -104,7 +104,7 @@ router.patch("/api/platform/landing/order", requirePlatform, async (req, res) =>
 // diretório servido em /uploads.
 router.post("/api/platform/landing/uploads", requirePlatform, async (req, res) => {
   try {
-    await parseUpload(upload.single("file"), req, res);
+    await parseUpload(upload.single("file"), req, res, { category: "landing", imagesOnly: true });
     if (!req.file) return res.status(400).json({ error: "Nenhum arquivo enviado." });
     // Em modo R2 a camada de storage já subiu o arquivo e devolve a URL do CDN;
     // em modo disco não existe `publicUrl` e o caminho relativo continua valendo.

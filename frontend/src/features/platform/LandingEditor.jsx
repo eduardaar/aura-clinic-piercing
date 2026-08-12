@@ -476,11 +476,13 @@ function ImageField({ label, value, alt, onChange, onAltChange, upload }) {
           </div>
         )}
         <div>
-          <Input label="Endereço da imagem" value={value || ""} onChange={onChange} />
-          <p className="field-hint">Envie um arquivo (até 6 MB) ou cole aqui o endereço de uma imagem já publicada.</p>
+          <p className="field-hint">
+            Anexe uma imagem de até 6 MB. Ela será publicada no R2 em <code>plataforma/landing/</code> e usada pela
+            página inicial.
+          </p>
           <div className="header-actions">
             <label className="secondary-button le-arquivo">
-              {uploading ? "Enviando…" : "Enviar arquivo"}
+              {uploading ? "Enviando…" : value ? "Substituir imagem" : "Anexar imagem"}
               <input type="file" accept="image/*" disabled={uploading} onChange={pick} />
             </label>
             {value && (

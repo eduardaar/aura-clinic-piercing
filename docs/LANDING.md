@@ -116,6 +116,19 @@ página fora de ordem para todo visitante.
 O upload tem rota própria porque `POST /api/uploads` passa por `withDb` e exige
 um tenant resolvido — e o super-admin não pertence a clínica nenhuma.
 
+As imagens anexadas pelo editor são somente imagens e vão ao bucket público R2
+no prefixo exclusivo `plataforma/landing/`. Para levar os assets legados que
+ainda estão em `/assets/landing/` ao R2 e trocar as referências já gravadas no
+banco, execute no servidor com R2 configurado:
+
+```bash
+npm --prefix backend run migrate:landing-assets:r2 -- --apply
+```
+
+Sem `--apply`, o comando é um dry-run e apenas lista os arquivos e blocos que
+serão alterados. Os assets locais continuam como fallback até a migração ser
+conferida no CDN.
+
 ---
 
 ## 6. Cache

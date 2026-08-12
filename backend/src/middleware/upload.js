@@ -116,12 +116,15 @@ function generateFilename() {
  * @param {object} [options]
  * @param {string} [options.category] categoria do bucket público (ver keys.js)
  */
-export function parseUpload(middleware, req, res, { category = "geral" } = {}) {
+export function parseUpload(middleware, req, res, { category = "geral", imagesOnly = false } = {}) {
   const scope = middleware?.storageScope === "private" ? "private" : "public";
   return new Promise((resolve, reject) => middleware(req, res, async (error) => {
     if (error) return reject(error);
     const files = uploadedFiles(req);
     try {
+      if (imagesOnly && files.some((file) => !String(file.mimetype || "").startsWith("image/"))) {
+        throw new Error("Envie somente imagens.");
+      }
       // Valida TUDO antes de gravar QUALQUER coisa: numa requisição com dois
       // arquivos, subir o primeiro e recusar o segundo deixaria lixo no bucket.
       await Promise.all(files.map(validateFileContents));
