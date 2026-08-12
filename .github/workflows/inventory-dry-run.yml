@@ -1,0 +1,27 @@
+name: Estoque - Dry Run tenant_2
+
+on:
+  workflow_dispatch:
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configurar acesso
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          install -m 600 /dev/null "$GITHUB_WORKSPACE/.deploy_key"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$GITHUB_WORKSPACE/.deploy_key"
+      - name: Executar auditoria somente leitura
+        env:
+          SSH_OPTS: -i ${{ github.workspace }}/.deploy_key -o UserKnownHostsFile=${{ github.workspace }}/.known_hosts -o StrictHostKeyChecking=accept-new
+        run: |
+          set -euo pipefail
+          scp ${SSH_OPTS} backend/scripts/reconcile-physical-inventory.mjs backend/scripts/physical-inventory-2026-08-12.json root@187.77.225.233:/tmp/
+          ssh ${SSH_OPTS} root@187.77.225.233 'set -euo pipefail; docker cp /tmp/reconcile-physical-inventory.mjs aura-api:/app/scripts/reconcile-physical-inventory.mjs; docker cp /tmp/physical-inventory-2026-08-12.json aura-api:/app/scripts/physical-inventory-2026-08-12.json; docker exec aura-api node /app/scripts/reconcile-physical-inventory.mjs --data=/app/scripts/physical-inventory-2026-08-12.json; rm -f /tmp/reconcile-physical-inventory.mjs /tmp/physical-inventory-2026-08-12.json'
+      - name: Remover chave
+        if: always()
+        run: rm -f "$GITHUB_WORKSPACE/.deploy_key" "$GITHUB_WORKSPACE/.known_hosts"
