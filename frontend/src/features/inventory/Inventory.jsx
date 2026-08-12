@@ -52,9 +52,9 @@ function HintedInput({ label, value, onChange, placeholder, type = "text", requi
   );
 }
 
-export function CatalogWorkspace({ area = "catalogo" }) {
+export function CatalogWorkspace({ area = "catalogo", initialTab = "produtos" }) {
   if (area === "catalogo") return <CatalogCustomization />;
-  return <Inventory2 area={area} />;
+  return <Inventory2 initialTab={initialTab} />;
 }
 
 export function JewelryCards({ items, onOpen, onEdit, onMovement, onArchive }) {
@@ -95,9 +95,9 @@ export function JewelryCards({ items, onOpen, onEdit, onMovement, onArchive }) {
   );
 }
 
-export function Inventory2({ area = "produtos" }) {
+export function Inventory2({ initialTab = "produtos" }) {
   const [view, setView] = useState("table");
-  const [sectionTab, setSectionTab] = useState("produtos");
+  const [sectionTab, setSectionTab] = useState(initialTab);
   const [inventoryMode] = useState("internal");
   const [editingJewelry, setEditingJewelry] = useState(null);
   const [movementTarget, setMovementTarget] = useState(null);
@@ -200,15 +200,13 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
   };
   const topValueItems =[...allJewelry].sort((a, b) => (Number(b.sale_value || 0) * Number(b.quantity || 0)) - (Number(a.sale_value || 0) * Number(a.quantity || 0))).slice(0, 8);
   const allTabs = [
-    { id: "produtos", label: "Lista de Produtos", icon: LayoutGrid },
+    { id: "produtos", label: "Produtos", icon: LayoutGrid },
     { id: "categorias", label: "Categorias", icon: ListFilter },
-    { id: "unidades", label: "Resumo", icon: Table2 },
+    { id: "unidades", label: "Estoque", icon: Table2 },
     { id: "abc", label: "Curva ABC", icon: Sparkles },
     { id: "inteligencia", label: "Inteligência", icon: SlidersHorizontal }
   ];
-  const mainTabs = area === "estoque"
-    ? allTabs.filter((tab) => tab.id === "produtos")
-    : allTabs.filter((tab) => ["produtos", "categorias"].includes(tab.id));
+  useEffect(() => setSectionTab(initialTab), [initialTab]);
 
   useEffect(() => {
     setStatusTab("todos");
@@ -355,34 +353,23 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
   return (
     <section className="inventory-studio">
       <div className="inventory-main">
-        {area === "produtos" ? (
-          <div className="panel products-crud-header">
-            <CrudHeader title="Produtos" subtitle="Cadastre joias, variações, preços e imagens." actionLabel="Novo produto" onAction={openNewProduct} />
-            <div className="product-shortcuts">
-              <Button variant="secondary" onClick={() => setSectionTab("categorias")}><ListFilter size={16} /> Gerenciar categorias</Button>
-              <Button variant="secondary" onClick={() => setShowVisualSearch(true)}><ImageIcon size={16} /> Buscar por foto</Button>
-              <Button variant="secondary" onClick={printLabels}><Table2 size={16} /> Imprimir etiquetas</Button>
-            </div>
+        <div className="panel products-crud-header">
+          <CrudHeader title="Produtos e estoque" subtitle="Cadastre joias, controle quantidades, preços, categorias e reposição em um só lugar." actionLabel="Novo produto" onAction={openNewProduct} />
+          <div className="product-shortcuts">
+            <Button variant="secondary" onClick={() => setSectionTab("categorias")}><ListFilter size={16} /> Gerenciar categorias</Button>
+            <Button variant="secondary" onClick={() => setShowVisualSearch(true)}><ImageIcon size={16} /> Buscar por foto</Button>
+            <Button variant="secondary" onClick={printLabels}><Table2 size={16} /> Imprimir etiquetas</Button>
           </div>
-        ) : <header className="inventory-hero">
-          <div>
-            <span className="eyebrow">Aura Clinic / {area === "estoque" ? "Estoque" : "Produtos"}</span>
-            <h2>{area === "estoque" ? "Estoque" : "Produtos"}</h2>
-            <p>{area === "estoque" ? "Indicadores, reposição e inteligência de estoque." : "Cadastre produtos, variações, categorias e preços."}</p>
-          </div>
-          <div className="inventory-hero-actions">
-            {area === "produtos" && <><Button variant="secondary" onClick={() => setShowVisualSearch(true)}><ImageIcon size={16} /> Buscar por foto</Button><Button variant="secondary" onClick={printLabels}><Table2 size={16} /> Imprimir etiquetas</Button><Button variant="primary" onClick={openNewProduct}><Gem size={16} /> Novo produto</Button></>}
-          </div>
-        </header>}
+        </div>
 
-        {area === "estoque" && <nav className="inventory-module-tabs" aria-label="Módulos do estoque">
-          {mainTabs.map(({ id, label, icon: Icon }) => (
+        <nav className="inventory-module-tabs" aria-label="Áreas de produtos e estoque">
+          {allTabs.map(({ id, label, icon: Icon }) => (
             <button key={id} type="button" className={sectionTab === id ? "active" : ""} onClick={() => setSectionTab(id)}>
               <Icon size={16} />
               <span>{label}</span>
             </button>
           ))}
-        </nav>}
+        </nav>
 
         <div className="inventory-panel-shell">
           {sectionTab === "produtos" && (
@@ -509,7 +496,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
                   <span>Organize categorias, tamanhos, espessuras e profissionais sem sair desta página.</span>
                 </div>
                 <div className="module-heading-actions">
-                  {area === "produtos" && <Button variant="secondary" onClick={() => setSectionTab("produtos")}><ArrowLeft size={16} /> Voltar para produtos</Button>}
+                  <Button variant="secondary" onClick={() => setSectionTab("produtos")}><ArrowLeft size={16} /> Voltar para produtos</Button>
                   <Button variant="secondary" onClick={() => setShowManagement((value) => !value)}>{showManagement ? "Ocultar cadastros" : "Abrir cadastros"}</Button>
                 </div>
               </div>

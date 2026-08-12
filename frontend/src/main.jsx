@@ -324,7 +324,9 @@ function App() {
           {activePage === "onboarding" && <Onboarding onOpenAgendaSettings={(tab) => { setAgendaTarget(tab); setPage("agenda"); }} />}
           {activePage === "communications" && <Communications />}
           {activePage === "products" && <CatalogWorkspace area="produtos" />}
-          {activePage === "inventory" && <CatalogWorkspace area="estoque" />}
+          {/* Compatibilidade com atalhos antigos: não há mais menu separado;
+              quem ainda chegar em "inventory" abre a aba Estoque da mesma área. */}
+          {activePage === "inventory" && <CatalogWorkspace area="produtos" initialTab="unidades" />}
           {activePage === "catalog" && <CatalogWorkspace area="catalogo" />}
           {activePage === "client-center" && <ClientWorkspace onNavigate={setPage} />}
           {activePage === "catalog-customization" && <CatalogCustomization />}

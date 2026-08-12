@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ArrowDownToLine, ArrowUpFromLine, BarChart3, Calendar, Gem, Home, Lock, LogOut, MessageCircle, Package, Plug, Settings, ShieldCheck, ShoppingCart, Sparkles, UsersRound, Warehouse, LifeBuoy } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, BarChart3, Calendar, Gem, Home, Lock, LogOut, MessageCircle, Package, Plug, Settings, ShieldCheck, ShoppingCart, Sparkles, UsersRound, LifeBuoy } from "lucide-react";
 import { canAccessPage, planAllowsPage } from "../../lib/permissions";
 import { Modal } from "../common/Crud";
 
@@ -21,8 +21,7 @@ export function Sidebar({ page, role, brand, features, trialDays, setPage, open,
       ["client-center", UsersRound, "Clientes"]
     ]],
     ["Comercial", [
-      ["products", Package, "Produtos"],
-      ["inventory", Warehouse, "Estoque"],
+      ["products", Package, "Produtos e estoque"],
       ["catalog", Gem, "Catálogo"],
       ["sales", ShoppingCart, "Vendas"],
       ["communications", MessageCircle, "Comunicações"]
