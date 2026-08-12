@@ -184,18 +184,18 @@
 .sidebar nav button {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 11px;
   width: 100%;
-  min-height: 48px;
-  padding: 0 16px;
+  min-height: 42px;
+  padding: 0 14px;
   border: 1px solid transparent;
   border-radius: 11px;
   background: transparent;
   box-shadow: none;
   color: var(--shell-nav-text);
   font-family: var(--body-font);
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
   letter-spacing: 0;
   text-align: left;
   text-transform: none;
@@ -206,8 +206,8 @@
 
 .sidebar nav button svg {
   flex: none;
-  width: 21px;
-  height: 21px;
+  width: 18px;
+  height: 18px;
   opacity: .86;
   transition: opacity .15s ease;
 }
