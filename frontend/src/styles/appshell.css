@@ -36,6 +36,21 @@
   --shell-break: 900px;
 }
 
+/* O tema pessoal troca a atmosfera do painel inteiro, inclusive o menu fixo.
+   O catálogo público preserva sua própria identidade visual e não é afetado. */
+:root[data-aura-theme="blue"] {
+  --shell-nav: #18374f;
+  --shell-nav-2: #10293d;
+  --shell-nav-line: rgba(184, 211, 232, .18);
+  --shell-nav-text: #cadce9;
+}
+:root[data-aura-theme="green"] {
+  --shell-nav: #1e3b2a;
+  --shell-nav-2: #162d20;
+  --shell-nav-line: rgba(190, 218, 198, .18);
+  --shell-nav-text: #ceded2;
+}
+
 /* ---------------------------------------------------------------- estrutura */
 
 .app-shell {

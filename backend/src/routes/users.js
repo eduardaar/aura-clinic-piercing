@@ -11,6 +11,36 @@ import { invalidateUsageCache, requireWithinLimit } from "../services/planLimits
 const router = Router();
 const LAST_ADMIN_MESSAGE = "Não é possível remover o acesso do último administrador geral. Cadastre ou promova outro administrador antes de alterar esta conta.";
 
+// Preferências pessoais não passam pelo CRUD administrativo: qualquer pessoa
+// autenticada pode atualizar o próprio nome/e-mail e trocar a senha, mas nunca
+// o próprio papel. A senha atual é exigida só quando a nova senha foi enviada.
+router.patch("/api/account/profile", withDb(async (req, res, db) => {
+  const current = await db.get("SELECT * FROM users WHERE id = ?", [req.user.id]);
+  if (!current) return res.status(401).json({ error: "Sessão inválida ou expirada." });
+  const name = String(req.body?.name ?? current.name).trim();
+  const email = String(req.body?.email ?? current.email).trim().toLowerCase();
+  const newPassword = String(req.body?.new_password || "");
+  const currentPassword = String(req.body?.current_password || "");
+  if (!name || !email || !/^\S+@\S+\.\S+$/.test(email)) {
+    return res.status(400).json({ error: "Informe nome e e-mail válidos." });
+  }
+  if (newPassword && newPassword.length < 8) {
+    return res.status(400).json({ error: "A nova senha deve ter pelo menos 8 caracteres." });
+  }
+  if (newPassword && !(await bcrypt.compare(currentPassword, current.password_hash))) {
+    return res.status(400).json({ error: "A senha atual não confere." });
+  }
+  const passwordHash = newPassword ? await bcrypt.hash(newPassword, 10) : current.password_hash;
+  try {
+    await db.run("UPDATE users SET name = ?, email = ?, password_hash = ? WHERE id = ?", [name, email, passwordHash, current.id]);
+  } catch (error) {
+    if (error?.code === "23505") return res.status(409).json({ error: "Este e-mail já está em uso nesta clínica." });
+    throw error;
+  }
+  const user = await db.get("SELECT id, name, email, role FROM users WHERE id = ?", [current.id]);
+  res.json({ user });
+}));
+
 // Whitelist de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
 const USER_SORTABLE = {
   name: "name",

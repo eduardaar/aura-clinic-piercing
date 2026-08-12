@@ -7,6 +7,7 @@ import "./styles/topnav.css";
 import "./styles/landing.css";
 import "./styles/auth.css";
 import "./styles/directory.css";
+import "./styles/settings.css";
 // Por último de propósito: é a camada que define o layout do shell autenticado.
 import "./styles/appshell.css";
 import "./styles/catalog-v2.css";
@@ -20,6 +21,7 @@ import { queryClient } from "./lib/queryClient";
 import { installGlobalErrorReporting } from "./lib/errorReporter";
 import { canAccessPage, defaultPageForRole, pageTitle } from "./lib/permissions";
 import { roleLabel } from "./features/shared/helpers";
+import { applyUiTheme, readUiTheme, saveUiTheme } from "./lib/uiTheme";
 
 if (typeof __AURA_BUILD__ !== "undefined") {
   console.info("Aura Clinic ERP", __AURA_BUILD__);
@@ -52,6 +54,7 @@ const MyPlan = lazy(() => import("./features/platform/MyPlan").then((m) => ({ de
 const Landing = lazy(() => import("./pages/Landing").then((m) => ({ default: m.Landing })));
 const CatalogDirectory = lazy(() => import("./pages/PublicDirectory").then((m) => ({ default: m.CatalogDirectory })));
 const BookingDirectory = lazy(() => import("./pages/PublicDirectory").then((m) => ({ default: m.BookingDirectory })));
+const Settings = lazy(() => import("./features/settings/Settings").then((m) => ({ default: m.Settings })));
 
 function App() {
   const [session, setSession] = useState(readStoredSession);
@@ -80,6 +83,7 @@ function App() {
   // gating por plano, o banner de trial e a tela "Meu plano".
   const [subscription, setSubscription] = useState(null);
   const [plans, setPlans] = useState([]);
+  const [uiTheme, setUiTheme] = useState(() => readUiTheme(session?.user?.id));
 
   // Verificação de autenticação administrativa
   const isAdminAuthenticated = session?.user?.id ? true : false;
@@ -108,6 +112,25 @@ function App() {
   const isLanding = currentPathname === "/";
   
   const normalizedSession = session?.user ? session : session ? { user: session } : null;
+
+  useEffect(() => {
+    setUiTheme(applyUiTheme(readUiTheme(normalizedSession?.user?.id)));
+  }, [normalizedSession?.user?.id]);
+
+  function changeUiTheme(nextTheme) {
+    setUiTheme(saveUiTheme(normalizedSession?.user?.id, nextTheme));
+  }
+
+  function changeNavCollapsed(next) {
+    setNavCollapsed(next);
+    try { localStorage.setItem("aura-nav-collapsed", String(next)); } catch { /* storage indisponível */ }
+  }
+
+  function changeUser(nextUser) {
+    const nextSession = { ...normalizedSession, user: { ...normalizedSession.user, ...nextUser } };
+    try { localStorage.setItem("aura-session", JSON.stringify(nextSession)); } catch { /* sessão atual segue em memória */ }
+    setSession(nextSession);
+  }
 
   async function openAlerts() {
     setAlertsOpen(true);
@@ -306,6 +329,7 @@ function App() {
           {activePage === "admin" && <AccessAdmin />}
           {activePage === "integrations" && <Integrations />}
           {activePage === "support" && <Support />}
+          {activePage === "settings" && <Settings user={normalizedSession.user} theme={uiTheme} onThemeChange={changeUiTheme} navCollapsed={navCollapsed} onNavCollapsedChange={changeNavCollapsed} onUserChanged={changeUser} />}
         </Suspense>
         </div>
       </main>
@@ -336,4 +360,3 @@ auraRoot.render(
     <AppErrorBoundary><App /></AppErrorBoundary>
   </QueryClientProvider>
 );
-

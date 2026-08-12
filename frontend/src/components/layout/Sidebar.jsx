@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { BarChart3, Calendar, Gem, Home, Lock, LogOut, MessageCircle, Plug, ShieldCheck, ShoppingCart, Sparkles, UsersRound, WalletCards , LifeBuoy } from "lucide-react";
+import { BarChart3, Calendar, Gem, Home, Lock, LogOut, MessageCircle, Plug, Settings, ShieldCheck, ShoppingCart, Sparkles, UsersRound, WalletCards , LifeBuoy } from "lucide-react";
 import { canAccessPage, planAllowsPage } from "../../lib/permissions";
 import { Modal } from "../common/Crud";
 
@@ -29,11 +29,12 @@ export function Sidebar({ page, role, brand, features, trialDays, setPage, open,
       ["finance", WalletCards, "Financeiro"],
       ["reports", BarChart3, "Relatórios"]
     ]],
-    ["Sistema", [
-      ["admin", ShieldCheck, "Acessos"],
-      ["integrations", Plug, "Integrações"],
-      ["support", LifeBuoy, "Suporte"]
-    ]]
+      ["Sistema", [
+        ["admin", ShieldCheck, "Acessos"],
+        ["integrations", Plug, "Integrações"],
+        ["support", LifeBuoy, "Suporte"],
+        ["settings", Settings, "Configurações"]
+      ]]
   ]
     .map(([label, entries]) => [label, entries.filter(([id]) => canAccessPage(role, id))])
     .filter(([, entries]) => entries.length > 0);

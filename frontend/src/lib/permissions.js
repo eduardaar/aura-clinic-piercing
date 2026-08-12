@@ -20,7 +20,7 @@
  * @typedef {"dashboard" | "erp" | "agenda" | "communications" | "catalog"
  *   | "catalog-customization" | "sales" | "finance" | "reports" | "client-center"
  *   | "clients" | "terms" | "postcare" | "admin" | "integrations" | "support" | "error-logs"
- *   | "meu-plano"} Page
+ *   | "meu-plano" | "settings"} Page
  */
 
 /**
@@ -45,14 +45,14 @@
 export function allowedPagesForRole(role) {
   /** @type {Record<Role, Page[]>} */
   const byRole = {
-    admin: ["dashboard", "agenda", "communications", "catalog", "catalog-customization", "sales", "finance", "reports", "client-center", "clients", "terms", "postcare", "admin", "integrations", "support", "meu-plano"],
-    reception: ["agenda", "communications", "sales", "reports", "client-center", "clients"],
-    finance: ["finance", "reports", "sales"],
-    piercer: ["agenda", "communications", "sales", "client-center", "clients", "terms", "postcare"]
+    admin: ["dashboard", "agenda", "communications", "catalog", "catalog-customization", "sales", "finance", "reports", "client-center", "clients", "terms", "postcare", "admin", "integrations", "support", "meu-plano", "settings"],
+    reception: ["agenda", "communications", "sales", "reports", "client-center", "clients", "settings"],
+    finance: ["finance", "reports", "sales", "settings"],
+    piercer: ["agenda", "communications", "sales", "client-center", "clients", "terms", "postcare", "settings"]
   };
   // Fallback SEGURO para papéis desconhecidos: acesso mínimo, sem áreas
   // administrativas (admin/finance).
-  return byRole[role] || ["dashboard", "agenda", "client-center", "clients"];
+  return byRole[role] || ["dashboard", "agenda", "client-center", "clients", "settings"];
 }
 
 // Espelha PAGE_FEATURE do backend (backend/src/services/plans.js): página -> feature
@@ -130,7 +130,8 @@ export function pageTitle(page) {
     integrations: "Integrações",
     support: "Suporte",
     "error-logs": "Monitor de erros",
-    "meu-plano": "Meu plano"
+    "meu-plano": "Meu plano",
+    settings: "Configurações"
   };
   return titles[page] || "Aura Clinic";
 }
