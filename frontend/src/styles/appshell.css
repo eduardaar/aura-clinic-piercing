@@ -618,6 +618,313 @@
   height: 42px;
   min-width: 42px;
 }
+
+/* ==============================================================
+   Linguagem visual de operação
+
+   Dashboard, agenda, produtos/estoque e DataView são as telas de
+   trabalho mais usadas. Estas regras deliberadamente vivem no shell:
+   evitam que cada módulo recrie uma variante de card, filtro e tabela.
+   A referência é a interface clara com navegação escura: foco no dado,
+   bordas discretas e só um acento por vez.
+   ============================================================== */
+
+.content-scroll {
+  background: radial-gradient(circle at 100% 0%, rgb(from var(--gold) r g b / .08), transparent 28%), var(--paper);
+}
+
+.panel,
+.inventory-section-card,
+.inventory-panel-shell,
+.dataview {
+  border-color: var(--line);
+  box-shadow: 0 10px 30px rgb(16 32 51 / .045);
+}
+
+.panel {
+  border-radius: 16px;
+}
+
+.panel-heading {
+  min-height: 44px;
+}
+
+.panel-heading h2,
+.dashboard-section-heading h3 {
+  letter-spacing: -.025em;
+}
+
+/* Dashboard: o título, período e abas funcionam como uma única barra de
+   contexto, sem adicionar um "card" dentro do outro. */
+.premium-dashboard {
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.dashboard-period-heading {
+  align-items: end;
+  padding: 4px 0 16px;
+  border-bottom: 0;
+}
+
+.dashboard-period-heading h2 {
+  font-size: clamp(24px, 2.1vw, 31px);
+  letter-spacing: -.04em;
+}
+
+.dashboard-period-heading > div > span,
+.dashboard-section-heading p {
+  color: var(--muted);
+}
+
+.dashboard-section-tabs {
+  display: inline-flex;
+  width: max-content;
+  max-width: 100%;
+  margin: 0 0 22px;
+  padding: 4px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--white);
+  box-shadow: 0 5px 14px rgb(16 32 51 / .04);
+}
+
+.dashboard-section-tabs button {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.dashboard-section-tabs button.active {
+  background: var(--brown-dark);
+  color: #fff;
+  box-shadow: none;
+}
+
+.metric-card,
+.premium-metric-card {
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: var(--white);
+  box-shadow: 0 8px 22px rgb(16 32 51 / .04);
+}
+
+.metric-card {
+  padding: 18px;
+}
+
+.metric-card > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.metric-card > strong {
+  margin-top: 8px;
+  color: var(--ink);
+  font-family: var(--title-font);
+  font-weight: 700;
+  letter-spacing: -.035em;
+}
+
+.premium-metric-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.premium-metric-card::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 3px;
+  background: var(--gold);
+  opacity: .8;
+}
+
+.premium-metric-card .metric-icon {
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--gold-soft) 62%, white);
+  color: var(--gold-dark);
+}
+
+.premium-appointment-row,
+.clean-list > div {
+  border-bottom-color: var(--line);
+}
+
+.premium-appointment-row:hover {
+  background: color-mix(in srgb, var(--paper) 80%, white);
+}
+
+/* Agenda: cabeçalho curto, ações à direita e controles da mesma família das
+   listas. O link público continua disponível, sem ganhar uma faixa própria. */
+.agenda-page-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 20px;
+  background: var(--white);
+}
+
+.agenda-page-heading h2 {
+  margin: 2px 0 0;
+  font-size: 24px;
+  letter-spacing: -.035em;
+}
+
+.agenda-page-actions,
+.inventory-hero-actions,
+.product-shortcuts {
+  gap: 8px;
+}
+
+.toolbar,
+.inventory-filter-row.simplified {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--white);
+  box-shadow: 0 7px 18px rgb(16 32 51 / .035);
+}
+
+.toolbar .segmented,
+.inventory-module-tabs {
+  border-color: var(--line);
+  background: var(--paper);
+}
+
+.toolbar .segmented button.active,
+.inventory-module-tabs button.active {
+  background: var(--brown-dark);
+  color: #fff;
+}
+
+/* Produtos/estoque: a área continua única, mas a navegação deixa explícito o
+   contexto e remove o aspecto de blocos empilhados. */
+.inventory-studio {
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.products-crud-header {
+  border-radius: 16px;
+  background: var(--white);
+}
+
+.inventory-panel-shell {
+  padding: 18px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--white) 92%, var(--paper));
+}
+
+.inventory-category-strip button,
+.inventory-list-breadcrumb button {
+  border-color: var(--line);
+  background: var(--white);
+  color: var(--muted);
+}
+
+.inventory-category-strip button.active,
+.inventory-list-breadcrumb button.active {
+  border-color: color-mix(in srgb, var(--gold) 60%, var(--line));
+  background: var(--gold-soft);
+  color: var(--gold-dark);
+}
+
+/* DataView é o padrão obrigatório de listagem. A barra de busca, tabela e
+   paginação passam a ter a mesma leitura em Clientes, Agenda, Produtos e
+   Financeiro. */
+.dataview {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--white);
+}
+
+.dataview-toolbar {
+  min-height: 58px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--paper) 70%, white);
+}
+
+.dataview-search {
+  min-height: 36px;
+  border-color: var(--line);
+  border-radius: 9px;
+  background: var(--white);
+}
+
+.dataview-search:focus-within {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgb(from var(--gold) r g b / .13);
+}
+
+.dataview-filter-toggle,
+.dataview-clear,
+.dataview-pagination button {
+  border-color: var(--line);
+  border-radius: 8px;
+  background: var(--white);
+  color: var(--ink);
+}
+
+.dataview-filter-toggle.has-filters {
+  border-color: var(--gold);
+  background: var(--gold-soft);
+  color: var(--gold-dark);
+}
+
+.dataview-filters {
+  margin: 0;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.dataview-table thead th {
+  padding-top: 13px;
+  padding-bottom: 13px;
+  border-bottom-color: var(--line);
+  background: color-mix(in srgb, var(--paper) 72%, white);
+  color: var(--muted);
+  font-size: 10.5px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.dataview-table tbody td {
+  border-bottom-color: var(--line);
+}
+
+.dataview-table tbody tr:hover td {
+  background: color-mix(in srgb, var(--gold-soft) 26%, white);
+}
+
+.dataview-pagination {
+  min-height: 58px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--white);
+}
+
+@media (max-width: 760px) {
+  .dashboard-period-heading,
+  .agenda-page-heading { align-items: flex-start; flex-direction: column; }
+  .agenda-page-actions { width: 100%; }
+  .agenda-page-actions > * { flex: 1; }
+  .dashboard-section-tabs { width: 100%; }
+  .inventory-panel-shell { padding: 12px; }
+  .dataview { overflow: visible; }
+}
 .premium-metric-card .metric-icon svg { width: 19px; height: 19px; }
 .premium-metric-card strong {
   font-size: clamp(21px, 1.9vw, 28px);

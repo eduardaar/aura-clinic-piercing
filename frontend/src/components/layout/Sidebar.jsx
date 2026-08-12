@@ -13,7 +13,7 @@ export function Sidebar({ page, role, brand, features, trialDays, setPage, open,
   // ler tudo para achar qualquer coisa; agrupado, o olho vai direto ao bloco.
   // Um bloco só aparece se sobrar algum item depois do filtro por papel.
   const groups = [
-    ["", [
+    ["Visão geral", [
       ["dashboard", Home, "Dashboard"],
       ["onboarding", Sparkles, "Onboarding"]
     ]],
