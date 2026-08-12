@@ -548,6 +548,8 @@ function SectionFields({ sectionKey, content, onChange, upload }) {
   const patchItem = (index, patch) => setItems(items.map((item, position) => (position === index ? { ...item, ...patch } : item)));
 
   if (sectionKey === "hero") {
+    const screens = asArray(content.screens);
+    const patchScreen = (index, patch) => set({ screens: screens.map((screen, position) => (position === index ? { ...screen, ...patch } : screen)) });
     return (
       <div className="stack">
         <div className="form-grid">
@@ -576,6 +578,11 @@ function SectionFields({ sectionKey, content, onChange, upload }) {
           onAltChange={(value) => set({ image_alt: value })}
           upload={upload}
         />
+        <section className="panel stack">
+          <div className="panel-heading"><div><h3>Telas do sistema em destaque</h3><p>Envie capturas reais do painel. Elas ocupam a faixa ampla do topo e alternam automaticamente.</p></div></div>
+          {screens.map((screen, index) => <ImageField key={`${screen.image || "screen"}-${index}`} label={`Tela ${index + 1}`} value={screen.image} alt={screen.image_alt} onChange={(value) => patchScreen(index, { image: value })} onAltChange={(value) => patchScreen(index, { image_alt: value })} upload={upload} />)}
+          {screens.length < 5 && <Button variant="secondary" onClick={() => set({ screens: [...screens, { image: "", image_alt: "" }] })}><Plus size={16} /> Adicionar tela</Button>}
+        </section>
       </div>
     );
   }

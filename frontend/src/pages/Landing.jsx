@@ -90,6 +90,16 @@ function FloatingWhatsApp({ phone }) {
 /* ---------- blocos ------------------------------------------------------- */
 
 function HeroSection({ content }) {
+  const screens = contentItems(content, "screens", "image");
+  const slides = screens.length ? screens : [{ key: content.image || "hero", image: content.image, image_alt: content.image_alt, caption: content.caption }];
+  const [active, setActive] = useState(0);
+  const reducedMotion = usePrefersReducedMotion();
+  useEffect(() => {
+    if (slides.length < 2 || reducedMotion) return undefined;
+    const timer = window.setInterval(() => setActive((current) => (current + 1) % slides.length), 5000);
+    return () => window.clearInterval(timer);
+  }, [slides.length, reducedMotion]);
+  const current = active % slides.length;
   return (
     <section className="au-l-hero">
       <div className="au-l-hero-inner">
@@ -101,15 +111,19 @@ function HeroSection({ content }) {
         </div>
 
         <figure className="au-l-hero-media">
-          <img
-            src={imageUrl(content.image)}
-            alt={content.image_alt}
+          {slides.map((slide, index) => <img
+            key={slide.key}
+            className={index === current ? "is-active" : ""}
+            src={imageUrl(slide.image)}
+            alt={index === current ? slide.image_alt || "" : ""}
             width={IMAGE_SIZE.hero.width}
             height={IMAGE_SIZE.hero.height}
-            fetchpriority="high"
+            fetchpriority={index === 0 ? "high" : undefined}
+            loading={index === 0 ? undefined : "lazy"}
             decoding="async"
-          />
-          {content.caption && <figcaption className="au-l-hero-strip">{content.caption}</figcaption>}
+          />)}
+          {slides[current]?.caption && <figcaption className="au-l-hero-strip">{slides[current].caption}</figcaption>}
+          {slides.length > 1 && <div className="au-l-hero-dots" aria-label="Telas do sistema">{slides.map((slide, index) => <button key={slide.key} type="button" className={index === current ? "is-active" : ""} aria-label={`Ver tela ${index + 1}`} aria-current={index === current ? "true" : undefined} onClick={() => setActive(index)} />)}</div>}
         </figure>
       </div>
     </section>
