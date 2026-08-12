@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BellRing, ChevronRight, Instagram, Mail, MessageCircle, Sparkles } from "lucide-react";
+import { BellRing, Check, ChevronRight, Instagram, Mail, MessageCircle, Sparkles, X } from "lucide-react";
 import { API, API_ORIGIN } from "../lib/api";
 import { asArray, asNumber, asObject } from "../lib/utils";
 import { featureLabel } from "../lib/planFeatures";
@@ -274,11 +274,15 @@ function CarouselSection({ content }) {
 // vivo da plataforma, não texto de marketing. Do conteúdo editável vêm só o
 // título, o subtítulo e o rótulo/destino do botão.
 function PlansSection({ content, plans }) {
+  const [comparisonOpen, setComparisonOpen] = useState(false);
+  const visibleFeatures = (plan) => asArray(plan.features).slice(0, 5);
+  const allFeatures = [...new Set(plans.flatMap((plan) => asArray(plan.features)))];
   return (
     <section className="au-l-sec au-l-sec-plans" id="planos">
       <div className="au-l-sec-head">
         <h2>{content.title}</h2>
         {content.subtitle && <p>{content.subtitle}</p>}
+        {plans.length > 1 && <button type="button" className="au-l-compare-button" onClick={() => setComparisonOpen(true)}>Comparar planos</button>}
       </div>
       <div className="au-l-plan-scroller">
         <div className="au-l-plan-grid">
@@ -293,13 +297,31 @@ function PlansSection({ content, plans }) {
               </p>
               <p className="au-l-plan-aud">{plan.audience}</p>
               <ul className="au-l-plan-list">
-                {asArray(plan.features).map((f) => <li key={f}>{featureLabel(f)}</li>)}
+                {visibleFeatures(plan).map((f) => <li key={f}>{featureLabel(f)}</li>)}
               </ul>
+              {asArray(plan.features).length > 5 && <span className="au-l-plan-more">E mais recursos para sua operação.</span>}
               <a className="au-l-btn au-l-btn-plan" href={content.cta_href}>{content.cta_label}</a>
             </article>
           ))}
         </div>
       </div>
+      {comparisonOpen && (
+        <div className="au-l-plan-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setComparisonOpen(false); }}>
+          <section className="au-l-plan-modal" role="dialog" aria-modal="true" aria-label="Comparativo detalhado de planos">
+            <div className="au-l-plan-modal-head">
+              <div><h2>Compare os planos</h2><p>Escolha pelo momento do seu estúdio. Você pode evoluir quando precisar.</p></div>
+              <button type="button" aria-label="Fechar comparativo" onClick={() => setComparisonOpen(false)}><X size={20} /></button>
+            </div>
+            <div className="au-l-plan-compare-scroll">
+              <table>
+                <thead><tr><th>Recurso</th>{plans.map((plan) => <th key={plan.code}><strong>{plan.name}</strong><small>{currency.format(Number(plan.price_cents || 0) / 100)}/mês</small></th>)}</tr></thead>
+                <tbody>{allFeatures.map((feature) => <tr key={feature}><th>{featureLabel(feature)}</th>{plans.map((plan) => <td key={plan.code}>{asArray(plan.features).includes(feature) ? <Check size={18} aria-label="Incluído" /> : "—"}</td>)}</tr>)}</tbody>
+              </table>
+            </div>
+            <div className="au-l-plan-modal-actions"><button type="button" className="au-l-btn au-l-btn-ghost" onClick={() => setComparisonOpen(false)}>Fechar</button><a className="au-l-btn au-l-btn-primary" href={content.cta_href}>{content.cta_label}</a></div>
+          </section>
+        </div>
+      )}
     </section>
   );
 }
