@@ -36,6 +36,8 @@ const Communications = lazy(() => import("./features/communications/Communicatio
 const CatalogWorkspace = lazy(() => import("./features/inventory/Inventory").then((m) => ({ default: m.CatalogWorkspace })));
 const SalesWorkspace = lazy(() => import("./features/sales/Sales").then((m) => ({ default: m.SalesWorkspace })));
 const FinanceAdmin = lazy(() => import("./features/finance/Finance").then((m) => ({ default: m.FinanceAdmin })));
+const AccountsReceivable = lazy(() => import("./features/finance/Finance").then((m) => ({ default: m.AccountsReceivable })));
+const PayablesAdmin = lazy(() => import("./features/finance/Payables").then((m) => ({ default: m.PayablesAdmin })));
 const Reports = lazy(() => import("./features/reports/Reports").then((m) => ({ default: m.Reports })));
 const AccessAdmin = lazy(() => import("./features/access/AccessAdmin").then((m) => ({ default: m.AccessAdmin })));
 const Integrations = lazy(() => import("./features/integrations/Integrations").then((m) => ({ default: m.Integrations })));
@@ -328,6 +330,8 @@ function App() {
           {activePage === "catalog-customization" && <CatalogCustomization />}
           {activePage === "sales" && <SalesWorkspace />}
           {activePage === "finance" && <FinanceAdmin />}
+          {activePage === "receivables" && <AccountsReceivable />}
+          {activePage === "payables" && <PayablesAdmin />}
           {activePage === "reports" && <Reports />}
           {activePage === "clients" && <ClientsMedical />}
           {activePage === "terms" && <DigitalTerms onBack={() => setPage("client-center")} />}

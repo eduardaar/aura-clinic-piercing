@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { BarChart3, Calendar, Gem, Home, Lock, LogOut, MessageCircle, Package, Plug, Settings, ShieldCheck, ShoppingCart, Sparkles, UsersRound, WalletCards, Warehouse, LifeBuoy } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, BarChart3, Calendar, Gem, Home, Lock, LogOut, MessageCircle, Package, Plug, Settings, ShieldCheck, ShoppingCart, Sparkles, UsersRound, Warehouse, LifeBuoy } from "lucide-react";
 import { canAccessPage, planAllowsPage } from "../../lib/permissions";
 import { Modal } from "../common/Crud";
 
@@ -28,7 +28,8 @@ export function Sidebar({ page, role, brand, features, trialDays, setPage, open,
       ["communications", MessageCircle, "Comunicações"]
     ]],
     ["Gestão", [
-      ["finance", WalletCards, "Financeiro"],
+      ["receivables", ArrowDownToLine, "Contas a receber"],
+      ["payables", ArrowUpFromLine, "Contas a pagar"],
       ["reports", BarChart3, "Relatórios"]
     ]],
       ["Sistema", [

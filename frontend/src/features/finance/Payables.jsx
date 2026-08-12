@@ -32,7 +32,7 @@ export function PayablesAdmin() {
   const initialFrom = `${new Date().getFullYear() - 1}-01-01`;
   const initialTo = `${new Date().getFullYear() + 1}-12-31`;
   const [period, setPeriod] = useState({ from: initialFrom, to: initialTo });
-  const query = new URLSearchParams({ ...period, entry_type: "payable" }).toString();
+  const query = new URLSearchParams(period).toString();
   const { data } = useFetch(`/finance/ledger?${query}`);
   const { data: centers } = useFetch("/finance/cost-centers");
   const invalidate = useApiInvalidate();
@@ -45,7 +45,9 @@ export function PayablesAdmin() {
   const [error, setError] = useState("");
 
   const ledger = asObject(data);
-  const entries = asArray(ledger.entries);
+  // Despesas cadastradas antes da separação são expostas pelo razão como
+  // `expense`; ambas representam obrigações e pertencem a esta mesma lista.
+  const entries = asArray(ledger.entries).filter((entry) => ["payable", "expense"].includes(entry.entry_type));
   const statusOptions = useMemo(() => [...new Set(entries.map((entry) => entry.status).filter(Boolean))]
     .map((value) => ({ value, label: financeLabel(value) })), [entries]);
   const categories = useMemo(() => [...new Set([...categoryOptions, ...entries.map((entry) => entry.category).filter(Boolean)])]

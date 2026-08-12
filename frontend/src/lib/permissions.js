@@ -18,7 +18,7 @@
  * Páginas do app. Inclui as duas da PLATAFORMA ("erp", "error-logs"), que
  * existem como página mas não pertencem a papel nenhum da clínica.
  * @typedef {"dashboard" | "erp" | "agenda" | "communications" | "catalog" | "products" | "inventory"
- *   | "catalog-customization" | "sales" | "finance" | "reports" | "client-center"
+ *   | "catalog-customization" | "sales" | "finance" | "receivables" | "payables" | "reports" | "client-center"
  *   | "clients" | "terms" | "postcare" | "admin" | "integrations" | "support" | "error-logs"
  *   | "meu-plano" | "settings" | "onboarding"} Page
  */
@@ -45,9 +45,9 @@
 export function allowedPagesForRole(role) {
   /** @type {Record<Role, Page[]>} */
   const byRole = {
-    admin: ["dashboard", "agenda", "communications", "products", "inventory", "catalog", "catalog-customization", "sales", "finance", "reports", "client-center", "clients", "terms", "postcare", "admin", "integrations", "onboarding", "support", "meu-plano", "settings"],
+    admin: ["dashboard", "agenda", "communications", "products", "inventory", "catalog", "catalog-customization", "sales", "receivables", "payables", "reports", "client-center", "clients", "terms", "postcare", "admin", "integrations", "onboarding", "support", "meu-plano", "settings"],
     reception: ["agenda", "communications", "sales", "reports", "client-center", "clients", "settings"],
-    finance: ["finance", "reports", "sales", "settings"],
+    finance: ["receivables", "payables", "reports", "sales", "settings"],
     piercer: ["agenda", "communications", "sales", "client-center", "clients", "terms", "postcare", "settings"]
   };
   // Fallback SEGURO para papéis desconhecidos: acesso mínimo, sem áreas
@@ -68,6 +68,8 @@ export function allowedPagesForRole(role) {
 /** @type {Partial<Record<Page, Feature>>} */
 export const PAGE_FEATURE = {
   finance: "basic_finance",
+  receivables: "advanced_finance",
+  payables: "advanced_finance",
   terms: "digital_terms",
   postcare: "automatic_followup",
   communications: "message_templates",
@@ -126,6 +128,8 @@ export function pageTitle(page) {
     "catalog-customization": "Personalização do Catálogo",
     sales: "Vendas e ordens",
     finance: "Administrativo Financeiro",
+    receivables: "Contas a receber",
+    payables: "Contas a pagar",
     reports: "Relatórios",
     "client-center": "Clientes",
     clients: "Clientes",
