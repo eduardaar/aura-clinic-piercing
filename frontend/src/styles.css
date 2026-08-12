@@ -8606,6 +8606,55 @@ body {
   gap: 10px;
 }
 
+.agenda-public-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 16px;
+  border: 1px solid rgb(from var(--nude) r g b / .62);
+  border-radius: 16px;
+  background: var(--white);
+}
+
+.agenda-public-link > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.agenda-public-link-label {
+  color: var(--muted);
+  font-size: .78rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.agenda-public-link code {
+  overflow: hidden;
+  color: var(--ink);
+  font-family: var(--body-font);
+  font-size: .9rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agenda-public-link-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.agenda-public-link-actions .primary-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
 .availability-header p {
   margin: 0;
   text-align: left;
@@ -8668,6 +8717,15 @@ body {
 
   .agenda-page-actions,
   .availability-header-actions {
+    justify-content: flex-start;
+  }
+
+  .agenda-public-link {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .agenda-public-link-actions {
     justify-content: flex-start;
   }
 }

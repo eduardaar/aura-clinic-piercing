@@ -1,17 +1,18 @@
 ﻿// Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, List, Plus, Settings2, XCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Copy, ExternalLink, List, Plus, Settings2, XCircle } from "lucide-react";
 import { Button, FinancialSummary, Input, PaymentSelect, Select, StatusBadge, StatusSelect } from "../../components/common/Ui";
 import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { Loading } from "../../components/common/Feedback";
 import { asArray, asNumber, asObject, formatDate } from "../../lib/utils";
-import { apiFetch, readStoredSession, useApiInvalidate, useFetch } from "../../lib/api";
+import { apiFetch, readStoredSession, tenantSlug, useApiInvalidate, useFetch } from "../../lib/api";
 import { buildCalendar, buildTimeSlots, dateKey, movePeriod } from "../../lib/calendarUtils";
 import { defaultAppointment, defaultProcedureForm, defaultProfessionalForm, defaultScheduleBlock, defaultServiceForm } from "../../lib/defaultForms";
 import { appointmentWhatsAppMessage, calcRemaining, currency, personName, statusClass, statuses, weekdayLabel, whatsappUrl } from "../../features/shared/helpers";
 import { Toggle } from "../../pages/CatalogCustomization";
 import { SmartCombobox } from "../../components/common/SmartCombobox";
+import { publicLinkForTenant } from "../../lib/publicRoutes";
 
 // formatDate() de lib/utils devolve dd/MM sem ano, e a agenda lista atendimentos
 // de anos diferentes na mesma tabela — aqui a data precisa do ano para não virar
@@ -56,6 +57,38 @@ export function AgendaWorkspace() {
   return screen === "settings"
     ? <BookingAdmin onBack={() => setScreen("agenda")} />
     : <VisualCalendar onOpenSettings={() => setScreen("settings")} />;
+}
+
+function PublicBookingLink() {
+  const [copied, setCopied] = useState(false);
+  const slug = tenantSlug();
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
+  const url = slug ? publicLinkForTenant("/agendar", slug, origin) : "";
+
+  async function copy() {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // O endereço continua visível para cópia manual quando a área de
+      // transferência não estiver liberada pelo navegador.
+    }
+  }
+
+  return (
+    <div className="agenda-public-link">
+      <div>
+        <span className="agenda-public-link-label">Link público de agendamento</span>
+        {url ? <code title={url}>{url}</code> : <span className="form-error">Defina o código público da clínica para gerar o link.</span>}
+      </div>
+      {url && <div className="agenda-public-link-actions">
+        <Button variant="secondary" onClick={copy}><Copy size={16} /> {copied ? "Copiado!" : "Copiar link"}</Button>
+        <a className="primary-button" href={url} target="_blank" rel="noreferrer"><ExternalLink size={16} /> Abrir</a>
+      </div>}
+    </div>
+  );
 }
 
 export function Appointments() {
@@ -501,6 +534,7 @@ export function VisualCalendar({ onOpenSettings }) {
           <Button onClick={() => setCreateSeed({})}><Plus size={16} /> Novo agendamento</Button>
         </div>
       </div>
+      <PublicBookingLink />
       <div className="toolbar">
         <div className="segmented">
           {[["mensal", "Mensal"], ["semanal", "Semanal"], ["diario", "Diário"], ["lista", "Lista"]].map(([mode, label]) => <button key={mode} className={filters.mode === mode ? "active" : ""} onClick={() => setFilters({ ...filters, mode })}>{mode === "lista" && <List size={15} />}{label}</button>)}
