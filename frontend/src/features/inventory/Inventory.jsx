@@ -302,7 +302,10 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
     }
   }
 
-  if (showEditor) {
+  // O editor é exibido como modal sobre a listagem, no mesmo padrão dos
+  // cadastros de Clientes. Mantemos este bloco legado inativo até a próxima
+  // limpeza estrutural do editor completo.
+  if (showEditor && false) {
     const productCategory = editingJewelry?.category || filters.category;
     return (
       <section className="inventory-studio inventory-product-page">
@@ -352,7 +355,16 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
   return (
     <section className="inventory-studio">
       <div className="inventory-main">
-        <header className="inventory-hero">
+        {area === "produtos" ? (
+          <div className="panel products-crud-header">
+            <CrudHeader title="Produtos" subtitle="Cadastre joias, variações, preços e imagens." actionLabel="Novo produto" onAction={openNewProduct} />
+            <div className="product-shortcuts">
+              <Button variant="secondary" onClick={() => setSectionTab("categorias")}><ListFilter size={16} /> Gerenciar categorias</Button>
+              <Button variant="secondary" onClick={() => setShowVisualSearch(true)}><ImageIcon size={16} /> Buscar por foto</Button>
+              <Button variant="secondary" onClick={printLabels}><Table2 size={16} /> Imprimir etiquetas</Button>
+            </div>
+          </div>
+        ) : <header className="inventory-hero">
           <div>
             <span className="eyebrow">Aura Clinic / {area === "estoque" ? "Estoque" : "Produtos"}</span>
             <h2>{area === "estoque" ? "Estoque" : "Produtos"}</h2>
@@ -361,16 +373,16 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
           <div className="inventory-hero-actions">
             {area === "produtos" && <><Button variant="secondary" onClick={() => setShowVisualSearch(true)}><ImageIcon size={16} /> Buscar por foto</Button><Button variant="secondary" onClick={printLabels}><Table2 size={16} /> Imprimir etiquetas</Button><Button variant="primary" onClick={openNewProduct}><Gem size={16} /> Novo produto</Button></>}
           </div>
-        </header>
+        </header>}
 
-        <nav className="inventory-module-tabs" aria-label="Módulos do estoque">
+        {area === "estoque" && <nav className="inventory-module-tabs" aria-label="Módulos do estoque">
           {mainTabs.map(({ id, label, icon: Icon }) => (
             <button key={id} type="button" className={sectionTab === id ? "active" : ""} onClick={() => setSectionTab(id)}>
               <Icon size={16} />
               <span>{label}</span>
             </button>
           ))}
-        </nav>
+        </nav>}
 
         <div className="inventory-panel-shell">
           {sectionTab === "produtos" && (
@@ -496,9 +508,10 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
                   <h2>Categorias e cadastros auxiliares</h2>
                   <span>Organize categorias, tamanhos, espessuras e profissionais sem sair desta página.</span>
                 </div>
-                <Button variant="secondary" onClick={() => setShowManagement((value) => !value)}>
-                  {showManagement ? "Ocultar cadastros" : "Abrir cadastros"}
-                </Button>
+                <div className="module-heading-actions">
+                  {area === "produtos" && <Button variant="secondary" onClick={() => setSectionTab("produtos")}><ArrowLeft size={16} /> Voltar para produtos</Button>}
+                  <Button variant="secondary" onClick={() => setShowManagement((value) => !value)}>{showManagement ? "Ocultar cadastros" : "Abrir cadastros"}</Button>
+                </div>
               </div>
               <div className="inventory-summary-grid compact">
                 <Metric label="Categorias" value={String(categoryManagement.length)} />
@@ -595,6 +608,23 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
       </div>
       {movementTarget && <StockMovementModal item={movementTarget} initialType={movementTarget.movement_type} onClose={() => setMovementTarget(null)} onSave={handleMovementSave} />}
       {showVisualSearch && <VisualSearchModal onClose={() => setShowVisualSearch(false)} onOpenProduct={(item) => { setShowVisualSearch(false); openProduct(item); }} />}
+      <Modal
+        open={showEditor}
+        size="lg"
+        title={editingJewelry ? "Editar produto" : "Novo produto"}
+        subtitle="Dados, variações e estoque do produto."
+        onClose={() => closeProduct({ keepCategory: false })}
+      >
+        <JewelryEditor
+          options={inventoryOptions}
+          categoryOptions={categoryOptions}
+          pricingSettings={safeOptions.pricingSettings}
+          editing={editingJewelry}
+          onMovementOpen={openMovement}
+          onCancel={() => closeProduct({ keepCategory: false })}
+          onSaved={() => { closeProduct({ keepCategory: false }); refreshJewelry(); refreshOptions(); }}
+        />
+      </Modal>
     </section>
   );
 }

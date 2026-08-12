@@ -8743,6 +8743,9 @@ body {
 .term-form-tabs { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 2px; border-bottom: 1px solid var(--line); }
 .term-form-tabs button { flex: 0 0 auto; padding: 8px 11px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; }
 .term-form-tabs button.active { background: var(--paper); color: var(--ink); }
+.products-crud-header { display: grid; gap: 12px; }
+.product-shortcuts { display: flex; flex-wrap: wrap; gap: 8px; }
+.product-shortcuts button { min-height: 38px; }
 
 @media (max-width: 900px) {
   .weekly-schedule-toolbar { align-items: stretch; flex-direction: column; }
