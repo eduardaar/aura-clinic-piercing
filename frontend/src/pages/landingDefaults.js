@@ -26,7 +26,12 @@ export const LANDING_DEFAULTS = {
     note: "7 dias grátis · sem cartão de crédito",
     image: "/assets/landing/hero-studio.jpg",
     image_alt: "Close de orelha com piercings de joias douradas no lóbulo",
-    caption: "Agenda, catálogo e ficha digital num link só seu"
+    caption: "Agenda, catálogo e ficha digital num link só seu",
+    screens: [
+      { image: "/assets/landing/system/agenda-demo.png", image_alt: "Tela demonstrativa da agenda do sistema" },
+      { image: "/assets/landing/system/catalogo-demo.png", image_alt: "Tela demonstrativa de produtos e estoque" },
+      { image: "/assets/landing/system/financeiro-demo.png", image_alt: "Tela demonstrativa do painel financeiro" }
+    ]
   },
 
   features: {

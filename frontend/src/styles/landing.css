@@ -178,7 +178,7 @@
   width: 100%;
   max-width: var(--au-l-max);
   margin: 0 auto;
-  padding: 36px var(--au-l-pad) 44px;
+  padding: 22px var(--au-l-pad) 26px;
   display: grid;
   gap: 30px;
   align-items: center;
@@ -233,6 +233,8 @@
 .au-l-root .au-l-hero-media {
   position: relative;
   margin: 0;
+  width: min(100%, 900px);
+  justify-self: center;
   min-width: 0;
   border-radius: var(--au-l-radius);
   overflow: hidden;
@@ -255,6 +257,10 @@
 .au-l-root .au-l-hero-dots { position:absolute; z-index:1; left:50%; bottom:14px; display:flex; gap:7px; transform:translateX(-50%); }
 .au-l-root .au-l-hero-dots button { width:8px; height:8px; padding:0; border:1px solid rgb(255 255 255 / .7); border-radius:50%; background:transparent; cursor:pointer; }
 .au-l-root .au-l-hero-dots button.is-active { background:#fff; }
+.au-l-root .au-l-hero-arrow { position:absolute; z-index:1; top:50%; display:grid; width:40px; height:40px; place-items:center; border:1px solid rgb(255 255 255 / .4); border-radius:50%; background:rgb(13 25 38 / .7); color:#fff; cursor:pointer; transform:translateY(-50%); }
+.au-l-root .au-l-hero-arrow:hover { background:var(--ink); }
+.au-l-root .au-l-hero-arrow.is-prev { left:14px; }
+.au-l-root .au-l-hero-arrow.is-next { right:14px; }
 
 .au-l-root .au-l-hero-strip {
   position: absolute;
@@ -682,7 +688,7 @@
   .au-l-root .au-l-hero-inner {
     grid-template-columns: minmax(0, 1fr);
     gap: 36px;
-    padding: 64px var(--au-l-pad) 72px;
+    padding: 34px var(--au-l-pad) 40px;
   }
 
   .au-l-root .au-l-hero-media { aspect-ratio: 16 / 9; }

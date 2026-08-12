@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BellRing, Check, ChevronRight, Instagram, Mail, MessageCircle, Sparkles, X } from "lucide-react";
+import { BellRing, Check, ChevronLeft, ChevronRight, Instagram, Mail, MessageCircle, Sparkles, X } from "lucide-react";
 import { API, API_ORIGIN } from "../lib/api";
 import { asArray, asNumber, asObject } from "../lib/utils";
 import { featureLabel } from "../lib/planFeatures";
@@ -96,7 +96,7 @@ function HeroSection({ content }) {
   const reducedMotion = usePrefersReducedMotion();
   useEffect(() => {
     if (slides.length < 2 || reducedMotion) return undefined;
-    const timer = window.setInterval(() => setActive((current) => (current + 1) % slides.length), 5000);
+    const timer = window.setInterval(() => setActive((current) => (current + 1) % slides.length), 3000);
     return () => window.clearInterval(timer);
   }, [slides.length, reducedMotion]);
   const current = active % slides.length;
@@ -123,6 +123,10 @@ function HeroSection({ content }) {
             decoding="async"
           />)}
           {slides[current]?.caption && <figcaption className="au-l-hero-strip">{slides[current].caption}</figcaption>}
+          {slides.length > 1 && <>
+            <button type="button" className="au-l-hero-arrow is-prev" aria-label="Tela anterior" onClick={() => setActive((current - 1 + slides.length) % slides.length)}><ChevronLeft size={21} aria-hidden="true" /></button>
+            <button type="button" className="au-l-hero-arrow is-next" aria-label="Próxima tela" onClick={() => setActive((current + 1) % slides.length)}><ChevronRight size={21} aria-hidden="true" /></button>
+          </>}
           {slides.length > 1 && <div className="au-l-hero-dots" aria-label="Telas do sistema">{slides.map((slide, index) => <button key={slide.key} type="button" className={index === current ? "is-active" : ""} aria-label={`Ver tela ${index + 1}`} aria-current={index === current ? "true" : undefined} onClick={() => setActive(index)} />)}</div>}
         </figure>
       </div>
