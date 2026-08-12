@@ -270,7 +270,7 @@ test("Assinatura: o plano novo chega à recorrência do Asaas", async (t) => {
     const { status, json } = await req(`/platform/accounts/${tenantId}/plan`, {
       method: "PATCH",
       token: platformToken,
-      body: { plan_code: "essencial", reason: "Clínica ainda não assinou" }
+      body: { plan_code: "start", reason: "Clínica ainda não assinou" }
     });
     assert.equal(status, 200, JSON.stringify(json));
     assert.equal(json.gateway.status, "sem_assinatura");

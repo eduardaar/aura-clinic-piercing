@@ -90,7 +90,6 @@ export const LIMIT_CATALOG = [
 export const LIMIT_KEYS = LIMIT_CATALOG.map((item) => item.key);
 
 export const PLAN_FEATURES = {
-  essencial: ["clients", "agenda", "procedures", "manual_reminders", "basic_inventory"],
   start: ["clients", "agenda", "procedures", "manual_reminders", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports"],
   profissional: ["clients", "agenda", "procedures", "manual_reminders", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports", "online_booking", "anamnesis", "digital_terms", "basic_finance", "deposits", "stock_alerts", "automatic_followup", "message_templates", "public_catalog_customization"],
   studio: ["clients", "agenda", "procedures", "manual_reminders", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports", "online_booking", "anamnesis", "digital_terms", "basic_finance", "deposits", "stock_alerts", "automatic_followup", "message_templates", "public_catalog_customization", "multi_user", "commissions", "monthly_reports", "coupons", "returns", "full_client_history", "jewelry_sales_report"],
@@ -98,15 +97,6 @@ export const PLAN_FEATURES = {
 };
 
 const DEFAULT_PLANS = [
-  {
-    code: "essencial",
-    name: "Pacote Essencial",
-    price_cents: 1990,
-    audience: "Piercers iniciantes",
-    trial_days: 7,
-    highlight: false,
-    features: PLAN_FEATURES.essencial
-  },
   {
     code: "start",
     name: "Pacote Start",
@@ -271,7 +261,11 @@ export function normalizePlanCode(code, fallback = "profissional") {
 
 export function planByCode(code) {
   const planCode = normalizePlanCode(code);
-  return SUBSCRIPTION_PLANS.find((plan) => plan.code === planCode) || SUBSCRIPTION_PLANS[2];
+  return (
+    SUBSCRIPTION_PLANS.find((plan) => plan.code === planCode) ||
+    SUBSCRIPTION_PLANS.find((plan) => plan.code === "profissional") ||
+    SUBSCRIPTION_PLANS[0]
+  );
 }
 
 export function trialWindow(days = 7) {

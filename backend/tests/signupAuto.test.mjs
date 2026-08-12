@@ -46,7 +46,7 @@ test("signup sem slug deriva o código do nome e retorna token que autentica", a
 test("dois cadastros com o mesmo nome geram slugs distintos", async () => {
   const suffix = Math.floor(performance.now() * 1000) % 1000000;
   const name = `Clinica Repetida ${suffix}`;
-  const base = { admin_password: "SenhaForte123", plan_code: "essencial" };
+  const base = { admin_password: "SenhaForte123", plan_code: "start" };
 
   const a = await req("/signup", { method: "POST", body: { ...base, name, admin_email: `a${suffix}@rep.test` } });
   const b = await req("/signup", { method: "POST", body: { ...base, name, admin_email: `b${suffix}@rep.test` } });

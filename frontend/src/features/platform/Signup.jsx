@@ -22,7 +22,6 @@ function slugPreview(value) {
 }
 
 const fallbackPlans = [
-  { code: "essencial", name: "Pacote Essencial", price_cents: 1990, audience: "Piercers iniciantes", features: ["clients", "agenda", "procedures", "basic_inventory"] },
   { code: "start", name: "Pacote Start", price_cents: 3990, audience: "Piercers iniciantes ou autônomos", features: ["clients", "agenda", "procedures", "basic_catalog", "whatsapp_link"] },
   { code: "profissional", name: "Pacote Profissional", price_cents: 6990, audience: "Estúdios que querem agendamento online", badge: "Mais recomendado", highlight: true, features: ["online_booking", "anamnesis", "digital_terms", "basic_finance", "stock_alerts"] },
   { code: "studio", name: "Pacote Studio", price_cents: 9990, audience: "Estúdios com equipe", features: ["multi_user", "commissions", "monthly_reports", "coupons"] },
@@ -44,7 +43,10 @@ export function Signup() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [createdTenant, setCreatedTenant] = useState(null);
-  const selectedPlan = useMemo(() => plans.find((plan) => plan.code === form.plan_code) || plans[2] || plans[0], [plans, form.plan_code]);
+  const selectedPlan = useMemo(
+    () => plans.find((plan) => plan.code === form.plan_code) || plans.find((plan) => plan.code === "profissional") || plans[0],
+    [plans, form.plan_code]
+  );
   const slug = useMemo(() => slugPreview(form.name), [form.name]);
 
   useEffect(() => {

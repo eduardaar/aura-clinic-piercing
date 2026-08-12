@@ -68,7 +68,6 @@ ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS listed BOOLEAN NOT NULL DE
 
 INSERT INTO platform.subscription_plans (code, name, price_cents, audience, trial_days, features, is_recommended)
 VALUES
-  ('essencial', 'Pacote Essencial', 1990, 'Piercers iniciantes', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory"]'::jsonb, false),
   ('start', 'Pacote Start', 3990, 'Piercers iniciantes ou autônomos', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports"]'::jsonb, false),
   ('profissional', 'Pacote Profissional', 6990, 'Estúdios que querem agendamento online e ficha digital', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","anamnesis","digital_terms","basic_finance","deposits","stock_alerts","automatic_followup","message_templates","public_catalog_customization"]'::jsonb, true),
   ('studio', 'Pacote Studio', 9990, 'Estúdios com equipe e venda de joias', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","anamnesis","digital_terms","basic_finance","deposits","stock_alerts","automatic_followup","message_templates","public_catalog_customization","multi_user","commissions","monthly_reports","coupons","returns","full_client_history","jewelry_sales_report"]'::jsonb, false),
@@ -81,6 +80,24 @@ VALUES
 -- tivesse editado no painel. Enquanto o código era a fonte da verdade isso era
 -- inofensivo; agora seria destruição de dado a cada deploy.
 ON CONFLICT (code) DO NOTHING;
+
+-- O antigo plano de R$ 19,90 foi retirado do produto. Bases que já existiam
+-- antes desta mudança ainda podem tê-lo gravado; removemos apenas quando ele
+-- está completamente sem uso. Se houver cliente ou assinatura vinculada, não
+-- trocamos preço, cobrança ou recursos em silêncio: a migração daquele cliente
+-- deve ser uma decisão explícita da plataforma.
+DELETE FROM platform.subscription_plans AS plan
+ WHERE plan.code = 'essencial'
+   AND NOT EXISTS (
+     SELECT 1
+       FROM platform.tenant_subscriptions AS subscription
+      WHERE subscription.plan_code = plan.code
+   )
+   AND NOT EXISTS (
+     SELECT 1
+       FROM platform.tenants AS tenant
+      WHERE tenant.plan = plan.code
+   );
 
 -- ---------------------------------------------------------------------------
 -- Cobrança da assinatura das clínicas (Monitence -> clínica) via Asaas.

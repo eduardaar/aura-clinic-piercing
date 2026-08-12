@@ -93,7 +93,7 @@ function fakeRes() {
 
 before(async () => {
   ctx.platformToken = await platformLogin();
-  ctx.account = await novaClinica("conta", "essencial");
+  ctx.account = await novaClinica("conta", "start");
   ctx.quota = await novaClinica("cota", "profissional");
   ctx.free = await novaClinica("livre", "profissional");
 
@@ -199,11 +199,11 @@ test("visão da conta traz clínica, assinatura, plano, uso x cotas e faturas", 
   assert.equal(visao.status, 200, JSON.stringify(visao.json));
   assert.equal(visao.json.tenant.id, ctx.account.id);
   assert.equal(visao.json.tenant.status, "ativo");
-  assert.equal(visao.json.plan.code, "essencial");
+  assert.equal(visao.json.plan.code, "start");
   assert.equal(visao.json.subscription.status, "trial_active");
   assert.ok(Array.isArray(visao.json.invoices));
 
-  // Uma linha por cota do catálogo; o Essencial não tem limites configurados.
+  // Uma linha por cota do catálogo; o Start não tem limites configurados.
   const chaves = visao.json.usage.map((item) => item.key);
   assert.deepEqual(chaves, ["users", "clients", "appointments_month", "jewelry_items", "catalog_plugins", "storage_mb"]);
   assert.ok(visao.json.usage.every((item) => item.unlimited === true));
@@ -258,7 +258,7 @@ test("troca de plano vale na hora no gating e vai para a auditoria", async () =>
   );
   const registro = auditoria.rows[0];
   assert.ok(registro, "a troca de plano precisa estar registrada em platform.admin_audit");
-  assert.equal(registro.detail.antes.plan_code, "essencial");
+  assert.equal(registro.detail.antes.plan_code, "start");
   assert.equal(registro.detail.depois.plan_code, "profissional");
   assert.equal(registro.detail.motivo, "Cliente pediu upgrade por telefone");
   assert.ok(registro.actor_email, "a auditoria precisa saber QUEM fez a troca");

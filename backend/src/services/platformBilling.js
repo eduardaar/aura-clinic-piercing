@@ -256,7 +256,7 @@ export async function startSubscriptionCheckout(
   ensureGatewayEnabled();
 
   // planByCode() cai no plano padrão quando o código é desconhecido — ótimo
-  // para leitura, péssimo para checkout: a clínica escolheria "essencial" e
+  // para leitura, péssimo para checkout: a clínica escolheria "inexistente" e
   // seria cobrada como "profissional". Aqui a validação é estrita.
   const code = normalizePlanCode(planCode, "");
   if (!code) {

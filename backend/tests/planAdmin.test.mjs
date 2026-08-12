@@ -76,7 +76,8 @@ test("Planos: CRUD do painel de plataforma", async (t) => {
 
   await t.test("a listagem traz os catálogos para a tela montar as caixinhas", async () => {
     const { json } = await req("/platform/plans", plt);
-    assert.ok(json.plans.length >= 5);
+    assert.ok(json.plans.length >= 4);
+    assert.ok(!json.plans.some((plano) => plano.code === "essencial"));
     assert.ok(json.feature_catalog.length > 10, "sem o catálogo o painel teria de hardcodar as features");
     assert.ok(json.feature_catalog.every((item) => item.key && item.label && item.group));
     assert.ok(json.limit_catalog.length >= 1);

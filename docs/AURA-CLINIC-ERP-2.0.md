@@ -250,14 +250,14 @@ entrada.
 
 ## Matriz de recursos validada
 
-| Área | Essencial | Start | Profissional | Studio | Premium |
-| --- | --- | --- | --- | --- | --- |
-| Clientes, agenda, procedimentos e estoque básico | Sim | Sim | Sim | Sim | Sim |
-| Catálogo, WhatsApp por link e relatórios básicos | Não | Sim | Sim | Sim | Sim |
-| Agenda online, termos, financeiro e pós-atendimento | Não | Não | Sim | Sim | Sim |
-| Personalização pública e modelos de mensagem | Não | Não | Sim | Sim | Sim |
-| Equipe, comissões, cupons e relatórios mensais | Não | Não | Não | Sim | Sim |
-| Promoções, busca visual e Financeiro 2.0 | Não | Não | Não | Não | Sim |
+| Área | Start | Profissional | Studio | Premium |
+| --- | --- | --- | --- | --- |
+| Clientes, agenda, procedimentos e estoque básico | Sim | Sim | Sim | Sim |
+| Catálogo, WhatsApp por link e relatórios básicos | Sim | Sim | Sim | Sim |
+| Agenda online, termos, financeiro e pós-atendimento | Não | Sim | Sim | Sim |
+| Personalização pública e modelos de mensagem | Não | Sim | Sim | Sim |
+| Equipe, comissões, cupons e relatórios mensais | Não | Não | Sim | Sim |
+| Promoções, busca visual e Financeiro 2.0 | Não | Não | Não | Sim |
 
 O frontend espelha a matriz, mas o backend decide o acesso com `withFeature`.
 Testes verificam herança cumulativa, duplicidades e recursos exclusivos.

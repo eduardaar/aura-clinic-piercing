@@ -43,7 +43,6 @@ function tenantCreatedAt(value) {
 // Códigos de plano vindos do backend. Um código desconhecido (base antiga, plano
 // novo) ainda aparece, só que capitalizado — melhor do que sumir da coluna.
 const PLAN_LABELS = {
-  essencial: "Essencial",
   start: "Start",
   profissional: "Profissional",
   studio: "Studio",

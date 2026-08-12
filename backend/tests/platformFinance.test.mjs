@@ -410,11 +410,11 @@ test("Financeiro da plataforma: resumo, inadimplência, vencimentos, série e pl
     // É o dado que responde "este plano vende?" — some se a consulta partir das
     // assinaturas em vez dos planos.
     const codigos = depois.planos.items.map((item) => item.plan_code);
-    for (const codigo of ["essencial", "start", "profissional", "studio", "premium"]) {
+    for (const codigo of ["start", "profissional", "studio", "premium"]) {
       assert.ok(codigos.includes(codigo), `o plano ${codigo} precisa aparecer`);
     }
-    const essencial = depois.planos.items.find((item) => item.plan_code === "essencial");
-    assert.match(essencial.mrr_estimado, /^\d+\.\d{2}$/);
+    const start = depois.planos.items.find((item) => item.plan_code === "start");
+    assert.match(start.mrr_estimado, /^\d+\.\d{2}$/);
   });
 
   // -------------------------------------------------------------------------

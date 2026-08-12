@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { PLAN_FEATURES, SUBSCRIPTION_PLANS, pageAllowedByPlan } from "../src/services/plans.js";
 
 test("matriz de planos é cumulativa e sem recursos duplicados", () => {
-  const order = ["essencial", "start", "profissional", "studio", "premium"];
+  const order = ["start", "profissional", "studio", "premium"];
   for (const code of order) {
     assert.equal(new Set(PLAN_FEATURES[code]).size, PLAN_FEATURES[code].length, `duplicidade em ${code}`);
   }
@@ -26,9 +26,10 @@ test("recursos avançados ficam somente nos planos previstos", () => {
 });
 
 test("páginas protegidas refletem as features do plano", () => {
-  assert.equal(pageAllowedByPlan(PLAN_FEATURES.essencial, "finance"), false);
+  assert.equal(pageAllowedByPlan(PLAN_FEATURES.start, "finance"), false);
   assert.equal(pageAllowedByPlan(PLAN_FEATURES.profissional, "finance"), true);
   assert.equal(pageAllowedByPlan(PLAN_FEATURES.start, "reports"), true);
-  assert.equal(pageAllowedByPlan(PLAN_FEATURES.essencial, "reports"), false);
-  assert.equal(SUBSCRIPTION_PLANS.length, 5);
+  assert.equal(pageAllowedByPlan(PLAN_FEATURES.start, "terms"), false);
+  assert.equal(SUBSCRIPTION_PLANS.length, 4);
+  assert.equal(SUBSCRIPTION_PLANS.some((plan) => plan.code === "essencial"), false);
 });
