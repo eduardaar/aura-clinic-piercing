@@ -1,5 +1,6 @@
 import { normalizeWhatsappNumber, whatsappLink } from "./notifications.js";
 import { sendWhatsAppCloudText, whatsappCloudStatus } from "./whatsappCloud.js";
+import { emailProviderStatus, sendTransactionalEmail } from "./emailProvider.js";
 import {
   consumeCommunicationCredit,
   releaseCommunicationCredit,
@@ -24,8 +25,17 @@ export async function queueTemplateNotification(db, {
 }) {
   const template = await db.get("SELECT * FROM communication_templates WHERE template_key=? AND is_active=1", [templateKey]);
   if (!template) return null;
-  const normalizedDestination = normalizeWhatsappNumber(destination);
+  // As automações existentes passam o WhatsApp do cliente como destino. Ao
+  // trocar um modelo para e-mail, buscamos o e-mail cadastrado do mesmo
+  // cliente, sem exigir que cada disparador saiba qual canal está ativo.
+  const emailRecipient = template.channel === "email" && clientId
+    ? await db.get("SELECT email FROM clients WHERE id=?", [clientId])
+    : null;
+  const normalizedDestination = template.channel === "email"
+    ? String(emailRecipient?.email || destination || "").trim().toLowerCase()
+    : normalizeWhatsappNumber(destination);
   const message = renderTemplate(template.body, variables);
+  const subject = renderTemplate(template.subject || template.name, variables);
   const status = normalizedDestination ? "pending" : "failed";
   await db.run(
     `INSERT INTO notification_queue
@@ -34,7 +44,11 @@ export async function queueTemplateNotification(db, {
      ON CONFLICT DO NOTHING`,
     [
       clientId, professionalId, appointmentId, automationRuleId, template.channel, normalizedDestination,
-      templateKey, JSON.stringify({ variables, whatsapp_link: whatsappLink(normalizedDestination, message) }),
+      templateKey, JSON.stringify({
+        variables,
+        subject,
+        ...(template.channel === "whatsapp" ? { whatsapp_link: whatsappLink(normalizedDestination, message) } : {})
+      }),
       message, status, normalizedDestination ? "" : "Destino inválido.", scheduledAt, uniqueKey
     ]
   );
@@ -51,6 +65,7 @@ export async function processDueCommunications(db, limit = 100, tenantId = null)
     let details = { channel: item.channel, automatic_send: false };
     let lastError = "";
     let reservation = null;
+    let provider = null;
     try {
       // `null` significa que a clínica ainda não ativou a Cloud API: mantém a
       // mensagem pronta para abertura manual pelo wa.me, como era antes.
@@ -58,29 +73,47 @@ export async function processDueCommunications(db, limit = 100, tenantId = null)
       // envio oficial, a reserva é feita ANTES da chamada externa: assim não
       // há mensagem paga sem saldo, nem saldo perdido em falha da Meta.
       const officialWhatsApp = item.channel === "whatsapp" ? await whatsappCloudStatus(db) : null;
-      if (officialWhatsApp?.enabled && tenantId) {
+      const officialEmail = item.channel === "email" ? emailProviderStatus() : null;
+      provider = tenantId && officialWhatsApp?.enabled ? "whatsapp_cloud"
+        : tenantId && officialEmail?.enabled ? "resend"
+          : null;
+      if (provider) {
         reservation = await reserveCommunicationCredits(db, tenantId, {
-          channel: "whatsapp",
+          channel: item.channel,
           credits: 1,
-          referenceKey: `notification:${item.id}:whatsapp`,
-          metadata: { notification_id: item.id, provider: "whatsapp_cloud" }
+          referenceKey: `notification:${item.id}:${item.channel}`,
+          metadata: { notification_id: item.id, provider }
         });
       }
-      const sent = item.channel === "whatsapp"
+      const sent = item.channel === "whatsapp" && provider
         ? await sendWhatsAppCloudText(db, { destination: item.destination, message: item.message })
-        : null;
+        : item.channel === "email" && provider && tenantId
+          ? await sendTransactionalEmail({
+            to: item.destination,
+            subject: (() => {
+              try { return JSON.parse(item.payload || "{}").subject || item.template; } catch { return item.template; }
+            })(),
+            text: item.message
+          })
+          : null;
       if (sent) {
         if (reservation) await consumeCommunicationCredit(db, { reservationId: reservation.id, metadata: { message_id: sent.messageId } });
         status = "sent";
-        details = { channel: item.channel, automatic_send: true, provider: "whatsapp_cloud", message_id: sent.messageId };
+        details = { channel: item.channel, automatic_send: true, provider, message_id: sent.messageId };
+      } else if (reservation) {
+        // A configuração pode ser removida entre a checagem e o envio. Nesse
+        // caso a mensagem segue disponível para ação manual e a reserva volta
+        // imediatamente para a carteira.
+        await releaseCommunicationCredit(db, { reservationId: reservation.id, metadata: { reason: "provider_unavailable" } });
+        reservation = null;
       }
     } catch (error) {
       // Se a reserva foi criada mas a chamada ao provedor falhou, o próximo
       // processamento não pode encontrar um saldo artificialmente menor.
       if (reservation) await releaseCommunicationCredit(db, { reservationId: reservation.id, metadata: { reason: "provider_failure" } });
       status = "failed";
-      lastError = error?.message || "Falha ao enviar pela API oficial do WhatsApp.";
-      details = { channel: item.channel, automatic_send: true, provider: "whatsapp_cloud", error: lastError };
+      lastError = error?.message || "Falha ao enviar pela API oficial de comunicação.";
+      details = { channel: item.channel, automatic_send: true, provider, error: lastError };
     }
     await db.run(
       "UPDATE notification_queue SET status=?, attempts=attempts+1, last_error=?, sent_at=CASE WHEN ?='sent' THEN CURRENT_TIMESTAMP ELSE sent_at END WHERE id=? AND status='pending'",

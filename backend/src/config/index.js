@@ -52,6 +52,20 @@ export const ASAAS_TIMEOUT_MS = Number(process.env.ASAAS_TIMEOUT_MS || 20000);
 export const WHATSAPP_GRAPH_BASE_URL = (process.env.WHATSAPP_GRAPH_BASE_URL || "https://graph.facebook.com").replace(/\/+$/, "");
 export const WHATSAPP_GRAPH_API_VERSION = (process.env.WHATSAPP_GRAPH_API_VERSION || "v23.0").replace(/^\/+|\/+$/g, "");
 
+// E-mail transacional via Resend. Esta é uma integração da plataforma: a
+// chave fica apenas no ambiente do servidor e nunca é enviada ao navegador ou
+// armazenada por clínica. Sem as duas variáveis, a fila continua no modo
+// assistido ("ready"), sem débito de créditos nem tentativa de envio.
+export const RESEND_API_KEY = (process.env.RESEND_API_KEY || "").trim();
+export const EMAIL_FROM = (process.env.EMAIL_FROM || "").trim();
+export const RESEND_API_URL = (process.env.RESEND_API_URL || "https://api.resend.com").trim().replace(/\/+$/, "");
+export const EMAIL_TIMEOUT_MS = Math.min(Math.max(Number(process.env.EMAIL_TIMEOUT_MS || 15000), 1000), 60000);
+export const resendEmailEnabled = Boolean(RESEND_API_KEY && EMAIL_FROM);
+
+if ((RESEND_API_KEY || EMAIL_FROM) && !resendEmailEnabled) {
+  console.warn("[email] Configure RESEND_API_KEY e EMAIL_FROM juntos; o envio transacional permanecerá desativado até lá.");
+}
+
 // A integração da plataforma só liga com chave E token de webhook. Sem o token
 // o webhook seria uma rota pública capaz de marcar fatura como paga — por isso
 // o par é indivisível: falta um, a integração fica desligada inteira.
