@@ -20,7 +20,7 @@
  * @typedef {"dashboard" | "erp" | "agenda" | "communications" | "catalog"
  *   | "catalog-customization" | "sales" | "finance" | "reports" | "client-center"
  *   | "clients" | "terms" | "postcare" | "admin" | "integrations" | "support" | "error-logs"
- *   | "meu-plano" | "settings"} Page
+ *   | "meu-plano" | "settings" | "onboarding"} Page
  */
 
 /**
@@ -45,7 +45,7 @@
 export function allowedPagesForRole(role) {
   /** @type {Record<Role, Page[]>} */
   const byRole = {
-    admin: ["dashboard", "agenda", "communications", "catalog", "catalog-customization", "sales", "finance", "reports", "client-center", "clients", "terms", "postcare", "admin", "integrations", "support", "meu-plano", "settings"],
+    admin: ["dashboard", "agenda", "communications", "catalog", "catalog-customization", "sales", "finance", "reports", "client-center", "clients", "terms", "postcare", "admin", "integrations", "onboarding", "support", "meu-plano", "settings"],
     reception: ["agenda", "communications", "sales", "reports", "client-center", "clients", "settings"],
     finance: ["finance", "reports", "sales", "settings"],
     piercer: ["agenda", "communications", "sales", "client-center", "clients", "terms", "postcare", "settings"]
@@ -131,7 +131,8 @@ export function pageTitle(page) {
     support: "Suporte",
     "error-logs": "Monitor de erros",
     "meu-plano": "Meu plano",
-    settings: "Configurações"
+    settings: "Configurações",
+    onboarding: "Onboarding"
   };
   return titles[page] || "Aura Clinic";
 }

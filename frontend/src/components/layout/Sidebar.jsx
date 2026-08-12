@@ -32,6 +32,7 @@ export function Sidebar({ page, role, brand, features, trialDays, setPage, open,
       ["Sistema", [
         ["admin", ShieldCheck, "Acessos"],
         ["integrations", Plug, "Integrações"],
+        ["onboarding", Sparkles, "Onboarding"],
         ["support", LifeBuoy, "Suporte"],
         ["settings", Settings, "Configurações"]
       ]]

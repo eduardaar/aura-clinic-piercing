@@ -1,6 +1,6 @@
 ﻿// Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Copy, ExternalLink, List, Plus, Settings2, XCircle } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Copy, ExternalLink, List, Plus, Settings2 } from "lucide-react";
 import { Button, FinancialSummary, Input, PaymentSelect, Select, StatusBadge, StatusSelect } from "../../components/common/Ui";
 import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
@@ -52,10 +52,10 @@ function distinctOptions(values) {
   return [...new Set(values.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), "pt-BR"));
 }
 
-export function AgendaWorkspace() {
-  const [screen, setScreen] = useState("agenda");
+export function AgendaWorkspace({ initialScreen = "agenda", initialSettingsTab, onSettingsClosed }) {
+  const [screen, setScreen] = useState(initialScreen);
   return screen === "settings"
-    ? <BookingAdmin onBack={() => setScreen("agenda")} />
+    ? <BookingAdmin initialTab={initialSettingsTab} onBack={() => { setScreen("agenda"); onSettingsClosed?.(); }} />
     : <VisualCalendar onOpenSettings={() => setScreen("settings")} />;
 }
 
@@ -925,27 +925,24 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
   );
 }
 
-export function BookingAdmin({ onBack }) {
+export function BookingAdmin({ onBack, initialTab }) {
   const { data: services } = useFetch("/services");
   const { data: procedures } = useFetch("/procedures");
   const { data: professionalsData } = useFetch("/professionals");
-  const { data: readiness } = useFetch("/booking/readiness");
   const { data: options } = useFetch("/options");
   const { data: availability } = useFetch("/availability");
   const { data: blocks } = useFetch("/schedule-blocks");
   const { data: appointments } = useFetch("/appointments?status=pendente");
   // Serviço, procedimento e profissional alimentam também "/options" (usado nos
-  // formulários da agenda) e "/booking/readiness" (semáforo do agendamento
-  // online): salvar num lugar tinha que atualizar os dois, e não atualizava.
+  // formulários da agenda: salvar num lugar atualiza as dependências do outro.
   const invalidate = useApiInvalidate();
-  const refreshServices = () => invalidate("/services", "/options", "/booking/readiness");
-  const refreshProcedures = () => invalidate("/procedures", "/options", "/booking/readiness");
-  const refreshProfessionals = () => invalidate("/professionals", "/options", "/booking/readiness");
-  const refreshReadiness = () => invalidate("/booking/readiness");
-  const refreshAvailability = () => invalidate("/availability", "/booking/readiness");
+  const refreshServices = () => invalidate("/services", "/options");
+  const refreshProcedures = () => invalidate("/procedures", "/options");
+  const refreshProfessionals = () => invalidate("/professionals", "/options");
+  const refreshAvailability = () => invalidate("/availability");
   const refreshBlocks = () => invalidate("/schedule-blocks", "/availability");
   const refreshAppointments = () => invalidate("/appointments", "/dashboard");
-  const [tab, setTab] = useState("servicos");
+  const [tab, setTab] = useState(initialTab || "servicos");
   const [serviceForm, setServiceForm] = useState(defaultServiceForm());
   const [editingServiceId, setEditingServiceId] = useState(null);
   const [serviceModalOpen, setServiceModalOpen] = useState(false);
@@ -974,12 +971,9 @@ export function BookingAdmin({ onBack }) {
   const safeBlocks = asArray(blocks);
   const safeAppointments = asArray(appointments);
 
-  const readinessData = asObject(readiness);
-  const checklist = asArray(readinessData.checklist);
   const activeServices = safeServices.filter((service) => Boolean(Number(service.is_active ?? service.active_online_booking)));
   const activeProcedures = safeProcedures.filter((procedure) => Boolean(Number(procedure.is_active)));
   const activeProfessionals = allProfessionals.filter((professional) => Boolean(Number(professional.active)));
-  const isBookingReady = Boolean(readinessData.ready);
   const weeklyWeekdays = [0, 1, 2, 3, 4, 5, 6];
 
   function defaultWeeklyDay(weekday, professionalId = weeklyProfessionalId) {
@@ -1032,7 +1026,7 @@ export function BookingAdmin({ onBack }) {
     setWeeklyDays(weeklyDaysForProfessional(weeklyProfessionalId));
   }, [availability, weeklyProfessionalId, activeProfessionals.length]);
 
-  if (services == null || procedures == null || professionalsData == null || readiness == null || availability == null || blocks == null || appointments == null) return <Loading />;
+  if (services == null || procedures == null || professionalsData == null || availability == null || blocks == null || appointments == null) return <Loading />;
 
   function validateServiceForm() {
     if (!serviceForm.name.trim()) return "Informe o nome do serviço.";
@@ -1221,7 +1215,6 @@ export function BookingAdmin({ onBack }) {
     setEditingProfessionalId(null);
     setProfessionalModalOpen(false);
     refreshProfessionals();
-    refreshReadiness();
   }
 
   function removeProfessional(professional) {
@@ -1235,7 +1228,6 @@ export function BookingAdmin({ onBack }) {
         }
         refreshProfessionals();
         refreshAvailability();
-        refreshReadiness();
       }
     });
   }
@@ -1247,7 +1239,6 @@ export function BookingAdmin({ onBack }) {
       body: JSON.stringify({ ...item, ...patch })
     });
     refreshAvailability();
-    refreshReadiness();
   }
 
   async function createDefaultAvailability(professionalId) {
@@ -1269,7 +1260,6 @@ export function BookingAdmin({ onBack }) {
     });
     setWeeklyProfessionalId(String(professionalId));
     refreshAvailability();
-    refreshReadiness();
   }
 
   async function saveWeeklyAvailability(event) {
@@ -1297,14 +1287,6 @@ export function BookingAdmin({ onBack }) {
     }
     setReadinessMessage("Disponibilidade semanal salva com sucesso.");
     refreshAvailability();
-    refreshReadiness();
-  }
-
-  function validatePublicLink(event) {
-    if (isBookingReady) return;
-    event.preventDefault();
-    const missing = asArray(readinessData.missing);
-    setReadinessMessage(`Agendamento online ainda não está pronto. Falta: ${missing.join(", ")}.`);
   }
 
   function openNewBlock() {
@@ -1362,44 +1344,14 @@ export function BookingAdmin({ onBack }) {
 
   return (
     <section className="booking-admin-page">
-      <header className="availability-header">
+      <header className="availability-header agenda-settings-header">
         <div>
-          <span className="eyebrow">Agendamento online</span>
           <h2>Configurações da agenda</h2>
-          <p>Configure serviços, horários, bloqueios e solicitações vindas do link público.</p>
         </div>
         <div className="availability-header-actions">
           <Button variant="secondary" onClick={onBack}><ArrowLeft size={16} /> Voltar para agenda</Button>
-          <a className="primary-button" href="/agendar" target="_blank" rel="noreferrer" onClick={validatePublicLink}>Abrir link público</a>
         </div>
       </header>
-      <div className="panel">
-        <div className="panel-heading">
-          <h2>Configuração do Agendamento Online</h2>
-          <span>{isBookingReady ? "Link público pronto para uso." : "Seu agendamento online ainda não está pronto."}</span>
-        </div>
-        <div className="metric-grid">
-          {checklist.map((item) => (
-            <article className="metric-card" key={item.key}>
-              {item.done ? <CheckCircle2 size={20} /> : <XCircle size={20} />}
-              <span>{item.label}</span>
-              <strong>{item.done ? "Concluído" : "Pendente"}</strong>
-            </article>
-          ))}
-        </div>
-        {!isBookingReady && (
-          <div className="empty-state">
-            Seu agendamento online ainda não está pronto. Cadastre primeiro os profissionais, serviços, procedimentos e horários semanais.
-            <div className="row-actions">
-              <button type="button" onClick={() => setTab("profissionais")}>Cadastrar profissional</button>
-              <button type="button" onClick={() => setTab("servicos")}>Cadastrar serviço</button>
-              <button type="button" onClick={() => setTab("servicos")}>Cadastrar procedimento</button>
-              <button type="button" onClick={() => setTab("horarios")}>Configurar agenda semanal</button>
-            </div>
-          </div>
-        )}
-        {readinessMessage && <span className="form-error">{readinessMessage}</span>}
-      </div>
       <nav className="customization-tabs">
         {[
           ["profissionais", "Profissionais"],

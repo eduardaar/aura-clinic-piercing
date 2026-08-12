@@ -55,10 +55,12 @@ const Landing = lazy(() => import("./pages/Landing").then((m) => ({ default: m.L
 const CatalogDirectory = lazy(() => import("./pages/PublicDirectory").then((m) => ({ default: m.CatalogDirectory })));
 const BookingDirectory = lazy(() => import("./pages/PublicDirectory").then((m) => ({ default: m.BookingDirectory })));
 const Settings = lazy(() => import("./features/settings/Settings").then((m) => ({ default: m.Settings })));
+const Onboarding = lazy(() => import("./features/onboarding/Onboarding").then((m) => ({ default: m.Onboarding })));
 
 function App() {
   const [session, setSession] = useState(readStoredSession);
   const [page, setPage] = useState("dashboard");
+  const [agendaTarget, setAgendaTarget] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // Preferência de menu recolhido é por usuário e persiste entre sessões.
   const [navCollapsed, setNavCollapsed] = useState(() => {
@@ -246,6 +248,7 @@ function App() {
           features={planFeatures}
           trialDays={trialDays}
           setPage={(next) => {
+            if (next !== "agenda") setAgendaTarget(null);
             setPage(next);
             setSidebarOpen(false);
           }}
@@ -315,7 +318,8 @@ function App() {
           {activePage === "meu-plano" && <MyPlan subscription={subscription} plans={plans} onChanged={loadStoreIdentity} />}
           {activePage === "dashboard" && <Dashboard user={normalizedSession.user} setPage={setPage} alertsOpen={alertsOpen} setAlertsOpen={setAlertsOpen} alertsData={alertsData} alertsLoading={alertsLoading} />}
           {activePage !== "dashboard" && alertsOpen && <AlertsPopup alerts={alertsData} loading={alertsLoading} onClose={() => setAlertsOpen(false)} onAction={(nextPage) => { setAlertsOpen(false); setPage(nextPage); }} />}
-          {activePage === "agenda" && <AgendaWorkspace />}
+          {activePage === "agenda" && <AgendaWorkspace initialScreen={agendaTarget ? "settings" : "agenda"} initialSettingsTab={agendaTarget} onSettingsClosed={() => setAgendaTarget(null)} />}
+          {activePage === "onboarding" && <Onboarding onOpenAgendaSettings={(tab) => { setAgendaTarget(tab); setPage("agenda"); }} />}
           {activePage === "communications" && <Communications />}
           {activePage === "catalog" && <CatalogWorkspace />}
           {activePage === "client-center" && <ClientWorkspace />}

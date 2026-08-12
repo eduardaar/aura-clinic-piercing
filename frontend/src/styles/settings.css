@@ -24,6 +24,22 @@
 .settings-form-section span { color: var(--muted); font-size: 13px; }
 .settings-form-actions { display: flex; justify-content: flex-end; }
 
+.onboarding-page { max-width: 860px; }
+.onboarding-header { display: flex; align-items: center; gap: 13px; padding: 16px 18px; }
+.onboarding-header h2, .onboarding-header p { margin: 0; }
+.onboarding-header h2 { margin-top: 2px; font-family: var(--title-font); font-size: 28px; font-weight: 400; }
+.onboarding-header p { margin-top: 3px; color: var(--muted); }
+.onboarding-icon { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 12px; background: color-mix(in srgb, var(--gold) 18%, transparent); color: var(--gold-dark); }
+.onboarding-items { display: grid; gap: 8px; margin-top: 14px; }
+.onboarding-items article { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--white); }
+.onboarding-items article > svg { flex: none; color: var(--muted); }
+.onboarding-items article.done > svg { color: var(--ok); }
+.onboarding-items article > div { display: grid; gap: 2px; min-width: 0; }
+.onboarding-items article span { color: var(--muted); font-size: 13px; }
+.onboarding-items article button { margin-left: auto; }
+.agenda-settings-header { padding: 13px 18px; }
+.agenda-settings-header h2 { margin: 0; font-size: clamp(26px, 3vw, 34px); }
+
 :root[data-aura-theme="blue"] { --ink: #172737; --muted: #5e7283; --line: #d9e5ee; --paper: #f2f8fc; --white: #fbfdff; --nude: #8eb4d2; --nude-strong: #5a8fb8; --brown-dark: #264c68; --black: #172737; --gold: #6d9bc3; --gold-light: #b8d3e8; --gold-dark: #3c719d; --bronze: #2e6089; --gold-soft: #dcebf6; --info: #5d91bd; --app-glow: rgba(109, 155, 195, .18); --app-surface: rgba(251, 253, 255, .88); }
 :root[data-aura-theme="green"] { --ink: #193025; --muted: #607469; --line: #dce9df; --paper: #f2f9f4; --white: #fbfffc; --nude: #97bda3; --nude-strong: #669477; --brown-dark: #315b42; --black: #193025; --gold: #78a98b; --gold-light: #bedac6; --gold-dark: #4d7f61; --bronze: #3a684c; --gold-soft: #deeee2; --info: #6a9d7d; --app-glow: rgba(120, 169, 139, .18); --app-surface: rgba(251, 255, 252, .88); }
 
