@@ -1,6 +1,6 @@
 ﻿// Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useMemo, useState } from "react";
-import { Calendar, CheckCircle2, ChevronLeft, ChevronRight, Clock, ShieldCheck, XCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, List, Plus, Settings2, XCircle } from "lucide-react";
 import { Button, FinancialSummary, Input, PaymentSelect, Select, StatusBadge, StatusSelect } from "../../components/common/Ui";
 import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
@@ -52,46 +52,10 @@ function distinctOptions(values) {
 }
 
 export function AgendaWorkspace() {
-  const [tab, setTab] = useState("visual");
-  const tabs = [
-    {
-      id: "visual",
-      title: "Agenda visual",
-      description: "Calendário mensal, semanal e diário com status dos atendimentos.",
-      icon: Calendar
-    },
-    {
-      id: "agendamentos",
-      title: "Agendamentos",
-      description: "Cadastro manual, cliente, joia, pagamento e status do atendimento.",
-      icon: Clock
-    },
-    {
-      id: "disponibilidade",
-      title: "Disponibilidade",
-      description: "Serviços online, horários disponíveis, bloqueios e solicitações pendentes.",
-      icon: ShieldCheck
-    }
-  ];
-
-  return (
-    <section className="agenda-workspace">
-      <div className="agenda-hub">
-        {tabs.map(({ id, title, description, icon: Icon }) => (
-          <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>
-            <Icon size={20} />
-            <span><strong>{title}</strong><small>{description}</small></span>
-            <ChevronRight size={17} />
-          </button>
-        ))}
-      </div>
-      <div className="agenda-tab-panel">
-        {tab === "visual" && <VisualCalendar />}
-        {tab === "agendamentos" && <Appointments />}
-        {tab === "disponibilidade" && <BookingAdmin />}
-      </div>
-    </section>
-  );
+  const [screen, setScreen] = useState("agenda");
+  return screen === "settings"
+    ? <BookingAdmin onBack={() => setScreen("agenda")} />
+    : <VisualCalendar onOpenSettings={() => setScreen("settings")} />;
 }
 
 export function Appointments() {
@@ -506,7 +470,7 @@ function AppointmentValueSummary({ form, services, jewelry }) {
   );
 }
 
-export function VisualCalendar() {
+export function VisualCalendar({ onOpenSettings }) {
   const { data: options } = useFetch("/options");
   const { data: clients } = useFetch("/clients");
   const { data: services } = useFetch("/services");
@@ -515,20 +479,31 @@ export function VisualCalendar() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [createSeed, setCreateSeed] = useState(null);
-  const { data } = useFetch(`/appointments?${new URLSearchParams(Object.fromEntries(Object.entries(filters).filter(([, v]) => v && !["mensal", "semanal", "diario"].includes(v))))}`);
+  const { data } = useFetch(`/appointments?${new URLSearchParams(Object.fromEntries(Object.entries(filters).filter(([, v]) => v && !["mensal", "semanal", "diario", "lista"].includes(v))))}`);
   // Invalidar "/appointments" alcança o calendário sob qualquer combinação de
   // filtros, não só a consulta que está montada agora.
   const invalidate = useApiInvalidate();
   const refresh = () => invalidate("/appointments", "/clients", "/dashboard");
   const refreshClients = refresh;
   const safeOptions = asObject(options);
-  const calendar = useMemo(() => buildCalendar(asArray(data), filters.mode, currentDate), [data, filters.mode, currentDate]);
+  const calendar = useMemo(() => filters.mode === "lista" ? null : buildCalendar(asArray(data), filters.mode, currentDate), [data, filters.mode, currentDate]);
 
   return (
     <section className="stack">
+      <div className="panel agenda-page-heading">
+        <div>
+          <span className="eyebrow">Rotina de atendimento</span>
+          <h2>Agenda</h2>
+          <p>Visualize, cadastre e acompanhe todos os atendimentos em um só lugar.</p>
+        </div>
+        <div className="agenda-page-actions">
+          <Button variant="secondary" onClick={onOpenSettings}><Settings2 size={16} /> Configurações</Button>
+          <Button onClick={() => setCreateSeed({})}><Plus size={16} /> Novo agendamento</Button>
+        </div>
+      </div>
       <div className="toolbar">
         <div className="segmented">
-          {["mensal", "semanal", "diario"].map((mode) => <button key={mode} className={filters.mode === mode ? "active" : ""} onClick={() => setFilters({ ...filters, mode })}>{mode}</button>)}
+          {[["mensal", "Mensal"], ["semanal", "Semanal"], ["diario", "Diário"], ["lista", "Lista"]].map(([mode, label]) => <button key={mode} className={filters.mode === mode ? "active" : ""} onClick={() => setFilters({ ...filters, mode })}>{mode === "lista" && <List size={15} />}{label}</button>)}
         </div>
         <Select label="Profissional" value={filters.professional_id} onChange={(v) => setFilters({ ...filters, professional_id: v })}>
           <option value="">Todos</option>
@@ -538,14 +513,16 @@ export function VisualCalendar() {
           <option value="">Todos</option>
           {statuses().map((status) => <option key={status}>{status}</option>)}
         </Select>
-        <div className="calendar-nav">
+        {calendar && <div className="calendar-nav">
           <button aria-label="Período anterior" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, -1))}><ChevronLeft size={18} /></button>
           <strong>{calendar.title}</strong>
           <button aria-label="Próximo período" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, 1))}><ChevronRight size={18} /></button>
           <button onClick={() => setCurrentDate(new Date())}>Hoje</button>
-        </div>
+        </div>}
       </div>
-      {filters.mode === "diario" ? (
+      {filters.mode === "lista" ? (
+        <div className="panel"><AppointmentList appointments={asArray(data)} onChanged={refresh} /></div>
+      ) : filters.mode === "diario" ? (
         <DailyAgenda day={calendar.days[0]} refresh={refresh} onSelect={setSelectedAppointment} onEmptySlot={setCreateSeed} />
       ) : (
         <GoogleLikeCalendar days={calendar.days} mode={filters.mode} refresh={refresh} onSelect={setSelectedAppointment} onEmptySlot={setCreateSeed} />
@@ -918,7 +895,7 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
   );
 }
 
-export function BookingAdmin() {
+export function BookingAdmin({ onBack }) {
   const { data: services } = useFetch("/services");
   const { data: procedures } = useFetch("/procedures");
   const { data: professionalsData } = useFetch("/professionals");
@@ -1358,10 +1335,13 @@ export function BookingAdmin() {
       <header className="availability-header">
         <div>
           <span className="eyebrow">Agendamento online</span>
-          <h2>Disponibilidade</h2>
+          <h2>Configurações da agenda</h2>
           <p>Configure serviços, horários, bloqueios e solicitações vindas do link público.</p>
         </div>
-        <a className="primary-button" href="/agendar" target="_blank" rel="noreferrer" onClick={validatePublicLink}>Abrir link público</a>
+        <div className="availability-header-actions">
+          <Button variant="secondary" onClick={onBack}><ArrowLeft size={16} /> Voltar para agenda</Button>
+          <a className="primary-button" href="/agendar" target="_blank" rel="noreferrer" onClick={validatePublicLink}>Abrir link público</a>
+        </div>
       </header>
       <div className="panel">
         <div className="panel-heading">

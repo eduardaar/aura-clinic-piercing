@@ -8576,6 +8576,36 @@ body {
   padding: 22px;
 }
 
+.agenda-page-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  padding: 22px;
+}
+
+.agenda-page-heading h2 {
+  margin: 5px 0;
+  font-family: var(--title-font);
+  font-size: clamp(30px, 4vw, 42px);
+  font-weight: 400;
+  line-height: 1;
+}
+
+.agenda-page-heading p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.agenda-page-actions,
+.availability-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .availability-header p {
   margin: 0;
   text-align: left;
@@ -8629,6 +8659,16 @@ body {
   .availability-header,
   .booking-public-header {
     display: grid;
+  }
+
+  .agenda-page-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .agenda-page-actions,
+  .availability-header-actions {
+    justify-content: flex-start;
   }
 }
 
