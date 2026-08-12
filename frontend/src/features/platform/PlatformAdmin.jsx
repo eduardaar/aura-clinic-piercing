@@ -81,8 +81,7 @@ const planOptions = (tenants) =>
 // Áreas do painel. A landing é conteúdo público da plataforma, não cadastro de
 // clínica: são duas tarefas distintas e cada uma tem sua aba.
 const TABS = [
-  ["clinicas", "Clínicas"],
-  ["contas", "Contas"],
+  ["contas", "Clínicas"],
   ["planos", "Planos"],
   ["financeiro", "Financeiro"],
   ["suporte", "Suporte"],
@@ -90,8 +89,7 @@ const TABS = [
 ];
 
 const TAB_HEADINGS = {
-  clinicas: { title: "Clínicas", subtitle: "Gerencie as clínicas cadastradas no SaaS." },
-  contas: { title: "Contas", subtitle: "Uso x cotas, plano, assinatura e trial de cada clínica." },
+  contas: { title: "Clínicas", subtitle: "Cadastro, plano, assinatura, uso e faturas de cada cliente." },
   planos: { title: "Planos", subtitle: "Preço, recursos e limites dos planos vendidos pela plataforma." },
   financeiro: { title: "Financeiro da plataforma", subtitle: "MRR, caixa do mês, inadimplência e vencimentos das assinaturas." },
   suporte: { title: "Suporte", subtitle: "Chamados abertos pelas clínicas." },
@@ -106,7 +104,8 @@ const ABAS_COM_RASCUNHO = ["landing", "planos"];
 
 export function PlatformAdmin() {
   const [session, setSession] = useState(readPlatformSession);
-  const [tab, setTab] = useState("clinicas");
+  const [tab, setTab] = useState("contas");
+  const [accountsRefresh, setAccountsRefresh] = useState(0);
   const [visitadas, setVisitadas] = useState(() => new Set());
   // Recarrega o contador de chamados abertos no selo da aba depois de o
   // super-admin responder algo.
@@ -263,6 +262,7 @@ export function PlatformAdmin() {
       setCreateForm(EMPTY_TENANT_FORM);
       setShowCreate(false);
       loadTenants();
+      setAccountsRefresh((current) => current + 1);
     } catch {
       setCreateError("Não foi possível conectar ao servidor.");
     } finally {
@@ -469,7 +469,7 @@ export function PlatformAdmin() {
           </div>
         )}
 
-        {tab === "contas" && <AccountsAdmin token={token} onUnauthorized={clearPlatformSession} />}
+        {tab === "contas" && <AccountsAdmin token={token} onUnauthorized={clearPlatformSession} onCreate={openCreate} refreshKey={accountsRefresh} />}
 
         {tab === "financeiro" && <PlatformFinance token={token} onUnauthorized={clearPlatformSession} />}
 

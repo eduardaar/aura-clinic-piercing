@@ -246,7 +246,7 @@ const DICAS_DE_ERRO = {
   motivo_obrigatorio: "O motivo fica registrado na auditoria e é o que responde “por quê?” meses depois.",
 };
 
-export function AccountsAdmin({ token, onUnauthorized }) {
+export function AccountsAdmin({ token, onUnauthorized, onCreate, refreshKey = 0 }) {
   const [tenants, setTenants] = useState(null);
   const [planos, setPlanos] = useState([]);
   const [loadError, setLoadError] = useState("");
@@ -332,7 +332,7 @@ export function AccountsAdmin({ token, onUnauthorized }) {
     return () => {
       ativo = false;
     };
-  }, [carregarClinicas, request]);
+  }, [carregarClinicas, request, refreshKey]);
 
   const carregarConta = useCallback(
     async (id) => {
@@ -603,7 +603,7 @@ export function AccountsAdmin({ token, onUnauthorized }) {
           {/* `<CrudHeader>` e não um `.panel-heading` escrito à mão: é o mesmo
               cabeçalho de painel das outras telas, e duas grafias da mesma coisa
               é como o espaçamento começa a divergir entre abas. */}
-          <CrudHeader title="Clínicas" subtitle="Abra uma conta para ver uso, plano, assinatura e faturas." />
+          <CrudHeader title="Clínicas" subtitle="Cadastre e gerencie plano, assinatura, uso e faturas em um só lugar." actionLabel={onCreate ? "Nova clínica" : undefined} onAction={onCreate} />
 
           <DataView
             rows={asArray(tenants)}
