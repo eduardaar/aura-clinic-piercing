@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { BellRing, ChevronRight, Instagram, Mail, MessageCircle, Sparkles } from "lucide-react";
 import { API, API_ORIGIN } from "../lib/api";
 import { asArray, asNumber, asObject } from "../lib/utils";
 import { featureLabel } from "../lib/planFeatures";
@@ -136,6 +136,34 @@ function FeaturesSection({ content }) {
   );
 }
 
+// Faixa de valor comercial entre os recursos e a escolha de plano. Não é mais
+// um card: o contraste intencional cria pausa na rolagem e explica por que o
+// Aura resolve a operação inteira, não apenas a agenda.
+function PlatformValueSection() {
+  const items = [
+    { icon: Sparkles, title: "Assistente com IA", text: "Crie mensagens, resumos e respostas para ganhar tempo no atendimento." },
+    { icon: MessageCircle, title: "WhatsApp integrado", text: "Centralize lembretes, confirmações e conversas com crédito controlado." },
+    { icon: BellRing, title: "Automação que acompanha", text: "Avise, faça pós-atendimento e mantenha cada cliente no fluxo certo." }
+  ];
+  return (
+    <section className="au-l-value" id="plataforma">
+      <div className="au-l-value-inner">
+        <div className="au-l-value-copy">
+          <span className="au-l-kicker">Feito para a rotina real</span>
+          <h2>Mais que agenda: uma operação conectada.</h2>
+          <p>Do primeiro contato à recompra, o Aura organiza atendimento, estoque, financeiro e comunicação em um só lugar.</p>
+        </div>
+        <div className="au-l-value-list">
+          {items.map(({ icon: Icon, title, text }) => <article key={title}>
+            <Icon size={22} aria-hidden="true" />
+            <div><h3>{title}</h3><p>{text}</p></div>
+          </article>)}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // Preferência de sistema, lida ao vivo: quem liga "reduzir movimento" no meio da
 // visita para o autoplay na hora, sem recarregar a página.
 function usePrefersReducedMotion() {
@@ -265,7 +293,7 @@ function PlansSection({ content, plans }) {
               </p>
               <p className="au-l-plan-aud">{plan.audience}</p>
               <ul className="au-l-plan-list">
-                {asArray(plan.features).slice(0, 4).map((f) => <li key={f}>{featureLabel(f)}</li>)}
+                {asArray(plan.features).map((f) => <li key={f}>{featureLabel(f)}</li>)}
               </ul>
               <a className="au-l-btn au-l-btn-plan" href={content.cta_href}>{content.cta_label}</a>
             </article>
@@ -339,11 +367,18 @@ function ClosingSection({ content }) {
       </div>
 
       <footer className="au-l-foot">
-        <div className="au-l-brand">
-          <BrandMark className="au-l-mark" size={34} />
-          <strong>Aura</strong>
+        <div className="au-l-foot-brand">
+          <div className="au-l-brand">
+            <BrandMark className="au-l-mark" size={34} />
+            <strong>Aura</strong>
+          </div>
+          <span className="au-l-foot-text">{content.footer_text}</span>
         </div>
-        <span className="au-l-foot-text">{content.footer_text}</span>
+        <div className="au-l-contact" aria-label="Canais de contato">
+          {content.contact_whatsapp && <a href={`https://wa.me/${String(content.contact_whatsapp).replace(/\D/g, "")}`} target="_blank" rel="noreferrer"><MessageCircle size={18} aria-hidden="true" /> WhatsApp</a>}
+          {content.contact_email && <a href={`mailto:${content.contact_email}`}><Mail size={18} aria-hidden="true" /> E-mail</a>}
+          {content.contact_instagram && <a href={content.contact_instagram} target="_blank" rel="noreferrer"><Instagram size={18} aria-hidden="true" /> Instagram</a>}
+        </div>
         <a className="au-l-foot-link" href={content.footer_link_href}>{content.footer_link_label}</a>
       </footer>
     </section>
@@ -412,13 +447,16 @@ export function Landing() {
         {sections.map((section) => {
           const Section = SECTION_COMPONENTS[section.section_key];
           if (!Section) return null;
-          return (
+          const rendered = (
             <Section
               key={section.section_key}
               content={mergeContent(section.section_key, section.content)}
               plans={orderedPlans}
             />
           );
+          return section.section_key === "features"
+            ? [rendered, <PlatformValueSection key="platform-value" />]
+            : rendered;
         })}
       </main>
     </div>

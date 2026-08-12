@@ -326,6 +326,37 @@
   line-height: 1.5;
 }
 
+/* Faixa escura deliberada entre seções claras: cria uma pausa de leitura e
+   apresenta as integrações que dão escala ao estúdio sem trocar a paleta Aura. */
+.au-l-root .au-l-value {
+  margin: 16px 0;
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.au-l-root .au-l-value-inner {
+  width: 100%;
+  max-width: var(--au-l-max);
+  margin: 0 auto;
+  padding: 52px var(--au-l-pad);
+  display: grid;
+  gap: 32px;
+}
+
+.au-l-root .au-l-value .au-l-kicker {
+  background: rgb(255 255 255 / .08);
+  border-color: rgb(255 255 255 / .16);
+  color: var(--gold-light);
+}
+
+.au-l-root .au-l-value-copy h2 { margin: 16px 0 14px; font-size: clamp(29px, 5vw, 48px); }
+.au-l-root .au-l-value-copy > p { max-width: 52ch; color: rgb(255 255 255 / .72); font-size: 17px; line-height: 1.6; }
+.au-l-root .au-l-value-list { display: grid; gap: 14px; }
+.au-l-root .au-l-value-list article { display: grid; grid-template-columns: auto 1fr; gap: 14px; padding: 16px 0; border-top: 1px solid rgb(255 255 255 / .14); }
+.au-l-root .au-l-value-list article > svg { color: var(--gold-light); margin-top: 2px; }
+.au-l-root .au-l-value-list h3 { font-size: 18px; }
+.au-l-root .au-l-value-list p { margin-top: 5px; color: rgb(255 255 255 / .7); line-height: 1.5; }
+
 /* ---------- planos --------------------------------------------------- */
 
 .au-l-root .au-l-sec-plans {
@@ -511,6 +542,11 @@
   min-width: 0;
 }
 
+.au-l-root .au-l-foot-brand { display: grid; gap: 5px; }
+.au-l-root .au-l-contact { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+.au-l-root .au-l-contact a { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; color: var(--ink); font-size: 14px; font-weight: 600; }
+.au-l-root .au-l-contact a:hover { color: var(--gold-dark); }
+
 .au-l-root .au-l-foot-text {
   color: var(--au-l-soft);
   font-size: 14px;
@@ -551,6 +587,7 @@
   }
 
   .au-l-root .au-l-features { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .au-l-root .au-l-value-inner { padding: 64px var(--au-l-pad); }
 
   .au-l-root .au-l-sec { padding: 56px var(--au-l-pad); }
 
@@ -579,6 +616,8 @@
   }
 
   .au-l-root .au-l-hero-media { aspect-ratio: 5 / 4; }
+
+  .au-l-root .au-l-value-inner { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 64px; align-items: center; }
 
   .au-l-root .au-l-sec { padding: 72px var(--au-l-pad); }
   .au-l-root .au-l-sec-head { margin-bottom: 30px; }

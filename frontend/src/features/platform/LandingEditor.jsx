@@ -777,6 +777,9 @@ function SectionFields({ sectionKey, content, onChange, upload }) {
           <Input label="Texto do rodapé" value={content.footer_text || ""} onChange={(value) => set({ footer_text: value })} />
           <Input label="Rótulo do link do rodapé" value={content.footer_link_label || ""} onChange={(value) => set({ footer_link_label: value })} />
           <Input label="Endereço do link do rodapé" value={content.footer_link_href || ""} onChange={(value) => set({ footer_link_href: value })} />
+          <Input label="WhatsApp de contato" value={content.contact_whatsapp || ""} onChange={(value) => set({ contact_whatsapp: value })} placeholder="Ex.: +55 77 9863-2417" />
+          <Input type="email" label="E-mail de contato" value={content.contact_email || ""} onChange={(value) => set({ contact_email: value })} placeholder="contato@suaempresa.com" />
+          <Input label="Instagram de contato" value={content.contact_instagram || ""} onChange={(value) => set({ contact_instagram: value })} placeholder="https://instagram.com/seuperfil" />
         </div>
       </div>
     );

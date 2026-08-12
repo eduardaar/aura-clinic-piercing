@@ -106,7 +106,10 @@ export const LANDING_DEFAULTS = {
     ],
     footer_text: "Plataforma de gestão para estúdios de piercing.",
     footer_link_label: "Entrar na minha conta",
-    footer_link_href: "/login"
+    footer_link_href: "/login",
+    contact_whatsapp: "+55 77 9863-2417",
+    contact_email: "",
+    contact_instagram: "https://www.instagram.com/eduarda.bodypiercer/"
   }
 };
 
