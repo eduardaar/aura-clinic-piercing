@@ -24,8 +24,23 @@
 .settings-form-section span { color: var(--muted); font-size: 13px; }
 .settings-form-actions { display: flex; justify-content: flex-end; }
 
-:root[data-aura-theme="blue"] { --ink: #172737; --muted: #5e7283; --line: #d9e5ee; --paper: #f5f9fc; --nude: #8eb4d2; --nude-strong: #5a8fb8; --brown-dark: #264c68; --black: #172737; --gold: #6d9bc3; --gold-light: #b8d3e8; --gold-dark: #3c719d; --bronze: #2e6089; --gold-soft: #dcebf6; --info: #5d91bd; }
-:root[data-aura-theme="green"] { --ink: #193025; --muted: #607469; --line: #dce9df; --paper: #f5faf6; --nude: #97bda3; --nude-strong: #669477; --brown-dark: #315b42; --black: #193025; --gold: #78a98b; --gold-light: #bedac6; --gold-dark: #4d7f61; --bronze: #3a684c; --gold-soft: #deeee2; --info: #6a9d7d; }
+:root[data-aura-theme="blue"] { --ink: #172737; --muted: #5e7283; --line: #d9e5ee; --paper: #f2f8fc; --white: #fbfdff; --nude: #8eb4d2; --nude-strong: #5a8fb8; --brown-dark: #264c68; --black: #172737; --gold: #6d9bc3; --gold-light: #b8d3e8; --gold-dark: #3c719d; --bronze: #2e6089; --gold-soft: #dcebf6; --info: #5d91bd; --app-glow: rgba(109, 155, 195, .18); --app-surface: rgba(251, 253, 255, .88); }
+:root[data-aura-theme="green"] { --ink: #193025; --muted: #607469; --line: #dce9df; --paper: #f2f9f4; --white: #fbfffc; --nude: #97bda3; --nude-strong: #669477; --brown-dark: #315b42; --black: #193025; --gold: #78a98b; --gold-light: #bedac6; --gold-dark: #4d7f61; --bronze: #3a684c; --gold-soft: #deeee2; --info: #6a9d7d; --app-glow: rgba(120, 169, 139, .18); --app-surface: rgba(251, 255, 252, .88); }
+
+:root[data-aura-theme="blue"] body,
+:root[data-aura-theme="green"] body { background: radial-gradient(circle at 85% 0%, var(--app-glow), transparent 31%), var(--paper); }
+:root[data-aura-theme="blue"] .app-shell .panel,
+:root[data-aura-theme="blue"] .app-shell .metric-card,
+:root[data-aura-theme="blue"] .app-shell .manager-card,
+:root[data-aura-theme="blue"] .app-shell .post-care-card,
+:root[data-aura-theme="blue"] .app-shell .medical-form,
+:root[data-aura-theme="blue"] .app-shell .loyalty-panel,
+:root[data-aura-theme="green"] .app-shell .panel,
+:root[data-aura-theme="green"] .app-shell .metric-card,
+:root[data-aura-theme="green"] .app-shell .manager-card,
+:root[data-aura-theme="green"] .app-shell .post-care-card,
+:root[data-aura-theme="green"] .app-shell .medical-form,
+:root[data-aura-theme="green"] .app-shell .loyalty-panel { background: var(--app-surface); }
 
 @media (max-width: 720px) { .theme-choice-grid, .settings-form { grid-template-columns: 1fr; } .theme-choice { min-height: 142px; } .settings-form-section, .settings-form-actions { grid-column: auto; } .settings-form-actions { justify-content: stretch; } .settings-form-actions button { width: 100%; } }
 }
