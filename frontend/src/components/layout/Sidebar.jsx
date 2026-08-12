@@ -14,7 +14,8 @@ export function Sidebar({ page, role, brand, features, trialDays, setPage, open,
   // Um bloco só aparece se sobrar algum item depois do filtro por papel.
   const groups = [
     ["", [
-      ["dashboard", Home, "Dashboard"]
+      ["dashboard", Home, "Dashboard"],
+      ["onboarding", Sparkles, "Onboarding"]
     ]],
     ["Atendimento", [
       ["agenda", Calendar, "Agenda"],
@@ -34,7 +35,6 @@ export function Sidebar({ page, role, brand, features, trialDays, setPage, open,
       ["Sistema", [
         ["admin", ShieldCheck, "Acessos"],
         ["integrations", Plug, "Integrações"],
-        ["onboarding", Sparkles, "Onboarding"],
         ["support", LifeBuoy, "Suporte"],
         ["settings", Settings, "Configurações"]
       ]]
