@@ -26,6 +26,7 @@ function statCount(value) {
 }
 
 export function PremiumDashboard({ data, user, setPage, period, setPeriod, alertsOpen, setAlertsOpen, alertsData, alertsLoading }) {
+  const [section, setSection] = useState("geral");
   const [revenueMode, setRevenueMode] = useState("mensal");
   const safeData = asObject(data);
   // Sem defaults zerados: se um indicador sumir do payload precisa aparecer como "—",
@@ -73,32 +74,30 @@ export function PremiumDashboard({ data, user, setPage, period, setPeriod, alert
           {["7d", "30d", "90d", "365d"].map((value) => <button type="button" key={value} className={period === value ? "active" : ""} onClick={() => setPeriod(value)}>{value}</button>)}
         </div>
       </div>
-      <div className="metric-grid">
-        <article className="metric-card"><span>Comparecimento</span><strong>{asNumber(executive.attendance_rate)}%</strong></article>
-        <article className="metric-card"><span>Cancelamentos</span><strong>{asNumber(executive.cancellation_rate)}%</strong></article>
-        <article className="metric-card"><span>Ticket médio</span><strong>{currency.format(asNumber(executive.average_ticket))}</strong></article>
-        <article className="metric-card"><span>A receber</span><strong>{currency.format(asNumber(executive.receivable))}</strong></article>
-        <article className="metric-card"><span>A pagar</span><strong>{currency.format(asNumber(executive.payable))}</strong></article>
-        <article className="metric-card"><span>Conversão catálogo</span><strong>{asNumber(executive.catalog_conversion_rate)}%</strong></article>
-        <article className="metric-card"><span>Promoções usadas</span><strong>{asNumber(executive.promotion_uses)}</strong></article>
-        <article className="metric-card"><span>Cupons usados</span><strong>{asNumber(executive.coupon_uses)}</strong></article>
-      </div>
-
-      <div className="premium-metric-grid">
-        {cards.map(({ label, value, icon: Icon, action, page, tone, critical }) => (
-          <article className={`premium-metric-card ${tone}`} key={label}>
-            <div className="metric-icon"><Icon size={22} /></div>
-            <div>
-              <strong>{value}</strong>
-              <span>{label}</span>
-              {critical && <small>crítico</small>}
-              <button type="button" onClick={() => setPage(page)}>{action} →</button>
-            </div>
-          </article>
+      <nav className="dashboard-section-tabs" aria-label="Áreas do dashboard">
+        {[['geral', 'Dashboard geral'], ['estoque', 'Estoque'], ['financeiro', 'Financeiro']].map(([value, label]) => (
+          <button type="button" key={value} className={section === value ? "active" : ""} onClick={() => setSection(value)}>{label}</button>
         ))}
-      </div>
+      </nav>
 
-      <div className="premium-dashboard-grid">
+      {section === "geral" && <>
+        <div className="metric-grid dashboard-executive-metrics">
+          <article className="metric-card"><span>Comparecimento</span><strong>{asNumber(executive.attendance_rate)}%</strong></article>
+          <article className="metric-card"><span>Cancelamentos</span><strong>{asNumber(executive.cancellation_rate)}%</strong></article>
+          <article className="metric-card"><span>Ticket médio</span><strong>{currency.format(asNumber(executive.average_ticket))}</strong></article>
+          <article className="metric-card"><span>Conversão catálogo</span><strong>{asNumber(executive.catalog_conversion_rate)}%</strong></article>
+        </div>
+
+        <div className="premium-metric-grid">
+          {cards.filter((card) => !["Joias em estoque crítico", "Faturamento hoje"].includes(card.label)).map(({ label, value, icon: Icon, action, page, tone, critical }) => (
+            <article className={`premium-metric-card ${tone}`} key={label}>
+              <div className="metric-icon"><Icon size={22} /></div>
+              <div><strong>{value}</strong><span>{label}</span>{critical && <small>crítico</small>}<button type="button" onClick={() => setPage(page)}>{action} →</button></div>
+            </article>
+          ))}
+        </div>
+
+        <div className="premium-dashboard-grid">
         <article className="panel next-appointment-card">
           <div className="panel-heading">
             <h2>Próximo agendamento</h2>
@@ -116,18 +115,6 @@ export function PremiumDashboard({ data, user, setPage, period, setPeriod, alert
             </div>
           ) : <p className="empty-state">Não há atendimentos futuros agendados.</p>}
           {!!appointmentAlerts.length && <small className="dashboard-alert-hint">{appointmentAlerts.length} aviso(s) de agenda precisam de atenção.</small>}
-        </article>
-
-        <article className="panel revenue-card">
-          <div className="panel-heading">
-            <h2>Faturamento</h2>
-            <div className="segmented compact">
-              <button type="button" className={revenueMode === "diario" ? "active" : ""} onClick={() => setRevenueMode("diario")}>Diário</button>
-              <button type="button" className={revenueMode === "semanal" ? "active" : ""} onClick={() => setRevenueMode("semanal")}>Semanal</button>
-              <button type="button" className={revenueMode === "mensal" ? "active" : ""} onClick={() => setRevenueMode("mensal")}>Mensal</button>
-            </div>
-          </div>
-          <RevenueLineChart data={revenueData} mode={revenueMode} />
         </article>
 
         <article className="panel upcoming-card">
@@ -151,29 +138,9 @@ export function PremiumDashboard({ data, user, setPage, period, setPeriod, alert
             {!upcomingAppointments.length && <p className="empty-state">Nenhum próximo agendamento.</p>}
           </div>
         </article>
-      </div>
+        </div>
 
-      <div className="premium-lower-grid">
-        <article className="panel compact-list-card">
-          <div className="panel-heading">
-            <h2>Estoque crítico</h2>
-            <Button variant="ghost" onClick={() => setPage("catalog")}>Ver estoque</Button>
-          </div>
-          <div className="clean-list">
-            {criticalStockItems.slice(0, 3).map((item) => (
-              <div key={item.id || `${item.name}-${item.quantity}`}>
-                <div className="jewel-thumb"><Gem size={21} /></div>
-                <span>
-                  <strong>{item.name || "Joia"}</strong>
-                  <small>{item.alert_level || (Number(item.quantity || 0) <= 0 ? "Esgotado" : "Acabando")} · {item.color || item.category || "Sem categoria"}</small>
-                </span>
-                <em>{Number(item.quantity || 0)} unidade{Number(item.quantity || 0) === 1 ? "" : "s"}</em>
-              </div>
-            ))}
-            {!criticalStockItems.length && <p className="empty-state">Estoque sem alerta crítico.</p>}
-          </div>
-        </article>
-
+        <div className="premium-lower-grid dashboard-general-lower-grid">
         <article className="panel compact-list-card">
           <div className="panel-heading">
             <h2>Aniversariantes do mês</h2>
@@ -190,50 +157,41 @@ export function PremiumDashboard({ data, user, setPage, period, setPeriod, alert
             {!birthdaysItems.length && <p className="empty-state">Nenhum aniversário neste mês.</p>}
           </div>
         </article>
+        </div>
 
-        <article className="panel finance-summary-card">
-          <div className="panel-heading">
-            <h2>Resumo Financeiro</h2>
-            <span>{new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</span>
-          </div>
-          <div className="finance-summary-list">
-            <div className="ok"><span>Faturamento</span><strong>{statCurrency(safeStats.revenueMonth)}</strong></div>
-            <div className="ok"><span>Sinais recebidos</span><strong>{statCurrency(safeStats.depositReceived)}</strong></div>
-            <div className="warn"><span>Pendentes</span><strong>{currency.format(Number(pendingValue || 0))}</strong></div>
-            <div className="danger"><span>Despesas</span><strong>{statCurrency(safeStats.expensesMonth)}</strong></div>
-          </div>
-          <div className="profit-box">
-            <span>Lucro estimado</span>
-            <strong>{statCurrency(safeStats.profitEstimated)}</strong>
-          </div>
-        </article>
-      </div>
-
-      <div className="premium-ranking-grid">
+        <div className="premium-ranking-grid dashboard-general-ranking-grid">
         <div className="panel">
           <div className="panel-heading"><h2>Procedimentos mais feitos</h2><span>Ranking</span></div>
           <MiniBarChart data={procedureRanking} valueKey="total" labelKey="label" />
         </div>
-        <div className="panel">
-          <div className="panel-heading"><h2>Joias mais vendidas</h2><span>Peças vinculadas</span></div>
-          <MiniBarChart data={jewelryRanking} valueKey="total" labelKey="label" />
-        </div>
-        <div className="panel">
-          <div className="panel-heading"><h2>Ranking por categoria</h2><span>Joalherias</span></div>
-          <MiniBarChart data={categoryRanking} valueKey="total" labelKey="label" />
-        </div>
         <DashboardList title="Clientes em retorno" items={returnClients} render={(item) => `${formatDate(item.due_date)} · ${personName(item)} · ${item.reminder_day || 0} dias`} />
-        <div className="panel">
-          <div className="panel-heading"><h2>Produtos mais visualizados</h2><span>Catálogo público</span></div>
-          <MiniBarChart data={topViewed} valueKey="views" labelKey="name" />
         </div>
-        <div className="panel">
-          <div className="panel-heading"><h2>Profissionais</h2><span>Faturamento no período</span></div>
-          <MiniBarChart data={professionalRanking} valueKey="revenue" labelKey="label" currencyValue />
-        </div>
-      </div>
+      </>}
+
+      {section === "estoque" && <DashboardStock criticalStockItems={criticalStockItems} jewelryRanking={jewelryRanking} categoryRanking={categoryRanking} topViewed={topViewed} setPage={setPage} />}
+      {section === "financeiro" && <DashboardFinance safeStats={safeStats} executive={executive} pendingValue={pendingValue} revenueData={revenueData} revenueMode={revenueMode} setRevenueMode={setRevenueMode} professionalRanking={professionalRanking} setPage={setPage} />}
     </section>
   );
+}
+
+function DashboardStock({ criticalStockItems, jewelryRanking, categoryRanking, topViewed, setPage }) {
+  return <div className="dashboard-section-content">
+    <div className="dashboard-section-heading"><div><h3>Estoque</h3><p>Acompanhe reposições, produtos mais vendidos e interesse no catálogo.</p></div><Button variant="secondary" onClick={() => setPage("catalog")}>Abrir estoque</Button></div>
+    <div className="premium-lower-grid dashboard-stock-overview">
+      <article className="panel compact-list-card dashboard-stock-critical"><div className="panel-heading"><h2>Itens com estoque crítico</h2><Button variant="ghost" onClick={() => setPage("catalog")}>Gerenciar</Button></div><div className="clean-list">{criticalStockItems.slice(0, 5).map((item) => <div key={item.id || `${item.name}-${item.quantity}`}><div className="jewel-thumb"><Gem size={21} /></div><span><strong>{item.name || "Produto"}</strong><small>{item.alert_level || (Number(item.quantity || 0) <= 0 ? "Esgotado" : "Acabando")} · {item.color || item.category || "Sem categoria"}</small></span><em>{Number(item.quantity || 0)} un.</em></div>)}{!criticalStockItems.length && <p className="empty-state">Estoque sem alerta crítico.</p>}</div></article>
+      <article className="panel"><div className="panel-heading"><h2>Produtos mais vendidos</h2><span>Período selecionado</span></div><MiniBarChart data={jewelryRanking} valueKey="total" labelKey="label" /></article>
+    </div>
+    <div className="premium-ranking-grid dashboard-stock-ranking"><div className="panel"><div className="panel-heading"><h2>Ranking por categoria</h2><span>Vendas</span></div><MiniBarChart data={categoryRanking} valueKey="total" labelKey="label" /></div><div className="panel"><div className="panel-heading"><h2>Mais vistos no catálogo</h2><span>Interesse dos clientes</span></div><MiniBarChart data={topViewed} valueKey="views" labelKey="name" /></div></div>
+  </div>;
+}
+
+function DashboardFinance({ safeStats, executive, pendingValue, revenueData, revenueMode, setRevenueMode, professionalRanking, setPage }) {
+  return <div className="dashboard-section-content">
+    <div className="dashboard-section-heading"><div><h3>Financeiro</h3><p>Visão consolidada de entradas, despesas e valores em aberto.</p></div><Button variant="secondary" onClick={() => setPage("finance")}>Abrir financeiro</Button></div>
+    <div className="metric-grid dashboard-finance-metrics"><article className="metric-card"><span>A receber</span><strong>{currency.format(asNumber(executive.receivable))}</strong></article><article className="metric-card"><span>A pagar</span><strong>{currency.format(asNumber(executive.payable))}</strong></article><article className="metric-card"><span>Faturamento do mês</span><strong>{statCurrency(safeStats.revenueMonth)}</strong></article><article className="metric-card"><span>Lucro estimado</span><strong>{statCurrency(safeStats.profitEstimated)}</strong></article></div>
+    <div className="premium-dashboard-grid dashboard-finance-grid"><article className="panel revenue-card"><div className="panel-heading"><h2>Faturamento</h2><div className="segmented compact"><button type="button" className={revenueMode === "diario" ? "active" : ""} onClick={() => setRevenueMode("diario")}>Diário</button><button type="button" className={revenueMode === "semanal" ? "active" : ""} onClick={() => setRevenueMode("semanal")}>Semanal</button><button type="button" className={revenueMode === "mensal" ? "active" : ""} onClick={() => setRevenueMode("mensal")}>Mensal</button></div></div><RevenueLineChart data={revenueData} mode={revenueMode} /></article><article className="panel finance-summary-card"><div className="panel-heading"><h2>Resumo do mês</h2><span>{new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</span></div><div className="finance-summary-list"><div className="ok"><span>Sinais recebidos</span><strong>{statCurrency(safeStats.depositReceived)}</strong></div><div className="warn"><span>Pendentes</span><strong>{currency.format(Number(pendingValue || 0))}</strong></div><div className="danger"><span>Despesas</span><strong>{statCurrency(safeStats.expensesMonth)}</strong></div></div><div className="profit-box"><span>Lucro estimado</span><strong>{statCurrency(safeStats.profitEstimated)}</strong></div></article></div>
+    <div className="panel"><div className="panel-heading"><h2>Profissionais</h2><span>Faturamento no período</span></div><MiniBarChart data={professionalRanking} valueKey="revenue" labelKey="label" currencyValue /></div>
+  </div>;
 }
 
 export function RevenueLineChart({ data = [], mode = "mensal" }) {
@@ -344,4 +302,3 @@ export function AlertsPopup({ alerts, loading, onClose, onAction }) {
     </div>
   );
 }
-
