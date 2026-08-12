@@ -328,8 +328,8 @@ function App() {
           {activePage === "finance" && <FinanceAdmin />}
           {activePage === "reports" && <Reports />}
           {activePage === "clients" && <ClientsMedical />}
-          {activePage === "terms" && <DigitalTerms />}
-          {activePage === "postcare" && <PostCare />}
+          {activePage === "terms" && <DigitalTerms onBack={() => setPage("client-center")} />}
+          {activePage === "postcare" && <PostCare onBack={() => setPage("client-center")} />}
           {activePage === "admin" && <AccessAdmin />}
           {activePage === "integrations" && <Integrations />}
           {activePage === "support" && <Support />}

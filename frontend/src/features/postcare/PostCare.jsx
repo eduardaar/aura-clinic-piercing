@@ -1,5 +1,6 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useState } from "react";
+import { ArrowLeft } from "lucide-react";
 import { Button, Metric, SecureImage, Select, StatusBadge } from "../../components/common/Ui";
 import { Modal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
@@ -47,7 +48,7 @@ const withCurrent = (options, current) =>
     ? [...options, typeof options[0] === "string" ? current : { value: current, label: current }]
     : options;
 
-export function PostCare() {
+export function PostCare({ onBack }) {
   const { data, refresh } = useFetch("/post-care");
   const [editing, setEditing] = useState(null);
   if (!data) return <Loading />;
@@ -57,6 +58,7 @@ export function PostCare() {
 
   return (
     <section className="stack">
+      <div className="module-backbar"><Button variant="secondary" onClick={onBack}><ArrowLeft size={16} /> Voltar para clientes</Button></div>
       <div className="metric-grid">
         <Metric label="Lembretes totais" value={followups.length} />
         <Metric label="Pendentes ou vencidos" value={dueCount} />

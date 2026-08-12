@@ -8737,6 +8737,8 @@ body {
 .client-module-shortcuts { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 0 2px; }
 .client-module-shortcuts > span { margin-right: auto; color: var(--muted); font-size: 13px; font-weight: 700; }
 .client-module-shortcuts button { min-height: 38px; }
+.module-backbar { display: flex; justify-content: flex-end; }
+.module-heading-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 
 @media (max-width: 900px) {
   .weekly-schedule-toolbar { align-items: stretch; flex-direction: column; }
@@ -8745,6 +8747,7 @@ body {
   .weekly-schedule-advanced { justify-self: end; }
   .client-module-shortcuts { align-items: stretch; flex-wrap: wrap; }
   .client-module-shortcuts > span { width: 100%; }
+  .module-backbar { justify-content: flex-start; }
 }
 
 @media (max-width: 560px) {

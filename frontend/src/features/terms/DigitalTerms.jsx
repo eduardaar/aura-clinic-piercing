@@ -1,6 +1,6 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import React, { useEffect, useState } from "react";
-import { Download, } from "lucide-react";
+import { ArrowLeft, Download } from "lucide-react";
 import { Button, Input, Select, StatusBadge } from "../../components/common/Ui";
 import { RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
@@ -23,7 +23,7 @@ function formatDateWithYear(date) {
   return parsed.toLocaleDateString("pt-BR");
 }
 
-export function DigitalTerms() {
+export function DigitalTerms({ onBack }) {
   const { data: appointmentsPage } = useFetch(APPOINTMENTS_QUERY);
   const { data: terms, refresh } = useFetch("/digital-terms");
   const [form, setForm] = useState(defaultDigitalTerm());
@@ -110,7 +110,7 @@ export function DigitalTerms() {
             <span className="eyebrow">Termos Digitais</span>
             <h2>Ficha De Anamnese</h2>
           </div>
-          <span>{appointmentTotal} agendamento(s)</span>
+          <div className="module-heading-actions"><span>{appointmentTotal} agendamento(s)</span><Button variant="secondary" onClick={onBack}><ArrowLeft size={16} /> Voltar para clientes</Button></div>
         </div>
 
         <div className="term-intro">
