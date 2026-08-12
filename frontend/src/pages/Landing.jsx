@@ -379,7 +379,7 @@ function ClosingSection({ content }) {
   // ela passa a contar como conteúdo.
   const decorative = shots.every((shot) => !String(shot.image_alt || "").trim());
 
-  return (
+  return <>
     <section className="au-l-close">
       <div className="au-l-close-inner au-l-close-dark">
         <div className="au-l-close-copy">
@@ -405,10 +405,9 @@ function ClosingSection({ content }) {
           </div>
         )}
       </div>
-
-      <PublicFooter content={content} />
     </section>
-  );
+    <PublicFooter content={content} />
+  </>;
 }
 
 // Um componente por tipo de bloco. Chave fora desta tabela é ignorada em
