@@ -897,6 +897,7 @@ export function PlatformFinance({ token, onUnauthorized }) {
   // congela o dia inteiro da tela — é assim que se confere um fechamento sem que
   // a resposta mude conforme o dia em que se olha.
   const [dataBase, setDataBase] = useState("");
+  const [aba, setAba] = useState("resumo");
   const [dias, setDias] = useState("7");
   const [meses, setMeses] = useState("12");
 
@@ -1015,16 +1016,29 @@ export function PlatformFinance({ token, onUnauthorized }) {
         </div>
       </section>
 
-      <Bloco
+      <nav className="dashboard-section-tabs" aria-label="Visões do financeiro da plataforma">
+        {[
+          ["resumo", "Resumo"],
+          ["receitas", "Receitas"],
+          ["cobrancas", "Cobranças"],
+        ].map(([valor, rotulo]) => (
+          <button type="button" key={valor} className={aba === valor ? "active" : ""} onClick={() => setAba(valor)}>
+            {rotulo}
+          </button>
+        ))}
+      </nav>
+
+      {aba === "resumo" && <Bloco
         titulo="Resumo"
-        subtitulo="Projeção e caixa em grupos separados, cada um com sua etiqueta."
+        subtitulo="MRR, caixa, valores a receber e saúde da base de clientes."
         carregando={resumo.carregando}
         erro={resumo.erro}
         onRecarregar={resumo.recarregar}
       >
         <Resumo dados={resumo.dados} />
-      </Bloco>
+      </Bloco>}
 
+      {aba === "cobrancas" && <>
       <Bloco
         titulo="Inadimplência"
         subtitulo="Quem cobrar hoje, da clínica mais atrasada para a menos."
@@ -1078,7 +1092,9 @@ export function PlatformFinance({ token, onUnauthorized }) {
           onTamanho={setTamanhoVencimento}
         />
       </Bloco>
+      </>}
 
+      {aba === "receitas" && <>
       <Bloco
         titulo="Receita mês a mês"
         subtitulo="Recebido é caixa (data do pagamento); emitido é competência (o mês a que a cobrança se refere)."
@@ -1105,6 +1121,7 @@ export function PlatformFinance({ token, onUnauthorized }) {
       >
         <PorPlano dados={planos.dados} />
       </Bloco>
+      </>}
     </div>
   );
 }
