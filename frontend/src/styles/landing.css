@@ -64,6 +64,51 @@
 
 .au-l-root ul { margin: 0; padding: 0; list-style: none; }
 
+/* Atalho de contato sempre ao alcance, mas com área de toque confortável e
+   contraste suficiente sobre qualquer seção da landing. */
+.au-l-whatsapp-float {
+  position: fixed;
+  z-index: 30;
+  right: max(18px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 52px;
+  padding: 0 18px;
+  border: 1px solid rgb(255 255 255 / .32);
+  border-radius: 999px;
+  background: #25d366;
+  color: #073b20;
+  box-shadow: 0 12px 28px rgb(7 59 32 / .28);
+  font-weight: 750;
+  line-height: 1;
+  transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
+}
+
+.au-l-whatsapp-float:hover {
+  transform: translateY(-2px);
+  background: #32df76;
+  box-shadow: 0 16px 32px rgb(7 59 32 / .32);
+}
+
+.au-l-whatsapp-float:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 3px;
+}
+
+@media (max-width: 480px) {
+  .au-l-whatsapp-float {
+    right: 14px;
+    bottom: 14px;
+    width: 52px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .au-l-whatsapp-float span { display: none; }
+}
+
 /* ---------- marca ---------------------------------------------------- */
 
 .au-l-root .au-l-brand {

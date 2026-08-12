@@ -66,6 +66,28 @@ function contentItems(content, field, requiredField) {
     });
 }
 
+function whatsappUrl(phone) {
+  const digits = String(phone || "").replace(/\D/g, "");
+  return digits ? `https://wa.me/${digits}` : "";
+}
+
+function FloatingWhatsApp({ phone }) {
+  const href = whatsappUrl(phone);
+  if (!href) return null;
+  return (
+    <a
+      className="au-l-whatsapp-float"
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      aria-label="Falar conosco pelo WhatsApp"
+    >
+      <MessageCircle size={24} aria-hidden="true" />
+      <span>Falar no WhatsApp</span>
+    </a>
+  );
+}
+
 /* ---------- blocos ------------------------------------------------------- */
 
 function HeroSection({ content }) {
@@ -397,7 +419,7 @@ function ClosingSection({ content }) {
           <span className="au-l-foot-text">{content.footer_text}</span>
         </div>
         <div className="au-l-contact" aria-label="Canais de contato">
-          {content.contact_whatsapp && <a href={`https://wa.me/${String(content.contact_whatsapp).replace(/\D/g, "")}`} target="_blank" rel="noreferrer"><MessageCircle size={18} aria-hidden="true" /> WhatsApp</a>}
+          {content.contact_whatsapp && <a href={whatsappUrl(content.contact_whatsapp)} target="_blank" rel="noreferrer"><MessageCircle size={18} aria-hidden="true" /> WhatsApp</a>}
           {content.contact_email && <a href={`mailto:${content.contact_email}`}><Mail size={18} aria-hidden="true" /> E-mail</a>}
           {content.contact_instagram && <a href={content.contact_instagram} target="_blank" rel="noreferrer"><Instagram size={18} aria-hidden="true" /> Instagram</a>}
         </div>
@@ -459,6 +481,10 @@ export function Landing() {
     () => [...plans].sort((a, b) => Number(a.price_cents || 0) - Number(b.price_cents || 0)),
     [plans]
   );
+  const closingContent = useMemo(() => {
+    const closing = sections.find((section) => section.section_key === "closing");
+    return mergeContent("closing", closing?.content);
+  }, [sections]);
 
   return (
     <div className="au-shell">
@@ -485,6 +511,7 @@ export function Landing() {
             : rendered;
         })}
       </main>
+      <FloatingWhatsApp phone={closingContent.contact_whatsapp} />
     </div>
   );
 }
