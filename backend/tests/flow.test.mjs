@@ -98,6 +98,34 @@ test("1b. planos e identidade da loja carregam tenant proprio", async () => {
   assert.notEqual(identity.json.identity.store_name, "Aura Clinic", "novo tenant nao deve usar Aura Clinic como nome da loja");
 });
 
+test("1c. cofre do WhatsApp oficial mascara token e valida configuração", async () => {
+  const initial = await api("/integrations/whatsapp");
+  assert.equal(initial.status, 200, JSON.stringify(initial.json));
+  assert.equal(initial.json.configured, false);
+
+  const invalid = await api("/integrations/whatsapp", {
+    method: "PUT",
+    body: { phone_number_id: "numero-invalido" }
+  });
+  assert.equal(invalid.status, 400, JSON.stringify(invalid.json));
+
+  const saved = await api("/integrations/whatsapp", {
+    method: "PUT",
+    body: {
+      access_token: "token-de-teste-comprido-o-suficiente-para-o-cofre",
+      phone_number_id: "123456789012345",
+      business_account_id: "987654321",
+      enabled: false
+    }
+  });
+  assert.equal(saved.status, 200, JSON.stringify(saved.json));
+  assert.equal(saved.json.configured, true);
+  assert.equal(saved.json.enabled, false);
+  assert.equal(saved.json.phone_number_id, "123456789012345");
+  assert.ok(saved.json.secret_hint?.startsWith("••••"));
+  assert.equal(Object.hasOwn(saved.json, "access_token"), false, "token nunca pode sair do cofre");
+});
+
 // 2) Cliente: cadastra e confere na listagem.
 test("2. cadastra cliente e ele aparece na listagem", async () => {
   const create = await api("/clients", {

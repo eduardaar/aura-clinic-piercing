@@ -1,4 +1,5 @@
 import { normalizeWhatsappNumber, whatsappLink } from "./notifications.js";
+import { sendWhatsAppCloudText } from "./whatsappCloud.js";
 
 export const TEMPLATE_VARIABLES = [
   "cliente", "profissional", "estudio", "servico", "joias", "data", "horario", "total",
@@ -41,12 +42,32 @@ export async function processDueCommunications(db, limit = 100) {
     [new Date().toISOString(), Math.min(Math.max(Number(limit || 100), 1), 500)]
   );
   for (const item of due) {
-    // Sem provedor oficial configurado, a mensagem fica pronta para abertura via wa.me.
-    await db.run("UPDATE notification_queue SET status='ready', attempts=attempts+1 WHERE id=? AND status='pending'", [item.id]);
+    let status = "ready";
+    let details = { channel: item.channel, automatic_send: false };
+    let lastError = "";
+    try {
+      // `null` significa que a clínica ainda não ativou a Cloud API: mantém a
+      // mensagem pronta para abertura manual pelo wa.me, como era antes.
+      const sent = item.channel === "whatsapp"
+        ? await sendWhatsAppCloudText(db, { destination: item.destination, message: item.message })
+        : null;
+      if (sent) {
+        status = "sent";
+        details = { channel: item.channel, automatic_send: true, provider: "whatsapp_cloud", message_id: sent.messageId };
+      }
+    } catch (error) {
+      status = "failed";
+      lastError = error?.message || "Falha ao enviar pela API oficial do WhatsApp.";
+      details = { channel: item.channel, automatic_send: true, provider: "whatsapp_cloud", error: lastError };
+    }
+    await db.run(
+      "UPDATE notification_queue SET status=?, attempts=attempts+1, last_error=?, sent_at=CASE WHEN ?='sent' THEN CURRENT_TIMESTAMP ELSE sent_at END WHERE id=? AND status='pending'",
+      [status, lastError, status, item.id]
+    );
     if (item.automation_rule_id) {
       await db.run(
-        "INSERT INTO automation_runs (rule_id, entity_type, entity_id, status, details) VALUES (?, 'notification', ?, 'ready', ?)",
-        [item.automation_rule_id, item.id, JSON.stringify({ channel: item.channel, automatic_send: false })]
+        "INSERT INTO automation_runs (rule_id, entity_type, entity_id, status, details) VALUES (?, 'notification', ?, ?, ?)",
+        [item.automation_rule_id, item.id, status, JSON.stringify(details)]
       );
     }
   }

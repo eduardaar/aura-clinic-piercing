@@ -47,6 +47,11 @@ export const ASAAS_WEBHOOK_TOKEN = process.env.ASAAS_WEBHOOK_TOKEN || "";
 // prender um worker do Node indefinidamente.
 export const ASAAS_TIMEOUT_MS = Number(process.env.ASAAS_TIMEOUT_MS || 20000);
 
+// Meta WhatsApp Business Cloud API. Tokens e IDs das clínicas ficam no cofre
+// por tenant, nunca no .env e nunca são devolvidos pela API.
+export const WHATSAPP_GRAPH_BASE_URL = (process.env.WHATSAPP_GRAPH_BASE_URL || "https://graph.facebook.com").replace(/\/+$/, "");
+export const WHATSAPP_GRAPH_API_VERSION = (process.env.WHATSAPP_GRAPH_API_VERSION || "v23.0").replace(/^\/+|\/+$/g, "");
+
 // A integração da plataforma só liga com chave E token de webhook. Sem o token
 // o webhook seria uma rota pública capaz de marcar fatura como paga — por isso
 // o par é indivisível: falta um, a integração fica desligada inteira.

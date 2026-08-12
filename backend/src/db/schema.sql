@@ -1290,6 +1290,11 @@ CREATE TABLE IF NOT EXISTS tenant_integrations (
   UNIQUE(provider)
 );
 
+-- Dados não secretos específicos de cada provedor (por exemplo, o
+-- phone_number_id público da conta WhatsApp Business). Segredos continuam no
+-- cofre cifrado acima; este JSON jamais deve receber token ou senha.
+ALTER TABLE tenant_integrations ADD COLUMN IF NOT EXISTS settings JSONB NOT NULL DEFAULT '{}'::jsonb;
+
 -- Identidade do cliente da clínica como pagador na conta Asaas DELA.
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS asaas_customer_id TEXT;
 -- O Asaas recusa criar cliente sem CPF/CNPJ; guardamos para não pedir de novo.
