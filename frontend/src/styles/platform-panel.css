@@ -193,7 +193,7 @@
   }
 
   @media (max-width: 560px) {
-    .platform-tabs { margin: 0 -14px; padding: 0 14px; }
+    .platform-tabs { margin: 0 -14px; padding: 0 max(14px, env(safe-area-inset-left)) 0 max(14px, env(safe-area-inset-right)); }
     .platform-tabs a,
     .platform-tabs button { min-height: 42px; padding: 0 12px; font-size: 13px; }
     .platform-tabs .platform-logout { margin-left: 0; }

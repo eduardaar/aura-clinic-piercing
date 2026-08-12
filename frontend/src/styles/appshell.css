@@ -593,7 +593,7 @@
   .topbar-icon-action { display: none; }
   .topbar-actions .notification-button { width: 36px; height: 36px; }
   .content-scroll { padding-top: 20px; }
-  .content-scroll { padding-right: 14px; padding-left: 14px; padding-bottom: 36px; }
+  .content-scroll { padding-right: max(14px, env(safe-area-inset-right)); padding-left: max(14px, env(safe-area-inset-left)); padding-bottom: calc(36px + env(safe-area-inset-bottom)); }
   .panel { border-radius: 13px; }
   .metric-grid, .premium-metric-grid { grid-template-columns: 1fr; }
   .premium-dashboard-grid, .premium-lower-grid, .premium-ranking-grid { grid-template-columns: 1fr; gap: 14px; }

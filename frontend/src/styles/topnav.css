@@ -228,7 +228,7 @@
 /* O caminho de entrada é essencial também no celular. Em vez de escondê-lo,
    compactamos a barra sem reduzir a área de toque dos links. */
 @media (max-width: 639px) {
-  .au-nav-inner { padding: 8px 16px; gap: 8px; }
+  .au-nav-inner { padding: 8px max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left)); gap: 8px; }
   .au-nav-brand { gap: 7px; min-height: 40px; }
   .au-nav-mark { width: 30px; height: 30px; }
   .au-nav-brand strong { font-size: 18px; }
