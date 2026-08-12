@@ -78,23 +78,6 @@ export const LANDING_DEFAULTS = {
     cta_href: "/cadastro"
   },
 
-  showcase_links: {
-    title: "Veja quem já usa",
-    subtitle: "Explore as vitrines públicas das clínicas na plataforma.",
-    items: [
-      {
-        title: "Catálogo online",
-        text: "Veja as clínicas usando e abra a vitrine de joias de cada uma.",
-        href: "/catalogo"
-      },
-      {
-        title: "Agendamento online",
-        text: "Encontre um estúdio e marque horário direto na agenda dele.",
-        href: "/agendar"
-      }
-    ]
-  },
-
   closing: {
     title: "Pronto para profissionalizar seu estúdio?",
     primary_label: "Criar minha clínica",
@@ -121,6 +104,5 @@ export const DEFAULT_LANDING_SECTIONS = [
   { section_key: "hero", enabled: true, sort_order: 10, content: LANDING_DEFAULTS.hero },
   { section_key: "features", enabled: true, sort_order: 20, content: LANDING_DEFAULTS.features },
   { section_key: "plans", enabled: true, sort_order: 40, content: LANDING_DEFAULTS.plans },
-  { section_key: "showcase_links", enabled: true, sort_order: 50, content: LANDING_DEFAULTS.showcase_links },
   { section_key: "closing", enabled: true, sort_order: 60, content: LANDING_DEFAULTS.closing }
 ];

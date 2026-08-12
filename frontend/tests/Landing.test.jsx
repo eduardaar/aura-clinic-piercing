@@ -33,14 +33,9 @@ describe("Landing", () => {
     // Hero, recursos e fechamento — o esqueleto da página de hoje.
     expect(screen.getByText(LANDING_DEFAULTS.hero.title)).toBeInTheDocument();
     for (const item of LANDING_DEFAULTS.features.items) {
-      // `getAllByText`: alguns rótulos aparecem de novo no bloco "Veja quem já
-      // usa" (ex.: "Agendamento online" é card de recurso E link de vitrine).
-      // O que importa aqui é que o card exista, não que seja único na página.
-      expect(screen.getAllByText(item.title).length).toBeGreaterThan(0);
+      expect(screen.getByText(item.title)).toBeInTheDocument();
     }
     expect(screen.getByText(LANDING_DEFAULTS.closing.title)).toBeInTheDocument();
-    // As duas seções extremas presentes = a página não veio pela metade.
-    expect(screen.getByText(LANDING_DEFAULTS.showcase_links.title)).toBeInTheDocument();
   });
 
   it("mantém o conteúdo embutido quando a API devolve lista vazia", async () => {

@@ -36,10 +36,6 @@ const SECTION_INFO = {
     name: "Planos",
     hint: "Chamada dos planos. Os preços vêm do cadastro de planos.",
   },
-  showcase_links: {
-    name: "Veja quem já usa",
-    hint: "Os dois links para as vitrines públicas das clínicas.",
-  },
   closing: {
     name: "Fechamento e rodapé",
     hint: "Última chamada para ação e os textos do rodapé.",
@@ -149,7 +145,9 @@ export function LandingEditor({ token, onUnauthorized }) {
     };
   }, [request]);
 
-  const sectionList = asArray(sections);
+  // `showcase_links` foi aposentado da página pública. A chave antiga pode
+  // continuar em bancos já existentes, mas não deve ocupar a lista de edição.
+  const sectionList = asArray(sections).filter((section) => section.section_key !== "showcase_links");
 
   const dirtyKeys = useMemo(
     () => sectionList.filter((row) => drafts[row.section_key] && hasChanges(drafts[row.section_key], row.content)).map((row) => row.section_key),

@@ -83,7 +83,6 @@ function FloatingWhatsApp({ phone }) {
       aria-label="Falar conosco pelo WhatsApp"
     >
       <MessageCircle size={24} aria-hidden="true" />
-      <span>Falar no WhatsApp</span>
     </a>
   );
 }
@@ -348,34 +347,6 @@ function PlansSection({ content, plans }) {
   );
 }
 
-// Vitrines públicas da plataforma: quem chega pela landing pode ver as clínicas
-// já usando o sistema antes de decidir criar a própria. Seção própria — dentro
-// do bloco de planos os cards não alinhavam com a grade e ficavam espremidos
-// contra ela.
-function ShowcaseLinksSection({ content }) {
-  const items = contentItems(content, "items", "title");
-  if (!items.length) return null;
-  return (
-    <section className="au-l-sec au-l-sec-links">
-      <div className="au-l-sec-head">
-        <h2>{content.title}</h2>
-        {content.subtitle && <p>{content.subtitle}</p>}
-      </div>
-      <div className="au-l-links">
-        {items.map((item) => (
-          <a key={item.key} className="au-l-link-card" href={item.href || "#"}>
-            <span className="au-l-link-body">
-              <strong>{item.title}</strong>
-              <span>{item.text}</span>
-            </span>
-            <ChevronRight size={18} aria-hidden="true" />
-          </a>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function ClosingSection({ content }) {
   const shots = contentItems(content, "images", "image");
   // Fotos sem texto alternativo são enfeite: escondê-las do leitor de tela evita
@@ -437,7 +408,6 @@ const SECTION_COMPONENTS = {
   features: FeaturesSection,
   carousel: CarouselSection,
   plans: PlansSection,
-  showcase_links: ShowcaseLinksSection,
   closing: ClosingSection
 };
 
@@ -502,13 +472,13 @@ export function Landing() {
               plans={orderedPlans}
             />
           );
-          return section.section_key === "showcase_links"
-            ? [
-                <PlatformValueSection key="platform-value-before-showcase" />,
-                rendered,
-                <PlatformValueSection key="platform-value-after-showcase" />,
-              ]
-            : rendered;
+          if (section.section_key === "plans") {
+            return [<PlatformValueSection key="platform-value-before-plans" />, rendered];
+          }
+          if (section.section_key === "closing") {
+            return [<PlatformValueSection key="platform-value-before-closing" />, rendered];
+          }
+          return rendered;
         })}
       </main>
       <FloatingWhatsApp phone={closingContent.contact_whatsapp} />
