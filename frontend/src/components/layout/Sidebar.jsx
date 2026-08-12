@@ -14,7 +14,7 @@ export function Sidebar({ page, role, brand, features, trialDays, setPage, open,
   // Um bloco só aparece se sobrar algum item depois do filtro por papel.
   const groups = [
     ["", [
-      ["dashboard", Home, "Dashboard"]
+      ["dashboard", Home, "Financeiro"]
     ]],
     ["Atendimento", [
       ["agenda", Calendar, "Agenda"],
