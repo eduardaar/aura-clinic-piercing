@@ -476,7 +476,7 @@ export function Landing() {
               plans={orderedPlans}
             />
           );
-          return section.section_key === "features"
+          return section.section_key === "showcase_links"
             ? [rendered, <PlatformValueSection key="platform-value" />]
             : rendered;
         })}
