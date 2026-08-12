@@ -216,7 +216,8 @@ test("plugins ativos respeitam a cota do plano e Google Analytics exige Studio",
   const plugins = [
     { pluginId: "faq", config: { items: [{ question: "Como agendo?", answer: "Escolha seu horário pelo catálogo." }] } },
     { pluginId: "seo_metadata", config: { title: "Catálogo Aura", description: "Joias para piercing." } },
-    { pluginId: "instagram_profile", config: { username: "aura.clinic" } }
+    { pluginId: "instagram_profile", config: { username: "aura.clinic" } },
+    { pluginId: "google_review_link", config: { placeId: "ChIJN1t_tDeuEmsRUsoyG83frY4" } }
   ];
 
   const blocked = await api("/catalog-customization", {
@@ -226,14 +227,14 @@ test("plugins ativos respeitam a cota do plano e Google Analytics exige Studio",
   assert.equal(blocked.status, 409, JSON.stringify(blocked.json));
   assert.equal(blocked.json.code, "catalog_plugin_limit_reached");
   assert.equal(blocked.json.limit_key, "catalog_plugins");
-  assert.equal(blocked.json.limit, 2);
-  assert.equal(blocked.json.used, 3);
+  assert.equal(blocked.json.limit, 3);
+  assert.equal(blocked.json.used, 4);
 
   const twoActive = await api("/catalog-customization", {
     method: "PATCH",
     body: {
       expected_draft_version: current.json.version.draft,
-      plugins: [...plugins.slice(0, 2), { ...plugins[2], enabled: false }]
+      plugins: [...plugins.slice(0, 3), { ...plugins[3], enabled: false }]
     }
   });
   assert.equal(twoActive.status, 200, JSON.stringify(twoActive.json));
