@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useEffect, useState } from "react";
+import React, { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Bell, Calendar, Menu, PanelLeftClose, PanelLeftOpen, UserRound } from "lucide-react";
@@ -22,6 +22,7 @@ import { installGlobalErrorReporting } from "./lib/errorReporter";
 import { canAccessPage, defaultPageForRole, pageTitle } from "./lib/permissions";
 import { roleLabel } from "./features/shared/helpers";
 import { applyUiTheme, readUiTheme, saveUiTheme } from "./lib/uiTheme";
+import { appPathForPage, isAppPath, pageForAppPath } from "./lib/appRoutes";
 
 if (typeof __AURA_BUILD__ !== "undefined") {
   console.info("Aura Clinic ERP", __AURA_BUILD__);
@@ -61,7 +62,7 @@ const Onboarding = lazy(() => import("./features/onboarding/Onboarding").then((m
 
 function App() {
   const [session, setSession] = useState(readStoredSession);
-  const [page, setPage] = useState("dashboard");
+  const [page, setPage] = useState(() => pageForAppPath() || "dashboard");
   const [agendaTarget, setAgendaTarget] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // Preferência de menu recolhido é por usuário e persiste entre sessões.
@@ -112,6 +113,7 @@ function App() {
   const isPublicCheckout = currentPathname.startsWith("/comprar");
   const isSignup = currentPathname.startsWith("/cadastro");
   const isPlatform = currentPathname.startsWith("/plataforma");
+  const isInternalApp = isAppPath(currentPathname);
   // Landing de marketing: raiz "/" sem sessão. Com sessão, "/" é o app.
   const isLanding = currentPathname === "/";
   
@@ -154,11 +156,36 @@ function App() {
     }
   }
 
+  const navigate = useCallback((nextPage, { replace = false } = {}) => {
+    const destination = appPathForPage(nextPage);
+    if (window.location.pathname !== destination) {
+      window.history[replace ? "replaceState" : "pushState"]({ auraPage: nextPage }, "", destination);
+    }
+    setPage(nextPage);
+  }, []);
+
+  useEffect(() => {
+    const onPopState = () => {
+      const nextPage = pageForAppPath();
+      if (nextPage) setPage(nextPage);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
   useEffect(() => {
     if (normalizedSession && !canAccessPage(normalizedSession.user?.role, page)) {
-      setPage(defaultPageForRole(normalizedSession.user?.role));
+      navigate(defaultPageForRole(normalizedSession.user?.role), { replace: true });
     }
-  }, [normalizedSession, page]);
+  }, [normalizedSession, navigate, page]);
+
+  // Sessões antigas ainda podiam cair em `/`; quem abre um deep link inválido
+  // também recebe uma tela válida, sem criar uma entrada extra no histórico.
+  useEffect(() => {
+    if (!normalizedSession || (!isLanding && !isInternalApp)) return;
+    const pageDaUrl = pageForAppPath();
+    if (!pageDaUrl || pageDaUrl !== page) navigate(page, { replace: true });
+  }, [isInternalApp, isLanding, navigate, normalizedSession, page]);
 
   // Carrega identidade (nome/logo) + assinatura (plano/trial) + catálogo de
   // planos da clínica logada. Reutilizável para recarregar após troca de plano.
@@ -185,7 +212,7 @@ function App() {
   // Se está em /login mas já autenticado, redirecionar para home
   useEffect(() => {
     if (isLoginPath && isAdminAuthenticated) {
-      window.location.href = "/";
+      window.location.href = appPathForPage(defaultPageForRole(normalizedSession?.user?.role));
     }
   }, [isLoginPath, isAdminAuthenticated]);
 
@@ -251,7 +278,7 @@ function App() {
           trialDays={trialDays}
           setPage={(next) => {
             if (next !== "agenda") setAgendaTarget(null);
-            setPage(next);
+            navigate(next);
             setSidebarOpen(false);
           }}
           open={sidebarOpen}
@@ -313,22 +340,22 @@ function App() {
                 ? "Seu período de teste terminou. Escolha um plano para continuar usando todos os recursos."
                 : `Teste grátis: ${trialDays} dia(s) restante(s).`}
             </span>
-            {canSeePlan && <button type="button" onClick={() => setPage("meu-plano")}>Ver planos</button>}
+            {canSeePlan && <button type="button" onClick={() => navigate("meu-plano")}>Ver planos</button>}
           </div>
         )}
         <Suspense fallback={<Loading />}>
           {activePage === "meu-plano" && <MyPlan subscription={subscription} plans={plans} onChanged={loadStoreIdentity} />}
-          {activePage === "dashboard" && <Dashboard user={normalizedSession.user} setPage={setPage} alertsOpen={alertsOpen} setAlertsOpen={setAlertsOpen} alertsData={alertsData} alertsLoading={alertsLoading} />}
-          {activePage !== "dashboard" && alertsOpen && <AlertsPopup alerts={alertsData} loading={alertsLoading} onClose={() => setAlertsOpen(false)} onAction={(nextPage) => { setAlertsOpen(false); setPage(nextPage); }} />}
+          {activePage === "dashboard" && <Dashboard user={normalizedSession.user} setPage={navigate} alertsOpen={alertsOpen} setAlertsOpen={setAlertsOpen} alertsData={alertsData} alertsLoading={alertsLoading} />}
+          {activePage !== "dashboard" && alertsOpen && <AlertsPopup alerts={alertsData} loading={alertsLoading} onClose={() => setAlertsOpen(false)} onAction={(nextPage) => { setAlertsOpen(false); navigate(nextPage); }} />}
           {activePage === "agenda" && <AgendaWorkspace initialScreen={agendaTarget ? "settings" : "agenda"} initialSettingsTab={agendaTarget} onSettingsClosed={() => setAgendaTarget(null)} />}
-          {activePage === "onboarding" && <Onboarding onOpenAgendaSettings={(tab) => { setAgendaTarget(tab); setPage("agenda"); }} />}
+          {activePage === "onboarding" && <Onboarding onOpenAgendaSettings={(tab) => { setAgendaTarget(tab); navigate("agenda"); }} />}
           {activePage === "communications" && <Communications />}
           {activePage === "products" && <CatalogWorkspace area="produtos" />}
           {/* Compatibilidade com atalhos antigos: não há mais menu separado;
               quem ainda chegar em "inventory" abre a aba Estoque da mesma área. */}
           {activePage === "inventory" && <CatalogWorkspace area="produtos" initialTab="unidades" />}
           {activePage === "catalog" && <CatalogWorkspace area="catalogo" />}
-          {activePage === "client-center" && <ClientWorkspace onNavigate={setPage} />}
+          {activePage === "client-center" && <ClientWorkspace onNavigate={navigate} />}
           {activePage === "catalog-customization" && <CatalogCustomization />}
           {activePage === "sales" && <SalesWorkspace />}
           {activePage === "finance" && <FinanceAdmin />}
@@ -336,8 +363,8 @@ function App() {
           {activePage === "payables" && <PayablesAdmin />}
           {activePage === "reports" && <Reports />}
           {activePage === "clients" && <ClientsMedical />}
-          {activePage === "terms" && <DigitalTerms onBack={() => setPage("client-center")} />}
-          {activePage === "postcare" && <PostCare onBack={() => setPage("client-center")} />}
+          {activePage === "terms" && <DigitalTerms onBack={() => navigate("client-center")} />}
+          {activePage === "postcare" && <PostCare onBack={() => navigate("client-center")} />}
           {activePage === "admin" && <AccessAdmin />}
           {activePage === "integrations" && <Integrations />}
           {activePage === "support" && <Support />}
