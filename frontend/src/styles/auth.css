@@ -143,7 +143,7 @@
 .au-a-root .au-a-input:focus,
 .au-a-root .au-a-input:focus-visible {
   border-color: var(--gold);
-  box-shadow: 0 0 0 3px rgba(201, 168, 106, .26);
+  box-shadow: 0 0 0 3px rgb(from var(--gold) r g b / .26);
 }
 
 .au-a-root .au-a-hint {
@@ -190,7 +190,7 @@
 .au-a-root .au-a-eye:hover {
   transform: translateY(-50%);
   color: var(--gold-dark);
-  background: rgba(201, 168, 106, .12);
+  background: rgb(from var(--gold) r g b / .12);
 }
 
 .au-a-root .au-a-eye:focus-visible {
@@ -311,7 +311,7 @@
 .au-a-root .au-a-ghost:hover {
   transform: translateY(-1px);
   border-color: var(--gold);
-  background: rgba(201, 168, 106, .08);
+  background: rgb(from var(--gold) r g b / .08);
 }
 
 .au-a-root .au-a-ghost:focus-visible {
@@ -475,8 +475,8 @@
 
 .au-a-root .au-a-plan.is-active {
   border-color: var(--gold-dark);
-  background: rgba(201, 168, 106, .08);
-  box-shadow: 0 0 0 3px rgba(201, 168, 106, .18);
+  background: rgb(from var(--gold) r g b / .08);
+  box-shadow: 0 0 0 3px rgb(from var(--gold) r g b / .18);
 }
 
 .au-a-root .au-a-plan.has-badge {
@@ -701,7 +701,7 @@
        continua íntegra (nunca fica um bloco vazio). */
     background-color: var(--brown-dark);
     background-image:
-      linear-gradient(200deg, rgba(74, 52, 39, .3) 0%, rgba(26, 26, 26, .62) 100%),
+      linear-gradient(200deg, rgb(from var(--brown-dark) r g b / .3) 0%, rgb(from var(--ink) r g b / .62) 100%),
       url("/assets/landing/auth-side.jpg"),
       linear-gradient(140deg, var(--nude) 0%, var(--brown-dark) 55%, var(--ink) 100%);
     background-size: cover, cover, cover;
@@ -714,7 +714,7 @@
     position: absolute;
     inset: auto 0 0 0;
     height: 45%;
-    background: linear-gradient(to top, rgba(26, 26, 26, .55), transparent);
+    background: linear-gradient(to top, rgb(from var(--ink) r g b / .55), transparent);
     pointer-events: none;
   }
 

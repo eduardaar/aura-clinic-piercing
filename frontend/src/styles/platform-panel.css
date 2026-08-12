@@ -56,7 +56,7 @@
     border-bottom: 2px solid transparent;
     border-radius: 0;
     background: none;
-    color: #6d5e52;
+    color: var(--muted);
     font-weight: 700;
     font-size: 14px;
     white-space: nowrap;
@@ -107,7 +107,7 @@
     display: block;
     font-size: 12px;
     font-weight: 700;
-    color: #6d5e52;
+    color: var(--muted);
     text-transform: uppercase;
     letter-spacing: .04em;
   }
@@ -176,7 +176,7 @@
   .platform-fact dt {
     font-size: 12px;
     font-weight: 700;
-    color: #6d5e52;
+    color: var(--muted);
   }
 
   .platform-fact dd {

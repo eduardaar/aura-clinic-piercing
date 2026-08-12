@@ -56,7 +56,7 @@
   bottom: 12px;
   padding: 10px 14px;
   border-radius: var(--au-l-radius-sm);
-  background: rgba(26, 26, 26, .62);
+  background: rgb(from var(--ink) r g b / .62);
   backdrop-filter: blur(6px);
   color: #fff;
   font-size: 13px;
@@ -100,11 +100,11 @@
 
 .au-l-root .au-l-carousel-dots button.is-active {
   width: 54px;
-  background: var(--gold-dark, #A87A34);
+  background: var(--gold-dark);
 }
 
 .au-l-root .au-l-carousel-dots button:focus-visible {
-  outline: 2px solid var(--gold-dark, #A87A34);
+  outline: 2px solid var(--gold-dark);
   outline-offset: 4px;
 }
 

@@ -21,7 +21,7 @@
   min-height: 100svh;  /* a barra do navegador mobile não corta o conteúdo */
   display: flex;
   flex-direction: column;
-  background: var(--paper, #FCFBF8);
+  background: var(--paper);
 }
 
 .au-shell > .au-nav { flex: 0 0 auto; }
@@ -43,10 +43,10 @@
   z-index: 30;
   width: 100%;
   background: rgba(252, 251, 248, .92);
-  background: color-mix(in srgb, var(--paper, #FCFBF8) 88%, transparent);
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(231, 221, 206, .8);
-  border-bottom-color: color-mix(in srgb, var(--line, #e7ddce) 70%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--line) 70%, transparent);
   font-family: var(--body-font);
 }
 
@@ -78,7 +78,7 @@
   gap: 10px;
   min-width: 0;
   min-height: 44px;   /* alvo de toque */
-  color: var(--ink, #1A1A1A);
+  color: var(--ink);
 }
 
 .au-nav-mark {
@@ -110,7 +110,7 @@
   align-items: center;
   min-height: 44px;
   font-size: 15px;
-  color: #4b463f;
+  color: var(--muted);
   white-space: nowrap;
   transition: color .18s ease;
 }
@@ -131,7 +131,7 @@
   min-height: 44px;
   font-size: 15px;
   font-weight: 600;
-  color: var(--ink, #1A1A1A);
+  color: var(--ink);
   white-space: nowrap;
   transition: color .18s ease;
 }
@@ -144,40 +144,40 @@
   padding: 10px 16px;
   border-radius: 999px;
   border: 1px solid transparent;
-  background: var(--ink, #1A1A1A);
-  color: var(--paper, #FCFBF8);
+  background: var(--ink);
+  color: var(--paper);
   font-size: 14px;
   font-weight: 600;
   line-height: 1.2;
   white-space: nowrap;
-  box-shadow: 0 10px 24px rgba(26, 26, 26, .18);
+  box-shadow: 0 10px 24px rgb(from var(--ink) r g b / .18);
   transition: transform .18s ease, box-shadow .18s ease, background-color .18s ease;
 }
 
 .au-nav-link:hover,
-.au-nav-login:hover { color: var(--gold-dark, #A87A34); }
+.au-nav-login:hover { color: var(--gold-dark); }
 
 .au-nav-cta:hover {
   transform: translateY(-1px);
-  box-shadow: 0 14px 28px rgba(26, 26, 26, .24);
+  box-shadow: 0 14px 28px rgb(from var(--ink) r g b / .24);
 }
 
 .au-nav a:focus-visible {
-  outline: 2px solid var(--gold-dark, #A87A34);
+  outline: 2px solid var(--gold-dark);
   outline-offset: 3px;
   border-radius: 8px;
 }
 
 /* Tela atual: o menu não oferece um caminho onde o usuário já está. */
 .au-nav-login[aria-current="page"] {
-  color: var(--gold-dark, #A87A34);
+  color: var(--gold-dark);
   cursor: default;
 }
 
 .au-nav-cta[aria-current="page"] {
   background: transparent;
-  color: var(--gold-dark, #A87A34);
-  border-color: var(--gold, #C9A86A);
+  color: var(--gold-dark);
+  border-color: var(--gold);
   box-shadow: none;
   cursor: default;
 }

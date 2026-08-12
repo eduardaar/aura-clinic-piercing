@@ -31,7 +31,7 @@
   --shell-gutter: 24px;
   --shell-nav: #221812;
   --shell-nav-2: #17100c;
-  --shell-nav-line: rgba(201, 168, 106, .16);
+  --shell-nav-line: rgb(from var(--gold) r g b / .16);
   --shell-nav-text: #cbbfb2;
   --shell-break: 900px;
 }
@@ -97,11 +97,11 @@
   background: linear-gradient(180deg, var(--shell-nav) 0%, var(--shell-nav-2) 100%);
   box-shadow: inset -1px 0 0 var(--shell-nav-line);
   scrollbar-width: thin;
-  scrollbar-color: rgba(201, 168, 106, .3) transparent;
+  scrollbar-color: rgb(from var(--gold) r g b / .3) transparent;
 }
 
 .sidebar::-webkit-scrollbar { width: 6px; }
-.sidebar::-webkit-scrollbar-thumb { background: rgba(201, 168, 106, .28); border-radius: 3px; }
+.sidebar::-webkit-scrollbar-thumb { background: rgb(from var(--gold) r g b / .28); border-radius: 3px; }
 
 /* Marca — compacta de propósito. A versão anterior usava 46px fixos e o nome
    de um tenant com 3 palavras cobria o primeiro item do menu. */
@@ -156,7 +156,7 @@
   font-weight: 600;
   letter-spacing: .12em;
   text-transform: uppercase;
-  color: rgba(201, 168, 106, .8);
+  color: rgb(from var(--gold) r g b / .8);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -227,7 +227,7 @@
 /* Estado ativo discreto: barra dourada + fundo suave. O preenchimento sólido
    anterior competia visualmente com o conteúdo da página. */
 .sidebar nav button.active {
-  background: rgba(201, 168, 106, .14);
+  background: rgb(from var(--gold) r g b / .14);
   color: var(--gold-light);
   font-weight: 600;
   box-shadow: none;
@@ -288,7 +288,7 @@
   cursor: pointer;
   transition: background-color .15s ease, color .15s ease;
 }
-.sidebar-foot .plan-link:hover { background: rgba(201, 168, 106, .12); color: var(--gold-light); }
+.sidebar-foot .plan-link:hover { background: rgb(from var(--gold) r g b / .12); color: var(--gold-light); }
 .sidebar-foot .logout-button:hover { background: rgba(184, 92, 92, .16); color: #ecc0c0; }
 .sidebar-foot .plan-link svg,
 .sidebar-foot .logout-button svg { flex: none; width: 17px; height: 17px; opacity: .75; }
@@ -296,7 +296,7 @@
   margin-left: auto;
   padding: 2px 7px;
   border-radius: 999px;
-  background: rgba(201, 168, 106, .2);
+  background: rgb(from var(--gold) r g b / .2);
   color: var(--gold-light);
   font-size: 10.5px;
   font-weight: 700;
@@ -660,7 +660,7 @@
 }
 .dataview-search:focus-within {
   border-color: var(--nude);
-  box-shadow: 0 0 0 3px rgba(201, 168, 106, .16);
+  box-shadow: 0 0 0 3px rgb(from var(--gold) r g b / .16);
 }
 .dataview-search svg { flex: none; color: var(--muted); }
 .dataview-search input {
@@ -758,7 +758,7 @@
 .dataview-filter input:focus {
   outline: 0;
   border-color: var(--nude);
-  box-shadow: 0 0 0 3px rgba(201, 168, 106, .16);
+  box-shadow: 0 0 0 3px rgb(from var(--gold) r g b / .16);
 }
 
 .dataview-clear {

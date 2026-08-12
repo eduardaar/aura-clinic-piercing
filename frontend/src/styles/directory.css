@@ -18,14 +18,14 @@
 .au-dir {
   --au-dir-pad: 20px;
   --au-dir-max: 1160px;
-  --au-dir-body: #4b463f;
+  --au-dir-body: var(--muted);
   --au-dir-soft: #8a8078;
 
   width: 100%;
   max-width: 100%;
   overflow-x: clip;
-  background: var(--paper, #FCFBF8);
-  color: var(--ink, #1A1A1A);
+  background: var(--paper);
+  color: var(--ink);
   font-family: var(--body-font);
   -webkit-font-smoothing: antialiased;
 }
@@ -51,9 +51,9 @@
   gap: 7px;
   padding: 6px 13px;
   border-radius: 999px;
-  border: 1px solid var(--line, #e7ddce);
+  border: 1px solid var(--line);
   background: rgba(255, 255, 255, .6);
-  color: var(--gold-dark, #A87A34);
+  color: var(--gold-dark);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: .06em;
@@ -100,10 +100,10 @@
   min-height: 46px;
   padding: 0 18px;
   justify-self: start;
-  border: 1px solid var(--line, #e7ddce);
+  border: 1px solid var(--line);
   border-radius: 999px;
   background: #fff;
-  color: var(--ink, #1A1A1A);
+  color: var(--ink);
   font-family: var(--body-font);
   font-size: 14.5px;
   font-weight: 600;
@@ -112,12 +112,12 @@
 }
 
 .au-dir-filters-toggle:hover {
-  border-color: var(--gold, #C9A86A);
-  background: rgba(201, 168, 106, .08);
+  border-color: var(--gold);
+  background: rgb(from var(--gold) r g b / .08);
 }
 
 .au-dir-filters-toggle:focus-visible {
-  outline: 2px solid var(--gold-dark, #A87A34);
+  outline: 2px solid var(--gold-dark);
   outline-offset: 2px;
 }
 
@@ -127,7 +127,7 @@
   display: none;              /* mobile: só aparece via botão */
   min-width: 0;
   padding: 18px;
-  border: 1px solid var(--line, #e7ddce);
+  border: 1px solid var(--line);
   border-radius: 16px;
   background: #fff;
 }
@@ -139,7 +139,7 @@
 .au-dir-filter > label {
   font-size: 13px;
   font-weight: 600;
-  color: var(--muted, #7a6c61);
+  color: var(--muted);
 }
 
 .au-dir-side select,
@@ -148,10 +148,10 @@
   min-width: 0;
   min-height: 46px;
   padding: 0 12px;
-  border: 1px solid var(--line, #e7ddce);
+  border: 1px solid var(--line);
   border-radius: 12px;
   background: #fff;
-  color: var(--ink, #1A1A1A);
+  color: var(--ink);
   font-family: var(--body-font);
   font-size: 16px;            /* < 16px faz o iOS dar zoom no foco */
   -webkit-appearance: none;
@@ -162,8 +162,8 @@
 
 .au-dir-side select {
   padding-right: 34px;
-  background-image: linear-gradient(45deg, transparent 50%, var(--muted, #7a6c61) 50%),
-                    linear-gradient(135deg, var(--muted, #7a6c61) 50%, transparent 50%);
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+                    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
   background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%;
   background-size: 5px 5px, 5px 5px;
   background-repeat: no-repeat;
@@ -176,7 +176,7 @@
   top: 50%;
   left: 12px;
   transform: translateY(-50%);
-  color: var(--muted, #7a6c61);
+  color: var(--muted);
   pointer-events: none;
 }
 
@@ -184,8 +184,8 @@
 
 .au-dir-side select:focus-visible,
 .au-dir-search input:focus-visible {
-  border-color: var(--gold, #C9A86A);
-  box-shadow: 0 0 0 3px rgba(201, 168, 106, .26);
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgb(from var(--gold) r g b / .26);
 }
 
 .au-dir-check {
@@ -195,7 +195,7 @@
   min-height: 44px;
   font-size: 14.5px;
   font-weight: 500;
-  color: var(--ink, #1A1A1A);
+  color: var(--ink);
   cursor: pointer;
 }
 
@@ -205,7 +205,7 @@
   flex: 0 0 auto;
   margin: 0;
   border-radius: 5px;
-  accent-color: var(--gold-dark, #A87A34);
+  accent-color: var(--gold-dark);
   cursor: pointer;
 }
 
@@ -216,10 +216,10 @@
   gap: 7px;
   min-height: 44px;
   padding: 0 14px;
-  border: 1px solid var(--line, #e7ddce);
+  border: 1px solid var(--line);
   border-radius: 12px;
   background: transparent;
-  color: var(--brown-dark, #4A3427);
+  color: var(--brown-dark);
   font-family: var(--body-font);
   font-size: 14px;
   font-weight: 600;
@@ -228,14 +228,14 @@
 }
 
 .au-dir-clear:hover {
-  border-color: var(--gold, #C9A86A);
-  background: rgba(201, 168, 106, .08);
+  border-color: var(--gold);
+  background: rgb(from var(--gold) r g b / .08);
 }
 
 .au-dir-count {
   margin: 0;
   padding-top: 4px;
-  border-top: 1px solid var(--line, #e7ddce);
+  border-top: 1px solid var(--line);
   color: var(--au-dir-soft);
   font-size: 13px;
 }
@@ -259,21 +259,21 @@
   align-items: center;
   gap: 12px;
   padding: 14px;
-  border: 1px solid var(--line, #e7ddce);
+  border: 1px solid var(--line);
   border-radius: 16px;
   background: #fff;
-  color: var(--ink, #1A1A1A);
+  color: var(--ink);
   transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
 }
 
 .au-dir-card:hover {
   transform: translateY(-2px);
-  border-color: var(--gold, #C9A86A);
-  box-shadow: 0 16px 34px rgba(74, 52, 39, .12);
+  border-color: var(--gold);
+  box-shadow: 0 16px 34px rgb(from var(--brown-dark) r g b / .12);
 }
 
 .au-dir-card:focus-visible {
-  outline: 2px solid var(--gold-dark, #A87A34);
+  outline: 2px solid var(--gold-dark);
   outline-offset: 3px;
 }
 
@@ -286,7 +286,7 @@
   place-items: center;
   overflow: hidden;
   border-radius: 13px;
-  background: linear-gradient(135deg, var(--gold-light, #E6C98C), var(--gold-dark, #A87A34));
+  background: linear-gradient(135deg, var(--gold-light), var(--gold-dark));
   color: #fff;
   font-family: var(--title-font);
   font-size: 16px;
@@ -319,7 +319,7 @@
   font-size: 13px;
 }
 
-.au-dir-card-tag { color: var(--gold-dark, #A87A34); font-weight: 600; }
+.au-dir-card-tag { color: var(--gold-dark); font-weight: 600; }
 
 .au-dir-card-cta {
   grid-area: cta;
@@ -329,23 +329,23 @@
   min-height: 44px;
   padding: 0 16px;
   border-radius: 999px;
-  border: 1px solid var(--line, #e7ddce);
-  color: var(--brown-dark, #4A3427);
+  border: 1px solid var(--line);
+  color: var(--brown-dark);
   font-size: 14px;
   font-weight: 600;
   white-space: nowrap;
 }
 
 .au-dir-card:hover .au-dir-card-cta {
-  border-color: var(--gold, #C9A86A);
-  background: rgba(201, 168, 106, .1);
-  color: var(--gold-dark, #A87A34);
+  border-color: var(--gold);
+  background: rgb(from var(--gold) r g b / .1);
+  color: var(--gold-dark);
 }
 
 .au-dir-empty {
   margin: 0 0 12px;
   padding: 22px;
-  border: 1px dashed var(--line, #e7ddce);
+  border: 1px dashed var(--line);
   border-radius: 16px;
   color: var(--au-dir-soft);
   font-size: 15px;
@@ -359,7 +359,7 @@
   max-width: var(--au-dir-max);
   margin: 0 auto;
   padding: 22px var(--au-dir-pad) 36px;
-  border-top: 1px solid var(--line, #e7ddce);
+  border-top: 1px solid var(--line);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -369,7 +369,7 @@
   font-size: 13.5px;
 }
 
-.au-dir-foot a { color: var(--gold-dark, #A87A34); font-weight: 600; }
+.au-dir-foot a { color: var(--gold-dark); font-weight: 600; }
 
 /* ---------- >= 640px ---------- */
 

@@ -29,7 +29,7 @@
      e aqui "emitido" não é pior nem melhor que "recebido". O par foi validado
      para daltonismo sobre fundo branco (ΔE 20,4 protan / 19,8 tritan, bem acima
      do piso de 8) — trocar uma das duas exige revalidar o par. */
-  .fin-chart { --serie-recebido: #a87a34; --serie-emitido: #4a73b5; display: grid; gap: 10px; min-width: 0; }
+  .fin-chart { --serie-recebido: var(--gold-dark); --serie-emitido: #4a73b5; display: grid; gap: 10px; min-width: 0; }
   .fin-chart svg { width: 100%; height: auto; max-height: 260px; overflow: visible; }
   .fin-chart summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 
