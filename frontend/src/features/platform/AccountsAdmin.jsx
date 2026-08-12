@@ -39,7 +39,7 @@
 //     comportamento real de planLimits.js ("cota só impede criar"), e omiti-lo
 //     faria um downgrade legítimo parecer perda de dados.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { AlertTriangle, ArrowLeft, RefreshCw } from "lucide-react";
 import { AlertBlock, Button, Input, Select, StatusBadge, Textarea } from "../../components/common/Ui";
 import { CrudHeader, Modal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
@@ -591,19 +591,14 @@ export function AccountsAdmin({ token, onUnauthorized, onCreate, refreshKey = 0 
       {feedback.error && <span className="form-error">{feedback.error}</span>}
       {feedback.success && <span className="form-success">{feedback.success}</span>}
 
-      {/*
-        A mesma listagem em dois tamanhos: sozinha, ela ocupa a largura toda e as
-        cinco colunas são legíveis; com uma conta aberta, o MESMO nó vira a
-        coluna estreita do `.platform-split` e o detalhe entra ao lado. Trocar só
-        a classe (em vez de mover o <DataView> para outro lugar da árvore)
-        preserva busca, ordenação e página ao abrir e fechar uma conta.
-      */}
-      <div className={tenantId ? "platform-split" : ""}>
+      {!tenantId ? (
         <section className="panel">
-          {/* `<CrudHeader>` e não um `.panel-heading` escrito à mão: é o mesmo
-              cabeçalho de painel das outras telas, e duas grafias da mesma coisa
-              é como o espaçamento começa a divergir entre abas. */}
-          <CrudHeader title="Clínicas" subtitle="Cadastre e gerencie plano, assinatura, uso e faturas em um só lugar." actionLabel={onCreate ? "Nova clínica" : undefined} onAction={onCreate} />
+          <CrudHeader
+            title="Clínicas"
+            subtitle="Cadastre uma clínica ou abra sua gestão para administrar plano, acesso, uso e faturas."
+            actionLabel={onCreate ? "Nova clínica" : undefined}
+            onAction={onCreate}
+          />
 
           <DataView
             rows={asArray(tenants)}
@@ -667,56 +662,76 @@ export function AccountsAdmin({ token, onUnauthorized, onCreate, refreshKey = 0 
             ]}
             actions={(item) => (
               <RowActions actions={[{
-                label: item.id === tenantId ? "Gerenciando" : "Gerenciar",
+                label: "Abrir gestão",
                 onClick: () => setTenantId(item.id),
                 primary: true,
-                disabled: item.id === tenantId,
               }]} />
             )}
           />
         </section>
+      ) : (
+        <div className="stack">
+          <section className="panel platform-account-workspace-header">
+            <div className="panel-heading">
+              <div>
+                <p className="platform-eyebrow">Gestão da clínica</p>
+                <h2>{clinica.name || "Carregando clínica…"}</h2>
+                <span>Plano, acesso, assinatura, uso e faturas em um só lugar.</span>
+              </div>
+              <div className="header-actions">
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setTenantId(null);
+                    setConta(null);
+                    setContaErro("");
+                  }}
+                >
+                  <ArrowLeft size={16} aria-hidden="true" /> Voltar para clínicas
+                </Button>
+              </div>
+            </div>
+          </section>
 
-        {tenantId && (
-          <div className="stack">
-            {carregandoConta && !conta && <Loading />}
-            {contaErro && <ApiError message={contaErro} />}
+          {carregandoConta && !conta && <Loading />}
+          {contaErro && <ApiError message={contaErro} />}
 
-            {conta && (
-              <>
-                <ResumoDaConta clinica={clinica} plano={asObject(conta.plan)} assinatura={assinatura} />
+          {conta && (
+            <>
+              <ResumoDaConta clinica={clinica} plano={asObject(conta.plan)} assinatura={assinatura} />
 
-                <UsoXCotas itens={asArray(conta.usage)} atualizando={atualizandoUso} onAtualizar={atualizarUso} />
+              <UsoXCotas itens={asArray(conta.usage)} atualizando={atualizandoUso} onAtualizar={atualizarUso} />
 
-                <TrocaDePlano
-                  planos={planosOferecidos}
-                  planoAtual={planoAtual}
-                  planoAlvo={planoAlvo}
-                  onEscolher={setPlanoAlvo}
-                  previsao={previsao}
-                  previsaoErro={previsaoErro}
-                  carregando={carregandoPrevisao}
-                  trocaPendente={trocaPendente}
-                  onAplicar={() => abrirAcao("plano")}
-                />
+              <TrocaDePlano
+                planos={planosOferecidos}
+                planoAtual={planoAtual}
+                planoAlvo={planoAlvo}
+                onEscolher={setPlanoAlvo}
+                previsao={previsao}
+                previsaoErro={previsaoErro}
+                carregando={carregandoPrevisao}
+                trocaPendente={trocaPendente}
+                onAplicar={() => abrirAcao("plano")}
+              />
 
-                <AcoesDaConta
-                  suspensa={clinica.status === "suspenso"}
-                  semAssinatura={semAssinatura}
-                  assinaturaNoGateway={assinatura?.asaas_subscription_id || ""}
-                  sincronizando={sincronizando}
-                  onSincronizar={reenviarAjusteAoGateway}
-                  onAbrir={abrirAcao}
-                />
+              <AcoesDaConta
+                suspensa={clinica.status === "suspenso"}
+                semAssinatura={semAssinatura}
+                assinaturaNoGateway={assinatura?.asaas_subscription_id || ""}
+                sincronizando={sincronizando}
+                onSincronizar={reenviarAjusteAoGateway}
+                onAbrir={abrirAcao}
+              />
 
-                <section className="panel">
-                  <CrudHeader title="Faturas recentes" subtitle="As últimas cobranças desta clínica na plataforma." />
-                  <DataView
-                    rows={asArray(conta.invoices)}
-                    rowKey={(fatura) => fatura.id}
-                    searchable={false}
-                    defaultSort={{ key: "due_date", dir: "desc" }}
-                    empty="Nenhuma fatura registrada para esta clínica."
-                    columns={[
+              <section className="panel">
+                <CrudHeader title="Faturas recentes" subtitle="As últimas cobranças desta clínica na plataforma." />
+                <DataView
+                  rows={asArray(conta.invoices)}
+                  rowKey={(fatura) => fatura.id}
+                  searchable={false}
+                  defaultSort={{ key: "due_date", dir: "desc" }}
+                  empty="Nenhuma fatura registrada para esta clínica."
+                  columns={[
                       {
                         key: "due_date",
                         label: "Vencimento",
@@ -750,22 +765,16 @@ export function AccountsAdmin({ token, onUnauthorized, onCreate, refreshKey = 0 
                         value: (fatura) => String(fatura.paid_at || ""),
                         render: (fatura) => (fatura.paid_at ? formatarData(fatura.paid_at) : "—"),
                       },
-                    ]}
-                    // A fatura sai da COLUNA e vira ação de linha, como no
-                    // financeiro da plataforma: era o mesmo "abrir a cobrança no
-                    // Asaas" escrito de dois jeitos — lá uma pílula na coluna de
-                    // ações, aqui um link nu no meio da tabela. Mesmo rótulo,
-                    // mesmo lugar. A pílula vem de `.table-actions a` (styles.css).
-                    actions={(fatura) => fatura.invoice_url
-                      ? <RowActions actions={[{ label: "Abrir fatura", href: fatura.invoice_url, target: "_blank", rel: "noreferrer", primary: true }]} />
-                      : null}
-                  />
-                </section>
-              </>
-            )}
-          </div>
-        )}
-      </div>
+                  ]}
+                  actions={(fatura) => fatura.invoice_url
+                    ? <RowActions actions={[{ label: "Abrir fatura", href: fatura.invoice_url, target: "_blank", rel: "noreferrer", primary: true }]} />
+                    : null}
+                />
+              </section>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Toda escrita passa por aqui: o motivo obrigatório e a digitação do slug
           ficam DENTRO da confirmação, junto da assimetria da ação. */}

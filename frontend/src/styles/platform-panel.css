@@ -156,6 +156,22 @@
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 
+  /* Cabeçalho do detalhe de uma clínica. A gestão abre como área própria,
+   * não espremida ao lado da tabela: as ações de assinatura e acesso passam a
+   * ter a mesma largura e leitura das demais telas administrativas. */
+  .platform-account-workspace-header {
+    margin-bottom: 0;
+  }
+
+  .platform-eyebrow {
+    margin: 0 0 3px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+
   @media (max-width: 1100px) {
     .platform-split,
     .platform-split--wide {
