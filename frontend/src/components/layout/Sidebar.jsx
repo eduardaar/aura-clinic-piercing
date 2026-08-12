@@ -9,35 +9,33 @@ export function Sidebar({ page, role, brand, features, trialDays, setPage, open,
   const brandShort = brand?.short || (brand?.name ? "" : "Clinic Piercing");
   const brandLogo = brand?.logoUrl || "";
 
-  // Estrutura curta e previsível: os títulos são marcos visuais, enquanto os
-  // itens continuam a respeitar as permissões e recursos do plano.
+  // Estrutura original por área de trabalho. O visual do menu pode evoluir,
+  // mas a organização funcional e os destinos permanecem estáveis.
   const groups = [
     ["", [
-      ["dashboard", Home, "Visão geral"],
+      ["dashboard", Home, "Dashboard"],
       ["onboarding", Sparkles, "Onboarding"]
     ]],
-    ["Gestão", [
+    ["Atendimento", [
       ["agenda", Calendar, "Agenda"],
-      ["client-center", UsersRound, "Clientes"],
-      ["catalog", Gem, "Piercings"],
-      ["sales", ShoppingCart, "Vendas"]
+      ["client-center", UsersRound, "Clientes"]
     ]],
-    ["Estoque", [
-      ["products", Package, "Inventário"],
-      ["catalog-customization", Gem, "Catálogo online"]
+    ["Comercial", [
+      ["products", Package, "Produtos e estoque"],
+      ["catalog", Gem, "Catálogo"],
+      ["sales", ShoppingCart, "Vendas"],
+      ["communications", MessageCircle, "Comunicações"]
     ]],
-    ["Financeiro", [
+    ["Gestão", [
       ["receivables", ArrowDownToLine, "Contas a receber"],
       ["payables", ArrowUpFromLine, "Contas a pagar"],
-      ["communications", MessageCircle, "Comunicação"]
-    ]],
-    ["Relatórios", [
       ["reports", BarChart3, "Relatórios"]
     ]],
-    ["Configurações", [
+    ["Sistema", [
       ["settings", Settings, "Configurações"],
-      ["admin", ShieldCheck, "Usuários"],
-      ["integrations", Plug, "Integrações"]
+      ["admin", ShieldCheck, "Acessos"],
+      ["integrations", Plug, "Integrações"],
+      ["support", LifeBuoy, "Suporte"]
     ]]
   ]
     .map(([label, entries]) => [label, entries.filter(([id]) => canAccessPage(role, id))])
@@ -97,10 +95,6 @@ export function Sidebar({ page, role, brand, features, trialDays, setPage, open,
             {typeof trialDays === "number" && <span className="trial-badge">{trialDays}d</span>}
           </button>
         )}
-        {canAccessPage(role, "support") && <button className={`support-link ${page === "support" ? "active" : ""}`} onClick={() => setPage("support")} title="Central de ajuda">
-          <LifeBuoy size={20} />
-          <span className="nav-label"><strong>Suporte</strong><small>Central de ajuda</small></span>
-        </button>}
         <button className="logout-button" onClick={onLogout} title="Sair">
           <LogOut size={18} />
           <span className="nav-label">Sair</span>
