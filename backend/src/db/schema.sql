@@ -402,6 +402,64 @@ ON CONFLICT (rule_key) DO NOTHING;
 CREATE INDEX IF NOT EXISTS idx_automation_rules_event ON automation_rules(event_type, is_active);
 CREATE INDEX IF NOT EXISTS idx_automation_runs_entity ON automation_runs(entity_type, entity_id, executed_at);
 
+-- Carteira de comunicações. Os créditos ficam no schema da clínica para que
+-- o extrato e os bloqueios de saldo acompanhem o mesmo isolamento das mensagens.
+-- `available_credits` é uma projeção transacional do ledger: nunca é alterado
+-- sem que a contrapartida imutável seja gravada em communication_credit_ledger.
+CREATE TABLE IF NOT EXISTS communication_credit_wallets (
+  channel TEXT NOT NULL CHECK (channel IN ('whatsapp', 'email', 'ai')),
+  period_key TEXT NOT NULL,
+  available_credits INTEGER NOT NULL DEFAULT 0 CHECK (available_credits >= 0),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (channel, period_key)
+);
+
+CREATE TABLE IF NOT EXISTS communication_credit_ledger (
+  id SERIAL PRIMARY KEY,
+  channel TEXT NOT NULL CHECK (channel IN ('whatsapp', 'email', 'ai')),
+  period_key TEXT NOT NULL,
+  entry_type TEXT NOT NULL CHECK (entry_type IN ('monthly_grant', 'topup', 'reservation', 'consumption', 'release', 'adjustment')),
+  credits INTEGER NOT NULL,
+  reference_key TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_communication_credit_ledger_reference
+  ON communication_credit_ledger(reference_key) WHERE reference_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_communication_credit_ledger_history
+  ON communication_credit_ledger(period_key, channel, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS communication_credit_reservations (
+  id SERIAL PRIMARY KEY,
+  channel TEXT NOT NULL CHECK (channel IN ('whatsapp', 'email', 'ai')),
+  period_key TEXT NOT NULL,
+  credits INTEGER NOT NULL CHECK (credits > 0),
+  reference_key TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'consumed', 'released', 'expired')),
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  consumed_at TIMESTAMPTZ,
+  released_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_communication_credit_reservations_status
+  ON communication_credit_reservations(status, channel, period_key);
+
+-- A compra é uma intenção, nunca uma recarga automática. Um gateway confirmado
+-- deverá chamar o serviço de topup e guardar sua referência nesta linha.
+CREATE TABLE IF NOT EXISTS communication_credit_purchase_intents (
+  id SERIAL PRIMARY KEY,
+  product_key TEXT NOT NULL,
+  channel TEXT NOT NULL CHECK (channel IN ('whatsapp', 'email', 'ai')),
+  credits INTEGER NOT NULL CHECK (credits > 0),
+  amount_cents INTEGER NOT NULL CHECK (amount_cents >= 0),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid', 'cancelled', 'expired')),
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_communication_credit_purchase_intents_status
+  ON communication_credit_purchase_intents(status, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS payments (
   id SERIAL PRIMARY KEY,
   appointment_id INTEGER REFERENCES appointments(id),

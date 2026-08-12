@@ -51,6 +51,7 @@ import planAdminRoutes from "./routes/planAdmin.js";
 import accountAdminRoutes from "./routes/accountAdmin.js";
 import platformFinanceRoutes from "./routes/platformFinance.js";
 import supportRoutes from "./routes/support.js";
+import aiAssistantRoutes from "./routes/aiAssistant.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -133,6 +134,7 @@ app.use(planAdminRoutes);
 app.use(accountAdminRoutes);
 app.use(platformFinanceRoutes);
 app.use(supportRoutes);
+app.use(aiAssistantRoutes);
 
 // ---------- Inicialização ----------
 // 1) Garante o schema de controle `platform` (tenants + superadmin inicial).
