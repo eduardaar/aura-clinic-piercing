@@ -1,8 +1,8 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import React, { useEffect, useState } from "react";
-import { ArrowLeft, Download } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Button, Input, Select, StatusBadge } from "../../components/common/Ui";
-import { RowActions } from "../../components/common/Crud";
+import { Modal, CrudHeader, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { asArray, asObject, formatDate } from "../../lib/utils";
 import { apiFetch, downloadApiFile, openApiFile, useFetch } from "../../lib/api";
@@ -27,8 +27,9 @@ export function DigitalTerms({ onBack }) {
   const { data: appointmentsPage } = useFetch(APPOINTMENTS_QUERY);
   const { data: terms, refresh } = useFetch("/digital-terms");
   const [form, setForm] = useState(defaultDigitalTerm());
+  const [modalOpen, setModalOpen] = useState(false);
+  const [formTab, setFormTab] = useState("dados");
   const [error, setError] = useState("");
-  const [savedTerm, setSavedTerm] = useState(null);
   const [fileError, setFileError] = useState("");
 
   const safeAppointments = asArray(asObject(appointmentsPage).items);
@@ -74,10 +75,16 @@ export function DigitalTerms({ onBack }) {
     updateFormData("health_history", key, !form.form_data.health_history[key]);
   }
 
+  function openNew() {
+    setForm(defaultDigitalTerm());
+    setError("");
+    setFormTab("dados");
+    setModalOpen(true);
+  }
+
   async function submit(event) {
     event.preventDefault();
     setError("");
-    setSavedTerm(null);
     if (!form.signature_data_url) return setError("Assinatura digital obrigatória.");
     const response = await apiFetch(`/digital-terms`, {
       method: "POST",
@@ -86,9 +93,9 @@ export function DigitalTerms({ onBack }) {
     });
     const data = await response.json();
     if (!response.ok) return setError(data.error || "Não foi possível salvar o termo.");
-    setSavedTerm(data);
     setForm(defaultDigitalTerm());
     refresh();
+    setModalOpen(false);
   }
 
   async function handlePdf(action, term) {
@@ -103,29 +110,30 @@ export function DigitalTerms({ onBack }) {
   }
 
   return (
-    <section className="terms-layout terms-anamnesis-layout">
-      <form className="panel term-form" onSubmit={submit}>
-        <div className="panel-heading">
-          <div>
-            <span className="eyebrow">Termos Digitais</span>
-            <h2>Ficha De Anamnese</h2>
-          </div>
-          <div className="module-heading-actions"><span>{appointmentTotal} agendamento(s)</span><Button variant="secondary" onClick={onBack}><ArrowLeft size={16} /> Voltar para clientes</Button></div>
-        </div>
-
-        <div className="term-intro">
-          <strong>Estrutura clínica fiel ao documento físico.</strong>
-          <p>Dados pessoais, histórico de saúde, estilo de vida, consentimento, autorização para menores e assinatura digital.</p>
-        </div>
-
-        <div className="term-chip-row">
-          <span>Dados Pessoais</span>
-          <span>Histórico De Saúde</span>
-          <span>Estilo De Vida</span>
-          <span>Consentimento</span>
-          <span>Assinatura Digital</span>
-        </div>
-
+    <section className="stack terms-page">
+      <div className="panel">
+        <CrudHeader title="Termos digitais" subtitle="Fichas assinadas e prontas para PDF." actionLabel="Novo termo" onAction={openNew} />
+        <div className="module-backbar"><Button variant="secondary" onClick={onBack}><ArrowLeft size={16} /> Voltar para clientes</Button></div>
+        {fileError && <p className="form-error" role="alert">{fileError}</p>}
+        <DataView
+          rows={safeTerms}
+          loading={!terms}
+          error={terms?.error || ""}
+          defaultSort={{ key: "signed_at", dir: "desc" }}
+          searchPlaceholder="Buscar por cliente, procedimento ou profissional"
+          filters={[{ key: "from", label: "Assinado a partir de", type: "date", match: (term, value) => String(term.signed_at || "").slice(0, 10) >= value }, { key: "to", label: "Assinado até", type: "date", match: (term, value) => String(term.signed_at || "").slice(0, 10) <= value }]}
+          columns={[{ key: "full_name", label: "Cliente", render: (term) => <strong>{term.full_name}</strong> }, { key: "procedure", label: "Procedimento", value: (term) => `${term.procedure || ""} ${term.appointment_date || ""}`, render: (term) => <div><span>{term.procedure || "Ficha sem procedimento informado"}</span>{term.appointment_id && <><br /><small>{formatDateWithYear(term.appointment_date)} · {term.appointment_time || ""}</small></>}</div> }, { key: "professional_name", label: "Profissional", render: (term) => term.professional_name || "Sem profissional vinculado" }, { key: "signed_at", label: "Assinado em", value: (term) => String(term.signed_at || ""), render: (term) => formatDateWithYear(term.signed_at) }, { key: "pdf_url", label: "PDF", sortable: false, searchable: false, render: (term) => term.pdf_url ? "Disponível" : "—" }]}
+          actions={(term) => term.pdf_url ? <RowActions actions={[{ label: "Abrir PDF", onClick: () => handlePdf("open", term), primary: true }, { label: "Baixar PDF", onClick: () => handlePdf("download", term) }]} /> : null}
+          empty="Nenhum termo assinado ainda."
+          emptyFiltered="Nenhum termo corresponde à busca ou ao período."
+        />
+      </div>
+      <Modal open={modalOpen} size="lg" title="Novo termo digital" subtitle="Preencha a ficha por etapas e colete a assinatura." onClose={() => setModalOpen(false)} footer={<><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button><Button type="submit" form="digital-term-form">Salvar termo</Button></>}>
+      <form id="digital-term-form" className="term-form" onSubmit={submit}>
+        <nav className="term-form-tabs" aria-label="Etapas do termo">
+          {[["dados", "Dados"], ["saude", "Saúde"], ["consentimento", "Consentimento"], ["assinatura", "Assinatura"]].map(([id, label]) => <button type="button" key={id} className={formTab === id ? "active" : ""} onClick={() => setFormTab(id)}>{label}</button>)}
+        </nav>
+        {formTab === "dados" && <>
         <section className="term-section">
           <h3>Agendamento Vinculado</h3>
           <Select label="Agendamento" value={form.appointment_id} onChange={(value) => updateField("appointment_id", value)}>
@@ -152,7 +160,9 @@ export function DigitalTerms({ onBack }) {
           </div>
           <Input label="Endereço" value={form.address} onChange={(value) => updateField("address", value)} />
         </section>
+        </>}
 
+        {formTab === "saude" && <>
         <section className="term-section">
           <h3>Histórico De Saúde</h3>
           <div className="term-check-grid">
@@ -188,7 +198,9 @@ export function DigitalTerms({ onBack }) {
             ))}
           </div>
         </section>
+        </>}
 
+        {formTab === "consentimento" && <>
         <section className="term-section term-consent-section">
           <label className="checkbox-line">
             <input type="checkbox" checked={form.orientations_confirmed} onChange={(event) => updateField("orientations_confirmed", event.target.checked)} />
@@ -217,7 +229,9 @@ export function DigitalTerms({ onBack }) {
             </div>
           )}
         </section>
+        </>}
 
+        {formTab === "assinatura" && <>
         <SignaturePad onChange={(signature) => updateField("signature_data_url", signature)} clearKey={form.appointment_id || "empty"} />
         <section className="term-section term-operational-section">
           <h3>Informações do Atendimento</h3>
@@ -232,15 +246,12 @@ export function DigitalTerms({ onBack }) {
           <label className="term-notes">Observação operacional<textarea value={form.form_data.information.observation} onChange={(event) => updateFormData("information", "observation", event.target.value)} /></label>
           <label className="term-notes">Declaração de Saúde e Observações<textarea value={form.health_declaration} onChange={(event) => updateField("health_declaration", event.target.value)} /></label>
         </section>
+        </>}
         {error && <span className="form-error">{error}</span>}
-        <div className="modal-actions">
-          {fileError && <span className="form-error" role="alert">{fileError}</span>}
-          {savedTerm?.pdf_url && <><Button variant="secondary" type="button" onClick={() => handlePdf("open", savedTerm)}><Download size={16} /> Abrir PDF Salvo</Button><Button variant="secondary" type="button" onClick={() => handlePdf("download", savedTerm)}>Baixar PDF</Button></>}
-          <Button variant="primary" type="submit">Salvar Termo Em PDF</Button>
-        </div>
       </form>
+      </Modal>
 
-      <div className="panel">
+      <div className="panel" hidden>
         <div className="panel-heading">
           <div>
             <span className="eyebrow">Registro</span>

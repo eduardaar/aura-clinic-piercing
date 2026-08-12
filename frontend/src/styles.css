@@ -8739,6 +8739,10 @@ body {
 .client-module-shortcuts button { min-height: 38px; }
 .module-backbar { display: flex; justify-content: flex-end; }
 .module-heading-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.term-form { display: grid; gap: 16px; }
+.term-form-tabs { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 2px; border-bottom: 1px solid var(--line); }
+.term-form-tabs button { flex: 0 0 auto; padding: 8px 11px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; }
+.term-form-tabs button.active { background: var(--paper); color: var(--ink); }
 
 @media (max-width: 900px) {
   .weekly-schedule-toolbar { align-items: stretch; flex-direction: column; }
