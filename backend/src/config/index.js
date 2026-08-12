@@ -159,6 +159,18 @@ if (r2Declared && r2Missing.length) {
 // Ligado só com a configuração inteira de pé.
 export const r2Enabled = r2Declared && r2Missing.length === 0;
 
+// ---------- Assistente de IA ----------
+// As chaves pertencem exclusivamente ao ambiente do servidor. Nunca são
+// persistidas no tenant nem devolvidas pelas rotas. `auto` prefere OpenAI e
+// usa Gemini quando somente ele estiver configurado.
+export const AI_PROVIDER = (process.env.AI_PROVIDER || "auto").trim().toLowerCase();
+export const OPENAI_API_KEY = (process.env.OPENAI_API_KEY || "").trim();
+export const OPENAI_MODEL = (process.env.OPENAI_MODEL || "gpt-4o-mini").trim();
+export const GEMINI_API_KEY = (process.env.GEMINI_API_KEY || "").trim();
+export const GEMINI_MODEL = (process.env.GEMINI_MODEL || "gemini-2.0-flash-lite").trim();
+export const AI_TIMEOUT_MS = Math.min(Math.max(Number(process.env.AI_TIMEOUT_MS || 20000), 1000), 60000);
+export const AI_MAX_OUTPUT_TOKENS = Math.min(Math.max(Number(process.env.AI_MAX_OUTPUT_TOKENS || 500), 64), 1200);
+
 // Categorias principais de joalherias (usadas no catálogo e validações).
 export const JEWELRY_CATEGORIES = [
   "Labret",
