@@ -477,7 +477,11 @@ export function Landing() {
             />
           );
           return section.section_key === "showcase_links"
-            ? [rendered, <PlatformValueSection key="platform-value" />]
+            ? [
+                <PlatformValueSection key="platform-value-before-showcase" />,
+                rendered,
+                <PlatformValueSection key="platform-value-after-showcase" />,
+              ]
             : rendered;
         })}
       </main>
