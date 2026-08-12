@@ -495,6 +495,17 @@
 
 .au-l-root .au-l-plan-more { margin-top: 10px; color: var(--au-l-soft); font-size: 12px; line-height: 1.35; }
 
+.au-l-root .au-l-btn-plan {
+  width: 100%;
+  margin-top: auto;
+  border-color: var(--ink);
+  background: transparent;
+  color: var(--ink);
+}
+
+.au-l-root .au-l-btn-plan:hover,
+.au-l-root .au-l-btn-plan:focus-visible { background: var(--ink); color: var(--paper); }
+
 .au-l-plan-modal-backdrop { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 18px; overflow-y: auto; background: rgb(29 24 20 / .68); }
 .au-l-plan-modal { width: min(980px, 100%); max-height: min(760px, calc(100dvh - 36px)); overflow: hidden; border-radius: 20px; background: var(--paper); box-shadow: 0 28px 80px rgb(0 0 0 / .28); }
 .au-l-plan-modal-head { display: flex; justify-content: space-between; gap: 16px; padding: 24px 24px 18px; border-bottom: 1px solid var(--line); }

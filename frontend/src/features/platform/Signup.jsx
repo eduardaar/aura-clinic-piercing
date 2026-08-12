@@ -38,6 +38,10 @@ const PLAN_HIGHLIGHTS = {
 
 const STEP_LABELS = ["Sua clínica", "Plano"];
 
+function selectedPlanFromUrl() {
+  try { return new URLSearchParams(window.location.search).get("plano") || "profissional"; } catch { return "profissional"; }
+}
+
 export function Signup() {
   const [step, setStep] = useState(1);
   const [plans, setPlans] = useState(fallbackPlans);
@@ -46,7 +50,7 @@ export function Signup() {
     admin_name: "",
     admin_email: "",
     admin_password: "",
-    plan_code: "profissional"
+    plan_code: selectedPlanFromUrl()
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -65,6 +69,11 @@ export function Signup() {
       .then((payload) => setPlans(asArray(payload.plans).length ? payload.plans : fallbackPlans))
       .catch(() => setPlans(fallbackPlans));
   }, []);
+
+  useEffect(() => {
+    if (plans.some((plan) => plan.code === form.plan_code)) return;
+    setForm((current) => ({ ...current, plan_code: plans.find((plan) => plan.code === "profissional")?.code || plans[0]?.code || "profissional" }));
+  }, [plans, form.plan_code]);
 
   useEffect(() => {
     fetch(`${API}/legal-documents`)
