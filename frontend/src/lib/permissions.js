@@ -17,7 +17,7 @@
 /**
  * Páginas do app. Inclui as duas da PLATAFORMA ("erp", "error-logs"), que
  * existem como página mas não pertencem a papel nenhum da clínica.
- * @typedef {"dashboard" | "erp" | "agenda" | "communications" | "catalog"
+ * @typedef {"dashboard" | "erp" | "agenda" | "communications" | "catalog" | "products" | "inventory"
  *   | "catalog-customization" | "sales" | "finance" | "reports" | "client-center"
  *   | "clients" | "terms" | "postcare" | "admin" | "integrations" | "support" | "error-logs"
  *   | "meu-plano" | "settings" | "onboarding"} Page
@@ -45,7 +45,7 @@
 export function allowedPagesForRole(role) {
   /** @type {Record<Role, Page[]>} */
   const byRole = {
-    admin: ["dashboard", "agenda", "communications", "catalog", "catalog-customization", "sales", "finance", "reports", "client-center", "clients", "terms", "postcare", "admin", "integrations", "onboarding", "support", "meu-plano", "settings"],
+    admin: ["dashboard", "agenda", "communications", "products", "inventory", "catalog", "catalog-customization", "sales", "finance", "reports", "client-center", "clients", "terms", "postcare", "admin", "integrations", "onboarding", "support", "meu-plano", "settings"],
     reception: ["agenda", "communications", "sales", "reports", "client-center", "clients", "settings"],
     finance: ["finance", "reports", "sales", "settings"],
     piercer: ["agenda", "communications", "sales", "client-center", "clients", "terms", "postcare", "settings"]
@@ -71,7 +71,10 @@ export const PAGE_FEATURE = {
   terms: "digital_terms",
   postcare: "automatic_followup",
   communications: "message_templates",
+  products: "basic_catalog",
+  inventory: "basic_catalog",
   reports: "basic_reports",
+  catalog: "public_catalog_customization",
   "catalog-customization": "public_catalog_customization",
   sales: "basic_catalog"
 };
@@ -118,6 +121,8 @@ export function pageTitle(page) {
     agenda: "Agenda",
     communications: "Comunicações",
     catalog: "Catálogo",
+    products: "Produtos",
+    inventory: "Estoque",
     "catalog-customization": "Personalização do Catálogo",
     sales: "Vendas e ordens",
     finance: "Administrativo Financeiro",

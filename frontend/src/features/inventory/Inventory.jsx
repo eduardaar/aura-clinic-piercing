@@ -1,6 +1,6 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useState } from "react";
-import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Gem, ImageIcon, LayoutGrid, ListFilter, Pencil, Search, ShoppingCart, SlidersHorizontal, Sparkles, Table2, Trash2, X } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Gem, ImageIcon, LayoutGrid, ListFilter, Pencil, Search, SlidersHorizontal, Sparkles, Table2, Trash2, X } from "lucide-react";
 import { Button, Input, Metric, Select, StatusBadge } from "../../components/common/Ui";
 import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
@@ -52,45 +52,9 @@ function HintedInput({ label, value, onChange, placeholder, type = "text", requi
   );
 }
 
-export function CatalogWorkspace() {
-  const [tab, setTab] = useState("inicio");
-  const tabs = [
-    { id: "estoque", title: "Estoque", description: "Abra o controle administrativo completo das joias.", icon: Gem },
-    { id: "personalizacao", title: "Personalização", description: "Configure banners, cores, textos, categorias e destaques do catálogo.", icon: Sparkles },
-    { id: "público", title: "Catálogo público", description: "Abra a vitrine que o cliente visualiza.", icon: ShoppingCart }
-  ];
-  if (tab !== "inicio") {
-    return (
-      <section className="workspace-page workspace-subpage">
-        <Button variant="secondary" className="workspace-back-button" onClick={() => setTab("inicio")}>
-          <ChevronLeft size={16} />
-          Voltar para Catálogo
-        </Button>
-        {tab === "estoque" && <Inventory2 compact />}
-        {tab === "personalizacao" && <CatalogCustomization />}
-      </section>
-    );
-  }
-  return (
-    <section className="workspace-page">
-      <div className="workspace-intro panel">
-        <div>
-          <span className="eyebrow">Catálogo e estoque</span>
-          <h2>Organize a vitrine pública e o controle interno em áreas separadas.</h2>
-          <p>Escolha Estoque para cadastrar uma nova joalheria, ajustar quantidades, medidas, valores e dados de envio. O catálogo público atualiza automaticamente.</p>
-        </div>
-      </div>
-      <div className="workspace-hub">
-        {tabs.map(({ id, title, description, icon: Icon }) => (
-          <button key={id} className={tab === id ? "active" : ""} onClick={() => id === "público" ? window.open("/catalogo", "_blank", "noopener,noreferrer") : setTab(id)}>
-            <Icon size={20} />
-            <span><strong>{title}</strong><small>{description}</small></span>
-            <ChevronRight size={17} />
-          </button>
-        ))}
-      </div>
-    </section>
-  );
+export function CatalogWorkspace({ area = "catalogo" }) {
+  if (area === "catalogo") return <CatalogCustomization />;
+  return <Inventory2 area={area} />;
 }
 
 export function JewelryCards({ items, onOpen, onEdit, onMovement, onArchive }) {
@@ -131,9 +95,9 @@ export function JewelryCards({ items, onOpen, onEdit, onMovement, onArchive }) {
   );
 }
 
-export function Inventory2() {
+export function Inventory2({ area = "produtos" }) {
   const [view, setView] = useState("table");
-  const [sectionTab, setSectionTab] = useState("produtos");
+  const [sectionTab, setSectionTab] = useState(area === "estoque" ? "unidades" : "produtos");
   const [inventoryMode] = useState("internal");
   const [editingJewelry, setEditingJewelry] = useState(null);
   const [movementTarget, setMovementTarget] = useState(null);
@@ -235,13 +199,16 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
     potential: allJewelry.reduce((sum, item) => sum + Number(item.sale_value || 0) * Number(item.quantity || 0), 0)
   };
   const topValueItems =[...allJewelry].sort((a, b) => (Number(b.sale_value || 0) * Number(b.quantity || 0)) - (Number(a.sale_value || 0) * Number(a.quantity || 0))).slice(0, 8);
-  const mainTabs = [
+  const allTabs = [
     { id: "produtos", label: "Lista de Produtos", icon: LayoutGrid },
     { id: "categorias", label: "Categorias", icon: ListFilter },
     { id: "unidades", label: "Resumo", icon: Table2 },
     { id: "abc", label: "Curva ABC", icon: Sparkles },
     { id: "inteligencia", label: "Inteligência", icon: SlidersHorizontal }
   ];
+  const mainTabs = area === "estoque"
+    ? allTabs.filter((tab) => ["unidades", "abc", "inteligencia"].includes(tab.id))
+    : allTabs.filter((tab) => ["produtos", "categorias"].includes(tab.id));
 
   useEffect(() => {
     setStatusTab("todos");
@@ -387,14 +354,12 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
       <div className="inventory-main">
         <header className="inventory-hero">
           <div>
-            <span className="eyebrow">Aura Clinic / Estoque</span>
-            <h2>Estoque</h2>
-            <p>Produtos, variações e movimentações em uma navegação simples.</p>
+            <span className="eyebrow">Aura Clinic / {area === "estoque" ? "Estoque" : "Produtos"}</span>
+            <h2>{area === "estoque" ? "Estoque" : "Produtos"}</h2>
+            <p>{area === "estoque" ? "Indicadores, reposição e inteligência de estoque." : "Cadastre produtos, variações, categorias e preços."}</p>
           </div>
           <div className="inventory-hero-actions">
-            <Button variant="secondary" onClick={() => setShowVisualSearch(true)}><ImageIcon size={16} /> Buscar por foto</Button>
-            <Button variant="secondary" onClick={printLabels}><Table2 size={16} /> Imprimir etiquetas</Button>
-            <Button variant="primary" onClick={openNewProduct}><Gem size={16} /> Nova joia</Button>
+            {area === "produtos" && <><Button variant="secondary" onClick={() => setShowVisualSearch(true)}><ImageIcon size={16} /> Buscar por foto</Button><Button variant="secondary" onClick={printLabels}><Table2 size={16} /> Imprimir etiquetas</Button><Button variant="primary" onClick={openNewProduct}><Gem size={16} /> Novo produto</Button></>}
           </div>
         </header>
 

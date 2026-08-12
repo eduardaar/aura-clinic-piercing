@@ -321,7 +321,9 @@ function App() {
           {activePage === "agenda" && <AgendaWorkspace initialScreen={agendaTarget ? "settings" : "agenda"} initialSettingsTab={agendaTarget} onSettingsClosed={() => setAgendaTarget(null)} />}
           {activePage === "onboarding" && <Onboarding onOpenAgendaSettings={(tab) => { setAgendaTarget(tab); setPage("agenda"); }} />}
           {activePage === "communications" && <Communications />}
-          {activePage === "catalog" && <CatalogWorkspace />}
+          {activePage === "products" && <CatalogWorkspace area="produtos" />}
+          {activePage === "inventory" && <CatalogWorkspace area="estoque" />}
+          {activePage === "catalog" && <CatalogWorkspace area="catalogo" />}
           {activePage === "client-center" && <ClientWorkspace onNavigate={setPage} />}
           {activePage === "catalog-customization" && <CatalogCustomization />}
           {activePage === "sales" && <SalesWorkspace />}
