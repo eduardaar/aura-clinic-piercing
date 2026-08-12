@@ -41,7 +41,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowLeft, RefreshCw } from "lucide-react";
 import { AlertBlock, Button, Input, Select, StatusBadge, Textarea } from "../../components/common/Ui";
-import { CrudHeader, Modal, RowActions } from "../../components/common/Crud";
+import { ConfirmDeleteModal, CrudHeader, Modal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { API } from "../../lib/api";
@@ -272,6 +272,9 @@ export function AccountsAdmin({ token, onUnauthorized, onCreate, refreshKey = 0 
   const [erroDaAcao, setErroDaAcao] = useState({ mensagem: "", dica: "" });
 
   const [feedback, setFeedback] = useState({ error: "", success: "" });
+  const [acaoDaLista, setAcaoDaLista] = useState(null);
+  const [executandoAcaoDaLista, setExecutandoAcaoDaLista] = useState(false);
+  const [clinicaParaExcluir, setClinicaParaExcluir] = useState(null);
   // Avisos que NÃO somem sozinhos: cada um é dinheiro pendurado (recorrência no
   // valor errado, cancelamento que não pegou no gateway). Um aviso que se apaga
   // depois de 4 segundos é um aviso que ninguém leu.
@@ -423,6 +426,74 @@ export function AccountsAdmin({ token, onUnauthorized, onCreate, refreshKey = 0 
     setMotivo("");
     setCodigoDigitado("");
     setErroDaAcao({ mensagem: "", dica: "" });
+  }
+
+  function abrirAcaoDaLista(tipo, tenant) {
+    setAcaoDaLista({ tipo, tenant });
+    setFeedback({ error: "", success: "" });
+  }
+
+  function fecharAcaoDaLista() {
+    if (!executandoAcaoDaLista) setAcaoDaLista(null);
+  }
+
+  async function atualizarDepoisDaAcaoDaLista(tenantIdAtualizado) {
+    await carregarClinicas();
+    if (tenantIdAtualizado && tenantIdAtualizado === tenantId) await carregarConta(tenantIdAtualizado);
+  }
+
+  async function executarAcaoDaLista() {
+    if (!acaoDaLista) return;
+    const { tipo, tenant } = acaoDaLista;
+    setExecutandoAcaoDaLista(true);
+    setFeedback({ error: "", success: "" });
+    try {
+      if (tipo === "renovar") {
+        const payload = asObject(await request(`/platform/tenants/${tenant.id}/plan`, {
+          method: "PATCH",
+          body: JSON.stringify({ plan_code: tenant.plan || "profissional" }),
+        }));
+        adicionarAviso("Pendência no gateway de pagamento", payload.warning);
+        setFeedback({ error: "", success: "Plano e assinatura atualizados." });
+      } else {
+        const proximoStatus = tenant.status === "suspenso" ? "ativo" : "suspenso";
+        await request(`/platform/tenants/${tenant.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: proximoStatus }),
+        });
+        setFeedback({
+          error: "",
+          success: proximoStatus === "suspenso" ? "Clínica suspensa com sucesso." : "Clínica reativada com sucesso.",
+        });
+      }
+      await atualizarDepoisDaAcaoDaLista(tenant.id);
+      setAcaoDaLista(null);
+    } catch (error) {
+      setFeedback({ error: error.message, success: "" });
+    } finally {
+      setExecutandoAcaoDaLista(false);
+    }
+  }
+
+  async function excluirClinicaDaLista() {
+    if (!clinicaParaExcluir) return;
+    const tenant = clinicaParaExcluir;
+    setFeedback({ error: "", success: "" });
+    try {
+      await request(`/platform/tenants/${tenant.id}`, {
+        method: "DELETE",
+        body: JSON.stringify({ confirmation: tenant.slug }),
+      });
+      if (tenant.id === tenantId) {
+        setTenantId(null);
+        setConta(null);
+      }
+      await carregarClinicas();
+      setFeedback({ error: "", success: "Clínica excluída com sucesso." });
+      setClinicaParaExcluir(null);
+    } catch (error) {
+      setFeedback({ error: error.message, success: "" });
+    }
   }
 
   async function atualizarUso() {
@@ -661,11 +732,18 @@ export function AccountsAdmin({ token, onUnauthorized, onCreate, refreshKey = 0 
               },
             ]}
             actions={(item) => (
-              <RowActions actions={[{
-                label: "Abrir gestão",
-                onClick: () => setTenantId(item.id),
-                primary: true,
-              }]} />
+              <RowActions
+                actions={[
+                  { label: "Abrir gestão", onClick: () => setTenantId(item.id), primary: true },
+                  { label: "Ativar / renovar", onClick: () => abrirAcaoDaLista("renovar", item) },
+                  {
+                    label: item.status === "suspenso" ? "Reativar clínica" : "Suspender clínica",
+                    onClick: () => abrirAcaoDaLista("status", item),
+                    danger: item.status !== "suspenso",
+                  },
+                  { label: "Excluir clínica", onClick: () => setClinicaParaExcluir(item), danger: true },
+                ]}
+              />
             )}
           />
         </section>
@@ -778,6 +856,54 @@ export function AccountsAdmin({ token, onUnauthorized, onCreate, refreshKey = 0 
 
       {/* Toda escrita passa por aqui: o motivo obrigatório e a digitação do slug
           ficam DENTRO da confirmação, junto da assimetria da ação. */}
+      <Modal
+        open={Boolean(acaoDaLista)}
+        title={acaoDaLista?.tipo === "renovar"
+          ? "Ativar ou renovar assinatura"
+          : acaoDaLista?.tenant?.status === "suspenso" ? "Reativar clínica" : "Suspender clínica"}
+        subtitle={acaoDaLista?.tenant ? `${acaoDaLista.tenant.name} (${acaoDaLista.tenant.slug})` : ""}
+        onClose={fecharAcaoDaLista}
+        footer={(
+          <>
+            <Button variant="secondary" disabled={executandoAcaoDaLista} onClick={fecharAcaoDaLista}>Cancelar</Button>
+            <Button
+              variant={acaoDaLista?.tipo === "status" && acaoDaLista?.tenant?.status !== "suspenso" ? "danger" : "primary"}
+              disabled={executandoAcaoDaLista}
+              onClick={executarAcaoDaLista}
+            >
+              {executandoAcaoDaLista ? "Aplicando…" : acaoDaLista?.tipo === "renovar"
+                ? "Ativar / renovar"
+                : acaoDaLista?.tenant?.status === "suspenso" ? "Reativar clínica" : "Suspender clínica"}
+            </Button>
+          </>
+        )}
+      >
+        {acaoDaLista?.tipo === "renovar" ? (
+          <p>
+            Reaplica o plano <strong>{nomeDoPlano(planos, acaoDaLista.tenant.plan)}</strong> e atualiza a assinatura
+            recorrente no Asaas quando ela existir.
+          </p>
+        ) : acaoDaLista?.tenant?.status === "suspenso" ? (
+          <p>Devolve o acesso da clínica. O status da assinatura continua inalterado.</p>
+        ) : (
+          <p>
+            Bloqueia o acesso desta clínica ao sistema. Esta ação não cancela a cobrança recorrente; para isso, use
+            “Cancelar assinatura” dentro da gestão completa.
+          </p>
+        )}
+      </Modal>
+
+      <ConfirmDeleteModal
+        open={Boolean(clinicaParaExcluir)}
+        title="Excluir clínica"
+        message={clinicaParaExcluir
+          ? `Excluir a clínica “${clinicaParaExcluir.name}”? Todos os dados desta clínica serão removidos.`
+          : ""}
+        confirmWord={clinicaParaExcluir?.slug || "excluir"}
+        onClose={() => setClinicaParaExcluir(null)}
+        onConfirm={excluirClinicaDaLista}
+      />
+
       <Modal
         open={Boolean(acao)}
         title={definicao?.titulo}
