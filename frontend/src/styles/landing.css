@@ -141,35 +141,6 @@
   transition: transform .18s ease, box-shadow .18s ease, background-color .18s ease, color .18s ease;
 }
 
-.au-l-root .au-l-btn-primary {
-  background: var(--ink);
-  color: var(--paper);
-  box-shadow: 0 10px 24px rgb(from var(--ink) r g b / .18);
-}
-
-.au-l-root .au-l-btn-primary:hover,
-.au-l-root .au-l-btn-primary:focus-visible {
-  background: var(--brown-dark);
-  transform: translateY(-1px);
-}
-
-/* Verde é reservado para a próxima ação comercial: abrir o teste gratuito.
-   Assim ele cria variedade, mas não compete com navegação e ações de leitura. */
-.au-l-root .au-l-btn-conversion {
-  background: #25d366;
-  border-color: #25d366;
-  color: #073b20;
-  box-shadow: 0 10px 24px rgb(7 59 32 / .22);
-}
-
-.au-l-root .au-l-btn-conversion:hover,
-.au-l-root .au-l-btn-conversion:focus-visible {
-  background: #32df76;
-  border-color: #32df76;
-  color: #073b20;
-  box-shadow: 0 14px 28px rgb(7 59 32 / .28);
-}
-
 .au-l-root .au-l-btn-ghost {
   background: transparent;
   color: var(--ink);
@@ -539,31 +510,6 @@
 .au-l-plan-compare-scroll tbody th { color: var(--au-l-body); font-weight: 500; }
 .au-l-plan-compare-scroll td { text-align: center; color: var(--gold-dark); }
 .au-l-plan-modal-actions { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px; border-top: 1px solid var(--line); }
-
-.au-l-root .au-l-btn-plan {
-  margin-top: auto;
-  width: 100%;
-  background: transparent;
-  border-color: var(--ink);
-  color: var(--ink);
-}
-
-.au-l-root .au-l-btn-plan:hover,
-.au-l-root .au-l-btn-plan:focus-visible {
-  background: var(--ink);
-  color: var(--paper);
-}
-
-.au-l-root .au-l-plan.is-featured .au-l-btn-plan {
-  background: var(--ink);
-  color: var(--paper);
-}
-
-.au-l-root .au-l-plan.is-featured .au-l-btn-plan:hover,
-.au-l-root .au-l-plan.is-featured .au-l-btn-plan:focus-visible {
-  background: var(--brown-dark);
-  border-color: var(--brown-dark);
-}
 
 /* ---------- fechamento + footer (bloco único) ------------------------ */
 
