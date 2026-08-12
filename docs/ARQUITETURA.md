@@ -22,7 +22,7 @@ Scripts da raiz (`package.json`):
 | Script | O que faz |
 | --- | --- |
 | `npm run install:all` | Instala dependências da raiz, do backend e do frontend. |
-| `npm run dev` | Sobe backend (`:4000`) e frontend (`:5173`) juntos via `concurrently`. |
+| `npm run dev` | Sobe backend (`:4000`) e frontend (`:5174`) juntos via `concurrently`. |
 | `npm run start` | Sobe apenas o backend em modo produção. |
 | `npm run build` | Build de produção do frontend (Vite). |
 

@@ -414,6 +414,39 @@ Aparência do catálogo público. Linha única (`id INTEGER PK CHECK (id = 1)`),
 
 Campos principais: `brand_name`, `slogan`, `logo_url`, cores (`primary_color`, `secondary_color`, `background_color`, `button_color`), fontes (`title_font`, `body_font`), `theme` (default `premium`), flags de exibição de estoque (`show_out_of_stock`, `show_stock_quantity`, `stock_display_mode`), botões (`show_whatsapp_button`, `show_schedule_button`, `show_buy_button`, `show_favorites`) e `footer_text`.
 
+#### `catalog_customization_drafts` — rascunho versionado do builder
+
+Linha única por clínica (`id = 1`). `snapshot` (JSONB) contém toda a
+configuração editável do catálogo; `version` é o lock otimista usado em salvar,
+publicar e reset. `updated_at` e `updated_by` registram a última edição.
+
+Além de tema, banners e `catalogSections`, o snapshot pode conter
+`plugins[]`: cada entrada tem `id`, `pluginId`, `enabled` e `config`
+estruturado. Os IDs atuais são `whatsapp_cta`, `instagram_profile`,
+`maps_location`, `faq`, `seo_metadata`, `google_analytics` e
+`google_review_link`; a validação de backend rejeita campos livres,
+HTML/CSS/JS, event handlers e URLs fora da allowlist. Analytics guarda somente
+o Measurement ID e exige a feature Premium `catalog_analytics`; avaliações
+guardam Place ID, do qual a vitrine constrói o link oficial do Google.
+
+#### `catalog_media_assets` — biblioteca de mídia do catálogo
+
+Assets públicos do construtor, sempre dentro do schema da clínica: `url`,
+`storage_key`, nome/mime, `alt_text`, autor e datas. A API não aceita exclusão
+automática do arquivo porque um asset pode estar referenciado por um rascunho
+ou revisão publicada; a evolução futura deve contar referências antes de
+permitir remoção.
+
+#### `catalog_customization_revisions` — publicações imutáveis
+
+Cada linha é uma vitrine publicada: `version` único, `action` (`publish` ou
+`rollback`), `snapshot` JSONB, autoria e datas. `source_revision_id` aponta a
+revisão que originou um rollback. Nenhuma linha é alterada depois de criada.
+
+As tabelas anteriores `catalog_settings`, `catalog_theme`, banners, destaques
+e layouts continuam no schema por compatibilidade de leitura legada; novas
+edições usam os snapshots do builder. Ver [CATALOGO-BUILDER.md](./CATALOGO-BUILDER.md).
+
 ---
 
 ## Índices de apoio (schema de clínica)

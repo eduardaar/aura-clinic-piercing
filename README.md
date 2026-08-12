@@ -74,12 +74,12 @@ Ou individualmente:
 
 ```bash
 npm --prefix backend run dev     # API em :4000
-npm --prefix frontend run dev    # SPA em :5173
+npm --prefix frontend run dev    # SPA em :5174
 ```
 
 Acesse:
 
-- Frontend: `http://localhost:5173`
+- Frontend: `http://localhost:5174`
 - Backend: `http://localhost:4000`
 - Health check: `http://localhost:4000/api/health` e `/api/health/db`
 
@@ -127,6 +127,7 @@ PostgreSQL (`aura_clinic`), organizado em schemas: `platform` (controle da plata
 - `client_medical_records`, `digital_terms`, `post_care_followups`
 - `loyalty_points`, `loyalty_redemptions`
 - `catalog_settings`, `catalog_banners`, `catalog_featured_categories`, `catalog_promotions`, `catalog_theme`
+- `catalog_customization_drafts`, `catalog_customization_revisions` (personalização versionada da vitrine)
 
 Para limpar os dados de demonstração preservando usuários e configurações, use o endpoint administrativo `POST /api/admin/reset-demo-data`.
 
@@ -174,6 +175,7 @@ O reset exige autenticação, papel `admin`, tenant correto, seleção do tipo d
 - `GET/POST/PUT/DELETE /api/procedures`
 - `GET/POST/PUT/DELETE /api/clients`
 - `GET /api/catalog`, `GET /api/booking/slots`
+- `GET/PATCH /api/catalog-customization`, `POST /api/catalog-customization/publish`, `GET /api/catalog-customization/history`, `POST /api/catalog-customization/rollback/:version`
 - `GET /api/finance`, `GET /api/finance/export.{csv,pdf,xlsx}`
 - `GET/POST/PATCH/DELETE /api/users`
 
@@ -184,6 +186,16 @@ O reset exige autenticação, papel `admin`, tenant correto, seleção do tipo d
 
 ### Proteção de dados
 O catálogo público expõe apenas nome, foto, categoria, material, tamanho, cor, preço final e disponibilidade. Ficam **ocultos**: custo, lucro, fornecedor, observações internas, localização física, dados de clientes e financeiro.
+
+### Personalização do catálogo
+
+Cada clínica pode escolher um dos templates iniciais, configurar a identidade,
+banners e blocos da vitrine. **Salvar rascunho não altera a produção**;
+**Publicar** cria uma revisão imutável. O editor oferece histórico e rollback.
+Também há integrações nativas versionadas (WhatsApp, Instagram, FAQ, SEO e
+link de Maps), validadas por allowlists e pelos recursos do plano. Conteúdo
+configurável não aceita JavaScript/HTML/CSS arbitrário; links e embeds são
+limitados a formatos seguros. Veja [docs/CATALOGO-BUILDER.md](docs/CATALOGO-BUILDER.md).
 
 ### Produção (checklist de deploy)
 - Use HTTPS (proxy reverso Nginx/Caddy na frente da API).

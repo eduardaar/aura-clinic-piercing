@@ -43,9 +43,9 @@ entrada.
   validação transacional.
 - Algumas mensagens públicas ainda continham o nome Aura Clinic como texto
   fixo, mesmo quando o tenant tinha marca própria.
-- A personalização mistura rascunho e publicação na mesma persistência. Uma
-  separação completa exige migration própria e compatibilidade com os dados
-  publicados atuais.
+- O preview do editor usa a própria vitrine em iframe e recebe o rascunho por
+  mensagem de mesma origem. Uma sessão de preview curta no backend continua
+  recomendada caso o preview precise ser compartilhado fora do editor.
 - A busca visual ainda não possui infraestrutura vetorial. A fase inicial deve
   usar hash perceptual/metadados e declarar claramente essa limitação.
 - Não existe integração oficial configurada para WhatsApp ou pagamentos; os
@@ -91,8 +91,16 @@ entrada.
 
 ### Construtor e categorias
 
-- Seções persistidas em layouts separados de rascunho e publicação.
-- Versionamento e histórico mínimo de salvamento/publicação.
+- O snapshot inteiro da vitrine — identidade, tema, banners, categorias,
+  destaques, promoções e seções — é salvo em rascunho isolado.
+- A publicação cria uma revisão imutável e atualiza a vitrine de forma atômica.
+- O catálogo público recebe as `catalogSections` da revisão publicada.
+- Histórico e rollback preservam todas as versões; o reset volta somente o
+  rascunho ao padrão.
+- O editor oferece quatro templates iniciais: Minimal clean, Luxe editorial,
+  Studio booking e Campaign / lançamento.
+- Ver [CATALOGO-BUILDER.md](./CATALOGO-BUILDER.md) para o contrato e limites de
+  segurança.
 - Tipos para banners, categorias, vitrines, serviços, profissionais, localização,
   políticas, biossegurança, materiais, depoimentos, Instagram, agenda e rodapé.
 - Ordenação, ativação, duplicação, modo visual, largura, colunas, espaçamento,

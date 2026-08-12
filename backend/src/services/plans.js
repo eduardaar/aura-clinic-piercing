@@ -40,6 +40,7 @@ export const FEATURE_CATALOG = [
   { key: "whatsapp_link", label: "Link de WhatsApp", group: "Catálogo e vendas" },
   { key: "public_catalog_customization", label: "Personalizar catálogo público", group: "Catálogo e vendas" },
   { key: "advanced_catalog", label: "Catálogo avançado", group: "Catálogo e vendas" },
+  { key: "catalog_analytics", label: "Google Analytics no catálogo", group: "Catálogo e vendas" },
   { key: "featured_products", label: "Produtos em destaque", group: "Catálogo e vendas" },
   { key: "promotional_banner", label: "Banner promocional", group: "Catálogo e vendas" },
   { key: "coupons", label: "Cupons", group: "Catálogo e vendas" },
@@ -82,6 +83,7 @@ export const LIMIT_CATALOG = [
   { key: "clients", label: "Clientes cadastrados", unit: "clientes", hint: "Total de fichas de cliente." },
   { key: "appointments_month", label: "Agendamentos por mês", unit: "por mês", hint: "Conta os agendamentos criados no mês corrente." },
   { key: "jewelry_items", label: "Itens de estoque", unit: "itens", hint: "Joias cadastradas no estoque." },
+  { key: "catalog_plugins", label: "Plugins do catálogo", unit: "plugins", hint: "Integrações nativas ativas na vitrine pública." },
   { key: "storage_mb", label: "Armazenamento", unit: "MB", hint: "Espaço somado de fotos e arquivos enviados." }
 ];
 
@@ -92,7 +94,7 @@ export const PLAN_FEATURES = {
   start: ["clients", "agenda", "procedures", "manual_reminders", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports"],
   profissional: ["clients", "agenda", "procedures", "manual_reminders", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports", "online_booking", "anamnesis", "digital_terms", "basic_finance", "deposits", "stock_alerts", "automatic_followup", "message_templates", "public_catalog_customization"],
   studio: ["clients", "agenda", "procedures", "manual_reminders", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports", "online_booking", "anamnesis", "digital_terms", "basic_finance", "deposits", "stock_alerts", "automatic_followup", "message_templates", "public_catalog_customization", "multi_user", "commissions", "monthly_reports", "coupons", "returns", "full_client_history", "jewelry_sales_report"],
-  premium: ["clients", "agenda", "procedures", "manual_reminders", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports", "online_booking", "anamnesis", "digital_terms", "basic_finance", "deposits", "stock_alerts", "automatic_followup", "message_templates", "public_catalog_customization", "multi_user", "commissions", "monthly_reports", "coupons", "returns", "full_client_history", "jewelry_sales_report", "advanced_catalog", "featured_products", "promotional_banner", "campaigns", "advanced_finance", "variation_inventory", "visual_search", "alert_center", "courses", "priority_support"]
+  premium: ["clients", "agenda", "procedures", "manual_reminders", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports", "online_booking", "anamnesis", "digital_terms", "basic_finance", "deposits", "stock_alerts", "automatic_followup", "message_templates", "public_catalog_customization", "multi_user", "commissions", "monthly_reports", "coupons", "returns", "full_client_history", "jewelry_sales_report", "advanced_catalog", "catalog_analytics", "featured_products", "promotional_banner", "campaigns", "advanced_finance", "variation_inventory", "visual_search", "alert_center", "courses", "priority_support"]
 };
 
 const DEFAULT_PLANS = [
@@ -122,7 +124,8 @@ const DEFAULT_PLANS = [
     trial_days: 7,
     highlight: true,
     badge: "Mais recomendado",
-    features: PLAN_FEATURES.profissional
+    features: PLAN_FEATURES.profissional,
+    limits: { catalog_plugins: 2 }
   },
   {
     code: "studio",
@@ -131,7 +134,8 @@ const DEFAULT_PLANS = [
     audience: "Estúdios com equipe e venda de joias",
     trial_days: 7,
     highlight: false,
-    features: PLAN_FEATURES.studio
+    features: PLAN_FEATURES.studio,
+    limits: { catalog_plugins: 5 }
   },
   {
     code: "premium",
@@ -140,7 +144,8 @@ const DEFAULT_PLANS = [
     audience: "Operações completas com catálogo avançado",
     trial_days: 7,
     highlight: false,
-    features: PLAN_FEATURES.premium
+    features: PLAN_FEATURES.premium,
+    limits: { catalog_plugins: 12 }
   }
 ];
 

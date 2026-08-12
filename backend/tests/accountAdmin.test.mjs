@@ -6,17 +6,17 @@
 //   - As AÇÕES são testadas por HTTP contra o servidor da suíte, porque é assim
 //     que elas acontecem de verdade (token de plataforma, auditoria, cache
 //     invalidado no processo do servidor).
-//   - As COTAS são testadas dos dois lados. Não existe plano com limite
-//     configurado no seed (todo `limits` é `{}`), então o arquivo cria um plano
-//     temporário com limites e o aplica em DOIS registros: o deste processo,
+//   - As COTAS são testadas dos dois lados. Fora os plugins do Catalog Builder,
+//     os planos de seed não possuem limites operacionais, então o arquivo cria
+//     um plano temporário com limites e o aplica em DOIS registros: o deste processo,
 //     por `loadPlansFromDb()`, para os testes que chamam o serviço direto; e o
 //     do processo do SERVIDOR, pela rota do painel de planos, para os testes
 //     que batem nas rotas guardadas por HTTP — que é como um limite passa a
 //     valer na vida real.
 //
 // O que os testes de rota respondem, no fim, são duas perguntas: a criação para
-// mesmo quando a cota estoura, e — a mais importante — plano SEM limite
-// configurado continua criando tudo, que é o estado de todas as clínicas hoje.
+// mesmo quando a cota estoura, e — a mais importante — plano sem limite
+// operacional configurado continua criando tudo.
 //
 // O plano temporário nasce `is_active = false`: se este arquivo morrer no meio e
 // a limpeza não rodar, ele ainda assim não aparece na vitrine nem no cadastro.
@@ -48,9 +48,9 @@ const ctx = {
   account: null, // clínica das ações do super-admin
   quota: null, // clínica das cotas
   quotaProfessionalId: null,
-  // Clínica de PLANO DE SEED, com `limits` vazio — o estado de todas as clínicas
-  // reais hoje. É ela que prova que ligar os guards não passou a bloquear
-  // ninguém: é o requisito mais forte desta entrega.
+  // Clínica de plano seed. O Profissional tem apenas a cota específica de
+  // plugins do catálogo; ela prova que os guards operacionais não bloqueiam
+  // criação de dados do dia a dia.
   free: null
 };
 
@@ -203,9 +203,9 @@ test("visão da conta traz clínica, assinatura, plano, uso x cotas e faturas", 
   assert.equal(visao.json.subscription.status, "trial_active");
   assert.ok(Array.isArray(visao.json.invoices));
 
-  // Uma linha por cota do catálogo, todas ilimitadas nos planos de seed.
+  // Uma linha por cota do catálogo; o Essencial não tem limites configurados.
   const chaves = visao.json.usage.map((item) => item.key);
-  assert.deepEqual(chaves, ["users", "clients", "appointments_month", "jewelry_items", "storage_mb"]);
+  assert.deepEqual(chaves, ["users", "clients", "appointments_month", "jewelry_items", "catalog_plugins", "storage_mb"]);
   assert.ok(visao.json.usage.every((item) => item.unlimited === true));
   // Ilimitado não impede medir: a tela precisa mostrar o número mesmo assim.
   assert.equal(visao.json.usage.find((item) => item.key === "users").used, 1);
@@ -530,11 +530,9 @@ function dataFutura(dias = 20) {
 
 // O TESTE MAIS IMPORTANTE DESTA ENTREGA.
 //
-// Nenhum plano de seed tem `limits` — todos são `{}` — e é assim que estão TODAS
-// as clínicas em produção hoje. Ligar os guards nas rotas de criação não pode
-// ter começado a bloquear nenhuma delas. Este teste percorre as quatro rotas
-// guardadas numa clínica de plano normal e exige 201 em todas.
-test("plano sem limites configurados: as quatro rotas guardadas continuam criando", async () => {
+// A cota de plugins do catálogo não pode afetar cadastros operacionais. Este
+// teste percorre as quatro rotas guardadas num plano Profissional e exige 201.
+test("cota de plugins não bloqueia as quatro rotas operacionais guardadas", async () => {
   const api = clinicApi(ctx.free);
   const sufixo = Math.floor(performance.now() * 1000) % 1000000;
 
@@ -583,9 +581,11 @@ test("plano sem limites configurados: as quatro rotas guardadas continuam criand
   });
   assert.equal(agendamento.status, 201, JSON.stringify(agendamento.json));
 
-  // E o painel confirma o porquê: plano de seed não tem cota nenhuma.
+  // E o painel confirma o porquê: as cotas operacionais seguem ilimitadas;
+  // `catalog_plugins` é uma cota separada, aplicada no Catalog Builder.
   const relatorio = await tenantUsageReport(ctx.free.id, "profissional");
-  assert.ok(relatorio.every((linha) => linha.unlimited === true), JSON.stringify(relatorio));
+  assert.ok(relatorio.filter((linha) => linha.key !== "catalog_plugins").every((linha) => linha.unlimited === true), JSON.stringify(relatorio));
+  assert.equal(relatorio.find((linha) => linha.key === "catalog_plugins")?.limit, 2);
 });
 
 test("com cota estourada, as rotas de criação param — e a mensagem diz o que fazer", async () => {

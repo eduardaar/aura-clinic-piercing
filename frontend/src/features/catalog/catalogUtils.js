@@ -153,6 +153,7 @@ export function defaultContentSection(order) {
     text: "Use este espaço para explicar materiais, cuidados, medidas, anodização, curadoria ou diferenciais da Aura Clinic.",
     media_type: "image",
     media_url: "https://images.unsplash.com/photo-1602751584552-8ba73aad10e1?auto=format&fit=crop&w=1200&q=85",
+    media_alt: "Joia para piercing em destaque",
     button_text: "Agendar atendimento",
     button_link: "/agendar",
     active: true,

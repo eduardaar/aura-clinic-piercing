@@ -861,6 +861,53 @@ CREATE TABLE IF NOT EXISTS catalog_layout_history (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Catalog Builder v2 -------------------------------------------------------
+--
+-- As tabelas acima continuam existindo porque são a fonte legada e porque
+-- alguns módulos operacionais ainda as consultam. O construtor, porém, não
+-- pode editar a vitrine que está no ar a cada "Salvar rascunho". O documento
+-- completo abaixo separa o rascunho da revisão publicada e deixa cada versão
+-- publicada imutável. Cada schema de tenant recebe seu próprio conjunto destas
+-- tabelas, portanto não há compartilhamento de personalização entre clínicas.
+CREATE TABLE IF NOT EXISTS catalog_customization_drafts (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  version INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
+  snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_by INTEGER REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS catalog_customization_revisions (
+  id SERIAL PRIMARY KEY,
+  version INTEGER NOT NULL UNIQUE CHECK (version > 0),
+  action TEXT NOT NULL CHECK (action IN ('publish', 'rollback')),
+  source_revision_id INTEGER REFERENCES catalog_customization_revisions(id),
+  snapshot JSONB NOT NULL,
+  published_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_by INTEGER REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_catalog_customization_revisions_version
+  ON catalog_customization_revisions(version DESC);
+
+-- Biblioteca de mídia do Catalog Builder. A tabela vive no schema da clínica;
+-- por isso a listagem e a edição de alt text jamais atravessam tenants.
+CREATE TABLE IF NOT EXISTS catalog_media_assets (
+  id SERIAL PRIMARY KEY,
+  url TEXT NOT NULL,
+  storage_key TEXT NOT NULL,
+  original_name TEXT NOT NULL DEFAULT '',
+  mime_type TEXT NOT NULL,
+  alt_text TEXT NOT NULL DEFAULT '',
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_catalog_media_assets_created
+  ON catalog_media_assets(created_at DESC, id DESC);
+
 CREATE TABLE IF NOT EXISTS catalog_events (
   id SERIAL PRIMARY KEY,
   event_type TEXT NOT NULL CHECK (event_type IN ('catalog_view', 'product_view', 'product_selected', 'checkout_started', 'booking_created')),

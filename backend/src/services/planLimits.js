@@ -128,6 +128,19 @@ const MEASURERS = {
     return Number(row?.total || 0);
   },
 
+  async catalog_plugins(db) {
+    const row = await db.get(
+      `SELECT COUNT(*)::int AS total
+         FROM catalog_customization_drafts d
+         CROSS JOIN LATERAL jsonb_array_elements(
+           CASE WHEN jsonb_typeof(d.snapshot->'plugins') = 'array' THEN d.snapshot->'plugins' ELSE '[]'::jsonb END
+         ) AS plugin(instance)
+        WHERE d.id = 1
+          AND COALESCE(plugin.instance->>'enabled', 'true') NOT IN ('false', '0')`
+    );
+    return Number(row?.total || 0);
+  },
+
   // APROXIMAÇÃO ASSUMIDA, e não um número exato disfarçado.
   //
   // Hoje é impossível medir o espaço real de uma clínica: os arquivos são

@@ -97,13 +97,18 @@ Legenda de cada linha: **método + caminho — [AUTH|PÚBLICO] — tenant — pr
 - `PATCH /api/post-care/:id` — **AUTH** — **multipart** (`client_photo`) — corpo: `care_message`, `healing_status`, `client_notes`, `status` — resposta: acompanhamento atualizado.
 
 ## Catálogo público e customização (`routes/catalog.js`)
-- `GET /api/catalog` — **PÚBLICO** (aceita `?t=<slug>`/`X-Tenant`) — resposta: catálogo público (`settings`, `theme`, `banners`, destaques, promoções, categorias, `items[]`; campos privados ocultos).
-- `GET /api/catalog-customization` — **AUTH** (role: admin, reception) — resposta: customização + `products` + `inventoryOptions`.
-- `PATCH /api/catalog-customization` — **AUTH** (role: admin, reception) — corpo: objeto de customização — resposta: customização atualizada.
-- `POST /api/catalog-customization/publish` — **AUTH** (role: admin, reception) — corpo: customização — resposta: `{ ok:true, published_at, ... }`.
-- `POST /api/catalog-customization/reset` — **AUTH** (role: admin) — resposta: customização resetada.
-- `GET /api/catalog-settings` — **AUTH** (role: admin, reception) — resposta: settings + categorias.
-- `PATCH /api/catalog-settings` — **AUTH** (role: admin, reception) — corpo (allowlist): `title`, `subtitle`, `hero_*`, `categories`, `whatsapp_phone`, `whatsapp_message`, `company_*`, `layout_style` — resposta: settings atualizados.
+- `GET /api/catalog` — **PÚBLICO** (aceita `?t=<slug>`/`X-Tenant`) — resposta: catálogo público da revisão publicada (`settings`, `theme`, `banners`, destaques, promoções, `catalogSections`, `plugins`, `version`, categorias e `items[]`; campos privados ocultos).
+- `GET /api/catalog-customization` — **AUTH** (role: admin, reception) — resposta: rascunho editável + `products`, `inventoryOptions` e `version` (`draft`, `published` e lock otimista).
+- `PATCH /api/catalog-customization` — **AUTH** (role: admin, reception) — corpo: patch ou objeto completo + `expected_draft_version` opcional; salva **somente o rascunho**. Aceita `plugins:[{id?,pluginId,enabled,config}]` apenas do registro nativo; configuração insegura retorna `422 catalog_plugins_invalid`, feature indisponível retorna `403 catalog_plugin_feature_unavailable` e cota atingida retorna `409 catalog_plugin_limit_reached`. Conflito de versão retorna `409 catalog_version_conflict`.
+- `GET /api/catalog-media` — **AUTH** (role: admin, reception) — lista a biblioteca de imagens do tenant.
+- `POST /api/catalog-media` — **AUTH** (role: admin, reception) — recebe `multipart/form-data` com `file`, valida o conteúdo e registra mídia pública do catálogo.
+- `PATCH /api/catalog-media/:id` — **AUTH** (role: admin, reception) — atualiza `{ alt_text }` de um asset da própria clínica.
+- `POST /api/catalog-customization/publish` — **AUTH** (role: admin, reception) — corpo: patch/opcional + versão esperada; cria revisão publicada imutável e responde `{ ok:true, published_at, revision, checklist, ...customization }`. Erros do checklist retornam `422 catalog_publish_blocked` e não criam revisão.
+- `GET /api/catalog-customization/history` e `GET /api/catalog-customization/history/:version` — **AUTH** — lista revisões ou retorna seu snapshot.
+- `POST /api/catalog-customization/rollback/:version` — **AUTH** (role: admin, reception) — corpo: `expected_draft_version`, `expected_published_version`; publica uma cópia da revisão escolhida sem apagar o histórico.
+- `POST /api/catalog-customization/reset` — **AUTH** (role: admin) — repõe somente o rascunho padrão; a vitrine publicada permanece intacta.
+- `GET /api/catalog-settings` — **AUTH** (role: admin, reception) — atalho compatível que devolve os settings do rascunho + categorias e versão.
+- `PATCH /api/catalog-settings` — **AUTH** (role: admin, reception) — atalho compatível para settings permitidos; salva somente o rascunho e aceita `expected_draft_version`.
 
 ## Booking público (`routes/booking.js`, prefixo `/api/booking`, todas PÚBLICAS)
 - `GET /api/booking/config` — **PÚBLICO** (usa `X-Tenant`) — resposta: `{ services, professionals, rules }`.

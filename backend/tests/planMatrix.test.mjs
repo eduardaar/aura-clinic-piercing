@@ -19,6 +19,8 @@ test("recursos avançados ficam somente nos planos previstos", () => {
   assert.ok(!PLAN_FEATURES.profissional.includes("coupons"));
   assert.ok(PLAN_FEATURES.premium.includes("campaigns"));
   assert.ok(PLAN_FEATURES.premium.includes("visual_search"));
+  assert.ok(PLAN_FEATURES.premium.includes("catalog_analytics"));
+  assert.ok(!PLAN_FEATURES.studio.includes("catalog_analytics"));
   assert.ok(PLAN_FEATURES.premium.includes("advanced_finance"));
   assert.ok(!PLAN_FEATURES.studio.includes("campaigns"));
 });

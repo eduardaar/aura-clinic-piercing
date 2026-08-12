@@ -72,7 +72,7 @@ VALUES
   ('start', 'Pacote Start', 3990, 'Piercers iniciantes ou autônomos', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports"]'::jsonb, false),
   ('profissional', 'Pacote Profissional', 6990, 'Estúdios que querem agendamento online e ficha digital', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","anamnesis","digital_terms","basic_finance","deposits","stock_alerts","automatic_followup","message_templates","public_catalog_customization"]'::jsonb, true),
   ('studio', 'Pacote Studio', 9990, 'Estúdios com equipe e venda de joias', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","anamnesis","digital_terms","basic_finance","deposits","stock_alerts","automatic_followup","message_templates","public_catalog_customization","multi_user","commissions","monthly_reports","coupons","returns","full_client_history","jewelry_sales_report"]'::jsonb, false),
-  ('premium', 'Pacote Premium', 14990, 'Operações completas com catálogo avançado', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","anamnesis","digital_terms","basic_finance","deposits","stock_alerts","automatic_followup","message_templates","public_catalog_customization","multi_user","commissions","monthly_reports","coupons","returns","full_client_history","jewelry_sales_report","advanced_catalog","featured_products","promotional_banner","campaigns","advanced_finance","variation_inventory","alert_center","courses","priority_support"]'::jsonb, false)
+  ('premium', 'Pacote Premium', 14990, 'Operações completas com catálogo avançado', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","anamnesis","digital_terms","basic_finance","deposits","stock_alerts","automatic_followup","message_templates","public_catalog_customization","multi_user","commissions","monthly_reports","coupons","returns","full_client_history","jewelry_sales_report","advanced_catalog","catalog_analytics","featured_products","promotional_banner","campaigns","advanced_finance","variation_inventory","alert_center","courses","priority_support"]'::jsonb, false)
 -- DO NOTHING, e não DO UPDATE.
 --
 -- Este INSERT é SEMENTE: popula os planos no primeiro boot e nunca mais toca
@@ -348,6 +348,23 @@ ON CONFLICT (section_key) DO NOTHING;
 -- coluna por limite exigiria migration a cada ideia nova.
 ALTER TABLE platform.subscription_plans ADD COLUMN IF NOT EXISTS limits JSONB NOT NULL DEFAULT '{}'::jsonb;
 
+-- Limites iniciais do Catalog Builder. Só completa uma chave ausente: um valor
+-- definido no painel pelo super-admin continua sendo a fonte da verdade.
+UPDATE platform.subscription_plans
+   SET limits = jsonb_set(COALESCE(limits, '{}'::jsonb), '{catalog_plugins}', to_jsonb(2), true)
+ WHERE code = 'profissional'
+   AND NOT (COALESCE(limits, '{}'::jsonb) ? 'catalog_plugins');
+
+UPDATE platform.subscription_plans
+   SET limits = jsonb_set(COALESCE(limits, '{}'::jsonb), '{catalog_plugins}', to_jsonb(5), true)
+ WHERE code = 'studio'
+   AND NOT (COALESCE(limits, '{}'::jsonb) ? 'catalog_plugins');
+
+UPDATE platform.subscription_plans
+   SET limits = jsonb_set(COALESCE(limits, '{}'::jsonb), '{catalog_plugins}', to_jsonb(12), true)
+ WHERE code = 'premium'
+   AND NOT (COALESCE(limits, '{}'::jsonb) ? 'catalog_plugins');
+
 -- Plano desativado some da vitrine e do cadastro, mas continua valendo para
 -- quem já assina. É o "excluir" seguro: apagar de verdade um plano com
 -- assinante quebraria a FK de tenant_subscriptions — e, pior, deixaria clínicas
@@ -466,6 +483,13 @@ UPDATE platform.subscription_plans
    SET features = features || '["visual_search"]'::jsonb
  WHERE code = 'premium'
    AND NOT (features @> '["visual_search"]'::jsonb);
+
+-- Google Analytics é uma integração premium. O reparo é cumulativo e não
+-- remove escolhas personalizadas do painel de planos.
+UPDATE platform.subscription_plans
+   SET features = features || '["catalog_analytics"]'::jsonb
+ WHERE code = 'premium'
+   AND NOT (features @> '["catalog_analytics"]'::jsonb);
 
 -- Recebimentos por período: "recebido no mês", a série mensal e a receita por
 -- plano (services/platformFinance.js) filtram por faixa de `paid_at`, e não

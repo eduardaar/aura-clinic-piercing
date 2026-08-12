@@ -32,7 +32,7 @@ Copie `backend/.env.example` para `backend/.env` e ajuste. Variáveis principais
 | `DATABASE_URL` | Conexão Postgres, ex.: `postgres://postgres:SENHA@localhost:5432/aura_clinic` (obrigatória). |
 | `DATABASE_SSL` | `true` para exigir SSL na conexão. |
 | `AUTH_SECRET` | Segredo dos tokens HMAC. Obrigatório em produção; o boot recusa o default de dev em produção. Gere com `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. |
-| `CORS_ORIGIN` | Origem(ns) do frontend permitida(s) no CORS (separadas por vírgula), ex.: `http://localhost:5173`. |
+| `CORS_ORIGIN` | Origem(ns) do frontend permitida(s) no CORS (separadas por vírgula), ex.: `http://localhost:5174`. |
 | **Multi-tenant** | |
 | `DEFAULT_TENANT` | Clínica assumida quando a requisição não traz token nem `X-Tenant` (ex.: `aura`). Útil em dev; **omita** em produção multi-clínica para exigir `X-Tenant` explícito. |
 | `PLATFORM_ADMIN_EMAIL` / `PLATFORM_ADMIN_PASSWORD` | Super-admin da plataforma, semeado no primeiro boot se não houver nenhum. **Obrigatórias em produção** (sem elas o boot não cria credenciais padrão). |
@@ -66,12 +66,12 @@ Ou individualmente:
 
 ```bash
 npm --prefix backend run dev     # API em :4000 (node --watch)
-npm --prefix frontend run dev    # SPA em :5173 (vite)
+npm --prefix frontend run dev    # SPA em :5174 (vite)
 ```
 
 Acesse:
 
-- Frontend: `http://localhost:5173`
+- Frontend: `http://localhost:5174`
 - API: `http://localhost:4000`
 - Health check: `http://localhost:4000/api/health` e `/api/health/db`
 

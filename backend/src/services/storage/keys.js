@@ -17,7 +17,7 @@
 
 // Categorias aceitas no bucket público. Lista fechada de propósito: categoria
 // livre vira lixeira ("img", "imgs", "images") e ninguém mais acha nada.
-export const PUBLIC_CATEGORIES = ["joias", "catalogo", "banners", "logo", "geral"];
+export const PUBLIC_CATEGORIES = ["joias", "catalogo", "catalog", "banners", "logo", "geral"];
 export const DEFAULT_PUBLIC_CATEGORY = "geral";
 
 // Prefixos de quem não é clínica.
