@@ -358,6 +358,15 @@ INSERT INTO platform.landing_sections (section_key, enabled, sort_order, content
     "cta_href": "/cadastro"
   }'::jsonb),
 
+  ('about', true, 30, '{
+    "kicker": "Sobre nós",
+    "title": "Tecnologia feita para a rotina de quem atende.",
+    "aura_title": "Aura Clinic",
+    "aura_text": "A Aura Clinic é a plataforma de gestão criada para estúdios de piercing organizarem agenda, clientes, catálogo, estoque, financeiro e comunicação em um só lugar.",
+    "monitence_title": "Monitence",
+    "monitence_text": "A Monitence desenvolve produtos digitais que tornam operações de serviço mais simples, conectadas e preparadas para crescer."
+  }'::jsonb),
+
   ('showcase_links', true, 50, '{
     "title": "Veja quem já usa",
     "subtitle": "Explore as vitrines públicas das clínicas na plataforma.",

@@ -28,6 +28,10 @@ const SECTION_INFO = {
     name: "Recursos do sistema",
     hint: "Os quatro cards que explicam o que a plataforma faz.",
   },
+  about: {
+    name: "Sobre a Aura e Monitence",
+    hint: "Apresentação institucional exibida entre os recursos e os planos.",
+  },
   carousel: {
     name: "Carrossel de imagens",
     hint: "Faixa de fotos que passam sozinhas. Nasce desligado.",
@@ -632,6 +636,17 @@ function SectionFields({ sectionKey, content, onChange, upload }) {
         )}
       </div>
     );
+  }
+
+  if (sectionKey === "about") {
+    return <div className="stack">
+      <div className="form-grid">
+        <Input label="Etiqueta" value={content.kicker || ""} onChange={(value) => set({ kicker: value })} />
+        <Input label="Título da seção" value={content.title || ""} onChange={(value) => set({ title: value })} />
+      </div>
+      <section className="panel stack"><div className="panel-heading"><div><h3>Produto</h3><p>Como a Aura Clinic se apresenta.</p></div></div><Input label="Nome" value={content.aura_title || ""} onChange={(value) => set({ aura_title: value })} /><Textarea label="Texto" value={content.aura_text || ""} onChange={(value) => set({ aura_text: value })} /></section>
+      <section className="panel stack"><div className="panel-heading"><div><h3>Empresa</h3><p>Como a Monitence se apresenta.</p></div></div><Input label="Nome" value={content.monitence_title || ""} onChange={(value) => set({ monitence_title: value })} /><Textarea label="Texto" value={content.monitence_text || ""} onChange={(value) => set({ monitence_text: value })} /></section>
+    </div>;
   }
 
   if (sectionKey === "carousel") {

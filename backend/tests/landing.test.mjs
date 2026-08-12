@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { req, platformLogin, createTenant, loginTenant, deleteTenant } from "./helpers.mjs";
 
-const KEYS = ["hero", "features", "carousel", "plans", "showcase_links", "closing"];
+const KEYS = ["hero", "features", "about", "carousel", "plans", "showcase_links", "closing"];
 
 test("Landing: conteúdo público e editor da plataforma", async (t) => {
   const platformToken = await platformLogin();
@@ -132,7 +132,7 @@ test("Landing: conteúdo público e editor da plataforma", async (t) => {
   });
 
   await t.test("reordena", async () => {
-    const nova = ["closing", "hero", "features", "carousel", "plans", "showcase_links"];
+    const nova = ["closing", "hero", "features", "about", "carousel", "plans", "showcase_links"];
     const { status, json } = await req("/platform/landing/order", {
       ...plt,
       method: "PATCH",

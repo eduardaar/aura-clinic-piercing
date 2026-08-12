@@ -83,6 +83,15 @@ export const LANDING_DEFAULTS = {
     cta_href: "/cadastro"
   },
 
+  about: {
+    kicker: "Sobre nós",
+    title: "Tecnologia feita para a rotina de quem atende.",
+    aura_title: "Aura Clinic",
+    aura_text: "A Aura Clinic é a plataforma de gestão criada para estúdios de piercing organizarem agenda, clientes, catálogo, estoque, financeiro e comunicação em um só lugar.",
+    monitence_title: "Monitence",
+    monitence_text: "A Monitence desenvolve produtos digitais que tornam operações de serviço mais simples, conectadas e preparadas para crescer."
+  },
+
   closing: {
     title: "Pronto para profissionalizar seu estúdio?",
     primary_label: "Criar minha clínica",
@@ -108,6 +117,7 @@ export const LANDING_DEFAULTS = {
 export const DEFAULT_LANDING_SECTIONS = [
   { section_key: "hero", enabled: true, sort_order: 10, content: LANDING_DEFAULTS.hero },
   { section_key: "features", enabled: true, sort_order: 20, content: LANDING_DEFAULTS.features },
+  { section_key: "about", enabled: true, sort_order: 30, content: LANDING_DEFAULTS.about },
   { section_key: "plans", enabled: true, sort_order: 40, content: LANDING_DEFAULTS.plans },
   { section_key: "closing", enabled: true, sort_order: 60, content: LANDING_DEFAULTS.closing }
 ];

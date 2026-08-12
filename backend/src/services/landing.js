@@ -11,6 +11,7 @@ import { pool, query } from "../database/connection.js";
 export const SECTION_KEYS = [
   "hero",
   "features",
+  "about",
   "carousel",
   "plans",
   "showcase_links",

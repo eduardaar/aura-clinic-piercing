@@ -167,6 +167,21 @@ function FeaturesSection({ content }) {
   );
 }
 
+function AboutSection({ content }) {
+  return <section className="au-l-about" id="sobre">
+    <div className="au-l-about-inner">
+      <div className="au-l-sec-head">
+        {content.kicker && <span className="au-l-kicker">{content.kicker}</span>}
+        <h2>{content.title}</h2>
+      </div>
+      <div className="au-l-about-grid">
+        <article><span>Produto</span><h3>{content.aura_title}</h3><p>{content.aura_text}</p></article>
+        <article><span>Quem desenvolve</span><h3>{content.monitence_title}</h3><p>{content.monitence_text}</p></article>
+      </div>
+    </div>
+  </section>;
+}
+
 // Faixa de valor comercial entre os recursos e a escolha de plano. Não é mais
 // um card: o contraste intencional cria pausa na rolagem e explica por que o
 // Aura resolve a operação inteira, não apenas a agenda.
@@ -420,6 +435,7 @@ function ClosingSection({ content }) {
 const SECTION_COMPONENTS = {
   hero: HeroSection,
   features: FeaturesSection,
+  about: AboutSection,
   carousel: CarouselSection,
   plans: PlansSection,
   closing: ClosingSection
