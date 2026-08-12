@@ -81,17 +81,17 @@ const planOptions = (tenants) =>
 // Áreas do painel. A landing é conteúdo público da plataforma, não cadastro de
 // clínica: são duas tarefas distintas e cada uma tem sua aba.
 const TABS = [
+  ["dashboard", "Dashboard"],
   ["contas", "Clínicas"],
   ["planos", "Planos"],
-  ["financeiro", "Financeiro"],
   ["suporte", "Suporte"],
   ["landing", "Landing pública"],
 ];
 
 const TAB_HEADINGS = {
+  dashboard: { title: "Dashboard", subtitle: "Receita, caixa, cobranças e evolução financeira da plataforma." },
   contas: { title: "Clínicas", subtitle: "Cadastro, plano, assinatura, uso e faturas de cada cliente." },
   planos: { title: "Planos", subtitle: "Preço, recursos e limites dos planos vendidos pela plataforma." },
-  financeiro: { title: "Financeiro da plataforma", subtitle: "MRR, caixa do mês, inadimplência e vencimentos das assinaturas." },
   suporte: { title: "Suporte", subtitle: "Chamados abertos pelas clínicas." },
   landing: { title: "Landing pública", subtitle: "Edite os blocos da página inicial em /." },
 };
@@ -104,7 +104,7 @@ const ABAS_COM_RASCUNHO = ["landing", "planos"];
 
 export function PlatformAdmin() {
   const [session, setSession] = useState(readPlatformSession);
-  const [tab, setTab] = useState("contas");
+  const [tab, setTab] = useState("dashboard");
   const [accountsRefresh, setAccountsRefresh] = useState(0);
   const [visitadas, setVisitadas] = useState(() => new Set());
   // Recarrega o contador de chamados abertos no selo da aba depois de o
@@ -418,11 +418,6 @@ export function PlatformAdmin() {
           <h1>{TAB_HEADINGS[tab].title}</h1>
           <p>{TAB_HEADINGS[tab].subtitle}</p>
         </div>
-        <div className="topbar-actions">
-          <Button variant="secondary" onClick={clearPlatformSession}>
-            <LogOut size={16} /> Sair
-          </Button>
-        </div>
         <nav className="platform-tabs" aria-label="Áreas do painel">
           {TABS.map(([id, label]) => (
             <button
@@ -447,6 +442,9 @@ export function PlatformAdmin() {
               )}
             </button>
           ))}
+          <button type="button" className="platform-logout" onClick={clearPlatformSession}>
+            <LogOut size={16} aria-hidden="true" /> Sair
+          </button>
         </nav>
       </header>
 
@@ -471,7 +469,7 @@ export function PlatformAdmin() {
 
         {tab === "contas" && <AccountsAdmin token={token} onUnauthorized={clearPlatformSession} onCreate={openCreate} refreshKey={accountsRefresh} />}
 
-        {tab === "financeiro" && <PlatformFinance token={token} onUnauthorized={clearPlatformSession} />}
+        {tab === "dashboard" && <PlatformFinance token={token} onUnauthorized={clearPlatformSession} />}
 
         {tab === "suporte" && (
           <SupportInbox

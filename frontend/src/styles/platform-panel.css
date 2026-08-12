@@ -72,6 +72,15 @@
     border-bottom-color: var(--black);
   }
 
+  .platform-tabs .platform-logout {
+    margin-left: auto;
+    color: #a33a3a;
+  }
+
+  .platform-tabs .platform-logout:hover {
+    color: #7d2424;
+  }
+
   /* Contador de pendências na própria aba (ex.: chamados abertos). */
   .platform-tabs .tab-count {
     min-width: 20px;
