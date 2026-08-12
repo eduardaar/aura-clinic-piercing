@@ -934,12 +934,12 @@ export function BookingAdmin({ onBack, initialTab }) {
   const { data: blocks } = useFetch("/schedule-blocks");
   const { data: appointments } = useFetch("/appointments?status=pendente");
   // Serviço, procedimento e profissional alimentam também "/options" (usado nos
-  // formulários da agenda: salvar num lugar atualiza as dependências do outro.
+  // Os cadastros daqui também alimentam o checklist do Onboarding.
   const invalidate = useApiInvalidate();
-  const refreshServices = () => invalidate("/services", "/options");
-  const refreshProcedures = () => invalidate("/procedures", "/options");
-  const refreshProfessionals = () => invalidate("/professionals", "/options");
-  const refreshAvailability = () => invalidate("/availability");
+  const refreshServices = () => invalidate("/services", "/options", "/booking/readiness");
+  const refreshProcedures = () => invalidate("/procedures", "/options", "/booking/readiness");
+  const refreshProfessionals = () => invalidate("/professionals", "/options", "/booking/readiness");
+  const refreshAvailability = () => invalidate("/availability", "/booking/readiness");
   const refreshBlocks = () => invalidate("/schedule-blocks", "/availability");
   const refreshAppointments = () => invalidate("/appointments", "/dashboard");
   const [tab, setTab] = useState(initialTab || "servicos");
@@ -1230,36 +1230,6 @@ export function BookingAdmin({ onBack, initialTab }) {
         refreshAvailability();
       }
     });
-  }
-
-  async function updateAvailability(item, patch) {
-    await apiFetch(`/availability/${item.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...item, ...patch })
-    });
-    refreshAvailability();
-  }
-
-  async function createDefaultAvailability(professionalId) {
-    if (!professionalId) return;
-    await apiFetch("/availability/generate-weekly", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        professional_id: professionalId,
-        is_active: true,
-        start_time: "09:00",
-        end_time: "18:00",
-        lunch_start: "12:00",
-        lunch_end: "13:00",
-        duration_minutes: 40,
-        buffer_minutes: 10,
-        weekdays: [1, 2, 3, 4, 5, 6]
-      })
-    });
-    setWeeklyProfessionalId(String(professionalId));
-    refreshAvailability();
   }
 
   async function saveWeeklyAvailability(event) {
@@ -1591,67 +1561,40 @@ export function BookingAdmin({ onBack, initialTab }) {
         </div>
       )}
       {tab === "horarios" && (
-        <div className="stack">
-          <article className="panel">
-            <div className="panel-heading">
-              <h2>Agenda semanal</h2>
-              <span>Defina os horários fixos de cada profissional.</span>
-            </div>
-            {readinessMessage && <p className={readinessMessage.includes("sucesso") ? "form-success" : "form-error"}>{readinessMessage}</p>}
-            <form onSubmit={saveWeeklyAvailability}>
-              <div className="form-grid">
-                <Select label="Profissional" value={weeklyProfessionalId} onChange={(value) => setWeeklyProfessionalId(value)}>
-                  <option value="">Escolha um profissional</option>
-                  {activeProfessionals.map((professional) => <option value={professional.id} key={professional.id}>{professional.name}</option>)}
-                </Select>
-              </div>
-              <div className="availability-grid">
-                {weeklyWeekdays.map((weekday) => (
-                  <article className="panel availability-card" key={weekday}>
-                    <div className="panel-heading"><h2>{weekdayLabel(weekday)}</h2><span>{weekday === 0 ? "Indisponível por padrão" : "Horário semanal"}</span></div>
-                    <Toggle label="Atende neste dia" checked={Boolean(weeklyDays.find((day) => day.weekday === weekday)?.is_active)} onChange={(value) => updateWeeklyDay(weekday, { is_active: value })} />
-                    <div className="form-grid">
-                      <Input label="Início" value={weeklyDays.find((day) => day.weekday === weekday)?.start_time || "09:00"} onChange={(value) => updateWeeklyDay(weekday, { start_time: value })} />
-                      <Input label="Final" value={weeklyDays.find((day) => day.weekday === weekday)?.end_time || "18:00"} onChange={(value) => updateWeeklyDay(weekday, { end_time: value })} />
-                      <Input label="Almoço início" value={weeklyDays.find((day) => day.weekday === weekday)?.lunch_start || ""} onChange={(value) => updateWeeklyDay(weekday, { lunch_start: value })} />
-                      <Input label="Almoço final" value={weeklyDays.find((day) => day.weekday === weekday)?.lunch_end || ""} onChange={(value) => updateWeeklyDay(weekday, { lunch_end: value })} />
-                      <Input type="number" label="Duração padrão" value={weeklyDays.find((day) => day.weekday === weekday)?.duration_minutes || 40} onChange={(value) => updateWeeklyDay(weekday, { duration_minutes: value })} />
-                      <Input type="number" label="Intervalo" value={weeklyDays.find((day) => day.weekday === weekday)?.buffer_minutes || 10} onChange={(value) => updateWeeklyDay(weekday, { buffer_minutes: value })} />
-                    </div>
-                  </article>
-                ))}
-              </div>
-              <p className="empty-state">Domingo fica desligado por padrão. Para liberar apenas uma data específica, crie um horário especial em Disponibilidade avançada.</p>
-              <Button variant="primary" type="submit">Salvar disponibilidade individual</Button>
-            </form>
-          </article>
-          <div className="availability-grid">
-            {!safeAvailability.length && (
-              <article className="panel availability-card">
-                <div className="panel-heading"><h2>Sem horários cadastrados</h2><span>Seu agendamento online ainda não está pronto.</span></div>
-                <p className="empty-state">Cadastre primeiro os profissionais, serviços e procedimentos. Depois gere a agenda semanal.</p>
-                <Select label="Gerar semana padrão para" value="" onChange={createDefaultAvailability}>
-                  <option value="">Escolha um profissional</option>
-                  {activeProfessionals.map((professional) => <option value={professional.id} key={professional.id}>{professional.name}</option>)}
-                </Select>
-              </article>
-            )}
-            {safeAvailability.map((item) => (
-              <article className="panel availability-card" key={item.id}>
-                <div className="panel-heading"><h2>{weekdayLabel(item.weekday)}</h2><span>{item.professional_name}</span></div>
-                <Toggle label="Atende neste dia" checked={item.is_active} onChange={(value) => updateAvailability(item, { is_active: value })} />
-                <div className="form-grid">
-                  <Input label="Início" value={item.start_time} onChange={(value) => updateAvailability(item, { start_time: value })} />
-                  <Input label="Final" value={item.end_time} onChange={(value) => updateAvailability(item, { end_time: value })} />
-                  <Input label="Almoço início" value={item.lunch_start || ""} onChange={(value) => updateAvailability(item, { lunch_start: value })} />
-                  <Input label="Almoço final" value={item.lunch_end || ""} onChange={(value) => updateAvailability(item, { lunch_end: value })} />
-                  <Input type="number" label="Duração padrão" value={item.duration_minutes} onChange={(value) => updateAvailability(item, { duration_minutes: value })} />
-                  <Input type="number" label="Intervalo" value={item.buffer_minutes} onChange={(value) => updateAvailability(item, { buffer_minutes: value })} />
-                </div>
-              </article>
-            ))}
+        <article className="panel weekly-schedule-panel">
+          <div className="panel-heading">
+            <div><h2>Agenda semanal</h2><span>Escolha o profissional e defina os dias e horários de atendimento.</span></div>
           </div>
-        </div>
+          {readinessMessage && <p className={readinessMessage.includes("sucesso") ? "form-success" : "form-error"}>{readinessMessage}</p>}
+          <form onSubmit={saveWeeklyAvailability}>
+            <div className="weekly-schedule-toolbar">
+              <Select label="Profissional" value={weeklyProfessionalId} onChange={(value) => setWeeklyProfessionalId(value)}>
+                <option value="">Escolha um profissional</option>
+                {activeProfessionals.map((professional) => <option value={professional.id} key={professional.id}>{professional.name}</option>)}
+              </Select>
+              <Button variant="primary" type="submit" disabled={!weeklyProfessionalId}>Salvar agenda semanal</Button>
+            </div>
+            <div className="weekly-schedule-list">
+              {weeklyWeekdays.map((weekday) => {
+                const day = weeklyDays.find((item) => Number(item.weekday) === weekday) || defaultWeeklyDay(weekday);
+                const active = Boolean(day.is_active);
+                return <article className={`weekly-schedule-row ${active ? "" : "is-inactive"}`} key={weekday}>
+                  <label className="weekly-day-toggle"><input type="checkbox" checked={active} onChange={(event) => updateWeeklyDay(weekday, { is_active: event.target.checked })} /><span><strong>{weekdayLabel(weekday)}</strong><small>{active ? "Atende" : "Fechado"}</small></span></label>
+                  <label><span>Início</span><input type="time" value={day.start_time || "09:00"} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { start_time: event.target.value })} /></label>
+                  <label><span>Fim</span><input type="time" value={day.end_time || "18:00"} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { end_time: event.target.value })} /></label>
+                  <label><span>Pausa</span><input type="time" value={day.lunch_start || ""} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { lunch_start: event.target.value })} /></label>
+                  <label><span>Retorno</span><input type="time" value={day.lunch_end || ""} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { lunch_end: event.target.value })} /></label>
+                  <details className="weekly-schedule-advanced">
+                    <summary>Ajustes</summary>
+                    <label><span>Duração (min.)</span><input type="number" min="1" value={day.duration_minutes || 40} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { duration_minutes: event.target.value })} /></label>
+                    <label><span>Intervalo (min.)</span><input type="number" min="0" value={day.buffer_minutes || 10} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { buffer_minutes: event.target.value })} /></label>
+                  </details>
+                </article>;
+              })}
+            </div>
+            <p className="field-optional">Domingo começa fechado. Para exceções pontuais, use Disponibilidade avançada.</p>
+          </form>
+        </article>
       )}
 
       {tab === "bloqueios" && (
