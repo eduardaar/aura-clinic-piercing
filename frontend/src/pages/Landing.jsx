@@ -160,19 +160,26 @@ function FeaturesSection({ content }) {
 // Faixa de valor comercial entre os recursos e a escolha de plano. Não é mais
 // um card: o contraste intencional cria pausa na rolagem e explica por que o
 // Aura resolve a operação inteira, não apenas a agenda.
-function PlatformValueSection() {
-  const items = [
-    { icon: Sparkles, title: "Assistente com IA", text: "Crie mensagens, resumos e respostas para ganhar tempo no atendimento." },
-    { icon: MessageCircle, title: "WhatsApp integrado", text: "Centralize lembretes, confirmações e conversas com crédito controlado." },
-    { icon: BellRing, title: "Automação que acompanha", text: "Avise, faça pós-atendimento e mantenha cada cliente no fluxo certo." }
-  ];
+function PlatformValueSection({ placement = "features" }) {
+  const isClosing = placement === "closing";
+  const items = isClosing
+    ? [
+        { icon: Check, title: "Comece sem complicação", text: "Crie a conta, escolha o plano e organize sua operação desde o primeiro dia." },
+        { icon: BellRing, title: "Acompanhe o que importa", text: "Agenda, estoque, vendas e financeiro ficam visíveis em uma rotina só." },
+        { icon: Sparkles, title: "Evolua no seu ritmo", text: "Comece com o essencial e amplie recursos quando o estúdio crescer." }
+      ]
+    : [
+        { icon: Sparkles, title: "Assistente com IA", text: "Crie mensagens, resumos e respostas para ganhar tempo no atendimento." },
+        { icon: MessageCircle, title: "WhatsApp integrado", text: "Centralize lembretes, confirmações e conversas com crédito controlado." },
+        { icon: BellRing, title: "Automação que acompanha", text: "Avise, faça pós-atendimento e mantenha cada cliente no fluxo certo." }
+      ];
   return (
     <section className="au-l-value" id="plataforma">
       <div className="au-l-value-inner">
         <div className="au-l-value-copy">
-          <span className="au-l-kicker">Feito para a rotina real</span>
-          <h2>Mais que agenda: uma operação conectada.</h2>
-          <p>Do primeiro contato à recompra, o Aura organiza atendimento, estoque, financeiro e comunicação em um só lugar.</p>
+          <span className="au-l-kicker">{isClosing ? "Uma plataforma que acompanha" : "Feito para a rotina real"}</span>
+          <h2>{isClosing ? "Organize hoje. Cresça com clareza amanhã." : "Mais que agenda: uma operação conectada."}</h2>
+          <p>{isClosing ? "Você não precisa montar várias ferramentas para administrar o estúdio." : "Do primeiro contato à recompra, o Aura organiza atendimento, estoque, financeiro e comunicação em um só lugar."}</p>
         </div>
         <div className="au-l-value-list">
           {items.map(({ icon: Icon, title, text }) => <article key={title}>
@@ -480,7 +487,7 @@ export function Landing() {
             return [<PlatformValueSection key="platform-value-before-plans" />, rendered];
           }
           if (section.section_key === "closing") {
-            return [<PlatformValueSection key="platform-value-before-closing" />, rendered];
+            return [<PlatformValueSection key="platform-value-before-closing" placement="closing" />, rendered];
           }
           return rendered;
         })}
