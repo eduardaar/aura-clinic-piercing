@@ -29,24 +29,24 @@
   --shell-rail-w: 68px;
   --shell-topbar-h: 72px;
   --shell-gutter: 24px;
-  --shell-nav: #221812;
-  --shell-nav-2: #17100c;
-  --shell-nav-line: rgb(from var(--gold) r g b / .16);
-  --shell-nav-text: #cbbfb2;
+  --shell-nav: #0d1b2a;
+  --shell-nav-2: #101f31;
+  --shell-nav-line: rgb(255 255 255 / .10);
+  --shell-nav-text: #bdcbd9;
   --shell-break: 900px;
 }
 
 /* O tema pessoal troca a atmosfera do painel inteiro, inclusive o menu fixo.
    O catálogo público preserva sua própria identidade visual e não é afetado. */
 :root[data-aura-theme="blue"] {
-  --shell-nav: #18374f;
-  --shell-nav-2: #10293d;
+  --shell-nav: #123651;
+  --shell-nav-2: #102b42;
   --shell-nav-line: rgba(184, 211, 232, .18);
   --shell-nav-text: #cadce9;
 }
 :root[data-aura-theme="green"] {
-  --shell-nav: #1e3b2a;
-  --shell-nav-2: #162d20;
+  --shell-nav: #173a2b;
+  --shell-nav-2: #123023;
   --shell-nav-line: rgba(190, 218, 198, .18);
   --shell-nav-text: #ceded2;
 }
@@ -139,7 +139,7 @@
   font-weight: 650;
   line-height: 1.22;
   letter-spacing: -0.01em;
-  color: #f2e6d2;
+  color: #f8fafc;
   text-transform: none;
   /* Nome longo trunca em 2 linhas em vez de empurrar o menu para baixo. */
   display: -webkit-box;
@@ -182,7 +182,7 @@
   font-weight: 700;
   letter-spacing: .14em;
   text-transform: uppercase;
-  color: rgba(203, 191, 178, .42);
+  color: rgb(189 203 217 / .46);
 }
 .nav-group-label:first-child { padding-top: 2px; }
 
@@ -219,7 +219,7 @@
 
 .sidebar nav button:hover {
   background: rgba(255, 255, 255, .055);
-  color: #f0e7db;
+  color: #f8fafc;
   transform: none;
 }
 .sidebar nav button:hover svg { opacity: 1; }

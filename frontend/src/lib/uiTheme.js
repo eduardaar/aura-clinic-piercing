@@ -2,8 +2,8 @@ export const UI_THEMES = [
   {
     id: "aura",
     name: "Aura",
-    description: "A paleta oficial em dourado e tons naturais.",
-    swatches: ["#C9A86A", "#A87A34", "#FCFBF8"]
+    description: "Azul-marinho profissional, superfícies claras e dourado de destaque.",
+    swatches: ["#0D1B2A", "#C9A86A", "#F6F8FB"]
   },
   {
     id: "blue",
