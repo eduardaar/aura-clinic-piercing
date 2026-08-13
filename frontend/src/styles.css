@@ -8878,6 +8878,20 @@ body {
 @media (max-width: 560px) {
   .weekly-schedule-row { grid-template-columns: 1fr 1fr; }
   .weekly-day-toggle { grid-column: 1 / -1; }
+
+  /* A agenda mantém a visualização semanal/mensal acessível por rolagem
+     horizontal em vez de esmagar os dias. O cabeçalho e o link público passam
+     a ocupar linhas próprias, sem botões cortados. */
+  .google-calendar { -webkit-overflow-scrolling: touch; scroll-snap-type: x proximity; }
+  .calendar-cell { scroll-snap-align: start; }
+  .agenda-public-link { width: 100%; justify-content: space-between; }
+  .agenda-public-link-actions { margin-left: auto; }
+  .availability-header,
+  .client-module-shortcuts,
+  .module-heading-actions { align-items: stretch; }
+  .availability-header > *,
+  .client-module-shortcuts > button,
+  .module-heading-actions > button { width: 100%; }
 }
 
 @media (max-width: 900px) {

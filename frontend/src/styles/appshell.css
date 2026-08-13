@@ -604,6 +604,9 @@
   .products-crud-header { padding: 16px; }
   .product-shortcuts { display: grid; grid-template-columns: 1fr; width: 100%; }
   .product-shortcuts > * { width: 100%; justify-content: center; }
+  .sidebar { width: min(88vw, 320px); }
+  .sidebar nav { padding: 18px 10px 12px; }
+  .sidebar-foot { padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
 }
 
 @media (prefers-reduced-motion: reduce) {

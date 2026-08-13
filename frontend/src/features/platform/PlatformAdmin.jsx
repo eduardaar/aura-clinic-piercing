@@ -296,7 +296,7 @@ export function PlatformAdmin() {
 
   return (
     <main className="main-content">
-      <header className="topbar">
+      <header className="topbar platform-topbar">
         <div className="topbar-title">
           <span className="eyebrow">Aura Clinic · Plataforma</span>
           <h1>{TAB_HEADINGS[tab].title}</h1>
