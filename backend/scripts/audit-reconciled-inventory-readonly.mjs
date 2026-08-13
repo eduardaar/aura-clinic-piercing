@@ -24,7 +24,7 @@ try {
   const reservations = (await client.query("SELECT * FROM inventory_reservations WHERE jewelry_id=ANY($1::int[]) OR jewelry_variant_id=ANY($2::int[]) ORDER BY id", [targetProductIds,targetVariantIds])).rows;
   const inventoryAudit = (await client.query("SELECT * FROM inventory_audit_log WHERE jewelry_id=ANY($1::int[]) ORDER BY id", [targetProductIds])).rows;
   const countItems = (await client.query("SELECT * FROM inventory_count_items WHERE jewelry_id=ANY($1::int[]) OR variant_id=ANY($2::int[]) ORDER BY count_id,id", [targetProductIds,targetVariantIds])).rows;
-  const inventoryOptions = (await client.query("SELECT * FROM inventory_options ORDER BY option_type,sort_order,id")).rows;
+  const inventoryOptions = (await client.query("SELECT * FROM inventory_options ORDER BY type,name,id")).rows;
   const encoding = (await client.query("SELECT current_setting('server_encoding') server_encoding,current_setting('client_encoding') client_encoding")).rows[0];
   await client.query("COMMIT");
   if (products.length !== 123 || variants.length !== 177) throw new Error(`Totais inesperados: ${products.length} produtos / ${variants.length} variações.`);
