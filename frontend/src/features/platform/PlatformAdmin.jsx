@@ -77,6 +77,7 @@ export function PlatformAdmin() {
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [mfaRequired, setMfaRequired] = useState(false);
 
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState(EMPTY_TENANT_FORM);
@@ -170,6 +171,7 @@ export function PlatformAdmin() {
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
+        setMfaRequired(payload.code === "mfa_required");
         setLoginError(payload.error || "E-mail ou senha incorretos.");
         return;
       }
@@ -177,6 +179,7 @@ export function PlatformAdmin() {
       localStorage.setItem(PLATFORM_SESSION_KEY, JSON.stringify(nextSession));
       setSession(nextSession);
       setLoginForm({ email: "", password: "", mfa_code: "" });
+      setMfaRequired(false);
     } catch {
       setLoginError("Não foi possível conectar ao servidor. Tente novamente.");
     } finally {
@@ -252,22 +255,11 @@ export function PlatformAdmin() {
                   autoComplete="username"
                   required
                   value={loginForm.email}
-                  onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })}
+                  onChange={(event) => {
+                    setMfaRequired(false);
+                    setLoginForm({ ...loginForm, email: event.target.value, mfa_code: "" });
+                  }}
                   placeholder="seu@email.com"
-                />
-              </div>
-
-              <div className="au-a-field">
-                <label htmlFor="au-p-mfa">Código do autenticador <small>(se ativado)</small></label>
-                <input
-                  id="au-p-mfa"
-                  className="au-a-input"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  maxLength={6}
-                  value={loginForm.mfa_code}
-                  onChange={(event) => setLoginForm({ ...loginForm, mfa_code: event.target.value.replace(/\D/g, "") })}
-                  placeholder="000000"
                 />
               </div>
 
@@ -281,7 +273,10 @@ export function PlatformAdmin() {
                     autoComplete="current-password"
                     required
                     value={loginForm.password}
-                    onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })}
+                    onChange={(event) => {
+                      setMfaRequired(false);
+                      setLoginForm({ ...loginForm, password: event.target.value, mfa_code: "" });
+                    }}
                     placeholder="Digite a senha"
                   />
                   <button
@@ -295,6 +290,24 @@ export function PlatformAdmin() {
                   </button>
                 </div>
               </div>
+
+              {mfaRequired && (
+                <div className="au-a-field">
+                  <label htmlFor="au-p-mfa">Código do autenticador</label>
+                  <input
+                    id="au-p-mfa"
+                    className="au-a-input"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    required
+                    autoFocus
+                    value={loginForm.mfa_code}
+                    onChange={(event) => setLoginForm({ ...loginForm, mfa_code: event.target.value.replace(/\D/g, "") })}
+                    placeholder="000000"
+                  />
+                </div>
+              )}
 
               {loginError && <p className="au-a-error" role="alert">{loginError}</p>}
 
