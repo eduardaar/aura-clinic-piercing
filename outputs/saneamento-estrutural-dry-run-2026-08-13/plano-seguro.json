@@ -1,0 +1,23 @@
+{
+  "scope": { "tenant": "aura-clinic", "tenant_id": 2, "schema": "tenant_2", "writes_executed": 0, "other_tenants_affected": 0 },
+  "safe_corrections": [
+    { "type": "category", "product_id": 40, "from": "Barbell Reto", "to": "Argolas" },
+    { "type": "category", "product_id": 46, "from": "Barbell Reto", "to": "Barbell Curvo" },
+    { "type": "category", "product_id": 51, "from": "Barbell Curvo", "to": "Barbell Reto" },
+    { "type": "top_size_mm", "variant_id": 28, "to": 2.0 },
+    { "type": "top_size_mm", "variant_id": 29, "to": 2.5 },
+    { "type": "top_size_mm", "variant_id": 30, "to": 3.0 },
+    { "type": "top_size_mm", "variant_id": 31, "to": 4.0 },
+    { "type": "top_size_mm", "variant_id": 320, "to": 2.0 },
+    { "type": "thread_type", "variant_id": 277, "to": "Push Pin" },
+    { "type": "thread_type", "variant_id": 291, "to": "Push Pin" },
+    { "type": "material", "product_id": 200, "variant_id": 322, "to": "Silicone" }
+  ],
+  "safe_structural_proposals": [
+    { "variant_ids": [296], "from_product_id": 15, "to_product_id": 178, "preserve_quantity": true },
+    { "variant_ids": [299,300,301], "from_product_id": 15, "new_product": "Topo Chapado", "preserve_quantity": true },
+    { "variant_ids": [312], "from_product_id": 15, "new_product": "Topo Pérola", "preserve_quantity": true }
+  ],
+  "human_review": ["P1/V283","P45/P167","P37/V53","P47/V63","P4/V4","P2/P13","P48/P56/P61","P63/P71","P171/V280","P201/V323","V255"],
+  "forbidden_manual_source_rows": [10,29,30,50,51,52,53,54,57]
+}
