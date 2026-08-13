@@ -1,10 +1,10 @@
-name: Estoque - Dry Run tenant_2
+name: Estoque - Saneamento Estrutural Seguro tenant_2
 
 on:
   workflow_dispatch:
 
 jobs:
-  dry-run:
+  apply-and-audit:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -15,13 +15,19 @@ jobs:
         run: |
           install -m 600 /dev/null "$GITHUB_WORKSPACE/.deploy_key"
           printf '%s\n' "$DEPLOY_SSH_KEY" > "$GITHUB_WORKSPACE/.deploy_key"
-      - name: Executar auditoria somente leitura
+      - name: Executar transação segura e auditoria pós-commit
         env:
           SSH_OPTS: -i ${{ github.workspace }}/.deploy_key -o UserKnownHostsFile=${{ github.workspace }}/.known_hosts -o StrictHostKeyChecking=accept-new
         run: |
           set -euo pipefail
-          scp ${SSH_OPTS} backend/scripts/reconcile-physical-inventory.mjs backend/scripts/physical-inventory-2026-08-12.json root@187.77.225.233:/tmp/
-          ssh ${SSH_OPTS} root@187.77.225.233 'set -euo pipefail; docker cp /tmp/reconcile-physical-inventory.mjs aura-api:/app/scripts/reconcile-physical-inventory.mjs; docker cp /tmp/physical-inventory-2026-08-12.json aura-api:/app/scripts/physical-inventory-2026-08-12.json; docker exec aura-api node /app/scripts/reconcile-physical-inventory.mjs --data=/app/scripts/physical-inventory-2026-08-12.json; rm -f /tmp/reconcile-physical-inventory.mjs /tmp/physical-inventory-2026-08-12.json'
+          scp ${SSH_OPTS} backend/scripts/apply-safe-structural-sanitation.mjs root@187.77.225.233:/tmp/
+          ssh ${SSH_OPTS} root@187.77.225.233 'set -euo pipefail; docker cp /tmp/apply-safe-structural-sanitation.mjs aura-api:/app/scripts/apply-safe-structural-sanitation.mjs; docker exec aura-api node /app/scripts/apply-safe-structural-sanitation.mjs; rm -f /tmp/apply-safe-structural-sanitation.mjs' | tee saneamento-auditoria.log
+      - name: Publicar relatório de auditoria
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: saneamento-estrutural-auditoria
+          path: saneamento-auditoria.log
       - name: Remover chave
         if: always()
         run: rm -f "$GITHUB_WORKSPACE/.deploy_key" "$GITHUB_WORKSPACE/.known_hosts"
