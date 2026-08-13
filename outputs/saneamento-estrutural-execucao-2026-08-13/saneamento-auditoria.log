@@ -1,0 +1,219 @@
+◇ injected env (0) from .env // tip: ⌘ override existing { override: true }
+◇ injected env (0) from ../.env // tip: ⌁ auth for agents [www.vestauth.com]
+{
+  "execution": {
+    "tenant": {
+      "id": 2,
+      "slug": "aura-clinic",
+      "name": "Aura clinic piercing"
+    },
+    "schema": "tenant_2",
+    "transaction": "COMMIT",
+    "products_before": 123,
+    "products_after": 125,
+    "variants_before": 177,
+    "variants_after": 177,
+    "units_before": 353,
+    "units_after": 353
+  },
+  "corrections": {
+    "products": [
+      {
+        "id": 15,
+        "name": "Ponto de Luz",
+        "category": "Labret",
+        "material": "Titânio ASTM F136",
+        "quantity": 9
+      },
+      {
+        "id": 40,
+        "name": "Clicker Segmentado Cravejado 360° Em Titânio Grau Implante – Zircônias",
+        "category": "Argolas",
+        "material": "Titânio ASTM F136",
+        "quantity": 2
+      },
+      {
+        "id": 46,
+        "name": "Barbell Curvo Solar com Pedra Ônix Em Titânio Grau Implante – Rosca Interna",
+        "category": "Barbell Curvo",
+        "material": "Titânio ASTM F136",
+        "quantity": 1
+      },
+      {
+        "id": 51,
+        "name": "Barbell Reto com Corrente Dupla e Zircônias Em Titânio Grau Implante – Rosca Interna",
+        "category": "Barbell Reto",
+        "material": "Titânio ASTM F136",
+        "quantity": 2
+      },
+      {
+        "id": 178,
+        "name": "Topo básico bolinha",
+        "category": "Topos / Bolinhas",
+        "material": "Titânio",
+        "quantity": 3
+      },
+      {
+        "id": 200,
+        "name": "Disco de silicone",
+        "category": "Outros",
+        "material": "Silicone",
+        "quantity": 5
+      },
+      {
+        "id": 202,
+        "name": "Topo Chapado",
+        "category": "Topos / Bolinhas",
+        "material": "Titânio",
+        "quantity": 15
+      },
+      {
+        "id": 203,
+        "name": "Topo Pérola",
+        "category": "Topos / Bolinhas",
+        "material": "Titânio",
+        "quantity": 2
+      }
+    ],
+    "variants": [
+      {
+        "id": 28,
+        "jewelry_id": 15,
+        "top_size_mm": 2,
+        "thread_type": "Interna",
+        "material": "Titânio ASTM F136",
+        "quantity": 1
+      },
+      {
+        "id": 29,
+        "jewelry_id": 15,
+        "top_size_mm": 2.5,
+        "thread_type": "Interna",
+        "material": "Titânio ASTM F136",
+        "quantity": 3
+      },
+      {
+        "id": 30,
+        "jewelry_id": 15,
+        "top_size_mm": 3,
+        "thread_type": "Interna",
+        "material": "Titânio ASTM F136",
+        "quantity": 0
+      },
+      {
+        "id": 31,
+        "jewelry_id": 15,
+        "top_size_mm": 4,
+        "thread_type": "Interna",
+        "material": "Titânio ASTM F136",
+        "quantity": 5
+      },
+      {
+        "id": 53,
+        "jewelry_id": 37,
+        "top_size_mm": null,
+        "thread_type": "Interna",
+        "material": "Titânio ASTM F136",
+        "quantity": -2
+      },
+      {
+        "id": 63,
+        "jewelry_id": 47,
+        "top_size_mm": null,
+        "thread_type": "Interna",
+        "material": "Titânio ASTM F136",
+        "quantity": -1
+      },
+      {
+        "id": 277,
+        "jewelry_id": 168,
+        "top_size_mm": null,
+        "thread_type": "Push Pin",
+        "material": "Titânio",
+        "quantity": 3
+      },
+      {
+        "id": 291,
+        "jewelry_id": 176,
+        "top_size_mm": null,
+        "thread_type": "Push Pin",
+        "material": "Titânio",
+        "quantity": 3
+      },
+      {
+        "id": 296,
+        "jewelry_id": 178,
+        "top_size_mm": null,
+        "thread_type": "",
+        "material": "Titânio",
+        "quantity": 2
+      },
+      {
+        "id": 299,
+        "jewelry_id": 202,
+        "top_size_mm": null,
+        "thread_type": "",
+        "material": "Titânio",
+        "quantity": 5
+      },
+      {
+        "id": 300,
+        "jewelry_id": 202,
+        "top_size_mm": null,
+        "thread_type": "",
+        "material": "Titânio",
+        "quantity": 5
+      },
+      {
+        "id": 301,
+        "jewelry_id": 202,
+        "top_size_mm": null,
+        "thread_type": "",
+        "material": "Titânio",
+        "quantity": 5
+      },
+      {
+        "id": 312,
+        "jewelry_id": 203,
+        "top_size_mm": null,
+        "thread_type": "",
+        "material": "Titânio",
+        "quantity": 2
+      },
+      {
+        "id": 320,
+        "jewelry_id": 198,
+        "top_size_mm": 2,
+        "thread_type": "",
+        "material": "Titânio",
+        "quantity": 3
+      },
+      {
+        "id": 322,
+        "jewelry_id": 200,
+        "top_size_mm": null,
+        "thread_type": "",
+        "material": "Silicone",
+        "quantity": 5
+      }
+    ]
+  },
+  "preserved": {
+    "human_review_changed": 0,
+    "manual_rows": [
+      10,
+      29,
+      30,
+      50,
+      51,
+      52,
+      53,
+      54,
+      57
+    ],
+    "manual_jewels_changed": 0,
+    "other_tenants_changed": 0,
+    "images_changed": 0
+  },
+  "audit": "APROVADA"
+}
