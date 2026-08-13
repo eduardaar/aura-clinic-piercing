@@ -17,11 +17,9 @@ distintos, com contas Asaas distintas:
 
 O dinheiro **sempre cai na conta de quem cobrou**. Não há split nem subconta.
 
-Isso é uma decisão, não uma limitação aceita por preguiça: o modelo de
-subcontas do Asaas exigiria que a conta raiz da Monitence fosse CNPJ — uma
-pendência que estava travando a integração inteira (ver `docs/PENDENCIAS.md`,
-item 18). Com cada clínica usando a própria conta, o bloqueio deixa de existir
-e a clínica recebe direto, sem intermediação de recebíveis.
+Isso é uma decisão de produto: o modelo de subcontas do Asaas exigiria que a
+conta raiz da Monitence fosse CNPJ. Com cada clínica usando a própria conta, a
+clínica recebe direto, sem intermediação de recebíveis.
 
 A chave da plataforma **nunca vem do banco**. Se viesse, uma clínica com acesso
 de escrita ao próprio schema poderia, em tese, influenciar a conta que recebe o
@@ -242,10 +240,9 @@ relê a cobrança no Asaas e reaplica o efeito.
 
 #### Troca de plano propaga o preço no gateway
 
-Resolvido nesta branch (`docs/PENDENCIAS.md`, item 19). Antes, promover uma
-clínica mudava o acesso **na hora** e deixava a assinatura recorrente no Asaas
-cobrando o valor do plano antigo — ela usava o plano caro pagando o barato até
-alguém notar.
+A propagação evita a divergência em que promover uma clínica mudava o acesso
+**na hora** e deixava a assinatura recorrente no Asaas cobrando o valor do
+plano antigo.
 
 `syncSubscriptionPrice()` (`services/platformBilling.js`) é o **único** ponto de
 propagação, sempre com a credencial da **plataforma**, e está ligado nos **três**
@@ -267,9 +264,9 @@ Propriedades que importam:
 - Não usa `runIdempotent`: ele serve a requisição que **cria** cobrança, e aqui
   só há `POST /subscriptions/{id}` com valor absoluto sobre assinatura existente.
 
-**Ainda aberto:** plano com `price_cents = 0` devolve `plano_sem_preco` (o Asaas
-recusa assinatura de valor zero), e nada disso foi exercido contra o gateway real
-(item 24 das pendências) — vale um teste manual logo depois da virada.
+Plano com `price_cents = 0` devolve `plano_sem_preco`, pois o Asaas não aceita
+assinatura de valor zero. Exercite a propagação no sandbox antes de uma virada
+de preço em produção.
 
 ---
 

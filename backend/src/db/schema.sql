@@ -8,8 +8,8 @@
 -- 0.30000000000000004, e num somatório de milhares de linhas isso vira
 -- divergência de centavos no fechamento. Toda coluna monetária é
 -- NUMERIC(12,2); a conversão das clínicas que já existem está no bloco
--- idempotente no FIM deste arquivo (CREATE TABLE IF NOT EXISTS não altera
--- tabela existente). Ver docs/MIGRACAO-NUMERIC.md.
+-- idempotente no fim deste arquivo (CREATE TABLE IF NOT EXISTS não altera
+-- tabela existente).
 
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
@@ -1417,7 +1417,8 @@ CREATE INDEX IF NOT EXISTS idx_appointments_created ON appointments(created_at);
 -- algo que vive entre 0 e 100.
 --
 -- ATENÇÃO ao custo em produção: cada conversão reescreve a tabela e segura
--- ACCESS EXCLUSIVE nela. Ver docs/MIGRACAO-NUMERIC.md antes de subir.
+-- ACCESS EXCLUSIVE nela. Planeje a janela de deploy antes de subir uma versão
+-- que encontre colunas antigas em DOUBLE PRECISION.
 -- ---------------------------------------------------------------------------
 DO $$
 DECLARE

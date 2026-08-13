@@ -109,11 +109,12 @@ esta clínica caiu de plano?", a resposta precisa estar gravada.
 | --- | --- |
 | Suspender a conta | não cancela a assinatura no Asaas |
 | Cancelar a assinatura | não suspende a conta (a clínica usa o período pago) |
-| Trocar de plano | não reajusta a cobrança recorrente no Asaas |
+| Trocar de plano | não bloqueia a troca se o Asaas estiver temporariamente indisponível |
 
-A terceira é a mais perigosa: o acesso muda na hora, mas o gateway continua
-cobrando o valor antigo. A rota devolve `warning` quando existe
-`asaas_subscription_id`. **Ainda em aberto** (ver `docs/PENDENCIAS.md`).
+A troca de plano também chama `syncSubscriptionPrice()` para atualizar a
+recorrência no Asaas. A propagação é best-effort: o acesso muda no banco e a
+resposta informa `warning` caso o gateway não confirme o reajuste. O painel
+oferece reenvio da sincronização para esses casos.
 
 ---
 
@@ -124,8 +125,8 @@ receita por plano.
 
 - **Dinheiro só em `NUMERIC`**, somado no Postgres. Cada valor sai em dois
   campos: string decimal (`"189.80"`) e centavos inteiros. Nenhum `Number`
-  participa de conta de dinheiro — a pendência 13 (dinheiro em
-  `DOUBLE PRECISION`) não foi ampliada.
+  participa de conta de dinheiro; o problema histórico de ponto flutuante não
+  reaparece neste painel.
 - **Fuso `America/Sao_Paulo`, aplicado no SQL**, nunca com o relógio do Node.
   `?data_base=AAAA-MM-DD` congela o "hoje" — é o que torna o fechamento
   conferível e os testes independentes do dia em que rodam.

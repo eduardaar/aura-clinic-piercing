@@ -15,11 +15,10 @@
  */
 
 /**
- * Páginas do app. Inclui as duas da PLATAFORMA ("erp", "error-logs"), que
- * existem como página mas não pertencem a papel nenhum da clínica.
- * @typedef {"dashboard" | "erp" | "agenda" | "communications" | "catalog" | "products" | "inventory"
+ * Páginas do app autenticado.
+ * @typedef {"dashboard" | "agenda" | "communications" | "catalog" | "products" | "inventory"
  *   | "catalog-customization" | "sales" | "finance" | "receivables" | "payables" | "reports" | "client-center"
- *   | "clients" | "terms" | "postcare" | "admin" | "integrations" | "support" | "error-logs"
+ *   | "clients" | "terms" | "postcare" | "admin" | "integrations" | "support"
  *   | "meu-plano" | "settings" | "onboarding"} Page
  */
 
@@ -28,11 +27,6 @@
  * @typedef {string} Feature
  */
 
-// "erp" e "error-logs" NÃO entram em nenhum papel: são ferramentas da plataforma,
-// não da clínica. O Aura ERP exibe conteúdo fictício embutido no código
-// (backend/src/routes/erp.js) e o Monitor de erros expõe stack traces e caminhos
-// internos do servidor — nada disso é informação do cliente. Quem precisa disso
-// é a equipe da Monitence, pelo painel de plataforma.
 // "integrations" fica SÓ em `admin`, nem em `finance`: ali se cadastra a chave
 // do gateway, e quem a troca redireciona o faturamento inteiro da clínica para
 // outra conta. É a mesma regra do backend (routes/integrations.js só aceita
@@ -119,7 +113,6 @@ export function pageTitle(page) {
   /** @type {Record<Page, string>} */
   const titles = {
     dashboard: "Dashboard",
-    erp: "Aura Clinic ERP",
     agenda: "Agenda",
     communications: "Comunicações",
     catalog: "Catálogo",
@@ -138,7 +131,6 @@ export function pageTitle(page) {
     admin: "Acessos administrativos",
     integrations: "Integrações",
     support: "Suporte",
-    "error-logs": "Monitor de erros",
     "meu-plano": "Meu plano",
     settings: "Configurações",
     onboarding: "Onboarding"

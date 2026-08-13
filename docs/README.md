@@ -9,14 +9,15 @@ O projeto é um **monorepo** com backend (Node/Express + PostgreSQL, multi-tenan
 | Documento | Conteúdo |
 | --- | --- |
 | [ARQUITETURA.md](./ARQUITETURA.md) | Visão geral do monorepo, multi-tenancy por schema Postgres, ciclo de vida de uma requisição, autenticação (tokens HMAC; clínica x plataforma), estrutura de pastas (backend e frontend) e componentes de UI reutilizáveis. |
-| [MODELO-DE-DADOS.md](./MODELO-DE-DADOS.md) | Schema de controle `platform` e todas as tabelas de uma clínica (`tenant_<id>`): propósito, campos e relacionamentos (FKs), com descrição textual do diagrama ER. |
-| [API.md](./API.md) | Referência dos endpoints por domínio: método, caminho, exigência de auth e de `X-Tenant`, campos do corpo e forma da resposta. |
+| [MODELO-DE-DADOS.md](./MODELO-DE-DADOS.md) | Modelo atual dos schemas `platform` e `tenant_<id>`, agrupado por domínio e com os relacionamentos que sustentam os fluxos principais. |
+| [API.md](./API.md) | Catálogo atual de endpoints por domínio, com convenções de autenticação, tenant e rotas públicas. |
 | [FLUXOS.md](./FLUXOS.md) | Fluxos de uso passo a passo (cadastro de clínica, recepção, piercer, financeiro, super-admin da plataforma) e logins de teste locais. |
 | [GUIA-DEV.md](./GUIA-DEV.md) | Pré-requisitos, configuração (.env), como rodar, testes, scripts úteis (backup, migração multi-tenant, teste de isolamento), estrutura de pastas e convenções. |
 | [PAINEL-PLATAFORMA.md](./PAINEL-PLATAFORMA.md) | O que o super-admin controla: planos editáveis (e por que o banco virou a fonte da verdade), cotas por plano, poder sobre contas, financeiro e suporte. |
 | [LANDING.md](./LANDING.md) | Conteúdo editável da página pública da plataforma: modelo de dados, a garantia de que a landing nunca fica em branco, as guardas contra XSS armazenado e os endpoints do editor. |
 | [CATALOGO-BUILDER.md](./CATALOGO-BUILDER.md) | Personalização da vitrine: templates, rascunho isolado, publicação atômica, histórico, rollback, contrato da API e limites de segurança para conteúdo configurável. |
 | [ASAAS.md](./ASAAS.md) | Integração com o gateway de pagamento: os dois níveis de credencial (plataforma e clínica), cofre cifrado, webhook multi-tenant (autenticidade, idempotência e o contrato de status HTTP), armadilhas do Asaas e configuração em produção. |
+| [R2.md](./R2.md) | Armazenamento de arquivos no Cloudflare R2: configuração, migração segura do disco e condições para remover o fallback legado. |
 | [PADRAO-VISUAL.md](./PADRAO-VISUAL.md) | Como escrever tela nova sem criar mais um sistema de CSS: a ordem de busca (componente → classe → CSS próprio), o catálogo de primitivas, as camadas da cascata, a armadilha do scroll e os anti-padrões observados no painel da plataforma. |
 
 ## Por onde começar

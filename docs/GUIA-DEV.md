@@ -46,7 +46,6 @@ Copie `frontend/.env.example` para `frontend/.env`. O padrão já aponta para a 
 | Variável | Papel |
 | --- | --- |
 | `VITE_API_URL` | Base da API (default `http://localhost:4000/api`). |
-| `VITE_ADMIN_PASSWORD` | Senha da Central Administrativa do frontend (default `aura123`). |
 
 ## Como rodar
 
@@ -100,6 +99,12 @@ Para rodar um arquivo específico (a partir de `backend/`):
 
 ```bash
 node tests/run-suite.mjs tests/security.test.mjs
+```
+
+O frontend combina testes unitários do Node com testes de componentes do Vitest:
+
+```bash
+npm --prefix frontend test
 ```
 
 ## Scripts úteis

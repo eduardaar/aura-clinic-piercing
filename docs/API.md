@@ -1,158 +1,97 @@
 # Referência da API
 
-Referência dos endpoints do backend da **Aura Clinic Piercing** (Node/Express), agrupados por domínio. Fonte: `backend/src/routes/*.js`.
+Catálogo da API Express atual. A fonte executável é `backend/src/routes/`; esta
+referência descreve os recursos expostos, não substitui as validações Zod e as
+regras de negócio implementadas em cada rota.
 
-## Convenções e regras globais
+## Convenções
 
-- **Base**: todos os caminhos vivem sob `/api` (ex.: `http://localhost:4000/api/...`).
+- Todas as rotas usam o prefixo `/api` e JSON, exceto onde indicado como
+  `multipart`.
+- Rotas da **clínica** resolvem o tenant pelo token, `X-Tenant`, query
+  (`t`, `tenant`, `clinic` ou `slug`), subdomínio ou `DEFAULT_TENANT`, nessa
+  ordem. Um token de clínica só funciona no próprio tenant.
+- Salvo indicação de **pública**, as rotas da clínica exigem
+  `Authorization: Bearer <token>`. A autorização de papel e de plano é feita
+  pela rota; os papéis são `admin`, `reception`, `finance` e `piercer`.
+- Rotas `/api/platform/*` exigem token de plataforma, obtido em
+  `POST /api/platform/login`; elas não usam `X-Tenant`.
+- Listagens que recebem `limit` e `offset` respondem no envelope
+  `{ items, total, limit, offset }`. Sem paginação, algumas rotas preservam a
+  resposta em array por compatibilidade.
+- Erros usam `{ error, code? }`. Conflitos de versão, idempotência ou estoque
+  retornam `409`; recurso do plano indisponível retorna `402` ou `403`.
 
-- **Autenticação** (`backend/src/middleware/auth.js` → `requiresAuth`): toda rota sob `/api` exige token, **exceto** exatamente: `/api/login`, `/api/health`, `/api/catalog`, `/api/sales-orders/public` e qualquer rota que comece com `/api/booking`. O token vai no header `Authorization: Bearer <token>`.
-  - **Dev local**: em `localhost`/`127.0.0.1`/`::1` fora de produção, a autenticação é **bypassada** (assume o admin do tenant). As marcações `[AUTH]` abaixo valem para produção.
+## Rotas públicas e autenticação
 
-- **Header `X-Tenant`** (multi-tenant): quase toda rota resolve o tenant antes do handler (via `withDb`), usando nesta ordem: token com `tslug` → header `X-Tenant` → env `DEFAULT_TENANT`. Portanto **praticamente todas as rotas precisam de tenant**, inclusive as públicas de catálogo/booking/venda. As **únicas** rotas que **não** resolvem tenant (não usam `X-Tenant`) são as de `health.js` e todas as de `platform.js` (que usam token de plataforma). O frontend injeta o `X-Tenant` automaticamente; links públicos aceitam `?t=<slug>` (mapeado para o header).
+| Método | Rota | Uso |
+| --- | --- | --- |
+| `POST` | `/api/login` | Login da clínica (envie `X-Tenant`). |
+| `POST` | `/api/signup` | Cadastro de clínica, sujeito a `ALLOW_PUBLIC_SIGNUP`. |
+| `POST` | `/api/platform/login` | Login do super-admin. |
+| `GET` | `/api/health`, `/api/health/db` | Saúde da API e do banco. |
+| `GET` | `/api/plans`, `/api/clinics` | Vitrine de planos e diretório público de clínicas. |
+| `GET` | `/api/landing`, `/api/legal-documents` | Landing da plataforma e documentos legais vigentes. |
+| `GET` | `/api/catalog` | Catálogo público do tenant. |
+| `POST` | `/api/catalog/events`, `/api/catalog/coupon-quote`, `/api/catalog/promotion-quote`, `/api/catalog/price-quote` | Telemetria e cálculo público do catálogo. |
+| `GET`, `POST` | `/api/booking/*` | Readiness, configuração, horários e solicitações de agendamento. |
+| `POST` | `/api/sales-orders/public` | Checkout público do catálogo. |
+| `GET`, `POST` | `/api/payment-intents/:id/pix`, `/api/payment-intents/:id/sync` | Consulta pública de PIX/status. |
+| `POST` | `/api/error-logs` | Ingestão de erro do frontend. |
+| `GET`, `POST` | `/api/webhooks/asaas`, `/api/webhooks/asaas/:slug` | Webhooks autenticados pelo token do Asaas. |
 
-- **Papéis** (`requireRole`): quando um handler restringe por papel, indicamos "role: …". Papéis: `admin`, `reception`, `finance`, `piercer`.
+## Operação da clínica
 
-- **Uploads**: rotas marcadas como **multipart** aceitam arquivos via `multipart/form-data` (multer). Uploads genéricos vão para `POST /api/uploads`.
+| Domínio | Rotas |
+| --- | --- |
+| Identidade e assinatura | `GET/PATCH /api/store-identity`; `PATCH /api/subscription`; `GET /api/billing/subscription`; `PUT /api/billing/profile`; `POST /api/billing/checkout`; `GET /api/billing/invoices`. As escritas e o checkout exigem `admin`; cartão requer `Idempotency-Key`. |
+| Dashboard e análises | `GET /api/dashboard`; `GET /api/alerts`; `GET /api/erp`; `GET /api/reports/:type`; `GET /api/ai-assistant/status`; `POST /api/ai-assistant`. `GET /api/erp` é administrativo e fornece apenas agregados reais. |
+| Usuários | `GET/POST /api/users`; `PATCH/DELETE /api/users/:id`; `PATCH /api/account/profile`. Gestão de usuários exige `admin`. |
+| Clientes e prontuários | `GET/POST /api/clients`; `GET/PUT/PATCH/DELETE /api/clients/:id`; `GET /api/clients/:id/deletion-impact`; `POST /api/clients/:id/loyalty-redemptions`; `POST /api/clients/:id/medical-records`; `DELETE /api/clients/:clientId/medical-records/:recordId`. Exclusão exige confirmação e motivo; quando há histórico o cliente é anonimizado/arquivado. |
+| Agenda | `GET/POST /api/appointments`; `PATCH/DELETE /api/appointments/:id`; `POST /api/appointments/:id/complete`; `GET /api/appointments/:id/deletion-impact`; `GET/POST /api/availability`; `PATCH /api/availability/:id`; `POST /api/availability/generate-weekly`; `GET/POST/PATCH/DELETE /api/schedule-blocks[/:id]`. |
+| Serviços e procedimentos | `GET/POST /api/services`; `PUT/PATCH/DELETE /api/services/:id`; `GET/POST /api/procedures`; `GET/PUT/DELETE /api/procedures/:id`; `GET/POST /api/professionals`; `PATCH/DELETE /api/professionals/:id`. |
+| Produtos e estoque | `GET/POST /api/jewelry`; `PATCH/DELETE /api/jewelry/:id`; `GET/POST /api/jewelry/:id/movements`; `POST /api/jewelry/:id/variants/:variantId/movements`; `POST /api/jewelry/visual-search`; `GET /api/inventory/intelligence`; `GET/POST/PATCH /api/inventory/suggestions[/refresh|/:id]`; `GET/POST /api/inventory/counts`; `GET /api/inventory/counts/:id`; `PATCH /api/inventory/counts/:id/items`; `POST /api/inventory/counts/:id/complete`; `GET /api/inventory/labels`. |
+| Categorias e precificação | `GET/POST /api/inventory-categories`; `PATCH/DELETE /api/inventory-categories/:id`; `POST /api/inventory-categories/:id/move-products`; `POST /api/inventory-categories/merge`; `POST /api/jewelry/move-category`; `GET/POST /api/inventory-options`; `PATCH/DELETE /api/inventory-options/:id`; `GET /api/options`; `PATCH /api/pricing-settings`. |
+| Vendas e cobranças do cliente | `GET/POST /api/sales-orders`; `PATCH /api/sales-orders/:id`; `GET /api/payment-intents`; `PATCH /api/payment-intents/:id/status`; `GET /api/payment-intents/:id/pix`; `POST /api/payment-intents/:id/sync`. |
+| Financeiro | `GET /api/finance`, `/api/finance/ledger`, `/api/finance/cost-centers`, `/api/finance/goals`, `/api/finance/entries/:id/details`; `POST /api/expenses`, `/api/finance/cost-centers`, `/api/finance/entries`, `/api/finance/entries/:id/lifecycle`, `/api/finance/entries/:id/reconcile`, `/api/finance/entries/bulk-lifecycle`, `/api/finance/recurrences/process`, `/api/finance/goals`; `PATCH /api/expenses/:id`, `/api/finance/entries/:id`; `DELETE /api/expenses/:id`; `GET /api/finance/export.{csv,pdf,xlsx}`. |
+| Termos e pós-atendimento | `GET/POST /api/digital-terms`; `GET /api/post-care`; `PATCH /api/post-care/:id` (`multipart`, foto do cliente opcional). |
+| Comunicações | `GET /api/communication-credits`; `POST /api/communication-credits/purchase`; `GET /api/notifications`; `GET /api/communication-templates`; `PATCH /api/communication-templates/:id`; `GET /api/automation-rules`; `PATCH /api/automation-rules/:id`; `POST /api/automations/process`; `GET /api/automation-runs`. Templates e automações dependem da feature do plano. |
+| Integrações | `GET/PUT/DELETE /api/integrations/asaas`; `POST /api/integrations/asaas/test`; `POST /api/integrations/asaas/webhook-token`; `GET/PUT/DELETE /api/integrations/whatsapp`; `POST /api/integrations/whatsapp/test`. Somente `admin`. |
+| Arquivos e administração | `POST /api/uploads` (`multipart`); `GET /api/private-files/:filename`; `POST/GET /api/error-logs`; `PATCH/DELETE /api/error-logs/:id`; `POST /api/admin/reset-demo-data`; `POST /api/admin/reset-clinic-data`. Reset exige confirmação e, em produção, depende de configuração explícita. |
+| Suporte | `GET/POST /api/support/tickets`; `GET /api/support/tickets/:id`; `POST /api/support/tickets/:id/messages`; `POST /api/support/tickets/:id/close`. |
 
-- **Corpo validado por Zod**: vários POST/PATCH validam o corpo com schemas Zod (`backend/src/schemas/index.js`); em falha retornam `400` com a mensagem do erro.
+## Catálogo e builder
 
-Legenda de cada linha: **método + caminho — [AUTH|PÚBLICO] — tenant — principais campos do corpo — resposta**.
+| Método | Rota | Uso |
+| --- | --- | --- |
+| `GET` | `/api/catalog-customization` | Rascunho, catálogo de produtos e metadados de versão. |
+| `PATCH` | `/api/catalog-customization` | Salva rascunho parcial ou completo com lock otimista. |
+| `GET/POST/PATCH` | `/api/catalog-media[/:id]` | Biblioteca de mídia pública do tenant (`POST` é `multipart`). |
+| `GET` | `/api/catalog-customization/checklist` | Erros bloqueantes e avisos da publicação. |
+| `POST` | `/api/catalog-customization/publish`, `/reset`, `/rollback/:version` | Publica, restaura rascunho ou cria revisão a partir do histórico. |
+| `GET` | `/api/catalog-customization/history[/:version]` | Lista ou lê revisões imutáveis. |
+| `GET/PATCH` | `/api/catalog-settings` | Atalho compatível para configurações permitidas do rascunho. |
+| `GET/POST/PATCH/DELETE` | `/api/coupons` e `/api/promotions` | `GET/POST` usam a coleção; `PATCH/DELETE` usam `/:id`. `POST /api/promotions/:id/duplicate` duplica uma promoção. |
 
----
+Todas as rotas administrativas do builder exigem a feature
+`public_catalog_customization`, papel `admin` ou `reception` (reset: `admin`).
+Veja [CATALOGO-BUILDER.md](./CATALOGO-BUILDER.md) para o contrato de versões e
+segurança de conteúdo.
 
-## Autenticação, cadastro e plataforma
+## Plataforma (super-admin)
 
-### Login de clínica (`routes/auth.js`)
-- `POST /api/login` — **PÚBLICO** (mas usa `X-Tenant`) — corpo: `{ email, password }` — resposta: `{ token, user:{id,name,email,role}, tenant:{id,name,slug} }`. Rate-limited (login). `401` para credenciais inválidas.
+| Domínio | Rotas |
+| --- | --- |
+| Clínicas | `GET/POST /api/platform/tenants`; `PATCH/DELETE /api/platform/tenants/:id`; `PATCH /api/platform/tenants/:id/plan`; `GET /api/platform/metrics`. |
+| Contas e uso | `GET /api/platform/accounts/:id`, `/usage`, `/limits-preview`; `PATCH /api/platform/accounts/:id/plan`, `/status`, `/trial`, `/subscription-status`; `POST /api/platform/accounts/:id/suspend`, `/reactivate`, `/cancel-subscription`, `/sync-subscription`. |
+| Planos | `GET/POST /api/platform/plans`; `GET /api/platform/plans/:code/usage`; `PUT/DELETE /api/platform/plans/:code`; `PATCH /api/platform/plans/:code/active`; `PATCH /api/platform/plans/order`. |
+| Cobrança | `GET /api/platform/invoices`; `POST /api/platform/invoices/:id/sync`; `GET /api/platform/finance/summary`, `/overdue`, `/upcoming`, `/monthly`, `/by-plan`. |
+| Suporte | `GET /api/platform/support/tickets`, `/open-count`, `/tickets/:id`; `POST /api/platform/support/tickets/:id/messages`; `PATCH /api/platform/support/tickets/:id`. |
+| Conteúdo público | `GET /api/platform/landing`; `PUT /api/platform/landing/sections/:key`; `PATCH /api/platform/landing/order`; `POST /api/platform/landing/uploads`; `GET /api/platform/legal-documents`; `PUT /api/platform/legal-documents/:key`. |
 
-### Cadastro e plataforma (`routes/platform.js`, sem `X-Tenant`)
-- `POST /api/signup` — cadastro **público** de clínica (bloqueado se `ALLOW_PUBLIC_SIGNUP=false`; rate-limit ~5/h) — corpo: `{ name, slug, admin_name, admin_email, admin_password }` — resposta: `201 { tenant:{id,name,slug} }`.
-- `POST /api/platform/login` — **login do super-admin** (rate-limit) — corpo: `{ email, password }` — resposta: `{ token, user }` (token de plataforma, `plt:true`).
-- `GET /api/platform/tenants` — **token de plataforma** — resposta: lista de clínicas `{ id, name, slug, status, plan, created_at }`.
-- `POST /api/platform/tenants` — **token de plataforma** — corpo: `{ name, slug, admin_name, admin_email, admin_password }` — resposta: `201 { tenant }` (cria clínica).
-- `PATCH /api/platform/tenants/:id` — **token de plataforma** — corpo: `{ status }` (`ativo`/`suspenso`) — resposta: tenant atualizado (suspender/reativar; invalida cache).
-- `DELETE /api/platform/tenants/:id` — **token de plataforma** — corpo: `{ confirmation }` (deve ser igual ao **slug** da clínica) — resposta: `{ ok:true }` (exclui/deprovisiona; `400` se confirmação errada).
-- `GET /api/platform/metrics` — **token de plataforma** — resposta: métricas por clínica ativa `[{ id, name, slug, clients, appointments }]`.
+## Referências de implementação
 
----
-
-## Clientes (`routes/clients.js`)
-- `GET /api/clients` — **AUTH** — X-Tenant: sim — resposta: lista de clientes com detalhes (histórico, pagamentos, prontuários, fidelidade).
-- `POST /api/clients` — **AUTH** — corpo: `full_name`, `whatsapp` (obrigatórios), `instagram`, `birth_date`, `notes` — resposta: `201` cliente.
-- `PUT /api/clients/:id` — **AUTH** — corpo: `full_name`, `whatsapp`, `instagram`, `birth_date`, `notes` — resposta: cliente atualizado.
-- `PATCH /api/clients/:id` — **AUTH** — corpo: mesmos campos — resposta: cliente atualizado.
-- `DELETE /api/clients/:id` — **AUTH** (role: admin, reception) — resposta: `{ ok:true }`.
-- `POST /api/clients/:id/loyalty-redemptions` — **AUTH** — corpo: `points_used`, `discount_value`, `notes` — resposta: `201` fidelidade do cliente (`400` se pontos insuficientes).
-- `POST /api/clients/:id/medical-records` — **AUTH** — **multipart** (`before_photo`, `after_photo`) — corpo: `appointment_id`, `record_date`, `piercing_history`, `jewelry_used`, `occurrences`, `guidance`, `allergies_notes`, `healing_evolution`, `returns_done` — resposta: `201` prontuário.
-- `DELETE /api/clients/:clientId/medical-records/:recordId` — **AUTH** — resposta: `{ ok:true }`.
-
-## Agendamentos (`routes/appointments.js`)
-- `GET /api/appointments` — **AUTH** — query: `professional_id`, `status` (filtros) — resposta: lista de agendamentos.
-- `POST /api/appointments` — **AUTH** — **multipart** (`reference_photo` opcional) — corpo: `professional_id`, `appointment_date`, `appointment_time` (obrigatórios), `service_id`, `jewelry_id`, `jewelry_variant_id`, `procedure`, `description`, `piercing_region`, valores (`total_value`, `deposit_value`, `remaining_value`), formas de pagamento e dados do cliente para upsert — resposta: `201` agendamento (`409` se horário ocupado).
-- `PATCH /api/appointments/:id` — **AUTH** — corpo: quaisquer campos do agendamento (`status`, data/hora, valores, etc.) — resposta: agendamento atualizado. Marcar `status:"atendido"` dispara baixa de estoque, pagamento do saldo, criação de pós-atendimento e pontos de fidelidade.
-
-## Serviços (`routes/services.js`)
-- `GET /api/services` — **AUTH** — resposta: lista de serviços.
-- `POST /api/services` — **AUTH** (role: admin, reception) — corpo: `name` (obrigatório), `description`, `duration_minutes`, `price`, `deposit_value`, `active_online_booking`, `pre_service_notes`, `professional_ids[]` — resposta: `201` serviço.
-- `PATCH /api/services/:id` — **AUTH** (role: admin, reception) — corpo: mesmos campos — resposta: serviço atualizado.
-- `DELETE /api/services/:id` — **AUTH** (role: admin) — resposta: `{ ok:true }` (soft-delete: desativa booking online).
-
-## Procedimentos (`routes/procedures.js`)
-- `GET /api/procedures` — **AUTH** — resposta: lista de procedimentos (com `service_name`).
-- `GET /api/procedures/:id` — **AUTH** — resposta: procedimento (`404` se inexistente).
-- `POST /api/procedures` — **AUTH** (role: admin, reception) — corpo: `service_id`, `name` (obrigatórios), `body_area`, `description`, `price`, `duration_minutes`, `aftercare_instructions`, `is_active` — resposta: `201` procedimento.
-- `PUT /api/procedures/:id` — **AUTH** (role: admin, reception) — corpo: mesmos campos — resposta: procedimento atualizado.
-- `DELETE /api/procedures/:id` — **AUTH** (role: admin) — resposta: `{ ok:true }`.
-
-## Joalherias e estoque (`routes/jewelry.js`)
-- `GET /api/jewelry` — **AUTH** — query: `search` e filtros (`category`, `subcategory`, `status`, `physical_location`, e por variante `material`, `color`, `size`, `thickness`, `length`, `diameter`, `thread_type`, `supplier`) — resposta: lista de joias com variantes.
-- `POST /api/jewelry` — **AUTH** (role: admin, reception) — corpo: `name`, `category` (obrigatórios) + ~40 campos de produto (atributos físicos, estoque, catálogo/SEO/frete, flags) e `variants[]` — resposta: `201` joia com variantes.
-- `PATCH /api/jewelry/:id` — **AUTH** (role: admin, reception) — corpo: mesmos campos + `image_url`, `is_published`, `variants[]` — resposta: joia atualizada.
-- `GET /api/jewelry/:id/movements` — **AUTH** — resposta: últimas movimentações (limit 20).
-- `POST /api/jewelry/:id/movements` — **AUTH** (role: admin, reception) — corpo: `quantity`, `movement_type`, `notes`, `movement_date` — resposta: `{ ok:true, jewelry, movements[] }`.
-- `POST /api/jewelry/:id/variants/:variantId/movements` — **AUTH** (role: admin, reception) — corpo: `quantity`, `movement_type`, `notes`, `movement_date` — resposta: `{ ok:true, product }`.
-- `DELETE /api/jewelry/:id` — **AUTH** (role: admin) — resposta: `{ ok:true, archived:true|false }` (arquiva se houver vínculos; senão apaga).
-
-## Pedidos de venda (`routes/sales.js`)
-- `GET /api/sales-orders` — **AUTH** (role: admin, finance, reception, piercer) — resposta: lista de pedidos.
-- `POST /api/sales-orders` — **AUTH** (role: admin, finance, reception, piercer) — corpo: pedido (itens, cliente, pagamento) — resposta: `201` pedido.
-- `POST /api/sales-orders/public` — **PÚBLICO** (usa `X-Tenant`) — corpo: pedido (sem usuário autenticado) — resposta: `201` pedido.
-- `PATCH /api/sales-orders/:id` — **AUTH** (role: admin, finance, reception) — corpo: `status`, `payment_method`, `notes` — resposta: pedido atualizado.
-
-## Financeiro e despesas (`routes/finance.js`)
-- `GET /api/finance` — **AUTH** (role: admin, finance) — resposta: relatório financeiro.
-- `POST /api/expenses` — **AUTH** (role: admin, finance) — corpo: `description`, `expense_type` (`fixa`/`variavel`), `due_date` (obrigatórios), `category`, `amount`, `status`, `payment_method`, `notes` — resposta: `201` despesa.
-- `DELETE /api/expenses/:id` — **AUTH** (role: admin, finance) — resposta: `{ ok:true }`.
-- `GET /api/finance/export.csv` — **AUTH** (role: admin, finance) — resposta: **arquivo CSV** (`relatorio-aura-clinic.csv`).
-- `GET /api/finance/export.pdf` — **AUTH** (role: admin, finance) — resposta: **arquivo PDF**.
-- `GET /api/finance/export.xlsx` — **AUTH** (role: admin, finance) — resposta: **arquivo XLSX**.
-
-## Termos digitais (`routes/terms.js`)
-- `GET /api/digital-terms` — **AUTH** — resposta: lista de termos.
-- `POST /api/digital-terms` — **AUTH** — corpo: `appointment_id`, `client_id`, `full_name`, `signature_data_url`, `orientations_confirmed` (obrigatórios) + dados do assinante (`social_name`, `document_number`, `birth_date`, `whatsapp`, `instagram`, `address`, `procedure`, `piercing_region`, `health_declaration`, `form_data`) — resposta: `201` termo (gera PDF e salva `pdf_url`).
-
-## Pós-atendimento (`routes/postcare.js`)
-- `GET /api/post-care` — **AUTH** — resposta: lista de acompanhamentos (garante followups pendentes).
-- `PATCH /api/post-care/:id` — **AUTH** — **multipart** (`client_photo`) — corpo: `care_message`, `healing_status`, `client_notes`, `status` — resposta: acompanhamento atualizado.
-
-## Catálogo público e customização (`routes/catalog.js`)
-- `GET /api/catalog` — **PÚBLICO** (aceita `?t=<slug>`/`X-Tenant`) — resposta: catálogo público da revisão publicada (`settings`, `theme`, `banners`, destaques, promoções, `catalogSections`, `plugins`, `version`, categorias e `items[]`; campos privados ocultos).
-- `GET /api/catalog-customization` — **AUTH** (role: admin, reception) — resposta: rascunho editável + `products`, `inventoryOptions` e `version` (`draft`, `published` e lock otimista).
-- `PATCH /api/catalog-customization` — **AUTH** (role: admin, reception) — corpo: patch ou objeto completo + `expected_draft_version` opcional; salva **somente o rascunho**. Aceita `plugins:[{id?,pluginId,enabled,config}]` apenas do registro nativo; configuração insegura retorna `422 catalog_plugins_invalid`, feature indisponível retorna `403 catalog_plugin_feature_unavailable` e cota atingida retorna `409 catalog_plugin_limit_reached`. Conflito de versão retorna `409 catalog_version_conflict`.
-- `GET /api/catalog-media` — **AUTH** (role: admin, reception) — lista a biblioteca de imagens do tenant.
-- `POST /api/catalog-media` — **AUTH** (role: admin, reception) — recebe `multipart/form-data` com `file`, valida o conteúdo e registra mídia pública do catálogo.
-- `PATCH /api/catalog-media/:id` — **AUTH** (role: admin, reception) — atualiza `{ alt_text }` de um asset da própria clínica.
-- `POST /api/catalog-customization/publish` — **AUTH** (role: admin, reception) — corpo: patch/opcional + versão esperada; cria revisão publicada imutável e responde `{ ok:true, published_at, revision, checklist, ...customization }`. Erros do checklist retornam `422 catalog_publish_blocked` e não criam revisão.
-- `GET /api/catalog-customization/history` e `GET /api/catalog-customization/history/:version` — **AUTH** — lista revisões ou retorna seu snapshot.
-- `POST /api/catalog-customization/rollback/:version` — **AUTH** (role: admin, reception) — corpo: `expected_draft_version`, `expected_published_version`; publica uma cópia da revisão escolhida sem apagar o histórico.
-- `POST /api/catalog-customization/reset` — **AUTH** (role: admin) — repõe somente o rascunho padrão; a vitrine publicada permanece intacta.
-- `GET /api/catalog-settings` — **AUTH** (role: admin, reception) — atalho compatível que devolve os settings do rascunho + categorias e versão.
-- `PATCH /api/catalog-settings` — **AUTH** (role: admin, reception) — atalho compatível para settings permitidos; salva somente o rascunho e aceita `expected_draft_version`.
-
-## Booking público (`routes/booking.js`, prefixo `/api/booking`, todas PÚBLICAS)
-- `GET /api/booking/config` — **PÚBLICO** (usa `X-Tenant`) — resposta: `{ services, professionals, rules }`.
-- `GET /api/booking/slots` — **PÚBLICO** — query: `service_id`, `professional_id`, `date` — resposta: `{ date, slots:[] }`.
-- `POST /api/booking/requests` — **PÚBLICO** — **multipart** (`reference_photo`, `payment_proof`) — corpo: `service_id`, `professional_id`, `appointment_date`, `appointment_time`, `full_name`, `whatsapp` (obrigatórios), `instagram`, `notes` — resposta: `201` agendamento (status `pendente`).
-
-## Opções, profissionais, disponibilidade e bloqueios
-### Opções de inventário (`routes/options.js`)
-- `GET /api/options` — **AUTH** — resposta: `{ professionals, jewelry, jewelryCategories, jewelrySubcategories, inventoryOptions }`.
-- `POST /api/inventory-options` — **AUTH** (role: admin) — corpo: `type` (`category`/`size`/`thickness`), `name` — resposta: `201` opção.
-- `PATCH /api/inventory-options/:id` — **AUTH** (role: admin) — corpo: `name` — resposta: opção atualizada (`409` duplicado).
-- `DELETE /api/inventory-options/:id` — **AUTH** (role: admin) — resposta: `{ ok:true }` (`409` se em uso).
-
-### Profissionais (`routes/professionals.js`)
-- `POST /api/professionals` — **AUTH** (role: admin) — corpo: `name` (obrigatório), `specialty` — resposta: `201` profissional.
-- `PATCH /api/professionals/:id` — **AUTH** (role: admin) — corpo: `name`, `specialty` — resposta: profissional atualizado.
-- `DELETE /api/professionals/:id` — **AUTH** (role: admin) — resposta: `{ ok:true, archived:true|false }`.
-
-### Disponibilidade (`routes/availability.js`)
-- `GET /api/availability` — **AUTH** — resposta: disponibilidades por profissional.
-- `PATCH /api/availability/:id` — **AUTH** (role: admin, reception) — corpo: `is_active`, `start_time`, `end_time`, `lunch_start`, `lunch_end`, `duration_minutes`, `buffer_minutes` — resposta: disponibilidade atualizada.
-
-### Bloqueios de agenda (`routes/scheduleBlocks.js`)
-- `GET /api/schedule-blocks` — **AUTH** — resposta: bloqueios (com `professional_name`).
-- `POST /api/schedule-blocks` — **AUTH** (role: admin, reception) — corpo: `professional_id`, `start_datetime`, `end_datetime`, `reason`, `notes`, `is_full_day`, `is_recurring` — resposta: `201` bloqueio.
-- `DELETE /api/schedule-blocks/:id` — **AUTH** (role: admin, reception) — resposta: `{ ok:true }`.
-
-## Usuários (`routes/users.js`, todas role: admin)
-- `GET /api/users` — **AUTH** (role: admin) — resposta: lista `{ id, name, email, role, created_at }`.
-- `POST /api/users` — **AUTH** (role: admin) — corpo: `name`, `email`, `password` (mín. 8), `role` — resposta: `201` usuário (sem hash).
-- `PATCH /api/users/:id` — **AUTH** (role: admin) — corpo: `name`, `email`, `role`, `password` (opcional, mín. 8) — resposta: usuário atualizado.
-- `DELETE /api/users/:id` — **AUTH** (role: admin) — resposta: `{ ok:true }` (`409` se auto-exclusão ou último admin).
-
-## Uploads (`routes/uploads.js`)
-- `POST /api/uploads` — **AUTH** (role: admin, reception) — **multipart** (campo `file`) — resposta: `201 { url: "/uploads/<filename>" }` (`400` sem arquivo). Arquivos servidos em `/uploads/...`.
-
-## Admin (`routes/admin.js`)
-- `POST /api/admin/reset-demo-data` — **AUTH** (role: admin) — corpo: `{ confirmation: "RESETAR" }` — resposta: `{ ok:true, message, removed:{<tabela>:count} }`. Limpa dados de demonstração preservando usuários e configurações. **Bloqueado em produção** (`403`) salvo `ALLOW_DEMO_RESET=true`.
-
-## Dashboard, ERP e alertas
-- `GET /api/dashboard` (`routes/dashboard.js`) — **AUTH** — resposta: objeto agregado (estatísticas, agendamentos do dia, alertas, painel admin com rankings/finanças/aniversários).
-- `GET /api/erp` (`routes/erp.js`) — **AUTH** (role: admin) — resposta: visão geral do produto/SaaS (métricas, módulos, CRM, itens de catálogo, mapa corporal, etc.).
-- `GET /api/alerts` (`routes/alerts.js`) — **AUTH** — resposta: `{ count, items:[] }` (estoque baixo, aniversários, clientes frequentes).
-
-## Health (`routes/health.js`, sem `X-Tenant`)
-- `GET /api/health` — **PÚBLICO** — resposta: `{ ok:true, app, timestamp }`.
-- `GET /api/health/db` — resposta: `{ ok, database }` (checa conexão com o banco; detalhes de erro só fora de produção).
+- Os contratos de entrada validados por Zod estão em `backend/src/schemas/index.js`.
+- O ciclo de tenant, autenticação e `search_path` está em
+  [ARQUITETURA.md](./ARQUITETURA.md).
+- Cobranças recorrentes e webhooks do Asaas estão em [ASAAS.md](./ASAAS.md).

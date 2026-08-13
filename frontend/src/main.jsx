@@ -26,7 +26,7 @@ import { applyUiTheme, readUiTheme, saveUiTheme } from "./lib/uiTheme";
 import { appPathForPage, isAppPath, pageForAppPath } from "./lib/appRoutes";
 
 if (typeof __AURA_BUILD__ !== "undefined") {
-  console.info("Aura Clinic ERP", __AURA_BUILD__);
+  console.info("Aura Clinic", __AURA_BUILD__);
 }
 
 // Code-splitting: telas pesadas carregadas sob demanda via React.lazy().

@@ -300,56 +300,6 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
     }
   }
 
-  // O editor é exibido como modal sobre a listagem, no mesmo padrão dos
-  // cadastros de Clientes. Mantemos este bloco legado inativo até a próxima
-  // limpeza estrutural do editor completo.
-  if (showEditor && false) {
-    const productCategory = editingJewelry?.category || filters.category;
-    return (
-      <section className="inventory-studio inventory-product-page">
-        <div className="inventory-main">
-          <nav className="inventory-breadcrumb" aria-label="Navegação do estoque">
-            <button type="button" onClick={() => closeProduct({ keepCategory: false })}>Estoque</button>
-            {productCategory && (
-              <>
-                <ChevronRight size={14} />
-                <button type="button" onClick={() => closeProduct({ keepCategory: true })}>{productCategory}</button>
-              </>
-            )}
-            <ChevronRight size={14} />
-            <strong>{editingJewelry ? elegantProductName(editingJewelry.name) : "Novo Produto"}</strong>
-          </nav>
-
-          <div className="inventory-product-navigation">
-            <Button variant="secondary" onClick={() => closeProduct({ keepCategory: false })}>
-              <ArrowLeft size={16} /> Voltar para Estoque
-            </Button>
-            {productCategory && (
-              <Button variant="secondary" onClick={() => closeProduct({ keepCategory: true })}>
-                <ArrowLeft size={16} /> Voltar para {productCategory}
-              </Button>
-            )}
-          </div>
-
-          <JewelryEditor
-            options={inventoryOptions}
-            categoryOptions={categoryOptions}
-            pricingSettings={safeOptions.pricingSettings}
-            editing={editingJewelry}
-            onMovementOpen={openMovement}
-            onCancel={() => closeProduct({ keepCategory: Boolean(productCategory) })}
-            onSaved={() => {
-              closeProduct({ keepCategory: Boolean(productCategory) });
-              refreshJewelry();
-              refreshOptions();
-            }}
-          />
-        </div>
-        {movementTarget && <StockMovementModal item={movementTarget} initialType={movementTarget.movement_type} onClose={() => setMovementTarget(null)} onSave={handleMovementSave} />}
-      </section>
-    );
-  }
-
   return (
     <section className="inventory-studio">
       <div className="inventory-main">

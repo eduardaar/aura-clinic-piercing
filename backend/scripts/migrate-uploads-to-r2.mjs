@@ -29,8 +29,8 @@
 // ---------------------------------------------------------------------------
 // COMO O DONO DE CADA ARQUIVO É DESCOBERTO (nunca pelo nome do arquivo)
 // ---------------------------------------------------------------------------
-// O disco é PLANO e COMPARTILHADO entre todas as clínicas (pendência #7 de
-// docs/PENDENCIAS.md) — o nome não diz nada. Quem diz é o banco:
+// O disco é PLANO e COMPARTILHADO entre todas as clínicas — o nome não diz
+// nada. Quem diz é o banco:
 //
 //   PRIVADO  `private_files` vive DENTRO do schema `tenant_<id>`. O arquivo é da
 //            clínica em cujo `private_files` a linha aparece. A chave sai de

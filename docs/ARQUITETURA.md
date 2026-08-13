@@ -14,8 +14,8 @@ aura-clinic-piercing/
 └── package.json Scripts de orquestração (dev, build, install:all)
 ```
 
-- **Backend** — `backend/`: API REST em Node.js + Express 5, persistência em PostgreSQL. Autenticação por token HMAC próprio (sem JWT externo). Uploads locais em `backend/src/data/uploads`.
-- **Frontend** — `frontend/`: SPA em React 18 + Vite 5, ícones `lucide-react`. Sem framework de UI externo — os componentes reutilizáveis são próprios. O roteamento **não** usa uma biblioteca: as telas públicas são escolhidas inspecionando `window.location.pathname` e a navegação interna do painel é feita por estado React (`page`) com controle de acesso por papel. As telas de cada feature são carregadas sob demanda (`React.lazy` + `Suspense`).
+- **Backend** — `backend/`: API REST em Node.js + Express 5, persistência em PostgreSQL. Autenticação por token HMAC próprio (sem JWT externo). Arquivos novos vão ao Cloudflare R2 quando as seis variáveis `R2_*` estão configuradas; o disco local é o fallback de desenvolvimento e de arquivos ainda não migrados.
+- **Frontend** — `frontend/`: SPA em React 18 + Vite 5, ícones `lucide-react`. Sem framework de UI externo — os componentes reutilizáveis são próprios. As telas públicas são escolhidas por `window.location.pathname`; o painel mantém URLs em `/app/*` por `appRoutes.js`, com controle de acesso por papel. As telas de cada feature são carregadas sob demanda (`React.lazy` + `Suspense`).
 
 Scripts da raiz (`package.json`):
 
@@ -34,7 +34,7 @@ O ponto central da arquitetura é o **isolamento físico de cada clínica em um 
 
 Um único banco de dados PostgreSQL (`aura_clinic`) é organizado em schemas:
 
-- **`platform`** — schema de controle da plataforma. Contém apenas duas tabelas: `platform.tenants` (cadastro das clínicas) e `platform.platform_users` (super-admins do painel). Definido em `backend/src/db/platformSchema.sql`.
+- **`platform`** — schema de controle da plataforma: clínicas, planos, assinaturas, faturas, super-admins, auditoria, webhooks, landing, documentos legais e suporte. Definido em `backend/src/db/platformSchema.sql`.
 - **`tenant_<id>`** — um schema por clínica, criado no provisionamento. O nome é sempre derivado do `id` inteiro do registro em `platform.tenants` (`"tenant_" || id`), **nunca de input do usuário**. Recebe todas as tabelas do app definidas em `backend/src/db/schema.sql`.
 
 Exemplo: a clínica de `id = 3` vive no schema `tenant_3`, com suas próprias tabelas `users`, `clients`, `appointments`, etc., totalmente separadas das demais clínicas.
@@ -63,8 +63,9 @@ Todo handler de rota é embrulhado pelo middleware `withDb` (`backend/src/middle
 2. **Resolução do tenant** — chama `resolveTenant(req)` (`backend/src/middleware/tenant.js`). O slug da clínica é resolvido nesta ordem de precedência:
    1. **Token Bearer válido** com `tslug` embutido. Se o header `X-Tenant` divergir do slug do token → `403` (tentativa de acessar outra clínica com token de uma).
    2. **Header `X-Tenant`**.
-   3. **Env `DEFAULT_TENANT`** (conveniência para dev local).
-   4. Nenhum → `400` ("Informe a clínica").
+   3. **Query** `t`, `tenant`, `clinic` ou `slug`; depois subdomínio elegível.
+   4. **Env `DEFAULT_TENANT`** (conveniência para dev local).
+   5. Nenhum → `400` ("Informe a clínica").
 
    O slug é validado por regex (`^[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$`), buscado em `platform.tenants` (com **cache em memória de 60s** por slug), e o schema é derivado do id (`tenant_<id>`). Clínica inexistente → `404`; clínica **suspensa** → `403`. Falhas de resolução viram respostas de erro sem jamais tocar o banco da aplicação. Como defesa em profundidade, o `withDb` ainda valida o schema resolvido contra `^tenant_\d+$` antes de usá-lo.
 
@@ -104,7 +105,10 @@ Essa separação garante que o super-admin da plataforma e os usuários de clín
 
 ### Rotas públicas
 
-`requiresAuth(req)` retorna `false` (não exige token) para: `/api/login`, `/api/health`, `/api/catalog`, `/api/sales-orders/public` e qualquer rota que comece com `/api/booking`. Todas as demais rotas sob `/api` exigem autenticação.
+Além de login e health, são públicas a vitrine de planos/diretório de clínicas,
+landing e documentos legais, catálogo e seus cálculos/eventos, checkout público,
+rotas de booking, consulta pública de PIX/status, ingestão de erro do frontend e
+webhooks autenticados pelo provedor. A lista completa está em [API.md](./API.md).
 
 ### Bypass de desenvolvimento local
 
