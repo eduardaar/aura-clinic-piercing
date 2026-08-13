@@ -5,6 +5,10 @@ const dataPath = process.argv.find((arg) => arg.startsWith("--data="))?.slice(7)
   || "/app/scripts/physical-inventory-2026-08-12.json";
 const source = JSON.parse(await fs.readFile(dataPath, "utf8"));
 
+// Estas linhas foram explicitamente reservadas para ajuste manual. Elas continuam
+// visíveis no relatório, mas nunca participam de qualquer cálculo ou operação.
+const MANUAL_ONLY_SOURCE_ROWS = new Set([10, 29, 30, 50, 51, 52, 53, 54, 57]);
+
 function norm(value = "") {
   return String(value)
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -170,6 +174,11 @@ try {
     action: "ambiguous", product_id: null, variant_id: null, matched_product: null,
     matched_variant: null, current_quantity: null, difference: null, ambiguity: note,
   });
+  const ignoreManual = (sourceRow) => setResult(sourceRow, {
+    action: "ignored_manual", product_id: null, variant_id: null, matched_product: null,
+    matched_variant: null, current_quantity: null, difference: null, ambiguity: "",
+    notes: "IGNORADO — AJUSTE MANUAL POSTERIOR",
+  });
 
   // Decisões técnicas confirmadas após revisão humana do primeiro relatório.
   // Ferradura: duas linhas físicas, uma única atualização final (3 unidades).
@@ -210,6 +219,10 @@ try {
   newProduct(58, "Barbell curvo de umbigo básico 1,6 mm: produtos genéricos existentes possuem modelo/material técnico divergente ou ornamentação específica.");
   newProduct(59, "Floating Navel ponto de luz 1,2 mm: Navels ponto de luz existentes são tradicionais e 1,6 mm; conflito crítico de construção/espessura.");
 
+  // A decisão de ignorar é aplicada por último para impedir que qualquer regra
+  // automática, atual ou futura, recoloque essas linhas no conjunto operacional.
+  for (const sourceRow of MANUAL_ONLY_SOURCE_ROWS) ignoreManual(sourceRow);
+
   // Recalcula duplicidades somente depois das decisões explícitas. Linhas consolidadas
   // de Ferradura são a única repetição intencional e não representam duas escritas.
   const finalVariantRows = new Map();
@@ -222,27 +235,37 @@ try {
   const createVariantRows = results.filter((r) => r.action === "create_variant");
   const updateRows = results.filter((r) => r.action === "update_variant");
   const ambiguousRows = results.filter((r) => r.action === "ambiguous");
+  const ignoredRows = results.filter((r) => r.action === "ignored_manual");
+  const automaticRows = results.filter((r) => r.action !== "ignored_manual");
+  const effectiveUpdateRows = updateRows.filter((r) => r.physical_quantity != null);
   const summary = {
     mode: "dry-run", tenant: tenant.slug, tenant_id: Number(tenant.id), schema,
     establishment: tenant.store_short_name || tenant.name, users,
     existing_products: products.length, existing_variants: variants.length,
     spreadsheet_variations: source.rows.length,
     spreadsheet_units: source.rows.reduce((s, r) => s + Number(r.quantity), 0),
+    ignored_for_manual_adjustment: ignoredRows.length,
+    automatically_processed: automaticRows.length,
+    automatic_physical_units: source.rows
+      .filter((r) => !MANUAL_ONLY_SOURCE_ROWS.has(r.source_row))
+      .reduce((s, r) => s + Number(r.quantity), 0),
     products_to_create: new Set(createRows.map((r) => norm(r.product))).size,
     variants_to_create: createRows.length + createVariantRows.length,
     new_variants_in_existing_products: createVariantRows.length,
     products_to_update: new Set(updateRows.map((r) => r.product_id)).size,
-    variants_to_update: updateRows.length,
-    variants_to_zero: source.rows.filter((r) => Number(r.quantity) === 0).length,
+    variants_to_update: new Set(effectiveUpdateRows.map((r) => r.variant_id)).size,
+    variants_to_zero: source.rows.filter((r) => !MANUAL_ONLY_SOURCE_ROWS.has(r.source_row) && Number(r.quantity) === 0).length,
     possible_duplicates_remaining: ambiguousRows.length,
     unresolved_ambiguities: ambiguousRows.length,
-    classification_total: updateRows.length + createVariantRows.length + createRows.length + ambiguousRows.length,
+    classification_total: updateRows.length + createVariantRows.length + createRows.length + ambiguousRows.length + ignoredRows.length,
     other_tenants_affected: 0,
+    writes_executed: 0,
   };
   console.log("AURA_DRY_RUN_BEGIN");
   console.log(JSON.stringify({
     summary,
     ambiguities: ambiguousRows,
+    ignored_manual: ignoredRows,
     comparison: results,
     inventory_snapshot: products.map((product) => ({
       ...product,
