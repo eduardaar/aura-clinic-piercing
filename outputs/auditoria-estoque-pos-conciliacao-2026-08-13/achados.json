@@ -1,0 +1,190 @@
+{
+  "scope": {
+    "tenant": "aura-clinic",
+    "tenant_id": 2,
+    "schema": "tenant_2",
+    "establishment": "Aura clinic piercing",
+    "other_tenants_affected": 0,
+    "writes_executed": 0
+  },
+  "counts": {
+    "products": 123,
+    "variants": 177,
+    "ok_products": 49,
+    "standardization_groups": 5,
+    "possible_duplicate_groups": 4,
+    "incorrect_structure_groups": 8,
+    "suspicious_image_products": 57,
+    "human_review_groups": 5
+  },
+  "findings": [
+    {
+      "priority": "ALTA",
+      "classification": "ESTRUTURA INCORRETA",
+      "ids": "P1 / V283",
+      "problem": "Variação de mamilo lateral com zircônia foi vinculada ao produto Barbel Reto Coração.",
+      "evidence": "V283 veio da linha física 61, está como 1,6 mm e sem lado/encaixe; P1 descreve coração, 1,2 mm e rosca externa.",
+      "correction": "Revisar visualmente a joia física e mover a variação para produto próprio/correto sem somar estoque."
+    },
+    {
+      "priority": "ALTA",
+      "classification": "ESTRUTURA INCORRETA",
+      "ids": "P15 / V296, V299, V300, V301, V312",
+      "problem": "Cinco modelos diferentes foram colocados dentro de Ponto de Luz.",
+      "evidence": "V296 é topo básico bolinha dourado; V299–V301 são topos chapados; V312 é topo pérola. V300 e V312 ainda colidem tecnicamente em 4 mm/1,6 mm apesar de serem modelos distintos.",
+      "correction": "Separar por modelo (Ponto de Luz, Topo Chapado, Topo Pérola, Bolinha), preservando IDs históricos e quantidades."
+    },
+    {
+      "priority": "ALTA",
+      "classification": "ESTRUTURA INCORRETA",
+      "ids": "P15 / V28–V31",
+      "problem": "Tamanho do topo foi armazenado como comprimento da haste e top_size_mm ficou vazio.",
+      "evidence": "Ex.: V28 chama-se Topo 2.0 mm, tem thickness 1.2 mm, length 2 mm e top_size_mm nulo; V29/V30 apresentam deslocamentos semelhantes.",
+      "correction": "Depois de confirmação, registrar topo em top_size_mm e manter 1,2 mm como compatibilidade/espessura."
+    },
+    {
+      "priority": "ALTA",
+      "classification": "POSSÍVEL DUPLICIDADE",
+      "ids": "P45/V67 × P167/V272",
+      "problem": "Barbell de coração Push Pin provavelmente foi recriado como produto separado.",
+      "evidence": "Ambos são Barbell Reto Heart/Topo Coração, 14 mm, titânio; P45 explicita Push Pin e P167 veio da contagem como Push Pin, diferindo principalmente na espessura 1,2 × 1,6 mm.",
+      "correction": "Confirmar a imagem/modelo; se iguais, manter P45 e tratar 1,6 mm como variação, sem DELETE."
+    },
+    {
+      "priority": "ALTA",
+      "classification": "ESTRUTURA INCORRETA",
+      "ids": "P37/V53; P47/V63",
+      "problem": "Existem estoques negativos fora do conjunto conciliado.",
+      "evidence": "V53 = -2 unidades; V63 = -1 unidade. As linhas seguras não alteraram essas variações.",
+      "correction": "Auditar vendas/reservas/movimentações antes de qualquer ajuste manual."
+    },
+    {
+      "priority": "ALTA",
+      "classification": "NECESSITA REVISÃO HUMANA",
+      "ids": "P4/V4",
+      "problem": "A contagem genérica Argola de aço foi conciliada no produto Par de Brincos.",
+      "evidence": "P4 representa um par e a imagem mostra duas argolas; a linha física não comprovava par, embora medida/material coincidam.",
+      "correction": "Confirmar se as 4 unidades significam quatro pares ou quatro argolas individuais."
+    },
+    {
+      "priority": "MÉDIA",
+      "classification": "ESTRUTURA INCORRETA",
+      "ids": "P40/V56; P46/V62; P51/V68",
+      "problem": "Categorias contradizem nome, descrição ou modelo.",
+      "evidence": "P40 é Clicker mas está em Barbell Reto; P46 chama Barbell Curvo mas está em Barbell Reto; P51 descreve Barbell Reto mas está em Barbell Curvo.",
+      "correction": "Padronizar categorias após confirmar que as imagens correspondem aos nomes."
+    },
+    {
+      "priority": "MÉDIA",
+      "classification": "POSSÍVEL DUPLICIDADE",
+      "ids": "P2/V2 × P13/V18–V21",
+      "problem": "Dois produtos genéricos Barbel Curvo podem ser um só produto com variações.",
+      "evidence": "Mesmo modelo/material; P2 cobre 10 mm/1,6 mm e P13 cobre 6–12 mm/1,2 mm. As imagens mostram barbells curvos genéricos.",
+      "correction": "Confirmar acabamento/encaixe e, se equivalentes, consolidar estruturalmente preservando variantes e histórico."
+    },
+    {
+      "priority": "MÉDIA",
+      "classification": "POSSÍVEL DUPLICIDADE",
+      "ids": "P48/V64 × P56/V72 × P61/V79",
+      "problem": "Três produtos Navel Ponto de Luz têm diferenças pouco claras.",
+      "evidence": "Nomes, construção, medida e imagens são muito semelhantes; Color/Clássico podem ser apenas pedra/acabamento, mas não há prova suficiente.",
+      "correction": "Comparar peças e fornecedores; manter separados até confirmação humana."
+    },
+    {
+      "priority": "MÉDIA",
+      "classification": "NECESSITA REVISÃO HUMANA",
+      "ids": "P63/V81 × P71/V91",
+      "problem": "Labret Flor Imperial aparece em dois produtos muito semelhantes.",
+      "evidence": "Nomes quase idênticos; fotos parecem variações florais, mas não comprovam que o desenho seja o mesmo.",
+      "correction": "Conferir desenho e lapidação física antes de decidir duplicidade."
+    },
+    {
+      "priority": "MÉDIA",
+      "classification": "NECESSITA REVISÃO HUMANA",
+      "ids": "P171/V280 × P2/P13",
+      "problem": "Barbell curvo de umbigo básico foi criado separadamente de barbells curvos genéricos.",
+      "evidence": "P171 não informa comprimento nem encaixe; espessura 1,6 mm coincide com P2, mas a aplicação em umbigo pode implicar construção distinta.",
+      "correction": "Confirmar comprimento, diâmetro das esferas e encaixe antes de estruturar."
+    },
+    {
+      "priority": "MÉDIA",
+      "classification": "ESTRUTURA INCORRETA",
+      "ids": "P168/V277; P176/V291",
+      "problem": "Produtos com Push Pin no nome não registram thread_type/encaixe.",
+      "evidence": "As duas variações têm thread_type vazio; isso impede distinguir Push Pin de rosca interna.",
+      "correction": "Preencher o encaixe somente após confirmação técnica."
+    },
+    {
+      "priority": "MÉDIA",
+      "classification": "ESTRUTURA INCORRETA",
+      "ids": "P198/V320",
+      "problem": "Topo 2 mm do anzol foi gravado em size/length e não em top_size_mm.",
+      "evidence": "V320 tem size e length = 'Topo 2 mm', top_size_mm nulo e thickness 1,2 mm.",
+      "correction": "Registrar top_size_mm=2,0 e manter 1,2 mm como compatibilidade, após validação."
+    },
+    {
+      "priority": "MÉDIA",
+      "classification": "ESTRUTURA INCORRETA",
+      "ids": "P200/V322; P201/V323",
+      "problem": "Material Titânio foi aplicado a itens que não são joias de titânio.",
+      "evidence": "Disco de silicone e pedra dental constam como material Titânio; a cor/espessura indicam Não aplicável.",
+      "correction": "Usar Silicone e Cristal/Pedra dental conforme confirmação, sem alterar estoque."
+    },
+    {
+      "priority": "MÉDIA",
+      "classification": "IMAGEM SUSPEITA",
+      "ids": "18 produtos / 21 variações",
+      "problem": "Imagem genérica idêntica está marcada como principal em variações de modelos incompatíveis.",
+      "evidence": "Afeta P13, P18, P21, P24, P28, P30, P33, P40, P41, P48, P51, P52, P57, P58, P59, P64, P65, P77; a foto mostra uma embalagem genérica e é reutilizada por labrets, clickers, navels e barbells distintos.",
+      "correction": "Manter URLs por enquanto; depois substituir a imagem principal da variação pela foto específica já existente no produto."
+    },
+    {
+      "priority": "MÉDIA",
+      "classification": "IMAGEM SUSPEITA",
+      "ids": "P163–P201 (39 produtos novos)",
+      "problem": "Todos os produtos criados na conciliação ficaram sem imagem.",
+      "evidence": "Nenhum possui product_images, image_url ou photo_url; não é possível validar visualmente nome/modelo.",
+      "correction": "Cadastrar imagem somente depois da identificação manual; não copiar por semelhança textual."
+    },
+    {
+      "priority": "BAIXA",
+      "classification": "PADRONIZAÇÃO SIMPLES",
+      "ids": "P1, P2, P13, P14 e variações",
+      "problem": "Grafia Barbel em vez de Barbell.",
+      "evidence": "Quatro nomes de produto e sete nomes de variação usam Barbel.",
+      "correction": "Padronizar para Barbell."
+    },
+    {
+      "priority": "BAIXA",
+      "classification": "PADRONIZAÇÃO SIMPLES",
+      "ids": "P41",
+      "problem": "Caractere de controle U+0013 no nome.",
+      "evidence": "O separador entre Implante e Rosca Interna não é um travessão válido.",
+      "correction": "Substituir por – após aprovação; não é falha global de UTF-8."
+    },
+    {
+      "priority": "BAIXA",
+      "classification": "PADRONIZAÇÃO SIMPLES",
+      "ids": "P17",
+      "problem": "Aço Cirurgico sem acento e material conflitante.",
+      "evidence": "Nome diz Aço Cirúrgico; produto/variação dizem Titânio ASTM F136.",
+      "correction": "Corrigir o acento; material exige revisão humana antes de qualquer mudança."
+    },
+    {
+      "priority": "BAIXA",
+      "classification": "PADRONIZAÇÃO SIMPLES",
+      "ids": "V255",
+      "problem": "Rose Gold anodizado foge do vocabulário Dourado/Rosé.",
+      "evidence": "Nenhum outro registro usa Gold; a variação é titânio anodizado, não ouro.",
+      "correction": "Confirmar a tonalidade e padronizar para Rosé anodizado ou Dourado anodizado."
+    },
+    {
+      "priority": "BAIXA",
+      "classification": "PADRONIZAÇÃO SIMPLES",
+      "ids": "Catálogo legado",
+      "problem": "Unidades sem espaço e Natural/Prata usados para titânio natural.",
+      "evidence": "Há 296 ocorrências de medidas como 8mm em campos textuais; 48 menções a Prata em descrições/notas de titânio.",
+      "correction": "Normalizar apresentação para 8 mm e Titânio Natural sem alterar significado técnico."
+    }
+  ]
+}
