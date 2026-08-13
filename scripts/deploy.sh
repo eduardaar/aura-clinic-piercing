@@ -295,7 +295,11 @@ docker tag aura-api:latest aura-api:rollback 2>/dev/null || true
 # uma falha explícita (e restaurável pelo backup acima) se algum SQL novo não
 # for compatível, em vez de descobrir a ausência de tabela no primeiro request.
 docker compose build aura-api
-docker compose run --rm aura-api node scripts/migrations.mjs apply
+# O script remoto chega ao host pelo stdin. `docker compose run` é interativo
+# por padrão e, sem redirecionamento, consome o restante desse próprio script:
+# a migration termina verde, mas as linhas de restart nunca são executadas.
+# Assim a entrada do container é fechada explicitamente.
+docker compose run --rm -T aura-api node scripts/migrations.mjs apply </dev/null
 
 # O boot preserva os schemas idempotentes legados durante a transição; os novos
 # arquivos devem sempre ser aplicados pelo comando versionado acima.
