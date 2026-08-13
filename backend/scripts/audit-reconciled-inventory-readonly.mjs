@@ -24,10 +24,11 @@ try {
   const reservations = (await client.query("SELECT * FROM inventory_reservations WHERE jewelry_id=ANY($1::int[]) OR jewelry_variant_id=ANY($2::int[]) ORDER BY id", [targetProductIds,targetVariantIds])).rows;
   const inventoryAudit = (await client.query("SELECT * FROM inventory_audit_log WHERE jewelry_id=ANY($1::int[]) ORDER BY id", [targetProductIds])).rows;
   const countItems = (await client.query("SELECT * FROM inventory_count_items WHERE jewelry_id=ANY($1::int[]) OR variant_id=ANY($2::int[]) ORDER BY count_id,id", [targetProductIds,targetVariantIds])).rows;
+  const inventoryOptions = (await client.query("SELECT * FROM inventory_options ORDER BY option_type,sort_order,id")).rows;
   const encoding = (await client.query("SELECT current_setting('server_encoding') server_encoding,current_setting('client_encoding') client_encoding")).rows[0];
   await client.query("COMMIT");
   if (products.length !== 123 || variants.length !== 177) throw new Error(`Totais inesperados: ${products.length} produtos / ${variants.length} variações.`);
-  await fs.writeFile(output, JSON.stringify({ scope: { tenant: tenant.slug, tenant_id: Number(tenant.id), schema, establishment: tenant.store_short_name || tenant.name, other_tenants_affected: 0, writes_executed: 0 }, encoding, products, variants, images, relationships:{ movements,sales,appointments,appointment_items:appointmentItems,reservations,inventory_audit:inventoryAudit,count_items:countItems } }, null, 2), "utf8");
+  await fs.writeFile(output, JSON.stringify({ scope: { tenant: tenant.slug, tenant_id: Number(tenant.id), schema, establishment: tenant.store_short_name || tenant.name, other_tenants_affected: 0, writes_executed: 0 }, encoding, products, variants, images, inventory_options:inventoryOptions, relationships:{ movements,sales,appointments,appointment_items:appointmentItems,reservations,inventory_audit:inventoryAudit,count_items:countItems } }, null, 2), "utf8");
   console.log(JSON.stringify({ products: products.length, variants: variants.length, images: images.length,relationships:{movements:movements.length,sales:sales.length,appointments:appointments.length,appointment_items:appointmentItems.length,reservations:reservations.length,inventory_audit:inventoryAudit.length,count_items:countItems.length}, schema, writes_executed: 0, other_tenants_affected: 0 }));
 } finally {
   await client.query("SET search_path TO public").catch(() => {});
