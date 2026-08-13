@@ -301,8 +301,12 @@ docker compose run --rm aura-api node scripts/migrations.mjs apply
 # arquivos devem sempre ser aplicados pelo comando versionado acima.
 # `redis` explícito: guarda os contadores do loginGuard e precisa estar de pé
 # antes da API. Sem ele a API sobe do mesmo jeito (cai para contadores em
-# memória), mas a proteção fica mais fraca.
-docker compose up -d redis aura-api
+# memória), mas a proteção fica mais fraca. A API é recriada de propósito:
+# com a imagem sempre chamada `aura-api:latest`, o Compose pode manter o
+# container anterior mesmo depois de `build`, deixando o deploy "verde" com
+# código antigo ainda em execução.
+docker compose up -d redis
+docker compose up -d --force-recreate aura-api
 docker image prune -f >/dev/null 2>&1 || true
 
 docker ps --filter name=aura-api --format 'aura-api: {{.Status}}'
