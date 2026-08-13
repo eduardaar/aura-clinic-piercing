@@ -17,15 +17,16 @@ Na data desta avaliação, a decisão recomendada é **NO-GO para lançamento p�
 | Segurança da aplicação | Parcial/crítica | RBAC, access token curto, refresh rotativo, revogação de sessões, MFA TOTP opcional e auditoria prioritária existem no código; obrigatoriedade de MFA, headers do frontend e validação em produção ainda faltam. |
 | Infraestrutura | Crítica | Origem acessível fora do Cloudflare, SSH root por senha e host compartilhado. |
 | Pagamentos | Parcial/crítica | Cartão bruto foi bloqueado e o código passou a ter tokens públicos expirados, ledger idempotente, cancelamento, estorno e chargeback; reconciliação/homologação real continuam pendentes. |
-| Deploy e migrations | Parcial | A troca do frontend, o healthcheck de banco e o runner versionado com ledger/checksum foram melhorados no repositório; staging, execução no pipeline, artefato imutável e rollback completo ainda faltam. |
+| Deploy e migrations | Parcial | Pipeline, backup validado, migration versionada, recriação da API e healthcheck foram comprovados em produção; staging, artefato imutável e rollback completo ainda faltam. |
 | Backup e recuperação | Crítica | A rotina diária observada não protege o banco `aura_clinic`. |
 
 O sistema está tecnicamente no ar, mas isso não equivale a estar liberado com segurança, conformidade demonstrável e capacidade de recuperação.
 
 ### 1.1 Estado da remediação no repositório
 
-Depois da fotografia original desta auditoria, uma primeira etapa de correções
-foi implementada **no código local, ainda não considerada ativa em produção**:
+Depois da fotografia original desta auditoria, as correções abaixo foram
+publicadas e verificadas em produção em 13/08/2026 (pipeline final
+`a843914`):
 
 - RBAC de termos e pós-atendimento restrito a `admin`/`piercer`, com testes;
 - revogação dos tokens anteriores após troca de senha ou papel;
@@ -45,6 +46,10 @@ foi implementada **no código local, ainda não considerada ativa em produção*
   idempotentes e ações de cancelamento, estorno e chargeback;
 - migrations versionadas com checksum/lock, executadas no deploy, e fila
   persistida para exportações CSV assíncronas.
+
+Evidências pós-deploy: healthcheck público de API/banco aprovado; ledger
+`platform/0001`, `tenant/0001` e `tenant/0002` aplicado nos cinco tenants; e
+tabelas de sessões, auditoria de privacidade e jobs presentes em todos eles.
 
 Esses avanços não mudam o **NO-GO**: backup, origem/SSH, headers, MFA
 obrigatório, retenção/eliminação completa, contratos/LGPD, reconciliação e validações independentes
@@ -735,18 +740,17 @@ Critérios de exceção devem exigir responsável, justificativa, prazo e ticket
 - [ ] Corrigir o backup de `aura_clinic` e executar restauração comprovada.
 - [ ] Bloquear acesso direto à origem e fechar a porta pública de métricas.
 - [ ] Aplicar atualizações do host e reiniciar em janela controlada.
-- [ ] Publicar e comprovar a versão que desabilita cartão/CVV (código pronto).
-- [ ] Publicar e comprovar o RBAC de termos/pós-atendimento (código e testes prontos).
+- [x] Publicar e comprovar a versão que desabilita cartão/CVV.
+- [x] Publicar e comprovar o RBAC de termos/pós-atendimento.
 
 ### Fase 1 — Proteção de dados e acesso
 
-- [~] Implementar sessões revogáveis e MFA. O código está pronto para clínica
-  e MFA da plataforma; falta obrigatoriedade de MFA e evidência em produção.
+- [~] Implementar sessões revogáveis e MFA. Sessões curtas/revogáveis e MFA
+  opcional estão em produção; falta obrigatoriedade e recuperação segura.
 - [ ] Adicionar CSP e demais headers no frontend.
 - [~] Implementar trilha de leitura/download/exportação. O repositório já
   registra leituras de cliente/prontuário, termos, pós-atendimento, downloads
-  privados e exportações financeiras/LGPD; faltam cobertura integral, alertas
-  e publicação em produção.
+  privados e exportações financeiras/LGPD; faltam cobertura integral e alertas.
 - [ ] Criar matriz de RBAC e testes negativos.
 - [ ] Proteger endpoints públicos contra bot e abuso.
 - [~] Implementar retenção e exclusão completa no banco, R2 e fornecedores.
@@ -773,9 +777,9 @@ Critérios de exceção devem exigir responsável, justificativa, prazo e ticket
 - [ ] Corrigir a máquina de estados de assinatura.
 - [ ] Ativar e monitorar reconciliação.
 - [ ] Corrigir métodos e conclusão do checkout público.
-- [~] Trocar IDs públicos por tokens aleatórios e expirados. Código pronto;
-  falta homologação e publicação controlada.
-- [~] Implementar cancelamento, reembolso e chargeback. Código pronto;
+- [~] Trocar IDs públicos por tokens aleatórios e expirados. Está publicado;
+  falta homologação comercial e monitoramento.
+- [~] Implementar cancelamento, reembolso e chargeback. Está publicado;
   falta homologação ponta a ponta e reconciliação monitorada.
 - [ ] Homologar a matriz completa no sandbox e em produção controlada.
 - [ ] Completar informações obrigatórias do comércio eletrônico.
@@ -783,8 +787,8 @@ Critérios de exceção devem exigir responsável, justificativa, prazo e ticket
 ### Fase 4 — Release e operação
 
 - [ ] Criar staging representativo.
-- [~] Implementar migrations versionadas com ledger/checksum. Código e etapa
-  explícita no deploy prontos; faltam staging e ensaio de rollback.
+- [~] Implementar migrations versionadas com ledger/checksum. Código, etapa
+  explícita e evidência em produção prontos; faltam staging e ensaio de rollback.
 - [ ] Tornar frontend e backend artefatos imutáveis.
 - [ ] Implantar troca atômica ou blue-green.
 - [ ] Exigir aprovação de produção.
@@ -810,8 +814,8 @@ O lançamento somente deve ser aprovado quando todos os critérios abaixo estive
 - [ ] origem inacessível fora do Cloudflare;
 - [ ] SSH sem root/senha e containers sem root;
 - [ ] MFA obrigatório para acessos privilegiados;
-- [ ] sessões revogáveis e de curta duração;
-- [ ] RBAC clínico testado no backend;
+- [x] sessões revogáveis e de curta duração;
+- [x] RBAC clínico testado no backend;
 - [ ] nenhuma vulnerabilidade crítica ou alta pendente sem aceite formal e prazo curto;
 - [ ] pentest sem achados críticos/altos abertos;
 - [ ] política, termos, DPA, RIPD, bases legais e retenção aprovados;

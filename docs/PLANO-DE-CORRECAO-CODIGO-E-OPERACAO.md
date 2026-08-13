@@ -13,12 +13,26 @@ Este documento é o plano executável da auditoria
 A auditoria define o risco e os critérios de liberação; aqui está a divisão de
 responsabilidade e a ordem prática do trabalho.
 
+## 0. Evidência do último deploy em produção
+
+Em 13/08/2026, a pipeline de produção concluiu no commit `a843914` após CI
+verde. A API respondeu ao healthcheck de banco e a conferência direta no
+PostgreSQL confirmou, nos cinco tenants existentes:
+
+- ledger `platform/0001`, `tenant/0001` e `tenant/0002` aplicado;
+- tabelas `user_sessions`, `privacy_audit_logs` e `background_jobs` presentes;
+- container da API recriado com o código de sessões e privacidade.
+
+O deploy preserva backup validado, aplica migrations antes do restart e recria
+explicitamente a API. A pendência de release não é mais “publicar o código”,
+mas sim staging, rollback ensaiado, observabilidade e controles externos.
+
 ## 1. Correções já feitas no código
 
 | Tema | Mudança no repositório | Efeito | Para concluir |
 | --- | --- | --- | --- |
-| Acesso clínico | Termos digitais e pós-atendimento agora exigem `admin` ou `piercer`, com testes negativos para recepção e financeiro. | Reduz exposição de dado de saúde por papel excessivo. | Deploy e teste de aceitação com os quatro papéis. |
-| Sessões e revogação | Access token de 15 minutos, refresh opaco rotativo em cookie `HttpOnly`, sessões persistidas por dispositivo, logout/revogação individual ou global e invalidação após senha/papel. | Reduz exposição do token no navegador e encerra acesso roubado ou antigo no servidor. | Ativar `Secure`/HTTPS no ambiente e estender refresh por dispositivo ao painel de plataforma. |
+| Acesso clínico | Termos digitais e pós-atendimento agora exigem `admin` ou `piercer`, com testes negativos para recepção e financeiro. | Reduz exposição de dado de saúde por papel excessivo. | Fazer teste de aceitação periódico com os quatro papéis. |
+| Sessões e revogação | Access token de 15 minutos, refresh opaco rotativo em cookie `HttpOnly`, sessões persistidas por dispositivo, logout/revogação individual ou global e invalidação após senha/papel. | Reduz exposição do token no navegador e encerra acesso roubado ou antigo no servidor. | Estender refresh e revogação por dispositivo ao painel de plataforma. |
 | MFA TOTP | Administradores de clínica e o super-admin podem cadastrar autenticador TOTP; login exige o código depois da ativação. | Adiciona um segundo fator aos acessos mais privilegiados. | Tornar MFA obrigatório por política antes do GO-LIVE e definir recuperação segura de conta. |
 | Cartão/PCI | Billing da plataforma aceita somente checkout hospedado (`UNDEFINED`) e rejeita número, titular, CVV e `CREDIT_CARD`. | Dados brutos de cartão deixam de atravessar a Aura e o escopo PCI é reduzido. | Homologar o checkout hospedado no sandbox e confirmar o enquadramento PCI com adquirente/especialista. |
 | Idempotência financeira | Todo checkout exige `Idempotency-Key`; a chave e o hash do corpo são persistidos com unicidade no PostgreSQL. | Evita assinatura/cobrança duplicada entre processos e em repetição de rede. | Monitorar conflitos e expiração das chaves em produção. |
@@ -31,9 +45,9 @@ responsabilidade e a ordem prática do trabalho.
 | Telemetria pública | Ingestão de erros tem rate limit, ignora e-mail informado pelo cliente e redige segredos/identificadores. | Reduz abuso, vazamento em logs e crescimento descontrolado. | Configurar retenção, alerta e destino centralizado. |
 | IP/proxy | O backend não confia diretamente em `CF-Connecting-IP`; usa o IP resolvido pelo Express. | Impede spoofing simples do cabeçalho quando a cadeia de proxy é correta. | Bloquear acesso direto à origem e definir `trust proxy` de acordo com a topologia real. |
 | Container | API executa como usuário `node`, com arquivos copiados sob essa propriedade. | Reduz impacto de comprometimento do processo. | Rebuild da imagem, scan e validação de permissões de volumes. |
-| Deploy | Frontend é preparado em diretório novo, a API precisa passar em `/api/health/db` e a troca do frontend é atômica, com diretório anterior para rollback. | Evita publicar frontend incompatível antes da API/banco e melhora recuperação. | Staging, artefato imutável, rollback de banco e automação blue-green ainda faltam. |
+| Deploy | Frontend é preparado em diretório novo, a API precisa passar em `/api/health/db`, a troca do frontend é atômica e a API é forçada a recriar depois do build. | Evita publicar frontend incompatível antes da API/banco e impede pipeline verde com container antigo. | Staging, artefato imutável, rollback de banco e automação blue-green ainda faltam. |
 | Migrations | Runner incremental com ledger centralizado, SHA-256, lock transacional e comandos de status/verificação/aplicação; o deploy o executa antes de reiniciar a API. | Impede reaplicar versões e detecta alteração de SQL já publicado em plataforma e tenants. | Migrar alterações novas exclusivamente para o diretório versionado e ensaiar em staging/rollback. |
-| Jobs assíncronos | Fila persistida por tenant, idempotência, lease/retry e worker opt-in para exportações CSV; métricas administrativas e arquivos privados. | Retira exportação pesada do ciclo HTTP sem vazar relatórios financeiros para recepção. | Aplicar a migration, habilitar worker, monitorar fila e evoluir CSV grande para streaming/lotes. |
+| Jobs assíncronos | Fila persistida por tenant, idempotência, lease/retry e worker opt-in para exportações CSV; métricas administrativas e arquivos privados. A migration está aplicada nos cinco tenants. | Retira exportação pesada do ciclo HTTP sem vazar relatórios financeiros para recepção. | Habilitar worker, monitorar fila e evoluir CSV grande para streaming/lotes. |
 | Qualidade | Erros de lint foram eliminados e o CI voltou a bloquear erro de lint. | Evita acumular novas falhas silenciosas. | Reduzir os avisos remanescentes por módulo, sem bloquear hotfix legítimo. |
 
 ## 2. Backlog que depende principalmente de código
