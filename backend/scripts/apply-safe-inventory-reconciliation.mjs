@@ -89,7 +89,7 @@ try {
     await q("INSERT INTO stock_movements (jewelry_id,variant_id,movement_type,quantity,notes) VALUES ($1,$2,'Inventário',$3,$4)", [productId, variantId, finalQty, `Conciliação física aprovada · linha ${op.source_row} · variação criada`]);
   }
 
-  for (const productId of touchedProducts) await q(`UPDATE jewelry_inventory j SET quantity=x.qty,status=$2,updated_at=CURRENT_TIMESTAMP FROM (SELECT COALESCE(SUM(quantity),0)::int qty FROM jewelry_variants WHERE jewelry_id=$1 AND is_active=1) x WHERE j.id=$1`, [productId, "disponível"]);
+  for (const productId of touchedProducts) await q(`UPDATE jewelry_inventory j SET quantity=x.qty,status=$2 FROM (SELECT COALESCE(SUM(quantity),0)::int qty FROM jewelry_variants WHERE jewelry_id=$1 AND is_active=1) x WHERE j.id=$1`, [productId, "disponível"]);
   // Corrige o status agregado sem alterar qualquer outra característica do produto.
   for (const productId of touchedProducts) { const qty = Number((await q("SELECT quantity FROM jewelry_inventory WHERE id=$1", [productId])).rows[0].quantity); await q("UPDATE jewelry_inventory SET status=$1 WHERE id=$2", [statusFor(qty), productId]); }
 
