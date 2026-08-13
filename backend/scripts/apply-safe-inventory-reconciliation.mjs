@@ -99,7 +99,7 @@ try {
   const mismatches = [];
   for (const op of ops) {
     if (op.action === "update_variant" && op.physical_quantity == null) continue;
-    const expected = Number(sourceByRow.get(op.source_row).quantity);
+    const expected = op.action === "update_variant" ? Number(op.physical_quantity) : Number(sourceByRow.get(op.source_row).quantity);
     let actual;
     if (op.action === "update_variant") actual = Number((await q("SELECT quantity FROM jewelry_variants WHERE id=$1", [op.variant_id])).rows[0].quantity);
     else actual = Number((await q("SELECT quantity FROM jewelry_variants WHERE sku=$1", [`REC-20260812-V-${String(op.source_row).padStart(3, "0")}`])).rows[0].quantity);
