@@ -59,8 +59,11 @@ async function invalidateStoredSessions(client, userId, userEmail) {
     const hasUserEmail = await columnExists(client, table, "user_email");
     if (!hasUserId && !hasUserEmail) continue;
 
-    const condition = hasUserId ? "user_id = $1" : "LOWER(user_email) = $2";
-    const result = await client.query(`DELETE FROM ${table} WHERE ${condition}`, [userId, userEmail]);
+    const condition = hasUserId ? "user_id = $1" : "LOWER(user_email) = $1";
+    const result = await client.query(
+      `DELETE FROM ${table} WHERE ${condition}`,
+      [hasUserId ? userId : userEmail]
+    );
     removed += Number(result.rowCount || 0);
   }
 

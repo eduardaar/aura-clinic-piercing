@@ -5,6 +5,7 @@ import { requireRole } from "../middleware/auth.js";
 import { listAppointments, upsertClient } from "../services/appointments.js";
 import { listDigitalTerms, countDigitalTerms, getDigitalTerm, createTermPdf } from "../services/terms.js";
 import { parsePaging, pageResponse } from "../services/pagination.js";
+import { recordPrivacyAudit } from "../services/privacy.js";
 
 const router = Router();
 
@@ -79,6 +80,11 @@ router.get("/api/digital-terms", withFeature("digital_terms", async (req, res, d
   });
   const items = await listDigitalTerms(db, { where, params, paging });
   const total = paging.paginated ? await countDigitalTerms(db, { where, params }) : items.length;
+  await recordPrivacyAudit(db, {
+    req, action: "digital_terms_read", resourceType: "digital_term_list",
+    clientId: req.query.client_id || null,
+    detail: { result_count: items.length, filtered_by_client: Boolean(req.query.client_id) }
+  });
   res.json(pageResponse(items, total, paging));
 }));
 

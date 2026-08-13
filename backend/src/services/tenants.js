@@ -1,12 +1,13 @@
 // Serviço de tenants (clínicas): provisionamento/desprovisionamento de
-// schemas Postgres, bootstrap do schema de controle `platform` e o runner de
-// migrations multi-schema (aplica o schema.sql idempotente em todos os tenants).
+// schemas Postgres, bootstrap do schema de controle `platform`, schemas
+// idempotentes legados e runner incremental opt-in de migrations.
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import bcrypt from "bcryptjs";
 import { pool, query } from "../database/connection.js";
 import { applySchemaSql } from "../db/postgres.js";
+import { applyMigrationsForTarget } from "../db/migrations.js";
 import { TENANT_SLUG_REGEX, invalidateTenantCache } from "../middleware/tenant.js";
 import { isProduction } from "../config/index.js";
 import { normalizePlanCode, planByCode, trialWindow } from "./plans.js";
@@ -121,6 +122,7 @@ export async function provisionTenant({ name, slug, adminName, adminEmail, admin
     // em public).
     await client.query(`SET search_path TO "${schema}"`);
     await applySchemaSql(client);
+    await applyMigrationsForTarget(client, { scope: "tenant", targetSchema: schema });
     const passwordHash = await bcrypt.hash(String(adminPassword), 10);
     const adminInsert = await client.query(
       "INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, 'admin') RETURNING id, name, email, role",
@@ -229,8 +231,24 @@ export async function ensurePlatform() {
   }
 }
 
-// Runner de migrations multi-schema: aplica o schema.sql (idempotente) em
-// TODOS os tenants cadastrados. Roda a cada boot do servidor.
+// Migrations do schema de controle. O schema idempotente continua sendo
+// aplicado por ensurePlatform durante a transição; a partir do marco 0001,
+// mudanças novas devem entrar apenas em src/db/migrations/platform.
+export async function applyPlatformMigrations() {
+  const client = await pool.connect();
+  try {
+    return await applyMigrationsForTarget(client, {
+      scope: "platform",
+      targetSchema: "platform"
+    });
+  } finally {
+    client.release();
+  }
+}
+
+// Compatibilidade legada: aplica schema.sql idempotente em TODOS os tenants a
+// cada boot. O runner incremental só entra aqui quando a flag explícita está
+// ligada; no deploy, prefira `npm run migrations:apply` antes de subir a API.
 export async function applySchemaToAllTenants() {
   const tenants = await query("SELECT id, slug FROM platform.tenants ORDER BY id");
   for (const tenant of tenants.rows) {
@@ -241,6 +259,9 @@ export async function applySchemaToAllTenants() {
       // Apenas o schema do tenant no search_path (ver provisionTenant).
       await client.query(`SET search_path TO "${schema}"`);
       await applySchemaSql(client);
+      if (process.env.RUN_MIGRATIONS_ON_BOOT === "true") {
+        await applyMigrationsForTarget(client, { scope: "tenant", targetSchema: schema });
+      }
     } catch (error) {
       console.error(`[platform] Falha ao aplicar schema no tenant "${tenant.slug}" (${schema}):`, error.message);
       throw error;

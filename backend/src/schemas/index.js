@@ -29,7 +29,8 @@ const requiredId = (label) =>
 export const loginSchema = z
   .object({
     email: nonEmptyString("E-mail"),
-    password: nonEmptyString("Senha")
+    password: nonEmptyString("Senha"),
+    mfa_code: z.string().regex(/^\d{6}$/, { message: "Código do autenticador inválido." }).optional()
   })
   .passthrough();
 
@@ -166,7 +167,8 @@ export const signupSchema = z
 export const platformLoginSchema = z
   .object({
     email: nonEmptyString("E-mail"),
-    password: nonEmptyString("Senha")
+    password: nonEmptyString("Senha"),
+    mfa_code: z.string().regex(/^\d{6}$/, { message: "Código do autenticador inválido." }).optional()
   })
   .passthrough();
 

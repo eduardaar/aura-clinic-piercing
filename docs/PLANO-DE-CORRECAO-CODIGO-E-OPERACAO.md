@@ -18,17 +18,22 @@ responsabilidade e a ordem prática do trabalho.
 | Tema | Mudança no repositório | Efeito | Para concluir |
 | --- | --- | --- | --- |
 | Acesso clínico | Termos digitais e pós-atendimento agora exigem `admin` ou `piercer`, com testes negativos para recepção e financeiro. | Reduz exposição de dado de saúde por papel excessivo. | Deploy e teste de aceitação com os quatro papéis. |
-| Revogação de sessão | Tokens carregam `session_version`; troca de senha ou papel invalida tokens anteriores. A troca da própria senha devolve um token novo. | Fecha sessões antigas após eventos críticos. | O deploy causará logout único dos tokens antigos. MFA, sessões por dispositivo e cookie seguro continuam no backlog. |
+| Sessões e revogação | Access token de 15 minutos, refresh opaco rotativo em cookie `HttpOnly`, sessões persistidas por dispositivo, logout/revogação individual ou global e invalidação após senha/papel. | Reduz exposição do token no navegador e encerra acesso roubado ou antigo no servidor. | Ativar `Secure`/HTTPS no ambiente e estender refresh por dispositivo ao painel de plataforma. |
+| MFA TOTP | Administradores de clínica e o super-admin podem cadastrar autenticador TOTP; login exige o código depois da ativação. | Adiciona um segundo fator aos acessos mais privilegiados. | Tornar MFA obrigatório por política antes do GO-LIVE e definir recuperação segura de conta. |
 | Cartão/PCI | Billing da plataforma aceita somente checkout hospedado (`UNDEFINED`) e rejeita número, titular, CVV e `CREDIT_CARD`. | Dados brutos de cartão deixam de atravessar a Aura e o escopo PCI é reduzido. | Homologar o checkout hospedado no sandbox e confirmar o enquadramento PCI com adquirente/especialista. |
 | Idempotência financeira | Todo checkout exige `Idempotency-Key`; a chave e o hash do corpo são persistidos com unicidade no PostgreSQL. | Evita assinatura/cobrança duplicada entre processos e em repetição de rede. | Monitorar conflitos e expiração das chaves em produção. |
 | Troca de plano | Self-service só altera plano durante trial e sem assinatura recorrente. Uma assinatura existente retorna `409` e segue para suporte. | Evita liberar recurso sem ajustar preço, prorrata e recorrência. | Definir política comercial de upgrade/downgrade e automatizar prorrata em fase posterior. |
-| Cobrança pública | Endpoints públicos usam `public_token` UUID, não o ID serial interno, e devolvem resposta mínima. | Reduz enumeração de cobranças. | Avaliar expiração/rotação do token conforme o ciclo de retenção. |
+| Cobrança pública | Endpoints públicos usam token UUID com expiração e rotação, não o ID serial interno, e devolvem resposta mínima. | Reduz enumeração e janela de exposição de links de pagamento. | Definir prazo comercial por tipo de cobrança e homologar com o gateway. |
+| Ciclo financeiro | Ledger idempotente de operações, cancelamento, estorno e chargeback foram separados em código e API administrativa. | Evita repetição de comandos financeiros e preserva trilha distinta por evento. | Homologar a matriz completa no sandbox/produção e ativar reconciliação monitorada. |
+| Privacidade operacional | Auditoria registra leitura de cliente/prontuário, termos, pós-atendimento, downloads privados e exportações; solicitações do titular exigem identidade verificada para exportação. | Cria evidência de acesso a dado sensível e fluxo inicial de direitos. | Cobrir todas as telas, alertar volume anormal e orquestrar eliminação em R2, backups e fornecedores conforme a política jurídica. |
 | Menores | Termo de menor exige nome, documento e assinatura separada do responsável; o PDF registra essas evidências. | Melhora prova de consentimento/ciência do responsável. | Revisão jurídica do texto, regras de idade e fluxo de revogação. |
 | IA | Contexto e instrução enviados ao provedor são minimizados/redigidos; resumo de cliente exige `admin` ou `piercer`. | Reduz envio incidental de identificadores e limita acesso clínico. | Contrato/DPA, região, retenção do provedor, opt-out e testes de DLP continuam externos/híbridos. |
 | Telemetria pública | Ingestão de erros tem rate limit, ignora e-mail informado pelo cliente e redige segredos/identificadores. | Reduz abuso, vazamento em logs e crescimento descontrolado. | Configurar retenção, alerta e destino centralizado. |
 | IP/proxy | O backend não confia diretamente em `CF-Connecting-IP`; usa o IP resolvido pelo Express. | Impede spoofing simples do cabeçalho quando a cadeia de proxy é correta. | Bloquear acesso direto à origem e definir `trust proxy` de acordo com a topologia real. |
 | Container | API executa como usuário `node`, com arquivos copiados sob essa propriedade. | Reduz impacto de comprometimento do processo. | Rebuild da imagem, scan e validação de permissões de volumes. |
 | Deploy | Frontend é preparado em diretório novo, a API precisa passar em `/api/health/db` e a troca do frontend é atômica, com diretório anterior para rollback. | Evita publicar frontend incompatível antes da API/banco e melhora recuperação. | Staging, artefato imutável, rollback de banco e automação blue-green ainda faltam. |
+| Migrations | Runner incremental com ledger centralizado, SHA-256, lock transacional e comandos de status/verificação/aplicação; o deploy o executa antes de reiniciar a API. | Impede reaplicar versões e detecta alteração de SQL já publicado em plataforma e tenants. | Migrar alterações novas exclusivamente para o diretório versionado e ensaiar em staging/rollback. |
+| Jobs assíncronos | Fila persistida por tenant, idempotência, lease/retry e worker opt-in para exportações CSV; métricas administrativas e arquivos privados. | Retira exportação pesada do ciclo HTTP sem vazar relatórios financeiros para recepção. | Aplicar a migration, habilitar worker, monitorar fila e evoluir CSV grande para streaming/lotes. |
 | Qualidade | Erros de lint foram eliminados e o CI voltou a bloquear erro de lint. | Evita acumular novas falhas silenciosas. | Reduzir os avisos remanescentes por módulo, sem bloquear hotfix legítimo. |
 
 ## 2. Backlog que depende principalmente de código
@@ -39,19 +44,9 @@ produto. Devem entrar em entregas próprias, com migration e plano de rollback.
 
 ### Prioridade alta
 
-- substituir o token de 12 horas em `localStorage` por sessão curta, cookie
-  `HttpOnly`, `Secure` e `SameSite`, refresh rotativo e proteção CSRF;
-- implementar MFA obrigatório para super-admin e administradores de clínica;
-- persistir sessões por dispositivo, listar atividade e permitir revogação
-  individual ou global;
-- criar trilha de auditoria de leitura, download e exportação de prontuários,
-  termos, fotos e arquivos privados;
-- criar retenção e eliminação orquestrada no PostgreSQL, R2, logs, backups e
-  fornecedores, com fila, comprovante e exceção por obrigação legal;
-- implementar expiração/rotação dos tokens públicos de cobrança;
-- completar cancelamento, estorno, chargeback e conciliação do cliente final;
-- versionar migrations com ledger, checksum, estado `pending/applied/failed`,
-  compatibilidade progressiva e comando de verificação;
+- registrar estado operacional de migration (`running/failed`), release e
+  operador no pipeline; o ledger/checksum e os comandos de verificação já
+  estão implementados;
 - adicionar testes de integração para upload malicioso, IDOR, concorrência,
   isolamento multi-tenant e todas as negações da matriz de papéis;
 - aplicar limites de paginação, tamanho de payload e tempo de execução em todas
@@ -61,8 +56,6 @@ produto. Devem entrar em entregas próprias, com migration e plano de rollback.
 
 - medir consultas lentas com `pg_stat_statements` e `EXPLAIN (ANALYZE, BUFFERS)`
   antes de criar índices; priorizar dashboard, agenda, catálogo e financeiro;
-- tirar geração pesada de PDF/XLSX, importações e reconciliação do ciclo HTTP,
-  usando jobs idempotentes com tentativas e dead-letter queue;
 - introduzir cache somente para dados públicos/versionados, com chave contendo
   tenant e versão publicada; nunca compartilhar cache de prontuário;
 - paginar e transmitir exportações grandes em vez de montar tudo em memória;

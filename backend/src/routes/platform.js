@@ -11,6 +11,7 @@ import { clientIp } from "../middleware/rateLimit.js";
 import { checkAccess, registerFailure, registerSuccess } from "../services/loginGuard.js";
 import bcrypt from "bcryptjs";
 import { pool, query } from "../database/connection.js";
+import { createDb } from "../db/postgres.js";
 import { createPlatformToken, verifyPlatformToken, createToken } from "../middleware/auth.js";
 import { invalidateTenantCache } from "../middleware/tenant.js";
 import {
@@ -25,6 +26,8 @@ import { isProduction } from "../config/index.js";
 import { PLAN_FEATURES, listPlans, normalizePlanCode, planByCode } from "../services/plans.js";
 import { subscriptionSyncWarning, syncSubscriptionPrice } from "../services/platformBilling.js";
 import { invalidateSubscriptionCache } from "../services/subscriptions.js";
+import { decryptTotpSecret, encryptTotpSecret, generateTotpSecret, otpauthUri, verifyTotp } from "../services/totp.js";
+import { createClinicSession, setRefreshCookie } from "../services/sessions.js";
 
 const router = Router();
 
@@ -138,7 +141,21 @@ router.post("/api/signup", signupLimiter, async (req, res) => {
     });
     // Login automático: emite um token de clínica para o admin recém-criado,
     // evitando que o usuário tenha de fazer login de novo digitando o slug.
-    const token = tenant.admin ? createToken(tenant.admin, tenant) : null;
+    let token = null;
+    if (tenant.admin) {
+      // O cadastro também entra pelo fluxo de sessão persistida; devolver só o
+      // access token aqui faria o login automático falhar na primeira rota
+      // protegida, pois todo token de clínica precisa de uma sessão ativa.
+      const client = await pool.connect();
+      try {
+        await client.query(`SET search_path TO "tenant_${Number(tenant.id)}", public`);
+        const session = await createClinicSession(createDb(client), tenant.admin, req);
+        setRefreshCookie(res, session.refreshToken);
+        token = createToken(tenant.admin, tenant, { sessionId: session.id });
+      } finally {
+        try { await client.query("SET search_path TO public"); client.release(); } catch { client.release(true); }
+      }
+    }
     await query(
       `INSERT INTO platform.legal_acceptances (tenant_id, user_email, document_key, document_version, ip_address, user_agent)
        VALUES ($1, $2, 'terms_of_use', $3, $4, $5), ($1, $2, 'privacy_policy', $6, $4, $5)`,
@@ -182,6 +199,12 @@ router.post("/api/platform/login", platformLoginLimiter, async (req, res) => {
       await registerFailure(ip, { userAgent: req.headers["user-agent"], email });
       return res.status(401).json({ error: "Credenciais inválidas." });
     }
+    if (user.mfa_enabled) {
+      const secret = decryptTotpSecret(user.mfa_totp_secret_encrypted);
+      if (!secret || !verifyTotp(secret, req.body?.mfa_code)) {
+        return res.status(401).json({ error: "Informe o código do seu autenticador.", code: "mfa_required" });
+      }
+    }
     await registerSuccess(ip);
     res.json({
       token: createPlatformToken(user),
@@ -190,6 +213,38 @@ router.post("/api/platform/login", platformLoginLimiter, async (req, res) => {
   } catch (error) {
     handleServiceError(res, error);
   }
+});
+
+// O painel de plataforma é o acesso de maior privilégio. A configuração é
+// separada da clínica, com segredo cifrado no schema `platform`.
+router.get("/api/platform/mfa", requirePlatform, async (req, res) => {
+  try {
+    const result = await query("SELECT mfa_enabled FROM platform.platform_users WHERE id = $1", [req.platformUser.sub]);
+    res.json({ enabled: Boolean(result.rows[0]?.mfa_enabled) });
+  } catch (error) { handleServiceError(res, error); }
+});
+
+router.post("/api/platform/mfa/setup", requirePlatform, async (req, res) => {
+  try {
+    const result = await query("SELECT id, email, password_hash FROM platform.platform_users WHERE id = $1", [req.platformUser.sub]);
+    const user = result.rows[0];
+    if (!user || !(await bcrypt.compare(String(req.body?.current_password || ""), user.password_hash))) {
+      return res.status(400).json({ error: "Confirme sua senha atual para configurar o autenticador." });
+    }
+    const secret = generateTotpSecret();
+    await query("UPDATE platform.platform_users SET mfa_totp_secret_encrypted = $1, mfa_enabled = false WHERE id = $2", [encryptTotpSecret(secret), user.id]);
+    res.json({ secret, otpauth_url: otpauthUri({ secret, email: user.email, issuer: "Aura Platform" }) });
+  } catch (error) { handleServiceError(res, error); }
+});
+
+router.post("/api/platform/mfa/verify", requirePlatform, async (req, res) => {
+  try {
+    const result = await query("SELECT mfa_totp_secret_encrypted FROM platform.platform_users WHERE id = $1", [req.platformUser.sub]);
+    const secret = decryptTotpSecret(result.rows[0]?.mfa_totp_secret_encrypted);
+    if (!secret || !verifyTotp(secret, req.body?.code)) return res.status(400).json({ error: "Código do autenticador inválido." });
+    await query("UPDATE platform.platform_users SET mfa_enabled = true, session_version = session_version + 1 WHERE id = $1", [req.platformUser.sub]);
+    res.json({ ok: true, enabled: true });
+  } catch (error) { handleServiceError(res, error); }
 });
 
 // Vitrine pública de planos (landing e cadastro).

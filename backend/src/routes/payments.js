@@ -1,8 +1,13 @@
 import { Router } from "express";
 import { withDb, withFeature } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
-import { transitionPaymentIntent } from "../services/payments.js";
-import { getPixDataByPublicToken, syncIntentByPublicToken } from "../services/tenantCharges.js";
+import { publicPaymentIntent, rotatePublicPaymentToken, transitionPaymentIntent } from "../services/payments.js";
+import {
+  cancelTenantCharge,
+  getPixDataByPublicToken,
+  refundTenantCharge,
+  syncIntentByPublicToken
+} from "../services/tenantCharges.js";
 
 const router = Router();
 
@@ -20,6 +25,14 @@ router.get("/api/payment-intents", withFeature("deposits", async (req, res, db) 
 router.patch("/api/payment-intents/:id/status", withFeature("deposits", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "finance"])) return;
   try {
+    const current = await db.get("SELECT provider FROM payment_intents WHERE id=?", [Number(req.params.id)]);
+    if (!current) return res.status(404).json({ error: "Intenção de pagamento não encontrada." });
+    if (["refunded", "chargeback"].includes(req.body?.status)) {
+      return res.status(422).json({ error: "Estorno e chargeback são atualizados pelo gateway; use o fluxo de estorno ou aguarde o webhook." });
+    }
+    if (current.provider === "asaas" && req.body?.status === "cancelled") {
+      return res.status(422).json({ error: "Cancele cobranças Asaas pela rota de cancelamento, com Idempotency-Key." });
+    }
     res.json(await transitionPaymentIntent(db, {
       intentId: Number(req.params.id),
       status: req.body?.status,
@@ -29,6 +42,53 @@ router.patch("/api/payment-intents/:id/status", withFeature("deposits", async (r
     }));
   } catch (error) {
     res.status(400).json({ error: error.message });
+  }
+}));
+
+// Revoga um link vazado/antigo sem emitir outra cobrança. O URL da fatura no
+// Asaas continua o mesmo, mas nossa tela pública passa a exigir o UUID novo.
+router.post("/api/payment-intents/:id/public-token", withFeature("deposits", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "finance"])) return;
+  try {
+    const intent = await rotatePublicPaymentToken(db, Number(req.params.id));
+    res.json({ payment_intent: publicPaymentIntent(intent), payment_url: intent.invoice_url || null });
+  } catch (error) {
+    res.status(404).json({ error: error.message });
+  }
+}));
+
+// Cancelamento só serve para cobrança que ainda não foi liquidada. Para não
+// executar duas vezes por duplo clique, Idempotency-Key é obrigatório.
+router.post("/api/payment-intents/:id/cancel", withFeature("deposits", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "finance"])) return;
+  try {
+    const result = await cancelTenantCharge(db, {
+      intentId: Number(req.params.id),
+      idempotencyKey: req.get("Idempotency-Key"),
+      userId: req.user.id,
+      reason: String(req.body?.reason || "").trim().slice(0, 500) || null
+    });
+    res.status(result.operation_status === "pending" ? 202 : 200).json(result);
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.userMessage || error.message, code: error.code || undefined });
+  }
+}));
+
+// Estorno total do cliente final. O retorno 200 significa que o Asaas aceitou
+// a solicitação; o status `refunded` só chega por webhook/reconciliação.
+router.post("/api/payment-intents/:id/refund", withFeature("deposits", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "finance"])) return;
+  try {
+    const result = await refundTenantCharge(db, {
+      intentId: Number(req.params.id),
+      idempotencyKey: req.get("Idempotency-Key"),
+      userId: req.user.id,
+      amount: req.body?.amount,
+      reason: String(req.body?.reason || "").trim().slice(0, 500) || null
+    });
+    res.status(result.operation_status === "pending" ? 202 : 200).json(result);
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.userMessage || error.message, code: error.code || undefined });
   }
 }));
 
@@ -42,10 +102,13 @@ router.patch("/api/payment-intents/:id/status", withFeature("deposits", async (r
 // é aleatório e específico da cobrança; o id serial nunca funciona aqui.
 router.get("/api/payment-intents/:token/pix", withDb(async (req, res, db) => {
   const pix = await getPixDataByPublicToken(db, req.params.token);
-  if (!pix) {
+  if (pix.kind === "expired") {
+    return res.status(410).json({ error: "Este link de pagamento expirou. Solicite um novo à clínica." });
+  }
+  if (pix.kind !== "ok" || !pix.data) {
     return res.status(404).json({ error: "PIX indisponível para esta cobrança." });
   }
-  res.json(pix);
+  res.json(pix.data);
 }));
 
 // Conciliação sob demanda de UMA cobrança.
@@ -59,11 +122,14 @@ router.get("/api/payment-intents/:token/pix", withDb(async (req, res, db) => {
 router.post("/api/payment-intents/:token/sync", withDb(async (req, res, db) => {
   try {
     const intent = await syncIntentByPublicToken(db, req.params.token);
-    if (!intent) return res.status(404).json({ error: "Cobrança não encontrada." });
+    if (intent.kind === "expired") {
+      return res.status(410).json({ error: "Este link de pagamento expirou. Solicite um novo à clínica." });
+    }
+    if (intent.kind !== "ok" || !intent.intent) return res.status(404).json({ error: "Cobrança não encontrada." });
     res.json({
-      status: intent.status,
-      paid_at: intent.paid_at || null,
-      invoice_url: intent.invoice_url || null
+      status: intent.intent.status,
+      paid_at: intent.intent.paid_at || null,
+      invoice_url: intent.intent.invoice_url || null
     });
   } catch (error) {
     // Gateway fora não é erro do cliente: ele tenta de novo em instantes.

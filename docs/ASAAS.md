@@ -200,6 +200,30 @@ o `public_token` UUID aleatório entregue na criação da cobrança; o ID serial
 interno não é aceito publicamente. O `sync` devolve apenas status e campos
 mínimos de conclusão, nunca o intent inteiro.
 
+O token público expira em sete dias e pode ser rotacionado por `admin` ou
+`finance` em `POST /api/payment-intents/:id/public-token`. A rotação invalida o
+link anterior sem criar outra cobrança. Um token expirado retorna `410`; o prazo
+do token é deliberadamente separado do vencimento financeiro (`expires_at`).
+
+### Cancelamento, estorno e chargeback
+
+- `POST /api/payment-intents/:id/cancel` cancela apenas cobrança ainda não
+  liquidada; para Asaas, primeiro remove a cobrança no gateway e só então muda
+  o estado local.
+- `POST /api/payment-intents/:id/refund` solicita **estorno total** de cobrança
+  confirmada. Ambos exigem `Idempotency-Key` e gravam a operação em
+  `payment_operations` antes da chamada externa; reenvios devolvem o resultado
+  já registrado, em vez de repetir a operação financeira.
+- PIX/cartão usam `POST /payments/{id}/refund`. Boleto abre a solicitação do
+  Asaas e devolve o `refund_request_url` apenas ao operador autenticado: o
+  estorno não é considerado concluído até webhook/conciliação.
+- Chargeback não é marcado manualmente: eventos/consulta do gateway o registram
+  como `chargeback`, separado de `refunded`, para preservar a trilha financeira.
+
+Estorno parcial ainda é bloqueado de propósito: o financeiro interno não possui
+razão de estorno por item/valor. Habilitá-lo sem esse razão causaria divergência
+entre o Asaas e os relatórios locais.
+
 A cobrança é criada **fora da transação** do agendamento/pedido, e é
 best-effort: se o Asaas estiver fora, o agendamento continua de pé e a resposta
 traz `online_payment_available: false`, caindo no fluxo manual de sempre.

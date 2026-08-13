@@ -53,9 +53,16 @@ CREATE TABLE IF NOT EXISTS platform.platform_users (
   name TEXT NOT NULL,
   email TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
+  session_version INTEGER NOT NULL DEFAULT 1,
+  mfa_totp_secret_encrypted TEXT,
+  mfa_enabled BOOLEAN NOT NULL DEFAULT false,
   role TEXT NOT NULL DEFAULT 'superadmin',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE platform.platform_users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE platform.platform_users ADD COLUMN IF NOT EXISTS mfa_totp_secret_encrypted TEXT;
+ALTER TABLE platform.platform_users ADD COLUMN IF NOT EXISTS mfa_enabled BOOLEAN NOT NULL DEFAULT false;
 
 ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS store_short_name TEXT;
 ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS responsible_name TEXT;

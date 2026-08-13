@@ -21,6 +21,7 @@ O projeto é um **monorepo** com backend (Node/Express + PostgreSQL, multi-tenan
 | [PADRAO-VISUAL.md](./PADRAO-VISUAL.md) | Como escrever tela nova sem criar mais um sistema de CSS: a ordem de busca (componente → classe → CSS próprio), o catálogo de primitivas, as camadas da cascata, a armadilha do scroll e os anti-padrões observados no painel da plataforma. |
 | [PRONTIDAO-PRODUCAO-LGPD-SEGURANCA.md](./PRONTIDAO-PRODUCAO-LGPD-SEGURANCA.md) | Auditoria de prontidão para produção: decisão GO/NO-GO, LGPD, segurança, pagamentos, backups, infraestrutura, migrations, plano de correção e critérios objetivos de lançamento. |
 | [PLANO-DE-CORRECAO-CODIGO-E-OPERACAO.md](./PLANO-DE-CORRECAO-CODIGO-E-OPERACAO.md) | Plano executável separado entre correções já feitas no código, backlog de desenvolvimento, itens híbridos e dependências externas de infraestrutura, jurídico e operação. |
+| [JOBS-EM-SEGUNDO-PLANO.md](./JOBS-EM-SEGUNDO-PLANO.md) | Fila persistente por clínica, exportações assíncronas, idempotência, worker opt-in e limites operacionais. |
 
 ## Por onde começar
 

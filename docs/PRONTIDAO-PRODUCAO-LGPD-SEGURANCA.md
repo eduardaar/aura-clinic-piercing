@@ -12,12 +12,12 @@ Na data desta avaliação, a decisão recomendada é **NO-GO para lançamento p�
 
 | Área | Situação | Motivo principal |
 | --- | --- | --- |
-| Funcionalidade e testes | Boa | Typecheck, build e 563 testes passaram após a primeira remediação. |
+| Funcionalidade e testes | Boa | 472 testes do backend, typecheck, build e 104 testes do frontend passaram após as remediações de código. |
 | LGPD e governança | Crítica | Documentos, bases legais, retenção, direitos e contratos incompletos. |
-| Segurança da aplicação | Crítica | O RBAC clínico prioritário foi corrigido no repositório, mas sessão longa em `localStorage`, ausência de MFA e auditoria de leitura continuam. |
+| Segurança da aplicação | Parcial/crítica | RBAC, access token curto, refresh rotativo, revogação de sessões, MFA TOTP opcional e auditoria prioritária existem no código; obrigatoriedade de MFA, headers do frontend e validação em produção ainda faltam. |
 | Infraestrutura | Crítica | Origem acessível fora do Cloudflare, SSH root por senha e host compartilhado. |
-| Pagamentos | Parcial/crítica | Cartão bruto e autopromoção inconsistente foram bloqueados no repositório; reconciliação, estorno/chargeback e homologação continuam pendentes. |
-| Deploy e migrations | Parcial | A troca do frontend e o healthcheck de banco foram melhorados no repositório; staging, migrations versionadas, artefato imutável e rollback completo ainda faltam. |
+| Pagamentos | Parcial/crítica | Cartão bruto foi bloqueado e o código passou a ter tokens públicos expirados, ledger idempotente, cancelamento, estorno e chargeback; reconciliação/homologação real continuam pendentes. |
+| Deploy e migrations | Parcial | A troca do frontend, o healthcheck de banco e o runner versionado com ledger/checksum foram melhorados no repositório; staging, execução no pipeline, artefato imutável e rollback completo ainda faltam. |
 | Backup e recuperação | Crítica | A rotina diária observada não protege o banco `aura_clinic`. |
 
 O sistema está tecnicamente no ar, mas isso não equivale a estar liberado com segurança, conformidade demonstrável e capacidade de recuperação.
@@ -37,9 +37,17 @@ foi implementada **no código local, ainda não considerada ativa em produção*
 - minimização do contexto enviado à IA e sanitização da telemetria pública;
 - container sem root, healthcheck de banco e ativação atômica do frontend;
 - lint novamente bloqueante no CI.
+- sessão curta com refresh rotativo `HttpOnly`, dispositivos revogáveis e MFA
+  TOTP configurável para administração clínica e plataforma;
+- auditoria prioritária de leitura/download/exportação, solicitações de
+  titulares e retenção inicial de logs internos;
+- token público de cobrança expirável/rotativo, operações financeiras
+  idempotentes e ações de cancelamento, estorno e chargeback;
+- migrations versionadas com checksum/lock, executadas no deploy, e fila
+  persistida para exportações CSV assíncronas.
 
-Esses avanços não mudam o **NO-GO**: backup, origem/SSH, headers, MFA/sessão
-completa, retenção, contratos/LGPD, reconciliação e validações independentes
+Esses avanços não mudam o **NO-GO**: backup, origem/SSH, headers, MFA
+obrigatório, retenção/eliminação completa, contratos/LGPD, reconciliação e validações independentes
 continuam pendentes. O acompanhamento por categoria está em
 [PLANO-DE-CORRECAO-CODIGO-E-OPERACAO.md](./PLANO-DE-CORRECAO-CODIGO-E-OPERACAO.md).
 
@@ -58,7 +66,8 @@ As observações de infraestrutura representam uma fotografia da produção em *
 
 ### 2.1 Resultado das verificações automatizadas
 
-- Backend: **459 testes aprovados**.
+- Backend: **472 testes aprovados**, incluindo sessões, privacidade,
+  pagamentos, migrations e jobs.
 - Frontend: **104 testes aprovados**, sendo 18 unitários e 86 de componentes.
 - Typecheck: aprovado.
 - Build de produção: aprovado.
@@ -187,10 +196,11 @@ Exposição interna de alergias, histórico, ocorrências, cicatrização, quest
 
 ### P0-05 — Sessões administrativas sem proteção suficiente
 
-O token de clínica possui validade de 12 horas e é armazenado no `localStorage`.
-O repositório agora invalida tokens anteriores após troca de senha ou papel por
-meio de `session_version`, mas ainda não há MFA obrigatório, refresh token
-rotativo, sessão por dispositivo ou revogação individual.
+O token de clínica agora possui validade de 15 minutos; o refresh é opaco,
+rotativo e armazenado em cookie `HttpOnly`, e as sessões são persistidas por
+dispositivo com revogação individual/global. MFA TOTP está disponível para
+administração clínica e plataforma. Ainda não é obrigatório por política, e o
+painel de plataforma ainda não tem refresh/revogação por dispositivo.
 
 Referência técnica: `frontend/src/lib/api.js`.
 
@@ -585,8 +595,8 @@ O fluxo existente possui backup prévio, serialização, aplicação do schema a
 - push em `main` pode iniciar deploy de produção;
 - não há staging/canário comprovado;
 - build ocorre no host de produção;
-- migrations são representadas por grandes arquivos idempotentes de schema;
-- não há ledger geral com versão e checksum;
+- schemas idempotentes legados ainda convivem com o runner incremental;
+- o runner novo possui ledger geral com versão e checksum e o script de deploy o executa antes de reiniciar a API; ainda falta CI/staging com evidência da execução;
 - tenants são migrados em sequência, permitindo estado parcial;
 - rollback pode voltar API e frontend anterior, mas não é disparado automaticamente;
 - banco e configuração não retornam automaticamente;
@@ -730,12 +740,20 @@ Critérios de exceção devem exigir responsável, justificativa, prazo e ticket
 
 ### Fase 1 — Proteção de dados e acesso
 
-- [ ] Implementar sessões revogáveis e MFA.
+- [~] Implementar sessões revogáveis e MFA. O código está pronto para clínica
+  e MFA da plataforma; falta obrigatoriedade de MFA e evidência em produção.
 - [ ] Adicionar CSP e demais headers no frontend.
-- [ ] Implementar trilha de leitura/download/exportação.
+- [~] Implementar trilha de leitura/download/exportação. O repositório já
+  registra leituras de cliente/prontuário, termos, pós-atendimento, downloads
+  privados e exportações financeiras/LGPD; faltam cobertura integral, alertas
+  e publicação em produção.
 - [ ] Criar matriz de RBAC e testes negativos.
 - [ ] Proteger endpoints públicos contra bot e abuso.
-- [ ] Implementar retenção e exclusão completa no banco, R2 e fornecedores.
+- [~] Implementar retenção e exclusão completa no banco, R2 e fornecedores.
+  Há fila de solicitações de titulares, exportação condicionada à validação de
+  identidade e retenção explícita de logs internos; dados clínicos, anexos,
+  R2, backups e fornecedores continuam pendentes de política jurídica e
+  orquestração externa.
 - [ ] Corrigir o fluxo e evidência de termos, inclusive para menores.
 
 ### Fase 2 — LGPD e contratos
@@ -755,15 +773,18 @@ Critérios de exceção devem exigir responsável, justificativa, prazo e ticket
 - [ ] Corrigir a máquina de estados de assinatura.
 - [ ] Ativar e monitorar reconciliação.
 - [ ] Corrigir métodos e conclusão do checkout público.
-- [ ] Trocar IDs públicos por tokens aleatórios e expirados.
-- [ ] Implementar cancelamento, reembolso e chargeback.
+- [~] Trocar IDs públicos por tokens aleatórios e expirados. Código pronto;
+  falta homologação e publicação controlada.
+- [~] Implementar cancelamento, reembolso e chargeback. Código pronto;
+  falta homologação ponta a ponta e reconciliação monitorada.
 - [ ] Homologar a matriz completa no sandbox e em produção controlada.
 - [ ] Completar informações obrigatórias do comércio eletrônico.
 
 ### Fase 4 — Release e operação
 
 - [ ] Criar staging representativo.
-- [ ] Implementar migrations versionadas com ledger/checksum.
+- [~] Implementar migrations versionadas com ledger/checksum. Código e etapa
+  explícita no deploy prontos; faltam staging e ensaio de rollback.
 - [ ] Tornar frontend e backend artefatos imutáveis.
 - [ ] Implantar troca atômica ou blue-green.
 - [ ] Exigir aprovação de produção.

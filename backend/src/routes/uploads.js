@@ -4,6 +4,7 @@ import { withDb } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { upload, parseUpload } from "../middleware/upload.js";
 import { buildKey, storage } from "../services/storage/index.js";
+import { recordPrivacyAudit } from "../services/privacy.js";
 
 const router = Router();
 
@@ -35,6 +36,10 @@ router.get("/api/private-files/:filename", withDb(async (req, res, db) => {
   if (req.user?.role === "reception" && !["appointment_reference", "public_booking"].includes(file.purpose)) {
     return res.status(403).json({ error: "Acesso negado." });
   }
+  await recordPrivacyAudit(db, {
+    req, action: "private_file_download", resourceType: "private_file", resourceId: file.id,
+    detail: { purpose: file.purpose, mime_type: file.mime_type }
+  });
 
   // A chave é reconstruída a partir do tenant + purpose; se o objeto ainda não
   // subiu para o bucket, a camada de storage cai no disco local sozinha.

@@ -119,6 +119,24 @@ Executa `backup.sh`: carrega o `.env`, valida `DATABASE_URL` e `pg_dump`, e gera
 
 Migração **única** que converte um banco legado single-tenant (tabelas no schema `public`) para o modelo multi-tenant. Passos: garante o schema `platform`; cria (se não existir) o tenant inicial `aura` e seu schema `tenant_<id>`; **move** todas as tabelas de `public` para o schema do tenant via `ALTER TABLE ... SET SCHEMA` (sem copiar dados). É idempotente: se `aura` já existir, não faz nada. Rode apenas se você tiver dados legados no `public`.
 
+### Migrations versionadas — `npm --prefix backend run migrations:apply`
+
+As mudanças novas de banco ficam em `backend/src/db/migrations/{platform,tenant}`
+no formato `NNNN_descricao.sql`. O runner mantém o ledger central
+`platform.schema_migrations`, valida SHA-256 de versões já aplicadas e usa lock
+transacional por schema. Antes de publicar, rode:
+
+```bash
+npm --prefix backend run migrations:verify
+npm --prefix backend run migrations:apply
+```
+
+`verify` falha se houver migration pendente ou se um arquivo aplicado tiver
+mudado. O boot mantém os schemas idempotentes legados na transição e só executa
+o runner para tenants existentes quando `RUN_MIGRATIONS_ON_BOOT=true`; produção
+deve preferir a etapa explícita do deploy. Não edite migration aplicada: crie a
+próxima versão. Veja também `backend/src/db/migrations/README.md`.
+
 ### Teste de isolamento — `node backend/scripts/test-isolation.mjs`
 
 Prova de isolamento entre clínicas por HTTP (**exige o servidor já rodando**). Cria dois tenants de teste, executa 9 checagens e imprime `PASS/FAIL`:

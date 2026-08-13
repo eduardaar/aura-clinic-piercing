@@ -10,6 +10,7 @@ import { parsePaging, fetchPage, pageResponse } from "../services/pagination.js"
 import { validateBody } from "../middleware/validate.js";
 import { clientCreateSchema, clientUpdateSchema } from "../schemas/index.js";
 import { invalidateUsageCache, requireWithinLimit } from "../services/planLimits.js";
+import { recordPrivacyAudit } from "../services/privacy.js";
 
 const router = Router();
 
@@ -152,6 +153,10 @@ router.get("/api/clients", withDb(async (req, res, db) => {
     orderBy: paging.orderBy,
     paging
   });
+  await recordPrivacyAudit(db, {
+    req, action: "client_list_read", resourceType: "client_list",
+    detail: { result_count: rows.length, searched: Boolean(req.query.search) }
+  });
   res.json(pageResponse(rows.map(clientResponse), total, paging));
 }));
 
@@ -164,6 +169,13 @@ router.get("/api/clients/:id", withDb(async (req, res, db) => {
   const visible = req.user?.role === "reception"
     ? { ...client, medicalRecords: [], terms: [] }
     : client;
+  await recordPrivacyAudit(db, {
+    req,
+    action: req.user?.role === "reception" ? "client_profile_read" : "clinical_record_read",
+    resourceType: "client",
+    resourceId: client.id,
+    clientId: client.id
+  });
   res.json(clientResponse(visible));
 }));
 

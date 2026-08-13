@@ -11,8 +11,16 @@ export function Settings({ user, theme, onThemeChange, navCollapsed, onNavCollap
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [mfa, setMfa] = useState({ loading: user?.role === "admin", enabled: false, secret: "", code: "", setupPassword: "" });
 
   useEffect(() => setProfile({ name: user?.name || "", email: user?.email || "" }), [user?.name, user?.email]);
+  useEffect(() => {
+    if (user?.role !== "admin") return setMfa((current) => ({ ...current, loading: false }));
+    apiFetch("/account/mfa")
+      .then((response) => response.json().then((payload) => ({ ok: response.ok, payload })))
+      .then(({ ok, payload }) => setMfa((current) => ({ ...current, loading: false, enabled: ok && Boolean(payload.enabled) })))
+      .catch(() => setMfa((current) => ({ ...current, loading: false })));
+  }, [user?.role]);
 
   async function saveProfile(event) {
     event.preventDefault();
@@ -42,6 +50,24 @@ export function Settings({ user, theme, onThemeChange, navCollapsed, onNavCollap
     } finally {
       setSaving(false);
     }
+  }
+
+  async function setupMfa() {
+    setError(""); setMessage("");
+    const response = await apiFetch("/account/mfa/setup", { method: "POST", body: JSON.stringify({ current_password: mfa.setupPassword }) });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return setError(payload.error || "Não foi possível iniciar a configuração do autenticador.");
+    setMfa((current) => ({ ...current, secret: payload.secret, code: "" }));
+    setMessage("Adicione a chave no seu aplicativo autenticador e confirme o código gerado.");
+  }
+
+  async function verifyMfa() {
+    setError(""); setMessage("");
+    const response = await apiFetch("/account/mfa/verify", { method: "POST", body: JSON.stringify({ code: mfa.code }) });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return setError(payload.error || "Código inválido.");
+    setMfa((current) => ({ ...current, enabled: true, secret: "", code: "", setupPassword: "" }));
+    setMessage("Autenticação em duas etapas ativada.");
   }
 
   return (
@@ -80,6 +106,24 @@ export function Settings({ user, theme, onThemeChange, navCollapsed, onNavCollap
           <div className="settings-form-actions"><Button type="submit" disabled={saving}>{saving ? "Salvando…" : "Salvar configurações"}</Button></div>
         </form>
       </div>
+
+      {user?.role === "admin" && (
+        <div className="panel settings-account">
+          <div className="panel-heading"><div><h2>Autenticação em duas etapas</h2><span>Proteja o acesso administrativo com um aplicativo autenticador.</span></div></div>
+          {mfa.loading ? <p>Carregando proteção da conta…</p> : mfa.enabled ? <p className="form-success">Autenticador ativo. O código será exigido nos próximos logins.</p> : (
+            <div className="settings-form">
+              <Input label="Confirme sua senha atual" type="password" value={mfa.setupPassword} onChange={(value) => setMfa({ ...mfa, setupPassword: value })} />
+              <div className="settings-form-actions"><Button type="button" onClick={setupMfa} disabled={!mfa.setupPassword}>Gerar chave do autenticador</Button></div>
+              {mfa.secret && <>
+                <p>Adicione esta chave no Google Authenticator, 1Password ou app equivalente:</p>
+                <code style={{ overflowWrap: "anywhere" }}>{mfa.secret}</code>
+                <Input label="Código de 6 dígitos" value={mfa.code} onChange={(value) => setMfa({ ...mfa, code: value.replace(/\D/g, "").slice(0, 6) })} />
+                <div className="settings-form-actions"><Button type="button" onClick={verifyMfa} disabled={mfa.code.length !== 6}>Ativar autenticação em duas etapas</Button></div>
+              </>}
+            </div>
+          )}
+        </div>
+      )}
     </section>
   );
 }

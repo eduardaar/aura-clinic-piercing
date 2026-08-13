@@ -11,6 +11,7 @@ export function Login({ onLogin }) {
     // credenciais de super-admin (isso é conta de plataforma, não de clínica).
     email: localStorage.getItem("aura-last-email") || "",
     password: "",
+    mfa_code: "",
   });
   const [rememberAccess, setRememberAccess] = useState(Boolean(localStorage.getItem("aura-admin-authenticated")));
   const [showPassword, setShowPassword] = useState(false);
@@ -35,7 +36,7 @@ export function Login({ onLogin }) {
       setTenantSlug(slug);
       const response = await apiFetch("/login", {
         method: "POST",
-        body: JSON.stringify({ email, password: form.password }),
+        body: JSON.stringify({ email, password: form.password, ...(form.mfa_code ? { mfa_code: form.mfa_code.trim() } : {}) }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -80,6 +81,20 @@ export function Login({ onLogin }) {
                   value={form.slug}
                   onChange={(event) => setForm({ ...form, slug: event.target.value.toLowerCase() })}
                   placeholder="ex.: aura"
+                />
+              </div>
+
+              <div className="au-a-field">
+                <label htmlFor="au-a-mfa">Código do autenticador <small>(se ativado)</small></label>
+                <input
+                  id="au-a-mfa"
+                  className="au-a-input"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  value={form.mfa_code}
+                  onChange={(event) => setForm({ ...form, mfa_code: event.target.value.replace(/\D/g, "") })}
+                  placeholder="000000"
                 />
               </div>
 

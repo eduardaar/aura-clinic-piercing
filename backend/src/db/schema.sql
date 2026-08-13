@@ -24,6 +24,29 @@ CREATE TABLE IF NOT EXISTS users (
 -- Versão da sessão permite revogar tokens já emitidos quando senha ou papel
 -- muda. O ALTER mantém compatibilidade com schemas criados antes da coluna.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 1;
+-- Sessões persistidas: o browser recebe só um refresh token opaco em cookie
+-- HttpOnly. No banco guardamos exclusivamente o SHA-256 dele, permitindo
+-- revogação por dispositivo sem transformar a tabela em cofre de credenciais.
+CREATE TABLE IF NOT EXISTS user_sessions (
+  id UUID PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  session_version INTEGER NOT NULL,
+  refresh_token_hash TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_used_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ NOT NULL,
+  revoked_at TIMESTAMPTZ,
+  ip_address TEXT,
+  user_agent TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_user_active
+  ON user_sessions(user_id, last_used_at DESC) WHERE revoked_at IS NULL;
+
+-- TOTP é opcional durante a transição para não bloquear administradores já
+-- existentes. Depois de habilitado, é obrigatório no login. O segredo é
+-- criptografado pela aplicação antes de chegar a esta coluna.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_totp_secret_encrypted TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_enabled BOOLEAN NOT NULL DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS admin_audit_logs (
   id SERIAL PRIMARY KEY,
@@ -848,6 +871,8 @@ CREATE INDEX IF NOT EXISTS idx_stock_movements_date_type ON stock_movements(move
 CREATE TABLE IF NOT EXISTS payment_intents (
   id SERIAL PRIMARY KEY,
   public_token TEXT NOT NULL UNIQUE,
+  public_token_expires_at TIMESTAMP NOT NULL DEFAULT (CURRENT_TIMESTAMP + INTERVAL '7 days'),
+  public_token_rotated_at TIMESTAMP,
   appointment_id INTEGER REFERENCES appointments(id),
   client_id INTEGER NOT NULL REFERENCES clients(id),
   provider TEXT NOT NULL DEFAULT 'manual',
@@ -856,7 +881,7 @@ CREATE TABLE IF NOT EXISTS payment_intents (
   amount NUMERIC(12,2) NOT NULL CHECK (amount >= 0),
   currency TEXT NOT NULL DEFAULT 'BRL',
   payment_type TEXT NOT NULL DEFAULT 'deposit',
-  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'awaiting_payment', 'under_review', 'confirmed', 'failed', 'cancelled', 'refunded', 'expired')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'awaiting_payment', 'under_review', 'confirmed', 'failed', 'cancelled', 'refunded', 'chargeback', 'expired')),
   pix_copy_paste TEXT,
   qr_code_url TEXT,
   expires_at TIMESTAMP,
@@ -877,6 +902,27 @@ CREATE TABLE IF NOT EXISTS payment_events (
 
 CREATE INDEX IF NOT EXISTS idx_payment_intents_appointment ON payment_intents(appointment_id, status);
 CREATE INDEX IF NOT EXISTS idx_payment_events_intent ON payment_events(payment_intent_id, created_at);
+
+-- Operações financeiras solicitadas pelo time da clínica. A intenção é o
+-- registro imutável de que um cancelamento/estorno foi pedido e com qual chave
+-- idempotente, antes de chamar o gateway. Isso impede duas devoluções numa
+-- dupla-clique/reentrega e dá trilha auditável sem gravar dados de cartão.
+CREATE TABLE IF NOT EXISTS payment_operations (
+  id SERIAL PRIMARY KEY,
+  payment_intent_id INTEGER NOT NULL REFERENCES payment_intents(id) ON DELETE CASCADE,
+  operation_type TEXT NOT NULL CHECK (operation_type IN ('cancel', 'refund')),
+  idempotency_key TEXT NOT NULL,
+  requested_by INTEGER REFERENCES users(id),
+  amount NUMERIC(12,2),
+  reason TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'succeeded', 'failed')),
+  provider_response JSONB,
+  completed_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(payment_intent_id, operation_type, idempotency_key)
+);
+CREATE INDEX IF NOT EXISTS idx_payment_operations_intent ON payment_operations(payment_intent_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS catalog_layouts (
   id SERIAL PRIMARY KEY,
@@ -1223,6 +1269,61 @@ ALTER TABLE professionals ADD COLUMN IF NOT EXISTS calendar_color TEXT DEFAULT '
 ALTER TABLE professionals ADD COLUMN IF NOT EXISTS whatsapp TEXT;
 ALTER TABLE professionals ADD COLUMN IF NOT EXISTS notification_opt_in INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'manual';
+
+-- Governança de privacidade (LGPD). Estas tabelas são deliberadamente
+-- isoladas neste bloco idempotente para também chegarem aos tenants existentes pelo schema
+-- idempotente. A auditoria registra metadados de acesso, nunca o conteúdo de
+-- prontuários, fotos, termos ou documentos.
+CREATE TABLE IF NOT EXISTS privacy_audit_logs (
+  id SERIAL PRIMARY KEY,
+  actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  actor_email TEXT,
+  actor_role TEXT,
+  action TEXT NOT NULL,
+  resource_type TEXT NOT NULL,
+  resource_id INTEGER,
+  client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+  detail TEXT,
+  ip TEXT,
+  user_agent TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_privacy_audit_created ON privacy_audit_logs(created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_privacy_audit_client ON privacy_audit_logs(client_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_privacy_audit_resource ON privacy_audit_logs(resource_type, resource_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS data_subject_requests (
+  id SERIAL PRIMARY KEY,
+  request_code TEXT NOT NULL UNIQUE,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE RESTRICT,
+  request_type TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'received',
+  requester_name TEXT,
+  requester_contact TEXT,
+  notes TEXT,
+  identity_verified_at TEXT,
+  completed_at TEXT,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_subject_requests_client ON data_subject_requests(client_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_subject_requests_status ON data_subject_requests(status, created_at DESC);
+
+-- Política limitada a logs internos; dados clínicos, termos, arquivos e
+-- backups exigem matriz de retenção aprovada e execução orquestrada fora deste
+-- mecanismo para não destruir evidências por uma configuração improvisada.
+CREATE TABLE IF NOT EXISTS privacy_retention_policies (
+  category TEXT PRIMARY KEY,
+  retention_days INTEGER NOT NULL CHECK (retention_days > 0),
+  enabled INTEGER NOT NULL DEFAULT 0,
+  updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO privacy_retention_policies (category, retention_days, enabled)
+VALUES ('error_logs', 90, 0), ('privacy_audit_logs', 730, 0)
+ON CONFLICT (category) DO NOTHING;
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS public_booking_key TEXT;
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS duration_minutes INTEGER;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_appointments_public_booking_key ON appointments(public_booking_key) WHERE public_booking_key IS NOT NULL;
@@ -1384,6 +1485,21 @@ UPDATE payment_intents
 ALTER TABLE payment_intents ALTER COLUMN public_token SET NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS ux_payment_intents_public_token
   ON payment_intents (public_token);
+-- Links públicos antigos recebem uma validade finita no primeiro deploy. O
+-- token de pagamento não é identificador permanente de cliente.
+ALTER TABLE payment_intents ADD COLUMN IF NOT EXISTS public_token_expires_at TIMESTAMP;
+UPDATE payment_intents
+   SET public_token_expires_at = COALESCE(expires_at, created_at + INTERVAL '7 days')
+ WHERE public_token_expires_at IS NULL;
+ALTER TABLE payment_intents ALTER COLUMN public_token_expires_at SET NOT NULL;
+ALTER TABLE payment_intents ADD COLUMN IF NOT EXISTS public_token_rotated_at TIMESTAMP;
+CREATE INDEX IF NOT EXISTS idx_payment_intents_public_token_active
+  ON payment_intents (public_token, public_token_expires_at);
+-- A tabela foi criada antes de existir o estado distinguindo contestação de
+-- estorno. Recriar somente este CHECK preserva todas as linhas e FKs.
+ALTER TABLE payment_intents DROP CONSTRAINT IF EXISTS payment_intents_status_check;
+ALTER TABLE payment_intents ADD CONSTRAINT payment_intents_status_check
+  CHECK (status IN ('pending', 'awaiting_payment', 'under_review', 'confirmed', 'failed', 'cancelled', 'refunded', 'chargeback', 'expired'));
 ALTER TABLE payment_intents ADD COLUMN IF NOT EXISTS billing_type TEXT;
 ALTER TABLE payment_intents ADD COLUMN IF NOT EXISTS due_date DATE;
 ALTER TABLE payment_intents ADD COLUMN IF NOT EXISTS sales_order_id INTEGER;

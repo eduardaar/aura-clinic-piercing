@@ -7,6 +7,7 @@ import { validateBody } from "../middleware/validate.js";
 import { userCreateSchema, userUpdateSchema } from "../schemas/index.js";
 import { parsePaging, fetchPage, pageResponse } from "../services/pagination.js";
 import { invalidateUsageCache, requireWithinLimit } from "../services/planLimits.js";
+import { createClinicSession, setRefreshCookie } from "../services/sessions.js";
 
 const router = Router();
 const LAST_ADMIN_MESSAGE = "Não é possível remover o acesso do último administrador geral. Cadastre ou promova outro administrador antes de alterar esta conta.";
@@ -47,11 +48,18 @@ router.patch("/api/account/profile", withDb(async (req, res, db) => {
     "SELECT id, name, email, role, session_version FROM users WHERE id = ?",
     [current.id]
   );
+  let token;
+  if (newPassword) {
+    await db.run("UPDATE user_sessions SET revoked_at = now() WHERE user_id = ? AND revoked_at IS NULL", [current.id]);
+    const session = await createClinicSession(db, user, req);
+    setRefreshCookie(res, session.refreshToken);
+    token = createToken(user, req.tenant, { sessionId: session.id });
+  }
   res.json({
     user: { id: user.id, name: user.name, email: user.email, role: user.role },
     // Mantém a sessão atual viva com uma credencial já na nova versão; todas as
     // outras abas/dispositivos continuam revogados.
-    ...(newPassword ? { token: createToken(user, req.tenant) } : {})
+    ...(token ? { token } : {})
   });
 }));
 
@@ -143,6 +151,9 @@ router.patch("/api/users/:id", withDb(async (req, res, db) => {
       req.params.id
     ]
   );
+  if (invalidatesSessions) {
+    await db.run("UPDATE user_sessions SET revoked_at = now() WHERE user_id = ? AND revoked_at IS NULL", [user.id]);
+  }
   res.json(await db.get("SELECT id, name, email, role, created_at FROM users WHERE id = ?", [req.params.id]));
 }));
 

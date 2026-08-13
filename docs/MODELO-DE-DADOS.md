@@ -48,6 +48,7 @@ linha de `tenants`. `support_messages` pertence a um chamado.
 | `tenant_integrations` | Credenciais cifradas de integrações da clínica, como Asaas. |
 | `private_files` | Metadados de arquivos privados; o objeto fica no R2 ou no fallback de disco. |
 | `error_logs` | Erros de frontend e backend associados à clínica. |
+| `privacy_audit_logs`, `data_subject_requests`, `privacy_retention_policies` | Metadados de acesso a dados pessoais, atendimento de solicitações de titulares e política explícita de retenção de logs. Não armazenam cópias de prontuários ou anexos. |
 
 ### Agenda, pessoas e atendimento
 

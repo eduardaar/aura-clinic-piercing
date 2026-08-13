@@ -291,8 +291,14 @@ fi
 # Ponto de rollback da imagem (a que está no ar agora vira :rollback).
 docker tag aura-api:latest aura-api:rollback 2>/dev/null || true
 
-# Rebuild + restart. As migrations idempotentes rodam no boot do container.
+# Aplique migrations versionadas antes de servir a nova API. Isto dá ao deploy
+# uma falha explícita (e restaurável pelo backup acima) se algum SQL novo não
+# for compatível, em vez de descobrir a ausência de tabela no primeiro request.
 docker compose build aura-api
+docker compose run --rm aura-api node scripts/migrations.mjs apply
+
+# O boot preserva os schemas idempotentes legados durante a transição; os novos
+# arquivos devem sempre ser aplicados pelo comando versionado acima.
 # `redis` explícito: guarda os contadores do loginGuard e precisa estar de pé
 # antes da API. Sem ele a API sobe do mesmo jeito (cai para contadores em
 # memória), mas a proteção fica mais fraca.

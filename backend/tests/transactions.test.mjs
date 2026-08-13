@@ -416,7 +416,7 @@ test("venda da quantidade exata do estoque continua passando e zera o saldo", as
 test("erro dentro da transação não devolve o client ao pool com transação aberta", async () => {
   // Intenção inexistente: o throw acontece com a transação já aberta.
   const inexistente = await api("/payment-intents/999999/status", { method: "PATCH", body: { status: "confirmed" } });
-  assert.equal(inexistente.status, 400, JSON.stringify(inexistente.json));
+  assert.equal(inexistente.status, 404, JSON.stringify(inexistente.json));
   // Se o ROLLBACK não tivesse acontecido, o client voltaria "sujo" e as próximas
   // requisições (que podem reusar essa conexão) travariam ou veriam lixo.
   for (let i = 0; i < 6; i++) {
@@ -448,15 +448,44 @@ test("duas confirmações simultâneas do mesmo sinal não duplicam o pagamento 
   const intentId = intents.json.find((item) => Number(item.appointment_id) === Number(solicitacao.json.id))?.id;
   assert.ok(intentId, "a intenção deve continuar visível na rota administrativa");
 
+  // Link público é uma credencial curta: admin/finance pode rotacioná-lo sem
+  // criar outra cobrança; o token anterior não pode mais consultar nada.
+  const rotacionado = await api(`/payment-intents/${intentId}/public-token`, { method: "POST" });
+  assert.equal(rotacionado.status, 200, JSON.stringify(rotacionado.json));
+  assert.notEqual(rotacionado.json.payment_intent.token, solicitacao.json.payment_intent.token);
+  assert.ok(rotacionado.json.payment_intent.token_expires_at);
+  const tokenAntigo = await req(`/payment-intents/${solicitacao.json.payment_intent.token}/sync`, {
+    tenant: ctx.slug,
+    method: "POST"
+  });
+  assert.equal(tokenAntigo.status, 404);
+
   const enumerated = await req(`/payment-intents/${intentId}/pix`, { tenant: ctx.slug });
   assert.equal(enumerated.status, 401, "id serial não pode autenticar consulta pública");
-  const publicStatus = await req(`/payment-intents/${solicitacao.json.payment_intent.token}/sync`, {
+  const publicStatus = await req(`/payment-intents/${rotacionado.json.payment_intent.token}/sync`, {
     tenant: ctx.slug,
     method: "POST"
   });
   assert.equal(publicStatus.status, 200, JSON.stringify(publicStatus.json));
   assert.equal(publicStatus.json.status, "awaiting_payment");
   assert.equal(publicStatus.json.id, undefined);
+
+  // Operação financeira sem chave idempotente é recusada antes de tocar o
+  // estado. A chave impede que dois cliques cancelem a mesma cobrança.
+  const semChave = await api(`/payment-intents/${intentId}/cancel`, { method: "POST" });
+  assert.equal(semChave.status, 400, JSON.stringify(semChave.json));
+  const cancelado = await api(`/payment-intents/${intentId}/cancel`, {
+    method: "POST",
+    headers: { "Idempotency-Key": `cancel-${intentId}-uma-vez` },
+    body: { reason: "Teste de cancelamento" }
+  });
+  assert.equal(cancelado.status, 200, JSON.stringify(cancelado.json));
+  assert.equal(cancelado.json.payment_status, "cancelled");
+  const publicoCancelado = await req(`/payment-intents/${rotacionado.json.payment_intent.token}/sync`, {
+    tenant: ctx.slug,
+    method: "POST"
+  });
+  assert.equal(publicoCancelado.status, 410, JSON.stringify(publicoCancelado.json));
 
   // Mesma entrega de webhook chegando duas vezes ao mesmo tempo: o FOR UPDATE
   // dentro da transação serializa as duas e a segunda cai na idempotência.

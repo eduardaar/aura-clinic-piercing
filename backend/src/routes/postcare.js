@@ -9,6 +9,7 @@ import {
   getPostCareFollowup
 } from "../services/postcare.js";
 import { parsePaging, pageResponse } from "../services/pagination.js";
+import { recordPrivacyAudit } from "../services/privacy.js";
 
 const router = Router();
 
@@ -70,6 +71,11 @@ router.get("/api/post-care", withFeature("automatic_followup", async (req, res, 
   });
   const items = await listPostCareFollowups(db, { where, params, paging });
   const total = paging.paginated ? await countPostCareFollowups(db, { where, params }) : items.length;
+  await recordPrivacyAudit(db, {
+    req, action: "post_care_read", resourceType: "post_care_list",
+    clientId: req.query.client_id || null,
+    detail: { result_count: items.length, filtered_by_client: Boolean(req.query.client_id) }
+  });
   res.json(pageResponse(items, total, paging));
 }));
 

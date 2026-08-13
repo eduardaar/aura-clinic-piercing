@@ -73,7 +73,7 @@ export function PlatformAdmin() {
   // Recarrega o contador de chamados abertos no selo da aba depois de o
   // super-admin responder algo.
   const [supportKey, setSupportKey] = useState(0);
-  const [loginForm, setLoginForm] = useState({ email: "", password: "" });
+  const [loginForm, setLoginForm] = useState({ email: "", password: "", mfa_code: "" });
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -166,7 +166,7 @@ export function PlatformAdmin() {
       const response = await fetch(`${API}/platform/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: loginForm.email.trim(), password: loginForm.password }),
+        body: JSON.stringify({ email: loginForm.email.trim(), password: loginForm.password, ...(loginForm.mfa_code ? { mfa_code: loginForm.mfa_code } : {}) }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -176,7 +176,7 @@ export function PlatformAdmin() {
       const nextSession = { token: payload.token, user: payload.user };
       localStorage.setItem(PLATFORM_SESSION_KEY, JSON.stringify(nextSession));
       setSession(nextSession);
-      setLoginForm({ email: "", password: "" });
+      setLoginForm({ email: "", password: "", mfa_code: "" });
     } catch {
       setLoginError("Não foi possível conectar ao servidor. Tente novamente.");
     } finally {
@@ -254,6 +254,20 @@ export function PlatformAdmin() {
                   value={loginForm.email}
                   onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })}
                   placeholder="seu@email.com"
+                />
+              </div>
+
+              <div className="au-a-field">
+                <label htmlFor="au-p-mfa">Código do autenticador <small>(se ativado)</small></label>
+                <input
+                  id="au-p-mfa"
+                  className="au-a-input"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  value={loginForm.mfa_code}
+                  onChange={(event) => setLoginForm({ ...loginForm, mfa_code: event.target.value.replace(/\D/g, "") })}
+                  placeholder="000000"
                 />
               </div>
 

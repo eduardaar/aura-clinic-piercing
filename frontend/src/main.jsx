@@ -309,6 +309,9 @@ function App() {
           open={sidebarOpen}
           collapsed={navCollapsed}
           onLogout={() => {
+            // Revoga também o refresh HttpOnly da sessão ativa. A limpeza local
+            // continua imediata, então o usuário não espera a rede para sair.
+            void apiFetch("/auth/logout", { method: "POST" }).catch(() => {});
             localStorage.removeItem("aura-session");
             localStorage.removeItem("aura-admin-authenticated");
             setSession(null);

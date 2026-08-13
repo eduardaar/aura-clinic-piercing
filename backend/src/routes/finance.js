@@ -8,6 +8,7 @@ import { csvEscape, writePdfMetric, formatCurrency } from "../services/utils.js"
 import { buildFinanceReport } from "../services/finance.js";
 import { ledgerReport, normalizeEntry, processRecurringEntries } from "../services/financeLedger.js";
 import { parsePaging } from "../services/pagination.js";
+import { recordPrivacyAudit } from "../services/privacy.js";
 
 const router = Router();
 
@@ -304,8 +305,8 @@ router.post("/api/finance/goals", withFeature("advanced_finance", async (req, re
   res.status(201).json(await db.get("SELECT * FROM financial_goals WHERE id=?", [result.returnedId]));
 }));
 
-router.get("/api/finance/export.csv", withFeature("basic_finance", async (_req, res, db) => {
-  if (!requireRole(_req, res, ["admin", "finance"])) return;
+router.get("/api/finance/export.csv", withFeature("basic_finance", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "finance"])) return;
   const rows = await db.all(`
     SELECT p.id, c.full_name AS cliente, p.amount AS valor, p.payment_type AS tipo, p.method AS metodo, p.status, p.paid_at AS data, 'pagamento' AS origem
     FROM payments p JOIN clients c ON c.id = p.client_id
@@ -318,15 +319,17 @@ router.get("/api/finance/export.csv", withFeature("basic_finance", async (_req, 
   const csv = [header, ...rows.map((row) => Object.values(row).map(csvEscape).join(","))].join("\n");
   res.header("Content-Type", "text/csv; charset=utf-8");
   res.attachment("relatorio-aura-clinic.csv");
+  await recordPrivacyAudit(db, { req, action: "financial_export", resourceType: "financial_report", detail: { format: "csv", row_count: rows.length } });
   res.send(csv);
 }));
 
-router.get("/api/finance/export.pdf", withFeature("basic_finance", async (_req, res, db) => {
-  if (!requireRole(_req, res, ["admin", "finance"])) return;
+router.get("/api/finance/export.pdf", withFeature("basic_finance", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "finance"])) return;
   const report = await buildFinanceReport(db);
   const doc = new PDFDocument({ margin: 42, size: "A4" });
   res.header("Content-Type", "application/pdf");
   res.attachment("relatorio-financeiro-aura.pdf");
+  await recordPrivacyAudit(db, { req, action: "financial_export", resourceType: "financial_report", detail: { format: "pdf" } });
   doc.pipe(res);
   doc.fontSize(20).text("Aura Clinic Piercing", { align: "center" });
   doc.fontSize(14).text("Relatorio financeiro administrativo", { align: "center" });
@@ -350,8 +353,8 @@ router.get("/api/finance/export.pdf", withFeature("basic_finance", async (_req, 
   doc.end();
 }));
 
-router.get("/api/finance/export.xlsx", withFeature("basic_finance", async (_req, res, db) => {
-  if (!requireRole(_req, res, ["admin", "finance"])) return;
+router.get("/api/finance/export.xlsx", withFeature("basic_finance", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "finance"])) return;
   const report = await buildFinanceReport(db);
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Aura Clinic Piercing";
@@ -387,6 +390,7 @@ router.get("/api/finance/export.xlsx", withFeature("basic_finance", async (_req,
 
   res.header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   res.attachment("relatorio-financeiro-aura.xlsx");
+  await recordPrivacyAudit(db, { req, action: "financial_export", resourceType: "financial_report", detail: { format: "xlsx" } });
   await workbook.xlsx.write(res);
   res.end();
 }));
