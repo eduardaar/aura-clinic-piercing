@@ -949,6 +949,10 @@ export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTI
   async function submit(event) {
     event.preventDefault();
     setError("");
+    if (form.variants.some((variant) => Number(variant.quantity) < 0)) {
+      setError("A quantidade em estoque não pode ser negativa.");
+      return;
+    }
     const pricedVariants = form.variants.map((variant) => ({
       ...variant,
       ...calculateVariantPricing(variant, pricingSettings)
@@ -1412,7 +1416,7 @@ export function VariantEditModal({ category, variant, pricingSettings = {}, onCh
             {(variant.cost_estimated || pricing.cost_estimated) && <small className="pricing-note">Custo estimado a partir do preço final. Revise o custo real quando tiver a nota ou custo de compra.</small>}
           </section>
           <div className="form-grid">
-            <Input type="number" label="Estoque Atual" value={variant.quantity} onChange={(value) => onChange({ quantity: value })} required />
+            <Input type="number" min="0" label="Estoque Atual" value={variant.quantity} onChange={(value) => onChange({ quantity: value })} required />
             <Input type="number" label="Estoque Mínimo" value={variant.low_stock_threshold} onChange={(value) => onChange({ low_stock_threshold: value })} />
           </div>
           <Toggle label="Variação Ativa" checked={variant.is_active} onChange={(value) => onChange({ is_active: value })} />

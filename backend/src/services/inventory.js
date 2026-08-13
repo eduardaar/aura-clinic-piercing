@@ -14,6 +14,20 @@ export class SkuConflictError extends Error {
   }
 }
 
+export class InvalidStockQuantityError extends Error {
+  constructor(message = "A quantidade em estoque não pode ser negativa.") {
+    super(message);
+    this.name = "InvalidStockQuantityError";
+    this.statusCode = 400;
+  }
+}
+
+export function assertNonNegativeStockQuantity(value) {
+  const quantity = Number(value ?? 0);
+  if (!Number.isFinite(quantity) || quantity < 0) throw new InvalidStockQuantityError();
+  return quantity;
+}
+
 export function isUniqueViolation(error) {
   return error?.code === "23505";
 }
@@ -288,6 +302,9 @@ export async function replaceJewelryVariants(db, jewelryId, variants = []) {
   if (!Array.isArray(variants) || variants.length === 0) {
     throw new Error("Cadastre ao menos uma variação para o produto.");
   }
+  // Valida o lote inteiro antes de qualquer leitura/gravação. Assim, uma
+  // variação inválida nunca deixa as anteriores parcialmente aplicadas.
+  const validatedQuantities = variants.map((variant) => assertNonNegativeStockQuantity(variant?.quantity));
   const current = await db.all("SELECT * FROM jewelry_variants WHERE jewelry_id = ?", [jewelryId]);
   const product = await db.get("SELECT sku, material, category, subcategory, name FROM jewelry_inventory WHERE id = ?", [jewelryId]);
   const pricingSettings = await getPricingSettings(db);
@@ -344,7 +361,7 @@ export async function replaceJewelryVariants(db, jewelryId, variants = []) {
       pricing.sale_price_cents,
       pricing.price_manually_overridden,
       pricing.cost_estimated,
-      Number(variant.quantity || 0),
+      validatedQuantities[index],
       Number(variant.low_stock_threshold || 5),
       variantStatus(variant.quantity, variant.low_stock_threshold),
       variant.is_active === false ? 0 : 1

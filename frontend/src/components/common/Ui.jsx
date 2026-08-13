@@ -98,12 +98,13 @@ export function FinancialSummary({ summary = {} }) {
  * @param {(value: string) => void} props.onChange
  * @param {string} [props.type] Padrão: "text".
  * @param {boolean} [props.required]
+ * @param {string | number} [props.min]
  */
-export function Input({ label, value, onChange, type = "text", required }) {
+export function Input({ label, value, onChange, type = "text", required, min }) {
   return (
     <label>
       {label}
-      <input type={type} value={value} required={required} onChange={(event) => onChange(event.target.value)} />
+      <input type={type} value={value} min={min} required={required} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }

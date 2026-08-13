@@ -12,9 +12,11 @@ import {
   isUniqueViolation,
   jewelrySkuExists,
   replaceJewelryVariants,
+  assertNonNegativeStockQuantity,
   syncProductImages,
   syncProductInventory,
-  SkuConflictError
+  SkuConflictError,
+  InvalidStockQuantityError
 } from "../services/inventory.js";
 import { validateBody } from "../middleware/validate.js";
 import { jewelryCreateSchema, jewelryUpdateSchema } from "../schemas/index.js";
@@ -25,6 +27,26 @@ import { parsePaging, fetchPage, pageResponse } from "../services/pagination.js"
 import { invalidateUsageCache, requireWithinLimit } from "../services/planLimits.js";
 
 const router = Router();
+
+function validateStockPayload(body) {
+  if (body.quantity !== undefined) assertNonNegativeStockQuantity(body.quantity);
+  if (Array.isArray(body.variants)) {
+    body.variants.forEach((variant) => assertNonNegativeStockQuantity(variant?.quantity));
+  }
+}
+
+function rejectInvalidStockPayload(req, res) {
+  try {
+    validateStockPayload(req.body);
+    return false;
+  } catch (error) {
+    if (error instanceof InvalidStockQuantityError) {
+      res.status(error.statusCode).json({ error: error.message });
+      return true;
+    }
+    throw error;
+  }
+}
 
 // Whitelist de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
 const JEWELRY_SORTABLE = {
@@ -373,6 +395,7 @@ router.get("/api/jewelry", withDb(async (req, res, db) => {
 router.post("/api/jewelry", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   if (!validateBody(jewelryCreateSchema, req, res)) return;
+  if (rejectInvalidStockPayload(req, res)) return;
   // Cota do plano, antes do BEGIN: devolver 409 no meio da transação obrigaria a
   // desfazer SKU e variações já gravados. A cota conta PRODUTOS
   // (jewelry_inventory), não variações — cadastrar uma cor a mais numa joia que
@@ -403,6 +426,7 @@ router.post("/api/jewelry", withDb(async (req, res, db) => {
     return res.status(201).json(product);
   } catch (error) {
     await db.run("ROLLBACK").catch(() => {});
+    if (error instanceof InvalidStockQuantityError) return res.status(error.statusCode).json({ error: error.message });
     if (error instanceof SkuConflictError || isUniqueViolation(error)) {
       logSkuError(error, "POST /api/jewelry");
       return skuConflict(res);
@@ -414,6 +438,7 @@ router.post("/api/jewelry", withDb(async (req, res, db) => {
 router.patch("/api/jewelry/:id", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   if (!validateBody(jewelryUpdateSchema, req, res)) return;
+  if (rejectInvalidStockPayload(req, res)) return;
 
   const jewelry = await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [req.params.id]);
   if (!jewelry) return res.status(404).json({ error: "Joia não encontrada." });
@@ -449,6 +474,7 @@ router.patch("/api/jewelry/:id", withDb(async (req, res, db) => {
     return res.json(product);
   } catch (error) {
     await db.run("ROLLBACK").catch(() => {});
+    if (error instanceof InvalidStockQuantityError) return res.status(error.statusCode).json({ error: error.message });
     if (error instanceof SkuConflictError || isUniqueViolation(error)) {
       logSkuError(error, `PATCH /api/jewelry/${req.params.id}`);
       return skuConflict(res);
