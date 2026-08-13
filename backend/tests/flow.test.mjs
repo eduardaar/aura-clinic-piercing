@@ -17,6 +17,7 @@ const ctx = {
   procedureId: null,
   professionalId: null,
   jewelryId: null,
+  jewelryVariant: null,
   publicJewelryId: null,
   appointmentId: null,
   publicAppointmentId: null,
@@ -453,6 +454,7 @@ test("4a. cadastra joia com estoque inicial", async () => {
 
   assert.equal(create.status, 201, `POST /jewelry deveria criar a joia. Resposta: ${JSON.stringify(create.json)}`);
   ctx.jewelryId = create.json.id;
+  ctx.jewelryVariant = create.json.variants[0];
   assert.ok(create.json.id, "joia deve ter id");
   // A quantidade agregada vem das variações (variantFromLegacy criou 1 variação).
   assert.equal(Number(create.json.quantity), 10, "quantidade agregada da joia deve ser 10");
@@ -482,6 +484,53 @@ test("4a. cadastra joia com estoque inicial", async () => {
   assert.notEqual(duplicateAuto.json.sku, create.json.sku, "SKU principal automatico deve ser unico");
   assert.notEqual(duplicateAuto.json.variants[0].sku, create.json.variants[0].sku, "SKU da variacao automatica deve ser unico");
   ctx.extraJewelryId = duplicateAuto.json.id;
+});
+
+test("4a2. edição aceita saldo positivo e zero, mas rejeita estoque negativo", async () => {
+  const withQuantity = (quantity) => ({ ...ctx.jewelryVariant, quantity });
+
+  const five = await api(`/jewelry/${ctx.jewelryId}`, {
+    method: "PATCH",
+    body: { variants: [withQuantity(5)] },
+  });
+  assert.equal(five.status, 200, JSON.stringify(five.json));
+
+  const decrease = await api(`/jewelry/${ctx.jewelryId}`, {
+    method: "PATCH",
+    body: { variants: [withQuantity(3)] },
+  });
+  assert.equal(decrease.status, 200, JSON.stringify(decrease.json));
+  assert.equal(Number(decrease.json.variants[0].quantity), 3, "estoque 5 para 3 deve ser permitido");
+
+  const one = await api(`/jewelry/${ctx.jewelryId}`, {
+    method: "PATCH",
+    body: { variants: [withQuantity(1)] },
+  });
+  assert.equal(one.status, 200, JSON.stringify(one.json));
+
+  const zero = await api(`/jewelry/${ctx.jewelryId}`, {
+    method: "PATCH",
+    body: { variants: [withQuantity(0)] },
+  });
+  assert.equal(zero.status, 200, JSON.stringify(zero.json));
+  assert.equal(Number(zero.json.variants[0].quantity), 0, "estoque 1 para zero deve ser permitido");
+
+  for (const quantity of [-1, -10]) {
+    const rejected = await api(`/jewelry/${ctx.jewelryId}`, {
+      method: "PATCH",
+      body: { quantity },
+    });
+    assert.equal(rejected.status, 400, `quantity ${quantity} deve ser rejeitada pela API`);
+    assert.match(rejected.json.error, /não pode ser negativa/i);
+  }
+
+  const restore = await api(`/jewelry/${ctx.jewelryId}`, {
+    method: "PATCH",
+    body: { variants: [withQuantity(10)] },
+  });
+  assert.equal(restore.status, 200, JSON.stringify(restore.json));
+  assert.equal(Number(restore.json.quantity), 10);
+  ctx.jewelryVariant = restore.json.variants[0];
 });
 
 // 4b) Movimento de estoque no nível de produto (POST /jewelry/:id/movements).
@@ -550,6 +599,26 @@ test("4c. calcula preços de variações em centavos e normaliza comprimento", a
   assert.equal(publicItem.variants[0].sale_value, 165);
   assert.equal(publicItem.variants[0].purchase_cost_cents, undefined, "catálogo público não deve expor custo");
   assert.equal(publicItem.variants[0].price_multiplier, undefined, "catálogo público não deve expor multiplicador");
+
+  const invalidBatch = create.json.variants.map((variant, index) => ({
+    ...variant,
+    quantity: index === 0 ? 3 : index === 1 ? -1 : variant.quantity,
+  }));
+  const rejectedBatch = await api(`/jewelry/${create.json.id}`, {
+    method: "PATCH",
+    body: { variants: invalidBatch },
+  });
+  assert.equal(rejectedBatch.status, 400, JSON.stringify(rejectedBatch.json));
+  assert.match(rejectedBatch.json.error, /não pode ser negativa/i);
+
+  const afterRejectedBatch = await api("/jewelry");
+  const unchanged = afterRejectedBatch.json.find((item) => Number(item.id) === Number(create.json.id));
+  assert.ok(unchanged, "produto do lote deve continuar disponível");
+  assert.deepEqual(
+    unchanged.variants.map((variant) => Number(variant.quantity)),
+    create.json.variants.map((variant) => Number(variant.quantity)),
+    "nenhuma parte do lote inválido deve ser aplicada",
+  );
 });
 
 test("4d. dashboard e central de alertas usam a mesma regra de estoque crítico", async () => {
