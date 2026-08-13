@@ -16,9 +16,14 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT NOT NULL,
   email TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
+  session_version INTEGER NOT NULL DEFAULT 1,
   role TEXT NOT NULL DEFAULT 'admin',
   created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
+
+-- Versão da sessão permite revogar tokens já emitidos quando senha ou papel
+-- muda. O ALTER mantém compatibilidade com schemas criados antes da coluna.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 1;
 
 CREATE TABLE IF NOT EXISTS admin_audit_logs (
   id SERIAL PRIMARY KEY,
@@ -602,9 +607,11 @@ CREATE TABLE IF NOT EXISTS digital_terms (
   health_declaration TEXT,
   form_data TEXT NOT NULL DEFAULT '',
   signature_data_url TEXT NOT NULL,
+  guardian_signature_data_url TEXT,
   pdf_url TEXT,
   signed_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
+ALTER TABLE digital_terms ADD COLUMN IF NOT EXISTS guardian_signature_data_url TEXT;
 
 CREATE TABLE IF NOT EXISTS post_care_followups (
   id SERIAL PRIMARY KEY,
@@ -840,6 +847,7 @@ CREATE INDEX IF NOT EXISTS idx_stock_movements_date_type ON stock_movements(move
 
 CREATE TABLE IF NOT EXISTS payment_intents (
   id SERIAL PRIMARY KEY,
+  public_token TEXT NOT NULL UNIQUE,
   appointment_id INTEGER REFERENCES appointments(id),
   client_id INTEGER NOT NULL REFERENCES clients(id),
   provider TEXT NOT NULL DEFAULT 'manual',
@@ -1366,6 +1374,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_clients_asaas_customer
 -- payment_intents já existia com `external_id` genérico; o índice único abaixo
 -- é o que torna o webhook idempotente de verdade (um payment.id <-> um intent).
 ALTER TABLE payment_intents ADD COLUMN IF NOT EXISTS invoice_url TEXT;
+-- Identificador público não enumerável. O id serial continua interno para FKs,
+-- webhooks e operação administrativa; telas públicas usam somente este token.
+ALTER TABLE payment_intents ADD COLUMN IF NOT EXISTS public_token TEXT;
+UPDATE payment_intents
+   SET public_token = md5(random()::text || clock_timestamp()::text || id::text)
+                   || md5(id::text || random()::text || clock_timestamp()::text)
+ WHERE public_token IS NULL;
+ALTER TABLE payment_intents ALTER COLUMN public_token SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_payment_intents_public_token
+  ON payment_intents (public_token);
 ALTER TABLE payment_intents ADD COLUMN IF NOT EXISTS billing_type TEXT;
 ALTER TABLE payment_intents ADD COLUMN IF NOT EXISTS due_date DATE;
 ALTER TABLE payment_intents ADD COLUMN IF NOT EXISTS sales_order_id INTEGER;

@@ -34,7 +34,7 @@ export function Settings({ user, theme, onThemeChange, navCollapsed, onNavCollap
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) return setError(payload.error || "Não foi possível salvar suas configurações.");
-      onUserChanged?.(payload.user);
+      onUserChanged?.(payload.user, payload.token);
       setPassword({ current_password: "", new_password: "", confirm_password: "" });
       setMessage("Configurações da conta salvas.");
     } catch {

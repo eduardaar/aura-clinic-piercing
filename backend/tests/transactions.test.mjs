@@ -441,8 +441,22 @@ test("duas confirmações simultâneas do mesmo sinal não duplicam o pagamento 
     },
   });
   assert.equal(solicitacao.status, 201, JSON.stringify(solicitacao.json));
-  const intentId = solicitacao.json.payment_intent?.id;
-  assert.ok(intentId, "a solicitação deve criar a intenção de pagamento do sinal");
+  assert.equal(solicitacao.json.payment_intent?.id, undefined, "id serial não pode sair na resposta pública");
+  assert.match(solicitacao.json.payment_intent?.token || "", /^[0-9a-f-]{36}$/i);
+  const intents = await api("/payment-intents");
+  assert.equal(intents.status, 200, JSON.stringify(intents.json));
+  const intentId = intents.json.find((item) => Number(item.appointment_id) === Number(solicitacao.json.id))?.id;
+  assert.ok(intentId, "a intenção deve continuar visível na rota administrativa");
+
+  const enumerated = await req(`/payment-intents/${intentId}/pix`, { tenant: ctx.slug });
+  assert.equal(enumerated.status, 401, "id serial não pode autenticar consulta pública");
+  const publicStatus = await req(`/payment-intents/${solicitacao.json.payment_intent.token}/sync`, {
+    tenant: ctx.slug,
+    method: "POST"
+  });
+  assert.equal(publicStatus.status, 200, JSON.stringify(publicStatus.json));
+  assert.equal(publicStatus.json.status, "awaiting_payment");
+  assert.equal(publicStatus.json.id, undefined);
 
   // Mesma entrega de webhook chegando duas vezes ao mesmo tempo: o FOR UPDATE
   // dentro da transação serializa as duas e a segunda cai na idempotência.

@@ -10,7 +10,9 @@ test("matriz de planos é cumulativa e sem recursos duplicados", () => {
   for (let index = 1; index < order.length; index += 1) {
     const previous = PLAN_FEATURES[order[index - 1]];
     const current = PLAN_FEATURES[order[index]];
-    previous.forEach((feature) => assert.ok(current.includes(feature), `${feature} não foi herdado por ${order[index]}`));
+    previous.forEach((feature) => {
+      assert.ok(current.includes(feature), `${feature} não foi herdado por ${order[index]}`);
+    });
   }
 });
 

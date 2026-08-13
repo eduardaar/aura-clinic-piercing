@@ -42,7 +42,7 @@ linha de `tenants`. `support_messages` pertence a um chamado.
 
 | Tabelas | Responsabilidade |
 | --- | --- |
-| `users` | Contas da clínica e papéis `admin`, `reception`, `finance` e `piercer`. |
+| `users` | Contas da clínica, papéis `admin`, `reception`, `finance` e `piercer`, e `session_version` para revogar tokens após troca de senha/papel. |
 | `clinic_settings`, `catalog_theme` | Identidade e preferências da clínica e da vitrine. |
 | `admin_audit_logs`, `administrative_audit_logs` | Auditoria de resets e exclusões administrativas. |
 | `tenant_integrations` | Credenciais cifradas de integrações da clínica, como Asaas. |
@@ -57,8 +57,8 @@ linha de `tenants`. `support_messages` pertence a um chamado.
 | `professionals`, `services`, `procedures`, `professional_services` | Equipe, serviços, procedimentos e a relação N:N entre profissional e serviço. |
 | `professional_availability`, `schedule_blocks` | Regras semanais de disponibilidade e indisponibilidades pontuais. |
 | `appointments`, `appointment_items`, `inventory_reservations` | Agendamento, vários itens por atendimento e reserva temporária de estoque. |
-| `payments`, `payment_intents`, `payment_events`, `appointment_financial_audit` | Liquidações, cobranças online, eventos recebidos e auditoria financeira do atendimento. |
-| `client_medical_records`, `digital_terms`, `post_care_followups` | Prontuário, consentimento assinado e acompanhamento pós-atendimento. |
+| `payments`, `payment_intents`, `payment_events`, `appointment_financial_audit` | Liquidações, cobranças online, token público não sequencial, eventos recebidos e auditoria financeira do atendimento. |
+| `client_medical_records`, `digital_terms`, `post_care_followups` | Prontuário, consentimento assinado (incluindo assinatura separada do responsável por menor) e acompanhamento pós-atendimento. |
 | `loyalty_points`, `loyalty_redemptions` | Crédito e resgate de pontos de fidelidade. |
 
 `appointments` referencia cliente e profissional. Seus itens podem referenciar

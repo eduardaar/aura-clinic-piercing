@@ -1,15 +1,28 @@
 import crypto from "crypto";
 import { confirmAppointmentReservations, releaseAppointmentReservations } from "./reservations.js";
 
+// Resposta mínima que pode sair por agendamento/checkout público. O id serial,
+// client_id, metadados e ids internos continuam disponíveis somente nas rotas
+// administrativas autenticadas.
+export function publicPaymentIntent(intent) {
+  if (!intent) return null;
+  return {
+    token: intent.public_token,
+    status: intent.status,
+    expires_at: intent.expires_at || null
+  };
+}
+
 export async function createPaymentIntent(db, { appointmentId, clientId, amount, provider = "manual", idempotencyKey, expiresMinutes = 30 }) {
   const key = String(idempotencyKey || crypto.randomUUID());
   const existing = await db.get("SELECT * FROM payment_intents WHERE idempotency_key=?", [key]);
   if (existing) return { ...existing, idempotent: true };
+  const publicToken = crypto.randomUUID();
   const result = await db.run(
     `INSERT INTO payment_intents
-      (appointment_id, client_id, provider, idempotency_key, amount, status, expires_at, metadata)
-     VALUES (?, ?, ?, ?, ?, 'awaiting_payment', CURRENT_TIMESTAMP + (? * INTERVAL '1 minute'), ?) RETURNING id`,
-    [appointmentId, clientId, provider, key, Math.max(Number(amount || 0), 0), expiresMinutes, JSON.stringify({ integration: provider === "manual" ? "manual_proof" : "credentials_required" })]
+      (public_token, appointment_id, client_id, provider, idempotency_key, amount, status, expires_at, metadata)
+     VALUES (?, ?, ?, ?, ?, ?, 'awaiting_payment', CURRENT_TIMESTAMP + (? * INTERVAL '1 minute'), ?) RETURNING id`,
+    [publicToken, appointmentId, clientId, provider, key, Math.max(Number(amount || 0), 0), expiresMinutes, JSON.stringify({ integration: provider === "manual" ? "manual_proof" : "credentials_required" })]
   );
   return db.get("SELECT * FROM payment_intents WHERE id=?", [result.returnedId]);
 }

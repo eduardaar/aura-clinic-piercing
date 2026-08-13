@@ -42,7 +42,9 @@ router.get("/api/reports/:type", withFeature("basic_reports", async (req, res, d
       doc.pipe(res);
       doc.fontSize(18).text(title(req.params.type));
       doc.fontSize(9).text(`${report.from} a ${report.to} · ${report.total_rows} registro(s)`).moveDown();
-      report.rows.slice(0, 250).forEach((row) => doc.fontSize(7).text(columns.map((key) => `${key}: ${row[key] ?? ""}`).join(" | ")));
+      report.rows.slice(0, 250).forEach((row) => {
+        doc.fontSize(7).text(columns.map((key) => `${key}: ${row[key] ?? ""}`).join(" | "));
+      });
       doc.end();
       return;
     }

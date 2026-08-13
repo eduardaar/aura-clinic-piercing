@@ -162,7 +162,8 @@ export function defaultDigitalTerm() {
         minor_name: ""
       }
     },
-    signature_data_url: ""
+    signature_data_url: "",
+    guardian_signature_data_url: ""
   };
 }
 

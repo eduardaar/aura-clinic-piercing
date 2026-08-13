@@ -8,7 +8,7 @@ const source = JSON.parse(await fs.readFile(dataPath, "utf8"));
 function norm(value = "") {
   return String(value)
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase().replace(/�|\x13/g, " ")
+    .toLowerCase().replaceAll("�", " ").replaceAll(String.fromCharCode(0x13), " ")
     .replace(/barbel\b/g, "barbell").replace(/labrer\b/g, "labret")
     .replace(/d[ -]?ring/g, "dring").replace(/naver\b/g, "navel")
     .replace(/trasnversal/g, "transversal")

@@ -86,6 +86,12 @@ export function DigitalTerms({ onBack }) {
     event.preventDefault();
     setError("");
     if (!form.signature_data_url) return setError("Assinatura digital obrigatória.");
+    if (form.form_data.minor.is_minor) {
+      if (!form.form_data.minor.responsible_name.trim() || !form.form_data.minor.responsible_document.trim()) {
+        return setError("Informe nome e documento do responsável legal.");
+      }
+      if (!form.guardian_signature_data_url) return setError("Assinatura do responsável legal obrigatória.");
+    }
     const response = await apiFetch(`/digital-terms`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -223,8 +229,8 @@ export function DigitalTerms({ onBack }) {
           </div>
           {form.form_data.minor.is_minor && (
             <div className="form-grid">
-              <Input label="Nome do Responsável" value={form.form_data.minor.responsible_name} onChange={(value) => updateFormData("minor", "responsible_name", value)} />
-              <Input label="Documento Do Responsável" value={form.form_data.minor.responsible_document} onChange={(value) => updateFormData("minor", "responsible_document", value)} />
+              <Input label="Nome do Responsável" required value={form.form_data.minor.responsible_name} onChange={(value) => updateFormData("minor", "responsible_name", value)} />
+              <Input label="Documento Do Responsável" required value={form.form_data.minor.responsible_document} onChange={(value) => updateFormData("minor", "responsible_document", value)} />
               <Input label="Nome Do Menor" value={form.form_data.minor.minor_name} onChange={(value) => updateFormData("minor", "minor_name", value)} />
             </div>
           )}
@@ -232,7 +238,14 @@ export function DigitalTerms({ onBack }) {
         </>}
 
         {formTab === "assinatura" && <>
-        <SignaturePad onChange={(signature) => updateField("signature_data_url", signature)} clearKey={form.appointment_id || "empty"} />
+        <SignaturePad label="Assinatura da cliente" onChange={(signature) => updateField("signature_data_url", signature)} clearKey={form.appointment_id || "empty"} />
+        {form.form_data.minor.is_minor && (
+          <SignaturePad
+            label="Assinatura do responsável legal"
+            onChange={(signature) => updateField("guardian_signature_data_url", signature)}
+            clearKey={`guardian-${form.appointment_id || "empty"}`}
+          />
+        )}
         <section className="term-section term-operational-section">
           <h3>Informações do Atendimento</h3>
           <p className="field-hint">Contexto operacional do atendimento. Os valores financeiros oficiais continuam no agendamento, pagamentos e financeiro.</p>
@@ -381,7 +394,7 @@ export function LoyaltyPanel({ client, onChanged }) {
   );
 }
 
-export function SignaturePad({ onChange, clearKey }) {
+export function SignaturePad({ onChange, clearKey, label = "Assinatura digital" }) {
   const canvasRef = React.useRef(null);
   const drawingRef = React.useRef(false);
 
@@ -441,7 +454,7 @@ export function SignaturePad({ onChange, clearKey }) {
   return (
     <div className="signature-box">
       <div className="signature-heading">
-        <span>Assinatura digital</span>
+        <span>{label}</span>
         <button type="button" onClick={clear}>Limpar</button>
       </div>
       <canvas ref={canvasRef} width="720" height="220" onMouseDown={start} onMouseMove={move} onMouseUp={stop} onMouseLeave={stop} onTouchStart={start} onTouchMove={move} onTouchEnd={stop} />

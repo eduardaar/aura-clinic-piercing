@@ -351,6 +351,15 @@ export async function getPixData(db, intentId) {
   }
 }
 
+/** Consulta PIX pública por token aleatório, sem expor/aceitar o id serial. */
+export async function getPixDataByPublicToken(db, publicToken) {
+  const intent = await db.get(
+    "SELECT id FROM payment_intents WHERE public_token=?",
+    [String(publicToken || "")]
+  );
+  return intent ? getPixData(db, intent.id) : null;
+}
+
 // ---------------------------------------------------------------------------
 // Webhook
 // ---------------------------------------------------------------------------
@@ -750,4 +759,18 @@ export async function syncIntent(db, intentId) {
     eventType: `SYNC_${String(payment.status || "UNKNOWN").toUpperCase()}`,
     tenant: null
   });
+}
+
+/** Conciliação pública limitada ao intent identificado por token aleatório. */
+export async function syncIntentByPublicToken(db, publicToken) {
+  const intent = await db.get(
+    "SELECT id FROM payment_intents WHERE public_token=?",
+    [String(publicToken || "")]
+  );
+  if (!intent) return null;
+  await syncIntent(db, intent.id);
+  return db.get(
+    "SELECT status, paid_at, invoice_url FROM payment_intents WHERE id=?",
+    [intent.id]
+  );
 }

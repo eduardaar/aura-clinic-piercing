@@ -83,3 +83,12 @@ test("super-admin troca plano e ativa a assinatura (PATCH /platform/tenants/:id/
   assert.equal(identity.json.subscription.plan_code, "studio");
   assert.equal(identity.json.subscription.status, "active");
 });
+
+test("assinatura ativa não permite autopromoção antes de ajustar a cobrança", async () => {
+  const change = await api("/subscription", { method: "PATCH", body: { plan_code: "profissional" } });
+  assert.equal(change.status, 409, JSON.stringify(change.json));
+  assert.equal(change.json.code, "plan_change_requires_support");
+
+  const identity = await api("/store-identity");
+  assert.equal(identity.json.subscription.plan_code, "studio");
+});

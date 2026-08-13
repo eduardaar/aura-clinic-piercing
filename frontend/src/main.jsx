@@ -151,8 +151,12 @@ function App() {
     try { localStorage.setItem("aura-nav-collapsed", String(next)); } catch { /* storage indisponível */ }
   }
 
-  function changeUser(nextUser) {
-    const nextSession = { ...normalizedSession, user: { ...normalizedSession.user, ...nextUser } };
+  function changeUser(nextUser, nextToken) {
+    const nextSession = {
+      ...normalizedSession,
+      ...(nextToken ? { token: nextToken } : {}),
+      user: { ...normalizedSession.user, ...nextUser }
+    };
     try { localStorage.setItem("aura-session", JSON.stringify(nextSession)); } catch { /* sessão atual segue em memória */ }
     setSession(nextSession);
   }

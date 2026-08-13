@@ -3,7 +3,7 @@ import { ArrowDownToLine, ArrowUpFromLine, BarChart3, Calendar, Gem, Home, Lock,
 import { canAccessPage, planAllowsPage } from "../../lib/permissions";
 import { Modal } from "../common/Crud";
 
-export function Sidebar({ page, role, brand, features, trialDays, setPage, open, collapsed = false, onLogout }) {
+export function Sidebar({ page, role, brand, features, trialDays, setPage, open, onLogout }) {
   // Marca do tenant logado (com fallback para a marca-mãe "Aura").
   const brandName = brand?.name || "Aura";
   const brandShort = brand?.short || (brand?.name ? "" : "Clinic Piercing");

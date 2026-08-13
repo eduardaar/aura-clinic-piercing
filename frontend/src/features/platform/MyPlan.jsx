@@ -20,8 +20,9 @@ const featureLabels = {
   alert_center: "Central de alertas", courses: "Cursos", priority_support: "Suporte prioritário"
 };
 
-// Tela "Meu plano": mostra o plano atual, o status do trial e permite trocar de
-// plano (self-service via PATCH /api/subscription). role só admin chega aqui.
+// Tela "Meu plano": durante o trial permite experimentar outro pacote. Depois
+// de contratada a assinatura, o backend exige suporte/fluxo de cobrança para
+// não conceder recursos antes de confirmar a alteração financeira.
 export function MyPlan({ subscription, plans, onChanged }) {
   const [saving, setSaving] = useState("");
   const [error, setError] = useState("");
@@ -73,7 +74,7 @@ export function MyPlan({ subscription, plans, onChanged }) {
       <section className="panel">
         <div className="panel-heading">
           <h2><Sparkles size={16} /> Trocar de plano</h2>
-          <span>Escolha o pacote ideal — a troca é imediata.</span>
+          <span>{isTrial ? "Durante o teste, a troca é imediata." : "Planos contratados são alterados com apoio do suporte para ajustar a cobrança."}</span>
         </div>
         <div className="plan-grid">
           {list.map((plan) => {

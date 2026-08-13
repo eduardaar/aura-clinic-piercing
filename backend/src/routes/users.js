@@ -2,7 +2,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { withDb } from "../middleware/withDb.js";
-import { requireRole } from "../middleware/auth.js";
+import { createToken, requireRole } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
 import { userCreateSchema, userUpdateSchema } from "../schemas/index.js";
 import { parsePaging, fetchPage, pageResponse } from "../services/pagination.js";
@@ -32,13 +32,27 @@ router.patch("/api/account/profile", withDb(async (req, res, db) => {
   }
   const passwordHash = newPassword ? await bcrypt.hash(newPassword, 10) : current.password_hash;
   try {
-    await db.run("UPDATE users SET name = ?, email = ?, password_hash = ? WHERE id = ?", [name, email, passwordHash, current.id]);
+    await db.run(
+      `UPDATE users
+          SET name = ?, email = ?, password_hash = ?,
+              session_version = session_version + ?
+        WHERE id = ?`,
+      [name, email, passwordHash, newPassword ? 1 : 0, current.id]
+    );
   } catch (error) {
     if (error?.code === "23505") return res.status(409).json({ error: "Este e-mail já está em uso nesta clínica." });
     throw error;
   }
-  const user = await db.get("SELECT id, name, email, role FROM users WHERE id = ?", [current.id]);
-  res.json({ user });
+  const user = await db.get(
+    "SELECT id, name, email, role, session_version FROM users WHERE id = ?",
+    [current.id]
+  );
+  res.json({
+    user: { id: user.id, name: user.name, email: user.email, role: user.role },
+    // Mantém a sessão atual viva com uma credencial já na nova versão; todas as
+    // outras abas/dispositivos continuam revogados.
+    ...(newPassword ? { token: createToken(user, req.tenant) } : {})
+  });
 }));
 
 // Whitelist de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
@@ -114,9 +128,20 @@ router.patch("/api/users/:id", withDb(async (req, res, db) => {
   if (continuityError) return res.status(409).json({ error: continuityError });
   // Só faz bcrypt hash quando o password vier no body (senão preserva o hash atual).
   const passwordHash = req.body.password ? await bcrypt.hash(req.body.password, 10) : user.password_hash;
+  const invalidatesSessions = Boolean(req.body.password) || role !== user.role;
   await db.run(
-    "UPDATE users SET name = ?, email = ?, role = ?, password_hash = ? WHERE id = ?",
-    [req.body.name || user.name, req.body.email || user.email, role, passwordHash, req.params.id]
+    `UPDATE users
+        SET name = ?, email = ?, role = ?, password_hash = ?,
+            session_version = session_version + ?
+      WHERE id = ?`,
+    [
+      req.body.name || user.name,
+      req.body.email || user.email,
+      role,
+      passwordHash,
+      invalidatesSessions ? 1 : 0,
+      req.params.id
+    ]
   );
   res.json(await db.get("SELECT id, name, email, role, created_at FROM users WHERE id = ?", [req.params.id]));
 }));

@@ -32,13 +32,14 @@ function handleAiError(res, error) {
 // quais tarefas a interface pode oferecer. Chaves, modelos e configuração de
 // ambiente permanecem exclusivamente no processo do servidor.
 router.get("/api/ai-assistant/status", withDb(async (req, res) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
   res.json(getAiProviderStatus());
 }));
 
 router.post("/api/ai-assistant", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
   if (!validateBody(assistantSchema, req, res)) return;
+  if (req.body.task === "summarize_client" && !requireRole(req, res, ["admin", "piercer"])) return;
   let reservation = null;
   try {
     // Não há ferramentas nem instruções livres: o serviço aceita apenas as

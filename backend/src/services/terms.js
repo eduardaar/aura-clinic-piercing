@@ -76,6 +76,7 @@ async function tenantIdFromDb(db) {
 export async function createTermPdf(db, term, appointment = {}, userId = null) {
   const fileName = `termo-digital-${term.id}.pdf`;
   const signatureBuffer = signatureBufferFromDataUrl(term.signature_data_url);
+  const guardianSignatureBuffer = signatureBufferFromDataUrl(term.guardian_signature_data_url);
   const formData = parseTermFormData(term.form_data);
   // O PDF é montado em memória e vai direto para o bucket privado — não passa
   // pelo disco: é justamente o termo de anamnese (dado de saúde) que não pode
@@ -127,6 +128,7 @@ export async function createTermPdf(db, term, appointment = {}, userId = null) {
       writeTermLine(doc, "Responsável Legal", formData.minor?.responsible_name || "Não informado");
       writeTermLine(doc, "Documento Do Responsável", formData.minor?.responsible_document || "Não informado");
       writeTermLine(doc, "Nome Do Menor", formData.minor?.minor_name || "Não informado");
+      writeTermLine(doc, "Assinatura Do Responsável", guardianSignatureBuffer ? "Assinatura digital anexada" : "Ausente");
     }
 
     writeTermSection(doc, "Assinaturas");
@@ -137,6 +139,11 @@ export async function createTermPdf(db, term, appointment = {}, userId = null) {
       doc.moveDown(0.4);
       doc.text("Assinatura digital:");
       doc.image(signatureBuffer, { width: 260 });
+    }
+    if (formData.minor?.is_minor && guardianSignatureBuffer) {
+      doc.moveDown(0.4);
+      doc.text("Assinatura digital do responsável legal:");
+      doc.image(guardianSignatureBuffer, { width: 260 });
     }
     doc.moveDown(0.4);
     doc.text("Aura Clinic Piercing  Atendimento premium e cuidadoso.", { align: "center" });

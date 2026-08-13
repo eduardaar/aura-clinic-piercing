@@ -150,20 +150,23 @@ acaba pausando a fila.
 | --- | --- | --- |
 | `GET` | `/api/billing/subscription` | Plano, faturas recentes, `gateway_enabled` e `billing_profile` |
 | `PUT` | `/api/billing/profile` | CPF/CNPJ e e-mail do responsável — **pré-requisito do checkout** |
-| `POST` | `/api/billing/checkout` | `{ plan_code, billing_type, credit_card? }` |
+| `POST` | `/api/billing/checkout` | `{ plan_code, billing_type: "UNDEFINED" }` |
 | `GET` | `/api/billing/invoices` | Paginado |
 
-`billing_type` é `UNDEFINED` (link de fatura: o Asaas hospeda a página e o
-pagador escolhe PIX/boleto/cartão) ou `CREDIT_CARD` (débito automático mensal).
+`billing_type` é exclusivamente `UNDEFINED`: o Asaas hospeda a página e o
+pagador escolhe PIX, boleto ou cartão sem que número, validade ou CVV passem
+pela infraestrutura da Aura. Payloads com dados brutos de cartão são rejeitados
+antes de qualquer chamada ao gateway.
 
-**`Idempotency-Key` é obrigatório em `CREDIT_CARD`.** Sem ele um duplo-clique —
-ou uma repetição por timeout de rede — geraria uma segunda assinatura recorrente
-e uma segunda cobrança no cartão. A rota devolve a *mesma promessa* para a mesma
-chave, inclusive a que ainda está em voo.
+**`Idempotency-Key` é obrigatório em todo checkout.** Sem ele um duplo-clique —
+ou uma repetição por timeout de rede — poderia gerar outra assinatura e outra
+cobrança. A chave e o hash do payload ficam persistidos em
+`platform.idempotency_keys`, com índice único; por isso a deduplicação funciona
+entre processos e réplicas da API. Reutilizar a chave com outro corpo retorna
+conflito.
 
-> Limitação conhecida: a deduplicação é **por processo**. Com mais de uma
-> instância atrás de um balanceador, duas requisições podem escapar. A solução
-> definitiva é persistir a chave numa tabela com índice único.
+O corpo da requisição e os dados do pagador não são gravados na tabela de
+idempotência: somente o SHA-256 necessário para detectar reuso incorreto.
 
 `billing_profile.complete: false` é o sinal para a tela pedir o CPF/CNPJ **antes**
 de oferecer o botão de assinar: o Asaas recusa criar pagador sem documento, e o
@@ -188,14 +191,14 @@ faturamento inteiro da clínica.
 | --- | --- | --- |
 | `POST` | `/api/booking` | Devolve `payment_url` e `online_payment_available` |
 | `POST` | `/api/sales-orders/public` | Idem |
-| `GET` | `/api/payment-intents/:id/pix` | QR code + copia-e-cola |
-| `POST` | `/api/payment-intents/:id/sync` | "Paguei e não confirmou" |
+| `GET` | `/api/payment-intents/:token/pix` | QR code + copia-e-cola |
+| `POST` | `/api/payment-intents/:token/sync` | "Paguei e não confirmou" |
 
 As duas últimas são **públicas de propósito**: quem chama é o cliente final, na
-tela de agendamento ou de checkout, onde não existe sessão. O que protege é o id
-do intent ser um serial que só quem acabou de criar o pedido conhece — e o PIX
-não revelar nada além do valor. O `sync` devolve **só o status**, nunca o intent
-inteiro.
+tela de agendamento ou de checkout, onde não existe sessão. Elas aceitam somente
+o `public_token` UUID aleatório entregue na criação da cobrança; o ID serial
+interno não é aceito publicamente. O `sync` devolve apenas status e campos
+mínimos de conclusão, nunca o intent inteiro.
 
 A cobrança é criada **fora da transação** do agendamento/pedido, e é
 best-effort: se o Asaas estiver fora, o agendamento continua de pé e a resposta
@@ -245,14 +248,18 @@ A propagação evita a divergência em que promover uma clínica mudava o acesso
 plano antigo.
 
 `syncSubscriptionPrice()` (`services/platformBilling.js`) é o **único** ponto de
-propagação, sempre com a credencial da **plataforma**, e está ligado nos **três**
-caminhos que trocam plano — o levantamento achou três, não um:
+propagação, sempre com a credencial da **plataforma**, e está ligado nos caminhos
+administrativos que trocam o plano contratado:
 
 | Caminho | Onde |
 | --- | --- |
 | `PATCH /api/platform/accounts/:id/plan` | `services/accountAdmin.js` |
 | `PATCH /api/platform/tenants/:id/plan` (botão de ativar/renovar) | `routes/platform.js` |
-| `PATCH /api/subscription` (self-service da própria clínica) | `routes/store.js` |
+
+`PATCH /api/subscription` não altera uma assinatura recorrente existente. O
+self-service é instantâneo apenas durante o trial e antes de existir
+`asaas_subscription_id`; depois disso retorna `409 plan_change_requires_support`
+para que preço, prorrata e acesso sejam tratados juntos pelo suporte/plataforma.
 
 Propriedades que importam:
 
@@ -280,12 +287,10 @@ de preço em produção.
    servidor pode estar em UTC.
 3. **CPF/CNPJ, telefone e CEP só com dígitos** (`onlyDigits`). O formulário
    entrega `(11) 99999-8888`.
-4. **`expiryYear` do cartão tem 4 dígitos** (`"2030"`). O formulário coleta
-   `MM/AA`.
-5. **`remoteIp` é obrigatório na cobrança de cartão.** Sem ele o antifraude
-   recusa. Resolvido com o helper `clientIp` (que já trata Cloudflare/proxy).
-6. **Atualizar assinatura é `POST /subscriptions/{id}`**, não PUT nem PATCH.
-7. **Não existe webhook de assinatura.** Todo o ciclo recorrente chega como
+4. **Cartão bruto não entra na Aura.** A assinatura usa o checkout hospedado;
+   número, validade e CVV devem ser coletados somente pelo Asaas.
+5. **Atualizar assinatura é `POST /subscriptions/{id}`**, não PUT nem PATCH.
+6. **Não existe webhook de assinatura.** Todo o ciclo recorrente chega como
    eventos de *cobrança*, com `payment.subscription` apontando de volta.
 
 ---

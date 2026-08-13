@@ -9,7 +9,7 @@ import { getStoreName, queueProfessionalBookingNotification, whatsappLink } from
 import { quotePromotions } from "../services/promotions.js";
 import { validateCoupon } from "../services/discounts.js";
 import { reserveAppointmentItems } from "../services/reservations.js";
-import { createPaymentIntent } from "../services/payments.js";
+import { createPaymentIntent, publicPaymentIntent } from "../services/payments.js";
 import { tenantClient } from "../services/asaas/credentials.js";
 import { createAppointmentDepositCharge } from "../services/tenantCharges.js";
 import { bookingTaxId } from "../services/taxId.js";
@@ -412,7 +412,7 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
     jewelry_value: jewelryValue,
     discount_value: Number((serviceValue + jewelryValue - totalValue).toFixed(2)),
     items: bookingItems,
-    payment_intent: paymentIntent,
+    payment_intent: publicPaymentIntent(paymentIntent),
     professional_whatsapp_url: professionalWhatsappUrl,
     // Link da fatura hospedada pelo Asaas. É o que a tela abre para o cliente
     // pagar; `null` quando não há gateway ou quando ele falhou na criação.

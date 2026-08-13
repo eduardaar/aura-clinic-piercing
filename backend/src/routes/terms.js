@@ -1,6 +1,7 @@
 // Rotas de termos digitais (anamnese): criacao, listagem e PDF.
 import { Router } from "express";
 import { withFeature } from "../middleware/withDb.js";
+import { requireRole } from "../middleware/auth.js";
 import { listAppointments, upsertClient } from "../services/appointments.js";
 import { listDigitalTerms, countDigitalTerms, getDigitalTerm, createTermPdf } from "../services/terms.js";
 import { parsePaging, pageResponse } from "../services/pagination.js";
@@ -9,6 +10,19 @@ const router = Router();
 
 function meaningful(value) {
   return value !== null && value !== undefined && String(value).trim() !== "";
+}
+
+function ageFromBirthDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
+  if (!match) return null;
+  const birth = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  if (Number.isNaN(birth.getTime())) return null;
+  const today = new Date();
+  let age = today.getUTCFullYear() - birth.getUTCFullYear();
+  const beforeBirthday = today.getUTCMonth() < birth.getUTCMonth()
+    || (today.getUTCMonth() === birth.getUTCMonth() && today.getUTCDate() < birth.getUTCDate());
+  if (beforeBirthday) age -= 1;
+  return age;
 }
 
 async function syncClientRegistration(db, client, body) {
@@ -30,6 +44,10 @@ const TERM_SORTABLE = {
 };
 
 router.get("/api/digital-terms", withFeature("digital_terms", async (req, res, db) => {
+  // Termos carregam anamnese, documento, assinatura e declaração de saúde.
+  // Autenticar no tenant não basta: recepção e financeiro não precisam desses
+  // dados para exercer suas funções (menor privilégio, também no backend).
+  if (!requireRole(req, res, ["admin", "piercer"])) return;
   const clauses = [];
   const params = [];
   if (req.query.client_id) {
@@ -65,12 +83,26 @@ router.get("/api/digital-terms", withFeature("digital_terms", async (req, res, d
 }));
 
 router.post("/api/digital-terms", withFeature("digital_terms", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "piercer"])) return;
   const body = req.body || {};
   if (!body.full_name?.trim() || !body.signature_data_url) {
     return res.status(400).json({ error: "Dados obrigatorios do termo nao foram preenchidos." });
   }
   if (!body.orientations_confirmed) {
     return res.status(400).json({ error: "O cliente precisa confirmar que recebeu as orientacoes." });
+  }
+  const minor = body.form_data?.minor || {};
+  const age = ageFromBirthDate(body.birth_date);
+  if (age !== null && age < 18 && !minor.is_minor) {
+    return res.status(400).json({ error: "Cliente menor de idade: informe e valide o responsável legal." });
+  }
+  if (minor.is_minor) {
+    if (!meaningful(minor.responsible_name) || !meaningful(minor.responsible_document)) {
+      return res.status(400).json({ error: "Nome e documento do responsável legal são obrigatórios." });
+    }
+    if (!body.guardian_signature_data_url) {
+      return res.status(400).json({ error: "A assinatura do responsável legal é obrigatória." });
+    }
   }
 
   const appointment = body.appointment_id
@@ -100,8 +132,8 @@ router.post("/api/digital-terms", withFeature("digital_terms", async (req, res, 
 
   const result = await db.run(
     `INSERT INTO digital_terms
-    (appointment_id, client_id, full_name, social_name, document_number, birth_date, whatsapp, instagram, address, procedure, piercing_region, orientations_confirmed, health_declaration, form_data, signature_data_url)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+    (appointment_id, client_id, full_name, social_name, document_number, birth_date, whatsapp, instagram, address, procedure, piercing_region, orientations_confirmed, health_declaration, form_data, signature_data_url, guardian_signature_data_url)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     [
       body.appointment_id || null,
       client.id,
@@ -117,7 +149,8 @@ router.post("/api/digital-terms", withFeature("digital_terms", async (req, res, 
       body.orientations_confirmed ? 1 : 0,
       body.health_declaration || "",
       JSON.stringify(body.form_data || {}),
-      body.signature_data_url
+      body.signature_data_url,
+      minor.is_minor ? body.guardian_signature_data_url : null
     ]
   );
 

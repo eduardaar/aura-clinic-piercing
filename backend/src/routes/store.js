@@ -4,14 +4,13 @@ import { requireRole } from "../middleware/auth.js";
 import { query } from "../database/connection.js";
 import { listPlans, planByCode, normalizePlanCode } from "../services/plans.js";
 import { tenantSubscription, invalidateSubscriptionCache } from "../services/subscriptions.js";
-import { syncSubscriptionPrice, subscriptionSyncWarning } from "../services/platformBilling.js";
 
 const router = Router();
 
 router.get("/api/store-identity", withDb(async (req, res, db) => {
   const theme = await db.get("SELECT * FROM catalog_theme WHERE id = 1") || {};
   const settingsRows = await db.all("SELECT key, value FROM catalog_settings");
-  const settings = settingsRows.reduce((acc, row) => ({ ...acc, [row.key]: row.value }), {});
+  const settings = Object.fromEntries(settingsRows.map((row) => [row.key, row.value]));
   const tenant = await query("SELECT id, name, slug, plan, store_short_name, phone, city, state, logo_url, responsible_name FROM platform.tenants WHERE id = $1", [req.tenant.id]);
   const subscription = await tenantSubscription(req.tenant.id);
   res.json({
@@ -89,27 +88,39 @@ router.patch("/api/store-identity", withDb(async (req, res, db) => {
 
 // Troca de plano self-service (admin da clínica). Não altera trial/status —
 // apenas troca o plano; o gating passa a refletir as features do novo plano.
-router.patch("/api/subscription", withDb(async (req, res, db) => {
+router.patch("/api/subscription", withDb(async (req, res) => {
   if (!requireRole(req, res, ["admin"])) return;
   const planCode = normalizePlanCode(req.body?.plan_code, "");
   if (!planCode) return res.status(400).json({ error: "Plano inválido." });
+  const current = await tenantSubscription(req.tenant.id);
+  if (current?.plan_code === planCode) {
+    return res.json({ ok: true, subscription: current, plan: planByCode(planCode), unchanged: true });
+  }
+  // A troca direta serve apenas para experimentar recursos durante o trial,
+  // antes de existir recorrência. Em assinatura ativa, alterar o banco primeiro
+  // e sincronizar o gateway depois concederia acesso mesmo quando a cobrança
+  // falhasse. Até existir prorrata/plan_change pendente, o caminho seguro é o
+  // checkout inicial ou uma alteração administrativa auditada.
+  if (current?.status !== "trial_active" || current?.asaas_subscription_id) {
+    return res.status(409).json({
+      error: "A alteração de uma assinatura já contratada precisa ser feita pelo suporte para manter cobrança e acesso consistentes.",
+      code: "plan_change_requires_support"
+    });
+  }
   await query(
     "UPDATE platform.tenant_subscriptions SET plan_code = $1, updated_at = now() WHERE tenant_id = $2",
     [planCode, req.tenant.id]
   );
   await query("UPDATE platform.tenants SET plan = $1 WHERE id = $2", [planCode, req.tenant.id]);
   invalidateSubscriptionCache(req.tenant.id);
-  // Este é o terceiro caminho de troca de plano (os outros dois são do painel da
-  // plataforma) e o único em que a própria clínica se promove. Sem propagar, a
-  // assinatura no gateway continuaria com o valor do plano antigo — a clínica
-  // ganharia o acesso caro pagando o preço barato.
-  const gateway = await syncSubscriptionPrice(req.tenant.id);
+  // Trial sem recorrência: não existe cobrança no gateway para sincronizar.
+  const gateway = { applied: false, reason: "trial_without_gateway_subscription" };
   res.json({
     ok: true,
     subscription: await tenantSubscription(req.tenant.id),
     plan: planByCode(planCode),
     gateway,
-    warning: subscriptionSyncWarning(gateway)
+    warning: null
   });
 }));
 

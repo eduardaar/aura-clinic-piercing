@@ -340,9 +340,13 @@ router.get("/api/finance/export.pdf", withFeature("basic_finance", async (_req, 
   writePdfMetric(doc, "Despesas variaveis", report.expensesSummary.variable_total);
   writePdfMetric(doc, "Lucro estimado", report.profit.estimated);
   doc.moveDown().fontSize(13).text("Formas de pagamento mais usadas");
-  report.methods.forEach((item) => doc.fontSize(10).text(`${item.method}: ${item.total} registro(s) - ${formatCurrency(item.amount)}`));
+  report.methods.forEach((item) => {
+    doc.fontSize(10).text(`${item.method}: ${item.total} registro(s) - ${formatCurrency(item.amount)}`);
+  });
   doc.moveDown().fontSize(13).text("Despesas recentes");
-  report.expenses.slice(0, 18).forEach((item) => doc.fontSize(10).text(`${item.due_date} | ${item.expense_type} | ${item.description} | ${formatCurrency(item.amount)} | ${item.status}`));
+  report.expenses.slice(0, 18).forEach((item) => {
+    doc.fontSize(10).text(`${item.due_date} | ${item.expense_type} | ${item.description} | ${formatCurrency(item.amount)} | ${item.status}`);
+  });
   doc.end();
 }));
 

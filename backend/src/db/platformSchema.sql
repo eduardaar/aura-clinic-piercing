@@ -116,8 +116,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_tenants_asaas_customer
 
 -- Assinatura recorrente no Asaas que espelha a linha de tenant_subscriptions.
 ALTER TABLE platform.tenant_subscriptions ADD COLUMN IF NOT EXISTS asaas_subscription_id TEXT;
--- Como a clínica paga: UNDEFINED (link: PIX/boleto/cartão na página do Asaas)
--- ou CREDIT_CARD (débito automático mensal no cartão tokenizado).
+-- Como a clínica paga. A aplicação aceita somente UNDEFINED: PIX/boleto/cartão
+-- são coletados na página hospedada do Asaas, nunca pela infraestrutura Aura.
 ALTER TABLE platform.tenant_subscriptions ADD COLUMN IF NOT EXISTS billing_type TEXT;
 ALTER TABLE platform.tenant_subscriptions ADD COLUMN IF NOT EXISTS canceled_at TIMESTAMPTZ;
 

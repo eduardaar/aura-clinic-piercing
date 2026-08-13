@@ -97,7 +97,7 @@ async function ensureCategoryOption(db, category, summary) {
   return null;
 }
 
-async function findProduct(db, key, item) {
+async function findProduct(db, item) {
   const rows = await db.all(
     "SELECT * FROM jewelry_inventory WHERE category = ? AND name = ? AND material = ? AND COALESCE(stone, '') = ? ORDER BY id LIMIT 1",
     [item.category, item.product, item.material, item.stone || ""]
@@ -106,7 +106,7 @@ async function findProduct(db, key, item) {
 }
 
 async function upsertProduct(db, item, index, summary) {
-  const existing = await findProduct(db, productImportKey(item), item);
+  const existing = await findProduct(db, item);
   if (existing) {
     await db.run(
       `UPDATE jewelry_inventory

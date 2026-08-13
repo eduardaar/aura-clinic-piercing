@@ -38,7 +38,9 @@ export class PlatformBillingError extends Error {
   }
 }
 
-export const BILLING_TYPES = ["UNDEFINED", "CREDIT_CARD"];
+// A Aura usa somente checkout/fatura hospedada. Aceitar cartão bruto aqui
+// colocaria toda a API no escopo PCI DSS e criaria risco de PAN/CVV em logs.
+export const BILLING_TYPES = ["UNDEFINED"];
 
 // ---------------------------------------------------------------------------
 // Infraestrutura
@@ -169,35 +171,6 @@ export async function ensureAsaasCustomer(tenantId) {
 // Checkout da assinatura
 // ---------------------------------------------------------------------------
 
-// O formulário manda snake_case (e às vezes camelCase); o cliente do Asaas quer
-// camelCase. Normalizar aqui evita que um `expiry_month` ignorado em silêncio
-// vire "cartão inválido" no gateway.
-function normalizeCard(card) {
-  if (!card) return null;
-  const rawYear = String(card.expiryYear ?? card.expiry_year ?? "").trim();
-  return {
-    holderName: card.holderName ?? card.holder_name ?? null,
-    number: onlyDigits(card.number ?? card.card_number),
-    expiryMonth: String(card.expiryMonth ?? card.expiry_month ?? "").trim().padStart(2, "0"),
-    // O Asaas exige 4 dígitos ("2030") e o formulário coleta MM/AA. Assumir o
-    // século 20xx é seguro: não existe cartão válido emitido para 19xx.
-    expiryYear: rawYear.length === 2 ? `20${rawYear}` : rawYear,
-    ccv: onlyDigits(card.ccv ?? card.cvv ?? card.security_code)
-  };
-}
-
-function normalizeHolderInfo(info) {
-  if (!info) return null;
-  return {
-    name: info.name ?? info.holder_name ?? null,
-    email: info.email ?? null,
-    taxId: onlyDigits(info.taxId ?? info.tax_id ?? info.cpf_cnpj),
-    postalCode: onlyDigits(info.postalCode ?? info.postal_code ?? info.cep),
-    addressNumber: info.addressNumber ?? info.address_number ?? info.numero ?? null,
-    phone: onlyDigits(info.phone ?? info.mobile_phone)
-  };
-}
-
 // Grava/atualiza a fatura a partir de uma cobrança do Asaas.
 //
 // O ON CONFLICT no índice parcial ux_tenant_invoices_asaas_payment é a
@@ -246,12 +219,11 @@ async function upsertInvoice(runner, { tenantId, subscriptionId, planCode, payme
  * Cria (ou troca) a assinatura recorrente da clínica na conta da Monitence.
  *
  * @param {number} tenantId
- * @param {{ planCode: string, billingType?: string, creditCard?: object,
- *           creditCardHolderInfo?: object, remoteIp?: string }} options
+ * @param {{ planCode: string, billingType?: string }} options
  */
 export async function startSubscriptionCheckout(
   tenantId,
-  { planCode, billingType = "UNDEFINED", creditCard, creditCardHolderInfo, remoteIp } = {}
+  { planCode, billingType = "UNDEFINED" } = {}
 ) {
   ensureGatewayEnabled();
 
@@ -271,38 +243,10 @@ export async function startSubscriptionCheckout(
   const type = String(billingType || "UNDEFINED").toUpperCase();
   if (!BILLING_TYPES.includes(type)) {
     throw new PlatformBillingError(
-      "Forma de pagamento inválida. Use UNDEFINED (link com PIX/boleto/cartão) ou CREDIT_CARD.",
+      "Forma de pagamento inválida. Use a página segura de pagamento do Asaas.",
       400,
       "billing_type_invalido"
     );
-  }
-
-  const card = type === "CREDIT_CARD" ? normalizeCard(creditCard) : null;
-  const holder = type === "CREDIT_CARD" ? normalizeHolderInfo(creditCardHolderInfo) : null;
-  if (type === "CREDIT_CARD") {
-    if (!card?.number || !card.expiryMonth || !card.expiryYear || !card.ccv || !card.holderName) {
-      throw new PlatformBillingError(
-        "Dados do cartão incompletos (nome do titular, número, validade e CVV são obrigatórios).",
-        400,
-        "cartao_incompleto"
-      );
-    }
-    if (!holder?.taxId || !holder.postalCode || !holder.addressNumber) {
-      throw new PlatformBillingError(
-        "Dados do titular incompletos (CPF/CNPJ, CEP e número do endereço são obrigatórios).",
-        400,
-        "titular_incompleto"
-      );
-    }
-    // Sem o IP real do portador o antifraude do Asaas recusa a transação — e a
-    // recusa chega como erro genérico, difícil de diagnosticar depois.
-    if (!remoteIp) {
-      throw new PlatformBillingError(
-        "Não foi possível identificar o IP do pagador; a cobrança no cartão exige esse dado.",
-        400,
-        "remote_ip_ausente"
-      );
-    }
   }
 
   const customerId = await ensureAsaasCustomer(tenantId);
@@ -313,20 +257,12 @@ export async function startSubscriptionCheckout(
   );
   const current = currentResult.rows[0] || null;
 
-  // Troca de plano: a assinatura velha precisa morrer, senão a clínica passa a
-  // ter DUAS recorrências ativas e é cobrada duas vezes no mês seguinte.
-  // Best-effort de propósito — se o cancelamento falhar, seguimos criando a
-  // nova: uma cobrança duplicada é resolvível pelo suporte; perder o checkout
-  // de quem acabou de digitar o cartão não é.
   if (current?.asaas_subscription_id) {
-    try {
-      await platformClient().cancelSubscription(current.asaas_subscription_id);
-    } catch (error) {
-      logGatewayError(
-        `falha ao cancelar a assinatura anterior ${current.asaas_subscription_id} do tenant ${tenantId}`,
-        error
-      );
-    }
+    throw new PlatformBillingError(
+      "Já existe uma assinatura no gateway. A troca de plano deve passar pelo suporte até que o fluxo de prorrata esteja disponível.",
+      409,
+      "plan_change_requires_support"
+    );
   }
 
   let subscription;
@@ -338,10 +274,7 @@ export async function startSubscriptionCheckout(
       cycle: "MONTHLY",
       billingType: type,
       description: `Assinatura Monitence — ${plan.name}`,
-      externalReference: `tenant:${tenantId}`,
-      creditCard: card || undefined,
-      creditCardHolderInfo: holder || undefined,
-      remoteIp
+      externalReference: `tenant:${tenantId}`
       // `nextDueDate` fica a cargo do cliente do Asaas: o piso é amanhã
       // (minimumDueDate), porque o gateway rejeita vencimento no passado.
     });

@@ -551,6 +551,13 @@ function catalogString(value) {
   return typeof value === "string" ? value.trim() : String(value ?? "").trim();
 }
 
+function hasControlOrWhitespace(value) {
+  return [...value].some((char) => {
+    const code = char.charCodeAt(0);
+    return code <= 32 || code === 127 || char.trim() === "";
+  });
+}
+
 /**
  * Valida URL que vai para o `href` de CTA. Hashes e caminhos internos são
  * permitidos; para sair da plataforma só aceitamos HTTPS (e os esquemas de
@@ -560,7 +567,7 @@ function catalogString(value) {
 function unsafeCatalogCtaUrl(value) {
   const raw = catalogString(value);
   if (!raw) return null;
-  if (/[\x00-\x1F\x7F\s]/.test(raw)) return "contém espaços ou caracteres de controle";
+  if (hasControlOrWhitespace(raw)) return "contém espaços ou caracteres de controle";
   if (raw.startsWith("#")) return /^#[A-Za-z][\w-]*$/.test(raw) ? null : "âncora inválida";
   if (raw.startsWith("/")) return raw.startsWith("//") || raw.includes("\\") ? "caminho relativo inseguro" : null;
   if (raw.startsWith("./") || raw.startsWith("../") || raw.startsWith("?")) return null;
@@ -578,7 +585,7 @@ function unsafeCatalogCtaUrl(value) {
 function unsafeCatalogAssetUrl(value) {
   const raw = catalogString(value);
   if (!raw) return null;
-  if (/[\x00-\x1F\x7F\s]/.test(raw)) return "contém espaços ou caracteres de controle";
+  if (hasControlOrWhitespace(raw)) return "contém espaços ou caracteres de controle";
   if (raw.startsWith("/")) return raw.startsWith("//") || raw.includes("\\") ? "caminho relativo inseguro" : null;
   let parsed;
   try {

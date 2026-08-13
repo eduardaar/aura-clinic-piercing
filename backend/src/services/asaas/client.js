@@ -201,50 +201,23 @@ export function createAsaasClient({ apiKey, baseUrl = ASAAS_BASE_URL, label = "a
       cycle = "MONTHLY",
       description,
       externalReference,
-      billingType = "UNDEFINED",
-      creditCard,
-      creditCardHolderInfo,
-      creditCardToken,
-      remoteIp
+      billingType = "UNDEFINED"
     }) {
+      if (String(billingType).toUpperCase() !== "UNDEFINED") {
+        throw new AsaasError(
+          "Assinaturas devem usar o checkout hospedado; cartão bruto não é aceito.",
+          { status: 400, code: "hosted_checkout_required" }
+        );
+      }
       const body = {
         customer,
-        billingType,
+        billingType: "UNDEFINED",
         value: toAsaasValue(value),
         nextDueDate: nextDueDate || minimumDueDate(),
         cycle,
         description,
         externalReference
       };
-      // Dados de cartão só viajam no fluxo CREDIT_CARD. Enviá-los junto de
-      // UNDEFINED faria o Asaas recusar a assinatura.
-      if (billingType === "CREDIT_CARD") {
-        if (creditCardToken) {
-          body.creditCardToken = creditCardToken;
-        } else if (creditCard) {
-          body.creditCard = {
-            holderName: creditCard.holderName,
-            number: onlyDigits(creditCard.number),
-            expiryMonth: creditCard.expiryMonth,
-            // O Asaas quer 4 dígitos ("2030"); o formulário coleta MM/AA.
-            expiryYear: creditCard.expiryYear,
-            ccv: onlyDigits(creditCard.ccv)
-          };
-          if (creditCardHolderInfo) {
-            body.creditCardHolderInfo = {
-              name: creditCardHolderInfo.name,
-              email: creditCardHolderInfo.email,
-              cpfCnpj: onlyDigits(creditCardHolderInfo.taxId),
-              postalCode: onlyDigits(creditCardHolderInfo.postalCode),
-              addressNumber: creditCardHolderInfo.addressNumber,
-              phone: onlyDigits(creditCardHolderInfo.phone)
-            };
-          }
-        }
-        // Obrigatório na cobrança de cartão: sem o IP real do portador o Asaas
-        // recusa a transação por antifraude.
-        if (remoteIp) body.remoteIp = remoteIp;
-      }
       return request("POST", "/subscriptions", body);
     },
     getSubscription(subscriptionId) {

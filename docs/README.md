@@ -19,6 +19,8 @@ O projeto é um **monorepo** com backend (Node/Express + PostgreSQL, multi-tenan
 | [ASAAS.md](./ASAAS.md) | Integração com o gateway de pagamento: os dois níveis de credencial (plataforma e clínica), cofre cifrado, webhook multi-tenant (autenticidade, idempotência e o contrato de status HTTP), armadilhas do Asaas e configuração em produção. |
 | [R2.md](./R2.md) | Armazenamento de arquivos no Cloudflare R2: configuração, migração segura do disco e condições para remover o fallback legado. |
 | [PADRAO-VISUAL.md](./PADRAO-VISUAL.md) | Como escrever tela nova sem criar mais um sistema de CSS: a ordem de busca (componente → classe → CSS próprio), o catálogo de primitivas, as camadas da cascata, a armadilha do scroll e os anti-padrões observados no painel da plataforma. |
+| [PRONTIDAO-PRODUCAO-LGPD-SEGURANCA.md](./PRONTIDAO-PRODUCAO-LGPD-SEGURANCA.md) | Auditoria de prontidão para produção: decisão GO/NO-GO, LGPD, segurança, pagamentos, backups, infraestrutura, migrations, plano de correção e critérios objetivos de lançamento. |
+| [PLANO-DE-CORRECAO-CODIGO-E-OPERACAO.md](./PLANO-DE-CORRECAO-CODIGO-E-OPERACAO.md) | Plano executável separado entre correções já feitas no código, backlog de desenvolvimento, itens híbridos e dependências externas de infraestrutura, jurídico e operação. |
 
 ## Por onde começar
 
@@ -28,3 +30,5 @@ O projeto é um **monorepo** com backend (Node/Express + PostgreSQL, multi-tenan
 - **Entendendo o produto?** Percorra [FLUXOS.md](./FLUXOS.md).
 - **Mexendo em pagamento?** Leia [ASAAS.md](./ASAAS.md) **antes** — o contrato de status HTTP do webhook e a idempotência têm armadilhas que custam dinheiro.
 - **Escrevendo tela nova?** Leia [PADRAO-VISUAL.md](./PADRAO-VISUAL.md) **antes** de criar um `.css` — o projeto já tem o componente e a classe, e CSS sem `@layer` quebra o layout do sistema inteiro.
+- **Preparando lançamento ou auditando riscos?** Use [PRONTIDAO-PRODUCAO-LGPD-SEGURANCA.md](./PRONTIDAO-PRODUCAO-LGPD-SEGURANCA.md) como checklist de liberação e registro das evidências.
+- **Planejando as correções?** Use [PLANO-DE-CORRECAO-CODIGO-E-OPERACAO.md](./PLANO-DE-CORRECAO-CODIGO-E-OPERACAO.md) para saber o que está no repositório e o que depende do ambiente ou da operação.

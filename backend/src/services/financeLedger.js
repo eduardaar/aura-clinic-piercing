@@ -163,7 +163,7 @@ export async function processRecurringEntries(db, horizonDays = 60) {
   const parents = await db.all("SELECT * FROM financial_entries WHERE recurrence IN ('weekly','monthly','yearly') AND parent_entry_id IS NULL AND status!='canceled'");
   let created = 0;
   for (const parent of parents) {
-    let next = new Date(`${parent.due_date}T12:00:00`);
+    const next = new Date(`${parent.due_date}T12:00:00`);
     while (next <= horizon) {
       if (parent.recurrence === "weekly") next.setDate(next.getDate() + 7);
       else if (parent.recurrence === "monthly") next.setMonth(next.getMonth() + 1);

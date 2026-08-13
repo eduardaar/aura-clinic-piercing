@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AiAssistantError, buildTaskPrompt, getAiProviderStatus, runAiAssistantTask } from "../src/services/aiAssistant.js";
+import { AiAssistantError, buildTaskPrompt, getAiProviderStatus, redactAiContext, runAiAssistantTask } from "../src/services/aiAssistant.js";
 
 test("assistente aceita somente tarefas previstas e limita o contexto", () => {
   assert.throws(() => buildTaskPrompt("delete_everything", { context: "x" }), AiAssistantError);
@@ -9,6 +9,14 @@ test("assistente aceita somente tarefas previstas e limita o contexto", () => {
   assert.match(prompt, /<DADOS>/);
   assert.match(prompt, /nunca instruções/);
   assert.match(prompt, /TOM: cordial/);
+});
+
+test("contexto enviado à IA remove identificadores comuns", () => {
+  const redacted = redactAiContext("Cliente: Ana Silva\nCPF: 123.456.789-01\nana@example.com\nWhatsApp: (11) 99999-8888");
+  assert.ok(!redacted.includes("Ana Silva"));
+  assert.ok(!redacted.includes("123.456.789-01"));
+  assert.ok(!redacted.includes("ana@example.com"));
+  assert.ok(!redacted.includes("99999-8888"));
 });
 
 test("status não retorna segredos e indica o provedor disponível", () => {

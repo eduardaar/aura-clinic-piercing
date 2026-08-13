@@ -234,7 +234,11 @@ router.patch("/api/catalog-media/:id", withFeature("public_catalog_customization
   if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: "Mídia inválida." });
   const altText = String(req.body?.alt_text ?? "").replace(/\s+/g, " ").trim();
   if (altText.length > 500) return res.status(422).json({ error: "O texto alternativo aceita no máximo 500 caracteres.", code: "catalog_media_alt_text_too_long" });
-  if (/[\x00-\x1F\x7F<>]/.test(altText)) return res.status(422).json({ error: "O texto alternativo deve ser texto simples.", code: "catalog_media_alt_text_invalid" });
+  const hasUnsafeCharacter = [...altText].some((char) => {
+    const code = char.charCodeAt(0);
+    return code <= 31 || code === 127 || char === "<" || char === ">";
+  });
+  if (hasUnsafeCharacter) return res.status(422).json({ error: "O texto alternativo deve ser texto simples.", code: "catalog_media_alt_text_invalid" });
   const updated = await db.run(
     `UPDATE catalog_media_assets SET alt_text = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
      RETURNING id, url, storage_key, original_name, mime_type, alt_text, created_at, updated_at`,

@@ -6,13 +6,13 @@ import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 const disabled = process.env.DISABLE_RATE_LIMIT === "true";
 const skip = () => disabled;
 
-// Chave do limite = IP real do cliente. Atrás do Cloudflare, o cabeçalho
-// CF-Connecting-IP carrega o IP verdadeiro (o CF o sobrescreve; o cliente não
-// consegue forjá-lo). Fora do Cloudflare, cai para req.ip (derivado do
-// trust proxy). ipKeyGenerator normaliza IPv6 (/56) para não vazar buckets.
+// Chave do limite = IP calculado pelo Express a partir da cadeia de proxies
+// CONFIÁVEIS. Nunca lemos CF-Connecting-IP diretamente: se a origem ficar
+// acessível fora do Cloudflare, o cliente controla esse header e poderia trocar
+// de bucket a cada requisição. `trust proxy` é a única fonte de confiança.
+// ipKeyGenerator normaliza IPv6 (/56) para não vazar buckets.
 export function clientIp(req) {
-  const cf = req.headers["cf-connecting-ip"];
-  return (Array.isArray(cf) ? cf[0] : cf) || req.ip || "";
+  return req.ip || req.socket?.remoteAddress || "";
 }
 
 function clientKey(req) {
@@ -28,6 +28,20 @@ export const loginLimiter = rateLimit({
   keyGenerator: clientKey,
   skip,
   message: { error: "Muitas tentativas de login. Tente novamente em alguns minutos." }
+});
+
+// Telemetria pública não pode virar um endpoint de escrita ilimitada. Este
+// middleware roda antes de `withDb` resolver o tenant; portanto a chave usa só
+// o IP confiável. Incluir X-Tenant permitiria ao atacante variar um header
+// controlado por ele para escapar do limite.
+export const publicErrorLogLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: clientKey,
+  skip,
+  message: { error: "Muitos registros de erro. Aguarde um instante." }
 });
 
 // Rate limit dos webhooks de gateway: 600 req/min por IP.

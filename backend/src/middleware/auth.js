@@ -26,7 +26,7 @@ export function requiresAuth(req) {
   // Só estas duas — a LISTAGEM de intents continua exigindo token. O recorte é
   // por regex e não por prefixo justamente para /api/payment-intents não virar
   // público inteiro por descuido.
-  if (/^\/api\/payment-intents\/\d+\/(pix|sync)$/.test(req.path)) return false;
+  if (/^\/api\/payment-intents\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/(pix|sync)$/i.test(req.path)) return false;
   // Conteúdo da landing: é a página pública da plataforma, servida antes de
   // qualquer login. O editor vive em /api/platform/landing/* e se autentica com
   // token de plataforma, não com este caminho.
@@ -77,6 +77,7 @@ export function createToken(user, tenant) {
   return signPayload({
     sub: user.id,
     role: user.role,
+    sv: Number(user.session_version || 1),
     tid: tenant?.id,
     tslug: tenant?.slug,
     exp: Date.now() + 1000 * 60 * 60 * 12
@@ -115,7 +116,15 @@ export async function authenticateRequest(req, db) {
     if (decoded.plt === true) return null;
     // O token só vale para o tenant desta requisição (token de outra clínica → 401).
     if (!req.tenant || decoded.tid !== req.tenant.id) return null;
-    return db.get("SELECT id, name, email, role FROM users WHERE id = ?", [decoded.sub]);
+    const user = await db.get(
+      "SELECT id, name, email, role, session_version FROM users WHERE id = ?",
+      [decoded.sub]
+    );
+    // Tokens antigos, sem `sv`, são encerrados no primeiro deploy desta
+    // proteção. Depois disso, trocar senha ou papel incrementa a versão e
+    // invalida imediatamente todas as sessões emitidas anteriormente.
+    if (!user || Number(decoded.sv) !== Number(user.session_version)) return null;
+    return user;
   } catch {
     return null;
   }

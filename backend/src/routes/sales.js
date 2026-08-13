@@ -6,6 +6,7 @@ import { createSalesOrder, listSalesOrders, countSalesOrders, getSalesOrder, Sal
 import { parsePaging, pageResponse } from "../services/pagination.js";
 import { tenantClient } from "../services/asaas/credentials.js";
 import { createSalesOrderCharge } from "../services/tenantCharges.js";
+import { publicPaymentIntent } from "../services/payments.js";
 
 const router = Router();
 
@@ -108,7 +109,7 @@ router.post("/api/sales-orders/public", withDb(async (req, res, db) => {
 
   res.status(201).json({
     ...order,
-    payment_intent: paymentIntent,
+    payment_intent: publicPaymentIntent(paymentIntent),
     payment_url: paymentIntent?.invoice_url || null,
     online_payment_available: Boolean(paymentIntent?.online_payment_available)
   });

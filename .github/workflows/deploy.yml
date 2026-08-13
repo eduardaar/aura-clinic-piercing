@@ -115,12 +115,9 @@ jobs:
           npm --prefix frontend test
           npm --prefix frontend run build
 
-      # Informativo, NÃO bloqueante: o repositório carrega ~84 achados antigos
-      # (pendência 12) e reprovar o PR por eles pararia o trabalho de todo mundo
-      # sem relação com a mudança. Fica visível no log para a dívida não crescer
-      # em silêncio; vira bloqueante quando o passivo for zerado.
-      - name: Lint (informativo)
-        continue-on-error: true
+      # Erros de lint bloqueiam merge/deploy. Avisos permanecem visíveis para
+      # redução gradual, mas não escondem mais falhas reais de correção.
+      - name: Lint
         run: npm run lint
 
   # Sem o secret da chave SSH não há como deployar — pula (verde) com um aviso,

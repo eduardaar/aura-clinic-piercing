@@ -2,7 +2,7 @@ import { Router } from "express";
 import { withDb, withFeature } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { transitionPaymentIntent } from "../services/payments.js";
-import { getPixData, syncIntent } from "../services/tenantCharges.js";
+import { getPixDataByPublicToken, syncIntentByPublicToken } from "../services/tenantCharges.js";
 
 const router = Router();
 
@@ -38,13 +38,10 @@ router.patch("/api/payment-intents/:id/status", withFeature("deposits", async (r
 
 // QR code + copia-e-cola do PIX de uma cobrança já criada.
 //
-// PÚBLICA de propósito: quem chama é o cliente final na tela de agendamento ou
-// de checkout do catálogo, e ali não existe sessão. O que protege é o `id` do
-// intent ser um serial — só quem acabou de criar o pedido o conhece — somado ao
-// fato de o PIX não revelar nada além do valor a pagar (nem nome, nem CPF, nem
-// contato). Quem tem o id já podia abrir a `invoice_url` de qualquer forma.
-router.get("/api/payment-intents/:id/pix", withDb(async (req, res, db) => {
-  const pix = await getPixData(db, Number(req.params.id));
+// PÚBLICA de propósito: quem chama é o cliente final sem sessão. O token UUID
+// é aleatório e específico da cobrança; o id serial nunca funciona aqui.
+router.get("/api/payment-intents/:token/pix", withDb(async (req, res, db) => {
+  const pix = await getPixDataByPublicToken(db, req.params.token);
   if (!pix) {
     return res.status(404).json({ error: "PIX indisponível para esta cobrança." });
   }
@@ -59,12 +56,11 @@ router.get("/api/payment-intents/:id/pix", withDb(async (req, res, db) => {
 // Pública pelo mesmo motivo do PIX (a tela de status do cliente final usa), mas
 // devolve só o status — nunca o intent inteiro, que carrega valor, cliente e
 // metadados da integração.
-router.post("/api/payment-intents/:id/sync", withDb(async (req, res, db) => {
+router.post("/api/payment-intents/:token/sync", withDb(async (req, res, db) => {
   try {
-    const intent = await syncIntent(db, Number(req.params.id));
+    const intent = await syncIntentByPublicToken(db, req.params.token);
     if (!intent) return res.status(404).json({ error: "Cobrança não encontrada." });
     res.json({
-      id: intent.id,
       status: intent.status,
       paid_at: intent.paid_at || null,
       invoice_url: intent.invoice_url || null
