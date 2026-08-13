@@ -13,7 +13,7 @@ try {
   const products = (await client.query("SELECT * FROM jewelry_inventory ORDER BY id")).rows;
   const variants = (await client.query("SELECT * FROM jewelry_variants ORDER BY jewelry_id,id")).rows;
   const images = (await client.query("SELECT id,product_id,variation_id,image_url,alt_text,sort_order,is_primary FROM product_images ORDER BY product_id,variation_id NULLS FIRST,sort_order,id")).rows;
-  const encoding = (await client.query("SELECT current_setting('server_encoding') server_encoding,current_setting('client_encoding') client_encoding,current_setting('lc_collate') lc_collate")).rows[0];
+  const encoding = (await client.query("SELECT current_setting('server_encoding') server_encoding,current_setting('client_encoding') client_encoding")).rows[0];
   await client.query("COMMIT");
   if (products.length !== 123 || variants.length !== 177) throw new Error(`Totais inesperados: ${products.length} produtos / ${variants.length} variações.`);
   await fs.writeFile(output, JSON.stringify({ scope: { tenant: tenant.slug, tenant_id: Number(tenant.id), schema, establishment: tenant.store_short_name || tenant.name, other_tenants_affected: 0, writes_executed: 0 }, encoding, products, variants, images }, null, 2), "utf8");
