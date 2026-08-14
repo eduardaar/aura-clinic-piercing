@@ -15,6 +15,7 @@ import { requiresAuth, authenticateRequest } from "./auth.js";
 import { isProduction } from "../config/index.js";
 import { recordError } from "../services/errorLogs.js";
 import { requireFeature } from "../services/subscriptions.js";
+import { hydrateUserPermissions } from "../services/permissionService.js";
 
 // Defesa em profundidade: o schema vem sempre de "tenant_" + id inteiro do
 // banco, mas validamos o formato antes de interpolar no SET search_path.
@@ -51,7 +52,7 @@ export const withDb = (handler) => async (req, res) => {
     if (requiresAuth(req)) {
       const user = await authenticateRequest(req, db);
       if (!user) return res.status(401).json({ error: "Sessão inválida ou expirada." });
-      req.user = user;
+      req.user = await hydrateUserPermissions(db, user);
     }
     await handler(req, res, db);
   } catch (error) {

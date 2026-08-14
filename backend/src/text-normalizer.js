@@ -126,10 +126,10 @@ function normalizeCommonText(text) {
   if (/[ÃÂâ]/.test(normalized)) {
     try {
       const roundTrip = Buffer.from(normalized, "latin1").toString("utf8");
-      if (roundTrip && roundTrip !== normalized) {
+      if (roundTrip && roundTrip !== normalized && !roundTrip.includes("\uFFFD")) {
         const beforeScore = mojibakeScore(normalized);
         const afterScore = mojibakeScore(roundTrip);
-        if (afterScore <= beforeScore) normalized = roundTrip;
+        if (afterScore < beforeScore) normalized = roundTrip;
       }
     } catch {
       // Mantém o texto original se a conversão não for segura.

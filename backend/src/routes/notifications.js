@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { withDb, withFeature } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
+import { authorizePermission } from "../middleware/requirePermission.js";
+import { P } from "../config/permissions.js";
 import { whatsappLink } from "../services/notifications.js";
 import { processDueCommunications, TEMPLATE_VARIABLES } from "../services/communications.js";
 import {
@@ -47,7 +49,7 @@ function communicationCreditError(res, error) {
 // Não exige feature de automação: mesmo no plano sem WhatsApp a clínica precisa
 // enxergar o saldo e as recargas disponíveis antes de decidir fazer upgrade.
 router.get("/api/communication-credits", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!authorizePermission(req, res, P.COMMUNICATION_VIEW)) return;
   try {
     const periodKey = req.query.period ? String(req.query.period) : undefined;
     // O mesmo client do tenant não pode abrir duas transações concorrentes.
@@ -76,7 +78,7 @@ router.post("/api/communication-credits/purchase", withDb(async (req, res, db) =
 }));
 
 router.get("/api/notifications", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!authorizePermission(req, res, P.COMMUNICATION_VIEW)) return;
   const clauses = [];
   const params = [];
   if (req.query.status) {
@@ -130,7 +132,7 @@ router.get("/api/notifications", withDb(async (req, res, db) => {
 }));
 
 router.get("/api/communication-templates", withFeature("message_templates", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!authorizePermission(req, res, P.COMMUNICATION_VIEW)) return;
   res.json({ variables: TEMPLATE_VARIABLES, templates: await db.all("SELECT * FROM communication_templates ORDER BY name") });
 }));
 
@@ -148,7 +150,7 @@ router.patch("/api/communication-templates/:id", withFeature("message_templates"
 }));
 
 router.get("/api/automation-rules", withFeature("message_templates", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!authorizePermission(req, res, P.COMMUNICATION_VIEW)) return;
   res.json(await db.all(`
     SELECT ar.*, ct.name AS template_name,
       (SELECT COUNT(*) FROM automation_runs r WHERE r.rule_id=ar.id) AS run_count
@@ -173,7 +175,7 @@ router.patch("/api/automation-rules/:id", withFeature("message_templates", async
 }));
 
 router.post("/api/automations/process", withFeature("message_templates", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!authorizePermission(req, res, P.COMMUNICATION_SEND)) return;
   res.json({ ok: true, ready: await processDueCommunications(db, req.body?.limit, req.tenant.id) });
 }));
 

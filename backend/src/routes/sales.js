@@ -1,12 +1,13 @@
 // Rotas de vendas (pedidos).
 import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
-import { requireRole } from "../middleware/auth.js";
 import { createSalesOrder, listSalesOrders, countSalesOrders, getSalesOrder, SalesOrderValidationError } from "../services/sales.js";
 import { parsePaging, pageResponse } from "../services/pagination.js";
 import { tenantClient } from "../services/asaas/credentials.js";
 import { createSalesOrderCharge } from "../services/tenantCharges.js";
 import { publicPaymentIntent } from "../services/payments.js";
+import { P } from "../config/permissions.js";
+import { authorizePermission } from "../middleware/requirePermission.js";
 
 const router = Router();
 
@@ -19,7 +20,7 @@ const SALES_SORTABLE = {
 };
 
 router.get("/api/sales-orders", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "finance", "reception", "piercer"])) return;
+  if (!authorizePermission(req, res, P.SALES_VIEW)) return;
   const clauses = [];
   const params = [];
   if (req.query.status) {
@@ -54,7 +55,7 @@ router.get("/api/sales-orders", withDb(async (req, res, db) => {
 }));
 
 router.post("/api/sales-orders", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "finance", "reception", "piercer"])) return;
+  if (!authorizePermission(req, res, P.SALES_CREATE)) return;
   let order;
   try {
     order = await createSalesOrder(db, req.body || {}, req.user);
@@ -116,9 +117,11 @@ router.post("/api/sales-orders/public", withDb(async (req, res, db) => {
 }));
 
 router.patch("/api/sales-orders/:id", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "finance", "reception", "piercer"])) return;
   const current = await db.get("SELECT * FROM sales_orders WHERE id = ?", [req.params.id]);
   if (!current) return res.status(404).json({ error: "Venda não encontrada." });
+  const closed = !["pendente", "aberta"].includes(String(current.status));
+  const permission = req.body.status === "cancelado" ? P.SALES_CANCEL : closed ? P.SALES_EDIT_CLOSED : P.SALES_EDIT_OPEN;
+  if (!authorizePermission(req, res, permission)) return;
   await db.run(
     "UPDATE sales_orders SET status = ?, payment_method = ?, notes = ? WHERE id = ?",
     [req.body.status || current.status, req.body.payment_method || current.payment_method, req.body.notes || current.notes, req.params.id]

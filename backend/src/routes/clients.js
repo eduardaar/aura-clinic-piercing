@@ -11,6 +11,9 @@ import { validateBody } from "../middleware/validate.js";
 import { clientCreateSchema, clientUpdateSchema } from "../schemas/index.js";
 import { invalidateUsageCache, requireWithinLimit } from "../services/planLimits.js";
 import { recordPrivacyAudit } from "../services/privacy.js";
+import { P } from "../config/permissions.js";
+import { authorizePermission } from "../middleware/requirePermission.js";
+import { hasPermission } from "../services/permissionService.js";
 
 const router = Router();
 
@@ -41,7 +44,7 @@ function clientResponse(client) {
 }
 
 router.post("/api/clients", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
+  if (!authorizePermission(req, res, P.CLIENTS_CREATE)) return;
   const b = normalizeClientBody(req.body);
   req.body = { ...req.body, full_name: b.full_name, whatsapp: b.whatsapp };
   if (!validateBody(clientCreateSchema, req, res)) return;
@@ -59,7 +62,7 @@ router.post("/api/clients", withDb(async (req, res, db) => {
 }));
 
 async function updateClient(req, res, db) {
-  if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
+  if (!authorizePermission(req, res, P.CLIENTS_EDIT)) return;
   const current = await db.get("SELECT * FROM clients WHERE id = ?", [req.params.id]);
   if (!current) return res.status(404).json({ error: "Cliente nao encontrado." });
   const b = normalizeClientBody(req.body, current);
@@ -76,7 +79,7 @@ router.put("/api/clients/:id", withDb(updateClient));
 router.patch("/api/clients/:id", withDb(updateClient));
 
 router.delete("/api/clients/:id", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin"])) return;
+  if (!authorizePermission(req, res, P.CLIENTS_DELETE)) return;
   const id = req.params.id;
   if (req.body?.confirmation !== "EXCLUIR CLIENTE") return res.status(400).json({ error: "Digite EXCLUIR CLIENTE para confirmar." });
   const reason = String(req.body?.reason || "").trim();
@@ -119,7 +122,7 @@ async function clientDeletionImpact(db, id) {
 }
 
 router.get("/api/clients/:id/deletion-impact", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin"])) return;
+  if (!authorizePermission(req, res, P.CLIENTS_DELETE)) return;
   const client = await db.get("SELECT id FROM clients WHERE id = ? AND deleted_at IS NULL", [req.params.id]);
   if (!client) return res.status(404).json({ error: "Cliente não encontrado." });
   const impact = await clientDeletionImpact(db, req.params.id);
@@ -131,7 +134,7 @@ router.get("/api/clients/:id/deletion-impact", withDb(async (req, res, db) => {
 // fidelidade...) saiu daqui e virou GET /api/clients/:id — antes esta rota
 // carregava onze tabelas inteiras em memória para montar a timeline de todos.
 router.get("/api/clients", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
+  if (!authorizePermission(req, res, P.CLIENTS_VIEW)) return;
   const clauses = [];
   const params = [];
   if (req.query.search) {
@@ -161,17 +164,18 @@ router.get("/api/clients", withDb(async (req, res, db) => {
 }));
 
 router.get("/api/clients/:id", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
+  if (!authorizePermission(req, res, P.CLIENTS_VIEW)) return;
   const client = await getClientWithDetails(db, req.params.id);
   if (client?.deleted_at) return res.status(404).json({ error: "Cliente nao encontrado." });
   if (!client) return res.status(404).json({ error: "Cliente nao encontrado." });
   // Recepção não enxerga prontuário nem termo (mesma regra da listagem antiga).
-  const visible = req.user?.role === "reception"
+  const canReadClinical = hasPermission(req.user, P.CLINICAL_FILES_VIEW);
+  const visible = !canReadClinical
     ? { ...client, medicalRecords: [], terms: [] }
     : client;
   await recordPrivacyAudit(db, {
     req,
-    action: req.user?.role === "reception" ? "client_profile_read" : "clinical_record_read",
+    action: canReadClinical ? "clinical_record_read" : "client_profile_read",
     resourceType: "client",
     resourceId: client.id,
     clientId: client.id
@@ -197,7 +201,7 @@ router.post("/api/clients/:id/loyalty-redemptions", withDb(async (req, res, db) 
 }));
 
 router.post("/api/clients/:id/medical-records", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "piercer"])) return;
+  if (!authorizePermission(req, res, P.CLINICAL_FILES_EDIT)) return;
   await parseUpload(privateUpload.fields([{ name: "before_photo", maxCount: 1 }, { name: "after_photo", maxCount: 1 }]), req, res);
   await registerPrivateFiles(db, Object.values(req.files || {}).flat(), "medical_record", req.user?.id);
   const client = await db.get("SELECT id FROM clients WHERE id = ?", [req.params.id]);
@@ -228,7 +232,7 @@ router.post("/api/clients/:id/medical-records", withDb(async (req, res, db) => {
 }));
 
 router.delete("/api/clients/:clientId/medical-records/:recordId", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "piercer"])) return;
+  if (!authorizePermission(req, res, P.CLINICAL_FILES_EDIT)) return;
   await db.run("DELETE FROM client_medical_records WHERE id = ? AND client_id = ?", [req.params.recordId, req.params.clientId]);
   res.json({ ok: true });
 }));

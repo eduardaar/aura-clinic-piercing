@@ -1,7 +1,8 @@
 // Rotas de pós-atendimento (acompanhamentos de cicatrização).
 import { Router } from "express";
 import { withFeature } from "../middleware/withDb.js";
-import { requireRole } from "../middleware/auth.js";
+import { authorizePermission } from "../middleware/requirePermission.js";
+import { P } from "../config/permissions.js";
 import { parseUpload, privateUpload, registerPrivateFiles } from "../middleware/upload.js";
 import {
   listPostCareFollowups,
@@ -31,7 +32,7 @@ const POST_CARE_SORTABLE = {
 router.get("/api/post-care", withFeature("automatic_followup", async (req, res, db) => {
   // Cicatrização, intercorrências, notas e fotos são informação clínica.
   // Somente quem presta o cuidado ou administra a clínica pode consultá-las.
-  if (!requireRole(req, res, ["admin", "piercer"])) return;
+  if (!authorizePermission(req, res, P.CLINICAL_FILES_VIEW)) return;
   const clauses = [];
   const params = [];
   if (req.query.status) {
@@ -80,7 +81,7 @@ router.get("/api/post-care", withFeature("automatic_followup", async (req, res, 
 }));
 
 router.patch("/api/post-care/:id", withFeature("automatic_followup", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "piercer"])) return;
+  if (!authorizePermission(req, res, P.CLINICAL_FILES_EDIT)) return;
   await parseUpload(privateUpload.single("client_photo"), req, res);
   await registerPrivateFiles(db, req.file, "postcare_photo", req.user?.id);
   const existing = await db.get("SELECT * FROM post_care_followups WHERE id = ?", [req.params.id]);

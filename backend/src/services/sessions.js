@@ -63,7 +63,8 @@ export async function rotateClinicSession(db, refreshToken, req) {
             u.session_version AS current_session_version
        FROM user_sessions s
        JOIN users u ON u.id = s.user_id
-      WHERE s.refresh_token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > now()`,
+      WHERE s.refresh_token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > now()
+        AND u.status = 'active'`,
     [hash]
   );
   if (!session || Number(session.session_version) !== Number(session.current_session_version)) return null;

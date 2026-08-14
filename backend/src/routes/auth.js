@@ -16,6 +16,7 @@ import {
   setRefreshCookie
 } from "../services/sessions.js";
 import { decryptTotpSecret, encryptTotpSecret, generateTotpSecret, otpauthUri, verifyTotp } from "../services/totp.js";
+import { hydrateUserPermissions } from "../services/permissionService.js";
 
 const router = Router();
 
@@ -26,6 +27,7 @@ router.post("/api/login", loginLimiter, withDb(async (req, res, db) => {
   if (!user || !(await bcrypt.compare(password, user.password_hash))) {
     return res.status(401).json({ error: "Credenciais inválidas." });
   }
+  if (user.status === "inactive") return res.status(403).json({ error: "Usuário inativo. Contate o administrador." });
   if (user.mfa_enabled) {
     const secret = decryptTotpSecret(user.mfa_totp_secret_encrypted);
     if (!secret || !verifyTotp(secret, req.body?.mfa_code)) {
@@ -33,11 +35,12 @@ router.post("/api/login", loginLimiter, withDb(async (req, res, db) => {
     }
   }
   const session = await createClinicSession(db, user, req);
+  const authorizedUser = await hydrateUserPermissions(db, user);
   setRefreshCookie(res, session.refreshToken);
   // Token amarrado à clínica resolvida (multi-tenant); devolve também a clínica.
   res.json({
     token: createToken(user, req.tenant, { sessionId: session.id }),
-    user: { id: user.id, name: user.name, email: user.email, role: user.role },
+    user: { id: user.id, name: user.name, email: user.email, role: user.role, status: user.status, granted_permissions: authorizedUser.granted_permissions, denied_permissions: authorizedUser.denied_permissions },
     tenant: { id: req.tenant.id, name: req.tenant.name, slug: req.tenant.slug }
   });
 }));
@@ -52,9 +55,10 @@ router.post("/api/auth/refresh", withDb(async (req, res, db) => {
     return res.status(401).json({ error: "Sessão expirada. Entre novamente." });
   }
   setRefreshCookie(res, rotated.refreshToken);
+  const authorizedUser = await hydrateUserPermissions(db, rotated.user);
   res.json({
     token: createToken(rotated.user, req.tenant, { sessionId: rotated.sessionId }),
-    user: { id: rotated.user.id, name: rotated.user.name, email: rotated.user.email, role: rotated.user.role }
+    user: { id: rotated.user.id, name: rotated.user.name, email: rotated.user.email, role: rotated.user.role, granted_permissions: authorizedUser.granted_permissions, denied_permissions: authorizedUser.denied_permissions }
   });
 }));
 

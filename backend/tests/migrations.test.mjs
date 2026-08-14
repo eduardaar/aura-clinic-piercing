@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   MigrationError,
+  adoptExistingMigration,
   applyMigrationsForTarget,
   checksumSql,
   compareLedger,
@@ -30,8 +31,47 @@ test("migrations versionadas têm baseline válido por escopo", () => {
   const platform = loadMigrations("platform");
   const tenant = loadMigrations("tenant");
   assert.deepEqual(platform.map((item) => item.version), ["0001"]);
-  assert.deepEqual(tenant.map((item) => item.version), ["0001", "0002"]);
+  assert.deepEqual(tenant.map((item) => item.version), ["0001", "0002", "0003", "0004", "0005"]);
   assert.match(platform[0].checksum, /^[a-f0-9]{64}$/);
+});
+
+test("--target aplica somente a versão explícita e exige dependências", async () => {
+  const first = migration("0001");
+  const second = migration("0002", "SELECT 2;");
+  const third = migration("0003", "SELECT 3;");
+  const client = clientWith({ ledger: [{ version: "0001", name: first.name, checksum: first.checksum }] });
+  const result = await applyMigrationsForTarget(client, {
+    scope: "tenant", targetSchema: "tenant_42", migrations: [first, second, third], targetVersion: "0002"
+  });
+  assert.deepEqual(result.appliedNow, ["0002"]);
+  assert.equal(client.calls.some((call) => call.text.includes("SELECT 3")), false);
+
+  await assert.rejects(
+    applyMigrationsForTarget(clientWith(), {
+      scope: "tenant", targetSchema: "tenant_42", migrations: [first, second], targetVersion: "0002"
+    }),
+    (error) => error instanceof MigrationError && error.code === "missing_dependencies"
+  );
+});
+
+test("--adopt-existing registra equivalência sem executar SQL e recusa fingerprint divergente", async () => {
+  const first = migration("0001", "SELECT must_not_run;");
+  const inspection = { equivalent: true, expectedFingerprint: "abc", physicalFingerprint: "abc" };
+  const client = clientWith();
+  const result = await adoptExistingMigration(client, {
+    scope: "tenant", targetSchema: "tenant_42", version: "0001", migrations: [first], inspection, executor: "test"
+  });
+  assert.equal(result.adopted, "0001");
+  assert.equal(client.calls.some((call) => call.text.includes("must_not_run")), false);
+  assert.ok(client.calls.some((call) => call.text.includes("migration_adoption_audit")));
+
+  await assert.rejects(
+    adoptExistingMigration(clientWith(), {
+      scope: "tenant", targetSchema: "tenant_42", version: "0001", migrations: [first],
+      inspection: { equivalent: false, expectedFingerprint: "abc", physicalFingerprint: "def" }
+    }),
+    (error) => error instanceof MigrationError && error.code === "structure_mismatch"
+  );
 });
 
 test("ledger identifica migration pendente e checksum adulterado", () => {

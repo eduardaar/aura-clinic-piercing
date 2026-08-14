@@ -3,7 +3,8 @@ import { Router } from "express";
 import PDFDocument from "pdfkit";
 import ExcelJS from "exceljs";
 import { withFeature } from "../middleware/withDb.js";
-import { requireRole } from "../middleware/auth.js";
+import { authorizePermission } from "../middleware/requirePermission.js";
+import { P } from "../config/permissions.js";
 import { csvEscape, writePdfMetric, formatCurrency } from "../services/utils.js";
 import { buildFinanceReport } from "../services/finance.js";
 import { ledgerReport, normalizeEntry, processRecurringEntries } from "../services/financeLedger.js";
@@ -25,8 +26,8 @@ const LEDGER_SORTABLE = {
 
 const LIFECYCLE_ACTIONS = new Set(["test", "cancel", "restore"]);
 
-function financeLifecycleRole(req, res) {
-  return requireRole(req, res, ["admin", "finance"]);
+function financeLifecyclePermission(req, res, permission = P.FINANCE_EDIT) {
+  return authorizePermission(req, res, permission);
 }
 
 async function changeLifecycle(db, entry, action, reason, userId) {
@@ -46,14 +47,14 @@ async function changeLifecycle(db, entry, action, reason, userId) {
   return after;
 }
 
-router.get("/api/finance", withFeature("basic_finance", async (_req, res, db) => {
-  if (!requireRole(_req, res, ["admin", "finance"])) return;
+router.get("/api/finance", withFeature("basic_finance", async (req, res, db) => {
+  if (!authorizePermission(req, res, P.FINANCE_VIEW)) return;
   const finance = await buildFinanceReport(db);
   res.json(finance);
 }));
 
 router.post("/api/expenses", withFeature("basic_finance", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "finance"])) return;
+  if (!authorizePermission(req, res, P.FINANCE_EXPENSES)) return;
   const { description, expense_type, category, amount, due_date, status, payment_method, payment_account, notes } = req.body;
   if (!description?.trim() || !["fixa", "variavel"].includes(expense_type) || !due_date) {
     return res.status(400).json({ error: "Dados da despesa inválidos." });
@@ -67,7 +68,7 @@ router.post("/api/expenses", withFeature("basic_finance", async (req, res, db) =
 }));
 
 router.patch("/api/expenses/:id", withFeature("basic_finance", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "finance"])) return;
+  if (!authorizePermission(req, res, P.FINANCE_EXPENSES)) return;
   const expense = await db.get("SELECT * FROM expenses WHERE id = ?", [req.params.id]);
   if (!expense) return res.status(404).json({ error: "Despesa nao encontrada." });
   const status = req.body.status ?? expense.status;
@@ -91,7 +92,7 @@ router.patch("/api/expenses/:id", withFeature("basic_finance", async (req, res, 
 }));
 
 router.delete("/api/expenses/:id", withFeature("basic_finance", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "finance"])) return;
+  if (!authorizePermission(req, res, P.FINANCE_CANCEL)) return;
   await db.run("DELETE FROM expenses WHERE id = ?", [req.params.id]);
   res.json({ ok: true });
 }));
@@ -101,7 +102,7 @@ router.delete("/api/expenses/:id", withFeature("basic_finance", async (req, res,
 // acrescenta total/limit/offset ao objeto — sem limit/offset a resposta é
 // byte a byte a de antes. Os indicadores seguem somando o período inteiro.
 router.get("/api/finance/ledger", withFeature("advanced_finance", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "finance"])) return;
+  if (!authorizePermission(req, res, P.FINANCE_VIEW)) return;
   const filters = [];
   const filterParams = [];
   if (req.query.status) {
@@ -140,7 +141,7 @@ router.get("/api/finance/ledger", withFeature("advanced_finance", async (req, re
 }));
 
 router.get("/api/finance/entries/:id/details", withFeature("advanced_finance", async (req, res, db) => {
-  if (!financeLifecycleRole(req, res)) return;
+  if (!financeLifecyclePermission(req, res, P.FINANCE_VIEW)) return;
   const entry = await db.get(`SELECT e.*, c.name AS cost_center_name, u.name AS responsible_user_name
     FROM financial_entries e LEFT JOIN financial_cost_centers c ON c.id=e.cost_center_id
     LEFT JOIN users u ON u.id=e.responsible_user_id WHERE e.id=?`, [req.params.id]);
@@ -151,7 +152,8 @@ router.get("/api/finance/entries/:id/details", withFeature("advanced_finance", a
 }));
 
 router.post("/api/finance/entries/:id/lifecycle", withFeature("advanced_finance", async (req, res, db) => {
-  if (!financeLifecycleRole(req, res)) return;
+  const permission = req.body?.action === "test" ? P.FINANCE_MARK_TEST : P.FINANCE_CANCEL;
+  if (!financeLifecyclePermission(req, res, permission)) return;
   const entry = await db.get("SELECT * FROM financial_entries WHERE id=?", [req.params.id]);
   if (!entry) return res.status(404).json({ error: "Lançamento não encontrado." });
   await db.run("BEGIN");
@@ -166,7 +168,8 @@ router.post("/api/finance/entries/:id/lifecycle", withFeature("advanced_finance"
 }));
 
 router.post("/api/finance/entries/bulk-lifecycle", withFeature("advanced_finance", async (req, res, db) => {
-  if (!financeLifecycleRole(req, res)) return;
+  const permission = req.body?.action === "test" ? P.FINANCE_MARK_TEST : P.FINANCE_CANCEL;
+  if (!financeLifecyclePermission(req, res, permission)) return;
   const ids = [...new Set((Array.isArray(req.body?.ids) ? req.body.ids : []).map(Number).filter(Number.isInteger))];
   if (!ids.length || ids.length > 200) return res.status(400).json({ error: "Selecione de 1 a 200 lançamentos." });
   if (!String(req.body?.reason || "").trim()) return res.status(400).json({ error: "A justificativa é obrigatória." });
@@ -185,7 +188,7 @@ router.post("/api/finance/entries/bulk-lifecycle", withFeature("advanced_finance
 }));
 
 router.post("/api/finance/entries", withFeature("advanced_finance", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "finance"])) return;
+  if (!authorizePermission(req, res, P.FINANCE_CREATE)) return;
   let entry;
   try { entry = normalizeEntry(req.body); } catch (error) { return res.status(400).json({ error: error.message }); }
   const installmentCount = Math.min(Math.max(Number(req.body?.installment_count || 1), 1), 120);
@@ -222,7 +225,7 @@ router.post("/api/finance/entries", withFeature("advanced_finance", async (req, 
 }));
 
 router.patch("/api/finance/entries/:id", withFeature("advanced_finance", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "finance"])) return;
+  if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
   const current = await db.get("SELECT * FROM financial_entries WHERE id=?", [req.params.id]);
   if (!current) return res.status(404).json({ error: "Lançamento não encontrado." });
   if (current.source_key && !["paid_amount", "status", "payment_method", "payment_account", "notes", "attachment_url"].some((key) => req.body?.[key] !== undefined)) {
@@ -254,12 +257,12 @@ router.patch("/api/finance/entries/:id", withFeature("advanced_finance", async (
 }));
 
 router.get("/api/finance/cost-centers", withFeature("advanced_finance", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "finance"])) return;
+  if (!authorizePermission(req, res, P.FINANCE_VIEW)) return;
   res.json(await db.all("SELECT * FROM financial_cost_centers ORDER BY name"));
 }));
 
 router.post("/api/finance/cost-centers", withFeature("advanced_finance", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "finance"])) return;
+  if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
   const name = String(req.body?.name || "").trim();
   if (!name) return res.status(400).json({ error: "Informe o centro de custo." });
   // Devolve o próprio centro de custo (antes vazava o resultado cru do driver).
@@ -268,7 +271,7 @@ router.post("/api/finance/cost-centers", withFeature("advanced_finance", async (
 }));
 
 router.post("/api/finance/entries/:id/reconcile", withFeature("advanced_finance", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "finance"])) return;
+  if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
   const entry = await db.get("SELECT * FROM financial_entries WHERE id=?", [req.params.id]);
   if (!entry) return res.status(404).json({ error: "Lançamento não encontrado." });
   const statementAmount = Number(req.body?.statement_amount);
@@ -283,17 +286,17 @@ router.post("/api/finance/entries/:id/reconcile", withFeature("advanced_finance"
 }));
 
 router.post("/api/finance/recurrences/process", withFeature("advanced_finance", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "finance"])) return;
+  if (!authorizePermission(req, res, P.FINANCE_CREATE)) return;
   res.json({ ok: true, created: await processRecurringEntries(db, req.body?.horizon_days) });
 }));
 
 router.get("/api/finance/goals", withFeature("advanced_finance", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "finance"])) return;
+  if (!authorizePermission(req, res, P.FINANCE_VIEW)) return;
   res.json(await db.all("SELECT * FROM financial_goals ORDER BY period_start DESC, id DESC"));
 }));
 
 router.post("/api/finance/goals", withFeature("advanced_finance", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "finance"])) return;
+  if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
   const name = String(req.body?.name || "").trim();
   if (!name || !req.body?.period_start || !req.body?.period_end || Number(req.body?.target_amount) < 0) {
     return res.status(400).json({ error: "Dados da meta inválidos." });
@@ -306,7 +309,7 @@ router.post("/api/finance/goals", withFeature("advanced_finance", async (req, re
 }));
 
 router.get("/api/finance/export.csv", withFeature("basic_finance", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "finance"])) return;
+  if (!authorizePermission(req, res, P.REPORTS_VIEW_FINANCIAL)) return;
   const rows = await db.all(`
     SELECT p.id, c.full_name AS cliente, p.amount AS valor, p.payment_type AS tipo, p.method AS metodo, p.status, p.paid_at AS data, 'pagamento' AS origem
     FROM payments p JOIN clients c ON c.id = p.client_id
@@ -324,7 +327,7 @@ router.get("/api/finance/export.csv", withFeature("basic_finance", async (req, r
 }));
 
 router.get("/api/finance/export.pdf", withFeature("basic_finance", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "finance"])) return;
+  if (!authorizePermission(req, res, P.REPORTS_VIEW_FINANCIAL)) return;
   const report = await buildFinanceReport(db);
   const doc = new PDFDocument({ margin: 42, size: "A4" });
   res.header("Content-Type", "application/pdf");
@@ -354,7 +357,7 @@ router.get("/api/finance/export.pdf", withFeature("basic_finance", async (req, r
 }));
 
 router.get("/api/finance/export.xlsx", withFeature("basic_finance", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "finance"])) return;
+  if (!authorizePermission(req, res, P.REPORTS_VIEW_FINANCIAL)) return;
   const report = await buildFinanceReport(db);
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Aura Clinic Piercing";

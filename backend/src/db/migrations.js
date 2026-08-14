@@ -73,7 +73,8 @@ export function loadMigrations(scope, { root = DEFAULT_ROOT } = {}) {
       if (!sql.trim()) {
         throw new MigrationError(`Migration vazia: ${scope}/${entry.name}.`, { code: "empty_migration" });
       }
-      if (/\b(?:BEGIN|COMMIT|ROLLBACK|START\s+TRANSACTION)\b/i.test(sql)) {
+      if (/\b(?:COMMIT|ROLLBACK|START\s+TRANSACTION)\b/i.test(sql)
+        || /(?:^|;)\s*BEGIN\s*(?:;|$)/im.test(sql)) {
         throw new MigrationError(
           `Migration ${scope}/${entry.name} controla transação. O runner já executa tudo atomicamente.`,
           { code: "transaction_control" }
@@ -160,7 +161,10 @@ export async function applyMigrationsForTarget(client, {
   scope,
   targetSchema,
   migrations = loadMigrations(scope),
-  dryRun = false
+  dryRun = false,
+  targetVersion = null,
+  allowReconciliation = false,
+  validateStructure = null
 }) {
   assertScope(scope);
   assertTargetSchema(scope, targetSchema);
@@ -173,14 +177,37 @@ export async function applyMigrationsForTarget(client, {
     const status = compareLedger(migrations, ledger);
     ledgerFailure(status, scope, targetSchema);
 
+    const selected = targetVersion
+      ? status.pending.filter((migration) => migration.version === targetVersion)
+      : status.pending;
+    if (targetVersion && !migrations.some((migration) => migration.version === targetVersion)) {
+      throw new MigrationError(`Migration ${scope}/${targetVersion} inexistente.`, { code: "unknown_target" });
+    }
+    const alreadyApplied = targetVersion && ledger.some((row) => String(row.version) === targetVersion);
+    if (targetVersion && !selected.length && !alreadyApplied) {
+      throw new MigrationError(`Migration ${scope}/${targetVersion} não está disponível para aplicação.`, { code: "target_unavailable" });
+    }
+    if (targetVersion && selected.length && !allowReconciliation) {
+      const missingEarlier = migrations
+        .filter((migration) => migration.version < targetVersion)
+        .filter((migration) => !ledger.some((row) => String(row.version) === migration.version));
+      if (missingEarlier.length) {
+        throw new MigrationError(
+          `Dependências anteriores ausentes no ledger de ${scope}/${targetSchema}: ${missingEarlier.map((item) => item.version).join(", ")}.`,
+          { code: "missing_dependencies" }
+        );
+      }
+    }
+
     if (dryRun) {
       await client.query("ROLLBACK");
-      return { ...status, appliedNow: [], dryRun: true };
+      return { ...status, selected: selected.map((migration) => migration.version), appliedNow: [], dryRun: true };
     }
 
     await client.query(`SET LOCAL search_path TO ${quoteIdentifier(targetSchema)}`);
-    for (const migration of status.pending) {
+    for (const migration of selected) {
       await client.query(migration.sql);
+      if (validateStructure) await validateStructure(client, migration);
       await client.query(
         `INSERT INTO platform.schema_migrations (scope, target_schema, version, name, checksum)
          VALUES ($1, $2, $3, $4, $5)`,
@@ -188,13 +215,83 @@ export async function applyMigrationsForTarget(client, {
       );
     }
     await client.query("COMMIT");
-    return { ...status, appliedNow: status.pending.map((migration) => migration.version), dryRun: false };
+    return { ...status, selected: selected.map((migration) => migration.version), appliedNow: selected.map((migration) => migration.version), dryRun: false };
   } catch (error) {
     try {
       await client.query("ROLLBACK");
     } catch {
       // A conexão pode já ter caído; o erro da migration é mais útil ao deploy.
     }
+    throw error;
+  }
+}
+
+export async function adoptExistingMigration(client, {
+  scope,
+  targetSchema,
+  version,
+  migrations = loadMigrations(scope),
+  inspection,
+  executor = "unknown"
+}) {
+  assertScope(scope);
+  assertTargetSchema(scope, targetSchema);
+  if (!version) throw new MigrationError("A adoção exige uma versão explícita.", { code: "missing_target" });
+  const migration = migrations.find((item) => item.version === version);
+  if (!migration) throw new MigrationError(`Migration ${scope}/${version} inexistente.`, { code: "unknown_target" });
+  if (!inspection?.equivalent || inspection.expectedFingerprint !== inspection.physicalFingerprint) {
+    throw new MigrationError(`Estrutura física não equivale a ${scope}/${version}; adoção recusada.`, {
+      code: "structure_mismatch", details: inspection
+    });
+  }
+
+  await client.query("BEGIN");
+  try {
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`aura:migrations:${scope}:${targetSchema}`]);
+    await ensureMigrationLedger(client);
+    const ledger = await readLedger(client, scope, targetSchema, { lock: true });
+    const status = compareLedger(migrations, ledger);
+    ledgerFailure(status, scope, targetSchema);
+    if (ledger.some((row) => String(row.version) === version)) {
+      throw new MigrationError(`${scope}/${targetSchema}/${version} já consta no ledger.`, { code: "already_applied" });
+    }
+    const missingEarlier = migrations
+      .filter((item) => item.version < version && !item.name.startsWith("reconcile_"))
+      .filter((item) => !ledger.some((row) => String(row.version) === item.version));
+    if (missingEarlier.length) {
+      throw new MigrationError(`Dependências anteriores ausentes: ${missingEarlier.map((item) => item.version).join(", ")}.`, { code: "missing_dependencies" });
+    }
+    await client.query(`SET LOCAL search_path TO ${quoteIdentifier(targetSchema)}`);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS migration_adoption_audit (
+        id BIGSERIAL PRIMARY KEY,
+        scope TEXT NOT NULL,
+        target_schema TEXT NOT NULL,
+        version TEXT NOT NULL,
+        checksum TEXT NOT NULL,
+        expected_fingerprint TEXT NOT NULL,
+        physical_fingerprint TEXT NOT NULL,
+        mode TEXT NOT NULL CHECK (mode = 'adopt-existing'),
+        executor TEXT NOT NULL,
+        adopted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        UNIQUE(scope, target_schema, version)
+      )
+    `);
+    await client.query(
+      `INSERT INTO platform.schema_migrations (scope, target_schema, version, name, checksum)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [scope, targetSchema, migration.version, migration.name, migration.checksum]
+    );
+    await client.query(
+      `INSERT INTO migration_adoption_audit
+         (scope, target_schema, version, checksum, expected_fingerprint, physical_fingerprint, mode, executor)
+       VALUES ($1,$2,$3,$4,$5,$6,'adopt-existing',$7)`,
+      [scope, targetSchema, version, migration.checksum, inspection.expectedFingerprint, inspection.physicalFingerprint, executor]
+    );
+    await client.query("COMMIT");
+    return { adopted: version, checksum: migration.checksum, ...inspection };
+  } catch (error) {
+    try { await client.query("ROLLBACK"); } catch {}
     throw error;
   }
 }

@@ -149,11 +149,15 @@ app.use(jobsRoutes);
 // 3) Liga o worker de conciliação com o Asaas (rede de segurança para webhook
 //    perdido). DESLIGADO por padrão: só sobe com ASAAS_RECONCILE_ENABLED=true.
 //    Depende do schema já aplicado, por isso vem depois dos dois passos acima.
-await ensurePlatform();
-if (process.env.RUN_MIGRATIONS_ON_BOOT === "true") {
-  await applyPlatformMigrations();
+if (process.env.SKIP_DATABASE_BOOTSTRAP !== "true") {
+  await ensurePlatform();
+  if (process.env.RUN_MIGRATIONS_ON_BOOT === "true") {
+    await applyPlatformMigrations();
+  }
+  await applySchemaToAllTenants();
+} else {
+  console.log("[platform] Bootstrap de banco ignorado por SKIP_DATABASE_BOOTSTRAP=true.");
 }
-await applySchemaToAllTenants();
 // 3) Carrega os planos do banco para o registro em memória. A partir daqui o
 //    BANCO é a fonte da verdade de preço, features e limites; se a leitura
 //    falhar, o registro fica com os planos-semente do código — nunca vazio,

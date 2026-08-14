@@ -90,7 +90,7 @@ for (const tenant of tenantsResult.rows) {
     const setClauses = ["role = $1"];
     if (await columnExists(client, "users", "is_active")) setClauses.push("is_active = 1");
     if (await columnExists(client, "users", "active")) setClauses.push("active = 1");
-    if (await columnExists(client, "users", "status")) setClauses.push("status = 'ativo'");
+    if (await columnExists(client, "users", "status")) setClauses.push("status = 'active'");
     if (await columnExists(client, "users", "updated_at")) setClauses.push("updated_at = CURRENT_TIMESTAMP");
 
     const updated = await client.query(

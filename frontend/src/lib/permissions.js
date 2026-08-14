@@ -93,7 +93,33 @@ export function planAllowsPage(features, page) {
  * @returns {boolean}
  */
 export function canAccessPage(role, page) {
-  return allowedPagesForRole(role).includes(/** @type {Page} */ (page));
+  const value = /** @type {any} */ (role);
+  const actualRole = value && typeof value === "object" ? value.role : value;
+  if (page === "reports") return ["reports.view_own", "reports.view_financial", "reports.view_all"].some((permission) => can(role, permission));
+  const permission = PAGE_PERMISSION[page];
+  return permission ? can(role, permission) : allowedPagesForRole(actualRole).includes(/** @type {Page} */ (page));
+}
+
+export const PAGE_PERMISSION = Object.freeze({
+  dashboard: "dashboard.view", agenda: "appointments.view", communications: "communication.view",
+  products: "inventory.view", inventory: "inventory.view", sales: "sales.view", finance: "finance.view",
+  receivables: "finance.view", payables: "finance.expenses",
+  "client-center": "clients.view", clients: "clients.view", terms: "anamnesis.view", postcare: "clinical_files.view",
+  admin: "users.view", settings: "settings.view"
+});
+
+const ROLE_PERMISSIONS = {
+  admin: ["*"],
+  piercer: ["dashboard.view", "appointments.view", "appointments.create", "appointments.edit", "appointments.reschedule", "appointments.cancel", "appointments.review", "appointments.finalize", "appointments.apply_discount", "appointments.apply_coupon", "appointments.edit_final_value", "clients.view", "clients.create", "clients.edit", "anamnesis.view", "anamnesis.edit", "anamnesis.review", "clinical_files.view", "clinical_files.edit", "sales.view", "sales.create", "sales.edit_open", "inventory.view", "inventory.sell", "inventory.adjust", "cash.view", "cash.open", "cash.receive_payment", "cash.close", "communication.view", "communication.send", "coupons.view", "coupons.apply", "settings.view"],
+  reception: ["dashboard.view", "appointments.view", "appointments.create", "appointments.edit", "appointments.reschedule", "appointments.cancel", "appointments.apply_discount", "appointments.apply_coupon", "clients.view", "clients.create", "clients.edit", "anamnesis.view", "anamnesis.edit", "sales.view", "sales.create", "sales.edit_open", "inventory.view", "inventory.sell", "cash.view", "cash.open", "cash.receive_payment", "communication.view", "communication.send", "coupons.view", "coupons.apply", "settings.view"],
+  finance: ["dashboard.view", "dashboard.financial", "appointments.view", "clients.view", "sales.view", "sales.edit_closed", "sales.cancel", "inventory.view", "inventory.view_cost", "cash.view", "cash.open", "cash.receive_payment", "cash.close", "cash.withdraw", "cash.adjust", "finance.view", "finance.create", "finance.edit", "finance.cancel", "finance.mark_test", "finance.expenses", "finance.refund", "reports.view_financial", "commission.view_all", "audit.view", "settings.view"]
+};
+
+export function can(userOrRole, permission) {
+  const user = typeof userOrRole === "object" ? userOrRole : { role: userOrRole };
+  if (user?.role === "admin") return true;
+  if ((user?.denied_permissions || []).includes(permission)) return false;
+  return [...(ROLE_PERMISSIONS[user?.role] || []), ...(user?.granted_permissions || [])].includes(permission);
 }
 
 /**
@@ -101,7 +127,9 @@ export function canAccessPage(role, page) {
  * @returns {Page} Página de entrada após o login.
  */
 export function defaultPageForRole(role) {
-  return allowedPagesForRole(role)[0] || "dashboard";
+  const value = /** @type {any} */ (role);
+  const actualRole = value && typeof value === "object" ? value.role : value;
+  return allowedPagesForRole(actualRole).find((page) => canAccessPage(role, page)) || "dashboard";
 }
 
 /**

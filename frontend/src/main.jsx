@@ -96,7 +96,7 @@ function App() {
   const [uiTheme, setUiTheme] = useState(() => readUiTheme(session?.user?.id));
 
   // Verificação de autenticação administrativa
-  const isAdminAuthenticated = session?.user?.id ? true : false;
+  const isAdminAuthenticated = Boolean(session?.user?.id);
   const planFeatures = Array.isArray(subscription?.features) ? subscription.features : [];
   const trialDays = subscription?.status === "trial_active" ? Number(subscription?.days_left ?? 0) : null;
   const subscriptionInactive = !!subscription
@@ -197,8 +197,8 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (normalizedSession && !canAccessPage(normalizedSession.user?.role, page)) {
-      navigate(defaultPageForRole(normalizedSession.user?.role), { replace: true });
+    if (normalizedSession && !canAccessPage(normalizedSession.user, page)) {
+      navigate(defaultPageForRole(normalizedSession.user), { replace: true });
     }
   }, [normalizedSession, navigate, page]);
 
@@ -235,9 +235,9 @@ function App() {
   // Se está em /login mas já autenticado, redirecionar para home
   useEffect(() => {
     if (isLoginPath && isAdminAuthenticated) {
-      window.location.href = appPathForPage(defaultPageForRole(normalizedSession?.user?.role));
+      window.location.href = appPathForPage(defaultPageForRole(normalizedSession?.user));
     }
-  }, [isLoginPath, isAdminAuthenticated]);
+  }, [isLoginPath, isAdminAuthenticated, normalizedSession?.user]);
 
   // Se não tem sessão e não está em rota pública (nem na landing "/"),
   // redireciona para login.
@@ -286,10 +286,10 @@ function App() {
     return null;
   }
   
-  const activePage = canAccessPage(normalizedSession.user?.role, page) ? page : defaultPageForRole(normalizedSession.user?.role);
+  const activePage = canAccessPage(normalizedSession.user, page) ? page : defaultPageForRole(normalizedSession.user);
   // Informação de plano é do administrador: para os demais papéis o atalho
   // "Ver planos" seria um botão morto (a navegação cairia no reset de página).
-  const canSeePlan = canAccessPage(normalizedSession.user?.role, "meu-plano");
+  const canSeePlan = canAccessPage(normalizedSession.user, "meu-plano");
 
   return (
     <div className={`app-shell ${navCollapsed ? "nav-collapsed" : ""}`}>
@@ -298,6 +298,7 @@ function App() {
         <Sidebar
           page={activePage}
           role={normalizedSession.user?.role}
+          user={normalizedSession.user}
           brand={{ name: identity?.store_name || "", short: identity?.short_name || identity?.slogan || "", logoUrl: brandLogoUrl }}
           features={planFeatures}
           trialDays={trialDays}

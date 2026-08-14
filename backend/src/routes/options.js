@@ -28,6 +28,12 @@ router.get("/api/options", withDb(async (_req, res, db) => {
 }));
 
 async function listInventoryCategories(db) {
+  for (const name of JEWELRY_CATEGORIES) {
+    await db.run(
+      "INSERT INTO inventory_options (type, name, description, is_active) VALUES ('category', ?, '', 1) ON CONFLICT(type, name) DO NOTHING",
+      [name]
+    );
+  }
   await db.run(`
     INSERT INTO inventory_options (type, name, description, is_active)
     SELECT 'category', TRIM(category), '', 1

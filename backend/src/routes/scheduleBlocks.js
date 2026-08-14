@@ -1,7 +1,8 @@
 // Rotas de bloqueios de agenda dos profissionais.
 import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
-import { requireRole } from "../middleware/auth.js";
+import { authorizePermission } from "../middleware/requirePermission.js";
+import { P } from "../config/permissions.js";
 import { boolNumber } from "../services/utils.js";
 import { parsePaging, fetchPage, pageResponse } from "../services/pagination.js";
 
@@ -38,6 +39,7 @@ function normalizeBlock(body = {}, current = {}) {
 }
 
 router.get("/api/schedule-blocks", withDb(async (req, res, db) => {
+  if (!authorizePermission(req, res, P.APPOINTMENTS_VIEW)) return;
   const clauses = [];
   const params = [];
   if (req.query.professional_id) {
@@ -79,7 +81,7 @@ router.get("/api/schedule-blocks", withDb(async (req, res, db) => {
 }));
 
 router.post("/api/schedule-blocks", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!authorizePermission(req, res, P.APPOINTMENTS_EDIT)) return;
   const next = normalizeBlock(req.body);
   if (!next.professional_id || !next.start_datetime || !next.end_datetime) {
     return res.status(400).json({ error: "Profissional, inicio e final sao obrigatorios." });
@@ -96,7 +98,7 @@ router.post("/api/schedule-blocks", withDb(async (req, res, db) => {
 }));
 
 router.patch("/api/schedule-blocks/:id", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!authorizePermission(req, res, P.APPOINTMENTS_EDIT)) return;
   const current = await db.get("SELECT * FROM schedule_blocks WHERE id = ?", [req.params.id]);
   if (!current) return res.status(404).json({ error: "Regra de disponibilidade nao encontrada." });
   const next = normalizeBlock(req.body, current);
@@ -111,7 +113,7 @@ router.patch("/api/schedule-blocks/:id", withDb(async (req, res, db) => {
 }));
 
 router.delete("/api/schedule-blocks/:id", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!authorizePermission(req, res, P.APPOINTMENTS_EDIT)) return;
   await db.run("DELETE FROM schedule_blocks WHERE id = ?", [req.params.id]);
   res.json({ ok: true });
 }));

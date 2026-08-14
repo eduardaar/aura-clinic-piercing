@@ -4,7 +4,8 @@ import multer from "multer";
 import bwipjs from "bwip-js";
 import QRCode from "qrcode";
 import { withDb, withFeature } from "../middleware/withDb.js";
-import { requireRole } from "../middleware/auth.js";
+import { authorizePermission } from "../middleware/requirePermission.js";
+import { P } from "../config/permissions.js";
 import { boolNumber, elegantProductName, variantStatus, variantFromLegacy } from "../services/utils.js";
 import {
   attachVariants,
@@ -25,13 +26,14 @@ import { visualSearch } from "../services/visualSearch.js";
 import { inventoryIntelligence, refreshInventorySuggestions } from "../services/inventoryIntelligence.js";
 import { parsePaging, fetchPage, pageResponse } from "../services/pagination.js";
 import { invalidateUsageCache, requireWithinLimit } from "../services/planLimits.js";
+import { JEWELRY_CATEGORIES } from "../config/index.js";
 
 const router = Router();
 
 function validateStockPayload(body) {
   if (body.quantity !== undefined) assertNonNegativeStockQuantity(body.quantity);
   if (Array.isArray(body.variants)) {
-    body.variants.forEach((variant) => assertNonNegativeStockQuantity(variant?.quantity));
+    body.variants.forEach((variant) => { assertNonNegativeStockQuantity(variant?.quantity); });
   }
 }
 
@@ -46,6 +48,22 @@ function rejectInvalidStockPayload(req, res) {
     }
     throw error;
   }
+}
+
+async function resolveActiveCategory(db, body) {
+  const categoryId = Number(body.category_id || 0);
+  let category = categoryId
+    ? await db.get("SELECT id, name FROM inventory_options WHERE id=? AND type='category' AND is_active=1", [categoryId])
+    : null;
+  const categoryName = String(body.category || "").trim();
+  if (!category && categoryName) {
+    category = await db.get("SELECT id, name FROM inventory_options WHERE type='category' AND name=? AND is_active=1", [categoryName]);
+    if (!category && JEWELRY_CATEGORIES.includes(categoryName)) {
+      await db.run("INSERT INTO inventory_options(type,name,is_active) VALUES('category',?,1) ON CONFLICT(type,name) DO NOTHING", [categoryName]);
+      category = await db.get("SELECT id, name FROM inventory_options WHERE type='category' AND name=? AND is_active=1", [categoryName]);
+    }
+  }
+  return category;
 }
 
 // Whitelist de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
@@ -63,7 +81,7 @@ const visualUpload = multer({
 });
 
 router.get("/api/inventory/intelligence", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!authorizePermission(req, res, P.INVENTORY_VIEW)) return;
   const days = Math.min(Math.max(Number(req.query.days || 90), 30), 365);
   const items = await inventoryIntelligence(db, days);
   res.json({
@@ -79,7 +97,7 @@ router.get("/api/inventory/intelligence", withDb(async (req, res, db) => {
 }));
 
 router.post("/api/inventory/suggestions/refresh", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!authorizePermission(req, res, P.INVENTORY_ADJUST)) return;
   await refreshInventorySuggestions(db, req.user?.id);
   res.json(await db.all(`
     SELECT s.*, j.name AS jewelry_name, j.sku, j.quantity
@@ -89,7 +107,7 @@ router.post("/api/inventory/suggestions/refresh", withDb(async (req, res, db) =>
 }));
 
 router.get("/api/inventory/suggestions", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!authorizePermission(req, res, P.INVENTORY_VIEW)) return;
   const status = ["pending", "accepted", "rejected"].includes(req.query.status) ? req.query.status : "pending";
   res.json(await db.all(`
     SELECT s.*, j.name AS jewelry_name, j.sku, j.quantity
@@ -99,7 +117,7 @@ router.get("/api/inventory/suggestions", withDb(async (req, res, db) => {
 }));
 
 router.patch("/api/inventory/suggestions/:id", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!authorizePermission(req, res, P.INVENTORY_ADJUST)) return;
   const status = String(req.body?.status || "");
   if (!["accepted", "rejected"].includes(status)) return res.status(400).json({ error: "Decisão inválida." });
   const suggestion = await db.get("SELECT * FROM inventory_suggestions WHERE id=? AND status='pending'", [req.params.id]);
@@ -117,7 +135,7 @@ router.patch("/api/inventory/suggestions/:id", withDb(async (req, res, db) => {
 }));
 
 router.get("/api/inventory/counts", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!authorizePermission(req, res, P.INVENTORY_VIEW)) return;
   res.json(await db.all(`
     SELECT c.*, COUNT(i.id) AS item_count,
       COALESCE(SUM(CASE WHEN i.counted_quantity IS NOT NULL AND i.difference != 0 THEN 1 ELSE 0 END), 0) AS divergent_count
@@ -127,7 +145,7 @@ router.get("/api/inventory/counts", withDb(async (req, res, db) => {
 }));
 
 router.post("/api/inventory/counts", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!authorizePermission(req, res, P.INVENTORY_ADJUST)) return;
   await db.run("BEGIN");
   try {
     const created = await db.run("INSERT INTO inventory_counts (notes, created_by) VALUES (?, ?) RETURNING id", [String(req.body?.notes || ""), req.user?.id || null]);
@@ -152,7 +170,7 @@ router.post("/api/inventory/counts", withDb(async (req, res, db) => {
 }));
 
 router.get("/api/inventory/counts/:id", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!authorizePermission(req, res, P.INVENTORY_VIEW)) return;
   const count = await db.get("SELECT * FROM inventory_counts WHERE id=?", [req.params.id]);
   if (!count) return res.status(404).json({ error: "Inventário não encontrado." });
   count.items = await db.all(`
@@ -165,7 +183,7 @@ router.get("/api/inventory/counts/:id", withDb(async (req, res, db) => {
 }));
 
 router.patch("/api/inventory/counts/:id/items", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!authorizePermission(req, res, P.INVENTORY_ADJUST)) return;
   const count = await db.get("SELECT * FROM inventory_counts WHERE id=? AND status='draft'", [req.params.id]);
   if (!count) return res.status(404).json({ error: "Inventário em aberto não encontrado." });
   const items = Array.isArray(req.body?.items) ? req.body.items : [];
@@ -188,7 +206,7 @@ router.patch("/api/inventory/counts/:id/items", withDb(async (req, res, db) => {
 }));
 
 router.post("/api/inventory/counts/:id/complete", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin"])) return;
+  if (!authorizePermission(req, res, P.INVENTORY_ADJUST)) return;
   const count = await db.get("SELECT * FROM inventory_counts WHERE id=? AND status='draft'", [req.params.id]);
   if (!count) return res.status(404).json({ error: "Inventário em aberto não encontrado." });
   const missing = await db.get("SELECT COUNT(*) AS count FROM inventory_count_items WHERE count_id=? AND counted_quantity IS NULL", [count.id]);
@@ -232,7 +250,7 @@ router.post("/api/inventory/counts/:id/complete", withDb(async (req, res, db) =>
 }));
 
 router.get("/api/inventory/labels", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!authorizePermission(req, res, P.INVENTORY_VIEW)) return;
   const ids = String(req.query.ids || "").split(",").map(Number).filter((id) => Number.isInteger(id) && id > 0).slice(0, 100);
   if (!ids.length) return res.status(400).json({ error: "Selecione ao menos um produto." });
   const placeholders = ids.map(() => "?").join(",");
@@ -252,7 +270,7 @@ router.get("/api/inventory/labels", withDb(async (req, res, db) => {
 }));
 
 router.post("/api/jewelry/visual-search", visualUpload.single("image"), withFeature("visual_search", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!authorizePermission(req, res, P.INVENTORY_VIEW)) return;
   if (!req.file?.buffer) return res.status(400).json({ error: "Envie uma imagem JPEG, PNG ou WebP de até 5 MB." });
   try {
     const results = await visualSearch(db, req.file.buffer, req.body || {});
@@ -277,6 +295,7 @@ function jewelryPayload(body, sku, pricing) {
     body.photo_url,
     JSON.stringify(body.gallery_urls || []),
     body.category,
+    body.category_id,
     body.subcategory || "",
     body.variant_group || "",
     body.variation_label || "",
@@ -393,8 +412,12 @@ router.get("/api/jewelry", withDb(async (req, res, db) => {
 }));
 
 router.post("/api/jewelry", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!authorizePermission(req, res, P.INVENTORY_CREATE)) return;
   if (!validateBody(jewelryCreateSchema, req, res)) return;
+  const category = await resolveActiveCategory(db, req.body);
+  if (!category) return res.status(400).json({ error: "Selecione uma categoria principal válida." });
+  req.body.category_id = category.id;
+  req.body.category = category.name;
   if (rejectInvalidStockPayload(req, res)) return;
   // Cota do plano, antes do BEGIN: devolver 409 no meio da transação obrigaria a
   // desfazer SKU e variações já gravados. A cota conta PRODUTOS
@@ -415,8 +438,8 @@ router.post("/api/jewelry", withDb(async (req, res, db) => {
     const pricing = calculatePricing(req.body, pricingSettings);
     const result = await db.run(
       `INSERT INTO jewelry_inventory
-      (name, description, photo_url, gallery_urls, category, subcategory, variant_group, variation_label, material, color, stone, size, top_size_mm, thickness, stem_length, thread_type, piercing_type, weight_grams, package_length_cm, package_width_cm, package_height_cm, package_type, virtual_store_active, preparation_days, shipping_info, seo_title, seo_description, freight_notes, quantity, cost_value, sale_value, purchase_cost_cents, allocated_freight_cents, additional_cost_cents, total_cost_cents, price_multiplier, price_rounding_mode, suggested_price_cents, sale_price_cents, price_manually_overridden, cost_estimated, supplier, physical_location, sku, is_catalog_active, is_featured, is_new, is_most_wanted, is_promotion, is_last_units, notes, status, low_stock_threshold, critical_stock_threshold, image_url, is_published)
-      VALUES (${Array(56).fill("?").join(", ")}) RETURNING id`,
+      (name, description, photo_url, gallery_urls, category, category_id, subcategory, variant_group, variation_label, material, color, stone, size, top_size_mm, thickness, stem_length, thread_type, piercing_type, weight_grams, package_length_cm, package_width_cm, package_height_cm, package_type, virtual_store_active, preparation_days, shipping_info, seo_title, seo_description, freight_notes, quantity, cost_value, sale_value, purchase_cost_cents, allocated_freight_cents, additional_cost_cents, total_cost_cents, price_multiplier, price_rounding_mode, suggested_price_cents, sale_price_cents, price_manually_overridden, cost_estimated, supplier, physical_location, sku, is_catalog_active, is_featured, is_new, is_most_wanted, is_promotion, is_last_units, notes, status, low_stock_threshold, critical_stock_threshold, image_url, is_published)
+      VALUES (${Array(57).fill("?").join(", ")}) RETURNING id`,
       jewelryPayload(req.body, sku, pricing)
     );
     await replaceJewelryVariants(db, result.returnedId, req.body.variants || [variantFromLegacy({ ...req.body, sku: "" })]);
@@ -436,8 +459,14 @@ router.post("/api/jewelry", withDb(async (req, res, db) => {
 }));
 
 router.patch("/api/jewelry/:id", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!authorizePermission(req, res, P.INVENTORY_EDIT)) return;
   if (!validateBody(jewelryUpdateSchema, req, res)) return;
+  if (req.body.category !== undefined || req.body.category_id !== undefined) {
+    const category = await resolveActiveCategory(db, req.body);
+    if (!category) return res.status(400).json({ error: "Selecione uma categoria principal válida." });
+    req.body.category_id = category.id;
+    req.body.category = category.name;
+  }
   if (rejectInvalidStockPayload(req, res)) return;
 
   const jewelry = await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [req.params.id]);
@@ -454,7 +483,7 @@ router.patch("/api/jewelry/:id", withDb(async (req, res, db) => {
   const pricing = calculatePricing(req.body, pricingSettings);
   Object.assign(req.body, pricing);
 
-  const fields = ["name", "description", "photo_url", "image_url", "gallery_urls", "category", "subcategory", "variant_group", "variation_label", "material", "color", "stone", "size", "top_size_mm", "thickness", "stem_length", "thread_type", "piercing_type", "weight_grams", "package_length_cm", "package_width_cm", "package_height_cm", "package_type", "virtual_store_active", "preparation_days", "shipping_info", "seo_title", "seo_description", "freight_notes", "quantity", "cost_value", "sale_value", "purchase_cost_cents", "allocated_freight_cents", "additional_cost_cents", "total_cost_cents", "price_multiplier", "price_rounding_mode", "suggested_price_cents", "sale_price_cents", "price_manually_overridden", "cost_estimated", "supplier", "physical_location", "sku", "is_catalog_active", "is_featured", "is_new", "is_most_wanted", "is_promotion", "is_last_units", "is_published", "notes", "status", "low_stock_threshold", "critical_stock_threshold"];
+  const fields = ["name", "description", "photo_url", "image_url", "gallery_urls", "category", "category_id", "subcategory", "variant_group", "variation_label", "material", "color", "stone", "size", "top_size_mm", "thickness", "stem_length", "thread_type", "piercing_type", "weight_grams", "package_length_cm", "package_width_cm", "package_height_cm", "package_type", "virtual_store_active", "preparation_days", "shipping_info", "seo_title", "seo_description", "freight_notes", "quantity", "cost_value", "sale_value", "purchase_cost_cents", "allocated_freight_cents", "additional_cost_cents", "total_cost_cents", "price_multiplier", "price_rounding_mode", "suggested_price_cents", "sale_price_cents", "price_manually_overridden", "cost_estimated", "supplier", "physical_location", "sku", "is_catalog_active", "is_featured", "is_new", "is_most_wanted", "is_promotion", "is_last_units", "is_published", "notes", "status", "low_stock_threshold", "critical_stock_threshold"];
   const updates = fields.filter((field) => req.body[field] !== undefined);
 
   await db.run("BEGIN");
@@ -484,7 +513,7 @@ router.patch("/api/jewelry/:id", withDb(async (req, res, db) => {
 }));
 
 router.post("/api/jewelry/:id/variants/:variantId/movements", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!authorizePermission(req, res, P.INVENTORY_ADJUST)) return;
   const variant = await db.get(
     "SELECT * FROM jewelry_variants WHERE id = ? AND jewelry_id = ?",
     [req.params.variantId, req.params.id]
@@ -508,6 +537,7 @@ router.post("/api/jewelry/:id/variants/:variantId/movements", withDb(async (req,
 }));
 
 router.get("/api/jewelry/:id/movements", withDb(async (req, res, db) => {
+  if (!authorizePermission(req, res, P.INVENTORY_VIEW)) return;
   const movements = await db.all(
     "SELECT * FROM stock_movements WHERE jewelry_id = ? ORDER BY movement_date DESC, id DESC LIMIT 20",
     [req.params.id]
@@ -516,7 +546,7 @@ router.get("/api/jewelry/:id/movements", withDb(async (req, res, db) => {
 }));
 
 router.post("/api/jewelry/:id/movements", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!authorizePermission(req, res, P.INVENTORY_ADJUST)) return;
   const jewelry = await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [req.params.id]);
   if (!jewelry) return res.status(404).json({ error: "Joia nao encontrada." });
   const quantity = Math.max(0, Number(req.body.quantity || 0));
@@ -544,7 +574,7 @@ router.post("/api/jewelry/:id/movements", withDb(async (req, res, db) => {
 }));
 
 router.delete("/api/jewelry/:id", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin"])) return;
+  if (!authorizePermission(req, res, P.INVENTORY_DELETE)) return;
   const linked = await db.get(`
     SELECT
       (SELECT COUNT(*) FROM appointments WHERE jewelry_id = ?) +

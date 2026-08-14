@@ -110,7 +110,7 @@ export async function authenticateRequest(req, db) {
     if (isLocalDevRequest(req)) {
       // Bypass de dev: retorna o admin do tenant RESOLVIDO (o db já está com
       // o search_path do schema da clínica desta requisição).
-      const localAdmin = await db.get("SELECT id, name, email, role FROM users WHERE role = 'admin' ORDER BY id LIMIT 1");
+      const localAdmin = await db.get("SELECT id, name, email, role, status FROM users WHERE role = 'admin' AND status = 'active' ORDER BY id LIMIT 1");
       return localAdmin || { id: 1, name: "Administrador Aura", email: "admin@auraclinic.com", role: "admin" };
     }
     const decoded = decodeToken(extractBearerToken(req));
@@ -120,7 +120,7 @@ export async function authenticateRequest(req, db) {
     // O token só vale para o tenant desta requisição (token de outra clínica → 401).
     if (!req.tenant || decoded.tid !== req.tenant.id) return null;
     const user = await db.get(
-      "SELECT id, name, email, role, session_version FROM users WHERE id = ?",
+      "SELECT id, name, email, role, status, session_version FROM users WHERE id = ? AND status = 'active'",
       [decoded.sub]
     );
     // Tokens antigos, sem `sv`, são encerrados no primeiro deploy desta
