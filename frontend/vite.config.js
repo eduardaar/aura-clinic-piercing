@@ -41,6 +41,7 @@ export default defineConfig(({ mode }) => {
     // "vitest/config") para o `vite build` não passar a exigir o vitest instalado.
     test: {
       environment: "jsdom",
+      environmentOptions: { jsdom: { url: "http://localhost/" } },
       globals: true,
       include: ["tests/**/*.test.{js,jsx}"],
       setupFiles: ["./tests/setup.js"],

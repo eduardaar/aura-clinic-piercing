@@ -23,6 +23,10 @@ export function AccessAdmin() {
   const [resetMessage, setResetMessage] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
   const [deleting, setDeleting] = useState(null);
+  const [permissionCatalog, setPermissionCatalog] = useState([]);
+  const [rolePermissions, setRolePermissions] = useState([]);
+  const [permissionOverrides, setPermissionOverrides] = useState({});
+  const [permissionReason, setPermissionReason] = useState("");
   if (!data) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
   const users = asArray(data);
@@ -36,11 +40,19 @@ export function AccessAdmin() {
     setModalOpen(true);
   }
 
-  function openEdit(user) {
+  async function openEdit(user) {
     setEditing(user);
-    setForm({ name: user.name, email: user.email, role: user.role, password: "" });
+    setForm({ name: user.name, email: user.email, role: user.role, status: user.status || "active", password: "" });
     setError("");
+    setPermissionReason("");
     setModalOpen(true);
+    const [catalogResponse, userResponse] = await Promise.all([apiFetch("/permissions"), apiFetch(`/users/${user.id}/permissions`)]);
+    const catalog = await catalogResponse.json().catch(() => ({}));
+    const permissions = await userResponse.json().catch(() => ({}));
+    if (!catalogResponse.ok || !userResponse.ok) return setError(catalog.error || permissions.error || "Não foi possível carregar as permissões.");
+    setPermissionCatalog(catalog.permissions || []);
+    setRolePermissions(permissions.role_permissions || []);
+    setPermissionOverrides(Object.fromEntries((permissions.overrides || []).map((item) => [item.permission, item.allowed])));
   }
 
   function isProtectedLastAdmin(user = editing) {
@@ -60,6 +72,14 @@ export function AccessAdmin() {
       body: JSON.stringify(form)
     });
     if (!response.ok) return setError((await response.json()).error || "Não foi possível salvar o usuário.");
+    if (editing && permissionReason) {
+      const permissionResponse = await apiFetch(`/users/${editing.id}/permissions`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: permissionReason, overrides: Object.entries(permissionOverrides).map(([permission, allowed]) => ({ permission, allowed })) })
+      });
+      if (!permissionResponse.ok) return setError((await permissionResponse.json()).error || "Não foi possível salvar as permissões.");
+    }
     setForm(defaultAccessUser());
     setEditing(null);
     setModalOpen(false);
@@ -149,7 +169,24 @@ export function AccessAdmin() {
               <option value="reception" disabled={isProtectedLastAdmin()}>Recepção</option>
               <option value="finance" disabled={isProtectedLastAdmin()}>Financeiro</option>
             </Select>
+            {editing && <Select label="Status" value={form.status || "active"} onChange={(value) => setForm({ ...form, status: value })}>
+              <option value="active">Ativo</option>
+              <option value="inactive">Inativo</option>
+            </Select>}
           </div>
+          {editing && permissionCatalog.length > 0 && <div className="stack">
+            <h3>Permissões</h3>
+            <p>Sem personalização, vale o padrão do cargo. Alterações individuais ficam auditadas.</p>
+            <div className="permission-grid">
+              {permissionCatalog.map((permission) => {
+                const custom = Object.hasOwn(permissionOverrides, permission);
+                const effective = custom ? permissionOverrides[permission] : rolePermissions.includes("*") || rolePermissions.includes(permission);
+                return <label key={permission} className="checkbox-row"><input type="checkbox" checked={effective} disabled={form.role === "admin"} onChange={(event) => setPermissionOverrides({ ...permissionOverrides, [permission]: event.target.checked })} /><span>{permission} <small>{custom ? (permissionOverrides[permission] ? "· personalizada" : "· bloqueada") : "· padrão do cargo"}</small></span></label>;
+              })}
+            </div>
+            <Button type="button" variant="secondary" onClick={() => setPermissionOverrides({})}>Restaurar permissões padrão do cargo</Button>
+            <Input label="Motivo da alteração de permissões" value={permissionReason} onChange={setPermissionReason} />
+          </div>}
           {isProtectedLastAdmin() && <span className="form-error">{lastAdminMessage}</span>}
           {error && <span className="form-error">{error}</span>}
         </form>

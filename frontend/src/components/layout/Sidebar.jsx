@@ -3,7 +3,7 @@ import { ArrowDownToLine, ArrowUpFromLine, BarChart3, Calendar, Gem, Home, Lock,
 import { canAccessPage, planAllowsPage } from "../../lib/permissions";
 import { Modal } from "../common/Crud";
 
-export function Sidebar({ page, role, brand, features, trialDays, setPage, open, onLogout }) {
+export function Sidebar({ page, role, user, brand, features, trialDays, setPage, open, onLogout }) {
   // Marca do tenant logado (com fallback para a marca-mãe "Aura").
   const brandName = brand?.name || "Aura";
   const brandShort = brand?.short || (brand?.name ? "" : "Clinic Piercing");
@@ -38,10 +38,10 @@ export function Sidebar({ page, role, brand, features, trialDays, setPage, open,
       ["support", LifeBuoy, "Suporte"]
     ]]
   ]
-    .map(([label, entries]) => [label, entries.filter(([id]) => canAccessPage(role, id))])
+    .map(([label, entries]) => [label, entries.filter(([id]) => canAccessPage(user || role, id))])
     .filter(([, entries]) => entries.length > 0);
 
-  const showPlan = canAccessPage(role, "meu-plano");
+  const showPlan = canAccessPage(user || role, "meu-plano");
   // Quem não enxerga "Meu plano" (recepção, financeiro, piercer) não pode ser
   // levado para lá ao clicar num item cadeado — a navegação seria descartada e
   // o usuário voltaria para a tela inicial sem entender o motivo.

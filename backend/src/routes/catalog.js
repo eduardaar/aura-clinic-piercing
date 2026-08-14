@@ -2,6 +2,8 @@
 import { Router } from "express";
 import { withDb, withFeature } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
+import { authorizePermission } from "../middleware/requirePermission.js";
+import { P } from "../config/permissions.js";
 import { attachVariants } from "../services/inventory.js";
 import { groupInventoryOptions, splitCatalogCategories } from "../services/utils.js";
 import { validateCoupon } from "../services/discounts.js";
@@ -342,7 +344,7 @@ router.get("/api/catalog-settings", withDb(async (req, res, db) => {
 }));
 
 router.get("/api/coupons", withFeature("coupons", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!authorizePermission(req, res, P.COUPONS_VIEW)) return;
   // O cupom "apagado" continua fora da lista: é o filtro base, não um opcional.
   const clauses = ["c.deleted_at IS NULL"];
   const params = [];
@@ -382,7 +384,7 @@ router.get("/api/coupons", withFeature("coupons", async (req, res, db) => {
 }));
 
 router.post("/api/coupons", withFeature("coupons", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin"])) return;
+  if (!authorizePermission(req, res, P.COUPONS_CREATE)) return;
   const body = req.body || {};
   const code = String(body.code || "").trim().toUpperCase();
   const internalName = String(body.internal_name || body.name || "").trim();
@@ -411,7 +413,7 @@ router.post("/api/coupons", withFeature("coupons", async (req, res, db) => {
 }));
 
 router.patch("/api/coupons/:id", withFeature("coupons", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin"])) return;
+  if (!authorizePermission(req, res, P.COUPONS_EDIT)) return;
   const current = await db.get("SELECT * FROM coupons WHERE id = ? AND deleted_at IS NULL", [req.params.id]);
   if (!current) return res.status(404).json({ error: "Cupom não encontrado." });
   const body = { ...current, ...(req.body || {}) };
@@ -440,7 +442,7 @@ router.patch("/api/coupons/:id", withFeature("coupons", async (req, res, db) => 
 }));
 
 router.delete("/api/coupons/:id", withFeature("coupons", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin"])) return;
+  if (!authorizePermission(req, res, P.COUPONS_DELETE)) return;
   const usage = await db.get("SELECT COUNT(*) AS count FROM coupon_usages WHERE coupon_id = ?", [req.params.id]);
   if (Number(usage?.count || 0) > 0) {
     await db.run("UPDATE coupons SET status = 'inactive', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [req.params.id]);

@@ -24,6 +24,22 @@ CREATE TABLE IF NOT EXISTS users (
 -- Versão da sessão permite revogar tokens já emitidos quando senha ou papel
 -- muda. O ALTER mantém compatibilidade com schemas criados antes da coluna.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+DO $$ BEGIN
+  ALTER TABLE users ADD CONSTRAINT users_status_check CHECK (status IN ('active', 'inactive'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE TABLE IF NOT EXISTS user_permissions (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  permission TEXT NOT NULL,
+  allowed BOOLEAN NOT NULL,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(user_id, permission)
+);
+CREATE INDEX IF NOT EXISTS idx_user_permissions_user ON user_permissions(user_id);
 -- Sessões persistidas: o browser recebe só um refresh token opaco em cookie
 -- HttpOnly. No banco guardamos exclusivamente o SHA-256 dele, permitindo
 -- revogação por dispositivo sem transformar a tabela em cofre de credenciais.
@@ -71,6 +87,7 @@ CREATE TABLE IF NOT EXISTS administrative_audit_logs (
   snapshot TEXT,
   created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
+ALTER TABLE administrative_audit_logs ADD COLUMN IF NOT EXISTS tenant_id INTEGER;
 
 CREATE TABLE IF NOT EXISTS clinic_settings (
   id INTEGER PRIMARY KEY DEFAULT 1,
@@ -274,7 +291,6 @@ CREATE TABLE IF NOT EXISTS inventory_options (
   created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS'),
   UNIQUE(type, name)
 );
-
 CREATE TABLE IF NOT EXISTS appointments (
   id SERIAL PRIMARY KEY,
   client_id INTEGER NOT NULL REFERENCES clients(id),

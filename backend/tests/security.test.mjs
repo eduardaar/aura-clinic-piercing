@@ -119,6 +119,17 @@ test("token válido da clínica A + header X-Tenant de B → 403 (token não bat
   assert.equal(status, 403, JSON.stringify(json));
 });
 
+test("isolamento cruzado bloqueia todos os domínios sensíveis antes de consultar dados", async () => {
+  const paths = [
+    "/appointments", "/clients", "/jewelry", "/inventory/counts", "/finance",
+    "/sales-orders", "/users", "/permissions", "/digital-terms"
+  ];
+  for (const path of paths) {
+    const response = await req(path, { tenant: ctx.b.slug, token: ctx.a.token });
+    assert.equal(response.status, 403, `${path}: ${JSON.stringify(response.json)}`);
+  }
+});
+
 test("token válido da clínica A SEM header (usa tslug do token) → acessa A normalmente", async () => {
   const { status } = await req("/appointments", { token: ctx.a.token });
   assert.equal(status, 200);

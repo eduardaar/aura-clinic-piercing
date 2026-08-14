@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { withDb, withFeature } from "../middleware/withDb.js";
-import { requireRole } from "../middleware/auth.js";
+import { authorizePermission } from "../middleware/requirePermission.js";
+import { P } from "../config/permissions.js";
 import { publicPaymentIntent, rotatePublicPaymentToken, transitionPaymentIntent } from "../services/payments.js";
 import {
   cancelTenantCharge,
@@ -12,7 +13,7 @@ import {
 const router = Router();
 
 router.get("/api/payment-intents", withFeature("deposits", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "finance", "reception"])) return;
+  if (!authorizePermission(req, res, P.CASH_VIEW)) return;
   res.json(await db.all(`
     SELECT pi.*, a.appointment_date, a.appointment_time, c.full_name AS client_name
     FROM payment_intents pi
@@ -23,7 +24,7 @@ router.get("/api/payment-intents", withFeature("deposits", async (req, res, db) 
 }));
 
 router.patch("/api/payment-intents/:id/status", withFeature("deposits", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "finance"])) return;
+  if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
   try {
     const current = await db.get("SELECT provider FROM payment_intents WHERE id=?", [Number(req.params.id)]);
     if (!current) return res.status(404).json({ error: "Intenção de pagamento não encontrada." });
@@ -48,7 +49,7 @@ router.patch("/api/payment-intents/:id/status", withFeature("deposits", async (r
 // Revoga um link vazado/antigo sem emitir outra cobrança. O URL da fatura no
 // Asaas continua o mesmo, mas nossa tela pública passa a exigir o UUID novo.
 router.post("/api/payment-intents/:id/public-token", withFeature("deposits", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "finance"])) return;
+  if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
   try {
     const intent = await rotatePublicPaymentToken(db, Number(req.params.id));
     res.json({ payment_intent: publicPaymentIntent(intent), payment_url: intent.invoice_url || null });
@@ -60,7 +61,7 @@ router.post("/api/payment-intents/:id/public-token", withFeature("deposits", asy
 // Cancelamento só serve para cobrança que ainda não foi liquidada. Para não
 // executar duas vezes por duplo clique, Idempotency-Key é obrigatório.
 router.post("/api/payment-intents/:id/cancel", withFeature("deposits", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "finance"])) return;
+  if (!authorizePermission(req, res, P.FINANCE_CANCEL)) return;
   try {
     const result = await cancelTenantCharge(db, {
       intentId: Number(req.params.id),
@@ -77,7 +78,7 @@ router.post("/api/payment-intents/:id/cancel", withFeature("deposits", async (re
 // Estorno total do cliente final. O retorno 200 significa que o Asaas aceitou
 // a solicitação; o status `refunded` só chega por webhook/reconciliação.
 router.post("/api/payment-intents/:id/refund", withFeature("deposits", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "finance"])) return;
+  if (!authorizePermission(req, res, P.FINANCE_REFUND)) return;
   try {
     const result = await refundTenantCharge(db, {
       intentId: Number(req.params.id),

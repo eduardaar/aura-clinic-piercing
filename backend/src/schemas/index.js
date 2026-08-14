@@ -116,28 +116,14 @@ export const procedureUpdateSchema = z
   .passthrough();
 
 // ---------- Joalherias ----------
-const JEWELRY_CATEGORIES = [
-  "Labret",
-  "Segmento",
-  "Argola",
-  "Conector",
-  "Argolas",
-  "Barbell Reto",
-  "Barbell Curvo",
-  "Nostril",
-  "Topo",
-  "Topos",
-  "Microdermal",
-  "Transversal",
-  "Surface",
-  "Ouro 14k",
-  "Ouro 18k"
-];
-
 export const jewelryCreateSchema = z
   .object({
     name: nonEmptyString("Nome do produto"),
-    category: z.enum(JEWELRY_CATEGORIES, { message: "Selecione uma categoria principal válida." })
+    category: z.string().trim().optional(),
+    category_id: z.coerce.number().int().positive().optional()
+  })
+  .refine((value) => Boolean(value.category_id || value.category), {
+    message: "Selecione uma categoria principal válida.", path: ["category"]
   })
   .passthrough();
 
@@ -145,7 +131,8 @@ export const jewelryCreateSchema = z
 export const jewelryUpdateSchema = z
   .object({
     name: z.string().optional(),
-    category: z.enum(JEWELRY_CATEGORIES, { message: "Selecione uma categoria principal válida." }).optional()
+    category: z.string().trim().optional(),
+    category_id: z.coerce.number().int().positive().nullable().optional()
   })
   .passthrough();
 

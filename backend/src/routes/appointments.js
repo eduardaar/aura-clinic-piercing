@@ -25,8 +25,10 @@ import { ensureSalesOrderForAppointment } from "../services/sales.js";
 import { validateBody } from "../middleware/validate.js";
 import { appointmentCreateSchema } from "../schemas/index.js";
 import { queueAppointmentReminderNotifications } from "../services/notifications.js";
-import { requireRole } from "../middleware/auth.js";
 import { invalidateUsageCache, requireWithinLimit } from "../services/planLimits.js";
+import { P } from "../config/permissions.js";
+import { authorizePermission } from "../middleware/requirePermission.js";
+import { hasPermission } from "../services/permissionService.js";
 
 const router = Router();
 
@@ -62,7 +64,7 @@ async function validateAppointmentItemsStock(db, items = []) {
 }
 
 router.get("/api/appointments", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
+  if (!authorizePermission(req, res, P.APPOINTMENTS_VIEW)) return;
   const clauses = [];
   const params = [];
   if (req.query.professional_id) {
@@ -105,7 +107,7 @@ router.get("/api/appointments", withDb(async (req, res, db) => {
 }));
 
 router.post("/api/appointments", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
+  if (!authorizePermission(req, res, P.APPOINTMENTS_CREATE)) return;
   await parseUpload(privateUpload.single("reference_photo"), req, res);
   await registerPrivateFiles(db, req.file, "appointment_reference", req.user?.id);
   // Payload chega como multipart (multer já populou req.body). Valida os
@@ -188,10 +190,10 @@ router.post("/api/appointments", withDb(async (req, res, db) => {
 }));
 
 router.post("/api/appointments/:id/complete", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
+  if (!authorizePermission(req, res, P.APPOINTMENTS_FINALIZE)) return;
   const before = await db.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
   if (!before) return res.status(404).json({ error: "Agendamento não encontrado." });
-  if (before.status === "atendido" && req.user?.role !== "admin") return res.status(403).json({ error: "Somente administradores podem alterar um fechamento concluído." });
+  if (before.status === "atendido" && !hasPermission(req.user, P.FINANCE_EDIT)) return res.status(403).json({ error: "Você não tem permissão para alterar um fechamento concluído." });
   if (before.status === "atendido" && !String(req.body.reason || "").trim()) return res.status(400).json({ error: "Informe o motivo da alteração financeira." });
   try {
     await db.transaction(async (tx) => {
@@ -212,8 +214,16 @@ router.post("/api/appointments/:id/complete", withDb(async (req, res, db) => {
 }));
 
 router.patch("/api/appointments/:id", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
+  if (!authorizePermission(req, res, req.body.status === "cancelado" ? P.APPOINTMENTS_CANCEL : P.APPOINTMENTS_EDIT)) return;
   const appointment = await db.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
+  const financialFields = ["total_value", "discount_value", "deposit_value", "remaining_value", "deposit_payment_method", "remaining_payment_method", "deposit_status", "deposit_paid_at", "coupon_code", "coupon_id"];
+  const finalizedFinancialChange = appointment?.status === "atendido" && (
+    financialFields.some((field) => req.body[field] !== undefined) || appointmentItemsFromBody(req.body).length > 0
+  );
+  if (finalizedFinancialChange) {
+    if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
+    if (!String(req.body.reason || "").trim()) return res.status(400).json({ error: "Informe o motivo da alteração financeira." });
+  }
   if (!appointment) return res.status(404).json({ error: "Agendamento não encontrado." });
 
   if (req.body.status === "cancelado") {
@@ -328,6 +338,10 @@ router.patch("/api/appointments/:id", withDb(async (req, res, db) => {
       await restoreJewelryStock(tx, req.params.id);
       await tx.run("UPDATE payments SET status = 'cancelado' WHERE appointment_id = ? AND status != 'pago'", [req.params.id]);
     }
+    if (finalizedFinancialChange) {
+      const after = await tx.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
+      await tx.run("INSERT INTO appointment_financial_audit (appointment_id, user_id, action, reason, before_snapshot, after_snapshot) VALUES (?, ?, 'financial_correction', ?, ?, ?)", [req.params.id, req.user.id, String(req.body.reason).trim(), JSON.stringify(appointment), JSON.stringify(after)]);
+    }
   });
 
   const updated = await listAppointments(db, "WHERE a.id = ?", [req.params.id]).then((rows) => rows[0]);
@@ -354,7 +368,7 @@ async function appointmentDeletionImpact(db, id) {
 }
 
 router.get("/api/appointments/:id/deletion-impact", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin"])) return;
+  if (!authorizePermission(req, res, P.APPOINTMENTS_EDIT)) return;
   const appointment = await db.get("SELECT id FROM appointments WHERE id = ?", [req.params.id]);
   if (!appointment) return res.status(404).json({ error: "Agendamento não encontrado." });
   const impact = await appointmentDeletionImpact(db, req.params.id);
@@ -362,7 +376,7 @@ router.get("/api/appointments/:id/deletion-impact", withDb(async (req, res, db) 
 }));
 
 router.delete("/api/appointments/:id", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin"])) return;
+  if (!authorizePermission(req, res, P.CLIENTS_DELETE)) return;
   if (req.body?.confirmation !== "EXCLUIR AGENDAMENTO") return res.status(400).json({ error: "Digite EXCLUIR AGENDAMENTO para confirmar." });
   const reason = String(req.body?.reason || "").trim();
   if (!reason) return res.status(400).json({ error: "Informe o motivo da exclusão." });

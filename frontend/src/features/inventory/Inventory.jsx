@@ -133,7 +133,7 @@ export function Inventory2({ initialTab = "produtos" }) {
   const categoryOptions = [
     ...new Set([
       ...categoryManagement.filter((item) => Number(item.is_active ?? 1)).map((item) => item.name),
-      ...asArray(rawInventoryOptions.category).map((item) => item.name),
+      ...asArray(rawInventoryOptions.category).filter((item) => Number(item.is_active ?? 1)).map((item) => item.name),
       ...JEWELRY_CATEGORY_OPTIONS
     ].filter(Boolean))
   ];
@@ -555,6 +555,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
         <JewelryEditor
           options={inventoryOptions}
           categoryOptions={categoryOptions}
+          categories={categoryManagement}
           pricingSettings={safeOptions.pricingSettings}
           editing={editingJewelry}
           onMovementOpen={openMovement}
@@ -922,7 +923,7 @@ function ProductGalleryManager({ images = [], productName = "", onChange }) {
   );
 }
 
-export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTIONS, pricingSettings = {}, editing, onSaved, onCancel, onMovementOpen }) {
+export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTIONS, categories = [], pricingSettings = {}, editing, onSaved, onCancel, onMovementOpen }) {
   const [form, setForm] = useState(defaultJewelry());
   const [error, setError] = useState("");
   const [editorTab, setEditorTab] = useState("dados");
@@ -960,6 +961,7 @@ export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTI
     const saleValues = pricedVariants.map((variant) => Number(variant.sale_value || 0)).filter((value) => value > 0);
     const payload = {
       ...form,
+      category_id: form.category_id || asArray(categories).find((category) => category.name === form.category)?.id,
       variants: pricedVariants,
       images: form.images,
       gallery_urls: form.images?.length ? form.images.map((image) => image.image_url) : parseGalleryUrls(form.gallery_urls),

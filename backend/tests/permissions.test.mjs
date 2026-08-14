@@ -23,7 +23,8 @@ const ctx = {
   adminToken: null,
   adminId: null,
   secondAdminId: null,
-  tokens: {} // role → token de login
+  tokens: {}, // role → token de login
+  userIds: {}
 };
 
 // Senha forte reutilizada nos usuários criados.
@@ -51,6 +52,7 @@ before(async () => {
     }
     // password_hash NUNCA pode aparecer na resposta de criação.
     assert.equal(created.json.password_hash, undefined, `password_hash vazou ao criar ${role}`);
+    ctx.userIds[role] = created.json.id;
     const login = await loginTenant(ctx.tenant.slug, email, PW);
     ctx.tokens[role] = login.token;
   }
@@ -290,9 +292,59 @@ test("recepção não cria prontuário clínico e piercer pode operar cadastro c
   assert.notEqual(update.status, 403);
 });
 
-test("papéis não operacionais não acessam agenda", async () => {
+test("financeiro consulta a agenda sem alterar decisões clínicas", async () => {
   const { status } = await req("/appointments", { token: ctx.tokens.finance });
-  assert.equal(status, 403);
+  assert.equal(status, 200);
+});
+
+test("negação individual prevalece e restaurar padrão remove o bloqueio", async () => {
+  const target = ctx.userIds.piercer;
+  const denied = await req(`/users/${target}/permissions`, {
+    token: ctx.adminToken,
+    method: "PUT",
+    body: { reason: "Teste de autorização", overrides: [{ permission: "appointments.edit", allowed: false }] }
+  });
+  assert.equal(denied.status, 200, JSON.stringify(denied.json));
+  const blocked = await req("/appointments/999999", { token: ctx.tokens.piercer, method: "PATCH", body: { notes: "QA" } });
+  assert.equal(blocked.status, 403, JSON.stringify(blocked.json));
+  const restored = await req(`/users/${target}/permissions`, {
+    token: ctx.adminToken,
+    method: "PUT",
+    body: { reason: "Restaurar padrão", overrides: [] }
+  });
+  assert.equal(restored.status, 200, JSON.stringify(restored.json));
+  const allowed = await req("/appointments/999999", { token: ctx.tokens.piercer, method: "PATCH", body: { notes: "QA" } });
+  assert.equal(allowed.status, 404, JSON.stringify(allowed.json));
+});
+
+test("permissão individual controla finalização para piercer e recepção", async () => {
+  const piercerId = ctx.userIds.piercer;
+  const receptionId = ctx.userIds.reception;
+  const piercerDefault = await req("/appointments/999999/complete", { token: ctx.tokens.piercer, method: "POST", body: {} });
+  assert.equal(piercerDefault.status, 404);
+  await req(`/users/${piercerId}/permissions`, { token: ctx.adminToken, method: "PUT", body: { reason: "Bloqueio QA", overrides: [{ permission: "appointments.finalize", allowed: false }] } });
+  const piercerDenied = await req("/appointments/999999/complete", { token: ctx.tokens.piercer, method: "POST", body: {} });
+  assert.equal(piercerDenied.status, 403);
+  await req(`/users/${piercerId}/permissions`, { token: ctx.adminToken, method: "PUT", body: { reason: "Restaurar QA", overrides: [] } });
+
+  const receptionDefault = await req("/appointments/999999/complete", { token: ctx.tokens.reception, method: "POST", body: {} });
+  assert.equal(receptionDefault.status, 403);
+  await req(`/users/${receptionId}/permissions`, { token: ctx.adminToken, method: "PUT", body: { reason: "Concessão QA", overrides: [{ permission: "appointments.finalize", allowed: true }] } });
+  const receptionGranted = await req("/appointments/999999/complete", { token: ctx.tokens.reception, method: "POST", body: {} });
+  assert.equal(receptionGranted.status, 404);
+  await req(`/users/${receptionId}/permissions`, { token: ctx.adminToken, method: "PUT", body: { reason: "Restaurar QA", overrides: [] } });
+});
+
+test("usuário inativo perde sessões e não autentica", async () => {
+  const target = ctx.userIds.reception;
+  const updated = await req(`/users/${target}`, { token: ctx.adminToken, method: "PATCH", body: { status: "inactive" } });
+  assert.equal(updated.status, 200, JSON.stringify(updated.json));
+  const oldSession = await req("/clients", { token: ctx.tokens.reception });
+  assert.equal(oldSession.status, 401);
+  const login = await req("/login", { tenant: ctx.tenant.slug, method: "POST", body: { email: `reception@${ctx.tenant.slug}.test`, password: PW } });
+  assert.equal(login.status, 403);
+  await req(`/users/${target}`, { token: ctx.adminToken, method: "PATCH", body: { status: "active" } });
+  ctx.tokens.reception = (await loginTenant(ctx.tenant.slug, `reception@${ctx.tenant.slug}.test`, PW)).token;
 });
 
 // -- Dados clínicos sensíveis: somente admin/piercer ---------------------

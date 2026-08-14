@@ -1,7 +1,8 @@
 // Rotas de disponibilidade dos profissionais.
 import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
-import { requireRole } from "../middleware/auth.js";
+import { authorizePermission } from "../middleware/requirePermission.js";
+import { P } from "../config/permissions.js";
 import { boolNumber } from "../services/utils.js";
 
 const router = Router();
@@ -27,7 +28,8 @@ function normalizeAvailabilityDays(body = {}, professionalId) {
     .filter((day) => day.weekday >= 0 && day.weekday <= 6);
 }
 
-router.get("/api/availability", withDb(async (_req, res, db) => {
+router.get("/api/availability", withDb(async (req, res, db) => {
+  if (!authorizePermission(req, res, P.APPOINTMENTS_VIEW)) return;
   res.json(await db.all(`
     SELECT a.*, p.name AS professional_name
     FROM professional_availability a
@@ -37,7 +39,7 @@ router.get("/api/availability", withDb(async (_req, res, db) => {
 }));
 
 router.post("/api/availability", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!authorizePermission(req, res, P.APPOINTMENTS_EDIT)) return;
   const next = normalizeAvailabilityBody(req.body);
   if (!next.professional_id || next.weekday < 0 || next.weekday > 6) {
     return res.status(400).json({ error: "Profissional e dia da semana sao obrigatorios." });
@@ -65,7 +67,7 @@ router.post("/api/availability", withDb(async (req, res, db) => {
 }));
 
 router.post("/api/availability/generate-weekly", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!authorizePermission(req, res, P.APPOINTMENTS_EDIT)) return;
   const professionalId = Number(req.body.professional_id || 0);
   if (!professionalId) return res.status(400).json({ error: "Profissional e obrigatorio." });
   const professional = await db.get("SELECT id FROM professionals WHERE id = ? AND active = 1", [professionalId]);
@@ -108,7 +110,7 @@ router.post("/api/availability/generate-weekly", withDb(async (req, res, db) => 
 }));
 
 router.patch("/api/availability/:id", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!authorizePermission(req, res, P.APPOINTMENTS_EDIT)) return;
   const current = await db.get("SELECT * FROM professional_availability WHERE id = ?", [req.params.id]);
   if (!current) return res.status(404).json({ error: "Disponibilidade nao encontrada." });
   const next = normalizeAvailabilityBody(req.body, current);

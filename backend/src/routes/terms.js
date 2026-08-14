@@ -1,7 +1,8 @@
 // Rotas de termos digitais (anamnese): criacao, listagem e PDF.
 import { Router } from "express";
 import { withFeature } from "../middleware/withDb.js";
-import { requireRole } from "../middleware/auth.js";
+import { authorizePermission } from "../middleware/requirePermission.js";
+import { P } from "../config/permissions.js";
 import { listAppointments, upsertClient } from "../services/appointments.js";
 import { listDigitalTerms, countDigitalTerms, getDigitalTerm, createTermPdf } from "../services/terms.js";
 import { parsePaging, pageResponse } from "../services/pagination.js";
@@ -48,7 +49,7 @@ router.get("/api/digital-terms", withFeature("digital_terms", async (req, res, d
   // Termos carregam anamnese, documento, assinatura e declaração de saúde.
   // Autenticar no tenant não basta: recepção e financeiro não precisam desses
   // dados para exercer suas funções (menor privilégio, também no backend).
-  if (!requireRole(req, res, ["admin", "piercer"])) return;
+  if (!authorizePermission(req, res, P.CLINICAL_FILES_VIEW)) return;
   const clauses = [];
   const params = [];
   if (req.query.client_id) {
@@ -89,7 +90,7 @@ router.get("/api/digital-terms", withFeature("digital_terms", async (req, res, d
 }));
 
 router.post("/api/digital-terms", withFeature("digital_terms", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "piercer"])) return;
+  if (!authorizePermission(req, res, P.CLINICAL_FILES_EDIT)) return;
   const body = req.body || {};
   if (!body.full_name?.trim() || !body.signature_data_url) {
     return res.status(400).json({ error: "Dados obrigatorios do termo nao foram preenchidos." });
