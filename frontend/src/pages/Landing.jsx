@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { BellRing, Check, ChevronLeft, ChevronRight, MessageCircle, Sparkles, X } from "lucide-react";
 import { API, API_ORIGIN } from "../lib/api";
 import { asArray, asNumber, asObject } from "../lib/utils";
 import { featureLabel } from "../lib/planFeatures";
-import { BrandMark } from "../components/common/BrandMark";
 import { PublicTopNav } from "../components/layout/PublicTopNav";
+import { PublicFooter } from "../components/layout/PublicFooter";
 import { DEFAULT_LANDING_SECTIONS, LANDING_DEFAULTS } from "./landingDefaults";
 import "../styles/landing-carousel.css";
 
@@ -66,9 +66,40 @@ function contentItems(content, field, requiredField) {
     });
 }
 
+function whatsappUrl(phone) {
+  const digits = String(phone || "").replace(/\D/g, "");
+  return digits ? `https://wa.me/${digits}` : "";
+}
+
+function FloatingWhatsApp({ phone }) {
+  const href = whatsappUrl(phone);
+  if (!href) return null;
+  return (
+    <a
+      className="au-l-whatsapp-float"
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      aria-label="Falar conosco pelo WhatsApp"
+    >
+      <MessageCircle size={24} aria-hidden="true" />
+    </a>
+  );
+}
+
 /* ---------- blocos ------------------------------------------------------- */
 
 function HeroSection({ content }) {
+  const screens = contentItems(content, "screens", "image");
+  const slides = screens.length ? screens : [{ key: content.image || "hero", image: content.image, image_alt: content.image_alt, caption: content.caption }];
+  const [active, setActive] = useState(0);
+  const reducedMotion = usePrefersReducedMotion();
+  useEffect(() => {
+    if (slides.length < 2 || reducedMotion) return undefined;
+    const timer = window.setInterval(() => setActive((current) => (current + 1) % slides.length), 3000);
+    return () => window.clearInterval(timer);
+  }, [slides.length, reducedMotion]);
+  const current = active % slides.length;
   return (
     <section className="au-l-hero">
       <div className="au-l-hero-inner">
@@ -76,27 +107,27 @@ function HeroSection({ content }) {
           {content.kicker && <span className="au-l-kicker">{content.kicker}</span>}
           <h1>{content.title}</h1>
           <p>{content.subtitle}</p>
-          <div className="au-l-hero-actions">
-            <a className="au-l-btn au-l-btn-primary" href={content.primary_href}>
-              {content.primary_label} <ChevronRight size={18} aria-hidden="true" />
-            </a>
-            {content.secondary_label && (
-              <a className="au-l-btn au-l-btn-ghost" href={content.secondary_href}>{content.secondary_label}</a>
-            )}
-          </div>
           {content.note && <span className="au-l-note">{content.note}</span>}
         </div>
 
         <figure className="au-l-hero-media">
-          <img
-            src={imageUrl(content.image)}
-            alt={content.image_alt}
+          {slides.map((slide, index) => <img
+            key={slide.key}
+            className={index === current ? "is-active" : ""}
+            src={imageUrl(slide.image)}
+            alt={index === current ? slide.image_alt || "" : ""}
             width={IMAGE_SIZE.hero.width}
             height={IMAGE_SIZE.hero.height}
-            fetchpriority="high"
+            fetchpriority={index === 0 ? "high" : undefined}
+            loading={index === 0 ? undefined : "lazy"}
             decoding="async"
-          />
-          {content.caption && <figcaption className="au-l-hero-strip">{content.caption}</figcaption>}
+          />)}
+          {slides[current]?.caption && <figcaption className="au-l-hero-strip">{slides[current].caption}</figcaption>}
+          {slides.length > 1 && <>
+            <button type="button" className="au-l-hero-arrow is-prev" aria-label="Tela anterior" onClick={() => setActive((current - 1 + slides.length) % slides.length)}><ChevronLeft size={21} aria-hidden="true" /></button>
+            <button type="button" className="au-l-hero-arrow is-next" aria-label="Próxima tela" onClick={() => setActive((current + 1) % slides.length)}><ChevronRight size={21} aria-hidden="true" /></button>
+          </>}
+          {slides.length > 1 && <div className="au-l-hero-dots" aria-label="Telas do sistema">{slides.map((slide, index) => <button key={slide.key} type="button" className={index === current ? "is-active" : ""} aria-label={`Ver tela ${index + 1}`} aria-current={index === current ? "true" : undefined} onClick={() => setActive(index)} />)}</div>}
         </figure>
       </div>
     </section>
@@ -131,6 +162,49 @@ function FeaturesSection({ content }) {
             </div>
           </article>
         ))}
+      </div>
+    </section>
+  );
+}
+
+export function AboutSection({ content }) {
+  return <section className="au-l-about" id="sobre">
+    <div className="au-l-about-inner">
+      <div className="au-l-sec-head">
+        {content.kicker && <span className="au-l-kicker">{content.kicker}</span>}
+        <h2>{content.title}</h2>
+      </div>
+      <div className="au-l-about-grid">
+        <article><span>Produto</span><h3>{content.aura_title}</h3><p>{content.aura_text}</p></article>
+        <article><span>Quem desenvolve</span><h3>{content.monitence_title}</h3><p>{content.monitence_text}</p></article>
+      </div>
+    </div>
+  </section>;
+}
+
+// Faixa de valor comercial entre os recursos e a escolha de plano. Não é mais
+// um card: o contraste intencional cria pausa na rolagem e explica por que o
+// Aura resolve a operação inteira, não apenas a agenda.
+function PlatformValueSection() {
+  const items = [
+    { icon: Sparkles, title: "Assistente com IA", text: "Crie mensagens, resumos e respostas para ganhar tempo no atendimento." },
+    { icon: MessageCircle, title: "WhatsApp integrado", text: "Centralize lembretes, confirmações e conversas com crédito controlado." },
+    { icon: BellRing, title: "Automação que acompanha", text: "Avise, faça pós-atendimento e mantenha cada cliente no fluxo certo." }
+  ];
+  return (
+    <section className="au-l-value" id="plataforma">
+      <div className="au-l-value-inner">
+        <div className="au-l-value-copy">
+          <span className="au-l-kicker">Feito para a rotina real</span>
+          <h2>Mais que agenda: uma operação conectada.</h2>
+          <p>Do primeiro contato à recompra, o Aura organiza atendimento, estoque, financeiro e comunicação em um só lugar.</p>
+        </div>
+        <div className="au-l-value-list">
+          {items.map(({ icon: Icon, title, text }) => <article key={title}>
+            <Icon size={22} aria-hidden="true" />
+            <div><h3>{title}</h3><p>{text}</p></div>
+          </article>)}
+        </div>
       </div>
     </section>
   );
@@ -246,11 +320,15 @@ function CarouselSection({ content }) {
 // vivo da plataforma, não texto de marketing. Do conteúdo editável vêm só o
 // título, o subtítulo e o rótulo/destino do botão.
 function PlansSection({ content, plans }) {
+  const [comparisonOpen, setComparisonOpen] = useState(false);
+  const visibleFeatures = (plan) => asArray(plan.features).slice(0, 5);
+  const allFeatures = [...new Set(plans.flatMap((plan) => asArray(plan.features)))];
   return (
     <section className="au-l-sec au-l-sec-plans" id="planos">
       <div className="au-l-sec-head">
         <h2>{content.title}</h2>
         {content.subtitle && <p>{content.subtitle}</p>}
+        {plans.length > 1 && <button type="button" className="au-l-compare-button" onClick={() => setComparisonOpen(true)}>Comparar planos</button>}
       </div>
       <div className="au-l-plan-scroller">
         <div className="au-l-plan-grid">
@@ -265,41 +343,31 @@ function PlansSection({ content, plans }) {
               </p>
               <p className="au-l-plan-aud">{plan.audience}</p>
               <ul className="au-l-plan-list">
-                {asArray(plan.features).slice(0, 4).map((f) => <li key={f}>{featureLabel(f)}</li>)}
+                {visibleFeatures(plan).map((f) => <li key={f}>{featureLabel(f)}</li>)}
               </ul>
-              <a className="au-l-btn au-l-btn-plan" href={content.cta_href}>{content.cta_label}</a>
+              {asArray(plan.features).length > 5 && <span className="au-l-plan-more">E mais recursos para sua operação.</span>}
+              <a className="au-l-btn au-l-btn-plan" href={`/cadastro?plano=${encodeURIComponent(plan.code)}`}>Selecionar {plan.name.replace(/^Pacote\s+/i, "")}</a>
             </article>
           ))}
         </div>
       </div>
-    </section>
-  );
-}
-
-// Vitrines públicas da plataforma: quem chega pela landing pode ver as clínicas
-// já usando o sistema antes de decidir criar a própria. Seção própria — dentro
-// do bloco de planos os cards não alinhavam com a grade e ficavam espremidos
-// contra ela.
-function ShowcaseLinksSection({ content }) {
-  const items = contentItems(content, "items", "title");
-  if (!items.length) return null;
-  return (
-    <section className="au-l-sec au-l-sec-links">
-      <div className="au-l-sec-head">
-        <h2>{content.title}</h2>
-        {content.subtitle && <p>{content.subtitle}</p>}
-      </div>
-      <div className="au-l-links">
-        {items.map((item) => (
-          <a key={item.key} className="au-l-link-card" href={item.href || "#"}>
-            <span className="au-l-link-body">
-              <strong>{item.title}</strong>
-              <span>{item.text}</span>
-            </span>
-            <ChevronRight size={18} aria-hidden="true" />
-          </a>
-        ))}
-      </div>
+      {comparisonOpen && (
+        <div className="au-l-plan-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setComparisonOpen(false); }}>
+          <section className="au-l-plan-modal" role="dialog" aria-modal="true" aria-label="Comparativo detalhado de planos">
+            <div className="au-l-plan-modal-head">
+              <div><h2>Compare os planos</h2><p>Escolha pelo momento do seu estúdio. Você pode evoluir quando precisar.</p></div>
+              <button type="button" aria-label="Fechar comparativo" onClick={() => setComparisonOpen(false)}><X size={20} /></button>
+            </div>
+            <div className="au-l-plan-compare-scroll">
+              <table>
+                <thead><tr><th>Recurso</th>{plans.map((plan) => <th key={plan.code}><strong>{plan.name}</strong><small>{currency.format(Number(plan.price_cents || 0) / 100)}/mês</small></th>)}</tr></thead>
+                <tbody>{allFeatures.map((feature) => <tr key={feature}><th>{featureLabel(feature)}</th>{plans.map((plan) => <td key={plan.code}>{asArray(plan.features).includes(feature) ? <Check size={18} aria-label="Incluído" /> : "—"}</td>)}</tr>)}</tbody>
+              </table>
+            </div>
+            <div className="au-l-plan-modal-actions"><button type="button" className="au-l-btn au-l-btn-ghost" onClick={() => setComparisonOpen(false)}>Fechar</button></div>
+          </section>
+        </div>
+      )}
     </section>
   );
 }
@@ -311,12 +379,12 @@ function ClosingSection({ content }) {
   // ela passa a contar como conteúdo.
   const decorative = shots.every((shot) => !String(shot.image_alt || "").trim());
 
-  return (
+  return <>
     <section className="au-l-close">
-      <div className="au-l-close-inner">
+      <div className="au-l-close-inner au-l-close-dark">
         <div className="au-l-close-copy">
           <h2>{content.title}</h2>
-          <a className="au-l-btn au-l-btn-primary" href={content.primary_href}>
+          <a className="au-l-btn au-l-final-cta" href={content.primary_href}>
             {content.primary_label} <ChevronRight size={18} aria-hidden="true" />
           </a>
           {content.note && <span className="au-l-note">{content.note}</span>}
@@ -337,17 +405,9 @@ function ClosingSection({ content }) {
           </div>
         )}
       </div>
-
-      <footer className="au-l-foot">
-        <div className="au-l-brand">
-          <BrandMark className="au-l-mark" size={34} />
-          <strong>Aura</strong>
-        </div>
-        <span className="au-l-foot-text">{content.footer_text}</span>
-        <a className="au-l-foot-link" href={content.footer_link_href}>{content.footer_link_label}</a>
-      </footer>
     </section>
-  );
+    <PublicFooter content={content} />
+  </>;
 }
 
 // Um componente por tipo de bloco. Chave fora desta tabela é ignorada em
@@ -358,9 +418,28 @@ const SECTION_COMPONENTS = {
   features: FeaturesSection,
   carousel: CarouselSection,
   plans: PlansSection,
-  showcase_links: ShowcaseLinksSection,
   closing: ClosingSection
 };
+
+export function AboutPage() {
+  const [content, setContent] = useState(LANDING_DEFAULTS.about);
+  useEffect(() => {
+    let active = true;
+    fetch(`${API}/landing`)
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((payload) => {
+        const about = asArray(payload.sections).find((section) => section.section_key === "about");
+        if (active && about) setContent(mergeContent("about", about.content));
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+  return <div className="au-shell">
+    <PublicTopNav current="about" />
+    <main className="au-l-root"><AboutSection content={content} /></main>
+    <PublicFooter />
+  </div>;
+}
 
 export function Landing() {
   // Começa JÁ com o conteúdo embutido, não com lista vazia. A landing é a porta
@@ -402,6 +481,10 @@ export function Landing() {
     () => [...plans].sort((a, b) => Number(a.price_cents || 0) - Number(b.price_cents || 0)),
     [plans]
   );
+  const closingContent = useMemo(() => {
+    const closing = sections.find((section) => section.section_key === "closing");
+    return mergeContent("closing", closing?.content);
+  }, [sections]);
 
   return (
     <div className="au-shell">
@@ -412,15 +495,20 @@ export function Landing() {
         {sections.map((section) => {
           const Section = SECTION_COMPONENTS[section.section_key];
           if (!Section) return null;
-          return (
+          const rendered = (
             <Section
               key={section.section_key}
               content={mergeContent(section.section_key, section.content)}
               plans={orderedPlans}
             />
           );
+          if (section.section_key === "plans") {
+            return [<PlatformValueSection key="platform-value-before-plans" />, rendered];
+          }
+          return rendered;
         })}
       </main>
+      <FloatingWhatsApp phone={closingContent.contact_whatsapp} />
     </div>
   );
 }

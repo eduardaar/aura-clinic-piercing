@@ -3,6 +3,13 @@ import { withDb, withFeature } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { whatsappLink } from "../services/notifications.js";
 import { processDueCommunications, TEMPLATE_VARIABLES } from "../services/communications.js";
+import {
+  COMMUNICATION_CREDIT_PRODUCTS,
+  CommunicationCreditError,
+  communicationCreditBalance,
+  communicationCreditHistory,
+  communicationCreditProduct
+} from "../services/communicationCredits.js";
 import { parsePaging, limitOffset, countRows, pageResponse } from "../services/pagination.js";
 
 const router = Router();
@@ -27,6 +34,46 @@ const NOTIFICATION_SORTABLE = {
 // mais recentes, exatamente como antes. Quem manda limit/offset entra na
 // paginação real (LIMIT/OFFSET + total com os mesmos filtros).
 const LEGACY_LIMIT = 100;
+
+function communicationCreditError(res, error) {
+  if (error instanceof CommunicationCreditError) {
+    res.status(error.statusCode).json({ error: error.message, code: error.code });
+    return true;
+  }
+  return false;
+}
+
+// Saldo por canal, franquia mensal do plano e extrato da competência atual.
+// Não exige feature de automação: mesmo no plano sem WhatsApp a clínica precisa
+// enxergar o saldo e as recargas disponíveis antes de decidir fazer upgrade.
+router.get("/api/communication-credits", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
+  try {
+    const periodKey = req.query.period ? String(req.query.period) : undefined;
+    // O mesmo client do tenant não pode abrir duas transações concorrentes.
+    const balance = await communicationCreditBalance(db, req.tenant.id, { periodKey });
+    const history = await communicationCreditHistory(db, req.tenant.id, { periodKey, limit: req.query.limit });
+    res.json({ balance, products: COMMUNICATION_CREDIT_PRODUCTS, history });
+  } catch (error) {
+    if (!communicationCreditError(res, error)) throw error;
+  }
+}));
+
+// Checkout ainda não está conectado. Esta rota registra somente a intenção,
+// com preço e créditos definidos pelo servidor (nunca pelo browser), e não
+// altera saldo. O webhook do gateway será o único caminho para grantTopup().
+router.post("/api/communication-credits/purchase", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin"])) return;
+  const product = communicationCreditProduct(req.body?.product_key);
+  if (!product) return res.status(400).json({ error: "Pacote de créditos inválido.", code: "invalid_credit_product" });
+  const created = await db.run(
+    `INSERT INTO communication_credit_purchase_intents
+      (product_key, channel, credits, amount_cents, metadata)
+     VALUES (?, ?, ?, ?, ?) RETURNING id, product_key, channel, credits, amount_cents, status, created_at`,
+    [product.key, product.channel, product.credits, product.price_cents, JSON.stringify({ requested_by_user_id: req.user.id })]
+  );
+  res.status(201).json({ intent: created.rows[0], checkout: { status: "pending", message: "Checkout de créditos será disponibilizado em breve." } });
+}));
 
 router.get("/api/notifications", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
@@ -127,7 +174,7 @@ router.patch("/api/automation-rules/:id", withFeature("message_templates", async
 
 router.post("/api/automations/process", withFeature("message_templates", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
-  res.json({ ok: true, ready: await processDueCommunications(db, req.body?.limit) });
+  res.json({ ok: true, ready: await processDueCommunications(db, req.body?.limit, req.tenant.id) });
 }));
 
 router.get("/api/automation-runs", withFeature("message_templates", async (req, res, db) => {

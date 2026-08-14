@@ -4,6 +4,7 @@ import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
 import { requireRole, extractBearerToken, decodeToken } from "../middleware/auth.js";
 import { recordError, listErrorLogs } from "../services/errorLogs.js";
+import { publicErrorLogLimiter } from "../middleware/rateLimit.js";
 
 const router = Router();
 
@@ -17,8 +18,11 @@ function softUserId(req) {
 }
 
 // Ingestão pública de erros do frontend.
-router.post("/api/error-logs", withDb(async (req, res, db) => {
+router.post("/api/error-logs", publicErrorLogLimiter, withDb(async (req, res, db) => {
   const body = req.body || {};
+  if (typeof body.message !== "string" || !body.message.trim()) {
+    return res.status(400).json({ error: "Mensagem de erro obrigatória." });
+  }
   await recordError(db, {
     source: "frontend",
     level: body.level,
@@ -28,7 +32,9 @@ router.post("/api/error-logs", withDb(async (req, res, db) => {
     context: body.context,
     status_code: body.status_code,
     user_id: softUserId(req),
-    user_email: body.user_email,
+    // E-mail informado pelo cliente nunca é confiável e aumenta a coleta de
+    // PII. O user_id best-effort já permite correlacionar uma sessão válida.
+    user_email: null,
     user_agent: req.headers["user-agent"]
   });
   res.status(201).json({ ok: true });

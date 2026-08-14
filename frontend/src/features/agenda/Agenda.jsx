@@ -1,17 +1,18 @@
 ﻿// Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useMemo, useState } from "react";
-import { Calendar, CheckCircle2, ChevronLeft, ChevronRight, Clock, ShieldCheck, XCircle } from "lucide-react";
-import { Button, Input, PaymentSelect, Select, StatusBadge, StatusSelect } from "../../components/common/Ui";
-import { Modal, CrudHeader, ConfirmDeleteModal } from "../../components/common/Crud";
+import { ArrowLeft, ChevronLeft, ChevronRight, Copy, ExternalLink, List, Plus, Settings2 } from "lucide-react";
+import { Button, FinancialSummary, Input, PaymentSelect, Select, StatusBadge, StatusSelect } from "../../components/common/Ui";
+import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { Loading } from "../../components/common/Feedback";
 import { asArray, asNumber, asObject, formatDate } from "../../lib/utils";
-import { apiFetch, readStoredSession, useApiInvalidate, useFetch } from "../../lib/api";
+import { apiFetch, readStoredSession, tenantSlug, useApiInvalidate, useFetch } from "../../lib/api";
 import { buildCalendar, buildTimeSlots, dateKey, movePeriod } from "../../lib/calendarUtils";
 import { defaultAppointment, defaultProcedureForm, defaultProfessionalForm, defaultScheduleBlock, defaultServiceForm } from "../../lib/defaultForms";
 import { appointmentWhatsAppMessage, calcRemaining, currency, personName, statusClass, statuses, weekdayLabel, whatsappUrl } from "../../features/shared/helpers";
 import { Toggle } from "../../pages/CatalogCustomization";
 import { SmartCombobox } from "../../components/common/SmartCombobox";
+import { publicLinkForTenant } from "../../lib/publicRoutes";
 
 // formatDate() de lib/utils devolve dd/MM sem ano, e a agenda lista atendimentos
 // de anos diferentes na mesma tabela — aqui a data precisa do ano para não virar
@@ -51,46 +52,39 @@ function distinctOptions(values) {
   return [...new Set(values.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), "pt-BR"));
 }
 
-export function AgendaWorkspace() {
-  const [tab, setTab] = useState("visual");
-  const tabs = [
-    {
-      id: "visual",
-      title: "Agenda visual",
-      description: "Calendário mensal, semanal e diário com status dos atendimentos.",
-      icon: Calendar
-    },
-    {
-      id: "agendamentos",
-      title: "Agendamentos",
-      description: "Cadastro manual, cliente, joia, pagamento e status do atendimento.",
-      icon: Clock
-    },
-    {
-      id: "disponibilidade",
-      title: "Disponibilidade",
-      description: "Serviços online, horários disponíveis, bloqueios e solicitações pendentes.",
-      icon: ShieldCheck
+export function AgendaWorkspace({ initialScreen = "agenda", initialSettingsTab, onSettingsClosed }) {
+  const [screen, setScreen] = useState(initialScreen);
+  return screen === "settings"
+    ? <BookingAdmin initialTab={initialSettingsTab} onBack={() => { setScreen("agenda"); onSettingsClosed?.(); }} />
+    : <VisualCalendar onOpenSettings={() => setScreen("settings")} />;
+}
+
+function PublicBookingLink() {
+  const [copied, setCopied] = useState(false);
+  const slug = tenantSlug();
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
+  const url = slug ? publicLinkForTenant("/agendar", slug, origin) : "";
+
+  async function copy() {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // O endereço continua visível para cópia manual quando a área de
+      // transferência não estiver liberada pelo navegador.
     }
-  ];
+  }
 
   return (
-    <section className="agenda-workspace">
-      <div className="agenda-hub">
-        {tabs.map(({ id, title, description, icon: Icon }) => (
-          <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>
-            <Icon size={20} />
-            <span><strong>{title}</strong><small>{description}</small></span>
-            <ChevronRight size={17} />
-          </button>
-        ))}
-      </div>
-      <div className="agenda-tab-panel">
-        {tab === "visual" && <VisualCalendar />}
-        {tab === "agendamentos" && <Appointments />}
-        {tab === "disponibilidade" && <BookingAdmin />}
-      </div>
-    </section>
+    <div className="agenda-public-link">
+      <span className="agenda-public-link-label">Agendamento público</span>
+      {url ? <>
+        <button type="button" className="agenda-link-copy" onClick={copy} title="Copiar link público"><Copy size={15} /> {copied ? "Copiado!" : "Copiar"}</button>
+        <a className="agenda-link-open" href={url} target="_blank" rel="noreferrer" title="Abrir agendamento público" aria-label="Abrir agendamento público"><ExternalLink size={16} /></a>
+      </> : <span className="form-error">Defina o código público da clínica.</span>}
+    </div>
   );
 }
 
@@ -400,6 +394,8 @@ function AppointmentItemsEditor({ form, services, procedures = [], jewelry, onCh
       </div>
       {items.map((item, index) => {
         const selectedJewelry = asArray(jewelry).find((product) => String(product.id) === String(item.jewelry_id));
+        const selectedVariant = asArray(selectedJewelry?.variants).find((variant) => String(variant.id) === String(item.jewelry_variant_id));
+        const selectedStock = selectedVariant ? asNumber(selectedVariant.quantity) : asNumber(selectedJewelry?.inventory_quantity ?? selectedJewelry?.quantity);
         const selectedService = asArray(services).find((service) => String(service.id) === String(item.service_id));
         return (
           <div className={`appointment-item-row ${compact ? "compact" : ""}`} key={`${index}-${item.service_id}-${item.jewelry_id}`}>
@@ -428,7 +424,10 @@ function AppointmentItemsEditor({ form, services, procedures = [], jewelry, onCh
               {asArray(procedures).filter((procedure) => !item.service_id || String(procedure.service_id) === String(item.service_id)).map((procedure) => <option key={procedure.id} value={procedure.id}>{procedure.name}</option>)}
             </Select>
             <Input label="Região" value={item.region} onChange={(value) => updateItem(index, { region: value })} required={index === 0} />
-            <SmartCombobox label="Joia" value={item.jewelry_id} options={asArray(jewelry)} onChange={(value) => updateItem(index, { jewelry_id: value, jewelry_variant_id: "", jewelry_unit_price: 0 })} getMeta={(product) => [product.category, product.material, product.sku].filter(Boolean).join(" · ")} isDisabled={(product) => asArray(product.variants).length ? !asArray(product.variants).some((variant) => asNumber(variant.quantity) > 0) : asNumber(product.inventory_quantity ?? product.quantity) <= 0} />
+            <SmartCombobox label="Joia" value={item.jewelry_id} options={asArray(jewelry)} onChange={(value) => { if (!value) updateItem(index, { jewelry_id: "", jewelry_variant_id: "", jewelry_unit_price: 0 }); }} onSelect={(product) => {
+              const variant = asArray(product.variants).find((option) => asNumber(option.quantity) > 0) || asArray(product.variants)[0];
+              updateItem(index, { jewelry_id: String(product.id), jewelry_variant_id: variant?.id ? String(variant.id) : "", jewelry_unit_price: asNumber(variant?.sale_value || product.sale_value || 0) });
+            }} getMeta={(product) => [product.category, product.material, product.sku].filter(Boolean).join(" · ")} isDisabled={(product) => asArray(product.variants).length ? !asArray(product.variants).some((variant) => asNumber(variant.quantity) > 0) : asNumber(product.inventory_quantity ?? product.quantity) <= 0} />
             <Select label="Variação" value={item.jewelry_variant_id} onChange={(value) => {
               const variant = asArray(selectedJewelry?.variants).find((option) => String(option.id) === String(value));
               updateItem(index, { jewelry_variant_id: value, jewelry_unit_price: asNumber(variant?.sale_value || selectedJewelry?.sale_value || 0) });
@@ -440,6 +439,12 @@ function AppointmentItemsEditor({ form, services, procedures = [], jewelry, onCh
             </Select>
             <Input type="number" label="Qtd." value={item.quantity} onChange={(value) => updateItem(index, { quantity: value })} />
             <button type="button" className="secondary-button danger" onClick={() => removeItem(index)} disabled={items.length === 1}>Remover</button>
+            {selectedJewelry && <div className="appointment-jewelry-selected" data-product-id={selectedJewelry.id}>
+              <strong>{selectedJewelry.name}</strong><span>ID {selectedJewelry.id}</span>
+              <span>{selectedVariant ? `Variação: ${selectedVariant.variation_name || selectedVariant.sku}` : "Sem variação"}</span>
+              <span>Qtd. {Math.max(1, asNumber(item.quantity, 1))}</span><span>Preço {currency.format(asNumber(item.jewelry_unit_price))}</span>
+              <span>Estoque {selectedStock} un.</span><span>Subtotal {currency.format(asNumber(item.jewelry_unit_price) * Math.max(1, asNumber(item.quantity, 1)))}</span>
+            </div>}
           </div>
         );
       })}
@@ -470,22 +475,32 @@ function AppointmentValueSummary({ form, services, jewelry }) {
   }, [form.coupon_code, values.totalValue]);
   if (!form.service_id && !form.jewelry_id) return null;
   const finalTotal = quote?.valid ? asNumber(quote.final_amount) : values.totalValue;
+  const discountAmount = asNumber(quote?.discount_amount || 0);
+  const depositPaid = ["pago", "confirmado"].includes(String(form.deposit_status || "pendente").toLowerCase())
+    ? values.depositValue
+    : 0;
+  const summary = {
+    serviceSubtotal: values.procedureValue,
+    productSubtotal: values.jewelryValue,
+    grossTotal: values.totalValue,
+    couponCode: String(form.coupon_code || "").trim() || null,
+    discountTotal: discountAmount,
+    netTotal: finalTotal,
+    depositPaid,
+    otherPayments: 0,
+    totalPaid: depositPaid,
+    outstandingBalance: Math.max(finalTotal - depositPaid, 0)
+  };
   return (
     <div className="soft-card appointment-value-summary">
-      <span>Procedimento: <strong>{currency.format(values.procedureValue)}</strong></span>
-      <span>Joalheria: <strong>{currency.format(values.jewelryValue)}</strong></span>
-      <span>Sinal: <strong>{currency.format(values.depositValue)}</strong></span>
-      <span>Subtotal: <strong>{currency.format(values.totalValue)}</strong></span>
-      {quote?.discount_amount > 0 && <span>Cupom aplicado: <strong>−{currency.format(quote.discount_amount)}</strong></span>}
-      <span>Restante: <strong>{currency.format(Math.max(finalTotal - values.depositValue, 0))}</strong></span>
-      <span>Total final: <strong>{currency.format(finalTotal)}</strong></span>
+      <FinancialSummary summary={summary} />
       {quote?.discount_amount > 0 && <small className="form-success">Cupom aplicado com sucesso.</small>}
       {couponError && <small className="form-error">{couponError}</small>}
     </div>
   );
 }
 
-export function VisualCalendar() {
+export function VisualCalendar({ onOpenSettings }) {
   const { data: options } = useFetch("/options");
   const { data: clients } = useFetch("/clients");
   const { data: services } = useFetch("/services");
@@ -494,20 +509,31 @@ export function VisualCalendar() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [createSeed, setCreateSeed] = useState(null);
-  const { data } = useFetch(`/appointments?${new URLSearchParams(Object.fromEntries(Object.entries(filters).filter(([, v]) => v && !["mensal", "semanal", "diario"].includes(v))))}`);
+  const { data } = useFetch(`/appointments?${new URLSearchParams(Object.fromEntries(Object.entries(filters).filter(([, v]) => v && !["mensal", "semanal", "diario", "lista"].includes(v))))}`);
   // Invalidar "/appointments" alcança o calendário sob qualquer combinação de
   // filtros, não só a consulta que está montada agora.
   const invalidate = useApiInvalidate();
   const refresh = () => invalidate("/appointments", "/clients", "/dashboard");
   const refreshClients = refresh;
   const safeOptions = asObject(options);
-  const calendar = useMemo(() => buildCalendar(asArray(data), filters.mode, currentDate), [data, filters.mode, currentDate]);
+  const calendar = useMemo(() => filters.mode === "lista" ? null : buildCalendar(asArray(data), filters.mode, currentDate), [data, filters.mode, currentDate]);
 
   return (
     <section className="stack">
+      <div className="panel agenda-page-heading">
+        <div>
+          <span className="eyebrow">Gestão de agenda</span>
+          <h2>Agenda</h2>
+        </div>
+        <div className="agenda-page-actions">
+          <PublicBookingLink />
+          <Button variant="secondary" onClick={onOpenSettings}><Settings2 size={16} /> Configurações</Button>
+          <Button onClick={() => setCreateSeed({})}><Plus size={16} /> Novo agendamento</Button>
+        </div>
+      </div>
       <div className="toolbar">
         <div className="segmented">
-          {["mensal", "semanal", "diario"].map((mode) => <button key={mode} className={filters.mode === mode ? "active" : ""} onClick={() => setFilters({ ...filters, mode })}>{mode}</button>)}
+          {[["mensal", "Mensal"], ["semanal", "Semanal"], ["diario", "Diário"], ["lista", "Lista"]].map(([mode, label]) => <button key={mode} className={filters.mode === mode ? "active" : ""} onClick={() => setFilters({ ...filters, mode })}>{mode === "lista" && <List size={15} />}{label}</button>)}
         </div>
         <Select label="Profissional" value={filters.professional_id} onChange={(v) => setFilters({ ...filters, professional_id: v })}>
           <option value="">Todos</option>
@@ -517,14 +543,16 @@ export function VisualCalendar() {
           <option value="">Todos</option>
           {statuses().map((status) => <option key={status}>{status}</option>)}
         </Select>
-        <div className="calendar-nav">
+        {calendar && <div className="calendar-nav">
           <button aria-label="Período anterior" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, -1))}><ChevronLeft size={18} /></button>
           <strong>{calendar.title}</strong>
           <button aria-label="Próximo período" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, 1))}><ChevronRight size={18} /></button>
           <button onClick={() => setCurrentDate(new Date())}>Hoje</button>
-        </div>
+        </div>}
       </div>
-      {filters.mode === "diario" ? (
+      {filters.mode === "lista" ? (
+        <div className="panel"><AppointmentList appointments={asArray(data)} onChanged={refresh} /></div>
+      ) : filters.mode === "diario" ? (
         <DailyAgenda day={calendar.days[0]} refresh={refresh} onSelect={setSelectedAppointment} onEmptySlot={setCreateSeed} />
       ) : (
         <GoogleLikeCalendar days={calendar.days} mode={filters.mode} refresh={refresh} onSelect={setSelectedAppointment} onEmptySlot={setCreateSeed} />
@@ -544,6 +572,9 @@ export function VisualCalendar() {
       />
       <AppointmentQuickModal
         appointment={selectedAppointment}
+        options={safeOptions}
+        services={services}
+        procedures={procedures}
         onClose={() => setSelectedAppointment(null)}
         onSaved={() => {
           setSelectedAppointment(null);
@@ -725,26 +756,45 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
   );
 }
 
-export function AppointmentQuickModal({ appointment, onClose, onSaved }) {
+export function AppointmentQuickModal({ appointment, options, services, procedures, onClose, onSaved }) {
   const [form, setForm] = useState({ appointment_date: "", appointment_time: "", status: "pendente", notes: "" });
   const [payments, setPayments] = useState([{ method: "Pix", amount: 0, status: "pago", installments: 1, fee_amount: 0, expected_receipt_date: "" }]);
   const [financialNotes, setFinancialNotes] = useState("");
   const [error, setError] = useState("");
   const [deletion, setDeletion] = useState(null);
+  const safeServices = asArray(services);
+  const safeProcedures = asArray(procedures);
+  const safeJewelry = asArray(asObject(options).jewelry);
 
   useEffect(() => {
     if (!appointment) return;
-    setForm({
+    const seededItems = asArray(appointment.appointment_items).length
+      ? appointment.appointment_items
+      : [emptyAppointmentItem({
+          ...appointment,
+          region: appointment.piercing_region,
+          procedure_price: appointment.service_value,
+          jewelry_unit_price: appointment.jewelry_value
+        })];
+    setForm(priceAppointmentDraft({
       appointment_date: appointment.appointment_date || "",
       appointment_time: appointment.appointment_time || "",
       status: appointment.status || "pendente",
-      notes: appointment.notes || ""
-    });
+      notes: appointment.notes || "",
+      deposit_value: appointment.deposit_value || 0,
+      deposit_status: appointment.deposit_status || "pendente",
+      coupon_code: appointment.coupon_code || "",
+      appointment_items: seededItems
+    }, safeServices, safeJewelry));
     setPayments([{ method: appointment.remaining_payment_method || "Pix", amount: Math.max(0, Number(appointment.remaining_value || 0)), status: "pago", installments: 1, fee_amount: 0, expected_receipt_date: "" }]);
     setFinancialNotes(appointment.financial_notes || "");
     setError("");
     setDeletion(null);
-  }, [appointment]);
+  }, [appointment, services, options]);
+
+  function updatePricedForm(nextForm) {
+    setForm(priceAppointmentDraft(nextForm, safeServices, safeJewelry));
+  }
 
   async function openDeletion() {
     setError("");
@@ -768,7 +818,12 @@ export function AppointmentQuickModal({ appointment, onClose, onSaved }) {
   async function saveAppointment(patch = {}) {
     if (!appointment?.id) return;
     setError("");
-    const payload = { ...form, ...patch };
+    const pricedForm = priceAppointmentDraft(form, safeServices, safeJewelry);
+    const payload = {
+      ...pricedForm,
+      ...patch,
+      appointment_items: normalizeAppointmentFormItems(pricedForm, safeServices, safeJewelry)
+    };
     const response = await apiFetch(`/appointments/${appointment.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -784,6 +839,19 @@ export function AppointmentQuickModal({ appointment, onClose, onSaved }) {
 
   async function completeAppointment() {
     setError("");
+    const pricedForm = priceAppointmentDraft(form, safeServices, safeJewelry);
+    const updateResponse = await apiFetch(`/appointments/${appointment.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...pricedForm,
+        appointment_items: normalizeAppointmentFormItems(pricedForm, safeServices, safeJewelry)
+      })
+    });
+    if (!updateResponse.ok) {
+      const updateData = await updateResponse.json().catch(() => ({}));
+      return setError(updateData.error || "Não foi possível salvar os itens do atendimento.");
+    }
     const response = await apiFetch(`/appointments/${appointment.id}/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ payments, financial_notes: financialNotes }) });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) return setError(data.error || "Não foi possível concluir o atendimento.");
@@ -816,6 +884,15 @@ export function AppointmentQuickModal({ appointment, onClose, onSaved }) {
             <Input type="time" label="Horário" value={form.appointment_time} onChange={(value) => setForm({ ...form, appointment_time: value })} />
             <StatusSelect value={form.status} onChange={(value) => setForm({ ...form, status: value })} />
           </div>
+          <AppointmentItemsEditor
+            form={form}
+            services={safeServices}
+            procedures={safeProcedures}
+            jewelry={safeJewelry}
+            onChange={updatePricedForm}
+            compact
+          />
+          <AppointmentValueSummary form={form} services={safeServices} jewelry={safeJewelry} />
           <label>Observação
             <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
           </label>
@@ -848,27 +925,24 @@ export function AppointmentQuickModal({ appointment, onClose, onSaved }) {
   );
 }
 
-export function BookingAdmin() {
+export function BookingAdmin({ onBack, initialTab }) {
   const { data: services } = useFetch("/services");
   const { data: procedures } = useFetch("/procedures");
   const { data: professionalsData } = useFetch("/professionals");
-  const { data: readiness } = useFetch("/booking/readiness");
   const { data: options } = useFetch("/options");
   const { data: availability } = useFetch("/availability");
   const { data: blocks } = useFetch("/schedule-blocks");
   const { data: appointments } = useFetch("/appointments?status=pendente");
   // Serviço, procedimento e profissional alimentam também "/options" (usado nos
-  // formulários da agenda) e "/booking/readiness" (semáforo do agendamento
-  // online): salvar num lugar tinha que atualizar os dois, e não atualizava.
+  // Os cadastros daqui também alimentam o checklist do Onboarding.
   const invalidate = useApiInvalidate();
   const refreshServices = () => invalidate("/services", "/options", "/booking/readiness");
   const refreshProcedures = () => invalidate("/procedures", "/options", "/booking/readiness");
   const refreshProfessionals = () => invalidate("/professionals", "/options", "/booking/readiness");
-  const refreshReadiness = () => invalidate("/booking/readiness");
   const refreshAvailability = () => invalidate("/availability", "/booking/readiness");
   const refreshBlocks = () => invalidate("/schedule-blocks", "/availability");
   const refreshAppointments = () => invalidate("/appointments", "/dashboard");
-  const [tab, setTab] = useState("servicos");
+  const [tab, setTab] = useState(initialTab || "servicos");
   const [serviceForm, setServiceForm] = useState(defaultServiceForm());
   const [editingServiceId, setEditingServiceId] = useState(null);
   const [serviceModalOpen, setServiceModalOpen] = useState(false);
@@ -897,12 +971,9 @@ export function BookingAdmin() {
   const safeBlocks = asArray(blocks);
   const safeAppointments = asArray(appointments);
 
-  const readinessData = asObject(readiness);
-  const checklist = asArray(readinessData.checklist);
   const activeServices = safeServices.filter((service) => Boolean(Number(service.is_active ?? service.active_online_booking)));
   const activeProcedures = safeProcedures.filter((procedure) => Boolean(Number(procedure.is_active)));
   const activeProfessionals = allProfessionals.filter((professional) => Boolean(Number(professional.active)));
-  const isBookingReady = Boolean(readinessData.ready);
   const weeklyWeekdays = [0, 1, 2, 3, 4, 5, 6];
 
   function defaultWeeklyDay(weekday, professionalId = weeklyProfessionalId) {
@@ -955,7 +1026,7 @@ export function BookingAdmin() {
     setWeeklyDays(weeklyDaysForProfessional(weeklyProfessionalId));
   }, [availability, weeklyProfessionalId, activeProfessionals.length]);
 
-  if (services == null || procedures == null || professionalsData == null || readiness == null || availability == null || blocks == null || appointments == null) return <Loading />;
+  if (services == null || procedures == null || professionalsData == null || availability == null || blocks == null || appointments == null) return <Loading />;
 
   function validateServiceForm() {
     if (!serviceForm.name.trim()) return "Informe o nome do serviço.";
@@ -1138,13 +1209,12 @@ export function BookingAdmin() {
     });
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
-      return setProfessionalError(payload.error || "NÃ£o foi possÃ­vel salvar o profissional.");
+      return setProfessionalError(payload.error || "Não foi possível salvar o profissional.");
     }
     setProfessionalForm(defaultProfessionalForm());
     setEditingProfessionalId(null);
     setProfessionalModalOpen(false);
     refreshProfessionals();
-    refreshReadiness();
   }
 
   function removeProfessional(professional) {
@@ -1154,53 +1224,20 @@ export function BookingAdmin() {
         const response = await apiFetch(`/professionals/${professional.id}`, { method: "DELETE" });
         if (!response.ok) {
           const payload = await response.json().catch(() => ({}));
-          return setProfessionalError(payload.error || "NÃ£o foi possÃ­vel excluir o profissional.");
+          return setProfessionalError(payload.error || "Não foi possível excluir o profissional.");
         }
         refreshProfessionals();
         refreshAvailability();
-        refreshReadiness();
       }
     });
-  }
-
-  async function updateAvailability(item, patch) {
-    await apiFetch(`/availability/${item.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...item, ...patch })
-    });
-    refreshAvailability();
-    refreshReadiness();
-  }
-
-  async function createDefaultAvailability(professionalId) {
-    if (!professionalId) return;
-    await apiFetch("/availability/generate-weekly", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        professional_id: professionalId,
-        is_active: true,
-        start_time: "09:00",
-        end_time: "18:00",
-        lunch_start: "12:00",
-        lunch_end: "13:00",
-        duration_minutes: 40,
-        buffer_minutes: 10,
-        weekdays: [1, 2, 3, 4, 5, 6]
-      })
-    });
-    setWeeklyProfessionalId(String(professionalId));
-    refreshAvailability();
-    refreshReadiness();
   }
 
   async function saveWeeklyAvailability(event) {
     event.preventDefault();
     setReadinessMessage("");
     if (!activeProfessionals.length) return setReadinessMessage("Cadastre e ative pelo menos um profissional antes de configurar a agenda semanal.");
-    if (!activeServices.length) return setReadinessMessage("Cadastre e ative pelo menos um serviÃ§o antes de configurar a agenda semanal.");
-    if (!activeProcedures.length) return setReadinessMessage("Cadastre e ative pelo menos um procedimento vinculado ao serviÃ§o.");
+    if (!activeServices.length) return setReadinessMessage("Cadastre e ative pelo menos um serviço antes de configurar a agenda semanal.");
+    if (!activeProcedures.length) return setReadinessMessage("Cadastre e ative pelo menos um procedimento vinculado ao serviço.");
     if (!weeklyProfessionalId) return setReadinessMessage("Escolha o profissional da agenda semanal.");
     const response = await apiFetch("/availability/generate-weekly", {
       method: "POST",
@@ -1220,14 +1257,6 @@ export function BookingAdmin() {
     }
     setReadinessMessage("Disponibilidade semanal salva com sucesso.");
     refreshAvailability();
-    refreshReadiness();
-  }
-
-  function validatePublicLink(event) {
-    if (isBookingReady) return;
-    event.preventDefault();
-    const missing = asArray(readinessData.missing);
-    setReadinessMessage(`Agendamento online ainda nÃ£o estÃ¡ pronto. Falta: ${missing.join(", ")}.`);
   }
 
   function openNewBlock() {
@@ -1285,41 +1314,14 @@ export function BookingAdmin() {
 
   return (
     <section className="booking-admin-page">
-      <header className="availability-header">
+      <header className="availability-header agenda-settings-header">
         <div>
-          <span className="eyebrow">Agendamento online</span>
-          <h2>Disponibilidade</h2>
-          <p>Configure serviços, horários, bloqueios e solicitações vindas do link público.</p>
+          <h2>Configurações da agenda</h2>
         </div>
-        <a className="primary-button" href="/agendar" target="_blank" rel="noreferrer" onClick={validatePublicLink}>Abrir link público</a>
+        <div className="availability-header-actions">
+          <Button variant="secondary" onClick={onBack}><ArrowLeft size={16} /> Voltar para agenda</Button>
+        </div>
       </header>
-      <div className="panel">
-        <div className="panel-heading">
-          <h2>Configuração do Agendamento Online</h2>
-          <span>{isBookingReady ? "Link público pronto para uso." : "Seu agendamento online ainda não está pronto."}</span>
-        </div>
-        <div className="metric-grid">
-          {checklist.map((item) => (
-            <article className="metric-card" key={item.key}>
-              {item.done ? <CheckCircle2 size={20} /> : <XCircle size={20} />}
-              <span>{item.label}</span>
-              <strong>{item.done ? "Concluído" : "Pendente"}</strong>
-            </article>
-          ))}
-        </div>
-        {!isBookingReady && (
-          <div className="empty-state">
-            Seu agendamento online ainda não está pronto. Cadastre primeiro os profissionais, serviços, procedimentos e horários semanais.
-            <div className="row-actions">
-              <button type="button" onClick={() => setTab("profissionais")}>Cadastrar profissional</button>
-              <button type="button" onClick={() => setTab("servicos")}>Cadastrar serviço</button>
-              <button type="button" onClick={() => setTab("servicos")}>Cadastrar procedimento</button>
-              <button type="button" onClick={() => setTab("horarios")}>Configurar agenda semanal</button>
-            </div>
-          </div>
-        )}
-        {readinessMessage && <span className="form-error">{readinessMessage}</span>}
-      </div>
       <nav className="customization-tabs">
         {[
           ["profissionais", "Profissionais"],
@@ -1365,12 +1367,10 @@ export function BookingAdmin() {
               { key: "service_ids", label: "Serviços", value: (professional) => asArray(professional.service_ids).length, render: (professional) => asArray(professional.service_ids).length ? `${asArray(professional.service_ids).length} serviço(s)` : "Sem vínculo" },
               { key: "active", label: "Status", value: (professional) => professional.active ? "Ativo" : "Inativo", render: (professional) => <StatusBadge status={professional.active ? "Ativo" : "Inativo"} /> },
             ]}
-            actions={(professional) => (
-              <>
-                <button type="button" onClick={() => editProfessional(professional)}>Editar</button>
-                <button type="button" onClick={() => removeProfessional(professional)}>Excluir</button>
-              </>
-            )}
+            actions={(professional) => <RowActions actions={[
+              { label: "Editar", onClick: () => editProfessional(professional), primary: true },
+              { label: "Excluir", onClick: () => removeProfessional(professional), danger: true },
+            ]} />}
             empty="Cadastre pelo menos um profissional para liberar o agendamento online."
             emptyFiltered="Nenhum profissional corresponde aos filtros aplicados."
           />
@@ -1444,12 +1444,10 @@ export function BookingAdmin() {
                 { key: "base_price", label: "Preço base", value: (service) => asNumber(service.base_price), render: (service) => currency.format(service.base_price || 0) },
                 { key: "is_active", label: "Status", value: (service) => service.is_active ? "Ativo" : "Inativo", render: (service) => <StatusBadge status={service.is_active ? "Ativo" : "Inativo"} /> },
               ]}
-              actions={(service) => (
-                <>
-                  <button type="button" onClick={() => editService(service)}>Editar</button>
-                  <button type="button" onClick={() => removeService(service)}>Excluir</button>
-                </>
-              )}
+              actions={(service) => <RowActions actions={[
+                { label: "Editar", onClick: () => editService(service), primary: true },
+                { label: "Excluir", onClick: () => removeService(service), danger: true },
+              ]} />}
               empty="Você ainda não possui serviços cadastrados."
               emptyFiltered="Nenhum serviço corresponde aos filtros aplicados."
             />
@@ -1497,12 +1495,10 @@ export function BookingAdmin() {
                 { key: "price", label: "Preço", value: (procedure) => asNumber(procedure.price), render: (procedure) => currency.format(procedure.price || 0) },
                 { key: "is_active", label: "Status", value: (procedure) => procedure.is_active ? "Ativo" : "Inativo", render: (procedure) => <StatusBadge status={procedure.is_active ? "Ativo" : "Inativo"} /> },
               ]}
-              actions={(procedure) => (
-                <>
-                  <button type="button" onClick={() => editProcedure(procedure)}>Editar</button>
-                  <button type="button" onClick={() => removeProcedure(procedure)}>Excluir</button>
-                </>
-              )}
+              actions={(procedure) => <RowActions actions={[
+                { label: "Editar", onClick: () => editProcedure(procedure), primary: true },
+                { label: "Excluir", onClick: () => removeProcedure(procedure), danger: true },
+              ]} />}
               empty="Você ainda não possui procedimentos cadastrados."
               emptyFiltered="Nenhum procedimento corresponde aos filtros aplicados."
             />
@@ -1565,66 +1561,40 @@ export function BookingAdmin() {
         </div>
       )}
       {tab === "horarios" && (
-        <div className="stack">
-          <article className="panel">
-            <div className="panel-heading">
-              <h2>Agenda semanal</h2>
-              <span>Salve os horários fixos antes de liberar o link público.</span>
-            </div>
-            <form onSubmit={saveWeeklyAvailability}>
-              <div className="form-grid">
-                <Select label="Profissional" value={weeklyProfessionalId} onChange={(value) => setWeeklyProfessionalId(value)}>
-                  <option value="">Escolha um profissional</option>
-                  {activeProfessionals.map((professional) => <option value={professional.id} key={professional.id}>{professional.name}</option>)}
-                </Select>
-              </div>
-              <div className="availability-grid">
-                {weeklyWeekdays.map((weekday) => (
-                  <article className="panel availability-card" key={weekday}>
-                    <div className="panel-heading"><h2>{weekdayLabel(weekday)}</h2><span>{weekday === 0 ? "Indisponível por padrão" : "Horário semanal"}</span></div>
-                    <Toggle label="Atende neste dia" checked={Boolean(weeklyDays.find((day) => day.weekday === weekday)?.is_active)} onChange={(value) => updateWeeklyDay(weekday, { is_active: value })} />
-                    <div className="form-grid">
-                      <Input label="Início" value={weeklyDays.find((day) => day.weekday === weekday)?.start_time || "09:00"} onChange={(value) => updateWeeklyDay(weekday, { start_time: value })} />
-                      <Input label="Final" value={weeklyDays.find((day) => day.weekday === weekday)?.end_time || "18:00"} onChange={(value) => updateWeeklyDay(weekday, { end_time: value })} />
-                      <Input label="Almoço início" value={weeklyDays.find((day) => day.weekday === weekday)?.lunch_start || ""} onChange={(value) => updateWeeklyDay(weekday, { lunch_start: value })} />
-                      <Input label="Almoço final" value={weeklyDays.find((day) => day.weekday === weekday)?.lunch_end || ""} onChange={(value) => updateWeeklyDay(weekday, { lunch_end: value })} />
-                      <Input type="number" label="Duração padrão" value={weeklyDays.find((day) => day.weekday === weekday)?.duration_minutes || 40} onChange={(value) => updateWeeklyDay(weekday, { duration_minutes: value })} />
-                      <Input type="number" label="Intervalo" value={weeklyDays.find((day) => day.weekday === weekday)?.buffer_minutes || 10} onChange={(value) => updateWeeklyDay(weekday, { buffer_minutes: value })} />
-                    </div>
-                  </article>
-                ))}
-              </div>
-              <p className="empty-state">Domingo fica desligado por padrão. Para liberar apenas uma data específica, crie um horário especial em Disponibilidade avançada.</p>
-              <Button variant="primary" type="submit">Salvar disponibilidade individual</Button>
-            </form>
-          </article>
-          <div className="availability-grid">
-            {!safeAvailability.length && (
-              <article className="panel availability-card">
-                <div className="panel-heading"><h2>Sem horários cadastrados</h2><span>Seu agendamento online ainda não está pronto.</span></div>
-                <p className="empty-state">Cadastre primeiro os profissionais, serviços e procedimentos. Depois gere a agenda semanal.</p>
-                <Select label="Gerar semana padrão para" value="" onChange={createDefaultAvailability}>
-                  <option value="">Escolha um profissional</option>
-                  {activeProfessionals.map((professional) => <option value={professional.id} key={professional.id}>{professional.name}</option>)}
-                </Select>
-              </article>
-            )}
-            {safeAvailability.map((item) => (
-              <article className="panel availability-card" key={item.id}>
-                <div className="panel-heading"><h2>{weekdayLabel(item.weekday)}</h2><span>{item.professional_name}</span></div>
-                <Toggle label="Atende neste dia" checked={item.is_active} onChange={(value) => updateAvailability(item, { is_active: value })} />
-                <div className="form-grid">
-                  <Input label="Início" value={item.start_time} onChange={(value) => updateAvailability(item, { start_time: value })} />
-                  <Input label="Final" value={item.end_time} onChange={(value) => updateAvailability(item, { end_time: value })} />
-                  <Input label="Almoço início" value={item.lunch_start || ""} onChange={(value) => updateAvailability(item, { lunch_start: value })} />
-                  <Input label="Almoço final" value={item.lunch_end || ""} onChange={(value) => updateAvailability(item, { lunch_end: value })} />
-                  <Input type="number" label="Duração padrão" value={item.duration_minutes} onChange={(value) => updateAvailability(item, { duration_minutes: value })} />
-                  <Input type="number" label="Intervalo" value={item.buffer_minutes} onChange={(value) => updateAvailability(item, { buffer_minutes: value })} />
-                </div>
-              </article>
-            ))}
+        <article className="panel weekly-schedule-panel">
+          <div className="panel-heading">
+            <div><h2>Agenda semanal</h2><span>Escolha o profissional e defina os dias e horários de atendimento.</span></div>
           </div>
-        </div>
+          {readinessMessage && <p className={readinessMessage.includes("sucesso") ? "form-success" : "form-error"}>{readinessMessage}</p>}
+          <form onSubmit={saveWeeklyAvailability}>
+            <div className="weekly-schedule-toolbar">
+              <Select label="Profissional" value={weeklyProfessionalId} onChange={(value) => setWeeklyProfessionalId(value)}>
+                <option value="">Escolha um profissional</option>
+                {activeProfessionals.map((professional) => <option value={professional.id} key={professional.id}>{professional.name}</option>)}
+              </Select>
+              <Button variant="primary" type="submit" disabled={!weeklyProfessionalId}>Salvar agenda semanal</Button>
+            </div>
+            <div className="weekly-schedule-list">
+              {weeklyWeekdays.map((weekday) => {
+                const day = weeklyDays.find((item) => Number(item.weekday) === weekday) || defaultWeeklyDay(weekday);
+                const active = Boolean(day.is_active);
+                return <article className={`weekly-schedule-row ${active ? "" : "is-inactive"}`} key={weekday}>
+                  <label className="weekly-day-toggle"><input type="checkbox" checked={active} onChange={(event) => updateWeeklyDay(weekday, { is_active: event.target.checked })} /><span><strong>{weekdayLabel(weekday)}</strong><small>{active ? "Atende" : "Fechado"}</small></span></label>
+                  <label><span>Início</span><input type="time" value={day.start_time || "09:00"} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { start_time: event.target.value })} /></label>
+                  <label><span>Fim</span><input type="time" value={day.end_time || "18:00"} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { end_time: event.target.value })} /></label>
+                  <label><span>Pausa</span><input type="time" value={day.lunch_start || ""} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { lunch_start: event.target.value })} /></label>
+                  <label><span>Retorno</span><input type="time" value={day.lunch_end || ""} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { lunch_end: event.target.value })} /></label>
+                  <details className="weekly-schedule-advanced">
+                    <summary>Ajustes</summary>
+                    <label><span>Duração (min.)</span><input type="number" min="1" value={day.duration_minutes || 40} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { duration_minutes: event.target.value })} /></label>
+                    <label><span>Intervalo (min.)</span><input type="number" min="0" value={day.buffer_minutes || 10} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { buffer_minutes: event.target.value })} /></label>
+                  </details>
+                </article>;
+              })}
+            </div>
+            <p className="field-optional">Domingo começa fechado. Para exceções pontuais, use Disponibilidade avançada.</p>
+          </form>
+        </article>
       )}
 
       {tab === "bloqueios" && (
@@ -1668,12 +1638,10 @@ export function BookingAdmin() {
                 { key: "start_datetime", label: "Início", render: (block) => new Date(block.start_datetime).toLocaleString("pt-BR") },
                 { key: "end_datetime", label: "Final", render: (block) => new Date(block.end_datetime).toLocaleString("pt-BR") },
               ]}
-              actions={(block) => (
-                <>
-                  <button type="button" onClick={() => editBlock(block)}>Editar</button>
-                  <button type="button" onClick={() => removeBlock(block)}>Excluir</button>
-                </>
-              )}
+              actions={(block) => <RowActions actions={[
+                { label: "Editar", onClick: () => editBlock(block), primary: true },
+                { label: "Excluir", onClick: () => removeBlock(block), danger: true },
+              ]} />}
               empty="Nenhuma regra avançada cadastrada ainda."
               emptyFiltered="Nenhuma regra corresponde aos filtros aplicados."
             />
@@ -1842,22 +1810,12 @@ export function AppointmentList({ appointments = [], onChanged, compact }) {
         }
       ]}
       actions={compact ? undefined : (item) => (
-        <>
-          <a
-            className="secondary-button"
-            title="WhatsApp"
-            aria-label={`Abrir WhatsApp de ${personName(item)}`}
-            href={whatsappUrl(item.whatsapp, appointmentWhatsAppMessage(item))}
-            target="_blank"
-            rel="noreferrer"
-          >WhatsApp</a>
-          <button
-            type="button"
-            title="Cancelar"
-            aria-label={`Cancelar o atendimento de ${personName(item)}`}
-            onClick={() => updateAppointment(item.id, { status: "cancelado" }, onChanged)}
-          ><XCircle size={16} /></button>
-        </>
+        <RowActions
+          actions={[
+            { label: "WhatsApp", href: whatsappUrl(item.whatsapp, appointmentWhatsAppMessage(item)), target: "_blank", rel: "noreferrer", primary: true },
+            { label: "Cancelar atendimento", onClick: () => updateAppointment(item.id, { status: "cancelado" }, onChanged), danger: true },
+          ]}
+        />
       )}
       empty="Nenhum atendimento encontrado."
       emptyFiltered="Nenhum atendimento corresponde aos filtros aplicados."
@@ -1873,4 +1831,3 @@ export async function updateAppointment(id, body, refresh) {
   });
   refresh?.();
 }
-

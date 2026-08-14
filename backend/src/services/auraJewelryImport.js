@@ -1,4 +1,5 @@
 import { AURA_JEWELRY_CATEGORIES, AURA_JEWELRY_SEED } from "../data/auraJewelrySeed.js";
+import { invalidateUsageCache } from "./planLimits.js";
 
 const CATEGORY_CODES = {
   "Labret": "LAB",
@@ -96,7 +97,7 @@ async function ensureCategoryOption(db, category, summary) {
   return null;
 }
 
-async function findProduct(db, key, item) {
+async function findProduct(db, item) {
   const rows = await db.all(
     "SELECT * FROM jewelry_inventory WHERE category = ? AND name = ? AND material = ? AND COALESCE(stone, '') = ? ORDER BY id LIMIT 1",
     [item.category, item.product, item.material, item.stone || ""]
@@ -105,7 +106,7 @@ async function findProduct(db, key, item) {
 }
 
 async function upsertProduct(db, item, index, summary) {
-  const existing = await findProduct(db, productImportKey(item), item);
+  const existing = await findProduct(db, item);
   if (existing) {
     await db.run(
       `UPDATE jewelry_inventory
@@ -240,7 +241,18 @@ async function syncImportedProduct(db, productId) {
   );
 }
 
-export async function importAuraJewelry(db, { logger = console } = {}) {
+/**
+ * Importa o catálogo Aura no schema já apontado pelo `db`.
+ *
+ * @param {any} db conexão já no schema da clínica.
+ * @param {{ logger?: any, tenantId?: number|null }} [options] `tenantId` serve
+ *   só para descartar a medição de cota da clínica ao final: uma importação
+ *   cria centenas de joias de uma vez, e o número contado antes dela ficaria
+ *   valendo por mais 15s. Sem o id, a medição de TODAS as clínicas é descartada
+ *   — mais caro, mas nunca errado (o cache é só atalho; o próximo cadastro
+ *   remede).
+ */
+export async function importAuraJewelry(db, { logger = console, tenantId = null } = {}) {
   const summary = {
     categoriesCreated: 0,
     categoriesExisting: 0,
@@ -304,6 +316,10 @@ export async function importAuraJewelry(db, { logger = console } = {}) {
     await db.run("ROLLBACK").catch(() => {});
     throw error;
   }
+
+  // Depois do COMMIT: até aqui nada foi criado de verdade, e invalidar antes só
+  // faria a próxima medição pegar o número antigo de novo.
+  invalidateUsageCache(tenantId);
 
   const publicSummary = { ...summary };
   delete publicSummary._seenExistingProducts;

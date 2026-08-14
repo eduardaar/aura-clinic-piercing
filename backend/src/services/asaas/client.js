@@ -188,6 +188,20 @@ export function createAsaasClient({ apiKey, baseUrl = ASAAS_BASE_URL, label = "a
     cancelPayment(paymentId) {
       return request("DELETE", `/payments/${encodeURIComponent(paymentId)}`);
     },
+    // PIX e cartão: o Asaas efetiva o estorno por este endpoint. O status
+    // interno só muda quando webhook/conciliação confirmar o efeito; responder
+    // 200 aqui significa "pedido aceito", não "dinheiro já devolvido".
+    refundPayment(paymentId, { value, description } = {}) {
+      return request("POST", `/payments/${encodeURIComponent(paymentId)}/refund`, {
+        value: value === undefined ? undefined : toAsaasValue(value),
+        description
+      });
+    },
+    // Boleto não devolve dinheiro imediatamente: cria um link para o pagador
+    // informar conta e documentação. Não o misturamos com refundPayment.
+    requestBankSlipRefund(paymentId) {
+      return request("POST", `/payments/${encodeURIComponent(paymentId)}/bankSlip/refund`, {});
+    },
     // Dados do PIX (QR code + copia-e-cola) de uma cobrança já criada.
     getPixQrCode(paymentId) {
       return request("GET", `/payments/${encodeURIComponent(paymentId)}/pixQrCode`);
@@ -201,50 +215,23 @@ export function createAsaasClient({ apiKey, baseUrl = ASAAS_BASE_URL, label = "a
       cycle = "MONTHLY",
       description,
       externalReference,
-      billingType = "UNDEFINED",
-      creditCard,
-      creditCardHolderInfo,
-      creditCardToken,
-      remoteIp
+      billingType = "UNDEFINED"
     }) {
+      if (String(billingType).toUpperCase() !== "UNDEFINED") {
+        throw new AsaasError(
+          "Assinaturas devem usar o checkout hospedado; cartão bruto não é aceito.",
+          { status: 400, code: "hosted_checkout_required" }
+        );
+      }
       const body = {
         customer,
-        billingType,
+        billingType: "UNDEFINED",
         value: toAsaasValue(value),
         nextDueDate: nextDueDate || minimumDueDate(),
         cycle,
         description,
         externalReference
       };
-      // Dados de cartão só viajam no fluxo CREDIT_CARD. Enviá-los junto de
-      // UNDEFINED faria o Asaas recusar a assinatura.
-      if (billingType === "CREDIT_CARD") {
-        if (creditCardToken) {
-          body.creditCardToken = creditCardToken;
-        } else if (creditCard) {
-          body.creditCard = {
-            holderName: creditCard.holderName,
-            number: onlyDigits(creditCard.number),
-            expiryMonth: creditCard.expiryMonth,
-            // O Asaas quer 4 dígitos ("2030"); o formulário coleta MM/AA.
-            expiryYear: creditCard.expiryYear,
-            ccv: onlyDigits(creditCard.ccv)
-          };
-          if (creditCardHolderInfo) {
-            body.creditCardHolderInfo = {
-              name: creditCardHolderInfo.name,
-              email: creditCardHolderInfo.email,
-              cpfCnpj: onlyDigits(creditCardHolderInfo.taxId),
-              postalCode: onlyDigits(creditCardHolderInfo.postalCode),
-              addressNumber: creditCardHolderInfo.addressNumber,
-              phone: onlyDigits(creditCardHolderInfo.phone)
-            };
-          }
-        }
-        // Obrigatório na cobrança de cartão: sem o IP real do portador o Asaas
-        // recusa a transação por antifraude.
-        if (remoteIp) body.remoteIp = remoteIp;
-      }
       return request("POST", "/subscriptions", body);
     },
     getSubscription(subscriptionId) {

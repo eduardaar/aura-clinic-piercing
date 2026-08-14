@@ -1,0 +1,1077 @@
+{
+  "tenant_slug": "aura-clinic",
+  "tenant_id": 2,
+  "schema": "tenant_2",
+  "rows": [
+    {
+      "source_row": 2,
+      "category": "Labret",
+      "product": "Labret",
+      "measure": "4 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 4,
+      "notes": ""
+    },
+    {
+      "source_row": 3,
+      "category": "Labret",
+      "product": "Labret",
+      "measure": "4 mm",
+      "thickness": "1,2 mm",
+      "color": "Dourado",
+      "quantity": 2,
+      "notes": "Anodizado"
+    },
+    {
+      "source_row": 4,
+      "category": "Labret",
+      "product": "Labret",
+      "measure": "5 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 5,
+      "category": "Labret",
+      "product": "Labret",
+      "measure": "6 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 2,
+      "notes": "Inclui 1 estéril"
+    },
+    {
+      "source_row": 6,
+      "category": "Labret",
+      "product": "Labret",
+      "measure": "6 mm",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": "Estéril"
+    },
+    {
+      "source_row": 7,
+      "category": "Labret",
+      "product": "Labret",
+      "measure": "7 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 7,
+      "notes": ""
+    },
+    {
+      "source_row": 8,
+      "category": "Labret",
+      "product": "Labret",
+      "measure": "8 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 10,
+      "notes": "Inclui 4 estéreis"
+    },
+    {
+      "source_row": 9,
+      "category": "Labret",
+      "product": "Labret",
+      "measure": "8 mm",
+      "thickness": "1,2 mm",
+      "color": "Rose Gold anodizado",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 10,
+      "category": "Labret",
+      "product": "Labret com topo Navete",
+      "measure": "8 mm",
+      "thickness": "1,6 mm",
+      "color": "Ouro",
+      "quantity": 1,
+      "notes": "Topo em navete"
+    },
+    {
+      "source_row": 11,
+      "category": "Labret",
+      "product": "Labret",
+      "measure": "10 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 12,
+      "notes": "Inclui 2 estéreis; 2 descritos como haste"
+    },
+    {
+      "source_row": 12,
+      "category": "Labret",
+      "product": "Labret",
+      "measure": "12 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 0,
+      "notes": "Sem estoque"
+    },
+    {
+      "source_row": 13,
+      "category": "Labret",
+      "product": "Labret",
+      "measure": "14 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 0,
+      "notes": "Sem estoque"
+    },
+    {
+      "source_row": 14,
+      "category": "Argolas / Segmentos",
+      "product": "Segmento / Clicker básico",
+      "measure": "6 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 0,
+      "notes": "Sem estoque"
+    },
+    {
+      "source_row": 15,
+      "category": "Argolas / Segmentos",
+      "product": "Segmento / Clicker básico",
+      "measure": "8 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 3,
+      "notes": "2 estoque + 1 estéril"
+    },
+    {
+      "source_row": 16,
+      "category": "Argolas / Segmentos",
+      "product": "Segmento cravejado lateral",
+      "measure": "8 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 17,
+      "category": "Argolas / Segmentos",
+      "product": "Segmento cravejado frontal pérolas",
+      "measure": "8 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 18,
+      "category": "Argolas / Segmentos",
+      "product": "Segmento coração meio cravejado",
+      "measure": "8 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 19,
+      "category": "Argolas / Segmentos",
+      "product": "Segmento / Clicker básico",
+      "measure": "10 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 2,
+      "notes": "1 estoque + 1 estéril"
+    },
+    {
+      "source_row": 20,
+      "category": "Argolas / Segmentos",
+      "product": "Segmento / Clicker básico",
+      "measure": "12 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": "Estéril"
+    },
+    {
+      "source_row": 21,
+      "category": "Argolas / Segmentos",
+      "product": "Segmento básico",
+      "measure": "12 mm",
+      "thickness": "1,2 mm",
+      "color": "Dourado",
+      "quantity": 1,
+      "notes": "Lista original não especifica a cor da anodização"
+    },
+    {
+      "source_row": 22,
+      "category": "Argolas / Segmentos",
+      "product": "Segmento básico",
+      "measure": "10 mm",
+      "thickness": "2,0 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 23,
+      "category": "Argolas / Segmentos",
+      "product": "Segmento básico",
+      "measure": "12 mm",
+      "thickness": "2,0 mm",
+      "color": "Titânio Natural",
+      "quantity": 2,
+      "notes": ""
+    },
+    {
+      "source_row": 24,
+      "category": "Argolas / Segmentos",
+      "product": "Argola de aço",
+      "measure": "10 mm",
+      "thickness": "1,2 mm",
+      "color": "Prata / aço",
+      "quantity": 4,
+      "notes": "Material informado como aço"
+    },
+    {
+      "source_row": 25,
+      "category": "Argolas / Segmentos",
+      "product": "Segmento coração cravejado",
+      "measure": "10 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 26,
+      "category": "Argolas / Segmentos",
+      "product": "Segmento cravejado especial",
+      "measure": "8 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": "6 zircônias 2 mm + 5 zircônias 2,5 mm"
+    },
+    {
+      "source_row": 27,
+      "category": "Argolas / Segmentos",
+      "product": "Clicker torcida cravejada",
+      "measure": "10 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": "Estéril"
+    },
+    {
+      "source_row": 28,
+      "category": "Argolas / Segmentos",
+      "product": "Argola lateral cravejada",
+      "measure": "12 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": "Estéril"
+    },
+    {
+      "source_row": 29,
+      "category": "Argolas / Segmentos",
+      "product": "Segmento cravejado",
+      "measure": "8 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 0,
+      "notes": "Sem estoque"
+    },
+    {
+      "source_row": 30,
+      "category": "Argolas / Segmentos",
+      "product": "Segmento cravejado",
+      "measure": "10 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 0,
+      "notes": "Sem estoque"
+    },
+    {
+      "source_row": 31,
+      "category": "D-Ring",
+      "product": "D-Ring liso",
+      "measure": "8 mm",
+      "thickness": "1,0 mm",
+      "color": "Titânio Natural",
+      "quantity": 3,
+      "notes": "Estéril"
+    },
+    {
+      "source_row": 32,
+      "category": "D-Ring",
+      "product": "D-Ring liso",
+      "measure": "8 mm",
+      "thickness": "1,0 mm",
+      "color": "Dourado",
+      "quantity": 5,
+      "notes": "Estéril; anodizado"
+    },
+    {
+      "source_row": 33,
+      "category": "D-Ring",
+      "product": "D-Ring liso",
+      "measure": "8 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 5,
+      "notes": ""
+    },
+    {
+      "source_row": 34,
+      "category": "D-Ring",
+      "product": "D-Ring cravejado",
+      "measure": "8 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 3,
+      "notes": ""
+    },
+    {
+      "source_row": 35,
+      "category": "D-Ring",
+      "product": "D-Ring cravejado",
+      "measure": "8 mm",
+      "thickness": "1,2 mm",
+      "color": "Dourado",
+      "quantity": 1,
+      "notes": "Anodizado"
+    },
+    {
+      "source_row": 36,
+      "category": "Barbell Reto",
+      "product": "Barbell reto",
+      "measure": "10 mm",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": "Falta 1 bolinha"
+    },
+    {
+      "source_row": 37,
+      "category": "Barbell Reto",
+      "product": "Barbell reto",
+      "measure": "12 mm",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 2,
+      "notes": "1 haste sem bolinhas + 1 estéril"
+    },
+    {
+      "source_row": 38,
+      "category": "Barbell Reto",
+      "product": "Barbell reto com topo coração",
+      "measure": "14 mm",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 3,
+      "notes": "Push Pin"
+    },
+    {
+      "source_row": 39,
+      "category": "Barbell Reto",
+      "product": "Barbell reto topo básico dupla corrente",
+      "measure": "14 mm",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 3,
+      "notes": "Push Pin"
+    },
+    {
+      "source_row": 40,
+      "category": "Barbell Reto",
+      "product": "Barbell reto",
+      "measure": "16 mm",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 6,
+      "notes": "5 hastes sem bolinhas + 1 estéril"
+    },
+    {
+      "source_row": 41,
+      "category": "Barbell Reto",
+      "product": "Barbell reto",
+      "measure": "18 mm",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 5,
+      "notes": "3 estoque + 2 estéreis"
+    },
+    {
+      "source_row": 42,
+      "category": "Barbell Reto",
+      "product": "Barbell reto",
+      "measure": "20 mm",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 0,
+      "notes": "Sem estoque"
+    },
+    {
+      "source_row": 43,
+      "category": "Barbell Reto",
+      "product": "Barbell reto",
+      "measure": "22 mm",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 0,
+      "notes": "Sem estoque"
+    },
+    {
+      "source_row": 44,
+      "category": "Barbell Curvo",
+      "product": "Barbell curvo",
+      "measure": "6 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 6,
+      "notes": "2 hastes sem bolinha"
+    },
+    {
+      "source_row": 45,
+      "category": "Barbell Curvo",
+      "product": "Barbell curvo",
+      "measure": "8 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 3,
+      "notes": "Inclui registros descritos como haste"
+    },
+    {
+      "source_row": 46,
+      "category": "Barbell Curvo",
+      "product": "Barbell curvo",
+      "measure": "10 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 6,
+      "notes": "Hastes"
+    },
+    {
+      "source_row": 47,
+      "category": "Barbell Curvo",
+      "product": "Barbell curvo",
+      "measure": "12 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 3,
+      "notes": "Inclui 1 estéril"
+    },
+    {
+      "source_row": 48,
+      "category": "Umbigo / Navel",
+      "product": "Navel haste Push Pin",
+      "measure": "10 mm",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 3,
+      "notes": "Haste"
+    },
+    {
+      "source_row": 49,
+      "category": "Umbigo / Navel",
+      "product": "Navel completo topo 5 zircônias",
+      "measure": "10 mm",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": "Push Pin"
+    },
+    {
+      "source_row": 50,
+      "category": "Umbigo / Navel",
+      "product": "Navel básico cravejado",
+      "measure": "Não informado",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 51,
+      "category": "Umbigo / Navel",
+      "product": "Navel cravejado duplo pingente redondo",
+      "measure": "Não informado",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 2,
+      "notes": ""
+    },
+    {
+      "source_row": 52,
+      "category": "Umbigo / Navel",
+      "product": "Navel básico cravejado circular",
+      "measure": "Não informado",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 2,
+      "notes": ""
+    },
+    {
+      "source_row": 53,
+      "category": "Umbigo / Navel",
+      "product": "Navel coração cravejado pingente duplo",
+      "measure": "Não informado",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 54,
+      "category": "Umbigo / Navel",
+      "product": "Navel cravejado plano",
+      "measure": "Não informado",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 55,
+      "category": "Umbigo / Navel",
+      "product": "Navel flor cravejado",
+      "measure": "Não informado",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 56,
+      "category": "Umbigo / Navel",
+      "product": "Navel topo Sol pedra ônix",
+      "measure": "Não informado",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 57,
+      "category": "Umbigo / Navel",
+      "product": "Navel opala azul 4 zircônias",
+      "measure": "Não informado",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": "Sem topo"
+    },
+    {
+      "source_row": 58,
+      "category": "Umbigo / Navel",
+      "product": "Barbell curvo umbigo básico",
+      "measure": "Não informado",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": "Estéril"
+    },
+    {
+      "source_row": 59,
+      "category": "Umbigo / Navel",
+      "product": "Floating Navel ponto de luz",
+      "measure": "10 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": "Estéril"
+    },
+    {
+      "source_row": 60,
+      "category": "Mamilo",
+      "product": "Barbell reto mamilo lateral opala branca",
+      "measure": "Não informado",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": "Estéril"
+    },
+    {
+      "source_row": 61,
+      "category": "Mamilo",
+      "product": "Barbell reto mamilo lateral zircônia",
+      "measure": "Não informado",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": "Estéril"
+    },
+    {
+      "source_row": 62,
+      "category": "Transversal",
+      "product": "Barbell transversal",
+      "measure": "30 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 63,
+      "category": "Transversal",
+      "product": "Barbell transversal",
+      "measure": "32 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 64,
+      "category": "Transversal",
+      "product": "Barbell transversal",
+      "measure": "34 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": "Estéril"
+    },
+    {
+      "source_row": 65,
+      "category": "Ferradura",
+      "product": "Ferradura",
+      "measure": "8 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 2,
+      "notes": "Completa"
+    },
+    {
+      "source_row": 66,
+      "category": "Ferradura",
+      "product": "Ferradura",
+      "measure": "8 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": "Somente haste"
+    },
+    {
+      "source_row": 67,
+      "category": "Taper / Conector",
+      "product": "Taper / Conector reto",
+      "measure": "Não aplicável",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 20,
+      "notes": "10 estéreis + 10 estoque"
+    },
+    {
+      "source_row": 68,
+      "category": "Taper / Conector",
+      "product": "Taper / Conector curvo",
+      "measure": "Não aplicável",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": "Estéril"
+    },
+    {
+      "source_row": 69,
+      "category": "Taper / Conector",
+      "product": "Taper / Conector reto",
+      "measure": "Não aplicável",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 8,
+      "notes": "6 estéreis + 2 estoque"
+    },
+    {
+      "source_row": 70,
+      "category": "Taper / Conector",
+      "product": "Taper / Conector curvo",
+      "measure": "Não aplicável",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": "Estéril"
+    },
+    {
+      "source_row": 71,
+      "category": "Taper / Conector",
+      "product": "Taper / Conector Push Pin",
+      "measure": "Não aplicável",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 3,
+      "notes": "1 estéril + 2 estoque"
+    },
+    {
+      "source_row": 72,
+      "category": "Topos / Bolinhas",
+      "product": "Bolinha",
+      "measure": "3 mm",
+      "thickness": "1,2 mm",
+      "color": "Dourado",
+      "quantity": 1,
+      "notes": "Estéril; anodizado"
+    },
+    {
+      "source_row": 73,
+      "category": "Topos / Bolinhas",
+      "product": "Bolinha",
+      "measure": "3 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": "Estéril"
+    },
+    {
+      "source_row": 74,
+      "category": "Topos / Bolinhas",
+      "product": "Bolinha",
+      "measure": "5 mm",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": "Estéril"
+    },
+    {
+      "source_row": 75,
+      "category": "Topos / Bolinhas",
+      "product": "Topo básico bolinha",
+      "measure": "Não informado",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 76,
+      "category": "Topos / Bolinhas",
+      "product": "Topo básico bolinha",
+      "measure": "Não informado",
+      "thickness": "1,2 mm",
+      "color": "Dourado",
+      "quantity": 2,
+      "notes": "Anodizado"
+    },
+    {
+      "source_row": 77,
+      "category": "Topos / Bolinhas",
+      "product": "Topo 3 bolinhas",
+      "measure": "Não informado",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 3,
+      "notes": ""
+    },
+    {
+      "source_row": 78,
+      "category": "Topos / Bolinhas",
+      "product": "Topo 4 esferas",
+      "measure": "Não informado",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 79,
+      "category": "Topos / Bolinhas",
+      "product": "Topo chapado",
+      "measure": "3 mm",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 5,
+      "notes": ""
+    },
+    {
+      "source_row": 80,
+      "category": "Topos / Bolinhas",
+      "product": "Topo chapado",
+      "measure": "4 mm",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 5,
+      "notes": ""
+    },
+    {
+      "source_row": 81,
+      "category": "Topos / Bolinhas",
+      "product": "Topo chapado",
+      "measure": "5 mm",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 5,
+      "notes": ""
+    },
+    {
+      "source_row": 82,
+      "category": "Topos / Bolinhas",
+      "product": "Topo chapado martelado",
+      "measure": "Não informado",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 83,
+      "category": "Topos / Bolinhas",
+      "product": "Topo cravejado",
+      "measure": "2,0 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": "Topo 2,0 mm; espessura/rosca 1,2 mm"
+    },
+    {
+      "source_row": 84,
+      "category": "Topos / Bolinhas",
+      "product": "Topo cravejado",
+      "measure": "2,5 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 3,
+      "notes": ""
+    },
+    {
+      "source_row": 85,
+      "category": "Topos / Bolinhas",
+      "product": "Topo cravejado",
+      "measure": "3 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 0,
+      "notes": "Sem estoque"
+    },
+    {
+      "source_row": 86,
+      "category": "Topos / Bolinhas",
+      "product": "Topo estrela 8 pontas",
+      "measure": "Não informado",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 2,
+      "notes": ""
+    },
+    {
+      "source_row": 87,
+      "category": "Topos / Bolinhas",
+      "product": "Topo ramos 5 folhas",
+      "measure": "Não informado",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 2,
+      "notes": ""
+    },
+    {
+      "source_row": 88,
+      "category": "Topos / Bolinhas",
+      "product": "Topo flor 3 pétalas",
+      "measure": "Não informado",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 89,
+      "category": "Topos / Bolinhas",
+      "product": "Topo cluster opala negra",
+      "measure": "Não informado",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": "Zircônia no centro"
+    },
+    {
+      "source_row": 90,
+      "category": "Topos / Bolinhas",
+      "product": "Cluster 10 zircônias",
+      "measure": "Não informado",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 2,
+      "notes": ""
+    },
+    {
+      "source_row": 91,
+      "category": "Topos / Bolinhas",
+      "product": "Topo esfera opala",
+      "measure": "Não informado",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 2,
+      "notes": ""
+    },
+    {
+      "source_row": 92,
+      "category": "Topos / Bolinhas",
+      "product": "Topo esfera Moss",
+      "measure": "Não informado",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 93,
+      "category": "Topos / Bolinhas",
+      "product": "Topo cluster 3 zircônias e 10 esferas",
+      "measure": "Não informado",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": "Push Pin"
+    },
+    {
+      "source_row": 94,
+      "category": "Topos / Bolinhas",
+      "product": "Topo Safira Imperial",
+      "measure": "Não informado",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 95,
+      "category": "Topos / Bolinhas",
+      "product": "Topo Baguette Safira",
+      "measure": "Não informado",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 96,
+      "category": "Topos / Bolinhas",
+      "product": "Topo esfera azul",
+      "measure": "Não informado",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 97,
+      "category": "Topos / Bolinhas",
+      "product": "Topo pérola",
+      "measure": "4 mm",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 2,
+      "notes": "Rosca interna"
+    },
+    {
+      "source_row": 98,
+      "category": "Topos / Bolinhas",
+      "product": "Topo Opala 3 navetes",
+      "measure": "Não informado",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 99,
+      "category": "Topos / Bolinhas",
+      "product": "Topo cluster retângulo 5 zircônias",
+      "measure": "Não informado",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 100,
+      "category": "Topos / Bolinhas",
+      "product": "Topo Spike",
+      "measure": "Não informado",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 0,
+      "notes": "Sem estoque"
+    },
+    {
+      "source_row": 101,
+      "category": "Microdermal / Surface",
+      "product": "Surface haste",
+      "measure": "15 mm",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 102,
+      "category": "Microdermal / Surface",
+      "product": "Haste Microdermal",
+      "measure": "Não informado",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": "Revisar espessura se necessário"
+    },
+    {
+      "source_row": 103,
+      "category": "Microdermal / Surface",
+      "product": "Topo Microdermal Ágata Moss",
+      "measure": "Não informado",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 104,
+      "category": "Microdermal / Surface",
+      "product": "Topo Microdermal cravejado Flat",
+      "measure": "Não informado",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": "Estéril"
+    },
+    {
+      "source_row": 105,
+      "category": "Outros",
+      "product": "Anzol ponto de luz",
+      "measure": "Topo 2 mm",
+      "thickness": "1,2 mm",
+      "color": "Titânio Natural",
+      "quantity": 3,
+      "notes": ""
+    },
+    {
+      "source_row": 106,
+      "category": "Outros",
+      "product": "L-Bar Christina piercing",
+      "measure": "Não informado",
+      "thickness": "1,6 mm",
+      "color": "Titânio Natural",
+      "quantity": 1,
+      "notes": ""
+    },
+    {
+      "source_row": 107,
+      "category": "Outros",
+      "product": "Disco de silicone",
+      "measure": "Não aplicável",
+      "thickness": "Não aplicável",
+      "color": "Não aplicável",
+      "quantity": 5,
+      "notes": ""
+    },
+    {
+      "source_row": 108,
+      "category": "Outros",
+      "product": "Pedra para piercing dental",
+      "measure": "Não informado",
+      "thickness": "Não aplicável",
+      "color": "Não aplicável",
+      "quantity": 9,
+      "notes": ""
+    }
+  ]
+}

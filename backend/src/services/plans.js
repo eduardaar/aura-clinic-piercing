@@ -40,6 +40,7 @@ export const FEATURE_CATALOG = [
   { key: "whatsapp_link", label: "Link de WhatsApp", group: "Catálogo e vendas" },
   { key: "public_catalog_customization", label: "Personalizar catálogo público", group: "Catálogo e vendas" },
   { key: "advanced_catalog", label: "Catálogo avançado", group: "Catálogo e vendas" },
+  { key: "catalog_analytics", label: "Google Analytics no catálogo", group: "Catálogo e vendas" },
   { key: "featured_products", label: "Produtos em destaque", group: "Catálogo e vendas" },
   { key: "promotional_banner", label: "Banner promocional", group: "Catálogo e vendas" },
   { key: "coupons", label: "Cupons", group: "Catálogo e vendas" },
@@ -82,65 +83,52 @@ export const LIMIT_CATALOG = [
   { key: "clients", label: "Clientes cadastrados", unit: "clientes", hint: "Total de fichas de cliente." },
   { key: "appointments_month", label: "Agendamentos por mês", unit: "por mês", hint: "Conta os agendamentos criados no mês corrente." },
   { key: "jewelry_items", label: "Itens de estoque", unit: "itens", hint: "Joias cadastradas no estoque." },
+  { key: "catalog_plugins", label: "Plugins do catálogo", unit: "plugins", hint: "Integrações nativas ativas na vitrine pública." },
   { key: "storage_mb", label: "Armazenamento", unit: "MB", hint: "Espaço somado de fotos e arquivos enviados." }
 ];
 
 export const LIMIT_KEYS = LIMIT_CATALOG.map((item) => item.key);
 
 export const PLAN_FEATURES = {
-  essencial: ["clients", "agenda", "procedures", "manual_reminders", "basic_inventory"],
   start: ["clients", "agenda", "procedures", "manual_reminders", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports"],
   profissional: ["clients", "agenda", "procedures", "manual_reminders", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports", "online_booking", "anamnesis", "digital_terms", "basic_finance", "deposits", "stock_alerts", "automatic_followup", "message_templates", "public_catalog_customization"],
-  studio: ["clients", "agenda", "procedures", "manual_reminders", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports", "online_booking", "anamnesis", "digital_terms", "basic_finance", "deposits", "stock_alerts", "automatic_followup", "message_templates", "public_catalog_customization", "multi_user", "commissions", "monthly_reports", "coupons", "returns", "full_client_history", "jewelry_sales_report"],
-  premium: ["clients", "agenda", "procedures", "manual_reminders", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports", "online_booking", "anamnesis", "digital_terms", "basic_finance", "deposits", "stock_alerts", "automatic_followup", "message_templates", "public_catalog_customization", "multi_user", "commissions", "monthly_reports", "coupons", "returns", "full_client_history", "jewelry_sales_report", "advanced_catalog", "featured_products", "promotional_banner", "campaigns", "advanced_finance", "variation_inventory", "visual_search", "alert_center", "courses", "priority_support"]
+  studio: ["clients", "agenda", "procedures", "manual_reminders", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports", "online_booking", "anamnesis", "digital_terms", "basic_finance", "deposits", "stock_alerts", "automatic_followup", "message_templates", "public_catalog_customization", "multi_user", "commissions", "monthly_reports", "coupons", "returns", "full_client_history", "jewelry_sales_report", "advanced_catalog", "catalog_analytics", "featured_products", "promotional_banner", "campaigns", "advanced_finance", "variation_inventory", "visual_search", "alert_center", "courses", "priority_support"]
 };
 
 const DEFAULT_PLANS = [
   {
-    code: "essencial",
-    name: "Pacote Essencial",
-    price_cents: 1990,
-    audience: "Piercers iniciantes",
-    trial_days: 7,
-    highlight: false,
-    features: PLAN_FEATURES.essencial
-  },
-  {
     code: "start",
     name: "Pacote Start",
-    price_cents: 3990,
-    audience: "Piercers iniciantes ou autônomos",
+    price_cents: 4990,
+    audience: "Para quem está organizando a operação solo",
+    description: "Agenda, clientes, estoque e catálogo para começar com controle.",
     trial_days: 7,
     highlight: false,
-    features: PLAN_FEATURES.start
+    features: PLAN_FEATURES.start,
+    limits: { users: 1, clients: 300, appointments_month: 100, jewelry_items: 100, storage_mb: 1024, catalog_plugins: 0 }
   },
   {
     code: "profissional",
     name: "Pacote Profissional",
-    price_cents: 6990,
-    audience: "Estúdios que querem agendamento online e ficha digital",
+    price_cents: 8990,
+    audience: "Para transformar atendimento em uma operação profissional",
+    description: "Agendamento online, financeiro, documentos digitais e catálogo personalizado.",
     trial_days: 7,
     highlight: true,
     badge: "Mais recomendado",
-    features: PLAN_FEATURES.profissional
+    features: PLAN_FEATURES.profissional,
+    limits: { users: 3, jewelry_items: 500, storage_mb: 5120, catalog_plugins: 3 }
   },
   {
     code: "studio",
     name: "Pacote Studio",
-    price_cents: 9990,
-    audience: "Estúdios com equipe e venda de joias",
-    trial_days: 7,
-    highlight: false,
-    features: PLAN_FEATURES.studio
-  },
-  {
-    code: "premium",
-    name: "Pacote Premium",
     price_cents: 14990,
-    audience: "Operações completas com catálogo avançado",
+    audience: "Para estúdios com equipe, vendas e crescimento",
+    description: "Automação, campanhas, catálogo avançado, Analytics e gestão completa da equipe.",
     trial_days: 7,
     highlight: false,
-    features: PLAN_FEATURES.premium
+    features: PLAN_FEATURES.studio,
+    limits: { users: 10, storage_mb: 20480, catalog_plugins: 12 }
   }
 ];
 
@@ -266,7 +254,11 @@ export function normalizePlanCode(code, fallback = "profissional") {
 
 export function planByCode(code) {
   const planCode = normalizePlanCode(code);
-  return SUBSCRIPTION_PLANS.find((plan) => plan.code === planCode) || SUBSCRIPTION_PLANS[2];
+  return (
+    SUBSCRIPTION_PLANS.find((plan) => plan.code === planCode) ||
+    SUBSCRIPTION_PLANS.find((plan) => plan.code === "profissional") ||
+    SUBSCRIPTION_PLANS[0]
+  );
 }
 
 export function trialWindow(days = 7) {

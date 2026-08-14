@@ -9,8 +9,12 @@ function fakeClient(rows = [{ id: 42 }], rowCount = 1) {
   const executed = [];
   return {
     executed,
+    // A camada `db` manda as queries com parâmetro no formato de objeto
+    // ({ text, values, types }) — é assim que ela anexa o conversor de NUMERIC
+    // a cada query. Comandos de transação continuam indo como string crua.
     async query(text, params) {
-      executed.push({ text: String(text).trim(), params });
+      const config = typeof text === "string" ? { text, values: params } : text;
+      executed.push({ text: String(config.text).trim(), params: config.values });
       return { rows, rowCount };
     },
   };

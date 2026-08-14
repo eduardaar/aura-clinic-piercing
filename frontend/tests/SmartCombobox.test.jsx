@@ -12,7 +12,7 @@ describe("SmartCombobox", () => {
     const onChange = vi.fn();
     render(<SmartCombobox label="Joia" value="" onChange={onChange} options={options} />);
     const input = screen.getByRole("combobox");
-    fireEvent.change(input, { target: { value: "coracao titanio" } });
+    fireEvent.change(input, { target: { value: "coracao titânio" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onChange).toHaveBeenCalledWith("1");
   });
@@ -33,6 +33,25 @@ describe("SmartCombobox", () => {
     expect(option).toHaveTextContent("Estoque: 3 unidades");
     fireEvent.click(option);
     expect(onChange).toHaveBeenCalledWith("1");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["imagem", (option) => option.querySelector("img")],
+    ["nome", () => screen.getByText("Argola Coração")],
+    ["informações", () => screen.getByText(/Argolas/)],
+    ["preço", () => screen.getByText("R$ 197,31")],
+    ["estoque", () => screen.getByText("Estoque: 3 unidades")],
+    ["área do card", (option) => option]
+  ])("seleciona com um único clique em %s", (_, targetFor) => {
+    const onChange = vi.fn();
+    const onSelect = vi.fn();
+    render(<SmartCombobox label="Joia" value="" onChange={onChange} onSelect={onSelect} options={[{ ...options[0], photo_url: "https://example.test/jewel.jpg", sale_value: 197.31 }]} />);
+    fireEvent.focus(screen.getByRole("combobox"));
+    const option = screen.getByRole("option", { name: /Argola Coração/ });
+    fireEvent.click(targetFor(option));
+    expect(onChange).toHaveBeenCalledWith("1");
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 1, sku: "ARG-001" }));
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 

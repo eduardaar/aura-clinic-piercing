@@ -306,7 +306,7 @@ export function elegantProductName(value = "") {
     .replace(/titï¿½nio/gi, "titânio")
     .replace(/zirc\?nia/gi, "zircônia")
     .replace(/^Joias Premium\b/i, "Joia Premium")
-    .replace(/\bTitanio\b/gi, "Titânio")
+    .replace(/\bTitânio\b/gi, "Titânio")
     .replace(/\bZirconia\b/gi, "Zircônia")
     .replace(/\s+/g, " ")
     .trim();

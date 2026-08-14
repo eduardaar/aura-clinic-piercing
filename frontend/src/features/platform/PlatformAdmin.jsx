@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronRight, Eye, EyeOff, LogOut } from "lucide-react";
-import { Button, StatusBadge } from "../../components/common/Ui";
-import { Modal, CrudHeader, ConfirmDeleteModal } from "../../components/common/Crud";
-import { DataView } from "../../components/common/DataView";
+import { Button } from "../../components/common/Ui";
+import { Modal } from "../../components/common/Crud";
 import { API } from "../../lib/api";
 import { BrandMark } from "../../components/common/BrandMark";
-import { asArray } from "../../lib/utils";
 import "../../styles/platform-panel.css";
 import { LandingEditor } from "./LandingEditor";
+import { LegalEditor } from "./LegalEditor";
 import { PlansAdmin } from "./PlansAdmin";
 import { AccountsAdmin } from "./AccountsAdmin";
 import { SupportInbox, SupportOpenBadge } from "./SupportInbox";
@@ -32,72 +31,32 @@ function readPlatformSession() {
 
 const EMPTY_TENANT_FORM = { name: "", slug: "", admin_name: "", admin_email: "", admin_password: "" };
 
-// Data com ano: `formatDate` de lib/utils devolve dd/MM, e a lista mistura
-// clínicas cadastradas em anos diferentes.
-function tenantCreatedAt(value) {
-  if (!value) return "—";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString("pt-BR");
-}
-
-// Códigos de plano vindos do backend. Um código desconhecido (base antiga, plano
-// novo) ainda aparece, só que capitalizado — melhor do que sumir da coluna.
-const PLAN_LABELS = {
-  essencial: "Essencial",
-  start: "Start",
-  profissional: "Profissional",
-  studio: "Studio",
-  premium: "Premium",
-  padrao: "Padrão",
-};
-
-const planLabel = (plan) => {
-  const code = String(plan || "").trim();
-  if (!code) return "—";
-  return PLAN_LABELS[code] || code[0].toUpperCase() + code.slice(1);
-};
-
-// O backend guarda o status da assinatura em código; a coluna mostrava o código.
-const SUBSCRIPTION_LABELS = {
-  trial_active: "Em teste",
-  trial_expired: "Teste expirado",
-  active: "Ativa",
-  overdue: "Em atraso",
-  canceled: "Cancelada",
-  suspended: "Suspensa",
-};
-
-const subscriptionLabel = (tenant) => {
-  const status = tenant.subscription_status || "trial_active";
-  const label = SUBSCRIPTION_LABELS[status] || status;
-  return status === "trial_active" ? `${label} · ${tenant.subscription_days_left ?? 0} dia(s)` : label;
-};
-
-// Opções vindas das próprias clínicas: oferecer um plano que ninguém assina só
-// produz filtro que devolve lista vazia.
-const planOptions = (tenants) =>
-  [...new Set(tenants.map((tenant) => tenant.plan).filter(Boolean))]
-    .sort()
-    .map((plan) => ({ value: plan, label: planLabel(plan) }));
-
 // Áreas do painel. A landing é conteúdo público da plataforma, não cadastro de
 // clínica: são duas tarefas distintas e cada uma tem sua aba.
 const TABS = [
-  ["clinicas", "Clínicas"],
-  ["contas", "Contas"],
+  ["dashboard", "Dashboard"],
+  ["contas", "Clínicas"],
   ["planos", "Planos"],
-  ["financeiro", "Financeiro"],
   ["suporte", "Suporte"],
   ["landing", "Landing pública"],
+  ["legal", "Termos e privacidade"],
 ];
 
+const PLATFORM_BASE_PATH = "/plataforma";
+const TAB_PATHS = Object.fromEntries(TABS.map(([id]) => [id, `${PLATFORM_BASE_PATH}/${id}`]));
+const TAB_BY_PATH = Object.fromEntries(Object.entries(TAB_PATHS).map(([id, path]) => [path, id]));
+
+function tabFromLocation(pathname = window.location.pathname) {
+  return TAB_BY_PATH[pathname.replace(/\/$/, "")] || "dashboard";
+}
+
 const TAB_HEADINGS = {
-  clinicas: { title: "Clínicas", subtitle: "Gerencie as clínicas cadastradas no SaaS." },
-  contas: { title: "Contas", subtitle: "Uso x cotas, plano, assinatura e trial de cada clínica." },
+  dashboard: { title: "Dashboard", subtitle: "Receita, caixa, cobranças e evolução financeira da plataforma." },
+  contas: { title: "Clínicas", subtitle: "Cadastro, plano, assinatura, uso e faturas de cada cliente." },
   planos: { title: "Planos", subtitle: "Preço, recursos e limites dos planos vendidos pela plataforma." },
-  financeiro: { title: "Financeiro da plataforma", subtitle: "MRR, caixa do mês, inadimplência e vencimentos das assinaturas." },
   suporte: { title: "Suporte", subtitle: "Chamados abertos pelas clínicas." },
   landing: { title: "Landing pública", subtitle: "Edite os blocos da página inicial em /." },
+  legal: { title: "Termos e privacidade", subtitle: "Textos legais e versões aceitas durante o cadastro." },
 };
 
 // Abas que guardam RASCUNHO não salvo continuam montadas (só ocultas) depois de
@@ -108,33 +67,28 @@ const ABAS_COM_RASCUNHO = ["landing", "planos"];
 
 export function PlatformAdmin() {
   const [session, setSession] = useState(readPlatformSession);
-  const [tab, setTab] = useState("clinicas");
-  const [visitadas, setVisitadas] = useState(() => new Set());
+  const [tab, setTab] = useState(tabFromLocation);
+  const [accountsRefresh, setAccountsRefresh] = useState(0);
+  const [visitadas, setVisitadas] = useState(() => new Set(ABAS_COM_RASCUNHO.includes(tabFromLocation()) ? [tabFromLocation()] : []));
   // Recarrega o contador de chamados abertos no selo da aba depois de o
   // super-admin responder algo.
   const [supportKey, setSupportKey] = useState(0);
-  const [loginForm, setLoginForm] = useState({ email: "", password: "" });
+  const [loginForm, setLoginForm] = useState({ email: "", password: "", mfa_code: "" });
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [mfaRequired, setMfaRequired] = useState(false);
 
-  const [tenants, setTenants] = useState(null);
-  const [metrics, setMetrics] = useState(null);
-  const [listError, setListError] = useState("");
-  const [actionError, setActionError] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState(EMPTY_TENANT_FORM);
   const [createError, setCreateError] = useState("");
   const [createLoading, setCreateLoading] = useState(false);
-  const [deleting, setDeleting] = useState(null);
 
   const token = session?.token || "";
 
   function clearPlatformSession() {
     localStorage.removeItem(PLATFORM_SESSION_KEY);
     setSession(null);
-    setTenants(null);
-    setMetrics(null);
   }
 
   // Fetch da plataforma: Bearer do token de plataforma, sem X-Tenant.
@@ -157,8 +111,6 @@ export function PlatformAdmin() {
       // Token de plataforma expirado/inválido: volta ao formulário de login.
       localStorage.removeItem(PLATFORM_SESSION_KEY);
       setSession(null);
-      setTenants(null);
-      setMetrics(null);
     }
     return response;
   }, [token]);
@@ -174,34 +126,38 @@ export function PlatformAdmin() {
     setCreateError("");
   }
 
-  const loadTenants = useCallback(async () => {
-    setListError("");
-    try {
-      const response = await platformFetch("/platform/tenants");
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) {
-        if (response.status !== 401) setListError(payload?.error || "Não foi possível carregar as clínicas.");
-        return;
-      }
-      setTenants(asArray(payload));
-    } catch {
-      setListError("Não foi possível conectar ao servidor.");
+  // A plataforma não usa um roteador externo: ela controla só o seu namespace
+  // com History API. Assim cada área ganha URL, recarregamento e voltar/avançar
+  // sem tocar na navegação independente do painel das clínicas.
+  const navigateTo = useCallback((nextTab, { replace = false } = {}) => {
+    const safeTab = TAB_PATHS[nextTab] ? nextTab : "dashboard";
+    const nextPath = TAB_PATHS[safeTab];
+    if (window.location.pathname !== nextPath) {
+      window.history[replace ? "replaceState" : "pushState"](window.history.state, "", nextPath);
     }
-    // Métricas são opcionais: se falharem, ignoramos silenciosamente.
-    try {
-      const response = await platformFetch("/platform/metrics");
-      if (response.ok) {
-        const payload = await response.json().catch(() => null);
-        setMetrics(asArray(payload));
-      }
-    } catch {
-      // Sem métricas disponíveis.
+    setTab(safeTab);
+    if (ABAS_COM_RASCUNHO.includes(safeTab)) {
+      setVisitadas((current) => new Set(current).add(safeTab));
     }
-  }, [platformFetch]);
+  }, []);
 
   useEffect(() => {
-    if (token) loadTenants();
-  }, [token, loadTenants]);
+    // /plataforma permanece como link compatível, mas a URL final sempre aponta
+    // para a área efetivamente aberta.
+    if (window.location.pathname === PLATFORM_BASE_PATH || !TAB_BY_PATH[window.location.pathname.replace(/\/$/, "")]) {
+      navigateTo("dashboard", { replace: true });
+    }
+
+    const onPopState = () => {
+      const nextTab = tabFromLocation();
+      setTab(nextTab);
+      if (ABAS_COM_RASCUNHO.includes(nextTab)) {
+        setVisitadas((current) => new Set(current).add(nextTab));
+      }
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [navigateTo]);
 
   async function submitLogin(event) {
     event.preventDefault();
@@ -211,17 +167,19 @@ export function PlatformAdmin() {
       const response = await fetch(`${API}/platform/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: loginForm.email.trim(), password: loginForm.password }),
+        body: JSON.stringify({ email: loginForm.email.trim(), password: loginForm.password, ...(loginForm.mfa_code ? { mfa_code: loginForm.mfa_code } : {}) }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
+        setMfaRequired(payload.code === "mfa_required");
         setLoginError(payload.error || "E-mail ou senha incorretos.");
         return;
       }
       const nextSession = { token: payload.token, user: payload.user };
       localStorage.setItem(PLATFORM_SESSION_KEY, JSON.stringify(nextSession));
       setSession(nextSession);
-      setLoginForm({ email: "", password: "" });
+      setLoginForm({ email: "", password: "", mfa_code: "" });
+      setMfaRequired(false);
     } catch {
       setLoginError("Não foi possível conectar ao servidor. Tente novamente.");
     } finally {
@@ -260,73 +218,12 @@ export function PlatformAdmin() {
       }
       setCreateForm(EMPTY_TENANT_FORM);
       setShowCreate(false);
-      loadTenants();
+      setAccountsRefresh((current) => current + 1);
     } catch {
       setCreateError("Não foi possível conectar ao servidor.");
     } finally {
       setCreateLoading(false);
     }
-  }
-
-  async function toggleStatus(tenant) {
-    setActionError("");
-    const nextStatus = tenant.status === "suspenso" ? "ativo" : "suspenso";
-    try {
-      const response = await platformFetch(`/platform/tenants/${tenant.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: nextStatus }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        if (response.status !== 401) setActionError(payload.error || "Não foi possível atualizar o status da clínica.");
-        return;
-      }
-      loadTenants();
-    } catch {
-      setActionError("Não foi possível conectar ao servidor.");
-    }
-  }
-
-  async function activateOrRenewTenant(tenant) {
-    setActionError("");
-    try {
-      const response = await platformFetch(`/platform/tenants/${tenant.id}/plan`, {
-        method: "PATCH",
-        body: JSON.stringify({ plan_code: tenant.plan || "profissional" }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        if (response.status !== 401) setActionError(payload.error || "Não foi possível ativar ou renovar a clínica.");
-        return;
-      }
-      loadTenants();
-    } catch {
-      setActionError("Não foi possível conectar ao servidor.");
-    }
-  }
-
-  function removeTenant(tenant) {
-    setActionError("");
-    setDeleting({
-      message: `Excluir a clínica "${tenant.name}"? Isso remove TODOS os dados dela.`,
-      confirmWord: tenant.slug,
-      run: async () => {
-        try {
-          const response = await platformFetch(`/platform/tenants/${tenant.id}`, {
-            method: "DELETE",
-            body: JSON.stringify({ confirmation: tenant.slug }),
-          });
-          const payload = await response.json().catch(() => ({}));
-          if (!response.ok) {
-            if (response.status !== 401) setActionError(payload.error || "Não foi possível excluir a clínica.");
-            return;
-          }
-          loadTenants();
-        } catch {
-          setActionError("Não foi possível conectar ao servidor.");
-        }
-      }
-    });
   }
 
   // Sem sessão: formulário de acesso.
@@ -358,7 +255,10 @@ export function PlatformAdmin() {
                   autoComplete="username"
                   required
                   value={loginForm.email}
-                  onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })}
+                  onChange={(event) => {
+                    setMfaRequired(false);
+                    setLoginForm({ ...loginForm, email: event.target.value, mfa_code: "" });
+                  }}
                   placeholder="seu@email.com"
                 />
               </div>
@@ -373,7 +273,10 @@ export function PlatformAdmin() {
                     autoComplete="current-password"
                     required
                     value={loginForm.password}
-                    onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })}
+                    onChange={(event) => {
+                      setMfaRequired(false);
+                      setLoginForm({ ...loginForm, password: event.target.value, mfa_code: "" });
+                    }}
                     placeholder="Digite a senha"
                   />
                   <button
@@ -388,6 +291,24 @@ export function PlatformAdmin() {
                 </div>
               </div>
 
+              {mfaRequired && (
+                <div className="au-a-field">
+                  <label htmlFor="au-p-mfa">Código do autenticador</label>
+                  <input
+                    id="au-p-mfa"
+                    className="au-a-input"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    required
+                    autoFocus
+                    value={loginForm.mfa_code}
+                    onChange={(event) => setLoginForm({ ...loginForm, mfa_code: event.target.value.replace(/\D/g, "") })}
+                    placeholder="000000"
+                  />
+                </div>
+              )}
+
               {loginError && <p className="au-a-error" role="alert">{loginError}</p>}
 
               <button type="submit" className="au-a-submit" disabled={loginLoading}>
@@ -400,34 +321,24 @@ export function PlatformAdmin() {
     );
   }
 
-  const tenantList = asArray(tenants);
-  const metricList = asArray(metrics);
-
   return (
     <main className="main-content">
-      <header className="topbar">
+      <header className="topbar platform-topbar">
         <div className="topbar-title">
           <span className="eyebrow">Aura Clinic · Plataforma</span>
           <h1>{TAB_HEADINGS[tab].title}</h1>
           <p>{TAB_HEADINGS[tab].subtitle}</p>
         </div>
-        <div className="topbar-actions">
-          <Button variant="secondary" onClick={clearPlatformSession}>
-            <LogOut size={16} /> Sair
-          </Button>
-        </div>
         <nav className="platform-tabs" aria-label="Áreas do painel">
           {TABS.map(([id, label]) => (
-            <button
+            <a
               key={id}
-              type="button"
+              href={TAB_PATHS[id]}
               className={tab === id ? "active" : ""}
               aria-current={tab === id ? "page" : undefined}
-              onClick={() => {
-                setTab(id);
-                if (ABAS_COM_RASCUNHO.includes(id)) {
-                  setVisitadas((atual) => new Set(atual).add(id));
-                }
+              onClick={(event) => {
+                event.preventDefault();
+                navigateTo(id);
               }}
             >
               {label}
@@ -438,8 +349,11 @@ export function PlatformAdmin() {
                   refreshKey={supportKey}
                 />
               )}
-            </button>
+            </a>
           ))}
+          <button type="button" className="platform-logout" onClick={clearPlatformSession}>
+            <LogOut size={16} aria-hidden="true" /> Sair
+          </button>
         </nav>
       </header>
 
@@ -456,15 +370,17 @@ export function PlatformAdmin() {
           </div>
         )}
 
+        {tab === "legal" && <LegalEditor token={token} onUnauthorized={clearPlatformSession} />}
+
         {visitadas.has("planos") && (
           <div hidden={tab !== "planos"}>
             <PlansAdmin token={token} onUnauthorized={clearPlatformSession} />
           </div>
         )}
 
-        {tab === "contas" && <AccountsAdmin token={token} onUnauthorized={clearPlatformSession} />}
+        {tab === "contas" && <AccountsAdmin token={token} onUnauthorized={clearPlatformSession} onCreate={openCreate} refreshKey={accountsRefresh} />}
 
-        {tab === "financeiro" && <PlatformFinance token={token} onUnauthorized={clearPlatformSession} />}
+        {tab === "dashboard" && <PlatformFinance token={token} onUnauthorized={clearPlatformSession} />}
 
         {tab === "suporte" && (
           <SupportInbox
@@ -472,84 +388,6 @@ export function PlatformAdmin() {
             onUnauthorized={clearPlatformSession}
             onChanged={() => setSupportKey((k) => k + 1)}
           />
-        )}
-
-        {tab === "clinicas" && (
-        <section className="panel">
-          <CrudHeader
-            title="Clínicas cadastradas"
-            subtitle="Gerencie as clínicas cadastradas no SaaS"
-            actionLabel="Nova clínica"
-            onAction={openCreate}
-          />
-
-          {actionError && <span className="form-error">{actionError}</span>}
-
-          <DataView
-            rows={tenantList}
-            rowKey={(tenant) => tenant.id ?? tenant.slug}
-            loading={tenants === null && !listError}
-            error={listError}
-            defaultSort={{ key: "created_at", dir: "desc" }}
-            searchPlaceholder="Buscar por nome ou código"
-            filters={[
-              {
-                key: "status",
-                label: "Status",
-                type: "select",
-                options: [
-                  { value: "ativo", label: "Ativo" },
-                  { value: "suspenso", label: "Suspenso" },
-                ],
-                match: (tenant, value) => (tenant.status || "ativo") === value,
-              },
-              {
-                key: "plan",
-                label: "Plano",
-                type: "select",
-                options: planOptions(tenantList),
-                match: (tenant, value) => tenant.plan === value,
-              },
-            ]}
-            columns={[
-              { key: "name", label: "Nome", value: (tenant) => tenant.name || "", render: (tenant) => tenant.name || "—" },
-              { key: "slug", label: "Código", value: (tenant) => tenant.slug || "", render: (tenant) => tenant.slug || "—" },
-              {
-                key: "status",
-                label: "Status",
-                value: (tenant) => tenant.status || "ativo",
-                render: (tenant) => (
-                  <StatusBadge status={tenant.status || "ativo"} tone={tenant.status === "suspenso" ? "danger" : "ok"} />
-                ),
-              },
-              { key: "plan", label: "Plano", value: (tenant) => tenant.plan || "", render: (tenant) => planLabel(tenant.plan) },
-              {
-                key: "subscription",
-                label: "Assinatura",
-                value: subscriptionLabel,
-                render: (tenant) => <span>{subscriptionLabel(tenant)}</span>,
-              },
-              {
-                key: "created_at",
-                label: "Criada em",
-                // Ordena pelo ISO do backend; dd/MM/aaaa ordenaria por dia.
-                value: (tenant) => String(tenant.created_at || ""),
-                render: (tenant) => tenantCreatedAt(tenant.created_at),
-              },
-            ]}
-            actions={(tenant) => (
-              <>
-                <button type="button" onClick={() => activateOrRenewTenant(tenant)}>Ativar/Renovar</button>
-                <button type="button" onClick={() => toggleStatus(tenant)}>
-                  {tenant.status === "suspenso" ? "Reativar" : "Suspender"}
-                </button>
-                <button type="button" onClick={() => removeTenant(tenant)}>Excluir</button>
-              </>
-            )}
-            empty="Nenhuma clínica cadastrada até o momento."
-            emptyFiltered="Nenhuma clínica corresponde aos filtros aplicados."
-          />
-        </section>
         )}
 
         <Modal
@@ -591,59 +429,6 @@ export function PlatformAdmin() {
           </form>
         </Modal>
 
-        {tab === "clinicas" && metricList.length > 0 && (
-          <section className="panel">
-            <div className="panel-heading">
-              <h2>Métricas por clínica</h2>
-              <span>Contagens das clínicas ativas</span>
-            </div>
-            {/*
-              Antes eram duas colunas sem cabeçalho, a segunda montada por
-              concatenação ("clients: 12 · appointments: 30"). O endpoint
-              /platform/metrics tem shape fixo — id, name, slug, clients e
-              appointments —, então a defensiva contra shape livre só custava:
-              mostrava o nome cru do campo em inglês e impedia ordenar pela
-              contagem, que é justamente a pergunta desta lista (quais clínicas
-              estão maiores ou paradas). Com colunas de verdade, ordena.
-            */}
-            <DataView
-              rows={metricList}
-              rowKey={(row) => row.id ?? row.slug}
-              defaultSort={{ key: "clients", dir: "desc" }}
-              searchPlaceholder="Buscar por nome ou código"
-              columns={[
-                { key: "name", label: "Clínica", value: (row) => row.name || "", render: (row) => row.name || "—" },
-                { key: "slug", label: "Código", value: (row) => row.slug || "", render: (row) => row.slug || "—" },
-                {
-                  key: "clients",
-                  label: "Clientes",
-                  align: "right",
-                  searchable: false,
-                  value: (row) => Number(row.clients || 0),
-                  render: (row) => Number(row.clients || 0).toLocaleString("pt-BR"),
-                },
-                {
-                  key: "appointments",
-                  label: "Agendamentos",
-                  align: "right",
-                  searchable: false,
-                  value: (row) => Number(row.appointments || 0),
-                  render: (row) => Number(row.appointments || 0).toLocaleString("pt-BR"),
-                },
-              ]}
-              empty="Nenhuma métrica disponível."
-              emptyFiltered="Nenhuma clínica corresponde à busca."
-            />
-          </section>
-        )}
-
-        <ConfirmDeleteModal
-          open={!!deleting}
-          message={deleting?.message}
-          confirmWord={deleting?.confirmWord}
-          onClose={() => setDeleting(null)}
-          onConfirm={async () => { await deleting.run(); setDeleting(null); }}
-          />
         </div>
       </div>
     </main>

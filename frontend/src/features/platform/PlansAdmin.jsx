@@ -19,9 +19,9 @@
 // colunas com editor embutido, e por isso guardava um MAPA de rascunhos por
 // plano; com o modal só existe uma edição por vez, então sobrou um rascunho só.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ArrowDown, ArrowUp } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { AlertBlock, Button, Checkbox, Input, StatusBadge, Textarea } from "../../components/common/Ui";
-import { ConfirmDeleteModal, CrudHeader, Modal } from "../../components/common/Crud";
+import { ConfirmDeleteModal, CrudHeader, Modal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { API } from "../../lib/api";
 import { asArray, asObject } from "../../lib/utils";
@@ -642,41 +642,15 @@ export function PlansAdmin({ token, onUnauthorized }) {
             },
           ]}
           actions={(plano) => (
-            <>
-              <button type="button" onClick={() => abrirFormulario(plano)}>
-                Editar
-              </button>
-              <button
-                type="button"
-                disabled={ocupado === plano.code}
-                onClick={() => alternarAtivo(plano)}
-              >
-                {plano.is_active ? "Desativar" : "Ativar"}
-              </button>
-              <button
-                type="button"
-                disabled={ocupado === plano.code}
-                onClick={() => abrirExclusao(plano)}
-              >
-                Excluir
-              </button>
-              <button
-                type="button"
-                disabled={plano.posicao === 1}
-                aria-label={`Mover o plano "${plano.name}" para cima na vitrine`}
-                onClick={() => moverPlano(plano, -1)}
-              >
-                <ArrowUp size={15} />
-              </button>
-              <button
-                type="button"
-                disabled={plano.posicao === planList.length}
-                aria-label={`Mover o plano "${plano.name}" para baixo na vitrine`}
-                onClick={() => moverPlano(plano, 1)}
-              >
-                <ArrowDown size={15} />
-              </button>
-            </>
+            <RowActions
+              actions={[
+                { label: "Editar", onClick: () => abrirFormulario(plano), primary: true },
+                { label: plano.is_active ? "Desativar" : "Ativar", onClick: () => alternarAtivo(plano), disabled: ocupado === plano.code },
+                { label: "Mover para cima", onClick: () => moverPlano(plano, -1), disabled: plano.posicao === 1 },
+                { label: "Mover para baixo", onClick: () => moverPlano(plano, 1), disabled: plano.posicao === planList.length },
+                { label: "Excluir", onClick: () => abrirExclusao(plano), danger: true, disabled: ocupado === plano.code },
+              ]}
+            />
           )}
           empty="Nenhum plano cadastrado ainda."
           emptyFiltered="Nenhum plano corresponde à busca ou ao filtro."

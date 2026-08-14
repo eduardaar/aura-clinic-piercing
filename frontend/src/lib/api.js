@@ -36,7 +36,7 @@ export const API_ORIGIN = API.replace(/\/api$/, "");
 /**
  * Sessão gravada no localStorage após o login.
  * @typedef {object} StoredSession
- * @property {string} token JWT enviado no header Authorization.
+ * @property {string} token Access token curto enviado no header Authorization.
  * @property {{ id?: number, name?: string, email?: string, role?: import("./permissions.js").Role }} [user]
  */
 
@@ -122,6 +122,32 @@ export function authToken() {
   }
 }
 
+function saveAccessSession(payload) {
+  try {
+    const current = readStoredSession() || {};
+    const next = { ...current, token: payload.token, ...(payload.user ? { user: payload.user } : {}) };
+    localStorage.setItem("aura-session", JSON.stringify(next));
+    return next;
+  } catch {
+    return null;
+  }
+}
+
+function clearAccessSession() {
+  try { localStorage.removeItem("aura-session"); } catch { /* storage indisponível */ }
+}
+
+async function refreshAccessToken() {
+  const response = await fetch(`${API}/auth/refresh`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "X-Tenant": tenantSlug() }
+  });
+  if (!response.ok) return null;
+  const payload = await response.json().catch(() => null);
+  return payload?.token ? saveAccessSession(payload) : null;
+}
+
 /**
  * Chamada AUTENTICADA à API. É a única porta de saída do app para o backend:
  * injeta `Authorization`, `X-Tenant` e `Content-Type` (exceto em FormData) e
@@ -134,7 +160,7 @@ export function authToken() {
  * @param {RequestInit} [options]
  * @returns {Promise<Response>}
  */
-export function apiFetch(path, options = {}) {
+export async function apiFetch(path, options = {}) {
   const headers = new Headers(options.headers || {});
   if (!(options.body instanceof FormData) && options.body !== undefined && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
@@ -143,13 +169,19 @@ export function apiFetch(path, options = {}) {
   if (token) headers.set("Authorization", `Bearer ${token}`);
   // Multi-tenant: identifica a clínica em todas as chamadas (não sobrescreve um X-Tenant explícito).
   if (!headers.has("X-Tenant")) headers.set("X-Tenant", tenantSlug());
-  return fetch(`${API}${path}`, { ...options, headers }).then((response) => {
-    if (response.status === 401 && path !== "/login") {
-      localStorage.removeItem("aura-session");
-      window.location.reload();
-    }
-    return response;
-  });
+  let response = await fetch(`${API}${path}`, { ...options, headers, credentials: "include" });
+  // Um token copiado do localStorage só vale 15 min. A credencial duradoura
+  // fica no cookie HttpOnly e é rotacionada aqui antes de repetir UMA vez.
+  if (response.status !== 401 || ["/login", "/auth/refresh", "/auth/logout"].includes(path)) return response;
+  const session = await refreshAccessToken().catch(() => null);
+  if (session?.token) {
+    headers.set("Authorization", `Bearer ${session.token}`);
+    response = await fetch(`${API}${path}`, { ...options, headers, credentials: "include" });
+    if (response.status !== 401) return response;
+  }
+  clearAccessSession();
+  window.location.reload();
+  return response;
 }
 
 /**
@@ -162,7 +194,7 @@ export function apiFetch(path, options = {}) {
 export function publicApiFetch(path, options = {}) {
   const headers = new Headers(options.headers || {});
   if (!headers.has("X-Tenant")) headers.set("X-Tenant", tenantSlug());
-  return fetch(`${API}${path}`, { ...options, headers });
+  return fetch(`${API}${path}`, { ...options, headers, credentials: "include" });
 }
 
 /**

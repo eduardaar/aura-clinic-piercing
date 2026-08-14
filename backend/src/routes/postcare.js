@@ -1,6 +1,7 @@
 // Rotas de pós-atendimento (acompanhamentos de cicatrização).
 import { Router } from "express";
 import { withFeature } from "../middleware/withDb.js";
+import { requireRole } from "../middleware/auth.js";
 import { parseUpload, privateUpload, registerPrivateFiles } from "../middleware/upload.js";
 import {
   listPostCareFollowups,
@@ -8,6 +9,7 @@ import {
   getPostCareFollowup
 } from "../services/postcare.js";
 import { parsePaging, pageResponse } from "../services/pagination.js";
+import { recordPrivacyAudit } from "../services/privacy.js";
 
 const router = Router();
 
@@ -27,6 +29,9 @@ const POST_CARE_SORTABLE = {
 // "atendido" (routes/appointments.js), então não há mais varredura de escrita
 // aqui — ela custava 1 SELECT + 3 INSERT por atendimento concluído A CADA GET.
 router.get("/api/post-care", withFeature("automatic_followup", async (req, res, db) => {
+  // Cicatrização, intercorrências, notas e fotos são informação clínica.
+  // Somente quem presta o cuidado ou administra a clínica pode consultá-las.
+  if (!requireRole(req, res, ["admin", "piercer"])) return;
   const clauses = [];
   const params = [];
   if (req.query.status) {
@@ -66,10 +71,16 @@ router.get("/api/post-care", withFeature("automatic_followup", async (req, res, 
   });
   const items = await listPostCareFollowups(db, { where, params, paging });
   const total = paging.paginated ? await countPostCareFollowups(db, { where, params }) : items.length;
+  await recordPrivacyAudit(db, {
+    req, action: "post_care_read", resourceType: "post_care_list",
+    clientId: req.query.client_id || null,
+    detail: { result_count: items.length, filtered_by_client: Boolean(req.query.client_id) }
+  });
   res.json(pageResponse(items, total, paging));
 }));
 
 router.patch("/api/post-care/:id", withFeature("automatic_followup", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "piercer"])) return;
   await parseUpload(privateUpload.single("client_photo"), req, res);
   await registerPrivateFiles(db, req.file, "postcare_photo", req.user?.id);
   const existing = await db.get("SELECT * FROM post_care_followups WHERE id = ?", [req.params.id]);

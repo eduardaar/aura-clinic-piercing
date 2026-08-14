@@ -26,21 +26,22 @@
 //     confirmação e o botão só habilita quando ele está preenchido: pedir o
 //     motivo depois de o clique já ter falhado transformaria a regra em ruído.
 //
-//  2. AS TRÊS ASSIMETRIAS FICAM ESCRITAS NA TELA. Suspender não cancela a
-//     cobrança; cancelar a assinatura não corta o acesso; trocar de plano não
-//     reajusta a recorrência. São deliberadas no backend, e escondê-las custa
-//     dinheiro (clínica cobrada errado) ou acesso indevido. Por isso aparecem
-//     duas vezes: num bloco fixo acima das ações e DENTRO da confirmação de
-//     cada uma — que é o instante em que a decisão é tomada.
+//  2. AS ASSIMETRIAS FICAM ESCRITAS NA TELA. Suspender não cancela a cobrança;
+//     cancelar a assinatura não corta o acesso; trocar de plano reajusta a
+//     recorrência mas o reajuste pode não chegar ao gateway. São deliberadas no
+//     backend, e escondê-las custa dinheiro (clínica cobrada errado) ou acesso
+//     indevido. Por isso aparecem duas vezes: num bloco fixo acima das ações e
+//     DENTRO da confirmação de cada uma — que é o instante em que a decisão é
+//     tomada.
 //
 //  3. COTA NÃO APAGA DADO. Todo item acima do limite vem com a frase de que
 //     nada foi removido e a clínica continua editando o que já tem. É o
 //     comportamento real de planLimits.js ("cota só impede criar"), e omiti-lo
 //     faria um downgrade legítimo parecer perda de dados.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { AlertTriangle, ArrowLeft, RefreshCw } from "lucide-react";
 import { AlertBlock, Button, Input, Select, StatusBadge, Textarea } from "../../components/common/Ui";
-import { CrudHeader, Modal } from "../../components/common/Crud";
+import { ConfirmDeleteModal, CrudHeader, Modal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { API } from "../../lib/api";
@@ -143,9 +144,10 @@ const ASSIMETRIAS = {
     "Cancelar a assinatura NÃO suspende a conta: a clínica continua entrando e trabalhando normalmente, porque " +
     "o período já pago é dela. Para tirar o acesso é preciso suspender, que é outra ação nesta mesma tela.",
   plano:
-    "Trocar de plano NÃO reajusta a cobrança recorrente: recursos e cotas mudam na hora, mas a assinatura no " +
-    "Asaas continua no valor do plano anterior até alguém refazer o checkout ou ajustar a recorrência no painel " +
-    "do gateway.",
+    "Trocar de plano reajusta a cobrança recorrente, mas as duas coisas não acontecem no mesmo lugar: recursos e " +
+    "cotas mudam no banco (sempre), e o valor novo é enviado ao Asaas em seguida (pode falhar). Quando o envio " +
+    "não completa, o aviso vermelho aparece e a clínica continua sendo cobrada pelo valor anterior até alguém " +
+    'usar "Reenviar ajuste ao Asaas" — que pode ser clicado quantas vezes for preciso.',
 };
 
 // ---------------------------------------------------------------------------
@@ -211,8 +213,9 @@ const ACOES = {
   plano: {
     titulo: "Trocar o plano da clínica",
     resumo:
-      "A troca vale na hora para recursos e cotas. O status da assinatura não muda: uma clínica inadimplente que " +
-      "troca de plano continua inadimplente.",
+      "A troca vale na hora para recursos e cotas, e o valor do plano novo é enviado à assinatura no Asaas (com as " +
+      "cobranças pendentes junto). O status da assinatura não muda: uma clínica inadimplente que troca de plano " +
+      "continua inadimplente.",
     naoFaz: ASSIMETRIAS.plano,
     confirmar: "Trocar plano",
     exigeCodigo: false,
@@ -243,7 +246,7 @@ const DICAS_DE_ERRO = {
   motivo_obrigatorio: "O motivo fica registrado na auditoria e é o que responde “por quê?” meses depois.",
 };
 
-export function AccountsAdmin({ token, onUnauthorized }) {
+export function AccountsAdmin({ token, onUnauthorized, onCreate, refreshKey = 0 }) {
   const [tenants, setTenants] = useState(null);
   const [planos, setPlanos] = useState([]);
   const [loadError, setLoadError] = useState("");
@@ -265,9 +268,13 @@ export function AccountsAdmin({ token, onUnauthorized }) {
   const [trialForm, setTrialForm] = useState({ days: "7", mode: "extend" });
   const [statusAlvo, setStatusAlvo] = useState("active");
   const [executando, setExecutando] = useState(false);
+  const [sincronizando, setSincronizando] = useState(false);
   const [erroDaAcao, setErroDaAcao] = useState({ mensagem: "", dica: "" });
 
   const [feedback, setFeedback] = useState({ error: "", success: "" });
+  const [acaoDaLista, setAcaoDaLista] = useState(null);
+  const [executandoAcaoDaLista, setExecutandoAcaoDaLista] = useState(false);
+  const [clinicaParaExcluir, setClinicaParaExcluir] = useState(null);
   // Avisos que NÃO somem sozinhos: cada um é dinheiro pendurado (recorrência no
   // valor errado, cancelamento que não pegou no gateway). Um aviso que se apaga
   // depois de 4 segundos é um aviso que ninguém leu.
@@ -328,7 +335,7 @@ export function AccountsAdmin({ token, onUnauthorized }) {
     return () => {
       ativo = false;
     };
-  }, [carregarClinicas, request]);
+  }, [carregarClinicas, request, refreshKey]);
 
   const carregarConta = useCallback(
     async (id) => {
@@ -421,6 +428,74 @@ export function AccountsAdmin({ token, onUnauthorized }) {
     setErroDaAcao({ mensagem: "", dica: "" });
   }
 
+  function abrirAcaoDaLista(tipo, tenant) {
+    setAcaoDaLista({ tipo, tenant });
+    setFeedback({ error: "", success: "" });
+  }
+
+  function fecharAcaoDaLista() {
+    if (!executandoAcaoDaLista) setAcaoDaLista(null);
+  }
+
+  async function atualizarDepoisDaAcaoDaLista(tenantIdAtualizado) {
+    await carregarClinicas();
+    if (tenantIdAtualizado && tenantIdAtualizado === tenantId) await carregarConta(tenantIdAtualizado);
+  }
+
+  async function executarAcaoDaLista() {
+    if (!acaoDaLista) return;
+    const { tipo, tenant } = acaoDaLista;
+    setExecutandoAcaoDaLista(true);
+    setFeedback({ error: "", success: "" });
+    try {
+      if (tipo === "renovar") {
+        const payload = asObject(await request(`/platform/tenants/${tenant.id}/plan`, {
+          method: "PATCH",
+          body: JSON.stringify({ plan_code: tenant.plan || "profissional" }),
+        }));
+        adicionarAviso("Pendência no gateway de pagamento", payload.warning);
+        setFeedback({ error: "", success: "Plano e assinatura atualizados." });
+      } else {
+        const proximoStatus = tenant.status === "suspenso" ? "ativo" : "suspenso";
+        await request(`/platform/tenants/${tenant.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: proximoStatus }),
+        });
+        setFeedback({
+          error: "",
+          success: proximoStatus === "suspenso" ? "Clínica suspensa com sucesso." : "Clínica reativada com sucesso.",
+        });
+      }
+      await atualizarDepoisDaAcaoDaLista(tenant.id);
+      setAcaoDaLista(null);
+    } catch (error) {
+      setFeedback({ error: error.message, success: "" });
+    } finally {
+      setExecutandoAcaoDaLista(false);
+    }
+  }
+
+  async function excluirClinicaDaLista() {
+    if (!clinicaParaExcluir) return;
+    const tenant = clinicaParaExcluir;
+    setFeedback({ error: "", success: "" });
+    try {
+      await request(`/platform/tenants/${tenant.id}`, {
+        method: "DELETE",
+        body: JSON.stringify({ confirmation: tenant.slug }),
+      });
+      if (tenant.id === tenantId) {
+        setTenantId(null);
+        setConta(null);
+      }
+      await carregarClinicas();
+      setFeedback({ error: "", success: "Clínica excluída com sucesso." });
+      setClinicaParaExcluir(null);
+    } catch (error) {
+      setFeedback({ error: error.message, success: "" });
+    }
+  }
+
   async function atualizarUso() {
     if (!tenantId) return;
     setAtualizandoUso(true);
@@ -435,6 +510,36 @@ export function AccountsAdmin({ token, onUnauthorized }) {
       setFeedback({ error: error.message, success: "" });
     } finally {
       setAtualizandoUso(false);
+    }
+  }
+
+  // Reprocesso do reajuste que não chegou ao gateway.
+  //
+  // Sem confirmação e sem motivo, ao contrário de todas as ações de escrita
+  // desta tela: aqui nada NOSSO muda: a rota só faz o Asaas concordar com o
+  // plano que já está gravado (e cuja troca já foi para a auditoria com o
+  // motivo dela). É idempotente do lado do backend — ele lê a assinatura antes
+  // de escrever e não faz nada se o valor já estiver certo —, então clicar duas
+  // vezes não cobra duas vezes.
+  async function reenviarAjusteAoGateway() {
+    if (!tenantId) return;
+    setSincronizando(true);
+    setFeedback({ error: "", success: "" });
+    try {
+      const payload = asObject(
+        await request(`/platform/accounts/${tenantId}/sync-subscription`, { method: "POST" }),
+      );
+      adicionarAviso("Pendência no gateway de pagamento", payload.warning);
+      const gateway = asObject(payload.gateway);
+      setFeedback({
+        error: "",
+        success: gateway.detalhe || "Ajuste reenviado ao Asaas.",
+      });
+      await carregarConta(tenantId);
+    } catch (error) {
+      setFeedback({ error: error.message, success: "" });
+    } finally {
+      setSincronizando(false);
     }
   }
 
@@ -475,7 +580,13 @@ export function AccountsAdmin({ token, onUnauthorized }) {
       return `Status da assinatura forçado para "${rotulo.split(" —")[0]}".`;
     }
     if (tipo === "plano") {
-      return `Plano trocado para "${payload.plan_name || planoAlvo}". Recursos e cotas já valem; a cobrança recorrente não.`;
+      // O que aconteceu com a COBRANÇA vem do backend por escrito (`gateway.detalhe`)
+      // em vez de ser deduzido aqui: "atualizado", "já estava sincronizado" e
+      // "esta clínica não tem recorrência" são três finais diferentes para o
+      // mesmo clique, e adivinhar qual foi é como a tela passa a mentir.
+      const gateway = asObject(payload.gateway);
+      const cobranca = gateway.detalhe || "Recursos e cotas já valem.";
+      return `Plano trocado para "${payload.plan_name || planoAlvo}". ${cobranca}`;
     }
     return trialForm.mode === "restart"
       ? `Teste reiniciado por ${payload.days} dia(s).`
@@ -497,8 +608,9 @@ export function AccountsAdmin({ token, onUnauthorized }) {
       const payload = asObject(await request(path, { method, body: JSON.stringify(body) }));
 
       // Avisos do backend viram bloco fixo na tela, não texto de sucesso: o
-      // `warning` da troca de plano é a recorrência no valor antigo, e o do
-      // cancelamento é uma cobrança que pode continuar viva no gateway.
+      // `warning` da troca de plano é o reajuste que NÃO chegou à recorrência, e
+      // o do cancelamento é uma cobrança que pode continuar viva no gateway. O
+      // que deu certo não vira aviso — vai na mensagem de sucesso.
       adicionarAviso("Pendência no gateway de pagamento", payload.warning);
       if (payload.gateway_error && !payload.warning) {
         adicionarAviso("Falha ao falar com o Asaas", payload.gateway_error);
@@ -550,19 +662,14 @@ export function AccountsAdmin({ token, onUnauthorized }) {
       {feedback.error && <span className="form-error">{feedback.error}</span>}
       {feedback.success && <span className="form-success">{feedback.success}</span>}
 
-      {/*
-        A mesma listagem em dois tamanhos: sozinha, ela ocupa a largura toda e as
-        cinco colunas são legíveis; com uma conta aberta, o MESMO nó vira a
-        coluna estreita do `.platform-split` e o detalhe entra ao lado. Trocar só
-        a classe (em vez de mover o <DataView> para outro lugar da árvore)
-        preserva busca, ordenação e página ao abrir e fechar uma conta.
-      */}
-      <div className={tenantId ? "platform-split" : ""}>
+      {!tenantId ? (
         <section className="panel">
-          {/* `<CrudHeader>` e não um `.panel-heading` escrito à mão: é o mesmo
-              cabeçalho de painel das outras telas, e duas grafias da mesma coisa
-              é como o espaçamento começa a divergir entre abas. */}
-          <CrudHeader title="Clínicas" subtitle="Abra uma conta para ver uso, plano, assinatura e faturas." />
+          <CrudHeader
+            title="Clínicas"
+            subtitle="Cadastre uma clínica ou abra sua gestão para administrar plano, acesso, uso e faturas."
+            actionLabel={onCreate ? "Nova clínica" : undefined}
+            onAction={onCreate}
+          />
 
           <DataView
             rows={asArray(tenants)}
@@ -625,55 +732,84 @@ export function AccountsAdmin({ token, onUnauthorized }) {
               },
             ]}
             actions={(item) => (
-              <button
-                type="button"
-                aria-current={item.id === tenantId ? "true" : undefined}
-                onClick={() => setTenantId(item.id)}
-              >
-                {item.id === tenantId ? "Gerenciando" : "Gerenciar"}
-              </button>
+              <RowActions
+                actions={[
+                  { label: "Abrir gestão", onClick: () => setTenantId(item.id), primary: true },
+                  { label: "Ativar / renovar", onClick: () => abrirAcaoDaLista("renovar", item) },
+                  {
+                    label: item.status === "suspenso" ? "Reativar clínica" : "Suspender clínica",
+                    onClick: () => abrirAcaoDaLista("status", item),
+                    danger: item.status !== "suspenso",
+                  },
+                  { label: "Excluir clínica", onClick: () => setClinicaParaExcluir(item), danger: true },
+                ]}
+              />
             )}
           />
         </section>
+      ) : (
+        <div className="stack">
+          <section className="panel platform-account-workspace-header">
+            <div className="panel-heading">
+              <div>
+                <p className="platform-eyebrow">Gestão da clínica</p>
+                <h2>{clinica.name || "Carregando clínica…"}</h2>
+                <span>Plano, acesso, assinatura, uso e faturas em um só lugar.</span>
+              </div>
+              <div className="header-actions">
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setTenantId(null);
+                    setConta(null);
+                    setContaErro("");
+                  }}
+                >
+                  <ArrowLeft size={16} aria-hidden="true" /> Voltar para clínicas
+                </Button>
+              </div>
+            </div>
+          </section>
 
-        {tenantId && (
-          <div className="stack">
-            {carregandoConta && !conta && <Loading />}
-            {contaErro && <ApiError message={contaErro} />}
+          {carregandoConta && !conta && <Loading />}
+          {contaErro && <ApiError message={contaErro} />}
 
-            {conta && (
-              <>
-                <ResumoDaConta clinica={clinica} plano={asObject(conta.plan)} assinatura={assinatura} />
+          {conta && (
+            <>
+              <ResumoDaConta clinica={clinica} plano={asObject(conta.plan)} assinatura={assinatura} />
 
-                <UsoXCotas itens={asArray(conta.usage)} atualizando={atualizandoUso} onAtualizar={atualizarUso} />
+              <UsoXCotas itens={asArray(conta.usage)} atualizando={atualizandoUso} onAtualizar={atualizarUso} />
 
-                <TrocaDePlano
-                  planos={planosOferecidos}
-                  planoAtual={planoAtual}
-                  planoAlvo={planoAlvo}
-                  onEscolher={setPlanoAlvo}
-                  previsao={previsao}
-                  previsaoErro={previsaoErro}
-                  carregando={carregandoPrevisao}
-                  trocaPendente={trocaPendente}
-                  onAplicar={() => abrirAcao("plano")}
-                />
+              <TrocaDePlano
+                planos={planosOferecidos}
+                planoAtual={planoAtual}
+                planoAlvo={planoAlvo}
+                onEscolher={setPlanoAlvo}
+                previsao={previsao}
+                previsaoErro={previsaoErro}
+                carregando={carregandoPrevisao}
+                trocaPendente={trocaPendente}
+                onAplicar={() => abrirAcao("plano")}
+              />
 
-                <AcoesDaConta
-                  suspensa={clinica.status === "suspenso"}
-                  semAssinatura={semAssinatura}
-                  onAbrir={abrirAcao}
-                />
+              <AcoesDaConta
+                suspensa={clinica.status === "suspenso"}
+                semAssinatura={semAssinatura}
+                assinaturaNoGateway={assinatura?.asaas_subscription_id || ""}
+                sincronizando={sincronizando}
+                onSincronizar={reenviarAjusteAoGateway}
+                onAbrir={abrirAcao}
+              />
 
-                <section className="panel">
-                  <CrudHeader title="Faturas recentes" subtitle="As últimas cobranças desta clínica na plataforma." />
-                  <DataView
-                    rows={asArray(conta.invoices)}
-                    rowKey={(fatura) => fatura.id}
-                    searchable={false}
-                    defaultSort={{ key: "due_date", dir: "desc" }}
-                    empty="Nenhuma fatura registrada para esta clínica."
-                    columns={[
+              <section className="panel">
+                <CrudHeader title="Faturas recentes" subtitle="As últimas cobranças desta clínica na plataforma." />
+                <DataView
+                  rows={asArray(conta.invoices)}
+                  rowKey={(fatura) => fatura.id}
+                  searchable={false}
+                  defaultSort={{ key: "due_date", dir: "desc" }}
+                  empty="Nenhuma fatura registrada para esta clínica."
+                  columns={[
                       {
                         key: "due_date",
                         label: "Vencimento",
@@ -707,29 +843,67 @@ export function AccountsAdmin({ token, onUnauthorized }) {
                         value: (fatura) => String(fatura.paid_at || ""),
                         render: (fatura) => (fatura.paid_at ? formatarData(fatura.paid_at) : "—"),
                       },
-                    ]}
-                    // A fatura sai da COLUNA e vira ação de linha, como no
-                    // financeiro da plataforma: era o mesmo "abrir a cobrança no
-                    // Asaas" escrito de dois jeitos — lá uma pílula na coluna de
-                    // ações, aqui um link nu no meio da tabela. Mesmo rótulo,
-                    // mesmo lugar. A pílula vem de `.table-actions a` (styles.css).
-                    actions={(fatura) =>
-                      fatura.invoice_url ? (
-                        <a href={fatura.invoice_url} target="_blank" rel="noreferrer">
-                          Abrir fatura
-                        </a>
-                      ) : null
-                    }
-                  />
-                </section>
-              </>
-            )}
-          </div>
-        )}
-      </div>
+                  ]}
+                  actions={(fatura) => fatura.invoice_url
+                    ? <RowActions actions={[{ label: "Abrir fatura", href: fatura.invoice_url, target: "_blank", rel: "noreferrer", primary: true }]} />
+                    : null}
+                />
+              </section>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Toda escrita passa por aqui: o motivo obrigatório e a digitação do slug
           ficam DENTRO da confirmação, junto da assimetria da ação. */}
+      <Modal
+        open={Boolean(acaoDaLista)}
+        title={acaoDaLista?.tipo === "renovar"
+          ? "Ativar ou renovar assinatura"
+          : acaoDaLista?.tenant?.status === "suspenso" ? "Reativar clínica" : "Suspender clínica"}
+        subtitle={acaoDaLista?.tenant ? `${acaoDaLista.tenant.name} (${acaoDaLista.tenant.slug})` : ""}
+        onClose={fecharAcaoDaLista}
+        footer={(
+          <>
+            <Button variant="secondary" disabled={executandoAcaoDaLista} onClick={fecharAcaoDaLista}>Cancelar</Button>
+            <Button
+              variant={acaoDaLista?.tipo === "status" && acaoDaLista?.tenant?.status !== "suspenso" ? "danger" : "primary"}
+              disabled={executandoAcaoDaLista}
+              onClick={executarAcaoDaLista}
+            >
+              {executandoAcaoDaLista ? "Aplicando…" : acaoDaLista?.tipo === "renovar"
+                ? "Ativar / renovar"
+                : acaoDaLista?.tenant?.status === "suspenso" ? "Reativar clínica" : "Suspender clínica"}
+            </Button>
+          </>
+        )}
+      >
+        {acaoDaLista?.tipo === "renovar" ? (
+          <p>
+            Reaplica o plano <strong>{nomeDoPlano(planos, acaoDaLista.tenant.plan)}</strong> e atualiza a assinatura
+            recorrente no Asaas quando ela existir.
+          </p>
+        ) : acaoDaLista?.tenant?.status === "suspenso" ? (
+          <p>Devolve o acesso da clínica. O status da assinatura continua inalterado.</p>
+        ) : (
+          <p>
+            Bloqueia o acesso desta clínica ao sistema. Esta ação não cancela a cobrança recorrente; para isso, use
+            “Cancelar assinatura” dentro da gestão completa.
+          </p>
+        )}
+      </Modal>
+
+      <ConfirmDeleteModal
+        open={Boolean(clinicaParaExcluir)}
+        title="Excluir clínica"
+        message={clinicaParaExcluir
+          ? `Excluir a clínica “${clinicaParaExcluir.name}”? Todos os dados desta clínica serão removidos.`
+          : ""}
+        confirmWord={clinicaParaExcluir?.slug || "excluir"}
+        onClose={() => setClinicaParaExcluir(null)}
+        onConfirm={excluirClinicaDaLista}
+      />
+
       <Modal
         open={Boolean(acao)}
         title={definicao?.titulo}
@@ -1180,7 +1354,7 @@ function ResumoDaPrevisao({ previsao, erro, carregando, compacto = false }) {
 }
 
 /**
- * As cinco ações num painel só.
+ * As cinco ações (mais o reenvio do ajuste ao gateway) num painel só.
  *
  * Antes eram cinco cartões com CSS próprio; o que eles carregavam de essencial
  * — a assimetria e o motivo de um botão estar desligado — continua na tela: a
@@ -1188,7 +1362,7 @@ function ResumoDaPrevisao({ previsao, erro, carregando, compacto = false }) {
  * segundo numa linha de nota abaixo dos botões. Suspender e cancelar ficam
  * separados em `.platform-danger` para nunca aparecerem ao lado de "salvar".
  */
-function AcoesDaConta({ suspensa, semAssinatura, onAbrir }) {
+function AcoesDaConta({ suspensa, semAssinatura, assinaturaNoGateway, sincronizando, onSincronizar, onAbrir }) {
   const semAssinaturaPorque = "sem linha de assinatura não há o que ajustar.";
   const acoes = [
     { tipo: "reativar", ok: suspensa, porque: "Reativar a clínica: ela já está ativa." },
@@ -1230,9 +1404,26 @@ function AcoesDaConta({ suspensa, semAssinatura, onAbrir }) {
           <strong>Cancelar ≠ cortar acesso.</strong> {ASSIMETRIAS.cancelar}
         </p>
         <p className="field-hint">
-          <strong>Trocar de plano ≠ reajustar a cobrança.</strong> {ASSIMETRIAS.plano}
+          <strong>Trocar de plano reajusta a cobrança — se o gateway responder.</strong> {ASSIMETRIAS.plano}
         </p>
       </AlertBlock>
+
+      {/* O reprocesso mora ao lado das assimetrias porque é a resposta à
+          terceira delas. Fora do bloco vermelho e sem confirmação: reenviar o
+          valor que já está gravado não corta acesso, não cria cobrança e pode
+          ser repetido à vontade — o backend só escreve no gateway se o valor de
+          lá estiver diferente. */}
+      <div className="header-actions">
+        <Button variant="secondary" disabled={!assinaturaNoGateway || sincronizando} onClick={onSincronizar}>
+          <RefreshCw size={15} aria-hidden="true" />{" "}
+          {sincronizando ? "Reenviando…" : "Reenviar ajuste ao Asaas"}
+        </Button>
+      </div>
+      <p className="field-hint">
+        {assinaturaNoGateway
+          ? `Reenvia à assinatura ${assinaturaNoGateway} o valor do plano vigente, junto das cobranças pendentes. Use quando a troca de plano avisar que o reajuste não chegou ao gateway.`
+          : "Reenviar ajuste ao Asaas: indisponível porque esta clínica não tem assinatura recorrente no gateway — não há cobrança a reajustar."}
+      </p>
 
       {semAssinatura && (
         <p className="platform-notice">

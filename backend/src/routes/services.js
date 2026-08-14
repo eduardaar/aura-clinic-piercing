@@ -43,7 +43,7 @@ router.get("/api/services", withDb(async (req, res, db) => {
 }));
 
 router.post("/api/services", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
   if (!validateBody(serviceCreateSchema, req, res)) return;
   const result = await db.run(
     "INSERT INTO services (name, description, duration_minutes, price, deposit_value, active_online_booking, pre_service_notes) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
@@ -62,7 +62,7 @@ router.post("/api/services", withDb(async (req, res, db) => {
 }));
 
 async function updateService(req, res, db) {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
   if (!validateBody(serviceUpdateSchema, req, res)) return;
   const service = await db.get("SELECT * FROM services WHERE id = ?", [req.params.id]);
   if (!service) return res.status(404).json({ error: "Servico nao encontrado." });

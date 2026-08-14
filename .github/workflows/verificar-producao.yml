@@ -1,0 +1,198 @@
+# Verificação SOMENTE LEITURA da base de produção.
+#
+# Existe porque "o deploy passou" não é a mesma pergunta que "o banco ficou
+# correto". As migrations rodam no boot do container e são idempotentes, então
+# a API subir já prova que nenhuma delas lançou — mas não mostra o resultado.
+# Este workflow mostra.
+#
+# Roda só sob demanda (workflow_dispatch). Não escreve nada: todo comando é
+# SELECT em information_schema ou contagem. Nenhum dado de cliente é impresso.
+name: Verificar produção
+
+on:
+  workflow_dispatch:
+
+env:
+  SERVER_HOST: 187.77.225.233
+  SERVER_USER: root
+  API_URL: https://auraclinic.monitence.com/api
+
+jobs:
+  verificar:
+    name: Conferir base de produção
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Configurar chave SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          install -m 600 /dev/null "$GITHUB_WORKSPACE/.deploy_key"
+          printf '%s\n' "${DEPLOY_SSH_KEY}" > "$GITHUB_WORKSPACE/.deploy_key"
+
+      - name: Conferir
+        env:
+          SSH_OPTS: -i ${{ github.workspace }}/.deploy_key -o UserKnownHostsFile=${{ github.workspace }}/.known_hosts -o StrictHostKeyChecking=accept-new
+        run: |
+          set -euo pipefail
+
+          # O servidor tem fail2ban e recusa conexão sob rajada — o deploy.sh já
+          # convive com isso (`retry_conn`). Aqui o script vai por stdin, então a
+          # repetição precisa reler o arquivo a cada tentativa, e não o heredoc
+          # (que se esgota na primeira leitura).
+          cat > /tmp/verificar.sh <<'REMOTE'
+          set -euo pipefail
+          # SEM `-i` e com stdin fechado, e isso é o ponto todo: este script
+          # chega no servidor PELO stdin (`bash -s <<'REMOTE'`). Um `docker exec
+          # -i` aqui leria stdin e engoliria o resto do próprio script — a
+          # primeira consulta rodava, e todas as seguintes desapareciam sem erro
+          # nenhum. É a mesma armadilha (SC2259) que o deploy.sh já documenta.
+          psql() { docker exec monitence-postgres psql -U aura -d aura_clinic -qtAX "$@" </dev/null; }
+
+          echo "=============================================================="
+          echo "1) CLINICAS E SCHEMAS"
+          echo "=============================================================="
+          psql -c "SELECT 'clinicas cadastradas: ' || count(*) FROM platform.tenants;"
+          psql -c "SELECT 'schemas de clinica:   ' || count(*) FROM information_schema.schemata WHERE schema_name ~ '^tenant_[0-9]+$';"
+          echo
+          echo "Um schema por clinica é o esperado. Divergência = provisionamento incompleto."
+          echo
+
+          echo "=============================================================="
+          echo "2) DINHEIRO EM NUMERIC (migração #13)"
+          echo "=============================================================="
+          echo "-- colunas monetarias que AINDA estao em double precision (deve ser 0):"
+          psql -c "
+            SELECT count(*)
+              FROM information_schema.columns
+             WHERE table_schema ~ '^tenant_[0-9]+\$'
+               AND data_type = 'double precision'
+               AND column_name IN (
+                 'total_value','deposit_value','remaining_value','service_value',
+                 'jewelry_value','subtotal_value','discount_value','procedure_price',
+                 'jewelry_unit_price','subtotal','amount','fee_amount','net_amount',
+                 'paid_amount','original_paid_amount','unit_price','minimum_amount',
+                 'maximum_discount','original_amount','discount_amount','final_amount',
+                 'fixed_promotional_price','cost_value','sale_value','price',
+                 'target_amount','statement_amount','commission_percentage');"
+          echo
+          echo "-- colunas monetarias JA convertidas para numeric:"
+          psql -c "
+            SELECT count(*)
+              FROM information_schema.columns
+             WHERE table_schema ~ '^tenant_[0-9]+\$'
+               AND data_type = 'numeric'
+               AND column_name IN (
+                 'total_value','deposit_value','remaining_value','service_value',
+                 'jewelry_value','subtotal_value','discount_value','procedure_price',
+                 'jewelry_unit_price','subtotal','amount','fee_amount','net_amount',
+                 'paid_amount','original_paid_amount','unit_price','minimum_amount',
+                 'maximum_discount','original_amount','discount_amount','final_amount',
+                 'fixed_promotional_price','cost_value','sale_value','price',
+                 'target_amount','statement_amount','commission_percentage');"
+          echo
+          echo "-- por clinica (schema | numeric | double restante):"
+          psql -c "
+            SELECT table_schema || ' | ' ||
+                   count(*) FILTER (WHERE data_type='numeric') || ' | ' ||
+                   count(*) FILTER (WHERE data_type='double precision')
+              FROM information_schema.columns
+             WHERE table_schema ~ '^tenant_[0-9]+\$'
+               AND column_name IN (
+                 'total_value','amount','paid_amount','unit_price','sale_value',
+                 'cost_value','price','discount_value','commission_percentage')
+             GROUP BY table_schema ORDER BY table_schema;"
+          echo
+
+          echo "=============================================================="
+          echo "3) EXCLUSOES ADMINISTRATIVAS (feature eduarda)"
+          echo "=============================================================="
+          echo "-- schemas com clients.deleted_at / clients.anonymized_at / administrative_audit_logs:"
+          psql -c "SELECT 'clients.deleted_at .......... ' || count(*) FROM information_schema.columns WHERE table_schema ~ '^tenant_[0-9]+\$' AND table_name='clients' AND column_name='deleted_at';"
+          psql -c "SELECT 'clients.anonymized_at ....... ' || count(*) FROM information_schema.columns WHERE table_schema ~ '^tenant_[0-9]+\$' AND table_name='clients' AND column_name='anonymized_at';"
+          psql -c "SELECT 'administrative_audit_logs ... ' || count(*) FROM information_schema.tables WHERE table_schema ~ '^tenant_[0-9]+\$' AND table_name='administrative_audit_logs';"
+          echo
+          echo "-- cofre de credenciais por clinica (tenant_integrations):"
+          psql -c "SELECT 'tabela presente em ' || count(*) || ' schema(s)' FROM information_schema.tables WHERE table_schema ~ '^tenant_[0-9]+\$' AND table_name='tenant_integrations';"
+          echo
+
+          echo "=============================================================="
+          echo "4) SCHEMA DE CONTROLE (platform)"
+          echo "=============================================================="
+          psql -c "SELECT 'tabelas em platform: ' || count(*) FROM information_schema.tables WHERE table_schema='platform';"
+          psql -c "SELECT 'colunas double precision em platform (deve ser 0): ' || count(*) FROM information_schema.columns WHERE table_schema='platform' AND data_type='double precision';"
+          psql -c "SELECT 'planos cadastrados: ' || count(*) FROM platform.subscription_plans;"
+          echo
+
+          echo "=============================================================="
+          echo "5) VARIAVEIS QUE O PROCESSO ENXERGA"
+          echo "=============================================================="
+          # O .dockerignore exclui .env da imagem, então o que vale é o que o
+          # compose injeta. Só os NOMES: nenhum valor de segredo é impresso.
+          echo "-- presentes no processo (nome, sem valor):"
+          docker exec aura-api printenv </dev/null 2>/dev/null \
+            | cut -d= -f1 \
+            | grep -E '^(DATABASE_URL|AUTH_SECRET|PUBLIC_API_URL|ASAAS_|R2_)' \
+            | sort | sed 's/^/   /' || echo "   (nenhuma)"
+          echo
+          echo "-- ausentes, das que importam:"
+          for v in DATABASE_URL AUTH_SECRET PUBLIC_API_URL ASAAS_VAULT_KEY ASAAS_BASE_URL ASAAS_API_KEY; do
+            docker exec aura-api printenv "$v" </dev/null >/dev/null 2>&1 || echo "   FALTA: $v"
+          done
+          echo
+
+          echo "=============================================================="
+          echo "6) BOOT ATUAL"
+          echo "=============================================================="
+          echo "-- container iniciado em:"
+          docker inspect -f '   {{.State.StartedAt}}  (running={{.State.Running}})' aura-api </dev/null
+          echo
+          echo "-- avisos COM data (para separar boot atual de boot antigo):"
+          docker logs aura-api --timestamps --since 60m </dev/null 2>&1 \
+            | grep -Ei 'ATENÇÃO|ATENCAO|\[storage\]|\[Asaas\]|error|erro|falhou' \
+            | tail -20 || echo "   (nenhum aviso na ultima hora)"
+          echo
+          echo "-- container:"
+          docker ps --filter name=aura-api --format '   aura-api: {{.Status}}'
+          echo
+          echo "=============================================================="
+          echo "7) COMO O COMPOSE INJETA AMBIENTE"
+          echo "=============================================================="
+          # Só ESTRUTURA e NOMES de chave. Nenhum valor é impresso: o compose
+          # tem AUTH_SECRET e DATABASE_URL em claro.
+          compose_file="$(ls /home/auraclinic/docker-compose.y*ml /home/auraclinic/compose.y*ml 2>/dev/null | head -1)"
+          if [ -n "${compose_file}" ]; then
+            echo "   arquivo: ${compose_file}"
+            echo "   -- linhas de env (valores mascarados):"
+            grep -nE 'env_file|environment|^\s{4,}[A-Za-z_][A-Za-z0-9_]*\s*[:=]' "${compose_file}" \
+              | sed -E 's/([:=])[[:space:]]*[^[:space:]].*/\1 <valor>/' | sed 's/^/      /'
+            echo "   -- o serviço aura-api tem env_file?"
+            grep -q 'env_file' "${compose_file}" && echo "      SIM" || echo "      NAO"
+          else
+            echo "   compose não encontrado em /home/auraclinic"
+          fi
+          echo
+          echo "-- .env do servidor (só os NOMES das chaves):"
+          cut -d= -f1 /home/auraclinic/backend/.env 2>/dev/null | grep -E '^[A-Z]' | sed 's/^/      /' || echo "      (sem .env)"
+          echo
+
+          echo "-- backups recentes:"
+          ls -lh /root/pg-backups/*.sql.gz 2>/dev/null | tail -3 || echo "   (nenhum)"
+          REMOTE
+
+          for tentativa in 1 2 3 4 5; do
+            # shellcheck disable=SC2086
+            if ssh ${SSH_OPTS} -o ConnectTimeout=20 "${SERVER_USER}@${SERVER_HOST}" bash -s < /tmp/verificar.sh; then
+              exit 0
+            fi
+            [ "${tentativa}" -lt 5 ] || break
+            espera=$(( tentativa * 30 ))
+            echo "::warning::conexão SSH falhou (tentativa ${tentativa}/5). Nova tentativa em ${espera}s."
+            sleep "${espera}"
+          done
+          echo "::error::não consegui conectar ao servidor em 5 tentativas."
+          exit 1
+
+      - name: Limpar chave
+        if: always()
+        run: rm -f "$GITHUB_WORKSPACE/.deploy_key" "$GITHUB_WORKSPACE/.known_hosts"

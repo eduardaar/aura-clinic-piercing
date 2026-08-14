@@ -32,7 +32,7 @@ Copie `backend/.env.example` para `backend/.env` e ajuste. Variáveis principais
 | `DATABASE_URL` | Conexão Postgres, ex.: `postgres://postgres:SENHA@localhost:5432/aura_clinic` (obrigatória). |
 | `DATABASE_SSL` | `true` para exigir SSL na conexão. |
 | `AUTH_SECRET` | Segredo dos tokens HMAC. Obrigatório em produção; o boot recusa o default de dev em produção. Gere com `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. |
-| `CORS_ORIGIN` | Origem(ns) do frontend permitida(s) no CORS (separadas por vírgula), ex.: `http://localhost:5173`. |
+| `CORS_ORIGIN` | Origem(ns) do frontend permitida(s) no CORS (separadas por vírgula), ex.: `http://localhost:5174`. |
 | **Multi-tenant** | |
 | `DEFAULT_TENANT` | Clínica assumida quando a requisição não traz token nem `X-Tenant` (ex.: `aura`). Útil em dev; **omita** em produção multi-clínica para exigir `X-Tenant` explícito. |
 | `PLATFORM_ADMIN_EMAIL` / `PLATFORM_ADMIN_PASSWORD` | Super-admin da plataforma, semeado no primeiro boot se não houver nenhum. **Obrigatórias em produção** (sem elas o boot não cria credenciais padrão). |
@@ -46,7 +46,6 @@ Copie `frontend/.env.example` para `frontend/.env`. O padrão já aponta para a 
 | Variável | Papel |
 | --- | --- |
 | `VITE_API_URL` | Base da API (default `http://localhost:4000/api`). |
-| `VITE_ADMIN_PASSWORD` | Senha da Central Administrativa do frontend (default `aura123`). |
 
 ## Como rodar
 
@@ -66,12 +65,12 @@ Ou individualmente:
 
 ```bash
 npm --prefix backend run dev     # API em :4000 (node --watch)
-npm --prefix frontend run dev    # SPA em :5173 (vite)
+npm --prefix frontend run dev    # SPA em :5174 (vite)
 ```
 
 Acesse:
 
-- Frontend: `http://localhost:5173`
+- Frontend: `http://localhost:5174`
 - API: `http://localhost:4000`
 - Health check: `http://localhost:4000/api/health` e `/api/health/db`
 
@@ -102,6 +101,12 @@ Para rodar um arquivo específico (a partir de `backend/`):
 node tests/run-suite.mjs tests/security.test.mjs
 ```
 
+O frontend combina testes unitários do Node com testes de componentes do Vitest:
+
+```bash
+npm --prefix frontend test
+```
+
 ## Scripts úteis
 
 Todos em `backend/scripts/`.
@@ -113,6 +118,24 @@ Executa `backup.sh`: carrega o `.env`, valida `DATABASE_URL` e `pg_dump`, e gera
 ### Migração para multi-tenant — `node backend/scripts/migrate-to-multitenant.mjs`
 
 Migração **única** que converte um banco legado single-tenant (tabelas no schema `public`) para o modelo multi-tenant. Passos: garante o schema `platform`; cria (se não existir) o tenant inicial `aura` e seu schema `tenant_<id>`; **move** todas as tabelas de `public` para o schema do tenant via `ALTER TABLE ... SET SCHEMA` (sem copiar dados). É idempotente: se `aura` já existir, não faz nada. Rode apenas se você tiver dados legados no `public`.
+
+### Migrations versionadas — `npm --prefix backend run migrations:apply`
+
+As mudanças novas de banco ficam em `backend/src/db/migrations/{platform,tenant}`
+no formato `NNNN_descricao.sql`. O runner mantém o ledger central
+`platform.schema_migrations`, valida SHA-256 de versões já aplicadas e usa lock
+transacional por schema. Antes de publicar, rode:
+
+```bash
+npm --prefix backend run migrations:verify
+npm --prefix backend run migrations:apply
+```
+
+`verify` falha se houver migration pendente ou se um arquivo aplicado tiver
+mudado. O boot mantém os schemas idempotentes legados na transição e só executa
+o runner para tenants existentes quando `RUN_MIGRATIONS_ON_BOOT=true`; produção
+deve preferir a etapa explícita do deploy. Não edite migration aplicada: crie a
+próxima versão. Veja também `backend/src/db/migrations/README.md`.
 
 ### Teste de isolamento — `node backend/scripts/test-isolation.mjs`
 

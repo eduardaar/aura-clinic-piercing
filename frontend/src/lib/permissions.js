@@ -15,12 +15,11 @@
  */
 
 /**
- * Páginas do app. Inclui as duas da PLATAFORMA ("erp", "error-logs"), que
- * existem como página mas não pertencem a papel nenhum da clínica.
- * @typedef {"dashboard" | "erp" | "agenda" | "communications" | "catalog"
- *   | "catalog-customization" | "sales" | "finance" | "reports" | "client-center"
- *   | "clients" | "terms" | "postcare" | "admin" | "integrations" | "support" | "error-logs"
- *   | "meu-plano"} Page
+ * Páginas do app autenticado.
+ * @typedef {"dashboard" | "agenda" | "communications" | "catalog" | "products" | "inventory"
+ *   | "catalog-customization" | "sales" | "finance" | "receivables" | "payables" | "reports" | "client-center"
+ *   | "clients" | "terms" | "postcare" | "admin" | "integrations" | "support"
+ *   | "meu-plano" | "settings" | "onboarding"} Page
  */
 
 /**
@@ -28,11 +27,6 @@
  * @typedef {string} Feature
  */
 
-// "erp" e "error-logs" NÃO entram em nenhum papel: são ferramentas da plataforma,
-// não da clínica. O Aura ERP exibe conteúdo fictício embutido no código
-// (backend/src/routes/erp.js) e o Monitor de erros expõe stack traces e caminhos
-// internos do servidor — nada disso é informação do cliente. Quem precisa disso
-// é a equipe da Monitence, pelo painel de plataforma.
 // "integrations" fica SÓ em `admin`, nem em `finance`: ali se cadastra a chave
 // do gateway, e quem a troca redireciona o faturamento inteiro da clínica para
 // outra conta. É a mesma regra do backend (routes/integrations.js só aceita
@@ -45,14 +39,14 @@
 export function allowedPagesForRole(role) {
   /** @type {Record<Role, Page[]>} */
   const byRole = {
-    admin: ["dashboard", "agenda", "communications", "catalog", "catalog-customization", "sales", "finance", "reports", "client-center", "clients", "terms", "postcare", "admin", "integrations", "support", "meu-plano"],
-    reception: ["agenda", "communications", "sales", "reports", "client-center", "clients"],
-    finance: ["finance", "reports", "sales"],
-    piercer: ["agenda", "sales", "client-center", "clients", "postcare"]
+    admin: ["dashboard", "agenda", "communications", "products", "inventory", "catalog", "catalog-customization", "sales", "receivables", "payables", "reports", "client-center", "clients", "terms", "postcare", "admin", "integrations", "onboarding", "support", "meu-plano", "settings"],
+    reception: ["agenda", "communications", "sales", "reports", "client-center", "clients", "settings"],
+    finance: ["receivables", "payables", "reports", "sales", "settings"],
+    piercer: ["agenda", "communications", "sales", "client-center", "clients", "terms", "postcare", "settings"]
   };
   // Fallback SEGURO para papéis desconhecidos: acesso mínimo, sem áreas
   // administrativas (admin/finance).
-  return byRole[role] || ["dashboard", "agenda", "client-center", "clients"];
+  return byRole[role] || ["dashboard", "agenda", "client-center", "clients", "settings"];
 }
 
 // Espelha PAGE_FEATURE do backend (backend/src/services/plans.js): página -> feature
@@ -68,10 +62,15 @@ export function allowedPagesForRole(role) {
 /** @type {Partial<Record<Page, Feature>>} */
 export const PAGE_FEATURE = {
   finance: "basic_finance",
+  receivables: "advanced_finance",
+  payables: "advanced_finance",
   terms: "digital_terms",
   postcare: "automatic_followup",
   communications: "message_templates",
+  products: "basic_catalog",
+  inventory: "basic_catalog",
   reports: "basic_reports",
+  catalog: "public_catalog_customization",
   "catalog-customization": "public_catalog_customization",
   sales: "basic_catalog"
 };
@@ -114,13 +113,16 @@ export function pageTitle(page) {
   /** @type {Record<Page, string>} */
   const titles = {
     dashboard: "Dashboard",
-    erp: "Aura Clinic ERP",
     agenda: "Agenda",
     communications: "Comunicações",
     catalog: "Catálogo",
+    products: "Produtos",
+    inventory: "Estoque",
     "catalog-customization": "Personalização do Catálogo",
     sales: "Vendas e ordens",
     finance: "Administrativo Financeiro",
+    receivables: "Contas a receber",
+    payables: "Contas a pagar",
     reports: "Relatórios",
     "client-center": "Clientes",
     clients: "Clientes",
@@ -129,8 +131,9 @@ export function pageTitle(page) {
     admin: "Acessos administrativos",
     integrations: "Integrações",
     support: "Suporte",
-    "error-logs": "Monitor de erros",
-    "meu-plano": "Meu plano"
+    "meu-plano": "Meu plano",
+    settings: "Configurações",
+    onboarding: "Onboarding"
   };
   return titles[page] || "Aura Clinic";
 }

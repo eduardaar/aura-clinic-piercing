@@ -1,12 +1,14 @@
-import React, { lazy, Suspense, useEffect, useState } from "react";
+import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Bell, Calendar, Menu, PanelLeftClose, PanelLeftOpen, UserRound } from "lucide-react";
+import { Bell, Calendar, ChevronDown, Menu, MessageCircle, PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
 import "./styles.css";
 import "./styles/topnav.css";
 import "./styles/landing.css";
+import "./styles/legal.css";
 import "./styles/auth.css";
 import "./styles/directory.css";
+import "./styles/settings.css";
 // Por último de propósito: é a camada que define o layout do shell autenticado.
 import "./styles/appshell.css";
 import "./styles/catalog-v2.css";
@@ -20,9 +22,11 @@ import { queryClient } from "./lib/queryClient";
 import { installGlobalErrorReporting } from "./lib/errorReporter";
 import { canAccessPage, defaultPageForRole, pageTitle } from "./lib/permissions";
 import { roleLabel } from "./features/shared/helpers";
+import { applyUiTheme, readUiTheme, saveUiTheme } from "./lib/uiTheme";
+import { appPathForPage, isAppPath, pageForAppPath } from "./lib/appRoutes";
 
 if (typeof __AURA_BUILD__ !== "undefined") {
-  console.info("Aura Clinic ERP", __AURA_BUILD__);
+  console.info("Aura Clinic", __AURA_BUILD__);
 }
 
 // Code-splitting: telas pesadas carregadas sob demanda via React.lazy().
@@ -34,6 +38,8 @@ const Communications = lazy(() => import("./features/communications/Communicatio
 const CatalogWorkspace = lazy(() => import("./features/inventory/Inventory").then((m) => ({ default: m.CatalogWorkspace })));
 const SalesWorkspace = lazy(() => import("./features/sales/Sales").then((m) => ({ default: m.SalesWorkspace })));
 const FinanceAdmin = lazy(() => import("./features/finance/Finance").then((m) => ({ default: m.FinanceAdmin })));
+const AccountsReceivable = lazy(() => import("./features/finance/Finance").then((m) => ({ default: m.AccountsReceivable })));
+const PayablesAdmin = lazy(() => import("./features/finance/Payables").then((m) => ({ default: m.PayablesAdmin })));
 const Reports = lazy(() => import("./features/reports/Reports").then((m) => ({ default: m.Reports })));
 const AccessAdmin = lazy(() => import("./features/access/AccessAdmin").then((m) => ({ default: m.AccessAdmin })));
 const Integrations = lazy(() => import("./features/integrations/Integrations").then((m) => ({ default: m.Integrations })));
@@ -50,12 +56,17 @@ const Signup = lazy(() => import("./features/platform/Signup").then((m) => ({ de
 const PlatformAdmin = lazy(() => import("./features/platform/PlatformAdmin").then((m) => ({ default: m.PlatformAdmin })));
 const MyPlan = lazy(() => import("./features/platform/MyPlan").then((m) => ({ default: m.MyPlan })));
 const Landing = lazy(() => import("./pages/Landing").then((m) => ({ default: m.Landing })));
+const AboutPage = lazy(() => import("./pages/Landing").then((m) => ({ default: m.AboutPage })));
+const LegalDocument = lazy(() => import("./pages/LegalDocument").then((m) => ({ default: m.LegalDocument })));
 const CatalogDirectory = lazy(() => import("./pages/PublicDirectory").then((m) => ({ default: m.CatalogDirectory })));
 const BookingDirectory = lazy(() => import("./pages/PublicDirectory").then((m) => ({ default: m.BookingDirectory })));
+const Settings = lazy(() => import("./features/settings/Settings").then((m) => ({ default: m.Settings })));
+const Onboarding = lazy(() => import("./features/onboarding/Onboarding").then((m) => ({ default: m.Onboarding })));
 
 function App() {
   const [session, setSession] = useState(readStoredSession);
-  const [page, setPage] = useState("dashboard");
+  const [page, setPage] = useState(() => pageForAppPath() || "dashboard");
+  const [agendaTarget, setAgendaTarget] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // Preferência de menu recolhido é por usuário e persiste entre sessões.
   const [navCollapsed, setNavCollapsed] = useState(() => {
@@ -71,6 +82,8 @@ function App() {
     });
   }
   const [alertsOpen, setAlertsOpen] = useState(false);
+  const [globalSearch, setGlobalSearch] = useState("");
+  const globalSearchRef = useRef(null);
   const [alertsData, setAlertsData] = useState({ count: 0, items: [] });
   const [alertsLoading, setAlertsLoading] = useState(false);
   // Identidade da clínica logada (nome + logo), para o app exibir a marca do
@@ -80,6 +93,7 @@ function App() {
   // gating por plano, o banner de trial e a tela "Meu plano".
   const [subscription, setSubscription] = useState(null);
   const [plans, setPlans] = useState([]);
+  const [uiTheme, setUiTheme] = useState(() => readUiTheme(session?.user?.id));
 
   // Verificação de autenticação administrativa
   const isAdminAuthenticated = session?.user?.id ? true : false;
@@ -103,11 +117,49 @@ function App() {
   const isPublicBooking = currentPathname.startsWith("/agendar");
   const isPublicCheckout = currentPathname.startsWith("/comprar");
   const isSignup = currentPathname.startsWith("/cadastro");
+  const isAbout = currentPathname === "/sobre";
+  const legalDocumentKey = currentPathname === "/termos-de-uso" ? "terms_of_use" : currentPathname === "/politica-de-privacidade" ? "privacy_policy" : null;
+  const isLegalPage = Boolean(legalDocumentKey);
   const isPlatform = currentPathname.startsWith("/plataforma");
+  const isInternalApp = isAppPath(currentPathname);
   // Landing de marketing: raiz "/" sem sessão. Com sessão, "/" é o app.
   const isLanding = currentPathname === "/";
   
   const normalizedSession = session?.user ? session : session ? { user: session } : null;
+
+  useEffect(() => {
+    setUiTheme(applyUiTheme(readUiTheme(normalizedSession?.user?.id)));
+  }, [normalizedSession?.user?.id]);
+
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        globalSearchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  function changeUiTheme(nextTheme) {
+    setUiTheme(saveUiTheme(normalizedSession?.user?.id, nextTheme));
+  }
+
+  function changeNavCollapsed(next) {
+    setNavCollapsed(next);
+    try { localStorage.setItem("aura-nav-collapsed", String(next)); } catch { /* storage indisponível */ }
+  }
+
+  function changeUser(nextUser, nextToken) {
+    const nextSession = {
+      ...normalizedSession,
+      ...(nextToken ? { token: nextToken } : {}),
+      user: { ...normalizedSession.user, ...nextUser }
+    };
+    try { localStorage.setItem("aura-session", JSON.stringify(nextSession)); } catch { /* sessão atual segue em memória */ }
+    setSession(nextSession);
+  }
 
   async function openAlerts() {
     setAlertsOpen(true);
@@ -127,11 +179,36 @@ function App() {
     }
   }
 
+  const navigate = useCallback((nextPage, { replace = false } = {}) => {
+    const destination = appPathForPage(nextPage);
+    if (window.location.pathname !== destination) {
+      window.history[replace ? "replaceState" : "pushState"]({ auraPage: nextPage }, "", destination);
+    }
+    setPage(nextPage);
+  }, []);
+
+  useEffect(() => {
+    const onPopState = () => {
+      const nextPage = pageForAppPath();
+      if (nextPage) setPage(nextPage);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
   useEffect(() => {
     if (normalizedSession && !canAccessPage(normalizedSession.user?.role, page)) {
-      setPage(defaultPageForRole(normalizedSession.user?.role));
+      navigate(defaultPageForRole(normalizedSession.user?.role), { replace: true });
     }
-  }, [normalizedSession, page]);
+  }, [normalizedSession, navigate, page]);
+
+  // Sessões antigas ainda podiam cair em `/`; quem abre um deep link inválido
+  // também recebe uma tela válida, sem criar uma entrada extra no histórico.
+  useEffect(() => {
+    if (!normalizedSession || (!isLanding && !isInternalApp)) return;
+    const pageDaUrl = pageForAppPath();
+    if (!pageDaUrl || pageDaUrl !== page) navigate(page, { replace: true });
+  }, [isInternalApp, isLanding, navigate, normalizedSession, page]);
 
   // Carrega identidade (nome/logo) + assinatura (plano/trial) + catálogo de
   // planos da clínica logada. Reutilizável para recarregar após troca de plano.
@@ -158,22 +235,23 @@ function App() {
   // Se está em /login mas já autenticado, redirecionar para home
   useEffect(() => {
     if (isLoginPath && isAdminAuthenticated) {
-      window.location.href = "/";
+      window.location.href = appPathForPage(defaultPageForRole(normalizedSession?.user?.role));
     }
   }, [isLoginPath, isAdminAuthenticated]);
 
   // Se não tem sessão e não está em rota pública (nem na landing "/"),
   // redireciona para login.
   useEffect(() => {
-    if (!normalizedSession && !isLanding && !isPublicCatalog && !isPublicBooking && !isPublicCheckout && !isSignup && !isPlatform && !isLoginPath) {
+    if (!normalizedSession && !isLanding && !isAbout && !isPublicCatalog && !isPublicBooking && !isPublicCheckout && !isSignup && !isPlatform && !isLegalPage && !isLoginPath) {
       window.location.href = "/login";
     }
-  }, [normalizedSession, isLanding, isPublicCatalog, isPublicBooking, isPublicCheckout, isSignup, isPlatform, isLoginPath]);
+  }, [normalizedSession, isLanding, isAbout, isPublicCatalog, isPublicBooking, isPublicCheckout, isSignup, isPlatform, isLegalPage, isLoginPath]);
 
   // Landing pública na raiz "/" quando não há sessão.
   if (isLanding && !normalizedSession) {
     return <Suspense fallback={<Loading />}><Landing /></Suspense>;
   }
+  if (isAbout) return <Suspense fallback={<Loading />}><AboutPage /></Suspense>;
 
   // Se está em /login, renderizar APENAS login (sem app shell)
   if (isLoginPath) {
@@ -199,6 +277,7 @@ function App() {
       : <Suspense fallback={<Loading />}><BookingDirectory /></Suspense>;
   }
   if (isPublicCheckout) return <Suspense fallback={<Loading />}><PublicCheckout /></Suspense>;
+  if (legalDocumentKey) return <Suspense fallback={<Loading />}><LegalDocument documentKey={legalDocumentKey} /></Suspense>;
   if (isSignup) return <Suspense fallback={<Loading />}><Signup /></Suspense>;
   if (isPlatform) return <Suspense fallback={<Loading />}><PlatformAdmin /></Suspense>;
   
@@ -223,12 +302,16 @@ function App() {
           features={planFeatures}
           trialDays={trialDays}
           setPage={(next) => {
-            setPage(next);
+            if (next !== "agenda") setAgendaTarget(null);
+            navigate(next);
             setSidebarOpen(false);
           }}
           open={sidebarOpen}
           collapsed={navCollapsed}
           onLogout={() => {
+            // Revoga também o refresh HttpOnly da sessão ativa. A limpeza local
+            // continua imediata, então o usuário não espera a rede para sair.
+            void apiFetch("/auth/logout", { method: "POST" }).catch(() => {});
             localStorage.removeItem("aura-session");
             localStorage.removeItem("aura-admin-authenticated");
             setSession(null);
@@ -251,29 +334,34 @@ function App() {
             <Menu size={20} className="nav-toggle-mobile" />
             {navCollapsed ? <PanelLeftOpen size={20} className="nav-toggle-desk" /> : <PanelLeftClose size={20} className="nav-toggle-desk" />}
           </button>
-          <div className="topbar-title">
-            <span className="eyebrow">{brandName}</span>
-            <h1>{activePage === "dashboard" ? `Olá, ${firstName(normalizedSession.user?.name || "Usuário")}!` : pageTitle(activePage)}</h1>
-            {activePage === "dashboard" && <p>Bem-vindo(a) ao painel administrativo{identity?.store_name ? ` da ${identity.store_name}` : ""}.</p>}
+          <form className="global-search" role="search" onSubmit={(event) => event.preventDefault()}>
+            <Search size={19} aria-hidden="true" />
+            <input
+              ref={globalSearchRef}
+              type="search"
+              value={globalSearch}
+              onChange={(event) => setGlobalSearch(event.target.value)}
+              placeholder="Buscar cliente, agendamento, serviço…"
+              aria-label="Busca global"
+            />
+            <kbd>⌘ K</kbd>
+          </form>
+          <div className="topbar-page-context">
+            <span>{brandName}</span>
+            <strong>{activePage === "dashboard" ? "Visão geral" : pageTitle(activePage)}</strong>
           </div>
           <div className="topbar-actions">
             <button className="notification-button" aria-label="Notificações" onClick={openAlerts}>
               <Bell size={19} />
               {asNumber(alertsData.count) > 0 && <span>{asNumber(alertsData.count)}</span>}
             </button>
-            <div className="date-card">
-              <Calendar size={21} />
-              <div>
-                <strong>{new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}</strong>
-                <span>{new Date().toLocaleDateString("pt-BR", { weekday: "long" })}, {new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
-              </div>
-            </div>
-          {/* Primeiro nome apenas: o nome completo somado ao papel não cabia no
-              chip e era cortado no meio da palavra. */}
-          <div className="user-chip" title={`${normalizedSession.user?.name || "Usuário"} · ${roleLabel(normalizedSession.user?.role)}`}>
-            <UserRound size={16} />
-            {firstName(normalizedSession.user?.name || "Usuário")} · {roleLabel(normalizedSession.user?.role)}
-          </div>
+            <button type="button" className="topbar-icon-action" onClick={() => navigate("agenda")} aria-label="Abrir agenda" title="Agenda"><Calendar size={20} /></button>
+            <button type="button" className="topbar-icon-action" onClick={() => navigate("communications")} aria-label="Abrir comunicações" title="Comunicações"><MessageCircle size={20} /></button>
+            <button type="button" className="user-chip" onClick={() => navigate("settings")} title={`${normalizedSession.user?.name || "Usuário"} · ${roleLabel(normalizedSession.user?.role)}`}>
+              <span className="user-avatar">{firstName(normalizedSession.user?.name || "U").charAt(0).toUpperCase()}</span>
+              <span className="user-chip-copy"><strong>{normalizedSession.user?.name || "Usuário"}</strong><small>{roleLabel(normalizedSession.user?.role)}</small></span>
+              <ChevronDown size={16} aria-hidden="true" />
+            </button>
           </div>
         </header>
         {/* Único elemento com rolagem: o menu lateral e o topo ficam fixos. */}
@@ -285,27 +373,35 @@ function App() {
                 ? "Seu período de teste terminou. Escolha um plano para continuar usando todos os recursos."
                 : `Teste grátis: ${trialDays} dia(s) restante(s).`}
             </span>
-            {canSeePlan && <button type="button" onClick={() => setPage("meu-plano")}>Ver planos</button>}
+            {canSeePlan && <button type="button" onClick={() => navigate("meu-plano")}>Ver planos</button>}
           </div>
         )}
         <Suspense fallback={<Loading />}>
           {activePage === "meu-plano" && <MyPlan subscription={subscription} plans={plans} onChanged={loadStoreIdentity} />}
-          {activePage === "dashboard" && <Dashboard user={normalizedSession.user} setPage={setPage} alertsOpen={alertsOpen} setAlertsOpen={setAlertsOpen} alertsData={alertsData} alertsLoading={alertsLoading} />}
-          {activePage !== "dashboard" && alertsOpen && <AlertsPopup alerts={alertsData} loading={alertsLoading} onClose={() => setAlertsOpen(false)} onAction={(nextPage) => { setAlertsOpen(false); setPage(nextPage); }} />}
-          {activePage === "agenda" && <AgendaWorkspace />}
+          {activePage === "dashboard" && <Dashboard user={normalizedSession.user} setPage={navigate} alertsOpen={alertsOpen} setAlertsOpen={setAlertsOpen} alertsData={alertsData} alertsLoading={alertsLoading} />}
+          {activePage !== "dashboard" && alertsOpen && <AlertsPopup alerts={alertsData} loading={alertsLoading} onClose={() => setAlertsOpen(false)} onAction={(nextPage) => { setAlertsOpen(false); navigate(nextPage); }} />}
+          {activePage === "agenda" && <AgendaWorkspace initialScreen={agendaTarget ? "settings" : "agenda"} initialSettingsTab={agendaTarget} onSettingsClosed={() => setAgendaTarget(null)} />}
+          {activePage === "onboarding" && <Onboarding onOpenAgendaSettings={(tab) => { setAgendaTarget(tab); navigate("agenda"); }} />}
           {activePage === "communications" && <Communications />}
-          {activePage === "catalog" && <CatalogWorkspace />}
-          {activePage === "client-center" && <ClientWorkspace />}
+          {activePage === "products" && <CatalogWorkspace area="produtos" />}
+          {/* Compatibilidade com atalhos antigos: não há mais menu separado;
+              quem ainda chegar em "inventory" abre a aba Estoque da mesma área. */}
+          {activePage === "inventory" && <CatalogWorkspace area="produtos" initialTab="unidades" />}
+          {activePage === "catalog" && <CatalogWorkspace area="catalogo" />}
+          {activePage === "client-center" && <ClientWorkspace onNavigate={navigate} />}
           {activePage === "catalog-customization" && <CatalogCustomization />}
           {activePage === "sales" && <SalesWorkspace />}
           {activePage === "finance" && <FinanceAdmin />}
+          {activePage === "receivables" && <AccountsReceivable />}
+          {activePage === "payables" && <PayablesAdmin />}
           {activePage === "reports" && <Reports />}
           {activePage === "clients" && <ClientsMedical />}
-          {activePage === "terms" && <DigitalTerms />}
-          {activePage === "postcare" && <PostCare />}
+          {activePage === "terms" && <DigitalTerms onBack={() => navigate("client-center")} />}
+          {activePage === "postcare" && <PostCare onBack={() => navigate("client-center")} />}
           {activePage === "admin" && <AccessAdmin />}
           {activePage === "integrations" && <Integrations />}
           {activePage === "support" && <Support />}
+          {activePage === "settings" && <Settings user={normalizedSession.user} theme={uiTheme} onThemeChange={changeUiTheme} navCollapsed={navCollapsed} onNavCollapsedChange={changeNavCollapsed} onUserChanged={changeUser} />}
         </Suspense>
         </div>
       </main>
@@ -336,4 +432,3 @@ auraRoot.render(
     <AppErrorBoundary><App /></AppErrorBoundary>
   </QueryClientProvider>
 );
-

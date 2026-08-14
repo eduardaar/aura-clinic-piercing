@@ -24,7 +24,7 @@
 //      sobre chamados que existem na página seguinte.
 import { useCallback, useEffect, useState } from "react";
 import { Button, Checkbox, Select, StatusBadge, Textarea } from "../../components/common/Ui";
-import { CrudHeader, Modal } from "../../components/common/Crud";
+import { CrudHeader, Modal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { Loading } from "../../components/common/Feedback";
 import { API } from "../../lib/api";
@@ -393,9 +393,7 @@ export function SupportInbox({ token, onUnauthorized, onChanged }) {
                 render: (row) => formatMoment(row.updated_at)
               }
             ]}
-            actions={(row) => (
-              <button type="button" onClick={() => openTicket(row.id)}>Abrir</button>
-            )}
+            actions={(row) => <RowActions actions={[{ label: "Abrir", onClick: () => openTicket(row.id), primary: true }]} />}
             empty="Nenhum chamado na fila."
             emptyFiltered="Nenhum chamado corresponde aos filtros aplicados."
           />

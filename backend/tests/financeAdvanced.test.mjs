@@ -8,7 +8,7 @@ before(async () => {
   Object.assign(context, await createTenant("finance2"));
   context.platformToken = await platformLogin();
   context.token = (await loginTenant(context.slug, context.adminEmail, context.adminPassword)).token;
-  const plan = await req("/subscription", { method: "PATCH", tenant: context.slug, token: context.token, body: { plan_code: "premium" } });
+  const plan = await req("/subscription", { method: "PATCH", tenant: context.slug, token: context.token, body: { plan_code: "studio" } });
   assert.equal(plan.status, 200, JSON.stringify(plan.json));
 });
 

@@ -11,6 +11,7 @@ import path from "path";
 import { verifyPlatformToken } from "../middleware/auth.js";
 import { upload, parseUpload } from "../middleware/upload.js";
 import { isProduction } from "../config/index.js";
+import { query } from "../database/connection.js";
 import {
   LandingError,
   listLandingSections,
@@ -57,6 +58,31 @@ router.get("/api/landing", async (_req, res) => {
   }
 });
 
+const LEGAL_DOCUMENT_KEYS = ["terms_of_use", "privacy_policy"];
+
+function normalizeLegalDocument(row) {
+  return {
+    key: row.document_key,
+    title: row.title,
+    content: row.content,
+    version: Number(row.version),
+    updated_at: row.updated_at
+  };
+}
+
+// Textos públicos, usados tanto pelos links do rodapé quanto pelo cadastro.
+router.get("/api/legal-documents", async (_req, res) => {
+  try {
+    const result = await query(
+      "SELECT document_key, title, content, version, updated_at FROM platform.legal_documents ORDER BY document_key"
+    );
+    res.json({ documents: result.rows.map(normalizeLegalDocument) });
+  } catch (error) {
+    console.error(`[legal] falha ao ler documentos públicos: ${error.message}`);
+    res.status(503).json({ error: "Os documentos legais estão indisponíveis no momento." });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Painel da plataforma
 // ---------------------------------------------------------------------------
@@ -66,6 +92,39 @@ router.get("/api/landing", async (_req, res) => {
 router.get("/api/platform/landing", requirePlatform, async (_req, res) => {
   try {
     res.json({ sections: await listLandingSections({ onlyEnabled: false }) });
+  } catch (error) {
+    handleLandingError(res, error);
+  }
+});
+
+router.get("/api/platform/legal-documents", requirePlatform, async (_req, res) => {
+  try {
+    const result = await query(
+      "SELECT document_key, title, content, version, updated_at FROM platform.legal_documents ORDER BY document_key"
+    );
+    res.json({ documents: result.rows.map(normalizeLegalDocument) });
+  } catch (error) {
+    handleLandingError(res, error);
+  }
+});
+
+router.put("/api/platform/legal-documents/:key", requirePlatform, async (req, res) => {
+  const key = String(req.params.key || "");
+  const title = String(req.body?.title || "").trim();
+  const content = String(req.body?.content || "").trim();
+  if (!LEGAL_DOCUMENT_KEYS.includes(key)) return res.status(404).json({ error: "Documento legal não encontrado." });
+  if (!title || !content) return res.status(400).json({ error: "Informe título e conteúdo do documento." });
+  if (title.length > 160 || content.length > 30000) return res.status(400).json({ error: "O documento excede o tamanho permitido." });
+  try {
+    const result = await query(
+      `UPDATE platform.legal_documents
+       SET title = $1, content = $2, version = version + 1, updated_at = now(), updated_by = $3
+       WHERE document_key = $4
+       RETURNING document_key, title, content, version, updated_at`,
+      [title, content, req.platformUser?.sub || null, key]
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: "Documento legal não encontrado." });
+    res.json({ document: normalizeLegalDocument(result.rows[0]) });
   } catch (error) {
     handleLandingError(res, error);
   }
@@ -104,11 +163,18 @@ router.patch("/api/platform/landing/order", requirePlatform, async (req, res) =>
 // diretório servido em /uploads.
 router.post("/api/platform/landing/uploads", requirePlatform, async (req, res) => {
   try {
-    await parseUpload(upload.single("file"), req, res);
+    await parseUpload(upload.single("file"), req, res, { category: "landing", imagesOnly: true });
     if (!req.file) return res.status(400).json({ error: "Nenhum arquivo enviado." });
-    // `path.basename` como defesa em profundidade: o nome é gerado pelo multer,
-    // mas nada aqui deve poder montar um caminho para fora de /uploads.
-    res.status(201).json({ url: `/uploads/${path.basename(req.file.filename)}` });
+    // Em modo R2 a camada de storage já subiu o arquivo e devolve a URL do CDN;
+    // em modo disco não existe `publicUrl` e o caminho relativo continua valendo.
+    // Devolver o caminho relativo nos dois casos apontaria, no R2, para um disco
+    // onde o arquivo não está.
+    //
+    // `path.basename` segue como defesa em profundidade no ramo de disco: o nome
+    // é gerado pelo multer, mas nada aqui deve poder montar um caminho para fora
+    // de /uploads.
+    const url = req.file.publicUrl || `/uploads/${path.basename(req.file.filename)}`;
+    res.status(201).json({ url });
   } catch (error) {
     handleLandingError(res, error);
   }

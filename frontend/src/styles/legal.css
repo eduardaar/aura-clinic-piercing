@@ -1,0 +1,10 @@
+@layer telas {
+  .legal-page { width:min(100% - 32px, 800px); margin:0 auto; padding:48px 0 80px; }
+  .legal-back { display:inline-flex; align-items:center; gap:8px; color:var(--brown-dark); font-weight:700; text-decoration:none; }
+  .legal-document { margin-top:24px; padding:clamp(24px, 5vw, 52px); border:1px solid var(--line); border-radius:22px; background:#fff; box-shadow:0 16px 40px rgb(56 38 20 / .08); }
+  .legal-kicker { color:var(--gold-dark); font-size:12px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; }
+  .legal-document h1 { margin:12px 0 8px; font-family:var(--title-font); font-size:clamp(30px, 5vw, 46px); color:var(--ink); }
+  .legal-version { margin:0; color:var(--muted); font-size:14px; }
+  .legal-content { display:grid; gap:18px; margin-top:34px; color:var(--ink); font-size:16px; line-height:1.75; white-space:pre-line; }
+  .legal-content p { margin:0; }
+}

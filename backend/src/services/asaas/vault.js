@@ -15,21 +15,60 @@ const ALGORITHM = "aes-256-gcm";
 const IV_BYTES = 12; // 96 bits: tamanho canônico de nonce do GCM.
 const VERSION = "v1";
 
-// Chave de 32 bytes derivada uma única vez no boot.
-//
-// ASAAS_VAULT_KEY é o caminho recomendado: rotacionar o AUTH_SECRET (troca de
-// segredo de sessão, algo relativamente rotineiro) NÃO deve tornar ilegíveis as
-// credenciais já salvas. Sem ela, derivamos do AUTH_SECRET como conveniência —
-// e aí vale a advertência: trocar o AUTH_SECRET obriga cada clínica a recadastrar
-// a chave do Asaas.
+// Chaves de 32 bytes derivadas uma única vez no boot.
 //
 // scrypt e não um hash simples: o segredo de origem é uma senha (entropia
 // humana), e o custo de memória do scrypt é o que torna força bruta cara.
-const vaultKey = crypto.scryptSync(
-  process.env.ASAAS_VAULT_KEY || AUTH_SECRET,
-  "aura-clinic-asaas-vault",
-  32
-);
+const derive = (secret) => crypto.scryptSync(secret, "aura-clinic-asaas-vault", 32);
+
+// A PRIMEIRA da lista cifra; TODAS decifram.
+//
+// Isso existe por causa de uma armadilha de ordem que já custou sustos: sem
+// `ASAAS_VAULT_KEY`, o cofre deriva do `AUTH_SECRET`. Definir a variável DEPOIS
+// que uma clínica salvou a chave dela mudaria a derivação e tornaria o cofre
+// inteiro ilegível — sem aviso, e o erro só apareceria na primeira cobrança.
+//
+// Com a lista, introduzir `ASAAS_VAULT_KEY` a qualquer momento é seguro: o que
+// já estava salvo continua sendo lido pela chave legada, e `needsRewrap()` diz a
+// quem tem acesso ao banco que aquela linha deve ser regravada com a chave nova.
+// A migração acontece sozinha, na primeira leitura.
+export const vaultKeyConfigured = Boolean(process.env.ASAAS_VAULT_KEY);
+
+const vaultKeys = vaultKeyConfigured
+  ? [derive(process.env.ASAAS_VAULT_KEY), derive(AUTH_SECRET)]
+  : [derive(AUTH_SECRET)];
+
+// Tenta cada chave e diz QUAL funcionou. Índice 0 é a chave corrente; qualquer
+// outro é legado e pede regravação.
+function tryDecrypt(raw) {
+  const parts = String(raw ?? "").trim().split(":");
+  if (parts.length !== 4 || parts[0] !== VERSION) return null;
+  for (let index = 0; index < vaultKeys.length; index += 1) {
+    try {
+      const decipher = crypto.createDecipheriv(
+        ALGORITHM,
+        vaultKeys[index],
+        Buffer.from(parts[1], "base64url")
+      );
+      decipher.setAuthTag(Buffer.from(parts[2], "base64url"));
+      const value = Buffer.concat([
+        decipher.update(Buffer.from(parts[3], "base64url")),
+        decipher.final()
+      ]).toString("utf8");
+      return { value, index };
+    } catch {
+      // Chave errada: a tag do GCM não fecha. Segue para a próxima.
+    }
+  }
+  return null;
+}
+
+// True quando o valor só abriu com uma chave legada — ou seja, está cifrado com
+// a derivação antiga e deve ser regravado com a atual.
+export function needsRewrap(stored) {
+  const hit = tryDecrypt(stored);
+  return Boolean(hit && hit.index > 0);
+}
 
 // Cifra um segredo. Devolve "v1:<iv>:<tag>:<ciphertext>", tudo em base64url.
 // O prefixo de versão é o que permitirá trocar de algoritmo no futuro sem
@@ -38,7 +77,7 @@ export function encryptSecret(plain) {
   const value = String(plain ?? "").trim();
   if (!value) return null;
   const iv = crypto.randomBytes(IV_BYTES);
-  const cipher = crypto.createCipheriv(ALGORITHM, vaultKey, iv);
+  const cipher = crypto.createCipheriv(ALGORITHM, vaultKeys[0], iv);
   const ciphertext = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
   return [
@@ -54,24 +93,8 @@ export function encryptSecret(plain) {
 // esperado de "a chave do cofre mudou". Quem chama trata como "sem credencial"
 // e a clínica recadastra; derrubar a requisição não daria informação melhor.
 export function decryptSecret(stored) {
-  const raw = String(stored ?? "").trim();
-  if (!raw) return null;
-  const parts = raw.split(":");
-  if (parts.length !== 4 || parts[0] !== VERSION) return null;
-  try {
-    const decipher = crypto.createDecipheriv(
-      ALGORITHM,
-      vaultKey,
-      Buffer.from(parts[1], "base64url")
-    );
-    decipher.setAuthTag(Buffer.from(parts[2], "base64url"));
-    return Buffer.concat([
-      decipher.update(Buffer.from(parts[3], "base64url")),
-      decipher.final()
-    ]).toString("utf8");
-  } catch {
-    return null;
-  }
+  const hit = tryDecrypt(stored);
+  return hit ? hit.value : null;
 }
 
 // Máscara exibida na interface: confirma QUAL chave está salva sem revelá-la.

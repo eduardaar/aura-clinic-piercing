@@ -26,7 +26,12 @@ export const LANDING_DEFAULTS = {
     note: "7 dias grátis · sem cartão de crédito",
     image: "/assets/landing/hero-studio.jpg",
     image_alt: "Close de orelha com piercings de joias douradas no lóbulo",
-    caption: "Agenda, catálogo e ficha digital num link só seu"
+    caption: "Agenda, catálogo e ficha digital num link só seu",
+    screens: [
+      { image: "/assets/landing/system/agenda-demo.png", image_alt: "Tela demonstrativa da agenda do sistema" },
+      { image: "/assets/landing/system/catalogo-demo.png", image_alt: "Tela demonstrativa de produtos e estoque" },
+      { image: "/assets/landing/system/financeiro-demo.png", image_alt: "Tela demonstrativa do painel financeiro" }
+    ]
   },
 
   features: {
@@ -78,21 +83,13 @@ export const LANDING_DEFAULTS = {
     cta_href: "/cadastro"
   },
 
-  showcase_links: {
-    title: "Veja quem já usa",
-    subtitle: "Explore as vitrines públicas das clínicas na plataforma.",
-    items: [
-      {
-        title: "Catálogo online",
-        text: "Veja as clínicas usando e abra a vitrine de joias de cada uma.",
-        href: "/catalogo"
-      },
-      {
-        title: "Agendamento online",
-        text: "Encontre um estúdio e marque horário direto na agenda dele.",
-        href: "/agendar"
-      }
-    ]
+  about: {
+    kicker: "Sobre nós",
+    title: "Tecnologia feita para a rotina de quem atende.",
+    aura_title: "Aura Clinic",
+    aura_text: "A Aura Clinic é a plataforma de gestão criada para estúdios de piercing organizarem agenda, clientes, catálogo, estoque, financeiro e comunicação em um só lugar.",
+    monitence_title: "Monitence",
+    monitence_text: "A Monitence desenvolve produtos digitais que tornam operações de serviço mais simples, conectadas e preparadas para crescer."
   },
 
   closing: {
@@ -106,7 +103,10 @@ export const LANDING_DEFAULTS = {
     ],
     footer_text: "Plataforma de gestão para estúdios de piercing.",
     footer_link_label: "Entrar na minha conta",
-    footer_link_href: "/login"
+    footer_link_href: "/login",
+    contact_whatsapp: "+55 77 9863-2417",
+    contact_email: "",
+    contact_instagram: "https://www.instagram.com/eduarda.bodypiercer/"
   }
 };
 
@@ -117,7 +117,7 @@ export const LANDING_DEFAULTS = {
 export const DEFAULT_LANDING_SECTIONS = [
   { section_key: "hero", enabled: true, sort_order: 10, content: LANDING_DEFAULTS.hero },
   { section_key: "features", enabled: true, sort_order: 20, content: LANDING_DEFAULTS.features },
+  { section_key: "about", enabled: true, sort_order: 30, content: LANDING_DEFAULTS.about },
   { section_key: "plans", enabled: true, sort_order: 40, content: LANDING_DEFAULTS.plans },
-  { section_key: "showcase_links", enabled: true, sort_order: 50, content: LANDING_DEFAULTS.showcase_links },
   { section_key: "closing", enabled: true, sort_order: 60, content: LANDING_DEFAULTS.closing }
 ];

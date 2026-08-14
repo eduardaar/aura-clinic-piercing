@@ -1,11 +1,39 @@
 // Rotas de termos digitais (anamnese): criacao, listagem e PDF.
 import { Router } from "express";
 import { withFeature } from "../middleware/withDb.js";
+import { requireRole } from "../middleware/auth.js";
 import { listAppointments, upsertClient } from "../services/appointments.js";
 import { listDigitalTerms, countDigitalTerms, getDigitalTerm, createTermPdf } from "../services/terms.js";
 import { parsePaging, pageResponse } from "../services/pagination.js";
+import { recordPrivacyAudit } from "../services/privacy.js";
 
 const router = Router();
+
+function meaningful(value) {
+  return value !== null && value !== undefined && String(value).trim() !== "";
+}
+
+function ageFromBirthDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
+  if (!match) return null;
+  const birth = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  if (Number.isNaN(birth.getTime())) return null;
+  const today = new Date();
+  let age = today.getUTCFullYear() - birth.getUTCFullYear();
+  const beforeBirthday = today.getUTCMonth() < birth.getUTCMonth()
+    || (today.getUTCMonth() === birth.getUTCMonth() && today.getUTCDate() < birth.getUTCDate());
+  if (beforeBirthday) age -= 1;
+  return age;
+}
+
+async function syncClientRegistration(db, client, body) {
+  const candidates = { full_name: body.full_name, phone: body.phone, whatsapp: body.whatsapp, instagram: body.instagram, email: body.email, birth_date: body.birth_date, cpf: body.document_number };
+  const next = { ...client };
+  for (const [field, value] of Object.entries(candidates)) if (meaningful(value)) next[field] = String(value).trim();
+  await db.run(`UPDATE clients SET full_name=?, phone=?, whatsapp=?, instagram=?, email=?, birth_date=?, cpf=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+    [next.full_name, next.phone || "", next.whatsapp || "", next.instagram || "", next.email || "", next.birth_date || "", next.cpf || "", client.id]);
+  return db.get("SELECT * FROM clients WHERE id=?", [client.id]);
+}
 
 // Whitelist de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
 const TERM_SORTABLE = {
@@ -17,6 +45,10 @@ const TERM_SORTABLE = {
 };
 
 router.get("/api/digital-terms", withFeature("digital_terms", async (req, res, db) => {
+  // Termos carregam anamnese, documento, assinatura e declaração de saúde.
+  // Autenticar no tenant não basta: recepção e financeiro não precisam desses
+  // dados para exercer suas funções (menor privilégio, também no backend).
+  if (!requireRole(req, res, ["admin", "piercer"])) return;
   const clauses = [];
   const params = [];
   if (req.query.client_id) {
@@ -48,16 +80,35 @@ router.get("/api/digital-terms", withFeature("digital_terms", async (req, res, d
   });
   const items = await listDigitalTerms(db, { where, params, paging });
   const total = paging.paginated ? await countDigitalTerms(db, { where, params }) : items.length;
+  await recordPrivacyAudit(db, {
+    req, action: "digital_terms_read", resourceType: "digital_term_list",
+    clientId: req.query.client_id || null,
+    detail: { result_count: items.length, filtered_by_client: Boolean(req.query.client_id) }
+  });
   res.json(pageResponse(items, total, paging));
 }));
 
 router.post("/api/digital-terms", withFeature("digital_terms", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "piercer"])) return;
   const body = req.body || {};
   if (!body.full_name?.trim() || !body.signature_data_url) {
     return res.status(400).json({ error: "Dados obrigatorios do termo nao foram preenchidos." });
   }
   if (!body.orientations_confirmed) {
     return res.status(400).json({ error: "O cliente precisa confirmar que recebeu as orientacoes." });
+  }
+  const minor = body.form_data?.minor || {};
+  const age = ageFromBirthDate(body.birth_date);
+  if (age !== null && age < 18 && !minor.is_minor) {
+    return res.status(400).json({ error: "Cliente menor de idade: informe e valide o responsável legal." });
+  }
+  if (minor.is_minor) {
+    if (!meaningful(minor.responsible_name) || !meaningful(minor.responsible_document)) {
+      return res.status(400).json({ error: "Nome e documento do responsável legal são obrigatórios." });
+    }
+    if (!body.guardian_signature_data_url) {
+      return res.status(400).json({ error: "A assinatura do responsável legal é obrigatória." });
+    }
   }
 
   const appointment = body.appointment_id
@@ -67,8 +118,12 @@ router.post("/api/digital-terms", withFeature("digital_terms", async (req, res, 
     return res.status(404).json({ error: "Agendamento nao encontrado." });
   }
 
-  const client = body.client_id
-    ? await db.get("SELECT * FROM clients WHERE id = ?", [body.client_id])
+  const linkedClientId = appointment?.client_id || body.client_id;
+  if (appointment?.client_id && body.client_id && String(appointment.client_id) !== String(body.client_id)) {
+    return res.status(409).json({ error: "A anamnese deve usar o cliente vinculado ao agendamento." });
+  }
+  let client = linkedClientId
+    ? await db.get("SELECT * FROM clients WHERE id = ?", [linkedClientId])
     : await upsertClient(db, {
       full_name: body.full_name,
       whatsapp: body.whatsapp || "",
@@ -79,11 +134,12 @@ router.post("/api/digital-terms", withFeature("digital_terms", async (req, res, 
   if (!client?.id) {
     return res.status(400).json({ error: "Nao foi possivel vincular o cliente ao termo." });
   }
+  client = await syncClientRegistration(db, client, body);
 
   const result = await db.run(
     `INSERT INTO digital_terms
-    (appointment_id, client_id, full_name, social_name, document_number, birth_date, whatsapp, instagram, address, procedure, piercing_region, orientations_confirmed, health_declaration, form_data, signature_data_url)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+    (appointment_id, client_id, full_name, social_name, document_number, birth_date, whatsapp, instagram, address, procedure, piercing_region, orientations_confirmed, health_declaration, form_data, signature_data_url, guardian_signature_data_url)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     [
       body.appointment_id || null,
       client.id,
@@ -99,7 +155,8 @@ router.post("/api/digital-terms", withFeature("digital_terms", async (req, res, 
       body.orientations_confirmed ? 1 : 0,
       body.health_declaration || "",
       JSON.stringify(body.form_data || {}),
-      body.signature_data_url
+      body.signature_data_url,
+      minor.is_minor ? body.guardian_signature_data_url : null
     ]
   );
 

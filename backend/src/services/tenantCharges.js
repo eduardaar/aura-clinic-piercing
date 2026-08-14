@@ -13,7 +13,11 @@
 // A regra que organiza tudo abaixo: gateway indisponível NÃO pode derrubar o
 // agendamento nem a venda. A clínica continua vendendo e recebendo presencial;
 // o pagamento online é uma comodidade, não um pré-requisito.
-import { createPaymentIntent, transitionPaymentIntent } from "./payments.js";
+import {
+  createPaymentIntent,
+  expirePublicPaymentToken,
+  transitionPaymentIntent
+} from "./payments.js";
 import { tenantClient } from "./asaas/credentials.js";
 import { AsaasError, onlyDigits, toAsaasValue, minimumDueDate } from "./asaas/client.js";
 import { isPaidStatus, isCanceledStatus } from "./asaas/events.js";
@@ -316,6 +320,189 @@ export async function createSalesOrderCharge(
 }
 
 // ---------------------------------------------------------------------------
+// Cancelamento e estorno solicitados pela clínica
+// ---------------------------------------------------------------------------
+
+// A chamada ao gateway não pode ficar dentro da transação do banco (seguraria
+// um lock durante a rede). Em vez disso gravamos primeiro uma operação com
+// chave idempotente. Se houver timeout, ela fica `pending` e NÃO repetimos
+// cegamente uma devolução que talvez o Asaas já tenha aceitado.
+async function beginPaymentOperation(db, { intentId, operationType, idempotencyKey, userId, amount = null, reason = null }) {
+  if (!idempotencyKey || String(idempotencyKey).trim().length < 12) {
+    throw new AsaasError("Idempotency-Key é obrigatório para esta operação.", {
+      status: 400,
+      code: "idempotency_key_required",
+      userMessage: "Não foi possível confirmar a operação sem uma chave de segurança."
+    });
+  }
+  return db.transaction(async (tx) => {
+    const intent = await tx.get("SELECT * FROM payment_intents WHERE id=? FOR UPDATE", [intentId]);
+    if (!intent) throw new AsaasError("Intenção de pagamento não encontrada.", { status: 404 });
+    const existing = await tx.get(
+      `SELECT * FROM payment_operations
+        WHERE payment_intent_id=? AND operation_type=? AND idempotency_key=?`,
+      [intentId, operationType, String(idempotencyKey).trim()]
+    );
+    if (existing) return { intent, operation: existing, reused: true };
+
+    // Uma segunda chave para a MESMA ação enquanto a primeira ainda está em
+    // trânsito é quase sempre duplo clique em outra aba. Bloquear é mais
+    // seguro do que criar dois POST /refund contra o gateway.
+    const pending = await tx.get(
+      `SELECT * FROM payment_operations
+        WHERE payment_intent_id=? AND operation_type=? AND status='pending'
+        ORDER BY id DESC LIMIT 1`,
+      [intentId, operationType]
+    );
+    if (pending) return { intent, operation: pending, reused: true, pending: true };
+
+    const result = await tx.run(
+      `INSERT INTO payment_operations
+        (payment_intent_id, operation_type, idempotency_key, requested_by, amount, reason)
+       VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
+      [intentId, operationType, String(idempotencyKey).trim(), userId || null, amount, reason || null]
+    );
+    return {
+      intent,
+      operation: await tx.get("SELECT * FROM payment_operations WHERE id=?", [result.returnedId]),
+      reused: false
+    };
+  });
+}
+
+async function finishPaymentOperation(db, operationId, status, providerResponse = null) {
+  await db.run(
+    `UPDATE payment_operations
+        SET status=?, provider_response=?::jsonb,
+            completed_at=CASE WHEN ?='succeeded' THEN CURRENT_TIMESTAMP ELSE NULL END,
+            updated_at=CURRENT_TIMESTAMP
+      WHERE id=?`,
+    [status, JSON.stringify(providerResponse || {}), status, operationId]
+  );
+  return db.get("SELECT * FROM payment_operations WHERE id=?", [operationId]);
+}
+
+function operationResult(operation, intent, { accepted = false } = {}) {
+  return {
+    operation_id: operation.id,
+    operation_status: operation.status,
+    payment_status: intent.status,
+    accepted,
+    refund_request_url: operation.provider_response?.requestUrl || null
+  };
+}
+
+/** Cancela uma cobrança ainda não paga e revoga seu link público. */
+export async function cancelTenantCharge(db, { intentId, idempotencyKey, userId, reason }) {
+  const started = await beginPaymentOperation(db, {
+    intentId,
+    operationType: "cancel",
+    idempotencyKey,
+    userId,
+    reason
+  });
+  if (started.reused) return operationResult(started.operation, started.intent, { accepted: started.operation.status === "succeeded" });
+  const { intent, operation } = started;
+  if (["confirmed", "refunded", "chargeback"].includes(intent.status)) {
+    await finishPaymentOperation(db, operation.id, "failed", { error: "payment_already_settled" });
+    throw new AsaasError("Pagamento já liquidado deve ser estornado, não cancelado.", {
+      status: 409,
+      code: "refund_required",
+      userMessage: "Este pagamento já foi recebido. Use o fluxo de estorno."
+    });
+  }
+  if (["cancelled", "expired", "failed"].includes(intent.status)) {
+    const done = await finishPaymentOperation(db, operation.id, "succeeded", { local: true, already_terminal: true });
+    await expirePublicPaymentToken(db, intent.id);
+    return operationResult(done, intent, { accepted: true });
+  }
+
+  try {
+    if (intent.provider === "asaas" && intent.external_id) {
+      const asaas = await requireTenantClient(db);
+      const remote = await asaas.cancelPayment(intent.external_id);
+      await transitionPaymentIntent(db, {
+        intentId: intent.id,
+        status: "cancelled",
+        providerEventId: `operation:cancel:${operation.id}`,
+        payload: { source: "admin_operation", operation_id: operation.id, reason: reason || null, remote }
+      });
+      const done = await finishPaymentOperation(db, operation.id, "succeeded", remote);
+      const updated = await db.get("SELECT * FROM payment_intents WHERE id=?", [intent.id]);
+      return operationResult(done, updated, { accepted: true });
+    }
+
+    await transitionPaymentIntent(db, {
+      intentId: intent.id,
+      status: "cancelled",
+      providerEventId: `operation:cancel:${operation.id}`,
+      payload: { source: "admin_operation", operation_id: operation.id, reason: reason || null }
+    });
+    const done = await finishPaymentOperation(db, operation.id, "succeeded", { local: true });
+    const updated = await db.get("SELECT * FROM payment_intents WHERE id=?", [intent.id]);
+    return operationResult(done, updated, { accepted: true });
+  } catch (error) {
+    // Uma falha HTTP 4xx é conclusiva e pode ser corrigida/reenviada com outra
+    // chave. Timeout fica pending: repetir no escuro poderia cancelar duas
+    // cobranças em estados desconhecidos.
+    if (!error?.retryable) await finishPaymentOperation(db, operation.id, "failed", { error: error.message, code: error.code || null });
+    throw error;
+  }
+}
+
+/** Solicita estorno total; o status final continua dependente de webhook/sync. */
+export async function refundTenantCharge(db, { intentId, idempotencyKey, userId, reason, amount = null }) {
+  const intentBefore = await db.get("SELECT amount FROM payment_intents WHERE id=?", [intentId]);
+  if (amount !== null && amount !== undefined && Number(amount) !== Number(intentBefore?.amount)) {
+    throw new AsaasError("O estorno parcial ainda não é suportado pelo financeiro interno.", {
+      status: 422,
+      code: "partial_refund_not_supported",
+      userMessage: "Por enquanto, informe o valor total da cobrança para estornar."
+    });
+  }
+  const started = await beginPaymentOperation(db, {
+    intentId,
+    operationType: "refund",
+    idempotencyKey,
+    userId,
+    amount: intentBefore?.amount ?? null,
+    reason
+  });
+  if (started.reused) return operationResult(started.operation, started.intent, { accepted: started.operation.status === "succeeded" });
+  const { intent, operation } = started;
+  if (intent.status !== "confirmed") {
+    await finishPaymentOperation(db, operation.id, "failed", { error: "payment_not_confirmed" });
+    throw new AsaasError("Somente pagamento confirmado pode ser estornado.", {
+      status: 409,
+      code: "payment_not_confirmed",
+      userMessage: "A cobrança ainda não está confirmada para estorno."
+    });
+  }
+  if (intent.provider !== "asaas" || !intent.external_id) {
+    await finishPaymentOperation(db, operation.id, "failed", { error: "manual_refund_required" });
+    throw new AsaasError("Cobrança sem integração não pode ser estornada automaticamente.", {
+      status: 422,
+      code: "manual_refund_required",
+      userMessage: "Registre este estorno pelo meio de pagamento usado."
+    });
+  }
+
+  try {
+    const asaas = await requireTenantClient(db);
+    const remote = String(intent.billing_type || "").toUpperCase() === "BOLETO"
+      ? await asaas.requestBankSlipRefund(intent.external_id)
+      : await asaas.refundPayment(intent.external_id, { description: reason || undefined });
+    const done = await finishPaymentOperation(db, operation.id, "succeeded", remote);
+    // O estorno de boleto é uma solicitação com link e o de cartão pode levar
+    // dias. Não antecipamos `refunded`: webhook e worker são a fonte final.
+    return operationResult(done, intent, { accepted: true });
+  } catch (error) {
+    if (!error?.retryable) await finishPaymentOperation(db, operation.id, "failed", { error: error.message, code: error.code || null });
+    throw error;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // PIX inline
 // ---------------------------------------------------------------------------
 
@@ -349,6 +536,19 @@ export async function getPixData(db, intentId) {
     console.error(`[Asaas] falha ao obter PIX do intent ${intentId}: ${error.message}`);
     return null;
   }
+}
+
+/** Consulta PIX pública por token aleatório, sem expor/aceitar o id serial. */
+export async function getPixDataByPublicToken(db, publicToken) {
+  const intent = await db.get(
+    "SELECT id, public_token_expires_at FROM payment_intents WHERE public_token=?",
+    [String(publicToken || "")]
+  );
+  if (!intent) return { kind: "not_found", data: null };
+  if (!intent.public_token_expires_at || new Date(intent.public_token_expires_at).getTime() <= Date.now()) {
+    return { kind: "expired", data: null };
+  }
+  return { kind: "ok", data: await getPixData(db, intent.id) };
 }
 
 // ---------------------------------------------------------------------------
@@ -411,7 +611,11 @@ async function recordIntentEvent(db, { intentId, providerEventId, eventType, pay
 // diferentes no evento (PAYMENT_REFUNDED) e no status (REFUNDED); olhamos os
 // dois porque a conciliação por polling só enxerga o status.
 function isRefundLike(...values) {
-  return values.some((value) => /REFUND|CHARGEBACK/i.test(String(value || "")));
+  return values.some((value) => /REFUND/i.test(String(value || "")));
+}
+
+function isChargebackLike(...values) {
+  return values.some((value) => /CHARGEBACK/i.test(String(value || "")));
 }
 
 // -- Caminho separado da VENDA -----------------------------------------------
@@ -482,15 +686,28 @@ async function transitionSaleIntent(db, { intent, status, providerEventId, paylo
       // A guarda em `marcou.changes` é o que impede baixa dupla: um segundo
       // evento confirmando o mesmo pedido não encontra mais status
       // 'pendente'/'aberta' e não decrementa nada.
+      // Estoque que não cobre o item NÃO derruba a confirmação. A baixa passou a
+      // lançar em vez de zerar o saldo (venda de balcão precisa ser recusada),
+      // mas aqui o dinheiro já entrou: propagar a exceção desfaria a transação
+      // inteira, o pagamento nunca seria registrado e o Asaas reentregaria o
+      // evento para sempre — o mesmo raciocínio já escrito no bloco de `paid`
+      // logo abaixo. O pedido fica pago e o aviso pede a conferência humana.
       if (marcou.changes) {
         const itens = await tx.all("SELECT * FROM sales_order_items WHERE sales_order_id=?", [orderId]);
         for (const item of itens) {
-          await deductSoldProductStock(tx, item, orderId);
+          try {
+            await deductSoldProductStock(tx, item, orderId);
+          } catch (error) {
+            console.warn(
+              `[Asaas] pedido ${orderId} foi pago, mas a baixa de "${item.item_name}" falhou: ${error.message} ` +
+                "Confira o estoque — a peça pode ter sido vendida entre a reserva e a confirmação."
+            );
+          }
         }
       }
     }
 
-    if (["cancelled", "failed", "expired", "refunded"].includes(status)) {
+    if (["cancelled", "failed", "expired", "refunded", "chargeback"].includes(status)) {
       await tx.run(
         "UPDATE inventory_reservations SET status=?, released_at=CURRENT_TIMESTAMP WHERE sales_order_id=? AND status='active'",
         [status === "expired" ? "expired" : "released", orderId]
@@ -569,7 +786,7 @@ export async function applyTenantPaymentEvent(db, { action, payment, eventType, 
     // liberadas e o estoque pode ter ido para outro cliente — a clínica precisa
     // olhar. Avisar em log é o mínimo; virar exceção seria pior (reentrega
     // infinita para um problema que só um humano resolve).
-    if (["expired", "cancelled", "refunded"].includes(intent.status)) {
+    if (["expired", "cancelled", "refunded", "chargeback"].includes(intent.status)) {
       console.warn(
         `[Asaas] pagamento de ${payment?.id} chegou com o intent ${intent.id} em "${intent.status}". ` +
           "As reservas de estoque já haviam sido liberadas — confira a disponibilidade."
@@ -627,7 +844,11 @@ export async function applyTenantPaymentEvent(db, { action, payment, eventType, 
   if (action === "canceled") {
     // Estorno e chargeback são diferentes de exclusão: o dinheiro chegou a
     // entrar e voltou. `refunded` preserva isso no histórico financeiro.
-    const status = isRefundLike(payment?.status, eventType) ? "refunded" : "cancelled";
+    const status = isChargebackLike(payment?.status, eventType)
+      ? "chargeback"
+      : isRefundLike(payment?.status, eventType)
+        ? "refunded"
+        : "cancelled";
     if (intent.status === status) return { applied: false, detail: `intent-ja-${status}` };
     const updated = await applyTransition(db, {
       intent,
@@ -638,7 +859,14 @@ export async function applyTenantPaymentEvent(db, { action, payment, eventType, 
     });
     return updated?.idempotent
       ? { applied: false, detail: "evento-ja-processado" }
-      : { applied: true, detail: status === "refunded" ? "pagamento-estornado" : "cobranca-cancelada" };
+      : {
+          applied: true,
+          detail: status === "chargeback"
+            ? "pagamento-em-chargeback"
+            : status === "refunded"
+              ? "pagamento-estornado"
+              : "cobranca-cancelada"
+        };
   }
 
   if (action === "created") {
@@ -692,7 +920,7 @@ export async function syncIntent(db, intentId) {
   // Já em estado terminal de dinheiro: consultar de novo só geraria um evento
   // duplicado (o `provider_event_id` do sync é diferente do webhook, então ele
   // não seria barrado pelo índice único).
-  if (["confirmed", "refunded"].includes(intent.status)) {
+  if (["confirmed", "refunded", "chargeback"].includes(intent.status)) {
     return { applied: false, detail: "ja-conciliado" };
   }
 
@@ -737,4 +965,24 @@ export async function syncIntent(db, intentId) {
     eventType: `SYNC_${String(payment.status || "UNKNOWN").toUpperCase()}`,
     tenant: null
   });
+}
+
+/** Conciliação pública limitada ao intent identificado por token aleatório. */
+export async function syncIntentByPublicToken(db, publicToken) {
+  const intent = await db.get(
+    "SELECT id, public_token_expires_at FROM payment_intents WHERE public_token=?",
+    [String(publicToken || "")]
+  );
+  if (!intent) return { kind: "not_found", intent: null };
+  if (!intent.public_token_expires_at || new Date(intent.public_token_expires_at).getTime() <= Date.now()) {
+    return { kind: "expired", intent: null };
+  }
+  await syncIntent(db, intent.id);
+  return {
+    kind: "ok",
+    intent: await db.get(
+    "SELECT status, paid_at, invoice_url FROM payment_intents WHERE id=?",
+    [intent.id]
+    )
+  };
 }

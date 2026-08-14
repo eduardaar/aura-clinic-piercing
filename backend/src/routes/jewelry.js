@@ -24,6 +24,7 @@ import { calculatePricing, getPricingSettings } from "../services/pricing.js";
 import { visualSearch } from "../services/visualSearch.js";
 import { inventoryIntelligence, refreshInventorySuggestions } from "../services/inventoryIntelligence.js";
 import { parsePaging, fetchPage, pageResponse } from "../services/pagination.js";
+import { invalidateUsageCache, requireWithinLimit } from "../services/planLimits.js";
 
 const router = Router();
 
@@ -395,6 +396,11 @@ router.post("/api/jewelry", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   if (!validateBody(jewelryCreateSchema, req, res)) return;
   if (rejectInvalidStockPayload(req, res)) return;
+  // Cota do plano, antes do BEGIN: devolver 409 no meio da transação obrigaria a
+  // desfazer SKU e variações já gravados. A cota conta PRODUTOS
+  // (jewelry_inventory), não variações — cadastrar uma cor a mais numa joia que
+  // já existe passa pelo PATCH e não consome nada.
+  if (!(await requireWithinLimit(req, res, "jewelry_items", db))) return;
 
   const requestedSku = String(req.body.sku || "").trim();
   const manualSku = requestedSku;
@@ -550,6 +556,8 @@ router.delete("/api/jewelry/:id", withDb(async (req, res, db) => {
     return res.json({ ok: true, archived: true });
   }
   await db.run("DELETE FROM jewelry_inventory WHERE id = ?", [req.params.id]);
+  // Arquivar mantém a linha (e a contagem); excluir de verdade não.
+  invalidateUsageCache(req.tenant?.id);
   res.json({ ok: true, archived: false });
 }));
 

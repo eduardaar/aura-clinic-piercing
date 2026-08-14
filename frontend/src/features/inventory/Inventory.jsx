@@ -1,8 +1,8 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useState } from "react";
-import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Gem, ImageIcon, LayoutGrid, ListFilter, Pencil, Search, ShoppingCart, SlidersHorizontal, Sparkles, Table2, Trash2, X } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Gem, ImageIcon, LayoutGrid, ListFilter, Pencil, Search, SlidersHorizontal, Sparkles, Table2, Trash2, X } from "lucide-react";
 import { Button, Input, Metric, Select, StatusBadge } from "../../components/common/Ui";
-import { Modal, CrudHeader, ConfirmDeleteModal } from "../../components/common/Crud";
+import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { asArray, asObject, formatDate, removeAccents } from "../../lib/utils";
 import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
@@ -52,45 +52,9 @@ function HintedInput({ label, value, onChange, placeholder, type = "text", requi
   );
 }
 
-export function CatalogWorkspace() {
-  const [tab, setTab] = useState("inicio");
-  const tabs = [
-    { id: "estoque", title: "Estoque", description: "Abra o controle administrativo completo das joias.", icon: Gem },
-    { id: "personalizacao", title: "Personalização", description: "Configure banners, cores, textos, categorias e destaques do catálogo.", icon: Sparkles },
-    { id: "público", title: "Catálogo público", description: "Abra a vitrine que o cliente visualiza.", icon: ShoppingCart }
-  ];
-  if (tab !== "inicio") {
-    return (
-      <section className="workspace-page workspace-subpage">
-        <Button variant="secondary" className="workspace-back-button" onClick={() => setTab("inicio")}>
-          <ChevronLeft size={16} />
-          Voltar para Catálogo
-        </Button>
-        {tab === "estoque" && <Inventory2 compact />}
-        {tab === "personalizacao" && <CatalogCustomization />}
-      </section>
-    );
-  }
-  return (
-    <section className="workspace-page">
-      <div className="workspace-intro panel">
-        <div>
-          <span className="eyebrow">Catálogo e estoque</span>
-          <h2>Organize a vitrine pública e o controle interno em áreas separadas.</h2>
-          <p>Escolha Estoque para cadastrar uma nova joalheria, ajustar quantidades, medidas, valores e dados de envio. O catálogo público atualiza automaticamente.</p>
-        </div>
-      </div>
-      <div className="workspace-hub">
-        {tabs.map(({ id, title, description, icon: Icon }) => (
-          <button key={id} className={tab === id ? "active" : ""} onClick={() => id === "público" ? window.open("/catalogo", "_blank", "noopener,noreferrer") : setTab(id)}>
-            <Icon size={20} />
-            <span><strong>{title}</strong><small>{description}</small></span>
-            <ChevronRight size={17} />
-          </button>
-        ))}
-      </div>
-    </section>
-  );
+export function CatalogWorkspace({ area = "catalogo", initialTab = "produtos" }) {
+  if (area === "catalogo") return <CatalogCustomization />;
+  return <Inventory2 initialTab={initialTab} />;
 }
 
 export function JewelryCards({ items, onOpen, onEdit, onMovement, onArchive }) {
@@ -131,9 +95,9 @@ export function JewelryCards({ items, onOpen, onEdit, onMovement, onArchive }) {
   );
 }
 
-export function Inventory2() {
+export function Inventory2({ initialTab = "produtos" }) {
   const [view, setView] = useState("table");
-  const [sectionTab, setSectionTab] = useState("produtos");
+  const [sectionTab, setSectionTab] = useState(initialTab);
   const [inventoryMode] = useState("internal");
   const [editingJewelry, setEditingJewelry] = useState(null);
   const [movementTarget, setMovementTarget] = useState(null);
@@ -235,13 +199,14 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
     potential: allJewelry.reduce((sum, item) => sum + Number(item.sale_value || 0) * Number(item.quantity || 0), 0)
   };
   const topValueItems =[...allJewelry].sort((a, b) => (Number(b.sale_value || 0) * Number(b.quantity || 0)) - (Number(a.sale_value || 0) * Number(a.quantity || 0))).slice(0, 8);
-  const mainTabs = [
-    { id: "produtos", label: "Lista de Produtos", icon: LayoutGrid },
+  const allTabs = [
+    { id: "produtos", label: "Produtos", icon: LayoutGrid },
     { id: "categorias", label: "Categorias", icon: ListFilter },
-    { id: "unidades", label: "Resumo", icon: Table2 },
+    { id: "unidades", label: "Estoque", icon: Table2 },
     { id: "abc", label: "Curva ABC", icon: Sparkles },
     { id: "inteligencia", label: "Inteligência", icon: SlidersHorizontal }
   ];
+  useEffect(() => setSectionTab(initialTab), [initialTab]);
 
   useEffect(() => {
     setStatusTab("todos");
@@ -335,71 +300,20 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
     }
   }
 
-  if (showEditor) {
-    const productCategory = editingJewelry?.category || filters.category;
-    return (
-      <section className="inventory-studio inventory-product-page">
-        <div className="inventory-main">
-          <nav className="inventory-breadcrumb" aria-label="Navegação do estoque">
-            <button type="button" onClick={() => closeProduct({ keepCategory: false })}>Estoque</button>
-            {productCategory && (
-              <>
-                <ChevronRight size={14} />
-                <button type="button" onClick={() => closeProduct({ keepCategory: true })}>{productCategory}</button>
-              </>
-            )}
-            <ChevronRight size={14} />
-            <strong>{editingJewelry ? elegantProductName(editingJewelry.name) : "Novo Produto"}</strong>
-          </nav>
-
-          <div className="inventory-product-navigation">
-            <Button variant="secondary" onClick={() => closeProduct({ keepCategory: false })}>
-              <ArrowLeft size={16} /> Voltar para Estoque
-            </Button>
-            {productCategory && (
-              <Button variant="secondary" onClick={() => closeProduct({ keepCategory: true })}>
-                <ArrowLeft size={16} /> Voltar para {productCategory}
-              </Button>
-            )}
-          </div>
-
-          <JewelryEditor
-            options={inventoryOptions}
-            categoryOptions={categoryOptions}
-            pricingSettings={safeOptions.pricingSettings}
-            editing={editingJewelry}
-            onMovementOpen={openMovement}
-            onCancel={() => closeProduct({ keepCategory: Boolean(productCategory) })}
-            onSaved={() => {
-              closeProduct({ keepCategory: Boolean(productCategory) });
-              refreshJewelry();
-              refreshOptions();
-            }}
-          />
-        </div>
-        {movementTarget && <StockMovementModal item={movementTarget} initialType={movementTarget.movement_type} onClose={() => setMovementTarget(null)} onSave={handleMovementSave} />}
-      </section>
-    );
-  }
-
   return (
     <section className="inventory-studio">
       <div className="inventory-main">
-        <header className="inventory-hero">
-          <div>
-            <span className="eyebrow">Aura Clinic / Estoque</span>
-            <h2>Estoque</h2>
-            <p>Produtos, variações e movimentações em uma navegação simples.</p>
-          </div>
-          <div className="inventory-hero-actions">
+        <div className="panel products-crud-header">
+          <CrudHeader title="Produtos e estoque" subtitle="Cadastre joias, controle quantidades, preços, categorias e reposição em um só lugar." actionLabel="Novo produto" onAction={openNewProduct} />
+          <div className="product-shortcuts">
+            <Button variant="secondary" onClick={() => setSectionTab("categorias")}><ListFilter size={16} /> Gerenciar categorias</Button>
             <Button variant="secondary" onClick={() => setShowVisualSearch(true)}><ImageIcon size={16} /> Buscar por foto</Button>
             <Button variant="secondary" onClick={printLabels}><Table2 size={16} /> Imprimir etiquetas</Button>
-            <Button variant="primary" onClick={openNewProduct}><Gem size={16} /> Nova joia</Button>
           </div>
-        </header>
+        </div>
 
-        <nav className="inventory-module-tabs" aria-label="Módulos do estoque">
-          {mainTabs.map(({ id, label, icon: Icon }) => (
+        <nav className="inventory-module-tabs" aria-label="Áreas de produtos e estoque">
+          {allTabs.map(({ id, label, icon: Icon }) => (
             <button key={id} type="button" className={sectionTab === id ? "active" : ""} onClick={() => setSectionTab(id)}>
               <Icon size={16} />
               <span>{label}</span>
@@ -531,9 +445,10 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
                   <h2>Categorias e cadastros auxiliares</h2>
                   <span>Organize categorias, tamanhos, espessuras e profissionais sem sair desta página.</span>
                 </div>
-                <Button variant="secondary" onClick={() => setShowManagement((value) => !value)}>
-                  {showManagement ? "Ocultar cadastros" : "Abrir cadastros"}
-                </Button>
+                <div className="module-heading-actions">
+                  <Button variant="secondary" onClick={() => setSectionTab("produtos")}><ArrowLeft size={16} /> Voltar para produtos</Button>
+                  <Button variant="secondary" onClick={() => setShowManagement((value) => !value)}>{showManagement ? "Ocultar cadastros" : "Abrir cadastros"}</Button>
+                </div>
               </div>
               <div className="inventory-summary-grid compact">
                 <Metric label="Categorias" value={String(categoryManagement.length)} />
@@ -630,6 +545,23 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
       </div>
       {movementTarget && <StockMovementModal item={movementTarget} initialType={movementTarget.movement_type} onClose={() => setMovementTarget(null)} onSave={handleMovementSave} />}
       {showVisualSearch && <VisualSearchModal onClose={() => setShowVisualSearch(false)} onOpenProduct={(item) => { setShowVisualSearch(false); openProduct(item); }} />}
+      <Modal
+        open={showEditor}
+        size="lg"
+        title={editingJewelry ? "Editar produto" : "Novo produto"}
+        subtitle="Dados, variações e estoque do produto."
+        onClose={() => closeProduct({ keepCategory: false })}
+      >
+        <JewelryEditor
+          options={inventoryOptions}
+          categoryOptions={categoryOptions}
+          pricingSettings={safeOptions.pricingSettings}
+          editing={editingJewelry}
+          onMovementOpen={openMovement}
+          onCancel={() => closeProduct({ keepCategory: false })}
+          onSaved={() => { closeProduct({ keepCategory: false }); refreshJewelry(); refreshOptions(); }}
+        />
+      </Modal>
     </section>
   );
 }
@@ -1805,13 +1737,11 @@ function CategoryManagementTable({ rows = [], onEdit, onToggleStatus, onDelete }
           }
         ]}
         actions={(category) => (
-          <>
-            <button type="button" onClick={() => onEdit(category)}>Editar</button>
-            <button type="button" onClick={() => onToggleStatus(category)}>
-              {Number(category.is_active ?? 1) ? "Desativar" : "Ativar"}
-            </button>
-            <button type="button" onClick={() => onDelete(category)}>Excluir</button>
-          </>
+          <RowActions actions={[
+            { label: "Editar", onClick: () => onEdit(category) },
+            { label: Number(category.is_active ?? 1) ? "Desativar" : "Ativar", onClick: () => onToggleStatus(category) },
+            { label: "Excluir", onClick: () => onDelete(category), danger: true }
+          ]} />
         )}
         empty="Nenhuma categoria cadastrada ainda."
       />
@@ -1877,10 +1807,10 @@ export function OptionManager({ title, type, items = [], onChanged, placeholder 
         searchPlaceholder={`Buscar em ${title.toLowerCase()}`}
         columns={[{ key: "name", label: "Nome" }]}
         actions={(item) => (
-          <>
-            <button type="button" onClick={() => openEdit(item)}>Editar</button>
-            <button type="button" onClick={() => remove(item)}>Excluir</button>
-          </>
+          <RowActions actions={[
+            { label: "Editar", onClick: () => openEdit(item) },
+            { label: "Excluir", onClick: () => remove(item), danger: true }
+          ]} />
         )}
         empty="Nenhum registro cadastrado ainda."
       />
@@ -1972,10 +1902,10 @@ export function ProfessionalManager({ professionals = [], onChanged }) {
           { key: "specialty", label: "Especialidade", render: (professional) => professional.specialty || "—" }
         ]}
         actions={(professional) => (
-          <>
-            <button type="button" onClick={() => openEdit(professional)}>Editar</button>
-            <button type="button" onClick={() => remove(professional)}>Excluir</button>
-          </>
+          <RowActions actions={[
+            { label: "Editar", onClick: () => openEdit(professional) },
+            { label: "Excluir", onClick: () => remove(professional), danger: true }
+          ]} />
         )}
         empty="Nenhum profissional cadastrado ainda."
       />
@@ -2066,16 +1996,15 @@ export function JewelryTable({ items, onOpen, onEdit, onMovement, onArchive }) {
           }
         ]}
         actions={(item) => (
-          <>
-            {onMovement && <button type="button" onClick={() => onMovement(item, "Entrada")}>Entrada</button>}
-            {onMovement && <button type="button" onClick={() => onMovement(item, "Saída")}>Saída</button>}
-            <button type="button" onClick={() => onEdit?.(item)}>Editar</button>
-            {onArchive && <button type="button" onClick={() => onArchive(item)}>Arquivar</button>}
-          </>
+          <RowActions actions={[
+            { label: "Editar", onClick: () => onEdit?.(item) },
+            onMovement ? { label: "Entrada", onClick: () => onMovement(item, "Entrada") } : null,
+            onMovement ? { label: "Saída", onClick: () => onMovement(item, "Saída") } : null,
+            onArchive ? { label: "Arquivar", onClick: () => onArchive(item), danger: true } : null
+          ].filter(Boolean)} />
         )}
         empty="Nenhuma joia cadastrada ainda."
       />
     </div>
   );
 }
-

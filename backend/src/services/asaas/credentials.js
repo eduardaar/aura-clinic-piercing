@@ -19,7 +19,7 @@ import {
   asaasPlatformEnabled
 } from "../../config/index.js";
 import { createAsaasClient } from "./client.js";
-import { decryptSecret, encryptSecret, secretHint } from "./vault.js";
+import { decryptSecret, encryptSecret, needsRewrap, secretHint, vaultKeyConfigured } from "./vault.js";
 
 export const PROVIDER = "asaas";
 
@@ -54,7 +54,42 @@ export function isPlatformEnabled() {
 
 // Linha crua do cofre. `db` já aponta para o schema da clínica.
 export async function readIntegration(db) {
-  return db.get("SELECT * FROM tenant_integrations WHERE provider=?", [PROVIDER]);
+  const row = await db.get("SELECT * FROM tenant_integrations WHERE provider=?", [PROVIDER]);
+  if (row) await rewrapIfLegacy(db, row);
+  return row;
+}
+
+// Regrava a linha quando os segredos ainda estão cifrados com a derivação antiga
+// (a que vinha do AUTH_SECRET, usada enquanto ASAAS_VAULT_KEY não existia).
+//
+// Acontece sozinho na primeira leitura depois que a chave nova entra, e é o que
+// torna a introdução do ASAAS_VAULT_KEY indolor: sem isto, o cofre continuaria
+// legível só enquanto a chave legada permanecesse na lista, e uma futura rotação
+// do AUTH_SECRET quebraria tudo de uma vez.
+//
+// Best-effort de propósito: falhar aqui não pode derrubar uma cobrança. O valor
+// já foi decifrado com sucesso; a regravação é otimização de durabilidade, e a
+// próxima leitura tenta de novo.
+async function rewrapIfLegacy(db, row) {
+  if (!vaultKeyConfigured) return;
+  const secretLegacy = needsRewrap(row.secret_encrypted);
+  const webhookLegacy = needsRewrap(row.webhook_token_encrypted);
+  if (!secretLegacy && !webhookLegacy) return;
+  try {
+    const secret = secretLegacy ? encryptSecret(decryptSecret(row.secret_encrypted)) : row.secret_encrypted;
+    const webhook = webhookLegacy
+      ? encryptSecret(decryptSecret(row.webhook_token_encrypted))
+      : row.webhook_token_encrypted;
+    await db.run(
+      "UPDATE tenant_integrations SET secret_encrypted=?, webhook_token_encrypted=? WHERE provider=?",
+      [secret, webhook, PROVIDER]
+    );
+    row.secret_encrypted = secret;
+    row.webhook_token_encrypted = webhook;
+    console.log(`[Asaas] cofre regravado com a chave atual (provider=${PROVIDER}).`);
+  } catch (error) {
+    console.warn(`[Asaas] não consegui regravar o cofre agora: ${error.message}`);
+  }
 }
 
 // Versão segura para a interface: nunca inclui segredo decifrado, só a máscara

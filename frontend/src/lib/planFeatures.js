@@ -13,6 +13,7 @@ export const featureLabels = {
   stock_alerts: "Alertas de estoque",
   basic_catalog: "Catálogo simples",
   advanced_catalog: "Catálogo avançado",
+  catalog_analytics: "Google Analytics no catálogo",
   public_catalog_customization: "Catálogo personalizado",
   featured_products: "Produtos em destaque",
   promotional_banner: "Banner promocional",

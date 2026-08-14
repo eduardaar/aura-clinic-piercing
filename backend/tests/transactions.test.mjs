@@ -18,7 +18,9 @@ function fakeClient() {
   return {
     executed,
     async query(text) {
-      const sql = String(text).trim();
+      // Queries com parâmetro chegam como { text, values, types } (é o formato
+      // que carrega o conversor de NUMERIC); BEGIN/COMMIT/SAVEPOINT vêm crus.
+      const sql = String(typeof text === "string" ? text : text.text).trim();
       executed.push(sql);
       if (sql.includes("EXPLODE")) throw new Error("falha simulada no banco");
       return { rows: [{ id: 7 }], rowCount: 1 };
@@ -175,7 +177,7 @@ before(async () => {
   ctx.professionalId = professional.json.id;
   const jewelry = await api("/jewelry", {
     method: "POST",
-    body: { name: "Joia TX", category: "Labret", material: "Titanio", color: "Prata", quantity: 10, cost_value: 15, sale_value: 60 },
+    body: { name: "Joia TX", category: "Labret", material: "Titânio", color: "Prata", quantity: 10, cost_value: 15, sale_value: 60 },
   });
   ctx.jewelryId = jewelry.json.id;
   ctx.variantId = jewelry.json.variants[0].id;
@@ -311,10 +313,110 @@ test("atendimento marcado 'atendido' que falha no meio não deixa nenhuma das 5 
   assert.equal(postCareDepois.json.filter((item) => Number(item.appointment_id) === Number(appointmentId)).length, 3);
 });
 
+// --------------------------------------------------- estoque x quantidade ---
+//
+// Pendência #1: a venda aceitava quantidade que não existe em estoque. A
+// checagem antiga só rodava para linha COM variação informada; sem variação não
+// havia checagem nenhuma e `Math.max(0, ...)` zerava o saldo em silêncio.
+
+// Joia própria por teste: os casos abaixo mexem no saldo até o limite e não
+// podem depender da ordem em que a suíte rodou os outros testes.
+async function criaJoia(nome, quantidade) {
+  const criada = await api("/jewelry", {
+    method: "POST",
+    body: { name: nome, category: "Labret", material: "Titânio", color: "Prata", quantity: quantidade, cost_value: 10, sale_value: 50 },
+  });
+  assert.equal(criada.status, 201, JSON.stringify(criada.json));
+  return { id: criada.json.id, variantId: criada.json.variants[0].id };
+}
+
+async function estoqueDe(jewelryId) {
+  const list = await api("/jewelry");
+  return Number(list.json.find((item) => Number(item.id) === Number(jewelryId))?.quantity ?? -1);
+}
+
+test("venda com variação acima do estoque é recusada com 400 e não grava nada", async () => {
+  const joia = await criaJoia("Joia Estoque Variacao", 3);
+  const pedidosAntes = (await api("/sales-orders")).json.length;
+  const clientesAntes = (await api("/clients")).json.length;
+
+  const venda = await api("/sales-orders", {
+    method: "POST",
+    body: {
+      full_name: "Cliente Estoque A", whatsapp: "11900001111", payment_method: "Pix",
+      items: [{ item_name: "Joia Estoque Variacao", product_id: joia.id, product_variant_id: joia.variantId, quantity: 50, unit_price: 50 }],
+    },
+  });
+  assert.equal(venda.status, 400, JSON.stringify(venda.json));
+  assert.match(venda.json.error, /Estoque insuficiente/i);
+  assert.match(venda.json.error, /3 un\./, "a mensagem precisa dizer o saldo disponível");
+
+  assert.equal(await estoqueDe(joia.id), 3, "o estoque não pode ter sido tocado");
+  assert.equal((await api("/sales-orders")).json.length, pedidosAntes, "nenhum pedido pode ter sobrado");
+  assert.equal((await api("/clients")).json.length, clientesAntes, "nenhum cliente pode ter sobrado");
+});
+
+test("venda SEM variação informada acima do estoque também é recusada", async () => {
+  const joia = await criaJoia("Joia Estoque Sem Variacao", 3);
+  const pedidosAntes = (await api("/sales-orders")).json.length;
+
+  const venda = await api("/sales-orders", {
+    method: "POST",
+    body: {
+      full_name: "Cliente Estoque B", whatsapp: "11900002222", payment_method: "Pix",
+      items: [{ item_name: "Joia Estoque Sem Variacao", product_id: joia.id, quantity: 50, unit_price: 50 }],
+    },
+  });
+  assert.equal(venda.status, 400, JSON.stringify(venda.json));
+  assert.match(venda.json.error, /Estoque insuficiente/i);
+  assert.equal(await estoqueDe(joia.id), 3, "o saldo não pode ir a zero");
+  assert.equal((await api("/sales-orders")).json.length, pedidosAntes);
+});
+
+test("duas linhas do mesmo produto somam contra o mesmo saldo", async () => {
+  const joia = await criaJoia("Joia Estoque Duas Linhas", 3);
+  const venda = await api("/sales-orders", {
+    method: "POST",
+    body: {
+      full_name: "Cliente Estoque C", whatsapp: "11900003333", payment_method: "Pix",
+      items: [
+        { item_name: "Joia Estoque Duas Linhas", product_id: joia.id, product_variant_id: joia.variantId, quantity: 2, unit_price: 50 },
+        { item_name: "Joia Estoque Duas Linhas", product_id: joia.id, product_variant_id: joia.variantId, quantity: 2, unit_price: 50 },
+      ],
+    },
+  });
+  assert.equal(venda.status, 400, JSON.stringify(venda.json));
+  assert.equal(await estoqueDe(joia.id), 3, "2 + 2 sobre saldo 3 não pode passar");
+});
+
+test("venda da quantidade exata do estoque continua passando e zera o saldo", async () => {
+  const joia = await criaJoia("Joia Estoque Exato", 3);
+  const venda = await api("/sales-orders", {
+    method: "POST",
+    body: {
+      full_name: "Cliente Estoque D", whatsapp: "11900004444", payment_method: "Pix",
+      items: [{ item_name: "Joia Estoque Exato", product_id: joia.id, product_variant_id: joia.variantId, quantity: 3, unit_price: 50 }],
+    },
+  });
+  assert.equal(venda.status, 201, JSON.stringify(venda.json));
+  assert.equal(await estoqueDe(joia.id), 0, "o limite exato é venda válida");
+
+  // E a próxima unidade, aí sim, não existe mais.
+  const excedente = await api("/sales-orders", {
+    method: "POST",
+    body: {
+      full_name: "Cliente Estoque D", whatsapp: "11900004444", payment_method: "Pix",
+      items: [{ item_name: "Joia Estoque Exato", product_id: joia.id, product_variant_id: joia.variantId, quantity: 1, unit_price: 50 }],
+    },
+  });
+  assert.equal(excedente.status, 400, JSON.stringify(excedente.json));
+  assert.equal(await estoqueDe(joia.id), 0, "estoque não pode ficar negativo");
+});
+
 test("erro dentro da transação não devolve o client ao pool com transação aberta", async () => {
   // Intenção inexistente: o throw acontece com a transação já aberta.
   const inexistente = await api("/payment-intents/999999/status", { method: "PATCH", body: { status: "confirmed" } });
-  assert.equal(inexistente.status, 400, JSON.stringify(inexistente.json));
+  assert.equal(inexistente.status, 404, JSON.stringify(inexistente.json));
   // Se o ROLLBACK não tivesse acontecido, o client voltaria "sujo" e as próximas
   // requisições (que podem reusar essa conexão) travariam ou veriam lixo.
   for (let i = 0; i < 6; i++) {
@@ -339,8 +441,51 @@ test("duas confirmações simultâneas do mesmo sinal não duplicam o pagamento 
     },
   });
   assert.equal(solicitacao.status, 201, JSON.stringify(solicitacao.json));
-  const intentId = solicitacao.json.payment_intent?.id;
-  assert.ok(intentId, "a solicitação deve criar a intenção de pagamento do sinal");
+  assert.equal(solicitacao.json.payment_intent?.id, undefined, "id serial não pode sair na resposta pública");
+  assert.match(solicitacao.json.payment_intent?.token || "", /^[0-9a-f-]{36}$/i);
+  const intents = await api("/payment-intents");
+  assert.equal(intents.status, 200, JSON.stringify(intents.json));
+  const intentId = intents.json.find((item) => Number(item.appointment_id) === Number(solicitacao.json.id))?.id;
+  assert.ok(intentId, "a intenção deve continuar visível na rota administrativa");
+
+  // Link público é uma credencial curta: admin/finance pode rotacioná-lo sem
+  // criar outra cobrança; o token anterior não pode mais consultar nada.
+  const rotacionado = await api(`/payment-intents/${intentId}/public-token`, { method: "POST" });
+  assert.equal(rotacionado.status, 200, JSON.stringify(rotacionado.json));
+  assert.notEqual(rotacionado.json.payment_intent.token, solicitacao.json.payment_intent.token);
+  assert.ok(rotacionado.json.payment_intent.token_expires_at);
+  const tokenAntigo = await req(`/payment-intents/${solicitacao.json.payment_intent.token}/sync`, {
+    tenant: ctx.slug,
+    method: "POST"
+  });
+  assert.equal(tokenAntigo.status, 404);
+
+  const enumerated = await req(`/payment-intents/${intentId}/pix`, { tenant: ctx.slug });
+  assert.equal(enumerated.status, 401, "id serial não pode autenticar consulta pública");
+  const publicStatus = await req(`/payment-intents/${rotacionado.json.payment_intent.token}/sync`, {
+    tenant: ctx.slug,
+    method: "POST"
+  });
+  assert.equal(publicStatus.status, 200, JSON.stringify(publicStatus.json));
+  assert.equal(publicStatus.json.status, "awaiting_payment");
+  assert.equal(publicStatus.json.id, undefined);
+
+  // Operação financeira sem chave idempotente é recusada antes de tocar o
+  // estado. A chave impede que dois cliques cancelem a mesma cobrança.
+  const semChave = await api(`/payment-intents/${intentId}/cancel`, { method: "POST" });
+  assert.equal(semChave.status, 400, JSON.stringify(semChave.json));
+  const cancelado = await api(`/payment-intents/${intentId}/cancel`, {
+    method: "POST",
+    headers: { "Idempotency-Key": `cancel-${intentId}-uma-vez` },
+    body: { reason: "Teste de cancelamento" }
+  });
+  assert.equal(cancelado.status, 200, JSON.stringify(cancelado.json));
+  assert.equal(cancelado.json.payment_status, "cancelled");
+  const publicoCancelado = await req(`/payment-intents/${rotacionado.json.payment_intent.token}/sync`, {
+    tenant: ctx.slug,
+    method: "POST"
+  });
+  assert.equal(publicoCancelado.status, 410, JSON.stringify(publicoCancelado.json));
 
   // Mesma entrega de webhook chegando duas vezes ao mesmo tempo: o FOR UPDATE
   // dentro da transação serializa as duas e a segunda cai na idempotência.

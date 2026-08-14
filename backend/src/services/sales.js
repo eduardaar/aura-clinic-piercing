@@ -51,9 +51,76 @@ async function authoritativePublicItems(db, submitted) {
   return items;
 }
 
+// Qual linha de estoque uma venda debita, e quanto ela tem.
+//
+// Espelha de propósito a escolha feita por `deductSoldProductStock`: sem
+// variação informada a baixa cai na primeira variação ativa com saldo e, se o
+// produto não tiver variação nenhuma, cai na própria linha de
+// `jewelry_inventory`. Conferir saldo numa linha e debitar de outra deixaria a
+// validação passar e o estoque negativo do mesmo jeito.
+async function resolveStockTarget(db, item) {
+  if (item.item_type !== "produto" || !item.product_id) return null;
+  const productId = Number(item.product_id);
+  let variantId = item.product_variant_id ? Number(item.product_variant_id) : null;
+  if (!variantId) {
+    const firstAvailable = await db.get(
+      "SELECT id FROM jewelry_variants WHERE jewelry_id = ? AND is_active = 1 AND quantity > 0 ORDER BY id LIMIT 1",
+      [productId]
+    );
+    variantId = firstAvailable?.id || null;
+  }
+  if (variantId) {
+    const variant = await db.get(
+      `SELECT v.id, v.quantity, v.variation_name, v.sku, j.name AS product_name
+       FROM jewelry_variants v LEFT JOIN jewelry_inventory j ON j.id = v.jewelry_id
+       WHERE v.id = ?`,
+      [variantId]
+    );
+    if (!variant) return null;
+    const variantLabel = variant.variation_name || variant.sku || "";
+    return {
+      key: `variant:${variant.id}`,
+      available: Number(variant.quantity || 0),
+      label: [variant.product_name, variantLabel].filter(Boolean).join(" - ")
+    };
+  }
+  const product = await db.get("SELECT id, name, quantity FROM jewelry_inventory WHERE id = ?", [productId]);
+  if (!product) return null;
+  return { key: `product:${product.id}`, available: Number(product.quantity || 0), label: product.name || "" };
+}
+
+function insufficientStockError(name, requested, available) {
+  const item = String(name || "").trim() || "este item";
+  return new SalesOrderValidationError(
+    `Estoque insuficiente para "${item}": a venda pede ${requested} un. e há ${available} un. disponível(is).`
+  );
+}
+
+// Confere o estoque de TODOS os itens antes de a venda gravar qualquer coisa.
+//
+// Duas linhas do mesmo produto no mesmo pedido somam: 2 + 2 sobre um saldo de 3
+// tem de ser recusado, e conferir linha a linha isoladamente deixaria passar.
+export async function assertStockForSoldItems(db, items = []) {
+  const requestedByTarget = new Map();
+  for (const item of items) {
+    const target = await resolveStockTarget(db, item);
+    if (!target) continue;
+    const requested = (requestedByTarget.get(target.key) || 0) + Math.max(1, Number(item.quantity || 1));
+    requestedByTarget.set(target.key, requested);
+    if (requested > target.available) {
+      throw insufficientStockError(target.label || item.item_name, requested, target.available);
+    }
+  }
+}
+
 // Exportada porque a venda deixou de ser sempre paga no ato: quando o
 // pagamento chega depois (webhook do gateway confirmando PIX), a baixa precisa
 // acontecer NAQUELE momento, e não na criação do pedido.
+//
+// A baixa também é o último portão do estoque: se o saldo não cobre o item, ela
+// LANÇA em vez de zerar o saldo. Isso inclui o caminho do webhook — pagamento
+// confirmado sobre estoque que sumiu no meio do caminho é inconsistência que
+// precisa aparecer, não ser silenciada com um `Math.max(0, ...)`.
 export async function deductSoldProductStock(db, item, orderId) {
   if (item.item_type !== "produto" || !item.product_id) return;
   const quantity = Number(item.quantity || 1);
@@ -68,7 +135,10 @@ export async function deductSoldProductStock(db, item, orderId) {
   if (variantId) {
     const variant = await db.get("SELECT * FROM jewelry_variants WHERE id = ?", [variantId]);
     if (!variant) return;
-    const nextQuantity = Math.max(0, Number(variant.quantity || 0) - quantity);
+    const nextQuantity = Number(variant.quantity || 0) - quantity;
+    if (nextQuantity < 0) {
+      throw insufficientStockError(item.item_name || variant.variation_name || variant.sku, quantity, Number(variant.quantity || 0));
+    }
     await db.run(
       "UPDATE jewelry_variants SET quantity = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
       [nextQuantity, variantStatus(nextQuantity, variant.low_stock_threshold), variantId]
@@ -83,7 +153,10 @@ export async function deductSoldProductStock(db, item, orderId) {
 
   const product = await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [item.product_id]);
   if (!product) return;
-  const nextQuantity = Math.max(0, Number(product.quantity || 0) - quantity);
+  const nextQuantity = Number(product.quantity || 0) - quantity;
+  if (nextQuantity < 0) {
+    throw insufficientStockError(item.item_name || product.name, quantity, Number(product.quantity || 0));
+  }
   await db.run(
     "UPDATE jewelry_inventory SET quantity = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
     [nextQuantity, variantStatus(nextQuantity, product.low_stock_threshold), item.product_id]
@@ -131,6 +204,17 @@ export async function createSalesOrder(db, body, user) {
   // metade disso gravado deixaria estoque baixado sem venda (ou venda sem
   // pagamento) e o financeiro do dia não fecharia.
   const orderId = await db.transaction(async (tx) => {
+    // Estoque é conferido ANTES da primeira escrita.
+    //
+    // O rollback já desfaria um erro lançado lá na baixa, mas conferir antes é
+    // o que garante que nenhum id de cliente/pedido seja consumido à toa e que
+    // a mensagem devolvida ao caixa fale do item, não da transação.
+    //
+    // O pedido público tem o portão próprio em `authoritativePublicItems` (e o
+    // recheck sob `FOR UPDATE` mais abaixo), que enxerga também as reservas
+    // ativas do catálogo — checar duas vezes só duplicaria a recusa.
+    if (!publicOrder) await assertStockForSoldItems(tx, items);
+
     const client = await upsertClient(tx, {
       client_id: body.client_id,
       full_name: fullName,
@@ -273,18 +357,28 @@ export async function ensureSalesOrderForAppointment(db, appointmentId, user) {
   `, [appointmentId]);
   const fallbackServiceValue = Number(appointment.service_price || 0);
   const fallbackProductValue = appointment.jewelry_id ? Number(appointment.variant_sale_value || appointment.jewelry_sale_value || 0) : 0;
-  const total = appointmentItems.length
+  const grossTotal = appointmentItems.length
     ? appointmentItems.reduce((sum, item) => sum + Number(item.procedure_price || 0) + Number(item.jewelry_unit_price || 0) * Number(item.quantity || 1), 0)
     : fallbackServiceValue + fallbackProductValue;
+  // A ordem de serviço é o snapshot documental do atendimento, não uma nova
+  // receita. Seu total precisa preservar o líquido realizado do agendamento;
+  // os itens continuam registrando o bruto para explicar o desconto.
+  const total = Number(appointment.total_value || Math.max(0, grossTotal - Number(appointment.discount_value || 0)));
   const result = await db.run(
     `INSERT INTO sales_orders
-    (client_id, appointment_id, order_type, source, status, payment_method, total_value, notes, created_by_user_id)
-    VALUES (?, ?, 'ordem_servico', 'agenda', 'concluida', ?, ?, ?, ?) RETURNING id`,
+    (client_id, appointment_id, order_type, source, status, payment_method, subtotal_value, discount_value,
+     total_value, coupon_id, coupon_code, coupon_snapshot, notes, created_by_user_id)
+    VALUES (?, ?, 'ordem_servico', 'agenda', 'concluida', ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     [
       appointment.client_id,
       appointment.id,
       appointment.remaining_payment_method || appointment.deposit_payment_method || "Pix",
+      grossTotal,
+      Number(appointment.discount_value || 0),
       total,
+      appointment.coupon_id || null,
+      appointment.coupon_code || null,
+      appointment.coupon_snapshot || null,
       `Ordem gerada automaticamente ao finalizar o atendimento #${appointment.id}`,
       user?.id || null
     ]

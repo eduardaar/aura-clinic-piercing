@@ -17,8 +17,7 @@ import {
   ShoppingCart,
   SlidersHorizontal,
   Sparkles,
-  Star,
-  Truck
+  Star
 } from "lucide-react";
 import { Loading, ApiError } from "../components/common/Feedback";
 import { BookingChoiceGrid, Input, Select } from "../components/common/Ui";
@@ -35,14 +34,89 @@ import {
   catalogStockText,
   cleanDisplayText,
   elegantProductName,
+  hasRenderableContent,
   promotionalPrice,
   splitColorOptions
 } from "../features/catalog/catalogUtils";
 import { variantCatalogLabel } from "../features/shared/helpers";
+import { CatalogNativePlugins } from "../features/catalog/CatalogNativePlugins";
 import { catalogUrl, publicTenant, publicUrl, replaceCatalogState } from "../lib/publicRoutes";
 import { imageTransformStyle, normalizeImageTransform } from "../components/common/ImageEditor";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
+// --- CPF/CNPJ do cliente final ----------------------------------------------
+//
+// Um único jeito para as duas portas públicas (checkout do catálogo e
+// agendamento): antes só o checkout tinha o campo, sem máscara nem validação, e
+// o agendamento não tinha campo nenhum — o que derrubava o sinal online para o
+// caminho manual mesmo com gateway configurado.
+//
+// A validação de verdade é a do backend (`services/taxId.js`, mesma regra). Esta
+// existe para o erro aparecer no campo, antes do envio, em vez de voltar como
+// 400 depois de o formulário inteiro ter sido preenchido.
+
+function taxIdDigits(value) {
+  return String(value ?? "").replace(/\D/g, "").slice(0, 14);
+}
+
+/** Máscara progressiva: CPF até 11 dígitos, CNPJ acima disso. */
+export function formatTaxId(value) {
+  const digits = taxIdDigits(value);
+  if (digits.length <= 11) {
+    return digits
+      .replace(/^(\d{3})(\d)/, "$1.$2")
+      .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
+      .replace(/^(\d{3})\.(\d{3})\.(\d{3})(\d)/, "$1.$2.$3-$4");
+  }
+  return digits
+    .replace(/^(\d{2})(\d)/, "$1.$2")
+    .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
+    .replace(/^(\d{2})\.(\d{3})\.(\d{3})(\d)/, "$1.$2.$3/$4")
+    .replace(/^(\d{2})\.(\d{3})\.(\d{3})\/(\d{4})(\d)/, "$1.$2.$3/$4-$5");
+}
+
+function taxIdCheckDigit(digits, length) {
+  let sum = 0;
+  for (let index = 0; index < length; index++) sum += Number(digits[index]) * (length + 1 - index);
+  const rest = (sum * 10) % 11;
+  return rest === 10 ? 0 : rest;
+}
+
+function companyCheckDigit(digits, length) {
+  let sum = 0;
+  let weight = length - 7;
+  for (let index = 0; index < length; index++) {
+    sum += Number(digits[index]) * weight;
+    weight = weight - 1 < 2 ? 9 : weight - 1;
+  }
+  const rest = sum % 11;
+  return rest < 2 ? 0 : 11 - rest;
+}
+
+/**
+ * @param {string} value Documento digitado, com ou sem máscara.
+ * @param {boolean} [required] Quando o campo em branco já é erro.
+ * @returns {string} Mensagem de erro, ou string vazia quando está tudo certo.
+ */
+export function taxIdError(value, required = false) {
+  const digits = taxIdDigits(value);
+  if (!digits) return required ? "Informe o CPF para gerar o link do sinal." : "";
+  // Repetidos (111.111.111-11) passam no módulo 11 mas não existem.
+  if (digits.length === 11) {
+    const valido = !/^(\d)\1{10}$/.test(digits)
+      && taxIdCheckDigit(digits, 9) === Number(digits[9])
+      && taxIdCheckDigit(digits, 10) === Number(digits[10]);
+    return valido ? "" : "CPF inválido. Confira os números digitados.";
+  }
+  if (digits.length === 14) {
+    const valido = !/^(\d)\1{13}$/.test(digits)
+      && companyCheckDigit(digits, 12) === Number(digits[12])
+      && companyCheckDigit(digits, 13) === Number(digits[13]);
+    return valido ? "" : "CNPJ inválido. Confira os números digitados.";
+  }
+  return `Documento deve ter 11 dígitos (CPF) ou 14 (CNPJ); você digitou ${digits.length}.`;
+}
 
 function catalogSessionKey() {
   const key = "aura-catalog-session";
@@ -79,7 +153,11 @@ function readCatalogStorage(key, fallback = []) {
 
 export function PublicCatalog() {
   const discoveryRef = useRef(null);
-  const { data } = usePublicFetch("/catalog");
+  const productsRef = useRef(null);
+  const previewMode = new URLSearchParams(window.location.search).get("preview") === "1" && window.parent !== window;
+  const [previewData, setPreviewData] = useState(null);
+  const { data: publicData } = usePublicFetch("/catalog");
+  const data = previewData || publicData;
   const initialQuery = new URLSearchParams(window.location.search);
   const [activeCategory, setActiveCategory] = useState(initialQuery.get("category") || "Todos");
   const [search, setSearch] = useState(initialQuery.get("q") || "");
@@ -94,15 +172,34 @@ export function PublicCatalog() {
   const catalogRoute = window.location.pathname;
   const selectedProductId = Number((catalogRoute.match(/^\/catalogo\/produto\/(\d+)/) || [])[1] || 0);
 
+  // O editor manda o snapshot atual para um iframe da própria vitrine. Não há
+  // endpoint público de rascunho: a mensagem só é aceita da mesma origem e o
+  // conteúdo nunca é persistido nem exposto para visitantes.
   useEffect(() => {
+    if (!previewMode) return undefined;
+    const receivePreview = (event) => {
+      if (event.origin !== window.location.origin || event.source !== window.parent) return;
+      const message = asObject(event.data);
+      if (message.type !== "aura-catalog-preview" || !message.catalog || typeof message.catalog !== "object") return;
+      setPreviewData(message.catalog);
+    };
+    window.addEventListener("message", receivePreview);
+    if (window.parent !== window) window.parent.postMessage({ type: "aura-catalog-preview-ready" }, window.location.origin);
+    return () => window.removeEventListener("message", receivePreview);
+  }, [previewMode]);
+
+  useEffect(() => {
+    if (previewMode) return;
     writeCatalogStorage("aura-catalog-favorites", favoriteIds);
-  }, [favoriteIds]);
+  }, [favoriteIds, previewMode]);
 
   useEffect(() => {
+    if (previewMode) return;
     writeCatalogStorage("aura-catalog-order", orderItems);
-  }, [orderItems]);
+  }, [orderItems, previewMode]);
 
   useEffect(() => {
+    if (previewMode) return;
     replaceCatalogState({
       category: activeCategory !== "Todos" ? activeCategory : "",
       q: debouncedSearch.trim(),
@@ -114,7 +211,7 @@ export function PublicCatalog() {
       available: filters.availability,
       sort: sort !== "recentes" ? sort : ""
     });
-  }, [activeCategory, debouncedSearch, filters, sort]);
+  }, [activeCategory, debouncedSearch, filters, sort, previewMode]);
 
   useEffect(() => {
     const activeCount = asArray(data?.banners).filter((banner) => Boolean(asNumber(banner?.is_active))).length;
@@ -124,12 +221,12 @@ export function PublicCatalog() {
   }, [data?.banners]);
 
   useEffect(() => {
-    if (data && !data.error) trackCatalogEvent("catalog_view");
-  }, [Boolean(data && !data.error)]);
+    if (!previewMode && data && !data.error) trackCatalogEvent("catalog_view");
+  }, [Boolean(data && !data.error), previewMode]);
 
   useEffect(() => {
-    if (selectedProductId) trackCatalogEvent("product_view", selectedProductId);
-  }, [selectedProductId]);
+    if (!previewMode && selectedProductId) trackCatalogEvent("product_view", selectedProductId);
+  }, [selectedProductId, previewMode]);
 
   if (!data) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
@@ -138,18 +235,9 @@ export function PublicCatalog() {
   const theme = asObject(safeData.theme);
   const settings = safeData;
   const layoutSections = asArray(safeData.catalogSections);
-  const layoutStyle = (type, fallbackOrder) => {
-    const section = layoutSections.find((item) => item.section_type === type);
-    if (!section) return { order: fallbackOrder };
-    return {
-      order: Number(section.sort_order || fallbackOrder),
-      display: Boolean(Number(section.is_active)) ? undefined : "none",
-      background: section.background || undefined,
-      padding: section.spacing ? `${Number(section.spacing)}px` : undefined,
-      textAlign: section.alignment || undefined,
-      "--catalog-section-columns": Number(section.columns_count || 4)
-    };
-  };
+  // A ordem é parte do conteúdo publicado. Nunca usamos `.find()` aqui: duas
+  // seções do mesmo tipo precisam continuar sendo duas instâncias distintas.
+  const publishedLayout = catalogLayoutSections(layoutSections);
   const contentSections = catalogContentSections(settings.content_sections);
   const activeBanners = asArray(safeData.banners).filter((banner) => Boolean(asNumber(banner?.is_active))).sort((a, b) => asNumber(a?.sort_order) - asNumber(b?.sort_order));
   const fallbackBanner = {
@@ -188,7 +276,6 @@ export function PublicCatalog() {
   const options = catalogFilterOptions(publishedItems);
   const latestItems = publishedItems.filter((item) => Number(item.quantity || 0) > 0).sort((a, b) => b.id - a.id).slice(0, 8);
   const bestSellerItems = publishedItems.filter((item) => Number(item.quantity || 0) > 0).sort((a, b) => Number(b.sale_value || 0) - Number(a.sale_value || 0)).slice(0, 8);
-  const lastUnitsItems = publishedItems.filter((item) => Number(item.quantity || 0) > 0 && Number(item.quantity || 0) <= 2).slice(0, 8);
   const promoItems = publishedItems.filter((item) => catalogPromotionForItem(item, asArray(safeData.promotions))).slice(0, 8);
   const safeFavoriteIds = asArray(favoriteIds);
   const safeOrderItems = asArray(orderItems);
@@ -211,6 +298,8 @@ export function PublicCatalog() {
     "--catalog-border": settings.border_color || theme.secondary_color || "#d8c3a5",
     fontFamily: theme.body_font || "Inter"
   };
+  const footerLogo = settings.footer_logo_url || theme.logo_url;
+  const footerDisplayName = settings.footer_display_name || theme.brand_name || settings.company_display_name || data.brand_name;
 
   function toggleFavorite(item) {
     setFavoriteIds((current) => {
@@ -220,7 +309,7 @@ export function PublicCatalog() {
   }
 
 function addToOrder(item) {
-    trackCatalogEvent("product_selected", item.id, { variation_id: item.selected_variant_id || null });
+    if (!previewMode) trackCatalogEvent("product_selected", item.id, { variation_id: item.selected_variant_id || null });
     setOrderItems((currentValue) => {
       const current = asArray(currentValue);
       const orderKey = `${item.id}-${item.selected_variant_id || "produto"}-${item.selected_color || "sem-cor"}`;
@@ -313,159 +402,43 @@ function addToOrder(item) {
           {data.subtitle && <small>{data.subtitle}</small>}
         </div>
 
-        <PublicCatalogBanner
-          banner={activeBanner}
-          banners={banners}
-          activeIndex={bannerIndex % banners.length}
-          layout={data.layout_style || "premium"}
-          style={layoutStyle("hero", 1)}
-          onChange={setBannerIndex}
-        />
-
-        <section ref={discoveryRef} className="catalog-discovery" style={{ order: -10 }}>
-          <label className="catalog-search catalog-search-mobile">
-            <Search size={17} />
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar joia, SKU, material ou tamanho" />
-          </label>
-        <div className="catalog-category-strip">
-          {categories.map(({ name, icon: Icon }) => (
-            <button key={name} className={activeCategory === name ? "active" : ""} onClick={() => {
-              setActiveCategory(name);
-              requestAnimationFrame(() => discoveryRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
-            }}>
-              <Icon size={25} />
-              <span>{cleanDisplayText(name)}</span>
-            </button>
-          ))}
-        </div>
-
-        <div className="catalog-filters">
-          <span className="catalog-filter-label">Refinar</span>
-          <CatalogSelect label="Material" value={filters.material} options={options.materials} onChange={(value) => setFilters({ ...filters, material: value })} />
-          <CatalogSelect label="Observação de cor" value={filters.color} options={options.colors} onChange={(value) => setFilters({ ...filters, color: value })} />
-          <CatalogSelect label="Pedra" value={filters.stone} options={options.stones} onChange={(value) => setFilters({ ...filters, stone: value })} />
-          <CatalogSelect label="Tamanho" value={filters.size} options={options.sizes} onChange={(value) => setFilters({ ...filters, size: value })} />
-          <CatalogSelect label="Tamanho do topo" value={filters.topSize} options={options.topSizes.map((number) => ({ value: String(number), label: `${number.toLocaleString("pt-BR", { minimumFractionDigits: 1 })} mm` }))} onChange={(value) => setFilters({ ...filters, topSize: value })} />
-          <CatalogSelect label="Disponibilidade" value={filters.availability} options={[{ value: "true", label: "Em estoque" }, { value: "false", label: "Esgotados" }]} onChange={(value) => setFilters({ ...filters, availability: value })} />
-          <label className="catalog-sort">
-            <SlidersHorizontal size={16} />
-            <select value={sort} onChange={(event) => setSort(event.target.value)}>
-              <option value="recentes">Mais recentes</option>
-              <option value="menor-preco">Menor preço</option>
-              <option value="maior-preco">Maior preço</option>
-              <option value="nome-az">Nome de A a Z</option>
-              <option value="nome-za">Nome de Z a A</option>
-              <option value="estoque">Em estoque primeiro</option>
-            </select>
-          </label>
-        </div>
-        </section>
-
-        <section className="catalog-trust-strip" aria-label="Diferenciais do estúdio" style={{ order: 4 }}>
-          <span><ShieldCheck size={20} /><strong>Curadoria profissional</strong><small>Joias selecionadas com cuidado</small></span>
-          <span><Gem size={20} /><strong>Materiais premium</strong><small>Titânio, ouro e peças seguras</small></span>
-          <span><Truck size={20} /><strong>Envio orientado</strong><small>Pedido finalizado pelo WhatsApp</small></span>
-          <span><Heart size={20} /><strong>Composição personalizada</strong><small>Favoritos e observações no pedido</small></span>
-        </section>
-
-        <div style={layoutStyle("new_products", 6)}><CatalogProductRail title="Lançamentos" subtitle="Novidades recém-adicionadas à curadoria." items={latestItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} /></div>
-        <div style={layoutStyle("best_sellers", 7)}><CatalogProductRail title="Mais desejadas" subtitle="Peças premium em destaque para composições especiais." items={bestSellerItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} /></div>
-        {promoItems.length > 0 && <div style={layoutStyle("promotions", 8)}><CatalogProductRail title="Promoções" subtitle="Ofertas ativas com preço especial." items={promoItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} /></div>}
-        {lastUnitsItems.length > 0 && <div style={layoutStyle("in_stock", 9)}><CatalogProductRail title="Últimas unidades" subtitle="Joias com poucas peças disponíveis." items={lastUnitsItems} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }} /></div>}
-
-        <div style={layoutStyle("booking_cta", 10)}><CatalogBookingWidget /></div>
-        <div style={layoutStyle("custom_content", 11)}><CatalogContentSections sections={contentSections} /></div>
-
-        <section className="catalog-grid" id="catalog-products" style={layoutStyle("featured_products", 12)}>
-          {items.map((item) => (
-            <CatalogProductCard
-              item={item}
-              favorite={favoriteIds.includes(item.id)}
-              onToggleFavorite={() => toggleFavorite(item)}
-              theme={theme}
-              settings={settings}
-              promotion={catalogPromotionForItem(item, data.promotions || [])}
-              onAddToOrder={() => {
-                addToOrder(item);
-                setDrawer("order");
-              }}
-              key={item.id}
-            />
-          ))}
-        </section>
-        {!items.length && (
-          <p className="empty-state catalog-empty">
-            {filters.availability === "false"
-              ? "Nenhuma joia esgotada encontrada para os filtros selecionados."
-              : "Nenhuma joia disponível para os filtros selecionados."}
-          </p>
-        )}
-
-        <section className="catalog-guide-section">
-          <article>
-            <span className="eyebrow">Guia</span>
-            <h2>Escolha com mais segurança</h2>
-            <p>Na dúvida sobre tamanho, espessura, anodização ou região ideal Adicione observações no pedido e finalize pelo WhatsApp para receber orientação personalizada.</p>
-          </article>
-          <div>
-            <span><strong>Medidas</strong><small>Confira tamanho, espessura e haste antes de reservar.</small></span>
-            <span><strong>Materiais</strong><small>Priorize titânio grau implante, ouro 14k/18k e peças adequadas à sua pele.</small></span>
-            <span><strong>Anodização</strong><small>Descreva a cor desejada nas observações do pedido.</small></span>
-          </div>
-        </section>
-
-        {settings.footer_enabled !== "0" && <footer
-          className="catalog-footer-benefits catalog-dynamic-footer"
-          style={{ ...layoutStyle("footer", 20), ...catalogFooterStyle(settings, theme) }}
-        >
-          <div className="catalog-contact-heading">
-            <span className="eyebrow">Atendimento</span>
-            <h2>Fale com a nossa equipe</h2>
-            {settings.institutional_text && <p>{settings.institutional_text}</p>}
-          </div>
-          <div className="catalog-company-contact">
-            {settings.whatsapp_phone && (
-              <a href={whatsappCatalogUrl(settings.whatsapp_message, settings.whatsapp_phone)} target="_blank" rel="noreferrer">
-                <i><MessageCircle size={20} /></i>
-                <span><small>Atendimento rápido</small><strong>WhatsApp</strong><em>{settings.whatsapp_phone}</em></span>
-                <ChevronRight size={17} />
-              </a>
-            )}
-            {settings.company_instagram && (
-              <a href={instagramCatalogUrl(settings.company_instagram)} target="_blank" rel="noreferrer">
-                <i><Instagram size={20} /></i>
-                <span><small>Acompanhe nosso trabalho</small><strong>Instagram</strong><em>{settings.company_instagram}</em></span>
-                <ChevronRight size={17} />
-              </a>
-            )}
-            {settings.company_email && (
-              <a href={`mailto:${settings.company_email}`}>
-                <i><Mail size={20} /></i>
-                <span><small>Envie sua dúvida</small><strong>E-mail</strong><em>{settings.company_email}</em></span>
-                <ChevronRight size={17} />
-              </a>
-            )}
-            {settings.company_hours && (
-              <div>
-                <i><Clock size={20} /></i>
-                <span><small>Quando falar conosco</small><strong>Atendimento</strong><em>{settings.company_hours}</em></span>
-              </div>
-            )}
-            {settings.company_address && (
-              <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(settings.company_address)}`} target="_blank" rel="noreferrer">
-                <i><MapPin size={20} /></i>
-                <span><small>Visite a clínica</small><strong>Endereço</strong><em>{settings.company_address}</em></span>
-                <ChevronRight size={17} />
-              </a>
-            )}
-          </div>
-          <div className="catalog-footer-signature">
-            {(settings.footer_logo_url || theme.logo_url) && <img src={catalogImageUrl(settings.footer_logo_url || theme.logo_url)} alt={settings.footer_display_name || theme.brand_name || data.brand_name || "Marca do estúdio"} />}
-            {settings.footer_show_business_name !== "0" && <strong>{settings.footer_display_name || theme.brand_name || settings.company_display_name || data.brand_name || "Estúdio"}</strong>}
-            {settings.footer_show_slogan !== "0" && (settings.footer_slogan || theme.slogan) && <small>{settings.footer_slogan || theme.slogan}</small>}
-            {(settings.footer_copyright_text || theme.footer_text) && <small>{settings.footer_copyright_text || theme.footer_text}</small>}
-          </div>
-        </footer>}
+        {publishedLayout.map((section) => (
+          <CatalogLayoutBlock
+            key={`${section.section_key || section.section_type}-${section.sort_order}-${section._sourceIndex}`}
+            section={section}
+            data={data}
+            settings={settings}
+            theme={theme}
+            banners={banners}
+            activeBanner={activeBanner}
+            activeBannerIndex={bannerIndex % banners.length}
+            onBannerChange={setBannerIndex}
+            categories={categories}
+            activeCategory={activeCategory}
+            setActiveCategory={setActiveCategory}
+            search={search}
+            setSearch={setSearch}
+            filters={filters}
+            setFilters={setFilters}
+            options={options}
+            sort={sort}
+            setSort={setSort}
+            productsRef={productsRef}
+            discoveryRef={discoveryRef}
+            items={items}
+            publishedItems={publishedItems}
+            latestItems={latestItems}
+            bestSellerItems={bestSellerItems}
+            promoItems={promoItems}
+            contentSections={contentSections}
+            favoriteIds={favoriteIds}
+            onToggleFavorite={toggleFavorite}
+            onAdd={(item) => { addToOrder(item); setDrawer("order"); }}
+            footerLogo={footerLogo}
+            footerDisplayName={footerDisplayName}
+          />
+        ))}
+        <CatalogNativePlugins plugins={safeData.plugins} settings={settings} theme={theme} />
         {Boolean(Number(theme.show_whatsapp_button || 1)) && <a className="floating-whatsapp" href={whatsappCatalogUrl(data.whatsapp_message, data.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle size={24} /><span>WhatsApp</span></a>}
       </section>
       {drawer && (
@@ -487,7 +460,380 @@ function addToOrder(item) {
   );
 }
 
-function PublicCatalogBanner({ banner, banners, activeIndex, layout, style, onChange }) {
+const DEFAULT_CATALOG_LAYOUT_TYPES = ["hero", "categories", "featured_products", "best_sellers", "new_products", "promotions", "booking_cta", "location", "footer"];
+
+const CATALOG_SECTION_TITLES = {
+  hero: "Banner principal",
+  secondary_banners: "Destaques",
+  categories: "Encontre sua joia",
+  featured_products: "Produtos em destaque",
+  best_sellers: "Mais desejadas",
+  new_products: "Lançamentos",
+  promotions: "Promoções",
+  premium_products: "Joias premium",
+  in_stock: "Disponíveis agora",
+  out_of_stock: "Indisponíveis",
+  category_products: "Joias por categoria",
+  services: "Serviços",
+  professionals: "Profissionais",
+  location: "Localização",
+  contact: "Fale com a equipe",
+  policies: "Políticas do estúdio",
+  biosafety: "Biossegurança",
+  materials: "Materiais e cuidados",
+  testimonials: "Depoimentos",
+  instagram: "Acompanhe no Instagram",
+  booking_cta: "Agende seu atendimento",
+  footer: "Atendimento",
+  custom_content: "Conteúdo especial"
+};
+
+function catalogLayoutSections(sections) {
+  const source = asArray(sections).length
+    ? asArray(sections)
+    : DEFAULT_CATALOG_LAYOUT_TYPES.map((section_type, index) => ({ section_key: `${section_type}-${index + 1}`, section_type, sort_order: index + 1, is_active: 1 }));
+  return source
+    .map((section, index) => ({ ...asObject(section), section_type: String(section?.section_type || "custom_content"), sort_order: Number(section?.sort_order ?? index + 1), _sourceIndex: index }))
+    .filter((section) => section.is_active === undefined || section.is_active === null || Boolean(Number(section.is_active)))
+    .sort((left, right) => left.sort_order - right.sort_order || left._sourceIndex - right._sourceIndex);
+}
+
+function catalogSectionClass(section, baseClass) {
+  const type = String(section.section_type || "custom_content").replace(/[^a-z0-9_-]/gi, "");
+  const width = section.width_mode === "full" ? "full" : "contained";
+  return `${baseClass} catalog-configured-block catalog-configured-block--${type} catalog-configured-block--${width}`;
+}
+
+function safeCatalogColor(value) {
+  const color = String(value || "").trim();
+  if (/^#[0-9a-f]{3,8}$/i.test(color)) return color;
+  if (/^(?:rgb|hsl)a?\([\d.%\s,/-]+\)$/i.test(color)) return color;
+  return "";
+}
+
+function catalogSectionStyle(section = {}) {
+  const alignment = ["left", "center", "right"].includes(section.alignment) ? section.alignment : "left";
+  const spacing = Math.min(160, Math.max(0, Number(section.spacing ?? 24)));
+  const height = Math.min(1200, Math.max(0, Number(section.height || 0)));
+  return {
+    backgroundColor: safeCatalogColor(section.background) || undefined,
+    padding: `${spacing}px`,
+    minHeight: height ? `${height}px` : undefined,
+    textAlign: alignment,
+    "--catalog-section-columns": Math.min(6, Math.max(1, Number(section.columns_count || 4)))
+  };
+}
+
+function catalogSectionTitle(section, fallback) {
+  return String(section.title || fallback || CATALOG_SECTION_TITLES[section.section_type] || "Catálogo").trim();
+}
+
+function catalogSectionSubtitle(section, fallback = "") {
+  return String(section.subtitle || fallback || "").trim();
+}
+
+function catalogSectionLimit(section, fallback = 8) {
+  return Math.min(48, Math.max(1, Number(section.item_limit || fallback)));
+}
+
+function catalogSectionProducts(section, source, { category = "", forceSort = "" } = {}) {
+  let items = [...asArray(source)];
+  const categoryFilter = String(section.category_filter || category || "").trim();
+  if (categoryFilter && categoryFilter !== "Todos") {
+    const terms = catalogCategoryTerms(categoryFilter);
+    items = items.filter((item) => terms.some((term) => removeAccents(`${item.category || ""} ${item.subcategory || ""} ${item.name || ""}`.toLowerCase()).includes(removeAccents(term.toLowerCase()))));
+  }
+  const productSort = forceSort || String(section.product_sort || "recent");
+  const compare = productSort === "best_sellers" ? (left, right) => Number(right.sale_value || 0) - Number(left.sale_value || 0)
+    : productSort === "price_asc" ? (left, right) => Number(left.sale_value || 0) - Number(right.sale_value || 0)
+      : productSort === "price_desc" ? (left, right) => Number(right.sale_value || 0) - Number(left.sale_value || 0)
+        : productSort === "stock" ? (left, right) => Number(right.quantity || 0) - Number(left.quantity || 0)
+          : productSort === "recent" ? (left, right) => Number(right.id || 0) - Number(left.id || 0)
+            : null;
+  if (compare) items.sort(compare);
+  return items.slice(0, catalogSectionLimit(section));
+}
+
+function CatalogLayoutBlock({
+  section, data, settings, theme, banners, activeBanner, activeBannerIndex, onBannerChange,
+  categories, activeCategory, setActiveCategory, search, setSearch, recentSearches, setRecentSearches,
+  filters, setFilters, options, sort, setSort, productsRef, discoveryRef, items, publishedItems,
+  latestItems, bestSellerItems, promoItems, contentSections, favoriteIds,
+  onToggleFavorite, onAdd, footerLogo, footerDisplayName
+}) {
+  const type = section.section_type;
+  const style = catalogSectionStyle(section);
+  const className = (base) => catalogSectionClass(section, base);
+  const railProps = {
+    data, theme, settings, favoriteIds, onToggleFavorite, onAdd,
+    style, className: className("catalog-product-rail"), displayMode: section.display_mode
+  };
+  const featuredProductIds = new Set(asArray(data.featuredProducts).filter((product) => Boolean(Number(product?.is_active ?? 1))).map((product) => Number(product.product_id)));
+  const configuredFeatured = asArray(publishedItems).filter((item) => featuredProductIds.has(Number(item.id)) || Boolean(Number(item.is_featured)));
+  const rail = (title, subtitle, source, options = {}) => (
+    <CatalogProductRail
+      title={catalogSectionTitle(section, title)}
+      subtitle={catalogSectionSubtitle(section, subtitle)}
+      items={catalogSectionProducts(section, source, options)}
+      {...railProps}
+    />
+  );
+
+  switch (type) {
+    case "hero":
+      return <PublicCatalogBanner banner={activeBanner} banners={banners} activeIndex={activeBannerIndex} layout={data.layout_style || "premium"} style={style} className={className("catalog-premium-hero catalog-carousel-hero")} onChange={onBannerChange} />;
+    case "secondary_banners":
+      return <CatalogSecondaryBanners banners={banners} section={section} style={style} className={className("catalog-secondary-banners")} />;
+    case "categories":
+      return <CatalogDiscovery
+        section={section}
+        style={style}
+        className={className("catalog-discovery")}
+        discoveryRef={discoveryRef}
+        productsRef={productsRef}
+        categories={categories}
+        activeCategory={activeCategory}
+        setActiveCategory={setActiveCategory}
+        search={search}
+        setSearch={setSearch}
+        recentSearches={recentSearches}
+        setRecentSearches={setRecentSearches}
+        filters={filters}
+        setFilters={setFilters}
+        options={options}
+        sort={sort}
+        setSort={setSort}
+      />;
+    case "featured_products": {
+      const productSource = configuredFeatured.length || section.category_filter ? (configuredFeatured.length ? configuredFeatured : publishedItems) : items;
+      return <CatalogProductsBlock section={section} style={style} className={className("catalog-results")} productsRef={productsRef} items={catalogSectionProducts(section, productSource)} activeCategory={activeCategory} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={onToggleFavorite} onAdd={onAdd} />;
+    }
+    case "best_sellers":
+      return rail("Mais desejadas", "Peças premium em destaque para composições especiais.", bestSellerItems, { forceSort: "best_sellers" });
+    case "new_products":
+      return rail("Lançamentos", "Novidades recém-adicionadas à curadoria.", latestItems, { forceSort: "recent" });
+    case "promotions":
+      return rail("Promoções", "Ofertas ativas com preço especial.", promoItems);
+    case "premium_products":
+      return rail("Joias premium", "Curadoria de alto padrão para composições especiais.", publishedItems, { forceSort: "price_desc" });
+    case "in_stock":
+      return rail("Disponíveis agora", "Joias prontas para você reservar.", publishedItems.filter((item) => Number(item.quantity || 0) > 0), { forceSort: "stock" });
+    case "out_of_stock":
+      return rail("Indisponíveis", "Cadastre seu interesse e avisaremos quando voltarem.", publishedItems.filter((item) => Number(item.quantity || 0) <= 0 || item.status === "esgotado"));
+    case "category_products":
+      return rail("Joias por categoria", "Explore a seleção que mais combina com você.", publishedItems, { category: activeCategory });
+    case "services":
+      return <CatalogBookingDirectory kind="services" section={section} style={style} className={className("catalog-booking-directory")} />;
+    case "professionals":
+      return <CatalogBookingDirectory kind="professionals" section={section} style={style} className={className("catalog-booking-directory")} />;
+    case "location":
+      return <CatalogLocationBlock section={section} settings={settings} style={style} className={className("catalog-information-block")} />;
+    case "contact":
+      return <CatalogContactBlock section={section} settings={settings} style={style} className={className("catalog-information-block")} />;
+    case "policies":
+      return <CatalogPoliciesBlock section={section} settings={settings} style={style} className={className("catalog-information-block")} />;
+    case "biosafety":
+      return <CatalogTextBlock section={section} style={style} className={className("catalog-guide-section")} eyebrow="Biossegurança" text={section.body_text || settings.biosafety_text} />;
+    case "materials":
+      return <CatalogTextBlock section={section} style={style} className={className("catalog-guide-section")} eyebrow="Materiais" text={section.body_text || settings.materials_text} />;
+    case "testimonials":
+      return <CatalogTextBlock section={section} style={style} className={className("catalog-guide-section")} eyebrow="Experiências" text={section.body_text || section.subtitle} />;
+    case "instagram":
+      return <CatalogInstagramBlock section={section} settings={settings} style={style} className={className("catalog-information-block")} />;
+    case "booking_cta":
+      return <CatalogBookingWidget section={section} style={style} className={className("catalog-booking-widget")} />;
+    case "footer":
+      return <CatalogFooter section={section} settings={settings} theme={theme} footerLogo={footerLogo} footerDisplayName={footerDisplayName} style={style} className={className("catalog-footer-benefits catalog-dynamic-footer")} />;
+    case "custom_content":
+      return <CatalogContentSections sections={contentSections} style={style} className={className("catalog-content-sections")} />;
+    default:
+      return null;
+  }
+}
+
+function CatalogDiscovery({ section, style, className, discoveryRef, productsRef, categories, activeCategory, setActiveCategory, search, setSearch, filters, setFilters, options, sort, setSort }) {
+  return (
+    <section ref={discoveryRef} className={className} style={style} aria-label={catalogSectionTitle(section, "Categorias e filtros")}>
+      <label className="catalog-search catalog-search-mobile">
+        <Search size={17} />
+        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar joia, SKU, material ou tamanho" />
+      </label>
+      <div className="catalog-category-strip">
+        {categories.map(({ name, icon: Icon }) => (
+          <button key={name} className={activeCategory === name ? "active" : ""} onClick={() => {
+            setActiveCategory(name);
+            requestAnimationFrame(() => productsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+          }}>
+            <Icon size={25} />
+            <span>{cleanDisplayText(name)}</span>
+          </button>
+        ))}
+      </div>
+      <div className="catalog-filters">
+        <span className="catalog-filter-label">{catalogSectionSubtitle(section, "Refinar")}</span>
+        <CatalogSelect label="Material" value={filters.material} options={options.materials} onChange={(value) => setFilters({ ...filters, material: value })} />
+        <CatalogSelect label="Observação de cor" value={filters.color} options={options.colors} onChange={(value) => setFilters({ ...filters, color: value })} />
+        <CatalogSelect label="Pedra" value={filters.stone} options={options.stones} onChange={(value) => setFilters({ ...filters, stone: value })} />
+        <CatalogSelect label="Tamanho" value={filters.size} options={options.sizes} onChange={(value) => setFilters({ ...filters, size: value })} />
+        <CatalogSelect label="Tamanho do topo" value={filters.topSize} options={options.topSizes.map((number) => ({ value: String(number), label: `${number.toLocaleString("pt-BR", { minimumFractionDigits: 1 })} mm` }))} onChange={(value) => setFilters({ ...filters, topSize: value })} />
+        <CatalogSelect label="Disponibilidade" value={filters.availability} options={[{ value: "true", label: "Em estoque" }, { value: "false", label: "Esgotados" }]} onChange={(value) => setFilters({ ...filters, availability: value })} />
+        <label className="catalog-sort">
+          <SlidersHorizontal size={16} />
+          <select value={sort} onChange={(event) => setSort(event.target.value)}>
+            <option value="recentes">Mais recentes</option><option value="menor-preco">Menor preço</option><option value="maior-preco">Maior preço</option><option value="nome-az">Nome de A a Z</option><option value="nome-za">Nome de Z a A</option><option value="estoque">Em estoque primeiro</option>
+          </select>
+        </label>
+      </div>
+    </section>
+  );
+}
+
+function CatalogProductsBlock({ section, style, className, productsRef, items, activeCategory, data, theme, settings, favoriteIds, onToggleFavorite, onAdd }) {
+  const title = catalogSectionTitle(section, "Produtos em destaque");
+  return (
+    <section ref={productsRef} className={className} style={style}>
+      <div className="catalog-results-heading">
+        <div><span className="eyebrow">{catalogSectionSubtitle(section, "Resultados")}</span><h2>{title}</h2></div>
+        <strong>{items.length} {items.length === 1 ? "joia encontrada" : "joias encontradas"}</strong>
+      </div>
+      <div className={`catalog-grid catalog-display-${section.display_mode || "grid"}`} id="catalog-products">
+        {items.map((item) => <CatalogProductCard item={item} favorite={favoriteIds.includes(item.id)} onToggleFavorite={() => onToggleFavorite(item)} theme={theme} settings={settings} promotion={catalogPromotionForItem(item, data.promotions || [])} onAddToOrder={() => onAdd(item)} key={item.id} />)}
+      </div>
+      {!items.length && <p className="empty-state catalog-empty">Nenhuma joia encontrada em {cleanDisplayText(activeCategory)} com os filtros selecionados.</p>}
+    </section>
+  );
+}
+
+function CatalogSecondaryBanners({ banners, section, style, className }) {
+  const secondary = asArray(banners).slice(1);
+  if (!secondary.length) return null;
+  return (
+    <section className={className} style={style}>
+      <div className="catalog-section-heading"><span className="eyebrow">{catalogSectionSubtitle(section, "Destaques")}</span><h2>{catalogSectionTitle(section, "Destaques")}</h2></div>
+      <div className={`catalog-secondary-banners__grid catalog-display-${section.display_mode || "grid"}`}>
+        {secondary.slice(0, catalogSectionLimit(section)).map((banner) => (
+          <article key={banner.id || banner.banner_id || banner.sort_order || banner.image_url || banner.title}>
+            {banner.image_url && <img src={catalogImageUrl(banner.image_url)} alt={banner.alt_text || banner.title || "Destaque"} loading="lazy" onError={useNeutralImageFallback} />}
+            <div>{banner.title && <h3>{banner.title}</h3>}{banner.subtitle && <p>{banner.subtitle}</p>}{banner.button_text && <a className="secondary-button" {...catalogLinkProps(banner.button_link)}>{banner.button_text}</a>}</div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CatalogBookingDirectory({ kind, section, style, className }) {
+  const { data } = usePublicFetch("/booking/config");
+  const rows = kind === "services" ? asArray(data?.services) : asArray(data?.professionals);
+  if (!rows.length) return null;
+  const title = catalogSectionTitle(section, kind === "services" ? "Serviços" : "Profissionais");
+  return (
+    <section className={className} style={style}>
+      <div className="catalog-section-heading"><span className="eyebrow">Agenda online</span><h2>{title}</h2>{catalogSectionSubtitle(section) && <p>{catalogSectionSubtitle(section)}</p>}</div>
+      <div className={`catalog-directory-grid catalog-display-${section.display_mode || "grid"}`}>
+        {rows.slice(0, catalogSectionLimit(section)).map((row) => (
+          <article key={row.id || row.name}><i>{kind === "services" ? <Sparkles size={21} /> : <Star size={21} />}</i><strong>{row.name}</strong>{row.description && <p>{row.description}</p>}</article>
+        ))}
+      </div>
+      <a className="secondary-button" href={publicUrl("/agendar")}>Ver horários disponíveis</a>
+    </section>
+  );
+}
+
+function CatalogLocationBlock({ section, settings, style, className }) {
+  const address = String(settings.company_address || "").trim();
+  const mapUrl = String(settings.company_maps_url || "").trim() || (address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : "");
+  if (!address && !mapUrl) return null;
+  return <CatalogInformationBlock style={style} className={className} icon={<MapPin size={22} />} eyebrow="Visite o estúdio" title={catalogSectionTitle(section, "Localização")} text={section.body_text || address} action={mapUrl ? { label: "Abrir no mapa", href: mapUrl } : null} />;
+}
+
+function CatalogContactBlock({ section, settings, style, className }) {
+  const phone = String(settings.whatsapp_phone || settings.company_phone || settings.company_whatsapp || "").trim();
+  const email = safeMailto(settings.company_email || settings.company_support_email);
+  const website = safeCatalogLink(settings.company_website, "");
+  if (!phone && !email && !website) return null;
+  const actions = [
+    phone && { label: "Falar pelo WhatsApp", href: whatsappCatalogUrl(settings.whatsapp_message, phone), icon: <MessageCircle size={17} /> },
+    email && { label: "Enviar e-mail", href: email, icon: <Mail size={17} /> },
+    website && { label: "Visitar site", href: website }
+  ].filter(Boolean);
+  return <CatalogInformationBlock style={style} className={className} icon={<MessageCircle size={22} />} eyebrow="Atendimento" title={catalogSectionTitle(section, "Fale com a equipe")} text={section.body_text || settings.institutional_text} actions={actions} />;
+}
+
+function CatalogPoliciesBlock({ section, settings, style, className }) {
+  const policies = [["Atendimento", settings.service_policy], ["Sinal", settings.deposit_policy], ["Cancelamento", settings.cancellation_policy], ["Trocas", settings.exchange_policy]].filter(([, text]) => String(text || "").trim());
+  if (!policies.length) return null;
+  return (
+    <section className={className} style={style}>
+      <div className="catalog-section-heading"><span className="eyebrow">Transparência</span><h2>{catalogSectionTitle(section, "Políticas do estúdio")}</h2>{catalogSectionSubtitle(section) && <p>{catalogSectionSubtitle(section)}</p>}</div>
+      <div className="catalog-policy-grid">{policies.map(([label, text]) => <article key={label}><strong>{label}</strong><p>{text}</p></article>)}</div>
+    </section>
+  );
+}
+
+function CatalogInstagramBlock({ section, settings, style, className }) {
+  const handle = String(settings.company_instagram || "").trim();
+  if (!handle) return null;
+  return <CatalogInformationBlock style={style} className={className} icon={<Instagram size={22} />} eyebrow="Bastidores e novidades" title={catalogSectionTitle(section, "Acompanhe no Instagram")} text={section.body_text || catalogSectionSubtitle(section, `Siga ${handle} para acompanhar nosso trabalho.`)} action={{ label: "Abrir Instagram", href: instagramCatalogUrl(handle) }} />;
+}
+
+function CatalogTextBlock({ section, style, className, eyebrow, text }) {
+  const body = String(text || "").trim();
+  if (!body) return null;
+  return (
+    <section className={className} style={style}>
+      <article><span className="eyebrow">{eyebrow}</span><h2>{catalogSectionTitle(section, eyebrow)}</h2><p>{body}</p></article>
+    </section>
+  );
+}
+
+function CatalogInformationBlock({ style, className, icon, eyebrow, title, text, action, actions = [] }) {
+  const availableActions = [...actions, action].filter(Boolean);
+  return (
+    <section className={className} style={style}>
+      <div className="catalog-information-block__icon">{icon}</div>
+      <div><span className="eyebrow">{eyebrow}</span><h2>{title}</h2>{text && <p>{text}</p>}</div>
+      {availableActions.length > 0 && <div className="catalog-information-block__actions">{availableActions.map((item) => <a key={item.label} className="secondary-button" {...catalogActionProps(item.href)}>{item.icon}{item.label}</a>)}</div>}
+    </section>
+  );
+}
+
+function safeMailto(value) {
+  const email = String(value || "").trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? `mailto:${email}` : "";
+}
+
+function CatalogFooter({ section, settings, theme, footerLogo, footerDisplayName, style, className }) {
+  const showFooter = settings.footer_enabled !== "0" && hasRenderableContent({
+    type: "footer", institutional_text: settings.institutional_text, whatsapp_phone: settings.whatsapp_phone,
+    company_instagram: settings.company_instagram, company_email: settings.company_email, company_hours: settings.company_hours,
+    company_address: settings.company_address, logo_url: footerLogo,
+    display_name: settings.footer_show_business_name !== "0" ? footerDisplayName : "",
+    slogan: settings.footer_show_slogan !== "0" ? (settings.footer_slogan || theme.slogan) : "",
+    copyright_text: settings.footer_copyright_text || theme.footer_text || settings.footer_text
+  });
+  if (!showFooter) return null;
+  return (
+    <footer className={className} style={{ ...catalogFooterStyle(settings, theme), ...style }}>
+      <div className="catalog-contact-heading"><span className="eyebrow">{catalogSectionSubtitle(section, "Atendimento")}</span><h2>{catalogSectionTitle(section, "Fale com a nossa equipe")}</h2>{settings.institutional_text && <p>{settings.institutional_text}</p>}</div>
+      <div className="catalog-company-contact">
+        {settings.whatsapp_phone && <a href={whatsappCatalogUrl(settings.whatsapp_message, settings.whatsapp_phone)} target="_blank" rel="noreferrer"><i><MessageCircle size={20} /></i><span><small>Atendimento rápido</small><strong>WhatsApp</strong><em>{settings.whatsapp_phone}</em></span><ChevronRight size={17} /></a>}
+        {settings.company_instagram && <a href={instagramCatalogUrl(settings.company_instagram)} target="_blank" rel="noreferrer"><i><Instagram size={20} /></i><span><small>Acompanhe nosso trabalho</small><strong>Instagram</strong><em>{settings.company_instagram}</em></span><ChevronRight size={17} /></a>}
+        {safeMailto(settings.company_email) && <a href={safeMailto(settings.company_email)}><i><Mail size={20} /></i><span><small>Envie sua dúvida</small><strong>E-mail</strong><em>{settings.company_email}</em></span><ChevronRight size={17} /></a>}
+        {settings.company_hours && <div><i><Clock size={20} /></i><span><small>Quando falar conosco</small><strong>Atendimento</strong><em>{settings.company_hours}</em></span></div>}
+        {settings.company_address && <a {...catalogLinkProps(settings.company_maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(settings.company_address)}`)}><i><MapPin size={20} /></i><span><small>Visite a clínica</small><strong>Endereço</strong><em>{settings.company_address}</em></span><ChevronRight size={17} /></a>}
+      </div>
+      <div className="catalog-footer-signature">
+        {footerLogo && <img src={catalogImageUrl(footerLogo)} alt={footerDisplayName || "Marca do estúdio"} />}
+        {settings.footer_show_business_name !== "0" && <strong>{footerDisplayName || "Estúdio"}</strong>}
+        {settings.footer_show_slogan !== "0" && (settings.footer_slogan || theme.slogan) && <small>{settings.footer_slogan || theme.slogan}</small>}
+        {(settings.footer_copyright_text || theme.footer_text || settings.footer_text) && <small>{settings.footer_copyright_text || theme.footer_text || settings.footer_text}</small>}
+      </div>
+    </footer>
+  );
+}
+
+function PublicCatalogBanner({ banner, banners, activeIndex, layout, style, className = "catalog-premium-hero catalog-carousel-hero", onChange }) {
   const transform = normalizeImageTransform(
     typeof banner.image_transform === "string" ? safeJson(banner.image_transform) : banner.image_transform,
     "16/5"
@@ -499,7 +845,7 @@ function PublicCatalogBanner({ banner, banners, activeIndex, layout, style, onCh
   const go = (direction) => onChange((activeIndex + direction + banners.length) % banners.length);
   return (
     <section
-      className={`catalog-premium-hero catalog-carousel-hero catalog-layout-${layout}`}
+      className={`${className} catalog-layout-${layout}`}
       style={{ ...style, maxWidth: banner.banner_width ? `${Number(banner.banner_width)}px` : undefined }}
       aria-roledescription="carrossel"
       aria-label="Destaques do catálogo"
@@ -526,7 +872,7 @@ function PublicCatalogBanner({ banner, banners, activeIndex, layout, style, onCh
         <div className="catalog-banner-copy">
           {banner.title && <h2>{banner.title}</h2>}
           {banner.subtitle && <p>{banner.subtitle}</p>}
-          {banner.button_text && <a className="catalog-banner-cta" href={banner.button_link || "#catalog-products"}>{banner.button_text}</a>}
+          {banner.button_text && <a className="catalog-banner-cta" {...catalogLinkProps(banner.button_link, "#catalog-products")}>{banner.button_text}</a>}
         </div>
       )}
       {banners.length > 1 && <>
@@ -567,6 +913,7 @@ function catalogFooterStyle(settings, theme) {
     backgroundSize: settings.footer_background_size || "cover",
     borderRadius: `${Number(settings.footer_border_radius || 24)}px`,
     padding: `${Number(settings.footer_spacing || 40)}px`,
+    width: "100%",
     maxWidth: `${Number(settings.footer_container_width || 1280)}px`,
     marginInline: "auto"
   };
@@ -604,7 +951,7 @@ function professionalMatchesService(professional, serviceId) {
   return asArray(professional?.service_ids).some((id) => String(id) === String(serviceId));
 }
 
-function CatalogBookingWidget() {
+function CatalogBookingWidget({ section = {}, style, className = "catalog-booking-widget" } = {}) {
   const { data } = usePublicFetch("/booking/config");
   const [form, setForm] = useState(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -640,11 +987,11 @@ function CatalogBookingWidget() {
   const href = publicUrl("/agendar", Object.fromEntries(Object.entries(form).filter(([, value]) => value)));
 
   return (
-    <section className="catalog-booking-widget" id="catalog-agenda">
+    <section className={className} style={style} id="catalog-agenda">
       <div>
         <span className="eyebrow">Agenda online</span>
-        <h2>Escolha Um Horário Disponível</h2>
-        <p>Reserve pelo link público do estúdio. A equipe confirma manualmente pelo WhatsApp.</p>
+        <h2>{catalogSectionTitle(section, "Escolha um horário disponível")}</h2>
+        <p>{catalogSectionSubtitle(section, "Reserve pelo link público do estúdio. A equipe confirma manualmente pelo WhatsApp.")}</p>
       </div>
       <div className="catalog-booking-controls">
         <Select label="Serviço" value={form.service_id} onChange={(value) => setForm({ ...form, service_id: value, professional_id: "", appointment_time: "" })}>
@@ -671,23 +1018,30 @@ export function hasRenderableCatalogContent(section) {
   return Boolean(String(section.title || section.text || section.media_url || "").trim());
 }
 
-function CatalogContentSections({ sections }) {
+function CatalogContentSections({ sections, style, className = "catalog-content-sections" }) {
   const active = asArray(sections).filter(hasRenderableCatalogContent);
   if (!active.length) return null;
   return (
-    <section className="catalog-content-sections">
+    <section className={className} style={style}>
       {active.sort((a, b) => Number(a.order || 0) - Number(b.order || 0)).map((section, index) => (
         <article className={`catalog-content-card ${section.media_type || "image"}`} key={`${section.title}-${index}`}>
           <div>
             <span className="eyebrow">{section.kicker || "Conteúdo especial"}</span>
             <h2>{section.title}</h2>
             <p>{section.text}</p>
-            {section.button_text && section.button_link && <a className="secondary-button" href={tenantAwareContentUrl(section.button_link)}>{section.button_text}</a>}
+            {section.button_text && section.button_link && <a className="secondary-button" {...catalogLinkProps(section.button_link)}>{section.button_text}</a>}
           </div>
-          {section.media_url && section.media_type === "video" ? (
-            <iframe title={section.title} src={section.media_url} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
+          {section.media_url && section.media_type === "video" && safeCatalogEmbedUrl(section.media_url) ? (
+            <iframe
+              title={section.title || "Vídeo do catálogo"}
+              src={safeCatalogEmbedUrl(section.media_url)}
+              sandbox="allow-scripts allow-presentation allow-popups"
+              referrerPolicy="no-referrer"
+              allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
           ) : section.media_url ? (
-            <img src={catalogImageUrl(section.media_url)} alt={section.title} />
+            <img src={catalogImageUrl(section.media_url)} alt={section.media_alt || section.title || "Imagem do catálogo"} />
           ) : null}
         </article>
       ))}
@@ -695,12 +1049,12 @@ function CatalogContentSections({ sections }) {
   );
 }
 
-function CatalogProductRail({ title, subtitle, items, data, theme, settings, favoriteIds, onToggleFavorite, onAdd }) {
+function CatalogProductRail({ title, subtitle, items, data, theme, settings, favoriteIds, onToggleFavorite, onAdd, style, className = "catalog-product-rail", displayMode = "carousel" }) {
   const safeItems = asArray(items);
   const safeFavoriteIds = asArray(favoriteIds);
   if (!safeItems.length) return null;
   return (
-    <section className="catalog-product-rail">
+    <section className={`${className} catalog-display-${displayMode}`} style={style}>
       <header>
         <div>
           <h2>{title}</h2>
@@ -1081,6 +1435,11 @@ export function PublicCheckout() {
       setError("Seu pedido está vazio.");
       return;
     }
+    // CPF continua opcional aqui, mas errado ele não passa: o backend guardaria
+    // um documento inválido em `clients.tax_id` e a recusa só apareceria na
+    // primeira cobrança online daquele cliente.
+    const cpfError = taxIdError(form.cpf);
+    if (cpfError) return setError(cpfError);
     if (!form.accepted_policies) return setError("Aceite as políticas para concluir o pedido.");
     if (form.fulfillment_method === "delivery" && !form.delivery_address.trim()) return setError("Informe o endereço de entrega.");
     const response = await publicApiFetch("/sales-orders/public", {
@@ -1158,7 +1517,7 @@ export function PublicCheckout() {
             <div className="form-grid">
               <Input label="Nome completo" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} required />
               <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => setForm({ ...form, whatsapp: value })} required />
-              <Input label="CPF" value={form.cpf} onChange={(value) => setForm({ ...form, cpf: value })} />
+              <Input label="CPF (opcional)" value={form.cpf} onChange={(value) => setForm({ ...form, cpf: formatTaxId(value) })} />
               <Input label="E-mail" type="email" value={form.email} onChange={(value) => setForm({ ...form, email: value })} />
               <Input label="Instagram" value={form.instagram} onChange={(value) => setForm({ ...form, instagram: value })} />
               <Select label="Forma de pagamento" value={form.payment_method} onChange={(value) => setForm({ ...form, payment_method: value })}>
@@ -1224,7 +1583,9 @@ export function PublicBooking() {
     const params = new URLSearchParams(window.location.search);
     return params.get("appointment_time") ? 5 : params.get("appointment_date") ? 4 : params.get("professional_id") ? 3 : params.get("service_id") ? 2 : 1;
   });
-  const [form, setForm] = useState(defaultPublicBooking());
+  // `cpf`/`email` ficam fora de `defaultPublicBooking()` porque nascem sempre
+  // vazios: são digitados na etapa 5 e não vêm por query string como o resto.
+  const [form, setForm] = useState(() => ({ ...defaultPublicBooking(), cpf: "", email: "" }));
   const [slots, setSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -1250,6 +1611,13 @@ export function PublicBooking() {
   const selectedTotal = selectedServiceValue + (bookingOrderItems.length ? orderJewelryValue : selectedJewelryValue);
   const selectedDeposit = asNumber(selectedService?.deposit_value || 25);
   const selectedRemaining = Math.max(selectedTotal - selectedDeposit, 0);
+  // Sinal online = clínica com gateway configurado E solicitação que gera sinal.
+  // Só nesse caso o CPF é barreira: o Asaas recusa criar o pagador sem ele e o
+  // link de pagamento nunca existiria. Sem gateway o campo continua opcional —
+  // pedir documento para agendar um horário que será pago no balcão afasta
+  // cliente sem nenhum ganho.
+  const onlineDeposit = Boolean(asObject(safeData.payment).gateway_enabled) && selectedDeposit > 0;
+  const cpfError = taxIdError(form.cpf, onlineDeposit);
 
   useEffect(() => {
     if (!form.professional_id) return;
@@ -1275,6 +1643,9 @@ export function PublicBooking() {
 
   async function submit() {
     if (submitting) return;
+    // Última barreira antes do envio: a etapa 5 pode ter sido pulada por link
+    // com query string, e o backend devolveria 400 depois do resumo inteiro.
+    if (cpfError) return setError(`${cpfError} Volte à etapa "Dados" para corrigir.`);
     setError("");
     setSubmitting(true);
     const body = new FormData();
@@ -1392,11 +1763,23 @@ export function PublicBooking() {
             <div className="form-grid">
               <Input label="Nome" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} required />
               <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => setForm({ ...form, whatsapp: value })} required />
+              <Input label={onlineDeposit ? "CPF" : "CPF (opcional)"} value={form.cpf} onChange={(value) => setForm({ ...form, cpf: formatTaxId(value) })} required={onlineDeposit} />
+              {/* E-mail é opcional no gateway (`email: client.email || undefined`),
+                  então ele não vira barreira — mas é por onde o Asaas manda a
+                  fatura e o recibo do sinal. */}
+              <Input label="E-mail (opcional)" type="email" value={form.email} onChange={(value) => setForm({ ...form, email: value })} />
               <Input label="Instagram" value={form.instagram} onChange={(value) => setForm({ ...form, instagram: value })} />
               <label>Foto de referência<input type="file" accept="image/*" onChange={(event) => setForm({ ...form, reference_photo: event.target.files?.[0] })} /></label>
             </div>
+            <span className={cpfError && form.cpf ? "field-hint is-error" : "field-hint"}>
+              {cpfError && form.cpf
+                ? cpfError
+                : onlineDeposit
+                  ? "O CPF é obrigatório para emitir o link do sinal — o gateway não cria a cobrança sem documento. O e-mail recebe o comprovante."
+                  : "Sem CPF o sinal não pode ser cobrado online: você envia o comprovante do Pix pelo WhatsApp e a equipe confirma na mão."}
+            </span>
             <label>Observações<textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
-            <button className="primary-button booking-wide-button" disabled={!form.full_name || !form.whatsapp} onClick={() => setStep(6)}>Ver Resumo</button>
+            <button className="primary-button booking-wide-button" disabled={!form.full_name || !form.whatsapp || Boolean(cpfError)} onClick={() => setStep(6)}>Ver Resumo</button>
           </section>
         )}
         {step === 6 && (
@@ -1426,10 +1809,15 @@ export function PublicBooking() {
             <CheckCircle2 size={42} />
             <span className="booking-section-kicker">Solicitação enviada</span>
             <h2>Solicitação Enviada</h2>
-            <p>Seu horário ficou aguardando o comprovante do sinal. Envie o comprovante pelo WhatsApp da profissional para a Aura confirmar manualmente.</p>
+            {/* O texto vem do backend porque só ele sabe qual caminho de fato
+                existiu: com link de pagamento, mandar enviar comprovante é
+                ruído; sem link, prometer pagamento online deixa o cliente
+                esperando algo que nunca chega. */}
+            <p>{confirmed?.payment_instructions || "Seu horário ficou aguardando o comprovante do sinal. Envie o comprovante pelo WhatsApp da profissional para a Aura confirmar manualmente."}</p>
             <strong>{confirmed?.procedure}  {formatLongDate(confirmed?.appointment_date)} às {confirmed?.appointment_time}</strong>
             <p><strong>Sinal:</strong> {currency.format(asNumber(confirmed?.deposit_value || selectedDeposit))} · <strong>Restante:</strong> {currency.format(asNumber(confirmed?.remaining_value || selectedRemaining))}</p>
-            {confirmed?.professional_whatsapp_url && <a className="primary-button booking-wide-button" href={confirmed.professional_whatsapp_url} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Enviar comprovante pelo WhatsApp</a>}
+            {confirmed?.online_payment_available && confirmed?.payment_url && <a className="primary-button booking-wide-button" href={confirmed.payment_url} target="_blank" rel="noreferrer"><CircleDollarSign size={16} /> Pagar o sinal agora</a>}
+            {confirmed?.professional_whatsapp_url && <a className={confirmed?.online_payment_available ? "secondary-button booking-wide-button" : "primary-button booking-wide-button"} href={confirmed.professional_whatsapp_url} target="_blank" rel="noreferrer"><MessageCircle size={16} /> {confirmed?.online_payment_available ? "Falar com a profissional" : "Enviar comprovante pelo WhatsApp"}</a>}
             <a className="primary-button booking-wide-button" href={catalogUrl()}>Voltar Ao Catálogo</a>
           </section>
         )}
@@ -1469,11 +1857,69 @@ function bookingJewelryUrl(item = {}, variant = {}) {
   });
 }
 
+function catalogLinkProps(value, fallback = "#catalog-products") {
+  const href = safeCatalogLink(value, fallback);
+  return href.startsWith("https://") ? { href, target: "_blank", rel: "noreferrer" } : { href };
+}
+
+function catalogActionProps(value, fallback = "#catalog-products") {
+  const href = String(value || "").trim();
+  if (href.startsWith("mailto:") && safeMailto(href.slice(7))) return { href };
+  return catalogLinkProps(href, fallback);
+}
+
+// Conteúdo configurável por cada clínica é dado não confiável. Os links do
+// catálogo aceitam âncoras, rotas públicas e HTTPS; esquemas como javascript:
+// e data: nunca chegam a um atributo href.
+function safeCatalogLink(url = "", fallback = "#catalog-products") {
+  const value = String(url).trim();
+  if (!value) return fallback;
+  if (value.startsWith("#")) return /^#[a-zA-Z][\w-]*$/.test(value) ? value : fallback;
+
+  const internal = tenantAwareContentUrl(value);
+  try {
+    const origin = globalThis.location?.origin || "https://catalog.local";
+    const parsed = new URL(internal, origin);
+    if (parsed.origin === origin) return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    return parsed.protocol === "https:" ? parsed.toString() : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function tenantAwareContentUrl(url = "") {
   const value = String(url).trim();
   if (value.startsWith("/catalogo")) return catalogUrl(value.split("?")[0]);
   if (value.startsWith("/agendar") || value.startsWith("/comprar")) return publicUrl(value.split("?")[0]);
   return value;
+}
+
+// Apenas provedores de vídeo incorporável conhecidos são aceitos. A conversão
+// de URLs de compartilhamento evita que o editor exija conhecimento técnico.
+function safeCatalogEmbedUrl(value = "") {
+  let parsed;
+  try {
+    parsed = new URL(String(value).trim());
+  } catch {
+    return "";
+  }
+  if (parsed.protocol !== "https:") return "";
+  const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+  if (host === "youtu.be") {
+    const id = parsed.pathname.split("/").filter(Boolean)[0];
+    return /^[\w-]{6,}$/.test(id || "") ? `https://www.youtube-nocookie.com/embed/${id}` : "";
+  }
+  if (host === "youtube.com" || host === "youtube-nocookie.com") {
+    const id = parsed.pathname.startsWith("/embed/")
+      ? parsed.pathname.split("/")[2]
+      : parsed.searchParams.get("v");
+    return /^[\w-]{6,}$/.test(id || "") ? `https://www.youtube-nocookie.com/embed/${id}` : "";
+  }
+  if (host === "vimeo.com" || host === "player.vimeo.com") {
+    const id = parsed.pathname.match(/(?:video\/)?(\d+)/)?.[1];
+    return id ? `https://player.vimeo.com/video/${id}` : "";
+  }
+  return "";
 }
 
 function catalogImageUrl(url) {
@@ -1498,7 +1944,6 @@ function catalogCategories(names = []) {
     "Ouro 14k": Gem,
     "Ouro 18k": Gem,
     "Titânio": CircleDollarSign,
-    Titanio: CircleDollarSign,
     Opalas: Gem,
     "Lançamentos": Star,
     Lancamentos: Star
@@ -1534,5 +1979,3 @@ function catalogIcon(icon) {
     circle: CircleDollarSign
   }[icon] || Gem;
 }
-
-

@@ -90,6 +90,11 @@ export async function buildReport(db, type, filters = {}) {
       )
       SELECT p.id, p.name AS professional,
         GREATEST(COALESCE(av.availability_days,0),COALESCE(pr.appointment_days,0)) AS worked_days,
+        -- O ::numeric aqui NÃO é sobra da migração de dinheiro: estas duas
+        -- colunas são HORAS, não reais, e continuam vindo de EXTRACT(EPOCH...),
+        -- que devolve double precision no Postgres 13 e numeric a partir do 14.
+        -- Como round(double precision, int) não existe, o cast é o que impede
+        -- a query de quebrar conforme a versão do servidor. Mantê-lo.
         ROUND(COALESCE(av.available_hours,0)::numeric,2) AS available_hours,
         ROUND(COALESCE(pr.occupied_hours,0)::numeric,2) AS occupied_hours,
         COALESCE(pr.appointments,0) AS appointments,
@@ -98,9 +103,14 @@ export async function buildReport(db, type, filters = {}) {
         COALESCE(s.jewelry_sold,0) AS jewelry_sold, COALESCE(s.products_sold,0) AS products_sold,
         COALESCE(pr.service_revenue,0) AS service_revenue, COALESCE(pr.jewelry_revenue,0) AS jewelry_revenue,
         COALESCE(pr.revenue,0) AS revenue,
-        CASE WHEN COALESCE(pr.completed_appointments,0)>0 THEN pr.revenue/pr.completed_appointments ELSE 0 END AS average_ticket,
+        -- Ticket médio e comissão são DINHEIRO derivado de dinheiro. Com
+        -- total_value e commission_percentage em NUMERIC, a divisão e o
+        -- produto acontecem em decimal exato e o ROUND(...,2) -- que só existe
+        -- para numeric, nunca para double precision -- fecha o valor em centavos
+        -- aqui, em vez de deixar dízima viajar até a tela.
+        CASE WHEN COALESCE(pr.completed_appointments,0)>0 THEN ROUND(pr.revenue/pr.completed_appointments,2) ELSE 0 END AS average_ticket,
         COALESCE(p.commission_percentage,0) AS commission_percentage,
-        COALESCE(pr.revenue,0)*COALESCE(p.commission_percentage,0)/100 AS commission,
+        ROUND(COALESCE(pr.revenue,0)*COALESCE(p.commission_percentage,0)/100,2) AS commission,
         CASE WHEN COALESCE(av.available_hours,0)>0 THEN LEAST(100,pr.occupied_hours*100/av.available_hours) ELSE 0 END AS occupancy_rate,
         CASE WHEN COALESCE(pr.appointments,0)>0 THEN pr.completed_appointments*100.0/pr.appointments ELSE 0 END AS attendance_rate
       FROM professionals p LEFT JOIN availability av ON av.professional_id=p.id

@@ -7,6 +7,7 @@
 // O runner sobe o servidor em NODE_ENV=production → auth REAL (sem bypass de dev).
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import {
   req,
   createTenant,
@@ -14,6 +15,9 @@ import {
   platformLogin,
   deleteTenant
 } from "./helpers.mjs";
+import { clientIp } from "../src/middleware/rateLimit.js";
+import { sanitizeFrontendTelemetry } from "../src/services/errorLogs.js";
+import { createAsaasClient } from "../src/services/asaas/client.js";
 
 // Estado compartilhado do arquivo. Duas clínicas para provar isolamento (A e B).
 const ctx = {
@@ -21,6 +25,22 @@ const ctx = {
   a: null, // { slug, adminEmail, adminPassword, tenant, token }
   b: null
 };
+
+function totpForTest(secret) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = 0; let value = 0; const bytes = [];
+  for (const char of secret) {
+    value = (value << 5) | alphabet.indexOf(char);
+    bits += 5;
+    if (bits >= 8) { bytes.push((value >>> (bits - 8)) & 255); bits -= 8; }
+  }
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30_000)));
+  const digest = crypto.createHmac("sha1", Buffer.from(bytes)).update(counter).digest();
+  const offset = digest.at(-1) & 15;
+  const value32 = ((digest[offset] & 127) << 24) | (digest[offset + 1] << 16) | (digest[offset + 2] << 8) | digest[offset + 3];
+  return String(value32 % 1_000_000).padStart(6, "0");
+}
 
 before(async () => {
   ctx.platformToken = await platformLogin();
@@ -122,6 +142,57 @@ test("token de plataforma NÃO autentica em rota de clínica → 401", async () 
     token: ctx.platformToken
   });
   assert.equal(status, 401, JSON.stringify(json));
+});
+
+test("IP de rate limit ignora CF-Connecting-IP controlado pelo cliente", () => {
+  const request = {
+    ip: "203.0.113.10",
+    headers: { "cf-connecting-ip": "198.51.100.77" },
+    socket: { remoteAddress: "127.0.0.1" }
+  };
+  assert.equal(clientIp(request), "203.0.113.10");
+});
+
+test("checkout da plataforma recusa cartão bruto antes de falar com o gateway", async () => {
+  const { status, json } = await req("/billing/checkout", {
+    tenant: ctx.a.slug,
+    token: ctx.a.token,
+    method: "POST",
+    body: {
+      plan_code: "profissional",
+      billing_type: "CREDIT_CARD",
+      credit_card: { number: "4111111111111111", ccv: "123" }
+    }
+  });
+  assert.equal(status, 400, JSON.stringify(json));
+  assert.equal(json.code, "checkout_hospedado_obrigatorio");
+});
+
+test("cliente interno do Asaas também recusa assinatura com cartão direto", () => {
+  const client = createAsaasClient({ apiKey: "chave-de-teste" });
+  assert.throws(
+    () => client.createSubscription({ customer: "cus_test", value: 89.9, billingType: "CREDIT_CARD" }),
+    (error) => error?.code === "hosted_checkout_required" && error?.status === 400
+  );
+});
+
+test("telemetria pública remove credenciais e identificadores comuns", () => {
+  const safe = sanitizeFrontendTelemetry({
+    message: "Falha para pessoa@example.com CPF 123.456.789-01",
+    stack: "Authorization: Bearer segredo.abc-123",
+    user_email: "pessoa@example.com",
+    context: {
+      password: "SenhaSecreta",
+      nested: { token: "token-secreto", card_number: "4111111111111111" }
+    }
+  });
+  const serialized = JSON.stringify(safe);
+  assert.equal(safe.user_email, null);
+  assert.ok(!serialized.includes("pessoa@example.com"));
+  assert.ok(!serialized.includes("123.456.789-01"));
+  assert.ok(!serialized.includes("segredo.abc-123"));
+  assert.ok(!serialized.includes("SenhaSecreta"));
+  assert.ok(!serialized.includes("4111111111111111"));
 });
 
 // ---------------------------------------------------------------------------
@@ -236,4 +307,75 @@ test("dados criados na clínica A não aparecem para a clínica B", async () => 
   const listA = await req("/clients", { token: ctx.a.token });
   const namesA = (listA.json || []).map((c) => c.full_name);
   assert.ok(namesA.includes(marker), "cliente criado em A não apareceu em A");
+});
+
+test("troca de senha revoga tokens anteriores e devolve uma sessão nova", async () => {
+  const oldToken = ctx.a.token;
+  const changed = await req("/account/profile", {
+    tenant: ctx.a.slug,
+    token: oldToken,
+    method: "PATCH",
+    body: {
+      name: "Administrador QA",
+      email: ctx.a.adminEmail,
+      current_password: ctx.a.adminPassword,
+      new_password: "SenhaNovaForte456"
+    }
+  });
+  assert.equal(changed.status, 200, JSON.stringify(changed.json));
+  assert.ok(changed.json.token, "a sessão atual deve receber token na nova versão");
+
+  const revoked = await req("/clients", { tenant: ctx.a.slug, token: oldToken });
+  assert.equal(revoked.status, 401, "token anterior deveria ser revogado");
+
+  const current = await req("/clients", { tenant: ctx.a.slug, token: changed.json.token });
+  assert.equal(current.status, 200, JSON.stringify(current.json));
+  ctx.a.token = changed.json.token;
+  ctx.a.adminPassword = "SenhaNovaForte456";
+});
+
+test("refresh rotativo mantém sessão curta e rejeita a credencial já usada", async () => {
+  const login = await req("/login", {
+    method: "POST",
+    tenant: ctx.a.slug,
+    body: { email: ctx.a.adminEmail, password: ctx.a.adminPassword }
+  });
+  assert.equal(login.status, 200, JSON.stringify(login.json));
+  const firstCookie = login.headers.get("set-cookie");
+  assert.match(firstCookie || "", /aura_refresh=/);
+  const refreshed = await req("/auth/refresh", {
+    method: "POST",
+    tenant: ctx.a.slug,
+    headers: { Cookie: firstCookie }
+  });
+  assert.equal(refreshed.status, 200, JSON.stringify(refreshed.json));
+  assert.notEqual(refreshed.json.token, login.json.token);
+  const secondCookie = refreshed.headers.get("set-cookie");
+  const replay = await req("/auth/refresh", {
+    method: "POST",
+    tenant: ctx.a.slug,
+    headers: { Cookie: firstCookie }
+  });
+  assert.equal(replay.status, 401, JSON.stringify(replay.json));
+  const sessions = await req("/account/sessions", { tenant: ctx.a.slug, token: refreshed.json.token });
+  assert.equal(sessions.status, 200, JSON.stringify(sessions.json));
+  assert.ok(sessions.json.sessions.some((session) => session.current));
+  assert.match(secondCookie || "", /aura_refresh=/);
+});
+
+test("admin habilita TOTP e o login passa a exigir o código", async () => {
+  const setup = await req("/account/mfa/setup", {
+    method: "POST", tenant: ctx.a.slug, token: ctx.a.token,
+    body: { current_password: ctx.a.adminPassword }
+  });
+  assert.equal(setup.status, 200, JSON.stringify(setup.json));
+  assert.match(setup.json.secret || "", /^[A-Z2-7]{16,}$/);
+  const code = totpForTest(setup.json.secret);
+  const verified = await req("/account/mfa/verify", { method: "POST", tenant: ctx.a.slug, token: ctx.a.token, body: { code } });
+  assert.equal(verified.status, 200, JSON.stringify(verified.json));
+  const noCode = await req("/login", { method: "POST", tenant: ctx.a.slug, body: { email: ctx.a.adminEmail, password: ctx.a.adminPassword } });
+  assert.equal(noCode.status, 401, JSON.stringify(noCode.json));
+  assert.equal(noCode.json.code, "mfa_required");
+  const withCode = await req("/login", { method: "POST", tenant: ctx.a.slug, body: { email: ctx.a.adminEmail, password: ctx.a.adminPassword, mfa_code: totpForTest(setup.json.secret) } });
+  assert.equal(withCode.status, 200, JSON.stringify(withCode.json));
 });

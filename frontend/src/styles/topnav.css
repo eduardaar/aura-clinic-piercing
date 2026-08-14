@@ -21,7 +21,7 @@
   min-height: 100svh;  /* a barra do navegador mobile não corta o conteúdo */
   display: flex;
   flex-direction: column;
-  background: var(--paper, #FCFBF8);
+  background: var(--paper);
 }
 
 .au-shell > .au-nav { flex: 0 0 auto; }
@@ -43,10 +43,10 @@
   z-index: 30;
   width: 100%;
   background: rgba(252, 251, 248, .92);
-  background: color-mix(in srgb, var(--paper, #FCFBF8) 88%, transparent);
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(231, 221, 206, .8);
-  border-bottom-color: color-mix(in srgb, var(--line, #e7ddce) 70%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--line) 70%, transparent);
   font-family: var(--body-font);
 }
 
@@ -58,6 +58,29 @@
    as classes (0,1,0) abaixo, fazendo o texto do CTA herdar o preto do body e
    sumir sobre o fundo preto. Cada âncora define a própria cor. */
 .au-nav a { text-decoration: none; }
+
+/* Todas as telas públicas compartilham o azul-escuro da landing: navegar para
+   entrar ou criar uma conta não quebra a identidade visual da plataforma. */
+.au-nav.au-nav-dark {
+  background: var(--ink);
+  border-bottom-color: rgb(255 255 255 / .12);
+}
+
+.au-nav.au-nav-dark .au-nav-brand,
+.au-nav.au-nav-dark .au-nav-login { color: var(--paper); }
+
+.au-nav.au-nav-dark .au-nav-link { color: rgb(255 255 255 / .72); }
+.au-nav.au-nav-dark .au-nav-link:hover,
+.au-nav.au-nav-dark .au-nav-login:hover { color: var(--gold-light); }
+
+.au-nav.au-nav-dark .au-nav-cta {
+  background: #25d366;
+  color: #073b20;
+  box-shadow: 0 10px 24px rgb(0 0 0 / .24);
+}
+
+.au-nav.au-nav-dark .au-nav-cta:hover { background: #32df76; }
+.au-nav.au-nav-dark a:focus-visible { outline-color: var(--gold-light); }
 
 .au-nav-inner {
   width: 100%;
@@ -78,7 +101,7 @@
   gap: 10px;
   min-width: 0;
   min-height: 44px;   /* alvo de toque */
-  color: var(--ink, #1A1A1A);
+  color: var(--ink);
 }
 
 .au-nav-mark {
@@ -110,7 +133,7 @@
   align-items: center;
   min-height: 44px;
   font-size: 15px;
-  color: #4b463f;
+  color: var(--muted);
   white-space: nowrap;
   transition: color .18s ease;
 }
@@ -126,12 +149,12 @@
 }
 
 .au-nav-login {
-  display: none;      /* mobile: só o CTA, para não espremer a barra */
+  display: inline-flex;
   align-items: center;
   min-height: 44px;
   font-size: 15px;
   font-weight: 600;
-  color: var(--ink, #1A1A1A);
+  color: var(--ink);
   white-space: nowrap;
   transition: color .18s ease;
 }
@@ -144,45 +167,75 @@
   padding: 10px 16px;
   border-radius: 999px;
   border: 1px solid transparent;
-  background: var(--ink, #1A1A1A);
-  color: var(--paper, #FCFBF8);
+  background: var(--ink);
+  color: var(--paper);
   font-size: 14px;
   font-weight: 600;
   line-height: 1.2;
   white-space: nowrap;
-  box-shadow: 0 10px 24px rgba(26, 26, 26, .18);
+  box-shadow: 0 10px 24px rgb(from var(--ink) r g b / .18);
   transition: transform .18s ease, box-shadow .18s ease, background-color .18s ease;
 }
 
 .au-nav-link:hover,
-.au-nav-login:hover { color: var(--gold-dark, #A87A34); }
+.au-nav-login:hover { color: var(--gold-dark); }
 
 .au-nav-cta:hover {
   transform: translateY(-1px);
-  box-shadow: 0 14px 28px rgba(26, 26, 26, .24);
+  box-shadow: 0 14px 28px rgb(from var(--ink) r g b / .24);
 }
 
 .au-nav a:focus-visible {
-  outline: 2px solid var(--gold-dark, #A87A34);
+  outline: 2px solid var(--gold-dark);
   outline-offset: 3px;
   border-radius: 8px;
 }
 
+/* Rodapé comum das páginas públicas: os contatos vêm do editor da landing,
+   mantendo uma única fonte para WhatsApp, e-mail e Instagram. */
+.au-public-footer { flex:0 0 auto; width:100%; border-top:1px solid var(--line); background:var(--paper); color:var(--ink); font-family:var(--body-font); }
+.au-public-footer-inner { width:min(100% - 40px, 1160px); margin:0 auto; padding:22px 0; display:grid; gap:14px; }
+.au-public-footer-brand { display:grid; gap:5px; }
+.au-public-footer-brand > div { display:inline-flex; align-items:center; gap:9px; }
+.au-public-footer-brand strong { font-family:var(--title-font); font-size:18px; color:var(--ink); }
+.au-public-footer-brand span { color:var(--muted); font-size:13px; line-height:1.45; }
+.au-public-footer-group { display:flex; flex-wrap:wrap; align-items:center; gap:6px 14px; }
+.au-public-footer-group > span { flex-basis:100%; color:var(--gold-dark); font-size:10px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; }
+.au-public-footer a { display:inline-flex; align-items:center; gap:6px; min-height:36px; color:var(--muted); font-size:13px; font-weight:600; text-decoration:none; }
+.au-public-footer a:hover { color:var(--gold-dark); }
+@media (min-width: 760px) {
+  .au-public-footer-inner { grid-template-columns:minmax(220px,1fr) auto auto; align-items:center; gap:24px; }
+  .au-public-footer-group { min-height:44px; align-content:center; }
+  .au-public-footer-links { padding-left:24px; border-left:1px solid var(--line); }
+}
+
 /* Tela atual: o menu não oferece um caminho onde o usuário já está. */
 .au-nav-login[aria-current="page"] {
-  color: var(--gold-dark, #A87A34);
+  color: var(--gold-dark);
   cursor: default;
 }
 
 .au-nav-cta[aria-current="page"] {
   background: transparent;
-  color: var(--gold-dark, #A87A34);
-  border-color: var(--gold, #C9A86A);
+  color: var(--gold-dark);
+  border-color: var(--gold);
   box-shadow: none;
   cursor: default;
 }
 
 .au-nav-cta[aria-current="page"]:hover { transform: none; box-shadow: none; }
+
+/* O caminho de entrada é essencial também no celular. Em vez de escondê-lo,
+   compactamos a barra sem reduzir a área de toque dos links. */
+@media (max-width: 639px) {
+  .au-nav-inner { padding: 8px max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left)); gap: 8px; }
+  .au-nav-brand { gap: 7px; min-height: 40px; }
+  .au-nav-mark { width: 30px; height: 30px; }
+  .au-nav-brand strong { font-size: 18px; }
+  .au-nav-actions { gap: 10px; }
+  .au-nav-login { min-height: 40px; font-size: 13px; }
+  .au-nav-cta { min-height: 40px; padding: 8px 11px; font-size: 12px; }
+}
 
 /* ---------- >= 640px ---------- */
 

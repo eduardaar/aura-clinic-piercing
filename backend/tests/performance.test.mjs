@@ -15,7 +15,8 @@ before(async () => {
       slug: ctx.slug,
       admin_email: `admin@${ctx.slug}.test`,
       admin_password: "SenhaForte123",
-      plan_code: "premium"
+      plan_code: "studio",
+      legal_acceptances: { terms_of_use: 1, privacy_policy: 1 }
     }
   });
   assert.equal(signup.status, 201, JSON.stringify(signup.json));
@@ -50,7 +51,7 @@ test("APIs principais mantêm latência local mensurável", async (t) => {
   const results = {
     catalog: await measure("/catalog"),
     dashboard: await measure("/dashboard?days=30"),
-    inventory_search: await measure("/jewelry?search=titanio"),
+    inventory_search: await measure("/jewelry?search=titânio"),
     reports: await measure("/reports/stock")
   };
   t.diagnostic(`PERFORMANCE ${JSON.stringify(results)}`);

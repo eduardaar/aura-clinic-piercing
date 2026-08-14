@@ -52,11 +52,11 @@ test("Planos: CRUD do painel de plataforma", async (t) => {
   await t.test("todas as rotas exigem token de plataforma", async () => {
     assert.equal((await req("/platform/plans")).status, 401);
     assert.equal((await req("/platform/plans", { method: "POST", body: { code: "x" } })).status, 401);
-    assert.equal((await req("/platform/plans/premium", { method: "PUT", body: { name: "x" } })).status, 401);
-    assert.equal((await req("/platform/plans/premium", { method: "DELETE" })).status, 401);
-    assert.equal((await req("/platform/plans/premium/usage")).status, 401);
+    assert.equal((await req("/platform/plans/studio", { method: "PUT", body: { name: "x" } })).status, 401);
+    assert.equal((await req("/platform/plans/studio", { method: "DELETE" })).status, 401);
+    assert.equal((await req("/platform/plans/studio/usage")).status, 401);
     assert.equal(
-      (await req("/platform/plans/premium/active", { method: "PATCH", body: { is_active: false } })).status,
+      (await req("/platform/plans/studio/active", { method: "PATCH", body: { is_active: false } })).status,
       401
     );
   });
@@ -76,7 +76,9 @@ test("Planos: CRUD do painel de plataforma", async (t) => {
 
   await t.test("a listagem traz os catálogos para a tela montar as caixinhas", async () => {
     const { json } = await req("/platform/plans", plt);
-    assert.ok(json.plans.length >= 5);
+    assert.ok(json.plans.length >= 3);
+    assert.ok(!json.plans.some((plano) => plano.code === "essencial"));
+    assert.ok(!json.plans.some((plano) => plano.code === "premium"));
     assert.ok(json.feature_catalog.length > 10, "sem o catálogo o painel teria de hardcodar as features");
     assert.ok(json.feature_catalog.every((item) => item.key && item.label && item.group));
     assert.ok(json.limit_catalog.length >= 1);

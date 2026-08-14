@@ -274,7 +274,7 @@ test("DELETE /appointments/:id com reception → 403", async () => {
   assert.equal(status, 403);
 });
 
-test("recepção não cria prontuário clínico e piercer não altera cadastro civil", async () => {
+test("recepção não cria prontuário clínico e piercer pode operar cadastro civil", async () => {
   const medical = await req("/clients/999999/medical-records", {
     token: ctx.tokens.reception,
     method: "POST",
@@ -287,12 +287,69 @@ test("recepção não cria prontuário clínico e piercer não altera cadastro c
     method: "PATCH",
     body: { full_name: "Alteração indevida", whatsapp: "11999999999" }
   });
-  assert.equal(update.status, 403);
+  assert.notEqual(update.status, 403);
 });
 
 test("papéis não operacionais não acessam agenda", async () => {
   const { status } = await req("/appointments", { token: ctx.tokens.finance });
   assert.equal(status, 403);
+});
+
+// -- Dados clínicos sensíveis: somente admin/piercer ---------------------
+test("recepção e financeiro não leem termos digitais", async () => {
+  for (const role of ["reception", "finance"]) {
+    const { status } = await req("/digital-terms", { token: ctx.tokens[role] });
+    assert.equal(status, 403, `${role} não deveria ler anamnese/assinatura`);
+  }
+});
+
+test("recepção e financeiro não criam termos digitais", async () => {
+  for (const role of ["reception", "finance"]) {
+    const { status } = await req("/digital-terms", {
+      token: ctx.tokens[role],
+      method: "POST",
+      body: {}
+    });
+    assert.equal(status, 403, `${role} não deveria criar termo clínico`);
+  }
+});
+
+test("recepção e financeiro não leem nem alteram pós-atendimento", async () => {
+  for (const role of ["reception", "finance"]) {
+    const list = await req("/post-care", { token: ctx.tokens[role] });
+    assert.equal(list.status, 403, `${role} não deveria ler pós-atendimento`);
+    const update = await req("/post-care/999999", {
+      token: ctx.tokens[role],
+      method: "PATCH",
+      body: { status: "concluido" }
+    });
+    assert.equal(update.status, 403, `${role} não deveria alterar pós-atendimento`);
+  }
+});
+
+test("admin e piercer têm acesso às áreas clínicas", async () => {
+  for (const role of ["admin", "piercer"]) {
+    const terms = await req("/digital-terms", { token: ctx.tokens[role] });
+    const postCare = await req("/post-care", { token: ctx.tokens[role] });
+    assert.equal(terms.status, 200, `${role} deveria ler termos`);
+    assert.equal(postCare.status, 200, `${role} deveria ler pós-atendimento`);
+  }
+});
+
+test("termo de menor exige identificação e assinatura do responsável", async () => {
+  const { status, json } = await req("/digital-terms", {
+    token: ctx.adminToken,
+    method: "POST",
+    body: {
+      full_name: "Cliente Menor QA",
+      birth_date: "2012-01-01",
+      orientations_confirmed: true,
+      signature_data_url: "data:image/png;base64,AA==",
+      form_data: { minor: { is_minor: true } }
+    }
+  });
+  assert.equal(status, 400, JSON.stringify(json));
+  assert.match(json.error, /responsável legal/i);
 });
 
 // -- Reset destrutivo exige admin E gate de produção ---------------------
@@ -324,11 +381,11 @@ test("POST /services com reception → 201 (reception está na allowlist)", asyn
   assert.equal(status, 201, JSON.stringify(json));
 });
 
-test("POST /services com piercer → 403", async () => {
+test("POST /services com piercer → 201 (fluxo operacional)", async () => {
   const { status } = await req("/services", {
     token: ctx.tokens.piercer,
     method: "POST",
     body: { name: "Serviço QA Piercer" }
   });
-  assert.equal(status, 403);
+  assert.equal(status, 201);
 });

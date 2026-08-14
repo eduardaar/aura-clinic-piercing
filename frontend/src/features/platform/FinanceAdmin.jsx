@@ -26,9 +26,9 @@
 //     `.platform-metric`, moldura é `.panel`, filtro é `.toolbar`, erro é
 //     `.form-error`. O CSS de finance-admin.css cobre só o gráfico SVG.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Info, RefreshCw } from "lucide-react";
-import { AlertBlock, Button, Input, Select, StatusBadge } from "../../components/common/Ui";
-import { CrudHeader } from "../../components/common/Crud";
+import { AlertTriangle, RefreshCw } from "lucide-react";
+import { Button, Input, Select, StatusBadge } from "../../components/common/Ui";
+import { CrudHeader, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { Loading } from "../../components/common/Feedback";
 import { API } from "../../lib/api";
@@ -132,12 +132,6 @@ function tomDoAtraso(dias) {
 }
 
 const plural = (total, singular, pluralizado) => `${total} ${total === 1 ? singular : pluralizado}`;
-
-/** "recebido_mes" -> "Recebido mes", para o título das notas do backend. */
-const humanizar = (campo) => {
-  const texto = String(campo).replace(/_/g, " ");
-  return texto.charAt(0).toUpperCase() + texto.slice(1);
-};
 
 // ---------------------------------------------------------------------------
 // Rede
@@ -278,21 +272,7 @@ function Duplo({ principal, secundario }) {
 
 function Resumo({ dados }) {
   const resumo = asObject(dados);
-  const notas = asObject(resumo.notas);
   const clinicas = asObject(resumo.clinicas);
-
-  // Os tons acompanham TOM_ASSINATURA acima: é a mesma leitura de status, e
-  // duas escalas de cor na mesma tela ensinariam a ignorar as duas.
-  const porStatus = [
-    ["Ativas", clinicas.ativa, "ok"],
-    ["Em teste", clinicas.trial, "info"],
-    ["Teste expirado", clinicas.trial_expirada, "warn"],
-    ["Em atraso", clinicas.atrasada, "warn"],
-    ["Suspensas", clinicas.suspensa, "danger"],
-    ["Canceladas", clinicas.cancelada, "danger"],
-    ["Sem assinatura", clinicas.sem_assinatura, "neutral"],
-    ["Sem cobrança no gateway", clinicas.sem_cobranca_no_gateway, "neutral"],
-  ];
 
   return (
     <div className="stack">
@@ -354,41 +334,14 @@ function Resumo({ dados }) {
             valor={String(asNumber(resumo.cancelamentos_mes))}
             detalhe="Subestimado: nenhum fluxo do sistema carimba a data de cancelamento ainda"
           />
-          {/*
-            Churn: `null` de propósito. Nem 0%, nem "—" mudo, nem uma conta
-            improvisada com os dados que existem — o motivo vem escrito do
-            backend e é ele que aparece, no cartão tracejado de indisponível.
-          */}
           <Numero
             rotulo="Churn do mês"
             valor="Não calculável"
-            detalhe={notas.churn_mes || "O backend não conseguiu calcular este indicador com os dados de hoje."}
+            detalhe="Disponível quando houver histórico suficiente."
             indisponivel
           />
         </div>
       </Grupo>
-
-      <Grupo titulo="Clínicas por status de assinatura">
-        <div className="fin-status">
-          {porStatus.map(([rotulo, valor, tom]) => (
-            <span key={rotulo}>
-              <StatusBadge tone={tom}>{asNumber(valor)}</StatusBadge> {rotulo}
-            </span>
-          ))}
-        </div>
-      </Grupo>
-
-      {/*
-        As notas do backend, na íntegra. Elas são a diferença entre um painel que
-        informa e um painel que engana: cada uma diz o que o número NÃO inclui.
-      */}
-      <AlertBlock icon={Info} title="Como ler estes números" empty="Sem observações do servidor.">
-        {Object.entries(notas).map(([campo, texto]) => (
-          <p className="field-hint" key={campo}>
-            <strong>{humanizar(campo)}</strong> — {texto}
-          </p>
-        ))}
-      </AlertBlock>
     </div>
   );
 }
@@ -497,34 +450,31 @@ function Inadimplencia({ dados, carregando, erro, pagina, tamanho, onPagina, onT
           render: (linha) => <Contato linha={linha} />,
         },
       ]}
-      // Ações de linha sem classe própria: `.table-actions a` (styles.css) já
-      // desenha o link como pílula, igual ao `<button>` da linha nas outras
-      // telas. Sem ícone, pelo mesmo motivo — nenhuma outra ação de linha do
-      // painel tem um, e um só aqui é a divergência que se vê primeiro.
       actions={(linha) => (
-        <>
-          {linha.telefone && (
-            <a
-              href={whatsappUrl(
+        <RowActions
+          actions={[
+            linha.telefone && {
+              label: "WhatsApp",
+              href: whatsappUrl(
                 linha.telefone,
                 `Olá! Aqui é da Monitence. Identificamos ${plural(
                   asNumber(linha.faturas_vencidas),
                   "fatura em aberto",
                   "faturas em aberto",
                 )} da ${linha.clinica}, no total de ${moeda(linha.valor_devido, linha.valor_devido_centavos)}. Podemos ajudar a regularizar?`,
-              )}
-              target="_blank"
-              rel="noreferrer"
-            >
-              WhatsApp
-            </a>
-          )}
-          {linha.link_fatura_mais_antiga && (
-            <a href={linha.link_fatura_mais_antiga} target="_blank" rel="noreferrer">
-              Abrir fatura
-            </a>
-          )}
-        </>
+              ),
+              target: "_blank",
+              rel: "noreferrer",
+              primary: true,
+            },
+            linha.link_fatura_mais_antiga && {
+              label: "Abrir fatura",
+              href: linha.link_fatura_mais_antiga,
+              target: "_blank",
+              rel: "noreferrer",
+            },
+          ]}
+        />
       )}
       empty="Nenhuma clínica com fatura vencida na data base."
     />
@@ -630,13 +580,9 @@ function Vencimentos({ dados, carregando, erro, pagina, tamanho, onPagina, onTam
             render: (linha) => <Contato linha={linha} />,
           },
         ]}
-        actions={(linha) =>
-          linha.invoice_url ? (
-            <a href={linha.invoice_url} target="_blank" rel="noreferrer">
-              Abrir fatura
-            </a>
-          ) : null
-        }
+        actions={(linha) => linha.invoice_url
+          ? <RowActions actions={[{ label: "Abrir fatura", href: linha.invoice_url, target: "_blank", rel: "noreferrer", primary: true }]} />
+          : null}
         empty="Nenhuma fatura pendente vence nesta janela."
       />
     </div>
@@ -904,6 +850,7 @@ export function PlatformFinance({ token, onUnauthorized }) {
   // congela o dia inteiro da tela — é assim que se confere um fechamento sem que
   // a resposta mude conforme o dia em que se olha.
   const [dataBase, setDataBase] = useState("");
+  const [aba, setAba] = useState("resumo");
   const [dias, setDias] = useState("7");
   const [meses, setMeses] = useState("12");
 
@@ -1022,16 +969,29 @@ export function PlatformFinance({ token, onUnauthorized }) {
         </div>
       </section>
 
-      <Bloco
+      <nav className="dashboard-section-tabs" aria-label="Visões do financeiro da plataforma">
+        {[
+          ["resumo", "Resumo"],
+          ["receitas", "Receitas"],
+          ["cobrancas", "Cobranças"],
+        ].map(([valor, rotulo]) => (
+          <button type="button" key={valor} className={aba === valor ? "active" : ""} onClick={() => setAba(valor)}>
+            {rotulo}
+          </button>
+        ))}
+      </nav>
+
+      {aba === "resumo" && <Bloco
         titulo="Resumo"
-        subtitulo="Projeção e caixa em grupos separados, cada um com sua etiqueta."
+        subtitulo="MRR, caixa, valores a receber e saúde da base de clientes."
         carregando={resumo.carregando}
         erro={resumo.erro}
         onRecarregar={resumo.recarregar}
       >
         <Resumo dados={resumo.dados} />
-      </Bloco>
+      </Bloco>}
 
+      {aba === "cobrancas" && <>
       <Bloco
         titulo="Inadimplência"
         subtitulo="Quem cobrar hoje, da clínica mais atrasada para a menos."
@@ -1085,7 +1045,9 @@ export function PlatformFinance({ token, onUnauthorized }) {
           onTamanho={setTamanhoVencimento}
         />
       </Bloco>
+      </>}
 
+      {aba === "receitas" && <>
       <Bloco
         titulo="Receita mês a mês"
         subtitulo="Recebido é caixa (data do pagamento); emitido é competência (o mês a que a cobrança se refere)."
@@ -1112,6 +1074,7 @@ export function PlatformFinance({ token, onUnauthorized }) {
       >
         <PorPlano dados={planos.dados} />
       </Bloco>
+      </>}
     </div>
   );
 }

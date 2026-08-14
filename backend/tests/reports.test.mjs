@@ -8,7 +8,7 @@ before(async () => {
   Object.assign(context, await createTenant("reports"));
   context.platformToken = await platformLogin();
   context.token = (await loginTenant(context.slug, context.adminEmail, context.adminPassword)).token;
-  await req("/subscription", { method: "PATCH", tenant: context.slug, token: context.token, body: { plan_code: "premium" } });
+  await req("/subscription", { method: "PATCH", tenant: context.slug, token: context.token, body: { plan_code: "studio" } });
 });
 
 after(async () => {

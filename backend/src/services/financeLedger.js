@@ -70,6 +70,60 @@ export async function syncFinanceSources(db) {
 const LEDGER_FROM = "financial_entries e LEFT JOIN financial_cost_centers c ON c.id=e.cost_center_id";
 const LEDGER_ORDER_BY = "ORDER BY e.due_date DESC, e.id DESC";
 
+// Os indicadores (caixa, DRE, inadimplência) somados PELO POSTGRES, não por
+// `reduce` em JavaScript.
+//
+// Antes esta função trazia todas as linhas do período e as somava em JS. Com
+// `amount`/`paid_amount` em NUMERIC(12,2) isso jogaria fora justamente a
+// precisão que a migração comprou: o driver entrega cada valor como Number
+// (IEEE-754) e somar milhares deles acumula erro de centavos — o problema que a
+// pendência 13 descreve. Somando aqui, o total é decimal exato e só o RESULTADO
+// (um número por indicador) atravessa para o JavaScript.
+//
+// De quebra some uma divergência entre os dois caminhos da função: quando a
+// lista vinha paginada, o SELECT de apoio não trazia `lifecycle_status`, então
+// lançamento marcado como teste/cancelado ENTRAVA nas somas da versão paginada e
+// ficava de fora da não paginada. Aqui o critério é um só.
+//
+// `total` conta TODAS as linhas do período (é o total da paginação); os
+// indicadores contam só as ativas — daí o FILTER em cada soma.
+const LEDGER_TOTALS_SELECT = `
+  WITH base AS (
+    SELECT
+      e.amount,
+      e.paid_amount,
+      e.status,
+      -- Lançamento cancelado ou em ciclo administrativo não-ativo (teste,
+      -- cancelamento reversível) não vira indicador. lifecycle_status pode
+      -- ser nulo em lançamento anterior à coluna: nesse caso é ativo.
+      (e.status <> 'canceled' AND COALESCE(e.lifecycle_status, 'active') = 'active') AS ativo,
+      (e.entry_type IN ('income', 'receivable')) AS receita,
+      (e.entry_type IN ('expense', 'payable')) AS despesa,
+      (e.status IN ('pending', 'overdue', 'partially_paid')) AS em_aberto
+    FROM ${LEDGER_FROM}`;
+
+// GREATEST(...,0) é o `Math.max(0, …)` que existia no JS: baixa maior que o
+// valor do lançamento não pode virar saldo negativo a receber.
+const LEDGER_TOTALS_AGGREGATE = `
+  )
+  SELECT
+    COUNT(*)::int AS total,
+    COALESCE(SUM(paid_amount) FILTER (WHERE ativo AND receita), 0) AS received,
+    COALESCE(SUM(paid_amount) FILTER (WHERE ativo AND despesa), 0) AS paid,
+    COALESCE(SUM(paid_amount) FILTER (WHERE ativo AND receita), 0)
+      - COALESCE(SUM(paid_amount) FILTER (WHERE ativo AND despesa), 0) AS balance,
+    COALESCE(SUM(amount) FILTER (WHERE ativo AND receita), 0) AS gross_revenue,
+    COALESCE(SUM(amount) FILTER (WHERE ativo AND despesa), 0) AS operating_expenses,
+    COALESCE(SUM(amount) FILTER (WHERE ativo AND receita), 0)
+      - COALESCE(SUM(amount) FILTER (WHERE ativo AND despesa), 0) AS result,
+    COALESCE(SUM(GREATEST(amount - paid_amount, 0))
+      FILTER (WHERE ativo AND receita AND status = 'overdue'), 0) AS delinquency,
+    COALESCE(SUM(GREATEST(amount - paid_amount, 0))
+      FILTER (WHERE ativo AND despesa AND em_aberto), 0) AS payable,
+    COALESCE(SUM(GREATEST(amount - paid_amount, 0))
+      FILTER (WHERE ativo AND receita AND em_aberto), 0) AS receivable
+  FROM base`;
+
 // `filters`/`filterParams` são fragmentos de WHERE montados pela rota (nunca
 // texto do cliente); `paging` é opcional e só recorta a lista `entries`.
 export async function ledgerReport(db, { from, to, filters = [], filterParams = [], paging = null } = {}) {
@@ -85,32 +139,22 @@ export async function ledgerReport(db, { from, to, filters = [], filterParams = 
     `SELECT e.*, c.name AS cost_center_name FROM ${LEDGER_FROM} ${where} ${orderBy}${page.clause}`,
     [...params, ...page.params]
   );
-  // Os indicadores (caixa, DRE, inadimplência) continuam somando TODO o período
-  // filtrado, nunca só a página. Quando paginado, quem alimenta as somas é um
-  // SELECT enxuto de 4 colunas em vez do `e.*` completo. A ordenação é mantida
-  // para que as somas em ponto flutuante deem exatamente o mesmo resultado.
-  const summary = paging?.paginated
-    ? await db.all(
-      `SELECT e.entry_type, e.status, e.amount, e.paid_amount FROM ${LEDGER_FROM} ${where} ${orderBy}`,
-      params
-    )
-    : entries;
-  const active = summary.filter((item) => item.status !== "canceled" && (item.lifecycle_status || "active") === "active");
-  const incomes = active.filter((item) => ["income", "receivable"].includes(item.entry_type));
-  const expenses = active.filter((item) => ["expense", "payable"].includes(item.entry_type));
-  const received = incomes.reduce((sum, item) => sum + Number(item.paid_amount || 0), 0);
-  const paid = expenses.reduce((sum, item) => sum + Number(item.paid_amount || 0), 0);
+  // Os indicadores somam TODO o período filtrado, nunca só a página — por isso
+  // esta consulta repete o `where` sem o recorte de paginação. Ela também
+  // devolve o `total` da lista (COUNT sobre as mesmas linhas), o que dispensa
+  // trazer o período inteiro para a memória do Node só para contar.
+  const totals = await db.get(`${LEDGER_TOTALS_SELECT} ${where}${LEDGER_TOTALS_AGGREGATE}`, params);
   return {
-    from: start, to: end, entries, total: summary.length,
-    cashflow: { received, paid, balance: received - paid },
+    from: start, to: end, entries, total: totals.total,
+    cashflow: { received: totals.received, paid: totals.paid, balance: totals.balance },
     dre: {
-      gross_revenue: incomes.reduce((sum, item) => sum + Number(item.amount || 0), 0),
-      operating_expenses: expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0),
-      result: incomes.reduce((sum, item) => sum + Number(item.amount || 0), 0) - expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+      gross_revenue: totals.gross_revenue,
+      operating_expenses: totals.operating_expenses,
+      result: totals.result
     },
-    delinquency: incomes.filter((item) => item.status === "overdue").reduce((sum, item) => sum + Math.max(0, Number(item.amount) - Number(item.paid_amount)), 0),
-    payable: expenses.filter((item) => ["pending", "overdue", "partially_paid"].includes(item.status)).reduce((sum, item) => sum + Math.max(0, Number(item.amount) - Number(item.paid_amount)), 0),
-    receivable: incomes.filter((item) => ["pending", "overdue", "partially_paid"].includes(item.status)).reduce((sum, item) => sum + Math.max(0, Number(item.amount) - Number(item.paid_amount)), 0)
+    delinquency: totals.delinquency,
+    payable: totals.payable,
+    receivable: totals.receivable
   };
 }
 
@@ -119,7 +163,7 @@ export async function processRecurringEntries(db, horizonDays = 60) {
   const parents = await db.all("SELECT * FROM financial_entries WHERE recurrence IN ('weekly','monthly','yearly') AND parent_entry_id IS NULL AND status!='canceled'");
   let created = 0;
   for (const parent of parents) {
-    let next = new Date(`${parent.due_date}T12:00:00`);
+    const next = new Date(`${parent.due_date}T12:00:00`);
     while (next <= horizon) {
       if (parent.recurrence === "weekly") next.setDate(next.getDate() + 7);
       else if (parent.recurrence === "monthly") next.setMonth(next.getMonth() + 1);

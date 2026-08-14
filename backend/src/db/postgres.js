@@ -9,6 +9,11 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import pg from "pg";
+
+// Tabela de conversão padrão do driver (`pg-types`). Só o NUMERIC é
+// sobrescrito abaixo; todo o resto continua exatamente como o `pg` entrega.
+const pgTypes = pg.types;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -22,6 +27,48 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 function toPg(sql) {
   let i = 0;
   return sql.replace(/\?/g, () => `$${++i}`);
+}
+
+// OID do NUMERIC/DECIMAL no Postgres. Fixo desde sempre (pg_type.oid = 1700);
+// é assim que o próprio `pg-types` o identifica.
+const OID_NUMERIC = 1700;
+
+// PONTE ENTRE O NUMERIC DO BANCO E O NUMBER DO JAVASCRIPT.
+//
+// Com dinheiro migrado de DOUBLE PRECISION para NUMERIC(12,2) (pendência 13),
+// o driver `pg` passaria a devolver esses campos como STRING — é o padrão dele,
+// e é o padrão CERTO, porque um NUMERIC arbitrário não cabe em `Number` sem
+// perda. Só que o app inteiro (rotas, relatórios, dashboard, o frontend) trata
+// esses campos como número há anos, e `"10.00" + "5.00"` em JavaScript não é 15:
+// é "10.005.00". Seria uma quebra silenciosa em todo somatório do sistema.
+//
+// A conversão é feita AQUI, na camada de acesso das clínicas, e não com um
+// `pg.types.setTypeParser` global, por um motivo concreto: o painel financeiro
+// da plataforma (`services/platformFinance.js`) DEPENDE do comportamento padrão
+// — ele devolve dinheiro como string decimal ("189.80") de propósito, para não
+// passar por ponto flutuante em nenhum momento, e tem teste que exige isso. Um
+// parser global quebraria justamente o código que já faz dinheiro do jeito
+// certo. O recorte por camada mantém os dois contratos intactos: schema de
+// clínica → number; schema `platform` (via `database/connection.js`) → string.
+//
+// O QUE ISSO GARANTE E O QUE NÃO GARANTE:
+//   - GARANTE: a soma/subtração/multiplicação feita pelo POSTGRES (SUM, AVG,
+//     amount - paid_amount, revenue * commission/100) é exata em decimal. É ali
+//     que mora o erro que a pendência 13 descreve — milhares de linhas somadas.
+//   - NÃO GARANTE: aritmética feita em JavaScript sobre o valor já convertido
+//     continua sendo IEEE-754. Portanto SOMATÓRIO GRANDE SE FAZ EM SQL, nunca
+//     com `reduce` sobre as linhas. Um `Number` representa exatamente qualquer
+//     valor de NUMERIC(12,2) individual (10^10 reais = 10^12 centavos < 2^53);
+//     o que ele não representa exatamente é a SOMA acumulada de muitos deles.
+const TIPOS_TENANT = {
+  getTypeParser(oid, format) {
+    if (oid === OID_NUMERIC && format !== "binary") return numericParaNumber;
+    return pgTypes.getTypeParser(oid, format);
+  }
+};
+
+function numericParaNumber(value) {
+  return value === null ? null : Number(value);
 }
 
 // Comandos de transação escritos "na mão" (`db.run("BEGIN")`) espalhados pelas
@@ -80,13 +127,22 @@ export function createDb(client) {
     await client.query(`RELEASE SAVEPOINT ${name}`);
   }
 
+  // Ponto ÚNICO por onde passa toda query de clínica. Vai no formato de
+  // objeto (e não `query(texto, valores)`) porque é o único jeito de anexar
+  // `types` a uma query específica — é ele que aplica TIPOS_TENANT e mantém a
+  // conversão de NUMERIC restrita a esta camada. Comandos de transação
+  // (BEGIN/SAVEPOINT/…) seguem crus: não devolvem linha nenhuma.
+  function executar(sql, params) {
+    return client.query({ text: toPg(sql), values: params, types: TIPOS_TENANT });
+  }
+
   const db = {
     async get(sql, params = []) {
-      const result = await client.query(toPg(sql), params);
+      const result = await executar(sql, params);
       return result.rows[0];
     },
     async all(sql, params = []) {
-      const result = await client.query(toPg(sql), params);
+      const result = await executar(sql, params);
       return result.rows;
     },
     // Para escritas. `changes` é o número de linhas afetadas; `rows` e
@@ -100,7 +156,7 @@ export function createDb(client) {
         else await rollbackFrame();
         return { returnedId: undefined, changes: 0, rows: [] };
       }
-      const result = await client.query(toPg(sql), params);
+      const result = await executar(sql, params);
       return { returnedId: result.rows?.[0]?.id, changes: result.rowCount, rows: result.rows || [] };
     },
 
@@ -159,5 +215,14 @@ export function createDb(client) {
 // "public", para os IF NOT EXISTS não serem enganados por tabelas homônimas).
 export async function applySchemaSql(client) {
   const sql = fs.readFileSync(path.join(__dirname, "schema.sql"), "utf8");
-  await client.query(sql);
+  // CREATE TABLE IF NOT EXISTS is not race-safe when two application processes
+  // initialize the same schema at once: PostgreSQL can collide while creating
+  // the table's implicit composite type (pg_type_typname_nsp_index). Serialize
+  // schema installation per tenant across processes, not only in this Node VM.
+  await client.query("SELECT pg_advisory_lock(hashtext('aura:schema:' || current_schema()))");
+  try {
+    await client.query(sql);
+  } finally {
+    await client.query("SELECT pg_advisory_unlock(hashtext('aura:schema:' || current_schema()))");
+  }
 }

@@ -1,5 +1,5 @@
 import React from "react";
-import { ListFilter } from "lucide-react";
+import { BadgeCheck, Banknote, CircleDollarSign, Clock3, CreditCard, FileChartColumn, ListFilter, Receipt, Tag } from "lucide-react";
 import { API_ORIGIN, apiFetch } from "../../lib/api";
 
 /**
@@ -43,6 +43,50 @@ export function Metric({ label, value }) {
       <span>{label}</span>
       <strong>{value}</strong>
     </article>
+  );
+}
+
+/** @param {{ summary?: Record<string, any> }} props */
+export function FinancialSummary({ summary = {} }) {
+  const gross = Number(summary.grossTotal ?? summary.gross_total ?? summary.total_bruto ?? 0);
+  const discount = Number(summary.discountTotal ?? summary.discount_value ?? summary.discount ?? 0);
+  const net = Number(summary.netTotal ?? summary.net_total ?? summary.total_liquido ?? 0);
+  const deposit = Number(summary.depositPaid ?? summary.deposit_value ?? summary.sinal ?? 0);
+  const otherPayments = Number(summary.otherPayments ?? summary.other_payments ?? 0);
+  const totalPaid = Number(summary.totalPaid ?? summary.total_paid ?? 0);
+  const outstanding = Number(summary.outstandingBalance ?? summary.outstanding_balance ?? 0);
+  const overpayment = Number(summary.overpaymentAmount ?? summary.overpayment_amount ?? 0);
+  const status = String(summary.paymentStatus ?? summary.status ?? "pendente").toLowerCase();
+  const couponCode = summary.couponCode ?? summary.coupon_code;
+  const couponPercent = Number(summary.couponPercent ?? summary.coupon_percent ?? 0);
+  const money = (value) => Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const statusLabels = { pending: "Pendente", pendente: "Pendente", partial: "Parcial", parcial: "Parcial", paid: "Pago", pago: "Pago", overpaid: "Excedente", excedente: "Excedente", canceled: "Cancelado", cancelado: "Cancelado" };
+  const tone = ["paid", "pago"].includes(status) ? "ok" : ["canceled", "cancelado"].includes(status) ? "danger" : ["overpaid", "excedente"].includes(status) ? "warn" : "info";
+  const Card = ({ icon: Icon, label, value, variant = "" }) => <article className={`financial-metric ${variant}`}><span><Icon size={20} aria-hidden="true" />{label}</span><strong>{value}</strong></article>;
+
+  return (
+    <section className="soft-card financial-summary" aria-label="Resumo financeiro">
+      <div className="financial-summary-header"><strong><FileChartColumn size={22} aria-hidden="true" />Resumo financeiro</strong><span className={`status-badge tone-${tone}`}>{statusLabels[status] || status}</span></div>
+      <div className="financial-equation">
+        <Card icon={Receipt} label="Valor bruto" value={money(gross)} />
+        <span className="financial-operator" aria-hidden="true">−</span>
+        <Card icon={Tag} label="Descontos" value={`− ${money(discount)}`} variant="discount" />
+        <span className="financial-operator" aria-hidden="true">=</span>
+        <Card icon={CreditCard} label="Valor líquido" value={money(net)} variant="featured" />
+        <span className="financial-operator" aria-hidden="true">+</span>
+        <Card icon={Banknote} label="Sinal pago" value={money(deposit)} variant="paid" />
+        <span className="financial-operator" aria-hidden="true">→</span>
+        <Card icon={CircleDollarSign} label="Total pago" value={money(totalPaid)} variant="paid featured" />
+      </div>
+      <div className="financial-details">
+        <div><Clock3 size={19} /><span>Valor restante</span><strong>{money(outstanding)}</strong></div>
+        <div><CreditCard size={19} /><span>Outros pagamentos</span><strong>{money(otherPayments)}</strong></div>
+        <div><CircleDollarSign size={19} /><span>{overpayment > 0 ? "Excedente" : "Saldo final"}</span><strong>{money(overpayment > 0 ? overpayment : outstanding)}</strong></div>
+        {couponCode && <div><Tag size={19} /><span>Cupom aplicado</span><strong>{couponCode} <BadgeCheck size={17} aria-label="válido" /></strong><small>− {money(discount)}{couponPercent > 0 ? ` (${couponPercent}%)` : ""}</small></div>}
+      </div>
+      <details className="financial-composition"><summary>Ver composição do valor bruto</summary><div><span>Serviços <strong>{money(summary.serviceSubtotal ?? summary.service_value)}</strong></span><span>Produtos <strong>{money(summary.productSubtotal ?? summary.product_value)}</strong></span></div></details>
+      {couponCode && <div className="coupon-success"><BadgeCheck size={24} /><div><strong>Cupom aplicado com sucesso.</strong><span>Desconto de {money(discount)}{couponPercent > 0 ? ` (${couponPercent}%)` : ""} aplicado sobre o valor elegível.</span></div></div>}
+    </section>
   );
 }
 

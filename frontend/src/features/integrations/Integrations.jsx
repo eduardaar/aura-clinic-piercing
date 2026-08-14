@@ -14,7 +14,7 @@
 //      distingue "chave recusada" de "ambiente errado" de "gateway fora do ar";
 //      um "erro genérico" deixaria o admin sem saber o que corrigir.
 import { useEffect, useState } from "react";
-import { AlertTriangle, KeyRound, Webhook } from "lucide-react";
+import { AlertTriangle, KeyRound, MessageCircle, Webhook } from "lucide-react";
 import { AlertBlock, Button, Input, Select, StatusBadge } from "../../components/common/Ui";
 import { ConfirmDeleteModal, CrudHeader } from "../../components/common/Crud";
 import { ApiError, Loading } from "../../components/common/Feedback";
@@ -66,6 +66,116 @@ function CopyBlock({ label, value, hint }) {
         <Button variant="secondary" onClick={copy}>{copied ? "Copiado!" : "Copiar"}</Button>
       </div>
     </div>
+  );
+}
+
+function WhatsAppCloudIntegration() {
+  const { data, refresh } = useFetch("/integrations/whatsapp");
+  const [status, setStatus] = useState(null);
+  const [accessToken, setAccessToken] = useState("");
+  const [phoneNumberId, setPhoneNumberId] = useState("");
+  const [businessAccountId, setBusinessAccountId] = useState("");
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [confirmRemove, setConfirmRemove] = useState(false);
+
+  useEffect(() => {
+    if (!data || data.error) return;
+    setStatus(data);
+    setPhoneNumberId((current) => current || data.phone_number_id || "");
+    setBusinessAccountId((current) => current || data.business_account_id || "");
+  }, [data]);
+
+  if (!data) return <article className="panel"><CrudHeader title="WhatsApp Business" subtitle="Carregando a integração oficial…" /></article>;
+  if (data.error) return <ApiError message={data.error} />;
+  const info = asObject(status || data);
+  const configured = Boolean(info.configured);
+
+  async function send(path, options) {
+    const response = await apiFetch(path, options);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "Não foi possível concluir a operação.");
+    return payload;
+  }
+
+  async function run(action, task) {
+    setBusy(action); setError(""); setMessage("");
+    try { await task(); } catch (requestError) { setError(requestError.message); } finally { setBusy(""); }
+  }
+
+  function save(event) {
+    event.preventDefault();
+    return run("save", async () => {
+      const payload = await send("/integrations/whatsapp", {
+        method: "PUT",
+        body: JSON.stringify({
+          ...(accessToken.trim() ? { access_token: accessToken.trim() } : {}),
+          phone_number_id: phoneNumberId.trim(),
+          business_account_id: businessAccountId.trim()
+        })
+      });
+      setStatus(payload); setAccessToken(""); refresh(); setMessage("Dados do WhatsApp Business salvos no cofre.");
+    });
+  }
+
+  function toggle() {
+    return run("toggle", async () => {
+      const payload = await send("/integrations/whatsapp", { method: "PUT", body: JSON.stringify({ enabled: !info.enabled }) });
+      setStatus(payload); refresh(); setMessage(payload.enabled ? "Envio oficial ativado." : "Envio oficial desativado.");
+    });
+  }
+
+  function test() {
+    return run("test", async () => {
+      const result = await send("/integrations/whatsapp/test", { method: "POST" });
+      refresh();
+      if (result.ok) setMessage(result.detail || "Conexão validada.");
+      else setError(result.detail || "Não foi possível validar a conexão.");
+    });
+  }
+
+  function remove() {
+    return run("remove", async () => {
+      const payload = await send("/integrations/whatsapp", { method: "DELETE", body: JSON.stringify({ confirm: true }) });
+      setStatus(payload); setAccessToken(""); setPhoneNumberId(""); setBusinessAccountId(""); refresh(); setMessage("Credencial do WhatsApp removida.");
+    });
+  }
+
+  return (
+    <>
+      <article className="panel">
+        <CrudHeader title="WhatsApp Business — integração oficial" subtitle="Envie confirmações e lembretes pela Cloud API da Meta" />
+        <AlertBlock icon={MessageCircle} title="Como funciona">
+          <p>Com a integração ativa, mensagens automáticas elegíveis saem pelo número comercial cadastrado. Fora da janela de atendimento do WhatsApp, use modelos aprovados pela Meta. Cada envio consome saldo de comunicação da clínica.</p>
+        </AlertBlock>
+        <div className="catalog-links">
+          <div className="catalog-links-grid">
+            <div className="catalog-link-row"><div><span className="catalog-link-label">Credencial</span><StatusBadge tone={configured ? "ok" : "warn"}>{configured ? "Configurada" : "Não configurada"}</StatusBadge><p className="field-optional">{configured ? `Token salvo no cofre: ${info.secret_hint || "••••"}` : "Cadastre o token permanente da Cloud API."}</p></div></div>
+            <div className="catalog-link-row"><div><span className="catalog-link-label">Envio automático</span><StatusBadge tone={info.enabled ? "ok" : "neutral"}>{info.enabled ? "Ativado" : "Desativado"}</StatusBadge><p className="field-optional">Sem ativar, a fila continua oferecendo o link manual do WhatsApp.</p></div><div className="catalog-link-actions"><Button variant={info.enabled ? "secondary" : "primary"} disabled={!configured || Boolean(busy)} onClick={toggle}>{busy === "toggle" ? "Salvando…" : info.enabled ? "Desativar" : "Ativar"}</Button></div></div>
+            <div className="catalog-link-row"><div><span className="catalog-link-label">Último teste</span><StatusBadge tone={info.last_check_status === "ok" ? "ok" : info.last_check_status ? "danger" : "neutral"}>{info.last_check_status === "ok" ? "Conexão válida" : info.last_check_status ? "Falhou" : "Nunca testada"}</StatusBadge><p className="field-optional">{info.last_check_detail || "Teste depois de salvar os dados."}</p></div><div className="catalog-link-actions"><Button variant="secondary" disabled={!configured || Boolean(busy)} onClick={test}>{busy === "test" ? "Testando…" : "Testar conexão"}</Button></div></div>
+          </div>
+        </div>
+        {error && <p className="form-error">{error}</p>}
+        {message && <p className="form-success">{message}</p>}
+      </article>
+
+      <article className="panel">
+        <CrudHeader title="Credenciais da Cloud API" subtitle="Meta Business Suite > WhatsApp > Configuração da API" />
+        <form onSubmit={save}>
+          <div className="form-grid">
+            <Input type="password" label={<>Token de acesso <span className="field-optional">{configured ? `atual: ${info.secret_hint || "••••"} — deixe vazio para manter` : "token permanente da Meta"}</span></>} value={accessToken} onChange={setAccessToken} />
+            <Input label="ID do número do WhatsApp" value={phoneNumberId} onChange={setPhoneNumberId} required />
+            <Input label="ID da conta do WhatsApp Business (opcional)" value={businessAccountId} onChange={setBusinessAccountId} />
+          </div>
+          <p className="field-optional">O token é cifrado e nunca aparece novamente. O ID do número é público e identifica o remetente autorizado pela Meta.</p>
+          <div className="card-actions"><Button type="submit" disabled={Boolean(busy)}>{busy === "save" ? "Salvando…" : "Salvar configuração"}</Button></div>
+        </form>
+      </article>
+
+      <article className="panel admin-reset-panel"><div><span className="eyebrow">Zona de perigo</span><h2>Remover integração do WhatsApp</h2><p>Desativa o envio oficial e remove o token do cofre. A fila continuará disponível para envio manual.</p></div><div className="admin-reset-action"><Button variant="danger" disabled={!configured || Boolean(busy)} onClick={() => setConfirmRemove(true)}>Remover credencial</Button></div></article>
+      <ConfirmDeleteModal open={confirmRemove} title="Remover credencial do WhatsApp" message="O token do WhatsApp Business será apagado e o envio oficial será desativado." onClose={() => setConfirmRemove(false)} onConfirm={async () => { await remove(); setConfirmRemove(false); }} />
+    </>
   );
 }
 
@@ -207,6 +317,7 @@ export function Integrations() {
 
   return (
     <section className="stack">
+      <WhatsAppCloudIntegration />
       <article className="panel">
         <CrudHeader
           title="Asaas — cobrança online"

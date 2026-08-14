@@ -11,6 +11,7 @@ import { clientIp } from "../middleware/rateLimit.js";
 import { checkAccess, registerFailure, registerSuccess } from "../services/loginGuard.js";
 import bcrypt from "bcryptjs";
 import { pool, query } from "../database/connection.js";
+import { createDb } from "../db/postgres.js";
 import { createPlatformToken, verifyPlatformToken, createToken } from "../middleware/auth.js";
 import { invalidateTenantCache } from "../middleware/tenant.js";
 import {
@@ -23,13 +24,29 @@ import { validateBody } from "../middleware/validate.js";
 import { signupSchema, platformLoginSchema, tenantStatusSchema } from "../schemas/index.js";
 import { isProduction } from "../config/index.js";
 import { PLAN_FEATURES, listPlans, normalizePlanCode, planByCode } from "../services/plans.js";
+import { subscriptionSyncWarning, syncSubscriptionPrice } from "../services/platformBilling.js";
 import { invalidateSubscriptionCache } from "../services/subscriptions.js";
+import { decryptTotpSecret, encryptTotpSecret, generateTotpSecret, otpauthUri, verifyTotp } from "../services/totp.js";
+import { createClinicSession, setRefreshCookie } from "../services/sessions.js";
 
 const router = Router();
 
 // Rate limit estrito do signup público: 5 cadastros/hora por IP.
 // Desliga rate limit apenas na suíte de testes (nunca em produção).
 const skipRateLimit = () => process.env.DISABLE_RATE_LIMIT === "true";
+
+async function validateLegalAcceptance(acceptances) {
+  const received = acceptances && typeof acceptances === "object" ? acceptances : {};
+  const result = await query(
+    "SELECT document_key, version FROM platform.legal_documents WHERE document_key IN ('terms_of_use', 'privacy_policy')"
+  );
+  const current = Object.fromEntries(result.rows.map((row) => [row.document_key, Number(row.version)]));
+  const valid = current.terms_of_use
+    && current.privacy_policy
+    && Number(received.terms_of_use) === current.terms_of_use
+    && Number(received.privacy_policy) === current.privacy_policy;
+  return { valid, current };
+}
 
 const signupLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
@@ -80,6 +97,14 @@ router.post("/api/signup", signupLimiter, async (req, res) => {
     }
     if (!validateBody(signupSchema, req, res)) return;
     const b = req.body;
+    const legal = await validateLegalAcceptance(b.legal_acceptances);
+    if (!legal.valid) {
+      return res.status(400).json({
+        error: "Leia e aceite os Termos de Uso e a Política de Privacidade para continuar.",
+        code: "legal_acceptance_required",
+        documents: legal.current
+      });
+    }
     // Cadastro público: o slug não é digitado — deriva-se do nome da clínica.
     const slug = String(b.slug || "").trim()
       ? String(b.slug).trim().toLowerCase()
@@ -116,7 +141,26 @@ router.post("/api/signup", signupLimiter, async (req, res) => {
     });
     // Login automático: emite um token de clínica para o admin recém-criado,
     // evitando que o usuário tenha de fazer login de novo digitando o slug.
-    const token = tenant.admin ? createToken(tenant.admin, tenant) : null;
+    let token = null;
+    if (tenant.admin) {
+      // O cadastro também entra pelo fluxo de sessão persistida; devolver só o
+      // access token aqui faria o login automático falhar na primeira rota
+      // protegida, pois todo token de clínica precisa de uma sessão ativa.
+      const client = await pool.connect();
+      try {
+        await client.query(`SET search_path TO "tenant_${Number(tenant.id)}", public`);
+        const session = await createClinicSession(createDb(client), tenant.admin, req);
+        setRefreshCookie(res, session.refreshToken);
+        token = createToken(tenant.admin, tenant, { sessionId: session.id });
+      } finally {
+        try { await client.query("SET search_path TO public"); client.release(); } catch { client.release(true); }
+      }
+    }
+    await query(
+      `INSERT INTO platform.legal_acceptances (tenant_id, user_email, document_key, document_version, ip_address, user_agent)
+       VALUES ($1, $2, 'terms_of_use', $3, $4, $5), ($1, $2, 'privacy_policy', $6, $4, $5)`,
+      [tenant.id, String(b.admin_email).trim().toLowerCase(), legal.current.terms_of_use, clientIp(req), req.get("user-agent") || null, legal.current.privacy_policy]
+    );
     res.status(201).json({
       tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, plan: tenant.plan },
       token,
@@ -155,6 +199,12 @@ router.post("/api/platform/login", platformLoginLimiter, async (req, res) => {
       await registerFailure(ip, { userAgent: req.headers["user-agent"], email });
       return res.status(401).json({ error: "Credenciais inválidas." });
     }
+    if (user.mfa_enabled) {
+      const secret = decryptTotpSecret(user.mfa_totp_secret_encrypted);
+      if (!secret || !verifyTotp(secret, req.body?.mfa_code)) {
+        return res.status(401).json({ error: "Informe o código do seu autenticador.", code: "mfa_required" });
+      }
+    }
     await registerSuccess(ip);
     res.json({
       token: createPlatformToken(user),
@@ -163,6 +213,38 @@ router.post("/api/platform/login", platformLoginLimiter, async (req, res) => {
   } catch (error) {
     handleServiceError(res, error);
   }
+});
+
+// O painel de plataforma é o acesso de maior privilégio. A configuração é
+// separada da clínica, com segredo cifrado no schema `platform`.
+router.get("/api/platform/mfa", requirePlatform, async (req, res) => {
+  try {
+    const result = await query("SELECT mfa_enabled FROM platform.platform_users WHERE id = $1", [req.platformUser.sub]);
+    res.json({ enabled: Boolean(result.rows[0]?.mfa_enabled) });
+  } catch (error) { handleServiceError(res, error); }
+});
+
+router.post("/api/platform/mfa/setup", requirePlatform, async (req, res) => {
+  try {
+    const result = await query("SELECT id, email, password_hash FROM platform.platform_users WHERE id = $1", [req.platformUser.sub]);
+    const user = result.rows[0];
+    if (!user || !(await bcrypt.compare(String(req.body?.current_password || ""), user.password_hash))) {
+      return res.status(400).json({ error: "Confirme sua senha atual para configurar o autenticador." });
+    }
+    const secret = generateTotpSecret();
+    await query("UPDATE platform.platform_users SET mfa_totp_secret_encrypted = $1, mfa_enabled = false WHERE id = $2", [encryptTotpSecret(secret), user.id]);
+    res.json({ secret, otpauth_url: otpauthUri({ secret, email: user.email, issuer: "Aura Platform" }) });
+  } catch (error) { handleServiceError(res, error); }
+});
+
+router.post("/api/platform/mfa/verify", requirePlatform, async (req, res) => {
+  try {
+    const result = await query("SELECT mfa_totp_secret_encrypted FROM platform.platform_users WHERE id = $1", [req.platformUser.sub]);
+    const secret = decryptTotpSecret(result.rows[0]?.mfa_totp_secret_encrypted);
+    if (!secret || !verifyTotp(secret, req.body?.code)) return res.status(400).json({ error: "Código do autenticador inválido." });
+    await query("UPDATE platform.platform_users SET mfa_enabled = true, session_version = session_version + 1 WHERE id = $1", [req.platformUser.sub]);
+    res.json({ ok: true, enabled: true });
+  } catch (error) { handleServiceError(res, error); }
 });
 
 // Vitrine pública de planos (landing e cadastro).
@@ -260,7 +342,14 @@ router.patch("/api/platform/tenants/:id", requirePlatform, async (req, res) => {
 
 // Troca de plano pelo super-admin. Além de trocar o plano, ATIVA a assinatura
 // (status 'active' + período de 30 dias) — é a forma de liberar/renovar uma
-// clínica cujo trial expirou, já que ainda não há gateway de pagamento.
+// clínica cujo trial expirou sem passar pelo gateway.
+//
+// O reajuste da recorrência no Asaas acontece aqui também, e não só na rota
+// equivalente de `/api/platform/accounts/:id/plan`: as duas trocam o plano de
+// verdade, e uma delas que não propagasse deixaria a clínica no plano novo
+// pagando o preço velho — exatamente o buraco que a propagação veio tapar. É
+// best-effort e vem DEPOIS da escrita: gateway fora do ar não pode impedir a
+// liberação de uma clínica.
 router.patch("/api/platform/tenants/:id/plan", requirePlatform, async (req, res) => {
   try {
     const planCode = normalizePlanCode(req.body?.plan_code, "");
@@ -278,7 +367,16 @@ router.patch("/api/platform/tenants/:id/plan", requirePlatform, async (req, res)
     );
     invalidateSubscriptionCache(tenant.id);
     invalidateTenantCache(tenant.slug);
-    res.json({ ok: true, id: tenant.id, plan: planCode, status: "active" });
+
+    const gateway = await syncSubscriptionPrice(tenant.id);
+    res.json({
+      ok: true,
+      id: tenant.id,
+      plan: planCode,
+      status: "active",
+      gateway,
+      warning: subscriptionSyncWarning(gateway)
+    });
   } catch (error) {
     handleServiceError(res, error);
   }

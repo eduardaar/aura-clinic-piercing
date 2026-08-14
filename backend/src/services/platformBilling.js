@@ -38,7 +38,9 @@ export class PlatformBillingError extends Error {
   }
 }
 
-export const BILLING_TYPES = ["UNDEFINED", "CREDIT_CARD"];
+// A Aura usa somente checkout/fatura hospedada. Aceitar cartão bruto aqui
+// colocaria toda a API no escopo PCI DSS e criaria risco de PAN/CVV em logs.
+export const BILLING_TYPES = ["UNDEFINED"];
 
 // ---------------------------------------------------------------------------
 // Infraestrutura
@@ -169,35 +171,6 @@ export async function ensureAsaasCustomer(tenantId) {
 // Checkout da assinatura
 // ---------------------------------------------------------------------------
 
-// O formulário manda snake_case (e às vezes camelCase); o cliente do Asaas quer
-// camelCase. Normalizar aqui evita que um `expiry_month` ignorado em silêncio
-// vire "cartão inválido" no gateway.
-function normalizeCard(card) {
-  if (!card) return null;
-  const rawYear = String(card.expiryYear ?? card.expiry_year ?? "").trim();
-  return {
-    holderName: card.holderName ?? card.holder_name ?? null,
-    number: onlyDigits(card.number ?? card.card_number),
-    expiryMonth: String(card.expiryMonth ?? card.expiry_month ?? "").trim().padStart(2, "0"),
-    // O Asaas exige 4 dígitos ("2030") e o formulário coleta MM/AA. Assumir o
-    // século 20xx é seguro: não existe cartão válido emitido para 19xx.
-    expiryYear: rawYear.length === 2 ? `20${rawYear}` : rawYear,
-    ccv: onlyDigits(card.ccv ?? card.cvv ?? card.security_code)
-  };
-}
-
-function normalizeHolderInfo(info) {
-  if (!info) return null;
-  return {
-    name: info.name ?? info.holder_name ?? null,
-    email: info.email ?? null,
-    taxId: onlyDigits(info.taxId ?? info.tax_id ?? info.cpf_cnpj),
-    postalCode: onlyDigits(info.postalCode ?? info.postal_code ?? info.cep),
-    addressNumber: info.addressNumber ?? info.address_number ?? info.numero ?? null,
-    phone: onlyDigits(info.phone ?? info.mobile_phone)
-  };
-}
-
 // Grava/atualiza a fatura a partir de uma cobrança do Asaas.
 //
 // O ON CONFLICT no índice parcial ux_tenant_invoices_asaas_payment é a
@@ -246,17 +219,16 @@ async function upsertInvoice(runner, { tenantId, subscriptionId, planCode, payme
  * Cria (ou troca) a assinatura recorrente da clínica na conta da Monitence.
  *
  * @param {number} tenantId
- * @param {{ planCode: string, billingType?: string, creditCard?: object,
- *           creditCardHolderInfo?: object, remoteIp?: string }} options
+ * @param {{ planCode: string, billingType?: string }} options
  */
 export async function startSubscriptionCheckout(
   tenantId,
-  { planCode, billingType = "UNDEFINED", creditCard, creditCardHolderInfo, remoteIp } = {}
+  { planCode, billingType = "UNDEFINED" } = {}
 ) {
   ensureGatewayEnabled();
 
   // planByCode() cai no plano padrão quando o código é desconhecido — ótimo
-  // para leitura, péssimo para checkout: a clínica escolheria "essencial" e
+  // para leitura, péssimo para checkout: a clínica escolheria "inexistente" e
   // seria cobrada como "profissional". Aqui a validação é estrita.
   const code = normalizePlanCode(planCode, "");
   if (!code) {
@@ -271,38 +243,10 @@ export async function startSubscriptionCheckout(
   const type = String(billingType || "UNDEFINED").toUpperCase();
   if (!BILLING_TYPES.includes(type)) {
     throw new PlatformBillingError(
-      "Forma de pagamento inválida. Use UNDEFINED (link com PIX/boleto/cartão) ou CREDIT_CARD.",
+      "Forma de pagamento inválida. Use a página segura de pagamento do Asaas.",
       400,
       "billing_type_invalido"
     );
-  }
-
-  const card = type === "CREDIT_CARD" ? normalizeCard(creditCard) : null;
-  const holder = type === "CREDIT_CARD" ? normalizeHolderInfo(creditCardHolderInfo) : null;
-  if (type === "CREDIT_CARD") {
-    if (!card?.number || !card.expiryMonth || !card.expiryYear || !card.ccv || !card.holderName) {
-      throw new PlatformBillingError(
-        "Dados do cartão incompletos (nome do titular, número, validade e CVV são obrigatórios).",
-        400,
-        "cartao_incompleto"
-      );
-    }
-    if (!holder?.taxId || !holder.postalCode || !holder.addressNumber) {
-      throw new PlatformBillingError(
-        "Dados do titular incompletos (CPF/CNPJ, CEP e número do endereço são obrigatórios).",
-        400,
-        "titular_incompleto"
-      );
-    }
-    // Sem o IP real do portador o antifraude do Asaas recusa a transação — e a
-    // recusa chega como erro genérico, difícil de diagnosticar depois.
-    if (!remoteIp) {
-      throw new PlatformBillingError(
-        "Não foi possível identificar o IP do pagador; a cobrança no cartão exige esse dado.",
-        400,
-        "remote_ip_ausente"
-      );
-    }
   }
 
   const customerId = await ensureAsaasCustomer(tenantId);
@@ -313,20 +257,12 @@ export async function startSubscriptionCheckout(
   );
   const current = currentResult.rows[0] || null;
 
-  // Troca de plano: a assinatura velha precisa morrer, senão a clínica passa a
-  // ter DUAS recorrências ativas e é cobrada duas vezes no mês seguinte.
-  // Best-effort de propósito — se o cancelamento falhar, seguimos criando a
-  // nova: uma cobrança duplicada é resolvível pelo suporte; perder o checkout
-  // de quem acabou de digitar o cartão não é.
   if (current?.asaas_subscription_id) {
-    try {
-      await platformClient().cancelSubscription(current.asaas_subscription_id);
-    } catch (error) {
-      logGatewayError(
-        `falha ao cancelar a assinatura anterior ${current.asaas_subscription_id} do tenant ${tenantId}`,
-        error
-      );
-    }
+    throw new PlatformBillingError(
+      "Já existe uma assinatura no gateway. A troca de plano deve passar pelo suporte até que o fluxo de prorrata esteja disponível.",
+      409,
+      "plan_change_requires_support"
+    );
   }
 
   let subscription;
@@ -338,10 +274,7 @@ export async function startSubscriptionCheckout(
       cycle: "MONTHLY",
       billingType: type,
       description: `Assinatura Monitence — ${plan.name}`,
-      externalReference: `tenant:${tenantId}`,
-      creditCard: card || undefined,
-      creditCardHolderInfo: holder || undefined,
-      remoteIp
+      externalReference: `tenant:${tenantId}`
       // `nextDueDate` fica a cargo do cliente do Asaas: o piso é amanhã
       // (minimumDueDate), porque o gateway rejeita vencimento no passado.
     });
@@ -714,6 +647,227 @@ export async function syncInvoice(invoiceId) {
 
   if (!action) return { applied: false, detail: `status-sem-acao:${status || "desconhecido"}` };
   return applyPlatformPaymentEvent({ action, payment });
+}
+
+// ---------------------------------------------------------------------------
+// Reajuste da recorrência (a assinatura Monitence -> clínica)
+// ---------------------------------------------------------------------------
+
+// Estados possíveis da propagação. Ficam listados aqui porque a tela e a
+// auditoria leem este campo, e um estado inventado no meio do caminho viraria
+// "status desconhecido" para quem precisa decidir o que fazer.
+export const SUBSCRIPTION_SYNC_STATUSES = [
+  "atualizado", // o gateway passou a cobrar o valor do plano vigente
+  "ja_sincronizado", // já cobrava esse valor; nada foi escrito
+  "sem_assinatura", // clínica sem recorrência no Asaas — não há o que reajustar
+  "assinatura_cancelada", // cancelada aqui; reajustar reviveria uma cobrança encerrada
+  "plano_sem_preco", // plano gratuito: o Asaas recusa assinatura de valor zero
+  "gateway_indisponivel", // sem credencial da plataforma neste ambiente
+  "falhou" // o Asaas respondeu erro (ou não respondeu)
+];
+
+function reais(centavos) {
+  return `R$ ${(Number(centavos || 0) / 100).toFixed(2).replace(".", ",")}`;
+}
+
+/**
+ * Faz a assinatura recorrente no Asaas concordar com o plano vigente da clínica.
+ *
+ * É a peça que faltava na troca de plano: mudar `plan_code` libera recursos na
+ * hora, mas a recorrência no gateway continua emitindo o valor antigo — uma
+ * clínica promovida seguiria pagando o plano barato até alguém reparar na
+ * fatura.
+ *
+ * Três decisões guiam a função:
+ *
+ *  1. NUNCA LANÇA. Quem chama já mudou o plano no banco (o acesso da clínica
+ *     JÁ mudou) e não pode desfazer isso porque o gateway está fora do ar.
+ *     Toda saída é um relatório com `status` — inclusive a de erro.
+ *  2. É IDEMPOTENTE POR CONSTRUÇÃO. Só faz `POST /subscriptions/{id}` sobre uma
+ *     assinatura que já existe, com o valor ABSOLUTO do plano; não cria
+ *     assinatura nem cobrança, então repetir não duplica nada. A leitura antes
+ *     da escrita é o mesmo tipo de guarda de estado que os handlers de webhook
+ *     usam (`if (invoice.status === "paga") return`): se o gateway já cobra o
+ *     valor certo, a chamada de escrita nem acontece. Por isso não passa por
+ *     `services/idempotency.js`, que existe para o caso oposto — requisições
+ *     que CRIAM cobrança e cujo replay cobraria duas vezes.
+ *  3. CREDENCIAL DA PLATAFORMA, sempre. Quem cobra a assinatura é a Monitence;
+ *     a chave da clínica cobra o cliente final dela e não tem nada a ver com
+ *     esta recorrência.
+ *
+ * @param {number} tenantId
+ * @param {{ gateway?: object }} [options] `gateway` é ponto de injeção para os
+ *   testes exercitarem o caminho de SUCESSO sem credencial real. Nenhuma rota
+ *   passa esse parâmetro: o cliente do Asaas nunca pode vir de fora.
+ */
+export async function syncSubscriptionPrice(tenantId, { gateway = null } = {}) {
+  const found = await query(
+    `SELECT id, tenant_id, plan_code, status, asaas_subscription_id
+       FROM platform.tenant_subscriptions
+      WHERE tenant_id = $1`,
+    [tenantId]
+  );
+  const row = found.rows[0] || null;
+  const plan = planByCode(row?.plan_code);
+
+  const base = {
+    tenant_id: Number(tenantId),
+    plan_code: row?.plan_code ?? null,
+    plan_name: plan.name,
+    price_cents: plan.price_cents,
+    asaas_subscription_id: row?.asaas_subscription_id ?? null,
+    valor_esperado: plan.price_cents / 100,
+    valor_no_gateway: null,
+    erro: null
+  };
+
+  if (!row || !row.asaas_subscription_id) {
+    return {
+      ...base,
+      status: "sem_assinatura",
+      detalhe: "Esta clínica não tem assinatura recorrente no Asaas; não há cobrança a reajustar."
+    };
+  }
+  if (row.status === "canceled") {
+    return {
+      ...base,
+      status: "assinatura_cancelada",
+      detalhe:
+        `A assinatura ${row.asaas_subscription_id} está cancelada aqui e não foi reajustada: ` +
+        "mexer no valor de uma recorrência encerrada só faria sentido se a intenção fosse recobrar."
+    };
+  }
+  // O Asaas recusa assinatura de valor zero (e `toAsaasValue` barra antes
+  // disso). Plano gratuito não é erro de configuração — é um caso em que a
+  // recorrência precisa ser CANCELADA, não reajustada.
+  if (!(plan.price_cents > 0)) {
+    return {
+      ...base,
+      status: "plano_sem_preco",
+      detalhe:
+        `O plano "${plan.name}" não tem preço, e o gateway não aceita assinatura de valor zero. ` +
+        `A recorrência ${row.asaas_subscription_id} continua com o valor anterior.`
+    };
+  }
+  // A guarda é sobre a CREDENCIAL, não sobre o ambiente: quem injeta um cliente
+  // (os testes) já trouxe o próprio meio de falar com o gateway, e `platformClient()`
+  // sem chave só produziria um erro tardio de "credencial não configurada".
+  if (!gateway && !isPlatformEnabled()) {
+    return {
+      ...base,
+      status: "gateway_indisponivel",
+      detalhe:
+        "O gateway da plataforma não está configurado neste ambiente; " +
+        `a assinatura ${row.asaas_subscription_id} continua com o valor anterior.`
+    };
+  }
+
+  const asaas = gateway || platformClient();
+
+  // Leitura antes da escrita: além de tornar o reprocesso um no-op de verdade,
+  // é ela que dá ao operador o "de X para Y" no relatório. Falhar aqui NÃO
+  // aborta a operação — o que importa é a escrita, e uma leitura perdida não
+  // pode ser motivo para deixar a clínica sendo cobrada errado.
+  let valorAtual = null;
+  try {
+    const remoto = await asaas.getSubscription(row.asaas_subscription_id);
+    const valor = Number(remoto?.value);
+    if (Number.isFinite(valor)) valorAtual = valor;
+  } catch (error) {
+    logGatewayError(
+      `falha ao ler a assinatura ${row.asaas_subscription_id} do tenant ${tenantId} antes do reajuste`,
+      error
+    );
+  }
+
+  if (valorAtual !== null && Math.round(valorAtual * 100) === plan.price_cents) {
+    return {
+      ...base,
+      status: "ja_sincronizado",
+      valor_no_gateway: valorAtual,
+      detalhe:
+        `A assinatura ${row.asaas_subscription_id} já cobra ${reais(plan.price_cents)} ` +
+        `(plano "${plan.name}"). Nada foi enviado ao gateway.`
+    };
+  }
+
+  try {
+    const atualizada = await asaas.updateSubscription(row.asaas_subscription_id, {
+      // price_cents -> reais. A divisão que, esquecida, cobra cem vezes o plano.
+      value: plan.price_cents / 100,
+      // As cobranças já emitidas e ainda não pagas precisam acompanhar, senão a
+      // clínica recebe no mês que vem uma fatura com o preço velho.
+      updatePendingPayments: true
+    });
+    const valorDepois = Number(atualizada?.value);
+    return {
+      ...base,
+      status: "atualizado",
+      valor_anterior: valorAtual,
+      valor_no_gateway: Number.isFinite(valorDepois) ? valorDepois : plan.price_cents / 100,
+      detalhe:
+        `Assinatura ${row.asaas_subscription_id} reajustada para ${reais(plan.price_cents)} ` +
+        `(plano "${plan.name}"), inclusive nas cobranças pendentes.`
+    };
+  } catch (error) {
+    const mensagem = error instanceof AsaasError ? error.message : String(error?.message || error);
+    logGatewayError(
+      `falha ao reajustar a assinatura ${row.asaas_subscription_id} do tenant ${tenantId} ` +
+        `para o plano ${plan.code}`,
+      error
+    );
+    return {
+      ...base,
+      status: "falhou",
+      erro: mensagem,
+      valor_no_gateway: valorAtual,
+      detalhe:
+        `O gateway recusou o reajuste da assinatura ${row.asaas_subscription_id}: ${mensagem}. ` +
+        "A cobrança recorrente continua com o valor anterior."
+    };
+  }
+}
+
+/**
+ * O aviso que o operador precisa LER E AGIR, ou `null`.
+ *
+ * Só vira aviso o que deixa dinheiro pendurado. Sucesso, "já estava certo" e
+ * "esta clínica não tem recorrência" são estados normais e viajam em
+ * `gateway.detalhe`, que a tela mostra junto da mensagem de sucesso — um alerta
+ * vermelho para cada troca de plano em ambiente sem gateway treinaria o
+ * super-admin a fechar o aviso sem ler, justamente o que ele não pode fazer no
+ * dia em que a propagação falhar de verdade.
+ */
+export function subscriptionSyncWarning(outcome) {
+  if (!outcome) return null;
+  const id = outcome.asaas_subscription_id;
+  switch (outcome.status) {
+    case "falhou":
+      return (
+        `Não foi possível reajustar a assinatura ${id} no Asaas: ${outcome.erro}. ` +
+        `O plano novo já vale para a clínica, mas a cobrança recorrente continua no valor anterior — ` +
+        `use "Reenviar ajuste ao Asaas" para tentar de novo.`
+      );
+    case "gateway_indisponivel":
+      return (
+        `O gateway não está configurado neste ambiente: a assinatura ${id} continua cobrando o valor ` +
+        `anterior, não ${reais(outcome.price_cents)}. Reenvie o ajuste num ambiente com a chave da ` +
+        "plataforma, ou corrija o valor no painel do Asaas."
+      );
+    case "assinatura_cancelada":
+      return (
+        `A assinatura ${id} está cancelada aqui e não foi tocada no gateway. Se a recorrência ainda ` +
+        "estiver viva no Asaas, ela continua cobrando o valor antigo — cancele-a no painel."
+      );
+    case "plano_sem_preco":
+      return (
+        `O plano "${outcome.plan_name}" é gratuito e o Asaas não aceita assinatura de valor zero: a ` +
+        `recorrência ${id} continua cobrando o valor anterior. Cancele-a no painel do gateway se a ` +
+        "clínica não deve mais ser cobrada."
+      );
+    default:
+      return null;
+  }
 }
 
 /** Faturas da clínica, da mais recente para a mais antiga. */

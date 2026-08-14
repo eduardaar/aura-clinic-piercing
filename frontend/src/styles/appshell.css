@@ -29,11 +29,26 @@
   --shell-rail-w: 68px;
   --shell-topbar-h: 72px;
   --shell-gutter: 24px;
-  --shell-nav: #221812;
-  --shell-nav-2: #17100c;
-  --shell-nav-line: rgba(201, 168, 106, .16);
-  --shell-nav-text: #cbbfb2;
+  --shell-nav: #0d1b2a;
+  --shell-nav-2: #101f31;
+  --shell-nav-line: rgb(255 255 255 / .10);
+  --shell-nav-text: #bdcbd9;
   --shell-break: 900px;
+}
+
+/* O tema pessoal troca a atmosfera do painel inteiro, inclusive o menu fixo.
+   O catálogo público preserva sua própria identidade visual e não é afetado. */
+:root[data-aura-theme="blue"] {
+  --shell-nav: #123651;
+  --shell-nav-2: #102b42;
+  --shell-nav-line: rgba(184, 211, 232, .18);
+  --shell-nav-text: #cadce9;
+}
+:root[data-aura-theme="green"] {
+  --shell-nav: #173a2b;
+  --shell-nav-2: #123023;
+  --shell-nav-line: rgba(190, 218, 198, .18);
+  --shell-nav-text: #ceded2;
 }
 
 /* ---------------------------------------------------------------- estrutura */
@@ -82,21 +97,16 @@
   background: linear-gradient(180deg, var(--shell-nav) 0%, var(--shell-nav-2) 100%);
   box-shadow: inset -1px 0 0 var(--shell-nav-line);
   scrollbar-width: thin;
-  scrollbar-color: rgba(201, 168, 106, .3) transparent;
+  scrollbar-color: rgb(from var(--gold) r g b / .3) transparent;
 }
 
 .sidebar::-webkit-scrollbar { width: 6px; }
-.sidebar::-webkit-scrollbar-thumb { background: rgba(201, 168, 106, .28); border-radius: 3px; }
+.sidebar::-webkit-scrollbar-thumb { background: rgb(from var(--gold) r g b / .28); border-radius: 3px; }
 
 /* Marca — compacta de propósito. A versão anterior usava 46px fixos e o nome
    de um tenant com 3 palavras cobria o primeiro item do menu. */
 .sidebar-brand {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 12px;
-  min-height: var(--shell-topbar-h);
-  padding: 0 18px;
+  display: none;
   margin: 0;
   border: 0;
   border-radius: 0;
@@ -124,7 +134,7 @@
   font-weight: 650;
   line-height: 1.22;
   letter-spacing: -0.01em;
-  color: #f2e6d2;
+  color: #f8fafc;
   text-transform: none;
   /* Nome longo trunca em 2 linhas em vez de empurrar o menu para baixo. */
   display: -webkit-box;
@@ -141,7 +151,7 @@
   font-weight: 600;
   letter-spacing: .12em;
   text-transform: uppercase;
-  color: rgba(201, 168, 106, .8);
+  color: rgb(from var(--gold) r g b / .8);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -154,32 +164,32 @@
 .sidebar nav {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 14px 12px 8px;
+  gap: 5px;
+  padding: 28px 10px 14px;
   margin: 0;
   flex: 1;
 }
 
 .nav-group-label {
-  padding: 14px 10px 6px;
+  padding: 22px 14px 7px;
   font-family: var(--body-font);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: .14em;
   text-transform: uppercase;
-  color: rgba(203, 191, 178, .42);
+  color: rgb(226 234 243 / .67);
 }
-.nav-group-label:first-child { padding-top: 2px; }
+.nav-group-label:first-child { padding-top: 6px; }
 
 .sidebar nav button {
   display: flex;
   align-items: center;
   gap: 11px;
   width: 100%;
-  min-height: 40px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 9px;
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 11px;
   background: transparent;
   box-shadow: none;
   color: var(--shell-nav-text);
@@ -198,13 +208,13 @@
   flex: none;
   width: 18px;
   height: 18px;
-  opacity: .72;
+  opacity: .86;
   transition: opacity .15s ease;
 }
 
 .sidebar nav button:hover {
-  background: rgba(255, 255, 255, .055);
-  color: #f0e7db;
+  background: rgba(255, 255, 255, .07);
+  color: #f8fafc;
   transform: none;
 }
 .sidebar nav button:hover svg { opacity: 1; }
@@ -212,8 +222,9 @@
 /* Estado ativo discreto: barra dourada + fundo suave. O preenchimento sólido
    anterior competia visualmente com o conteúdo da página. */
 .sidebar nav button.active {
-  background: rgba(201, 168, 106, .14);
-  color: var(--gold-light);
+  border-color: rgba(255,255,255,.04);
+  background: linear-gradient(135deg, rgba(96, 114, 138, .42), rgba(68, 85, 108, .48));
+  color: #fff;
   font-weight: 600;
   box-shadow: none;
 }
@@ -221,11 +232,11 @@
 .sidebar nav button.active::before {
   content: "";
   position: absolute;
-  left: -12px;
+  left: -10px;
   top: 50%;
   transform: translateY(-50%);
-  width: 3px;
-  height: 20px;
+  width: 2px;
+  height: 30px;
   border-radius: 0 3px 3px 0;
   background: var(--gold);
 }
@@ -247,14 +258,15 @@
   bottom: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 10px 12px 14px;
+  gap: 6px;
+  padding: 12px 10px 14px;
   border-top: 1px solid var(--shell-nav-line);
   background: var(--shell-nav-2);
 }
 
 .sidebar-foot .plan-link,
-.sidebar-foot .logout-button {
+.sidebar-foot .logout-button,
+.sidebar-foot .support-link {
   display: flex;
   align-items: center;
   gap: 11px;
@@ -273,7 +285,20 @@
   cursor: pointer;
   transition: background-color .15s ease, color .15s ease;
 }
-.sidebar-foot .plan-link:hover { background: rgba(201, 168, 106, .12); color: var(--gold-light); }
+.sidebar-foot .support-link {
+  min-height: 76px;
+  padding: 12px 14px;
+  border: 1px solid rgba(202, 216, 231, .2);
+  border-radius: 11px;
+  background: rgba(9, 24, 42, .28);
+  color: #f2f6fa;
+}
+.sidebar-foot .support-link > svg { color: var(--gold-light); }
+.sidebar-foot .support-link .nav-label { display: grid; gap: 2px; }
+.sidebar-foot .support-link strong { font-size: 15px; font-weight: 700; }
+.sidebar-foot .support-link small { color: var(--shell-nav-text); font-size: 12px; }
+.sidebar-foot .support-link:hover { background: rgba(255,255,255,.06); color: #fff; }
+.sidebar-foot .plan-link:hover { background: rgb(from var(--gold) r g b / .12); color: var(--gold-light); }
 .sidebar-foot .logout-button:hover { background: rgba(184, 92, 92, .16); color: #ecc0c0; }
 .sidebar-foot .plan-link svg,
 .sidebar-foot .logout-button svg { flex: none; width: 17px; height: 17px; opacity: .75; }
@@ -281,7 +306,7 @@
   margin-left: auto;
   padding: 2px 7px;
   border-radius: 999px;
-  background: rgba(201, 168, 106, .2);
+  background: rgb(from var(--gold) r g b / .2);
   color: var(--gold-light);
   font-size: 10.5px;
   font-weight: 700;
@@ -294,10 +319,10 @@
   flex: none;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
   height: var(--shell-topbar-h);
   min-height: var(--shell-topbar-h);
-  padding: 0 var(--shell-gutter);
+  padding: 0 28px;
   margin: 0;
   border: 0;
   border-bottom: 1px solid var(--line);
@@ -335,13 +360,14 @@
 .topbar-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   margin-left: auto;
   flex: none;
   flex-wrap: nowrap;
 }
 
-.topbar-actions .notification-button {
+.topbar-actions .notification-button,
+.topbar-icon-action {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -356,7 +382,8 @@
   cursor: pointer;
   transition: background-color .15s ease, border-color .15s ease;
 }
-.topbar-actions .notification-button:hover { background: var(--paper); border-color: var(--nude); }
+.topbar-actions .notification-button:hover,
+.topbar-icon-action:hover { background: var(--paper); border-color: var(--nude); }
 .topbar-actions .notification-button span {
   position: absolute;
   top: -5px;
@@ -376,40 +403,63 @@
 }
 
 /* A data completa é a primeira coisa a sair quando falta espaço. */
-.topbar-actions .date-card {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  height: 38px;
-  padding: 0 13px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--white);
-  box-shadow: none;
-}
-.topbar-actions .date-card svg { width: 17px; height: 17px; color: var(--nude-strong); flex: none; }
-.topbar-actions .date-card div { display: flex; flex-direction: column; line-height: 1.2; }
-.topbar-actions .date-card strong { font-size: 12.5px; font-weight: 600; color: var(--ink); white-space: nowrap; }
-.topbar-actions .date-card span { font-size: 11px; color: var(--muted); white-space: nowrap; text-transform: capitalize; }
-
 .topbar-actions .user-chip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  max-width: 230px;
-  height: 38px;
-  padding: 0 13px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--paper);
+  gap: 10px;
+  min-width: 190px;
+  height: 48px;
+  margin-left: 12px;
+  padding: 0 4px 0 10px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
   color: var(--ink);
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
+  text-align: left;
+  cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.topbar-actions .user-chip svg { flex: none; color: var(--nude-strong); }
+.topbar-actions .user-chip > svg { flex: none; margin-left: auto; color: var(--muted); }
+.user-avatar {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--gold-light), var(--gold-dark));
+  color: #fff;
+  font-family: var(--title-font);
+  font-size: 14px;
+  font-weight: 750;
+}
+.user-chip-copy { display: grid; min-width: 0; gap: 1px; }
+.user-chip-copy strong { overflow: hidden; color: var(--ink); font-size: 13px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.user-chip-copy small { color: var(--muted); font-size: 11px; font-weight: 500; }
+
+.global-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(42vw, 510px);
+  height: 44px;
+  padding: 0 12px 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--white);
+  box-shadow: 0 2px 6px rgb(16 32 51 / .025);
+  color: var(--muted);
+}
+.global-search:focus-within { border-color: color-mix(in srgb, var(--gold) 60%, var(--line)); box-shadow: 0 0 0 3px rgb(from var(--gold) r g b / .12); }
+.global-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: 13px; }
+.global-search input::placeholder { color: var(--muted); opacity: .85; }
+.global-search kbd { flex: none; padding: 2px 6px; border: 1px solid var(--line); border-radius: 5px; color: var(--muted); font-family: inherit; font-size: 10px; white-space: nowrap; }
+.topbar-page-context { display: none; min-width: 0; }
 
 .plan-banner { margin: 0 0 20px; }
 
@@ -488,11 +538,12 @@
 
 @media (max-width: 1180px) {
   :root { --shell-gutter: 24px; }
-  .topbar-actions .date-card span { display: none; }
+  .global-search { width: min(37vw, 420px); }
 }
 
 @media (max-width: 1040px) {
-  .topbar-actions .user-chip { display: none; }
+  .topbar-actions .user-chip { min-width: 52px; margin-left: 4px; padding-left: 8px; }
+  .user-chip-copy, .topbar-actions .user-chip > svg { display: none; }
 }
 
 @media (max-width: 900px) {
@@ -532,13 +583,30 @@
   .nav-toggle-desk { display: none; }
   .nav-toggle-mobile { display: inline-flex; }
 
-  .topbar-actions .date-card { display: none; }
-  .topbar-title h1 { font-size: 17px; }
+  .global-search { flex: 1; width: auto; }
+  .global-search kbd { display: none; }
 }
 
 @media (max-width: 560px) {
-  .topbar-title .eyebrow { display: none; }
+  .topbar { gap: 8px; padding: 0 16px; }
+  .topbar-actions { gap: 2px; }
+  .topbar-icon-action { display: none; }
+  .topbar-actions .notification-button { width: 36px; height: 36px; }
   .content-scroll { padding-top: 20px; }
+  .content-scroll { padding-right: max(14px, env(safe-area-inset-right)); padding-left: max(14px, env(safe-area-inset-left)); padding-bottom: calc(36px + env(safe-area-inset-bottom)); }
+  .panel { border-radius: 13px; }
+  .metric-grid, .premium-metric-grid { grid-template-columns: 1fr; }
+  .premium-dashboard-grid, .premium-lower-grid, .premium-ranking-grid { grid-template-columns: 1fr; gap: 14px; }
+  .toolbar, .inventory-filter-row.simplified { align-items: stretch; }
+  .toolbar > *, .inventory-filter-row.simplified > * { max-width: none; }
+  .agenda-page-actions { flex-wrap: wrap; }
+  .agenda-page-actions > * { min-width: calc(50% - 4px); }
+  .products-crud-header { padding: 16px; }
+  .product-shortcuts { display: grid; grid-template-columns: 1fr; width: 100%; }
+  .product-shortcuts > * { width: 100%; justify-content: center; }
+  .sidebar { width: min(88vw, 320px); }
+  .sidebar nav { padding: 18px 10px 12px; }
+  .sidebar-foot { padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -603,6 +671,313 @@
   height: 42px;
   min-width: 42px;
 }
+
+/* ==============================================================
+   Linguagem visual de operação
+
+   Dashboard, agenda, produtos/estoque e DataView são as telas de
+   trabalho mais usadas. Estas regras deliberadamente vivem no shell:
+   evitam que cada módulo recrie uma variante de card, filtro e tabela.
+   A referência é a interface clara com navegação escura: foco no dado,
+   bordas discretas e só um acento por vez.
+   ============================================================== */
+
+.content-scroll {
+  background: radial-gradient(circle at 100% 0%, rgb(from var(--gold) r g b / .08), transparent 28%), var(--paper);
+}
+
+.panel,
+.inventory-section-card,
+.inventory-panel-shell,
+.dataview {
+  border-color: var(--line);
+  box-shadow: 0 10px 30px rgb(16 32 51 / .045);
+}
+
+.panel {
+  border-radius: 16px;
+}
+
+.panel-heading {
+  min-height: 44px;
+}
+
+.panel-heading h2,
+.dashboard-section-heading h3 {
+  letter-spacing: -.025em;
+}
+
+/* Dashboard: o título, período e abas funcionam como uma única barra de
+   contexto, sem adicionar um "card" dentro do outro. */
+.premium-dashboard {
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.dashboard-period-heading {
+  align-items: end;
+  padding: 4px 0 16px;
+  border-bottom: 0;
+}
+
+.dashboard-period-heading h2 {
+  font-size: clamp(24px, 2.1vw, 31px);
+  letter-spacing: -.04em;
+}
+
+.dashboard-period-heading > div > span,
+.dashboard-section-heading p {
+  color: var(--muted);
+}
+
+.dashboard-section-tabs {
+  display: inline-flex;
+  width: max-content;
+  max-width: 100%;
+  margin: 0 0 22px;
+  padding: 4px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--white);
+  box-shadow: 0 5px 14px rgb(16 32 51 / .04);
+}
+
+.dashboard-section-tabs button {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.dashboard-section-tabs button.active {
+  background: var(--brown-dark);
+  color: #fff;
+  box-shadow: none;
+}
+
+.metric-card,
+.premium-metric-card {
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: var(--white);
+  box-shadow: 0 8px 22px rgb(16 32 51 / .04);
+}
+
+.metric-card {
+  padding: 18px;
+}
+
+.metric-card > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.metric-card > strong {
+  margin-top: 8px;
+  color: var(--ink);
+  font-family: var(--title-font);
+  font-weight: 700;
+  letter-spacing: -.035em;
+}
+
+.premium-metric-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.premium-metric-card::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 3px;
+  background: var(--gold);
+  opacity: .8;
+}
+
+.premium-metric-card .metric-icon {
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--gold-soft) 62%, white);
+  color: var(--gold-dark);
+}
+
+.premium-appointment-row,
+.clean-list > div {
+  border-bottom-color: var(--line);
+}
+
+.premium-appointment-row:hover {
+  background: color-mix(in srgb, var(--paper) 80%, white);
+}
+
+/* Agenda: cabeçalho curto, ações à direita e controles da mesma família das
+   listas. O link público continua disponível, sem ganhar uma faixa própria. */
+.agenda-page-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 20px;
+  background: var(--white);
+}
+
+.agenda-page-heading h2 {
+  margin: 2px 0 0;
+  font-size: 24px;
+  letter-spacing: -.035em;
+}
+
+.agenda-page-actions,
+.inventory-hero-actions,
+.product-shortcuts {
+  gap: 8px;
+}
+
+.toolbar,
+.inventory-filter-row.simplified {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--white);
+  box-shadow: 0 7px 18px rgb(16 32 51 / .035);
+}
+
+.toolbar .segmented,
+.inventory-module-tabs {
+  border-color: var(--line);
+  background: var(--paper);
+}
+
+.toolbar .segmented button.active,
+.inventory-module-tabs button.active {
+  background: var(--brown-dark);
+  color: #fff;
+}
+
+/* Produtos/estoque: a área continua única, mas a navegação deixa explícito o
+   contexto e remove o aspecto de blocos empilhados. */
+.inventory-studio {
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.products-crud-header {
+  border-radius: 16px;
+  background: var(--white);
+}
+
+.inventory-panel-shell {
+  padding: 18px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--white) 92%, var(--paper));
+}
+
+.inventory-category-strip button,
+.inventory-list-breadcrumb button {
+  border-color: var(--line);
+  background: var(--white);
+  color: var(--muted);
+}
+
+.inventory-category-strip button.active,
+.inventory-list-breadcrumb button.active {
+  border-color: color-mix(in srgb, var(--gold) 60%, var(--line));
+  background: var(--gold-soft);
+  color: var(--gold-dark);
+}
+
+/* DataView é o padrão obrigatório de listagem. A barra de busca, tabela e
+   paginação passam a ter a mesma leitura em Clientes, Agenda, Produtos e
+   Financeiro. */
+.dataview {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--white);
+}
+
+.dataview-toolbar {
+  min-height: 58px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--paper) 70%, white);
+}
+
+.dataview-search {
+  min-height: 36px;
+  border-color: var(--line);
+  border-radius: 9px;
+  background: var(--white);
+}
+
+.dataview-search:focus-within {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgb(from var(--gold) r g b / .13);
+}
+
+.dataview-filter-toggle,
+.dataview-clear,
+.dataview-pagination button {
+  border-color: var(--line);
+  border-radius: 8px;
+  background: var(--white);
+  color: var(--ink);
+}
+
+.dataview-filter-toggle.has-filters {
+  border-color: var(--gold);
+  background: var(--gold-soft);
+  color: var(--gold-dark);
+}
+
+.dataview-filters {
+  margin: 0;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.dataview-table thead th {
+  padding-top: 13px;
+  padding-bottom: 13px;
+  border-bottom-color: var(--line);
+  background: color-mix(in srgb, var(--paper) 72%, white);
+  color: var(--muted);
+  font-size: 10.5px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.dataview-table tbody td {
+  border-bottom-color: var(--line);
+}
+
+.dataview-table tbody tr:hover td {
+  background: color-mix(in srgb, var(--gold-soft) 26%, white);
+}
+
+.dataview-pagination {
+  min-height: 58px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--white);
+}
+
+@media (max-width: 760px) {
+  .dashboard-period-heading,
+  .agenda-page-heading { align-items: flex-start; flex-direction: column; }
+  .agenda-page-actions { width: 100%; }
+  .agenda-page-actions > * { flex: 1; }
+  .dashboard-section-tabs { width: 100%; }
+  .inventory-panel-shell { padding: 12px; }
+  .dataview { overflow: visible; }
+}
 .premium-metric-card .metric-icon svg { width: 19px; height: 19px; }
 .premium-metric-card strong {
   font-size: clamp(21px, 1.9vw, 28px);
@@ -645,7 +1020,7 @@
 }
 .dataview-search:focus-within {
   border-color: var(--nude);
-  box-shadow: 0 0 0 3px rgba(201, 168, 106, .16);
+  box-shadow: 0 0 0 3px rgb(from var(--gold) r g b / .16);
 }
 .dataview-search svg { flex: none; color: var(--muted); }
 .dataview-search input {
@@ -743,7 +1118,7 @@
 .dataview-filter input:focus {
   outline: 0;
   border-color: var(--nude);
-  box-shadow: 0 0 0 3px rgba(201, 168, 106, .16);
+  box-shadow: 0 0 0 3px rgb(from var(--gold) r g b / .16);
 }
 
 .dataview-clear {
@@ -866,6 +1241,9 @@
   .dataview-search { max-width: none; }
   .dataview-pagination { gap: 10px; }
   .dataview-pager { margin-left: 0; width: 100%; justify-content: space-between; }
+  .dataview-toolbar { align-items: stretch; }
+  .dataview-filter-toggle { justify-content: center; }
+  .dataview-table { font-size: 13px; }
 }
 
 /* Cabeçalho volta a aparecer nos cartões de gerenciamento (Tamanhos, Espessuras,

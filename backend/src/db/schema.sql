@@ -1,16 +1,52 @@
 -- Schema unificado da Aura Clinic (Postgres).
 -- Espelha o modelo que o frontend espera. Tipos: SERIAL para ids,
--- DOUBLE PRECISION para valores, INTEGER para flags 0/1, TEXT para datas/hora
+-- NUMERIC(12,2) para DINHEIRO, DOUBLE PRECISION apenas para grandezas físicas
+-- (peso, medida, score), INTEGER para flags 0/1, TEXT para datas/hora
 -- armazenadas como string (compatível com o comportamento atual dos handlers).
+--
+-- Dinheiro NÃO é ponto flutuante (pendência 13): `0.1 + 0.2` em DOUBLE dá
+-- 0.30000000000000004, e num somatório de milhares de linhas isso vira
+-- divergência de centavos no fechamento. Toda coluna monetária é
+-- NUMERIC(12,2); a conversão das clínicas que já existem está no bloco
+-- idempotente no fim deste arquivo (CREATE TABLE IF NOT EXISTS não altera
+-- tabela existente).
 
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   email TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
+  session_version INTEGER NOT NULL DEFAULT 1,
   role TEXT NOT NULL DEFAULT 'admin',
   created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
+
+-- Versão da sessão permite revogar tokens já emitidos quando senha ou papel
+-- muda. O ALTER mantém compatibilidade com schemas criados antes da coluna.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 1;
+-- Sessões persistidas: o browser recebe só um refresh token opaco em cookie
+-- HttpOnly. No banco guardamos exclusivamente o SHA-256 dele, permitindo
+-- revogação por dispositivo sem transformar a tabela em cofre de credenciais.
+CREATE TABLE IF NOT EXISTS user_sessions (
+  id UUID PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  session_version INTEGER NOT NULL,
+  refresh_token_hash TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_used_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ NOT NULL,
+  revoked_at TIMESTAMPTZ,
+  ip_address TEXT,
+  user_agent TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_user_active
+  ON user_sessions(user_id, last_used_at DESC) WHERE revoked_at IS NULL;
+
+-- TOTP é opcional durante a transição para não bloquear administradores já
+-- existentes. Depois de habilitado, é obrigatório no login. O segredo é
+-- criptografado pela aplicação antes de chegar a esta coluna.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_totp_secret_encrypted TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_enabled BOOLEAN NOT NULL DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS admin_audit_logs (
   id SERIAL PRIMARY KEY,
@@ -61,8 +97,8 @@ CREATE TABLE IF NOT EXISTS services (
   name TEXT NOT NULL,
   description TEXT,
   duration_minutes INTEGER NOT NULL DEFAULT 40,
-  price DOUBLE PRECISION NOT NULL DEFAULT 0,
-  deposit_value DOUBLE PRECISION NOT NULL DEFAULT 0,
+  price NUMERIC(12,2) NOT NULL DEFAULT 0,
+  deposit_value NUMERIC(12,2) NOT NULL DEFAULT 0,
   active_online_booking INTEGER NOT NULL DEFAULT 1,
   pre_service_notes TEXT,
   created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
@@ -114,8 +150,8 @@ CREATE TABLE IF NOT EXISTS jewelry_inventory (
   seo_description TEXT,
   freight_notes TEXT,
   quantity INTEGER NOT NULL DEFAULT 0,
-  cost_value DOUBLE PRECISION NOT NULL DEFAULT 0,
-  sale_value DOUBLE PRECISION NOT NULL DEFAULT 0,
+  cost_value NUMERIC(12,2) NOT NULL DEFAULT 0,
+  sale_value NUMERIC(12,2) NOT NULL DEFAULT 0,
   purchase_cost_cents INTEGER NOT NULL DEFAULT 0,
   allocated_freight_cents INTEGER NOT NULL DEFAULT 0,
   additional_cost_cents INTEGER NOT NULL DEFAULT 0,
@@ -159,8 +195,8 @@ CREATE TABLE IF NOT EXISTS jewelry_inventory (
   diameter TEXT,
   thread_type TEXT,
   supplier TEXT,
-  cost_value DOUBLE PRECISION NOT NULL DEFAULT 0,
-  sale_value DOUBLE PRECISION NOT NULL DEFAULT 0,
+  cost_value NUMERIC(12,2) NOT NULL DEFAULT 0,
+  sale_value NUMERIC(12,2) NOT NULL DEFAULT 0,
   purchase_cost_cents INTEGER NOT NULL DEFAULT 0,
   allocated_freight_cents INTEGER NOT NULL DEFAULT 0,
   additional_cost_cents INTEGER NOT NULL DEFAULT 0,
@@ -252,9 +288,9 @@ CREATE TABLE IF NOT EXISTS appointments (
   appointment_date TEXT NOT NULL,
   appointment_time TEXT NOT NULL,
   end_time TEXT,
-  total_value DOUBLE PRECISION NOT NULL DEFAULT 0,
-  deposit_value DOUBLE PRECISION NOT NULL DEFAULT 0,
-  remaining_value DOUBLE PRECISION NOT NULL DEFAULT 0,
+  total_value NUMERIC(12,2) NOT NULL DEFAULT 0,
+  deposit_value NUMERIC(12,2) NOT NULL DEFAULT 0,
+  remaining_value NUMERIC(12,2) NOT NULL DEFAULT 0,
   deposit_payment_method TEXT,
   remaining_payment_method TEXT,
   status TEXT NOT NULL DEFAULT 'pendente',
@@ -277,10 +313,10 @@ CREATE TABLE IF NOT EXISTS appointment_items (
   jewelry_id INTEGER REFERENCES jewelry_inventory(id),
   jewelry_variant_id INTEGER,
   quantity INTEGER NOT NULL DEFAULT 1,
-  procedure_price DOUBLE PRECISION NOT NULL DEFAULT 0,
-  jewelry_unit_price DOUBLE PRECISION NOT NULL DEFAULT 0,
+  procedure_price NUMERIC(12,2) NOT NULL DEFAULT 0,
+  jewelry_unit_price NUMERIC(12,2) NOT NULL DEFAULT 0,
   duration_minutes INTEGER NOT NULL DEFAULT 0,
-  subtotal DOUBLE PRECISION NOT NULL DEFAULT 0,
+  subtotal NUMERIC(12,2) NOT NULL DEFAULT 0,
   notes TEXT,
   created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS'),
   updated_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
@@ -304,7 +340,7 @@ CREATE TABLE IF NOT EXISTS inventory_reservations (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(reservation_key, jewelry_id, jewelry_variant_id)
 );
-ALTER TABLE professionals ADD COLUMN IF NOT EXISTS commission_percentage DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE professionals ADD COLUMN IF NOT EXISTS commission_percentage NUMERIC(5,2) NOT NULL DEFAULT 0;
 
 CREATE INDEX IF NOT EXISTS idx_inventory_reservations_stock ON inventory_reservations(jewelry_id, jewelry_variant_id, status, expires_at);
 CREATE INDEX IF NOT EXISTS idx_inventory_reservations_expiry ON inventory_reservations(status, expires_at);
@@ -394,27 +430,85 @@ ON CONFLICT (rule_key) DO NOTHING;
 CREATE INDEX IF NOT EXISTS idx_automation_rules_event ON automation_rules(event_type, is_active);
 CREATE INDEX IF NOT EXISTS idx_automation_runs_entity ON automation_runs(entity_type, entity_id, executed_at);
 
+-- Carteira de comunicações. Os créditos ficam no schema da clínica para que
+-- o extrato e os bloqueios de saldo acompanhem o mesmo isolamento das mensagens.
+-- `available_credits` é uma projeção transacional do ledger: nunca é alterado
+-- sem que a contrapartida imutável seja gravada em communication_credit_ledger.
+CREATE TABLE IF NOT EXISTS communication_credit_wallets (
+  channel TEXT NOT NULL CHECK (channel IN ('whatsapp', 'email', 'ai')),
+  period_key TEXT NOT NULL,
+  available_credits INTEGER NOT NULL DEFAULT 0 CHECK (available_credits >= 0),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (channel, period_key)
+);
+
+CREATE TABLE IF NOT EXISTS communication_credit_ledger (
+  id SERIAL PRIMARY KEY,
+  channel TEXT NOT NULL CHECK (channel IN ('whatsapp', 'email', 'ai')),
+  period_key TEXT NOT NULL,
+  entry_type TEXT NOT NULL CHECK (entry_type IN ('monthly_grant', 'topup', 'reservation', 'consumption', 'release', 'adjustment')),
+  credits INTEGER NOT NULL,
+  reference_key TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_communication_credit_ledger_reference
+  ON communication_credit_ledger(reference_key) WHERE reference_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_communication_credit_ledger_history
+  ON communication_credit_ledger(period_key, channel, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS communication_credit_reservations (
+  id SERIAL PRIMARY KEY,
+  channel TEXT NOT NULL CHECK (channel IN ('whatsapp', 'email', 'ai')),
+  period_key TEXT NOT NULL,
+  credits INTEGER NOT NULL CHECK (credits > 0),
+  reference_key TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'consumed', 'released', 'expired')),
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  consumed_at TIMESTAMPTZ,
+  released_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_communication_credit_reservations_status
+  ON communication_credit_reservations(status, channel, period_key);
+
+-- A compra é uma intenção, nunca uma recarga automática. Um gateway confirmado
+-- deverá chamar o serviço de topup e guardar sua referência nesta linha.
+CREATE TABLE IF NOT EXISTS communication_credit_purchase_intents (
+  id SERIAL PRIMARY KEY,
+  product_key TEXT NOT NULL,
+  channel TEXT NOT NULL CHECK (channel IN ('whatsapp', 'email', 'ai')),
+  credits INTEGER NOT NULL CHECK (credits > 0),
+  amount_cents INTEGER NOT NULL CHECK (amount_cents >= 0),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid', 'cancelled', 'expired')),
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_communication_credit_purchase_intents_status
+  ON communication_credit_purchase_intents(status, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS payments (
   id SERIAL PRIMARY KEY,
   appointment_id INTEGER REFERENCES appointments(id),
   client_id INTEGER NOT NULL REFERENCES clients(id),
-  amount DOUBLE PRECISION NOT NULL,
+  amount NUMERIC(12,2) NOT NULL,
   payment_type TEXT NOT NULL,
   method TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pago',
   paid_at TEXT NOT NULL
 );
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS installments INTEGER NOT NULL DEFAULT 1;
-ALTER TABLE payments ADD COLUMN IF NOT EXISTS fee_amount DOUBLE PRECISION NOT NULL DEFAULT 0;
-ALTER TABLE payments ADD COLUMN IF NOT EXISTS net_amount DOUBLE PRECISION;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS fee_amount NUMERIC(12,2) NOT NULL DEFAULT 0;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS net_amount NUMERIC(12,2);
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS expected_receipt_date TEXT;
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS notes TEXT;
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER REFERENCES users(id);
 
-ALTER TABLE appointments ADD COLUMN IF NOT EXISTS service_value DOUBLE PRECISION NOT NULL DEFAULT 0;
-ALTER TABLE appointments ADD COLUMN IF NOT EXISTS jewelry_value DOUBLE PRECISION NOT NULL DEFAULT 0;
-ALTER TABLE appointments ADD COLUMN IF NOT EXISTS subtotal_value DOUBLE PRECISION NOT NULL DEFAULT 0;
-ALTER TABLE appointments ADD COLUMN IF NOT EXISTS discount_value DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS service_value NUMERIC(12,2) NOT NULL DEFAULT 0;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS jewelry_value NUMERIC(12,2) NOT NULL DEFAULT 0;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS subtotal_value NUMERIC(12,2) NOT NULL DEFAULT 0;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS discount_value NUMERIC(12,2) NOT NULL DEFAULT 0;
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS coupon_id INTEGER;
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS coupon_code TEXT;
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS coupon_snapshot JSONB;
@@ -456,7 +550,7 @@ CREATE TABLE IF NOT EXISTS sales_orders (
   source TEXT NOT NULL DEFAULT 'site',
   status TEXT NOT NULL DEFAULT 'aberta',
   payment_method TEXT,
-  total_value DOUBLE PRECISION NOT NULL DEFAULT 0,
+  total_value NUMERIC(12,2) NOT NULL DEFAULT 0,
   notes TEXT,
   created_by_user_id INTEGER REFERENCES users(id),
   created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
@@ -471,7 +565,7 @@ CREATE TABLE IF NOT EXISTS sales_order_items (
   service_id INTEGER REFERENCES services(id),
   item_name TEXT NOT NULL,
   quantity INTEGER NOT NULL DEFAULT 1,
-  unit_price DOUBLE PRECISION NOT NULL DEFAULT 0,
+  unit_price NUMERIC(12,2) NOT NULL DEFAULT 0,
   notes TEXT
 );
 
@@ -480,7 +574,7 @@ CREATE TABLE IF NOT EXISTS expenses (
   description TEXT NOT NULL,
   expense_type TEXT NOT NULL CHECK (expense_type IN ('fixa', 'variavel')),
   category TEXT,
-  amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+  amount NUMERIC(12,2) NOT NULL DEFAULT 0,
   due_date TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'paga',
   payment_method TEXT,
@@ -536,9 +630,11 @@ CREATE TABLE IF NOT EXISTS digital_terms (
   health_declaration TEXT,
   form_data TEXT NOT NULL DEFAULT '',
   signature_data_url TEXT NOT NULL,
+  guardian_signature_data_url TEXT,
   pdf_url TEXT,
   signed_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
+ALTER TABLE digital_terms ADD COLUMN IF NOT EXISTS guardian_signature_data_url TEXT;
 
 CREATE TABLE IF NOT EXISTS post_care_followups (
   id SERIAL PRIMARY KEY,
@@ -571,7 +667,7 @@ CREATE TABLE IF NOT EXISTS loyalty_redemptions (
   id SERIAL PRIMARY KEY,
   client_id INTEGER NOT NULL REFERENCES clients(id),
   points_used INTEGER NOT NULL,
-  discount_value DOUBLE PRECISION NOT NULL DEFAULT 0,
+  discount_value NUMERIC(12,2) NOT NULL DEFAULT 0,
   notes TEXT,
   redeemed_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
@@ -625,7 +721,7 @@ CREATE TABLE IF NOT EXISTS catalog_promotions (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   discount_type TEXT NOT NULL DEFAULT 'percent',
-  discount_value DOUBLE PRECISION NOT NULL DEFAULT 0,
+  discount_value NUMERIC(12,2) NOT NULL DEFAULT 0,
   start_date TEXT,
   end_date TEXT,
   applies_to TEXT NOT NULL DEFAULT 'products',
@@ -647,8 +743,8 @@ CREATE TABLE IF NOT EXISTS financial_entries (
   entry_type TEXT NOT NULL CHECK (entry_type IN ('payable', 'receivable', 'income', 'expense')),
   description TEXT NOT NULL,
   category TEXT,
-  amount DOUBLE PRECISION NOT NULL CHECK (amount >= 0),
-  paid_amount DOUBLE PRECISION NOT NULL DEFAULT 0 CHECK (paid_amount >= 0),
+  amount NUMERIC(12,2) NOT NULL CHECK (amount >= 0),
+  paid_amount NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (paid_amount >= 0),
   due_date TEXT NOT NULL,
   competence_date TEXT,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid', 'overdue', 'canceled', 'partially_paid', 'refunded')),
@@ -689,7 +785,7 @@ ALTER TABLE financial_entries ADD COLUMN IF NOT EXISTS lifecycle_reason TEXT;
 ALTER TABLE financial_entries ADD COLUMN IF NOT EXISTS lifecycle_changed_at TEXT;
 ALTER TABLE financial_entries ADD COLUMN IF NOT EXISTS lifecycle_changed_by INTEGER REFERENCES users(id);
 ALTER TABLE financial_entries ADD COLUMN IF NOT EXISTS original_status TEXT;
-ALTER TABLE financial_entries ADD COLUMN IF NOT EXISTS original_paid_amount DOUBLE PRECISION;
+ALTER TABLE financial_entries ADD COLUMN IF NOT EXISTS original_paid_amount NUMERIC(12,2);
 CREATE INDEX IF NOT EXISTS idx_financial_entries_lifecycle ON financial_entries(lifecycle_status, competence_date);
 
 CREATE TABLE IF NOT EXISTS financial_goals (
@@ -697,7 +793,7 @@ CREATE TABLE IF NOT EXISTS financial_goals (
   name TEXT NOT NULL,
   period_start TEXT NOT NULL,
   period_end TEXT NOT NULL,
-  target_amount DOUBLE PRECISION NOT NULL CHECK (target_amount >= 0),
+  target_amount NUMERIC(12,2) NOT NULL CHECK (target_amount >= 0),
   goal_type TEXT NOT NULL DEFAULT 'revenue',
   created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
@@ -706,7 +802,7 @@ CREATE TABLE IF NOT EXISTS financial_reconciliations (
   id SERIAL PRIMARY KEY,
   entry_id INTEGER NOT NULL REFERENCES financial_entries(id),
   external_reference TEXT,
-  statement_amount DOUBLE PRECISION NOT NULL,
+  statement_amount NUMERIC(12,2) NOT NULL,
   statement_date TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'matched' CHECK (status IN ('matched', 'divergent', 'ignored')),
   reconciled_by INTEGER REFERENCES users(id),
@@ -774,15 +870,18 @@ CREATE INDEX IF NOT EXISTS idx_stock_movements_date_type ON stock_movements(move
 
 CREATE TABLE IF NOT EXISTS payment_intents (
   id SERIAL PRIMARY KEY,
+  public_token TEXT NOT NULL UNIQUE,
+  public_token_expires_at TIMESTAMP NOT NULL DEFAULT (CURRENT_TIMESTAMP + INTERVAL '7 days'),
+  public_token_rotated_at TIMESTAMP,
   appointment_id INTEGER REFERENCES appointments(id),
   client_id INTEGER NOT NULL REFERENCES clients(id),
   provider TEXT NOT NULL DEFAULT 'manual',
   external_id TEXT,
   idempotency_key TEXT NOT NULL UNIQUE,
-  amount DOUBLE PRECISION NOT NULL CHECK (amount >= 0),
+  amount NUMERIC(12,2) NOT NULL CHECK (amount >= 0),
   currency TEXT NOT NULL DEFAULT 'BRL',
   payment_type TEXT NOT NULL DEFAULT 'deposit',
-  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'awaiting_payment', 'under_review', 'confirmed', 'failed', 'cancelled', 'refunded', 'expired')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'awaiting_payment', 'under_review', 'confirmed', 'failed', 'cancelled', 'refunded', 'chargeback', 'expired')),
   pix_copy_paste TEXT,
   qr_code_url TEXT,
   expires_at TIMESTAMP,
@@ -803,6 +902,27 @@ CREATE TABLE IF NOT EXISTS payment_events (
 
 CREATE INDEX IF NOT EXISTS idx_payment_intents_appointment ON payment_intents(appointment_id, status);
 CREATE INDEX IF NOT EXISTS idx_payment_events_intent ON payment_events(payment_intent_id, created_at);
+
+-- Operações financeiras solicitadas pelo time da clínica. A intenção é o
+-- registro imutável de que um cancelamento/estorno foi pedido e com qual chave
+-- idempotente, antes de chamar o gateway. Isso impede duas devoluções numa
+-- dupla-clique/reentrega e dá trilha auditável sem gravar dados de cartão.
+CREATE TABLE IF NOT EXISTS payment_operations (
+  id SERIAL PRIMARY KEY,
+  payment_intent_id INTEGER NOT NULL REFERENCES payment_intents(id) ON DELETE CASCADE,
+  operation_type TEXT NOT NULL CHECK (operation_type IN ('cancel', 'refund')),
+  idempotency_key TEXT NOT NULL,
+  requested_by INTEGER REFERENCES users(id),
+  amount NUMERIC(12,2),
+  reason TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'succeeded', 'failed')),
+  provider_response JSONB,
+  completed_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(payment_intent_id, operation_type, idempotency_key)
+);
+CREATE INDEX IF NOT EXISTS idx_payment_operations_intent ON payment_operations(payment_intent_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS catalog_layouts (
   id SERIAL PRIMARY KEY,
@@ -852,6 +972,53 @@ CREATE TABLE IF NOT EXISTS catalog_layout_history (
   snapshot JSONB NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Catalog Builder v2 -------------------------------------------------------
+--
+-- As tabelas acima continuam existindo porque são a fonte legada e porque
+-- alguns módulos operacionais ainda as consultam. O construtor, porém, não
+-- pode editar a vitrine que está no ar a cada "Salvar rascunho". O documento
+-- completo abaixo separa o rascunho da revisão publicada e deixa cada versão
+-- publicada imutável. Cada schema de tenant recebe seu próprio conjunto destas
+-- tabelas, portanto não há compartilhamento de personalização entre clínicas.
+CREATE TABLE IF NOT EXISTS catalog_customization_drafts (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  version INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
+  snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_by INTEGER REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS catalog_customization_revisions (
+  id SERIAL PRIMARY KEY,
+  version INTEGER NOT NULL UNIQUE CHECK (version > 0),
+  action TEXT NOT NULL CHECK (action IN ('publish', 'rollback')),
+  source_revision_id INTEGER REFERENCES catalog_customization_revisions(id),
+  snapshot JSONB NOT NULL,
+  published_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_by INTEGER REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_catalog_customization_revisions_version
+  ON catalog_customization_revisions(version DESC);
+
+-- Biblioteca de mídia do Catalog Builder. A tabela vive no schema da clínica;
+-- por isso a listagem e a edição de alt text jamais atravessam tenants.
+CREATE TABLE IF NOT EXISTS catalog_media_assets (
+  id SERIAL PRIMARY KEY,
+  url TEXT NOT NULL,
+  storage_key TEXT NOT NULL,
+  original_name TEXT NOT NULL DEFAULT '',
+  mime_type TEXT NOT NULL,
+  alt_text TEXT NOT NULL DEFAULT '',
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_catalog_media_assets_created
+  ON catalog_media_assets(created_at DESC, id DESC);
 
 CREATE TABLE IF NOT EXISTS catalog_events (
   id SERIAL PRIMARY KEY,
@@ -903,8 +1070,8 @@ ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS start_time TEXT;
 ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS end_time TEXT;
 ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS usage_limit INTEGER;
 ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS usage_limit_per_client INTEGER;
-ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS minimum_amount DOUBLE PRECISION NOT NULL DEFAULT 0;
-ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS maximum_discount DOUBLE PRECISION;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS minimum_amount NUMERIC(12,2) NOT NULL DEFAULT 0;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS maximum_discount NUMERIC(12,2);
 ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS minimum_quantity INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS variation_ids TEXT;
 ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS excluded_product_ids TEXT;
@@ -916,7 +1083,7 @@ ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS stones TEXT;
 ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS service_ids TEXT;
 ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS buy_quantity INTEGER;
 ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS pay_quantity INTEGER;
-ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS fixed_promotional_price DOUBLE PRECISION;
+ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS fixed_promotional_price NUMERIC(12,2);
 ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS is_stackable INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS stackable_with_coupon INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE catalog_promotions ADD COLUMN IF NOT EXISTS badge TEXT;
@@ -932,9 +1099,9 @@ CREATE TABLE IF NOT EXISTS promotion_usages (
   client_id INTEGER REFERENCES clients(id),
   appointment_id INTEGER REFERENCES appointments(id),
   sale_id INTEGER REFERENCES sales_orders(id),
-  original_amount DOUBLE PRECISION NOT NULL CHECK (original_amount >= 0),
-  discount_amount DOUBLE PRECISION NOT NULL CHECK (discount_amount >= 0),
-  final_amount DOUBLE PRECISION NOT NULL CHECK (final_amount >= 0),
+  original_amount NUMERIC(12,2) NOT NULL CHECK (original_amount >= 0),
+  discount_amount NUMERIC(12,2) NOT NULL CHECK (discount_amount >= 0),
+  final_amount NUMERIC(12,2) NOT NULL CHECK (final_amount >= 0),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -954,13 +1121,13 @@ CREATE TABLE IF NOT EXISTS coupons (
   internal_name TEXT NOT NULL,
   description TEXT,
   discount_type TEXT NOT NULL DEFAULT 'percent' CHECK (discount_type IN ('percent', 'fixed')),
-  discount_value DOUBLE PRECISION NOT NULL DEFAULT 0 CHECK (discount_value >= 0),
+  discount_value NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (discount_value >= 0),
   starts_at TIMESTAMP,
   ends_at TIMESTAMP,
   usage_limit INTEGER CHECK (usage_limit IS NULL OR usage_limit >= 0),
   usage_limit_per_client INTEGER CHECK (usage_limit_per_client IS NULL OR usage_limit_per_client >= 0),
-  minimum_amount DOUBLE PRECISION NOT NULL DEFAULT 0 CHECK (minimum_amount >= 0),
-  maximum_discount DOUBLE PRECISION CHECK (maximum_discount IS NULL OR maximum_discount >= 0),
+  minimum_amount NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (minimum_amount >= 0),
+  maximum_discount NUMERIC(12,2) CHECK (maximum_discount IS NULL OR maximum_discount >= 0),
   product_ids TEXT,
   category_ids TEXT,
   excluded_product_ids TEXT,
@@ -982,17 +1149,17 @@ CREATE TABLE IF NOT EXISTS coupon_usages (
   client_id INTEGER REFERENCES clients(id),
   appointment_id INTEGER REFERENCES appointments(id),
   sale_id INTEGER REFERENCES sales_orders(id),
-  original_amount DOUBLE PRECISION NOT NULL CHECK (original_amount >= 0),
-  discount_amount DOUBLE PRECISION NOT NULL CHECK (discount_amount >= 0),
-  final_amount DOUBLE PRECISION NOT NULL CHECK (final_amount >= 0),
+  original_amount NUMERIC(12,2) NOT NULL CHECK (original_amount >= 0),
+  discount_amount NUMERIC(12,2) NOT NULL CHECK (discount_amount >= 0),
+  final_amount NUMERIC(12,2) NOT NULL CHECK (final_amount >= 0),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_coupon_usages_appointment_unique ON coupon_usages(coupon_id, appointment_id) WHERE appointment_id IS NOT NULL;
 
 -- Checkout público: colunas aditivas e idempotentes. Mantêm pedidos legados
 -- intactos e guardam o preço/cupom aceitos no momento da compra.
-ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS subtotal_value DOUBLE PRECISION NOT NULL DEFAULT 0;
-ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS discount_value DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS subtotal_value NUMERIC(12,2) NOT NULL DEFAULT 0;
+ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS discount_value NUMERIC(12,2) NOT NULL DEFAULT 0;
 ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS coupon_id INTEGER REFERENCES coupons(id);
 ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS coupon_code TEXT;
 ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS coupon_snapshot JSONB;
@@ -1035,7 +1202,7 @@ CREATE TABLE IF NOT EXISTS procedures (
   name TEXT NOT NULL,
   body_area TEXT,
   description TEXT,
-  price DOUBLE PRECISION NOT NULL DEFAULT 0,
+  price NUMERIC(12,2) NOT NULL DEFAULT 0,
   duration_minutes INTEGER NOT NULL DEFAULT 40,
   aftercare_instructions TEXT,
   is_active INTEGER NOT NULL DEFAULT 1,
@@ -1102,6 +1269,61 @@ ALTER TABLE professionals ADD COLUMN IF NOT EXISTS calendar_color TEXT DEFAULT '
 ALTER TABLE professionals ADD COLUMN IF NOT EXISTS whatsapp TEXT;
 ALTER TABLE professionals ADD COLUMN IF NOT EXISTS notification_opt_in INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'manual';
+
+-- Governança de privacidade (LGPD). Estas tabelas são deliberadamente
+-- isoladas neste bloco idempotente para também chegarem aos tenants existentes pelo schema
+-- idempotente. A auditoria registra metadados de acesso, nunca o conteúdo de
+-- prontuários, fotos, termos ou documentos.
+CREATE TABLE IF NOT EXISTS privacy_audit_logs (
+  id SERIAL PRIMARY KEY,
+  actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  actor_email TEXT,
+  actor_role TEXT,
+  action TEXT NOT NULL,
+  resource_type TEXT NOT NULL,
+  resource_id INTEGER,
+  client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+  detail TEXT,
+  ip TEXT,
+  user_agent TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_privacy_audit_created ON privacy_audit_logs(created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_privacy_audit_client ON privacy_audit_logs(client_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_privacy_audit_resource ON privacy_audit_logs(resource_type, resource_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS data_subject_requests (
+  id SERIAL PRIMARY KEY,
+  request_code TEXT NOT NULL UNIQUE,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE RESTRICT,
+  request_type TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'received',
+  requester_name TEXT,
+  requester_contact TEXT,
+  notes TEXT,
+  identity_verified_at TEXT,
+  completed_at TEXT,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_subject_requests_client ON data_subject_requests(client_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_subject_requests_status ON data_subject_requests(status, created_at DESC);
+
+-- Política limitada a logs internos; dados clínicos, termos, arquivos e
+-- backups exigem matriz de retenção aprovada e execução orquestrada fora deste
+-- mecanismo para não destruir evidências por uma configuração improvisada.
+CREATE TABLE IF NOT EXISTS privacy_retention_policies (
+  category TEXT PRIMARY KEY,
+  retention_days INTEGER NOT NULL CHECK (retention_days > 0),
+  enabled INTEGER NOT NULL DEFAULT 0,
+  updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO privacy_retention_policies (category, retention_days, enabled)
+VALUES ('error_logs', 90, 0), ('privacy_audit_logs', 730, 0)
+ON CONFLICT (category) DO NOTHING;
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS public_booking_key TEXT;
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS duration_minutes INTEGER;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_appointments_public_booking_key ON appointments(public_booking_key) WHERE public_booking_key IS NOT NULL;
@@ -1235,6 +1457,11 @@ CREATE TABLE IF NOT EXISTS tenant_integrations (
   UNIQUE(provider)
 );
 
+-- Dados não secretos específicos de cada provedor (por exemplo, o
+-- phone_number_id público da conta WhatsApp Business). Segredos continuam no
+-- cofre cifrado acima; este JSON jamais deve receber token ou senha.
+ALTER TABLE tenant_integrations ADD COLUMN IF NOT EXISTS settings JSONB NOT NULL DEFAULT '{}'::jsonb;
+
 -- Identidade do cliente da clínica como pagador na conta Asaas DELA.
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS asaas_customer_id TEXT;
 -- O Asaas recusa criar cliente sem CPF/CNPJ; guardamos para não pedir de novo.
@@ -1248,6 +1475,31 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_clients_asaas_customer
 -- payment_intents já existia com `external_id` genérico; o índice único abaixo
 -- é o que torna o webhook idempotente de verdade (um payment.id <-> um intent).
 ALTER TABLE payment_intents ADD COLUMN IF NOT EXISTS invoice_url TEXT;
+-- Identificador público não enumerável. O id serial continua interno para FKs,
+-- webhooks e operação administrativa; telas públicas usam somente este token.
+ALTER TABLE payment_intents ADD COLUMN IF NOT EXISTS public_token TEXT;
+UPDATE payment_intents
+   SET public_token = md5(random()::text || clock_timestamp()::text || id::text)
+                   || md5(id::text || random()::text || clock_timestamp()::text)
+ WHERE public_token IS NULL;
+ALTER TABLE payment_intents ALTER COLUMN public_token SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_payment_intents_public_token
+  ON payment_intents (public_token);
+-- Links públicos antigos recebem uma validade finita no primeiro deploy. O
+-- token de pagamento não é identificador permanente de cliente.
+ALTER TABLE payment_intents ADD COLUMN IF NOT EXISTS public_token_expires_at TIMESTAMP;
+UPDATE payment_intents
+   SET public_token_expires_at = COALESCE(expires_at, created_at + INTERVAL '7 days')
+ WHERE public_token_expires_at IS NULL;
+ALTER TABLE payment_intents ALTER COLUMN public_token_expires_at SET NOT NULL;
+ALTER TABLE payment_intents ADD COLUMN IF NOT EXISTS public_token_rotated_at TIMESTAMP;
+CREATE INDEX IF NOT EXISTS idx_payment_intents_public_token_active
+  ON payment_intents (public_token, public_token_expires_at);
+-- A tabela foi criada antes de existir o estado distinguindo contestação de
+-- estorno. Recriar somente este CHECK preserva todas as linhas e FKs.
+ALTER TABLE payment_intents DROP CONSTRAINT IF EXISTS payment_intents_status_check;
+ALTER TABLE payment_intents ADD CONSTRAINT payment_intents_status_check
+  CHECK (status IN ('pending', 'awaiting_payment', 'under_review', 'confirmed', 'failed', 'cancelled', 'refunded', 'chargeback', 'expired'));
 ALTER TABLE payment_intents ADD COLUMN IF NOT EXISTS billing_type TEXT;
 ALTER TABLE payment_intents ADD COLUMN IF NOT EXISTS due_date DATE;
 ALTER TABLE payment_intents ADD COLUMN IF NOT EXISTS sales_order_id INTEGER;
@@ -1266,3 +1518,126 @@ CREATE INDEX IF NOT EXISTS idx_payment_intents_order ON payment_intents(sales_or
 -- inteira — e ela roda a cada agendamento criado, que é o caminho mais quente
 -- do sistema.
 CREATE INDEX IF NOT EXISTS idx_appointments_created ON appointments(created_at);
+
+-- ---------------------------------------------------------------------------
+-- DINHEIRO EM NUMERIC(12,2) — conversão das clínicas que JÁ EXISTEM.
+--
+-- Por que este bloco precisa existir: as definições de `CREATE TABLE IF NOT
+-- EXISTS` acima já nascem em NUMERIC(12,2), mas `IF NOT EXISTS` NÃO altera
+-- tabela existente. Sem o `ALTER ... TYPE` abaixo, a mudança valeria só para
+-- clínicas criadas de hoje em diante e as antigas continuariam em ponto
+-- flutuante — exatamente as que têm histórico financeiro para errar.
+--
+-- Idempotência (este arquivo roda a CADA boot, em TODOS os tenants): o `ALTER
+-- TABLE ... ALTER COLUMN ... TYPE` não tem forma `IF NOT ...`, e executá-lo
+-- incondicionalmente REESCREVERIA a tabela inteira sob ACCESS EXCLUSIVE a cada
+-- restart do servidor. Por isso a conversão só dispara quando a coluna ainda
+-- está em `double precision`; na segunda passada o EXISTS não casa e nada é
+-- executado. É a mesma disciplina dos `ADD COLUMN IF NOT EXISTS` acima, só que
+-- expressa à mão porque o Postgres não oferece o atalho.
+--
+-- Aditivo e não destrutivo: `USING <coluna>::NUMERIC(12,2)` converte o valor
+-- existente (arredondando para 2 casas, half-up), nenhuma linha é apagada e
+-- NOT NULL, DEFAULT e CHECK são preservados/recriados pelo próprio Postgres.
+--
+-- O que NÃO entra aqui, de propósito: `weight_grams`, `package_*_cm`,
+-- `top_size_mm`, `length_mm` (grandezas físicas), `confidence` (score 0..1) e
+-- `price_multiplier`/`default_price_multiplier` (fator 3 ou 4, que só alimenta
+-- cálculo em centavos INTEIROS no JS). Nada disso é dinheiro; forçá-los a 2
+-- casas decimais truncaria medida real sem ganho nenhum.
+-- `commission_percentage` é a exceção: é percentual, mas MULTIPLICA dinheiro
+-- dentro do SQL (`services/reports.js`, coluna `commission`), então vira
+-- NUMERIC(5,2) para o produto continuar exato — 12,2 seria largo demais para
+-- algo que vive entre 0 e 100.
+--
+-- ATENÇÃO ao custo em produção: cada conversão reescreve a tabela e segura
+-- ACCESS EXCLUSIVE nela. Planeje a janela de deploy antes de subir uma versão
+-- que encontre colunas antigas em DOUBLE PRECISION.
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE
+  alvo RECORD;
+BEGIN
+  -- Uma instrução ALTER TABLE por TABELA, com todas as colunas dela juntas.
+  -- `ALTER ... TYPE` reescreve a tabela inteira; emitir um comando por coluna
+  -- reescreveria `appointments` sete vezes seguidas. Agrupado, cada tabela é
+  -- reescrita uma vez só — 20 reescritas em vez de 46.
+  FOR alvo IN
+    SELECT
+      m.tabela,
+      string_agg(
+        format('ALTER COLUMN %I TYPE %s USING %I::%s', m.coluna, m.tipo, m.coluna, m.tipo),
+        ', ' ORDER BY m.coluna
+      ) AS clausulas,
+      count(*)::int AS colunas
+    FROM (VALUES
+      ('appointment_items',         'procedure_price',          'NUMERIC(12,2)'),
+      ('appointment_items',         'jewelry_unit_price',       'NUMERIC(12,2)'),
+      ('appointment_items',         'subtotal',                 'NUMERIC(12,2)'),
+      ('appointments',              'total_value',              'NUMERIC(12,2)'),
+      ('appointments',              'deposit_value',            'NUMERIC(12,2)'),
+      ('appointments',              'remaining_value',          'NUMERIC(12,2)'),
+      ('appointments',              'service_value',            'NUMERIC(12,2)'),
+      ('appointments',              'jewelry_value',            'NUMERIC(12,2)'),
+      ('appointments',              'subtotal_value',           'NUMERIC(12,2)'),
+      ('appointments',              'discount_value',           'NUMERIC(12,2)'),
+      ('catalog_promotions',        'discount_value',           'NUMERIC(12,2)'),
+      ('catalog_promotions',        'minimum_amount',           'NUMERIC(12,2)'),
+      ('catalog_promotions',        'maximum_discount',         'NUMERIC(12,2)'),
+      ('catalog_promotions',        'fixed_promotional_price',  'NUMERIC(12,2)'),
+      ('coupon_usages',             'original_amount',          'NUMERIC(12,2)'),
+      ('coupon_usages',             'discount_amount',          'NUMERIC(12,2)'),
+      ('coupon_usages',             'final_amount',             'NUMERIC(12,2)'),
+      ('coupons',                   'discount_value',           'NUMERIC(12,2)'),
+      ('coupons',                   'minimum_amount',           'NUMERIC(12,2)'),
+      ('coupons',                   'maximum_discount',         'NUMERIC(12,2)'),
+      ('expenses',                  'amount',                   'NUMERIC(12,2)'),
+      ('financial_entries',         'amount',                   'NUMERIC(12,2)'),
+      ('financial_entries',         'paid_amount',              'NUMERIC(12,2)'),
+      ('financial_entries',         'original_paid_amount',     'NUMERIC(12,2)'),
+      ('financial_goals',           'target_amount',            'NUMERIC(12,2)'),
+      ('financial_reconciliations', 'statement_amount',         'NUMERIC(12,2)'),
+      ('jewelry_inventory',         'cost_value',               'NUMERIC(12,2)'),
+      ('jewelry_inventory',         'sale_value',               'NUMERIC(12,2)'),
+      ('jewelry_variants',          'cost_value',               'NUMERIC(12,2)'),
+      ('jewelry_variants',          'sale_value',               'NUMERIC(12,2)'),
+      ('loyalty_redemptions',       'discount_value',           'NUMERIC(12,2)'),
+      ('payment_intents',           'amount',                   'NUMERIC(12,2)'),
+      ('payments',                  'amount',                   'NUMERIC(12,2)'),
+      ('payments',                  'fee_amount',               'NUMERIC(12,2)'),
+      ('payments',                  'net_amount',               'NUMERIC(12,2)'),
+      ('procedures',                'price',                    'NUMERIC(12,2)'),
+      ('professionals',             'commission_percentage',    'NUMERIC(5,2)'),
+      ('promotion_usages',          'original_amount',          'NUMERIC(12,2)'),
+      ('promotion_usages',          'discount_amount',          'NUMERIC(12,2)'),
+      ('promotion_usages',          'final_amount',             'NUMERIC(12,2)'),
+      ('sales_order_items',         'unit_price',               'NUMERIC(12,2)'),
+      ('sales_orders',              'total_value',              'NUMERIC(12,2)'),
+      ('sales_orders',              'subtotal_value',           'NUMERIC(12,2)'),
+      ('sales_orders',              'discount_value',           'NUMERIC(12,2)'),
+      ('services',                  'price',                    'NUMERIC(12,2)'),
+      ('services',                  'deposit_value',            'NUMERIC(12,2)')
+    ) AS m(tabela, coluna, tipo)
+    -- O JOIN é o guarda de idempotência: só entra no laço a coluna que AINDA
+    -- está em `double precision`. Na segunda passada o JOIN não casa com nada,
+    -- o laço não executa nenhuma iteração e nenhuma tabela é tocada.
+    --
+    -- `current_schema()` é o schema da clínica: quem aplica este arquivo fixa o
+    -- search_path APENAS no schema do tenant (ver applySchemaSql/provisionTenant),
+    -- justamente para os IF NOT EXISTS não serem enganados por homônimos do
+    -- "public". Coluna/tabela que ainda não exista simplesmente não casa.
+    JOIN information_schema.columns c
+      ON c.table_schema = current_schema()
+     AND c.table_name   = m.tabela
+     AND c.column_name  = m.coluna
+     AND c.data_type    = 'double precision'
+    GROUP BY m.tabela
+    ORDER BY m.tabela
+  LOOP
+    RAISE NOTICE 'Dinheiro -> NUMERIC: % (% coluna(s), schema %)', alvo.tabela, alvo.colunas, current_schema();
+    -- As cláusulas já vêm com os identificadores escapados por %I lá em cima;
+    -- os tipos vêm da lista literal, nunca de entrada externa.
+    EXECUTE format('ALTER TABLE %I %s', alvo.tabela, alvo.clausulas);
+  END LOOP;
+END
+$$;

@@ -9,9 +9,10 @@ import { getStoreName, queueProfessionalBookingNotification, whatsappLink } from
 import { quotePromotions } from "../services/promotions.js";
 import { validateCoupon } from "../services/discounts.js";
 import { reserveAppointmentItems } from "../services/reservations.js";
-import { createPaymentIntent } from "../services/payments.js";
+import { createPaymentIntent, publicPaymentIntent } from "../services/payments.js";
 import { tenantClient } from "../services/asaas/credentials.js";
 import { createAppointmentDepositCharge } from "../services/tenantCharges.js";
+import { bookingTaxId } from "../services/taxId.js";
 import { scheduleAppointmentClientAutomations } from "../services/communications.js";
 
 const router = Router();
@@ -119,12 +120,24 @@ router.get("/api/booking/config", withFeature("online_booking", async (req, res,
       .filter((link) => Number(link.professional_id) === Number(professional.id))
       .map((link) => link.service_id)
   }));
+  // Booleano, nunca a credencial. É o que permite ao formulário saber se o CPF
+  // é obrigatório (há gateway: o sinal vira link de pagamento e o Asaas exige
+  // documento) ou apenas recomendado (sem gateway: comprovante por WhatsApp).
+  // Sem essa informação a tela só teria duas saídas ruins: exigir CPF de todo
+  // mundo, ou nunca exigir e deixar o sinal online quebrar depois do envio.
+  const gatewayEnabled = Boolean(await tenantClient(db));
   res.json({
     services,
     professionals,
+    payment: {
+      gateway_enabled: gatewayEnabled,
+      tax_id_required: gatewayEnabled
+    },
     rules: {
       cancellation: "Remarcações e cancelamentos devem ser solicitados com antecedência.",
-      payment: "O sinal obrigatório reserva o horário após conferência manual do comprovante pela equipe."
+      payment: gatewayEnabled
+        ? "O sinal é pago por link online e confirma o horário automaticamente."
+        : "O sinal obrigatório reserva o horário após conferência manual do comprovante pela equipe."
     }
   });
 }));
@@ -216,18 +229,30 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
   }
   const depositValue = Math.min(bookingItems.filter((item) => item.item_type === "service").reduce((sum, item) => sum + Number(item.deposit_value || 0), 0), totalValue);
   const remainingValue = Math.max(totalValue - depositValue, 0);
+
+  // A clínica tem gateway configurado? A checagem é só uma leitura do cofre
+  // (sem rede) e precisa acontecer ANTES da transação, porque decide duas
+  // coisas: se o CPF é obrigatório nesta solicitação e se o intent nasce como
+  // `manual` lá dentro ou como cobrança do Asaas aqui fora.
+  //
+  // Sem gateway, tudo segue exatamente como antes: comprovante por WhatsApp e
+  // conferência manual. A maioria das clínicas opera assim.
+  const onlinePayment = depositValue > 0 && Boolean(await tenantClient(db));
+
+  // O backend é a autoridade sobre o CPF: a tela valida para dar erro no campo,
+  // mas quem garante o dado é aqui — a rota é pública e recebe qualquer corpo.
+  const taxId = bookingTaxId({ value: body.cpf || body.tax_id, requiresOnlineCharge: onlinePayment });
+  if (!taxId.ok) return res.status(400).json({ error: taxId.error });
+
   const client = await upsertClient(db, {
     full_name: body.full_name,
     whatsapp: body.whatsapp,
     instagram: body.instagram || "",
     birth_date: "",
     client_notes: body.notes || "",
-    // Opcionais, e é intencional que sejam. O formulário de agendamento ainda
-    // não pede CPF (o do catálogo pede), mas o Asaas recusa criar pagador sem
-    // ele: quando o campo existir na tela, o sinal online passa a funcionar sem
-    // mexer aqui. Sem CPF a cobrança degrada para o caminho manual, que é o
-    // comportamento de sempre.
-    tax_id: body.cpf || body.tax_id || "",
+    // Normalizado para dígitos: é o formato que o Asaas aceita e o que evita o
+    // mesmo documento gravado de três jeitos conforme a máscara do formulário.
+    tax_id: taxId.value,
     email: body.email || ""
   });
   const referencePhoto = req.files?.reference_photo?.[0] ? `/api/private-files/${req.files.reference_photo[0].filename}` : "";
@@ -237,13 +262,6 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
   if (!multiItemSlots.some((slot) => slot.time === time)) return res.status(409).json({ error: "O horário não comporta a duração total dos serviços selecionados." });
   const endTime = addMinutesToTime(time, durationMinutes);
 
-  // A clínica tem gateway configurado? A checagem é só uma leitura do cofre
-  // (sem rede) e precisa acontecer ANTES da transação, porque decide se o
-  // intent nasce como `manual` lá dentro ou como cobrança do Asaas aqui fora.
-  //
-  // Sem gateway, tudo segue exatamente como antes: comprovante por WhatsApp e
-  // conferência manual. A maioria das clínicas opera assim.
-  const onlinePayment = depositValue > 0 && Boolean(await tenantClient(db));
   // Joia reservada = peça física presa. Manda a cobrança ser PIX com janela
   // curta, para não segurar estoque contra um boleto de dois dias.
   const reservesStock = bookingItems.some((item) => item.item_type === "jewelry" && item.jewelry_id);
@@ -394,7 +412,7 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
     jewelry_value: jewelryValue,
     discount_value: Number((serviceValue + jewelryValue - totalValue).toFixed(2)),
     items: bookingItems,
-    payment_intent: paymentIntent,
+    payment_intent: publicPaymentIntent(paymentIntent),
     professional_whatsapp_url: professionalWhatsappUrl,
     // Link da fatura hospedada pelo Asaas. É o que a tela abre para o cliente
     // pagar; `null` quando não há gateway ou quando ele falhou na criação.

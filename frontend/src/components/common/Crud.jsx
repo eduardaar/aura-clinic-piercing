@@ -4,7 +4,7 @@
 // - CrudHeader: cabeçalho de página com título e botão "Novo".
 // Reaproveitam o CSS existente (.modal-backdrop, .table-wrap, .panel-heading).
 import React, { useEffect, useState } from "react";
-import { AlertTriangle, Plus, X } from "lucide-react";
+import { AlertTriangle, MoreHorizontal, Plus, X } from "lucide-react";
 
 /**
  * Janela sobreposta. Fecha no Esc, no clique fora e trava o scroll do body.
@@ -32,7 +32,11 @@ export function Modal({ open, title, subtitle, onClose, children, footer, size =
 
   if (!open) return null;
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" onClick={(event) => {
+      // Conteúdo renderizado em portal (como o seletor de joias) continua
+      // propagando pelo tree React. Só o clique no backdrop real deve fechar.
+      if (event.target === event.currentTarget) onClose?.();
+    }}>
       <div
         className={`modal-card modal-${size}`}
         role="dialog"
@@ -152,6 +156,44 @@ export function CrudHeader({ title, subtitle, actionLabel = "Novo", onAction }) 
         <button type="button" className="primary-button crud-new-button" onClick={onAction}>
           <Plus size={16} /> {actionLabel}
         </button>
+      )}
+    </div>
+  );
+}
+
+// Ações de uma linha de listagem. A primeira ação marcada como `primary` (ou a
+// primeira não destrutiva) fica visível; o restante fica no mesmo menu em todas
+// as telas. Isso evita quatro botões espremidos na tabela, especialmente no
+// celular, e preserva a hierarquia: editar/operar antes de excluir.
+//
+// Cada ação: { label, onClick, href, target, rel, danger, disabled, primary }.
+// Itens falsos são aceitos para simplificar ações condicionais no JSX.
+export function RowActions({ actions = [] }) {
+  const visible = actions.filter(Boolean);
+  if (!visible.length) return null;
+  const primaryIndex = visible.findIndex((action) => action.primary) >= 0
+    ? visible.findIndex((action) => action.primary)
+    : visible.findIndex((action) => !action.danger);
+  const safePrimaryIndex = primaryIndex >= 0 ? primaryIndex : 0;
+  const primary = visible[safePrimaryIndex];
+  const secondary = visible.filter((_, index) => index !== safePrimaryIndex);
+
+  const renderAction = (action, className = "") => action.href ? (
+    <a key={action.label} className={className} href={action.href} target={action.target} rel={action.rel}>{action.label}</a>
+  ) : (
+    <button key={action.label} type="button" className={className} onClick={action.onClick} disabled={action.disabled}>{action.label}</button>
+  );
+
+  return (
+    <div className="row-actions-menu">
+      {renderAction(primary, "row-action-primary")}
+      {secondary.length > 0 && (
+        <details className="row-actions-more">
+          <summary aria-label="Mais ações" title="Mais ações"><MoreHorizontal size={18} /></summary>
+          <div className="row-actions-popover" role="menu">
+            {secondary.map((action) => renderAction(action, action.danger ? "danger" : ""))}
+          </div>
+        </details>
       )}
     </div>
   );

@@ -9,6 +9,8 @@ import { getClientWithDetails } from "../services/clients.js";
 import { parsePaging, fetchPage, pageResponse } from "../services/pagination.js";
 import { validateBody } from "../middleware/validate.js";
 import { clientCreateSchema, clientUpdateSchema } from "../schemas/index.js";
+import { invalidateUsageCache, requireWithinLimit } from "../services/planLimits.js";
+import { recordPrivacyAudit } from "../services/privacy.js";
 
 const router = Router();
 
@@ -39,10 +41,16 @@ function clientResponse(client) {
 }
 
 router.post("/api/clients", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
   const b = normalizeClientBody(req.body);
   req.body = { ...req.body, full_name: b.full_name, whatsapp: b.whatsapp };
   if (!validateBody(clientCreateSchema, req, res)) return;
+  // Cota do plano — só na criação. Editar e listar cliente que já existe nunca
+  // passa por aqui: cota não esconde nem trava o que a clínica já cadastrou.
+  //
+  // Este guard NÃO vale para o agendamento público (routes/booking.js): lá quem
+  // receberia o 409 é o cliente final da clínica, que não tem como resolver.
+  if (!(await requireWithinLimit(req, res, "clients", db))) return;
   const result = await db.run(
     "INSERT INTO clients (full_name, phone, whatsapp, instagram, email, birth_date, cpf, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
     [b.full_name, b.phone, b.whatsapp, b.instagram, b.email, b.birth_date, b.cpf, b.notes]
@@ -51,7 +59,7 @@ router.post("/api/clients", withDb(async (req, res, db) => {
 }));
 
 async function updateClient(req, res, db) {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
+  if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
   const current = await db.get("SELECT * FROM clients WHERE id = ?", [req.params.id]);
   if (!current) return res.status(404).json({ error: "Cliente nao encontrado." });
   const b = normalizeClientBody(req.body, current);
@@ -86,6 +94,9 @@ router.delete("/api/clients/:id", withDb(async (req, res, db) => {
     }
     await tx.run("INSERT INTO administrative_audit_logs (entity_type, entity_id, action, reason, user_id, snapshot) VALUES ('client', ?, ?, ?, ?, ?)", [id, action, reason, req.user?.id || null, JSON.stringify({ client, impact: linked })]);
   });
+  // Só a exclusão de verdade muda a contagem da cota — a anonimização preserva
+  // a linha (e o vínculo com agendamentos, pagamentos e prontuários).
+  if (action === "hard_delete") invalidateUsageCache(req.tenant?.id);
   res.json({ ok: true, action, impact: linked });
 }));
 
@@ -142,6 +153,10 @@ router.get("/api/clients", withDb(async (req, res, db) => {
     orderBy: paging.orderBy,
     paging
   });
+  await recordPrivacyAudit(db, {
+    req, action: "client_list_read", resourceType: "client_list",
+    detail: { result_count: rows.length, searched: Boolean(req.query.search) }
+  });
   res.json(pageResponse(rows.map(clientResponse), total, paging));
 }));
 
@@ -154,6 +169,13 @@ router.get("/api/clients/:id", withDb(async (req, res, db) => {
   const visible = req.user?.role === "reception"
     ? { ...client, medicalRecords: [], terms: [] }
     : client;
+  await recordPrivacyAudit(db, {
+    req,
+    action: req.user?.role === "reception" ? "client_profile_read" : "clinical_record_read",
+    resourceType: "client",
+    resourceId: client.id,
+    clientId: client.id
+  });
   res.json(clientResponse(visible));
 }));
 

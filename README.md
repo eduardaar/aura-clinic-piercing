@@ -14,7 +14,7 @@ frontend/   SPA React + Vite
 - Frontend: React + Vite
 - Backend: Node.js + Express
 - Banco: **PostgreSQL multi-tenant** — cada clínica vive em um schema próprio (`tenant_<id>`), com isolamento físico dos dados
-- Uploads locais: `backend/src/data/uploads`
+- Arquivos: Cloudflare R2 quando configurado; disco local apenas como fallback de desenvolvimento/migração
 - Autenticação: token HMAC assinado no login (carrega a clínica), enviado via `Authorization: Bearer`
 
 ## Multi-tenant (SaaS)
@@ -74,12 +74,12 @@ Ou individualmente:
 
 ```bash
 npm --prefix backend run dev     # API em :4000
-npm --prefix frontend run dev    # SPA em :5173
+npm --prefix frontend run dev    # SPA em :5174
 ```
 
 Acesse:
 
-- Frontend: `http://localhost:5173`
+- Frontend: `http://localhost:5174`
 - Backend: `http://localhost:4000`
 - Health check: `http://localhost:4000/api/health` e `/api/health/db`
 
@@ -104,8 +104,9 @@ backend/
       platformSchema.sql     Schema de controle (tenants, platform_users)
       postgres.js            Camada de acesso ao Postgres (get/all/run) por client
     database/connection.js   Pool PostgreSQL
-    data/uploads/            PDFs e imagens enviadas
-  scripts/                   backup.sh, migrate-to-multitenant.mjs, test-isolation.mjs
+    data/uploads/            Fallback local de arquivos públicos
+    data/private-uploads/    Fallback local de arquivos privados
+  scripts/                   Backup, importação e migrações operacionais
   .env                       Config do backend (não versionado)
 frontend/
   src/
@@ -127,6 +128,7 @@ PostgreSQL (`aura_clinic`), organizado em schemas: `platform` (controle da plata
 - `client_medical_records`, `digital_terms`, `post_care_followups`
 - `loyalty_points`, `loyalty_redemptions`
 - `catalog_settings`, `catalog_banners`, `catalog_featured_categories`, `catalog_promotions`, `catalog_theme`
+- `catalog_customization_drafts`, `catalog_customization_revisions` (personalização versionada da vitrine)
 
 Para limpar os dados de demonstração preservando usuários e configurações, use o endpoint administrativo `POST /api/admin/reset-demo-data`.
 
@@ -162,20 +164,11 @@ O reset exige autenticação, papel `admin`, tenant correto, seleção do tipo d
 - `finance`: financeiro e relatórios
 - `piercer`: atendimentos, clientes, prontuários e pós-atendimento
 
-## Rotas principais
+## API e documentação
 
-- `POST /api/login` (com header `X-Tenant`)
-- `POST /api/signup` — cadastro público de clínica
-- `POST /api/platform/login`, `GET/POST/PATCH/DELETE /api/platform/tenants`, `GET /api/platform/metrics` — plataforma (superadmin)
-- `GET /api/health`, `GET /api/health/db`
-- `GET /api/dashboard`, `GET /api/erp`, `GET /api/alerts`
-- `GET/POST/PATCH/DELETE /api/appointments`
-- `GET/POST/PATCH/DELETE /api/jewelry` e `/api/jewelry/:id/movements`
-- `GET/POST/PUT/DELETE /api/procedures`
-- `GET/POST/PUT/DELETE /api/clients`
-- `GET /api/catalog`, `GET /api/booking/slots`
-- `GET /api/finance`, `GET /api/finance/export.{csv,pdf,xlsx}`
-- `GET/POST/PATCH/DELETE /api/users`
+O catálogo de endpoints, convenções de autenticação e rotas públicas está em
+[docs/API.md](docs/API.md). A documentação técnica viva fica reunida em
+[docs/README.md](docs/README.md).
 
 ## Segurança e acesso
 
@@ -184,6 +177,16 @@ O reset exige autenticação, papel `admin`, tenant correto, seleção do tipo d
 
 ### Proteção de dados
 O catálogo público expõe apenas nome, foto, categoria, material, tamanho, cor, preço final e disponibilidade. Ficam **ocultos**: custo, lucro, fornecedor, observações internas, localização física, dados de clientes e financeiro.
+
+### Personalização do catálogo
+
+Cada clínica pode escolher um dos templates iniciais, configurar a identidade,
+banners e blocos da vitrine. **Salvar rascunho não altera a produção**;
+**Publicar** cria uma revisão imutável. O editor oferece histórico e rollback.
+Também há integrações nativas versionadas (WhatsApp, Instagram, FAQ, SEO e
+link de Maps), validadas por allowlists e pelos recursos do plano. Conteúdo
+configurável não aceita JavaScript/HTML/CSS arbitrário; links e embeds são
+limitados a formatos seguros. Veja [docs/CATALOGO-BUILDER.md](docs/CATALOGO-BUILDER.md).
 
 ### Produção (checklist de deploy)
 - Use HTTPS (proxy reverso Nginx/Caddy na frente da API).
@@ -196,4 +199,5 @@ O catálogo público expõe apenas nome, foto, categoria, material, tamanho, cor
 - Troque a senha do admin da clínica migrada (`aura123`).
 - Agende `npm --prefix backend run backup` (pg_dump) num cron.
 - Banco legado no schema `public`: rode `node backend/scripts/migrate-to-multitenant.mjs` uma única vez.
+- Para usar o R2, configure as seis variáveis `R2_*` juntas e siga o runbook em [docs/R2.md](docs/R2.md) antes de migrar anexos antigos.
 - Sanidade pós-deploy: rode `node backend/scripts/test-isolation.mjs` contra a API para validar o isolamento entre clínicas.

@@ -5,11 +5,12 @@
 // Em dev local a autenticação é bypassada via isLocalDevRequest.
 import crypto from "crypto";
 import { AUTH_SECRET, isProduction } from "../config/index.js";
+import { ACCESS_TOKEN_MS, activeClinicSession } from "../services/sessions.js";
 
 // Define se a rota exige autenticação. Rotas públicas ficam de fora.
 export function requiresAuth(req) {
   if (!req.path.startsWith("/api")) return false;
-  if (["/api/login", "/api/health", "/api/catalog", "/api/catalog/coupon-quote", "/api/catalog/promotion-quote", "/api/catalog/price-quote", "/api/sales-orders/public"].includes(req.path)) return false;
+  if (["/api/login", "/api/auth/refresh", "/api/health", "/api/catalog", "/api/catalog/coupon-quote", "/api/catalog/promotion-quote", "/api/catalog/price-quote", "/api/sales-orders/public"].includes(req.path)) return false;
   if (req.method === "POST" && req.path === "/api/catalog/events") return false;
   if (req.path.startsWith("/api/booking")) return false;
   // Ingestão de erros do frontend: pública (captura erros de telas sem sessão).
@@ -26,7 +27,7 @@ export function requiresAuth(req) {
   // Só estas duas — a LISTAGEM de intents continua exigindo token. O recorte é
   // por regex e não por prefixo justamente para /api/payment-intents não virar
   // público inteiro por descuido.
-  if (/^\/api\/payment-intents\/\d+\/(pix|sync)$/.test(req.path)) return false;
+  if (/^\/api\/payment-intents\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/(pix|sync)$/i.test(req.path)) return false;
   // Conteúdo da landing: é a página pública da plataforma, servida antes de
   // qualquer login. O editor vive em /api/platform/landing/* e se autentica com
   // token de plataforma, não com este caminho.
@@ -73,13 +74,15 @@ export function extractBearerToken(req) {
 }
 
 // Token de usuário de clínica: amarrado ao tenant (tid/tslug).
-export function createToken(user, tenant) {
+export function createToken(user, tenant, { sessionId } = {}) {
   return signPayload({
     sub: user.id,
     role: user.role,
+    sv: Number(user.session_version || 1),
     tid: tenant?.id,
     tslug: tenant?.slug,
-    exp: Date.now() + 1000 * 60 * 60 * 12
+    ...(sessionId ? { sid: sessionId } : {}),
+    exp: Date.now() + ACCESS_TOKEN_MS
   });
 }
 
@@ -90,7 +93,8 @@ export function createPlatformToken(user) {
     sub: user.id,
     role: "superadmin",
     plt: true,
-    exp: Date.now() + 1000 * 60 * 60 * 12
+    sv: Number(user.session_version || 1),
+    exp: Date.now() + ACCESS_TOKEN_MS
   });
 }
 
@@ -115,7 +119,19 @@ export async function authenticateRequest(req, db) {
     if (decoded.plt === true) return null;
     // O token só vale para o tenant desta requisição (token de outra clínica → 401).
     if (!req.tenant || decoded.tid !== req.tenant.id) return null;
-    return db.get("SELECT id, name, email, role FROM users WHERE id = ?", [decoded.sub]);
+    const user = await db.get(
+      "SELECT id, name, email, role, session_version FROM users WHERE id = ?",
+      [decoded.sub]
+    );
+    // Tokens antigos, sem `sv`, são encerrados no primeiro deploy desta
+    // proteção. Depois disso, trocar senha ou papel incrementa a versão e
+    // invalida imediatamente todas as sessões emitidas anteriormente.
+    if (!user || Number(decoded.sv) !== Number(user.session_version)) return null;
+    // Credenciais emitidas pelo login atual sempre trazem `sid`; sem a linha
+    // ativa no banco, cópia do access token deixa de valer imediatamente.
+    // Tokens legados sem sid são recusados de propósito neste deploy.
+    if (!(await activeClinicSession(db, decoded.sid, user.id, user.session_version))) return null;
+    return { ...user, session_id: decoded.sid };
   } catch {
     return null;
   }

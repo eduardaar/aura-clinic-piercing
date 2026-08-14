@@ -53,9 +53,16 @@ CREATE TABLE IF NOT EXISTS platform.platform_users (
   name TEXT NOT NULL,
   email TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
+  session_version INTEGER NOT NULL DEFAULT 1,
+  mfa_totp_secret_encrypted TEXT,
+  mfa_enabled BOOLEAN NOT NULL DEFAULT false,
   role TEXT NOT NULL DEFAULT 'superadmin',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE platform.platform_users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE platform.platform_users ADD COLUMN IF NOT EXISTS mfa_totp_secret_encrypted TEXT;
+ALTER TABLE platform.platform_users ADD COLUMN IF NOT EXISTS mfa_enabled BOOLEAN NOT NULL DEFAULT false;
 
 ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS store_short_name TEXT;
 ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS responsible_name TEXT;
@@ -68,11 +75,9 @@ ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS listed BOOLEAN NOT NULL DE
 
 INSERT INTO platform.subscription_plans (code, name, price_cents, audience, trial_days, features, is_recommended)
 VALUES
-  ('essencial', 'Pacote Essencial', 1990, 'Piercers iniciantes', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory"]'::jsonb, false),
-  ('start', 'Pacote Start', 3990, 'Piercers iniciantes ou autônomos', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports"]'::jsonb, false),
-  ('profissional', 'Pacote Profissional', 6990, 'Estúdios que querem agendamento online e ficha digital', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","anamnesis","digital_terms","basic_finance","deposits","stock_alerts","automatic_followup","message_templates","public_catalog_customization"]'::jsonb, true),
-  ('studio', 'Pacote Studio', 9990, 'Estúdios com equipe e venda de joias', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","anamnesis","digital_terms","basic_finance","deposits","stock_alerts","automatic_followup","message_templates","public_catalog_customization","multi_user","commissions","monthly_reports","coupons","returns","full_client_history","jewelry_sales_report"]'::jsonb, false),
-  ('premium', 'Pacote Premium', 14990, 'Operações completas com catálogo avançado', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","anamnesis","digital_terms","basic_finance","deposits","stock_alerts","automatic_followup","message_templates","public_catalog_customization","multi_user","commissions","monthly_reports","coupons","returns","full_client_history","jewelry_sales_report","advanced_catalog","featured_products","promotional_banner","campaigns","advanced_finance","variation_inventory","alert_center","courses","priority_support"]'::jsonb, false)
+  ('start', 'Pacote Start', 4990, 'Para quem está organizando a operação solo', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports"]'::jsonb, false),
+  ('profissional', 'Pacote Profissional', 8990, 'Para transformar atendimento em uma operação profissional', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","anamnesis","digital_terms","basic_finance","deposits","stock_alerts","automatic_followup","message_templates","public_catalog_customization"]'::jsonb, true),
+  ('studio', 'Pacote Studio', 14990, 'Para estúdios com equipe, vendas e crescimento', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","anamnesis","digital_terms","basic_finance","deposits","stock_alerts","automatic_followup","message_templates","public_catalog_customization","multi_user","commissions","monthly_reports","coupons","returns","full_client_history","jewelry_sales_report","advanced_catalog","catalog_analytics","featured_products","promotional_banner","campaigns","advanced_finance","variation_inventory","visual_search","alert_center","courses","priority_support"]'::jsonb, false)
 -- DO NOTHING, e não DO UPDATE.
 --
 -- Este INSERT é SEMENTE: popula os planos no primeiro boot e nunca mais toca
@@ -81,6 +86,24 @@ VALUES
 -- tivesse editado no painel. Enquanto o código era a fonte da verdade isso era
 -- inofensivo; agora seria destruição de dado a cada deploy.
 ON CONFLICT (code) DO NOTHING;
+
+-- O antigo plano de R$ 19,90 foi retirado do produto. Bases que já existiam
+-- antes desta mudança ainda podem tê-lo gravado; removemos apenas quando ele
+-- está completamente sem uso. Se houver cliente ou assinatura vinculada, não
+-- trocamos preço, cobrança ou recursos em silêncio: a migração daquele cliente
+-- deve ser uma decisão explícita da plataforma.
+DELETE FROM platform.subscription_plans AS plan
+ WHERE plan.code = 'essencial'
+   AND NOT EXISTS (
+     SELECT 1
+       FROM platform.tenant_subscriptions AS subscription
+      WHERE subscription.plan_code = plan.code
+   )
+   AND NOT EXISTS (
+     SELECT 1
+       FROM platform.tenants AS tenant
+      WHERE tenant.plan = plan.code
+   );
 
 -- ---------------------------------------------------------------------------
 -- Cobrança da assinatura das clínicas (Monitence -> clínica) via Asaas.
@@ -100,8 +123,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_tenants_asaas_customer
 
 -- Assinatura recorrente no Asaas que espelha a linha de tenant_subscriptions.
 ALTER TABLE platform.tenant_subscriptions ADD COLUMN IF NOT EXISTS asaas_subscription_id TEXT;
--- Como a clínica paga: UNDEFINED (link: PIX/boleto/cartão na página do Asaas)
--- ou CREDIT_CARD (débito automático mensal no cartão tokenizado).
+-- Como a clínica paga. A aplicação aceita somente UNDEFINED: PIX/boleto/cartão
+-- são coletados na página hospedada do Asaas, nunca pela infraestrutura Aura.
 ALTER TABLE platform.tenant_subscriptions ADD COLUMN IF NOT EXISTS billing_type TEXT;
 ALTER TABLE platform.tenant_subscriptions ADD COLUMN IF NOT EXISTS canceled_at TIMESTAMPTZ;
 
@@ -259,6 +282,37 @@ CREATE TABLE IF NOT EXISTS platform.landing_sections (
 
 CREATE INDEX IF NOT EXISTS ix_landing_sections_order ON platform.landing_sections (sort_order);
 
+-- Documentos legais da plataforma. O conteúdo é texto simples para que o
+-- painel seja seguro de editar: a página pública nunca interpreta HTML vindo
+-- do banco. Cada edição relevante incrementa `version` no endpoint.
+CREATE TABLE IF NOT EXISTS platform.legal_documents (
+  document_key TEXT PRIMARY KEY CHECK (document_key IN ('terms_of_use', 'privacy_policy')),
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_by INTEGER REFERENCES platform.platform_users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS platform.legal_acceptances (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id INTEGER NOT NULL REFERENCES platform.tenants(id) ON DELETE CASCADE,
+  user_email TEXT NOT NULL,
+  document_key TEXT NOT NULL CHECK (document_key IN ('terms_of_use', 'privacy_policy')),
+  document_version INTEGER NOT NULL,
+  accepted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  ip_address INET,
+  user_agent TEXT,
+  UNIQUE (tenant_id, user_email, document_key, document_version)
+);
+
+CREATE INDEX IF NOT EXISTS ix_legal_acceptances_tenant ON platform.legal_acceptances (tenant_id, accepted_at DESC);
+
+INSERT INTO platform.legal_documents (document_key, title, content, version) VALUES
+  ('terms_of_use', 'Termos de Uso', 'Estes Termos de Uso regulam o acesso e a utilização da plataforma Aura. Ao criar uma conta, você declara que leu e concorda com estas condições.\n\nA conta deve ser usada de forma lícita e com informações verdadeiras. Você é responsável por proteger suas credenciais e pelos dados inseridos por sua equipe.\n\nA Aura pode atualizar recursos, preços e estes termos mediante aviso pelos canais oficiais. O uso continuado após a publicação de uma nova versão representa a concordância com ela.', 1),
+  ('privacy_policy', 'Política de Privacidade', 'A Aura trata os dados necessários para operar a plataforma, prestar suporte, processar cobranças e manter a segurança do serviço.\n\nOs dados dos clientes da sua clínica permanecem sob sua responsabilidade. A Aura atua como operadora quando processa esses dados para disponibilizar os recursos contratados.\n\nVocê pode solicitar informações sobre seus dados pelos canais oficiais. Mantemos medidas técnicas e organizacionais adequadas para proteger os dados contra acesso não autorizado.', 1)
+ON CONFLICT (document_key) DO NOTHING;
+
 -- Semente com EXATAMENTE o conteúdo que hoje está fixo no Landing.jsx.
 --
 -- `ON CONFLICT DO NOTHING` é o que torna isto seguro: a semente popula o banco
@@ -311,6 +365,15 @@ INSERT INTO platform.landing_sections (section_key, enabled, sort_order, content
     "cta_href": "/cadastro"
   }'::jsonb),
 
+  ('about', true, 30, '{
+    "kicker": "Sobre nós",
+    "title": "Tecnologia feita para a rotina de quem atende.",
+    "aura_title": "Aura Clinic",
+    "aura_text": "A Aura Clinic é a plataforma de gestão criada para estúdios de piercing organizarem agenda, clientes, catálogo, estoque, financeiro e comunicação em um só lugar.",
+    "monitence_title": "Monitence",
+    "monitence_text": "A Monitence desenvolve produtos digitais que tornam operações de serviço mais simples, conectadas e preparadas para crescer."
+  }'::jsonb),
+
   ('showcase_links', true, 50, '{
     "title": "Veja quem já usa",
     "subtitle": "Explore as vitrines públicas das clínicas na plataforma.",
@@ -348,6 +411,8 @@ ON CONFLICT (section_key) DO NOTHING;
 -- coluna por limite exigiria migration a cada ideia nova.
 ALTER TABLE platform.subscription_plans ADD COLUMN IF NOT EXISTS limits JSONB NOT NULL DEFAULT '{}'::jsonb;
 
+-- Limites iniciais do Catalog Builder. Só completa uma chave ausente: um valor
+-- definido no painel pelo super-admin continua sendo a fonte da verdade.
 -- Plano desativado some da vitrine e do cadastro, mas continua valendo para
 -- quem já assina. É o "excluir" seguro: apagar de verdade um plano com
 -- assinante quebraria a FK de tenant_subscriptions — e, pior, deixaria clínicas
@@ -455,17 +520,68 @@ CREATE INDEX IF NOT EXISTS ix_support_tickets_status
 CREATE INDEX IF NOT EXISTS ix_support_messages_ticket
   ON platform.support_messages (ticket_id, created_at);
 
--- Reparo pontual: `visual_search` estava na lista do premium em services/plans.js
--- (que era a fonte da verdade) mas ficou de fora da semente acima. Enquanto o
--- código mandava, as clínicas premium TINHAM a busca visual; ao passar a fonte
--- da verdade para o banco, ela sumiria sem ninguém perceber.
---
--- Idempotente: só acrescenta se faltar, e nunca remove nada que o super-admin
--- tenha configurado.
-UPDATE platform.subscription_plans
-   SET features = features || '["visual_search"]'::jsonb
- WHERE code = 'premium'
-   AND NOT (features @> '["visual_search"]'::jsonb);
+-- Mudança comercial de agosto/2026: o produto passa a ter três planos. Ela é
+-- registrada uma única vez para que futuras edições pelo painel continuem sendo
+-- respeitadas e não sejam sobrescritas a cada reinicialização.
+CREATE TABLE IF NOT EXISTS platform.product_migrations (
+  key TEXT PRIMARY KEY,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM platform.product_migrations WHERE key = 'three-commercial-plans-2026-08') THEN
+    -- Premium vira Studio: mesmo preço final, mais nome Premium fora da oferta.
+    -- Só o plano atual muda; faturas históricas permanecem como foram emitidas.
+    UPDATE platform.tenant_subscriptions SET plan_code = 'studio', updated_at = now() WHERE plan_code = 'premium';
+    UPDATE platform.tenants SET plan = 'studio' WHERE plan = 'premium';
+    DELETE FROM platform.subscription_plans WHERE code = 'premium';
+
+    UPDATE platform.subscription_plans
+       SET name = 'Pacote Start',
+           price_cents = 4990,
+           audience = 'Para quem está organizando a operação solo',
+           description = 'Agenda, clientes, estoque e catálogo para começar com controle.',
+           features = '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports"]'::jsonb,
+           limits = '{"users":1,"clients":300,"appointments_month":100,"jewelry_items":100,"storage_mb":1024,"catalog_plugins":0}'::jsonb,
+           is_recommended = false,
+           badge = '',
+           is_active = true,
+           sort_order = 10,
+           updated_at = now()
+     WHERE code = 'start';
+
+    UPDATE platform.subscription_plans
+       SET name = 'Pacote Profissional',
+           price_cents = 8990,
+           audience = 'Para transformar atendimento em uma operação profissional',
+           description = 'Agendamento online, financeiro, documentos digitais e catálogo personalizado.',
+           features = '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","anamnesis","digital_terms","basic_finance","deposits","stock_alerts","automatic_followup","message_templates","public_catalog_customization"]'::jsonb,
+           limits = '{"users":3,"jewelry_items":500,"storage_mb":5120,"catalog_plugins":3}'::jsonb,
+           is_recommended = true,
+           badge = 'Mais recomendado',
+           is_active = true,
+           sort_order = 20,
+           updated_at = now()
+     WHERE code = 'profissional';
+
+    UPDATE platform.subscription_plans
+       SET name = 'Pacote Studio',
+           price_cents = 14990,
+           audience = 'Para estúdios com equipe, vendas e crescimento',
+           description = 'Automação, campanhas, catálogo avançado, Analytics e gestão completa da equipe.',
+           features = '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","anamnesis","digital_terms","basic_finance","deposits","stock_alerts","automatic_followup","message_templates","public_catalog_customization","multi_user","commissions","monthly_reports","coupons","returns","full_client_history","jewelry_sales_report","advanced_catalog","catalog_analytics","featured_products","promotional_banner","campaigns","advanced_finance","variation_inventory","visual_search","alert_center","courses","priority_support"]'::jsonb,
+           limits = '{"users":10,"storage_mb":20480,"catalog_plugins":12}'::jsonb,
+           is_recommended = false,
+           badge = '',
+           is_active = true,
+           sort_order = 30,
+           updated_at = now()
+     WHERE code = 'studio';
+
+    INSERT INTO platform.product_migrations (key) VALUES ('three-commercial-plans-2026-08');
+  END IF;
+END $$;
 
 -- Recebimentos por período: "recebido no mês", a série mensal e a receita por
 -- plano (services/platformFinance.js) filtram por faixa de `paid_at`, e não

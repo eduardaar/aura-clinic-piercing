@@ -8,7 +8,7 @@ import helmet from "helmet";
 import path from "path";
 import { fileURLToPath } from "url";
 import { PORT, isProduction } from "./config/index.js";
-import { ensurePlatform, applySchemaToAllTenants } from "./services/tenants.js";
+import { ensurePlatform, applyPlatformMigrations, applySchemaToAllTenants } from "./services/tenants.js";
 import { loadPlansFromDb } from "./services/plans.js";
 import { startReconcileWorker } from "./services/asaas/reconcile.js";
 import { apiLimiter, webhookLimiter } from "./middleware/rateLimit.js";
@@ -51,6 +51,10 @@ import planAdminRoutes from "./routes/planAdmin.js";
 import accountAdminRoutes from "./routes/accountAdmin.js";
 import platformFinanceRoutes from "./routes/platformFinance.js";
 import supportRoutes from "./routes/support.js";
+import aiAssistantRoutes from "./routes/aiAssistant.js";
+import privacyRoutes from "./routes/privacy.js";
+import jobsRoutes from "./routes/jobs.js";
+import { startJobWorker } from "./services/jobWorker.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -70,12 +74,17 @@ app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS ?? (isProduction ? 2 
 // permitir que o frontend consuma as imagens servidas em /uploads.
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 // CORS restrito à(s) origem(ns) configurada(s) em CORS_ORIGIN (separadas por vírgula).
-app.use(cors({ origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(",") : true }));
+app.use(cors({ origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(",") : true, credentials: true }));
 app.use(express.json({ limit: "8mb" }));
 app.use((_req, res, next) => {
   res.charset = "utf-8";
   next();
 });
+// TRANSITÓRIO: com o R2 ligado, upload novo nenhum passa por aqui — a escrita
+// vai toda para o bucket e a URL devolvida é a do CDN. Este static continua no
+// ar porque o banco está cheio de `/uploads/<arquivo>` gravados antes da
+// migração, e a migração roda DEPOIS do deploy. Só pode ser removido quando
+// nenhuma linha de imagem apontar mais para um caminho relativo.
 app.use("/uploads", express.static(path.join(__dirname, "data", "uploads")));
 
 // Webhooks de gateway ANTES do rate limit global, com limite próprio: o Asaas
@@ -128,15 +137,22 @@ app.use(planAdminRoutes);
 app.use(accountAdminRoutes);
 app.use(platformFinanceRoutes);
 app.use(supportRoutes);
+app.use(aiAssistantRoutes);
+app.use(privacyRoutes);
+app.use(jobsRoutes);
 
 // ---------- Inicialização ----------
 // 1) Garante o schema de controle `platform` (tenants + superadmin inicial).
-// 2) Aplica o schema.sql idempotente em TODOS os tenants (runner de migrations
-//    multi-schema: novas tabelas/colunas chegam a todas as clínicas no boot).
+// 2) Aplica o schema.sql idempotente legado em TODOS os tenants. Migrations
+//    incrementais só rodam no boot quando RUN_MIGRATIONS_ON_BOOT=true; o
+//    pipeline de deploy deve chamá-las explicitamente antes de subir a API.
 // 3) Liga o worker de conciliação com o Asaas (rede de segurança para webhook
 //    perdido). DESLIGADO por padrão: só sobe com ASAAS_RECONCILE_ENABLED=true.
 //    Depende do schema já aplicado, por isso vem depois dos dois passos acima.
 await ensurePlatform();
+if (process.env.RUN_MIGRATIONS_ON_BOOT === "true") {
+  await applyPlatformMigrations();
+}
 await applySchemaToAllTenants();
 // 3) Carrega os planos do banco para o registro em memória. A partir daqui o
 //    BANCO é a fonte da verdade de preço, features e limites; se a leitura
@@ -144,6 +160,7 @@ await applySchemaToAllTenants();
 //    porque lista vazia trancaria todas as clínicas fora do sistema.
 await loadPlansFromDb();
 startReconcileWorker();
+startJobWorker();
 app.listen(PORT, () => {
   console.log(`Aura Clinic API em http://localhost:${PORT}`);
 });

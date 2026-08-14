@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, ExternalLink, ImageIcon, Plus, Trash2 } from "lucide-react";
 import { Button, Input, StatusBadge, Textarea } from "../../components/common/Ui";
-import { Modal } from "../../components/common/Crud";
+import { Modal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { API, API_ORIGIN } from "../../lib/api";
 import { asArray, asObject } from "../../lib/utils";
@@ -28,6 +28,10 @@ const SECTION_INFO = {
     name: "Recursos do sistema",
     hint: "Os quatro cards que explicam o que a plataforma faz.",
   },
+  about: {
+    name: "Página Sobre nós",
+    hint: "Conteúdo da página pública /sobre, sobre a Aura Clinic e a Monitence.",
+  },
   carousel: {
     name: "Carrossel de imagens",
     hint: "Faixa de fotos que passam sozinhas. Nasce desligado.",
@@ -35,10 +39,6 @@ const SECTION_INFO = {
   plans: {
     name: "Planos",
     hint: "Chamada dos planos. Os preços vêm do cadastro de planos.",
-  },
-  showcase_links: {
-    name: "Veja quem já usa",
-    hint: "Os dois links para as vitrines públicas das clínicas.",
   },
   closing: {
     name: "Fechamento e rodapé",
@@ -149,7 +149,9 @@ export function LandingEditor({ token, onUnauthorized }) {
     };
   }, [request]);
 
-  const sectionList = asArray(sections);
+  // `showcase_links` foi aposentado da página pública. A chave antiga pode
+  // continuar em bancos já existentes, mas não deve ocupar a lista de edição.
+  const sectionList = asArray(sections).filter((section) => section.section_key !== "showcase_links");
 
   const dirtyKeys = useMemo(
     () => sectionList.filter((row) => drafts[row.section_key] && hasChanges(drafts[row.section_key], row.content)).map((row) => row.section_key),
@@ -349,37 +351,14 @@ export function LandingEditor({ token, onUnauthorized }) {
             },
           ]}
           actions={(row) => (
-            <>
-              <button type="button" className="" onClick={() => setEditando(row.section_key)}>
-                Editar
-              </button>
-              <button
-                type="button"
-                className=""
-                disabled={ocupado === row.section_key}
-                onClick={() => alternarBloco(row)}
-              >
-                {row.enabled ? "Desligar" : "Ligar"}
-              </button>
-              <button
-                type="button"
-                className=""
-                disabled={row.posicao === 1 || Boolean(ocupado)}
-                aria-label={`Mover "${row.nome}" para cima`}
-                onClick={() => moverBloco(row, -1)}
-              >
-                <ArrowUp size={15} />
-              </button>
-              <button
-                type="button"
-                className=""
-                disabled={row.posicao === linhas.length || Boolean(ocupado)}
-                aria-label={`Mover "${row.nome}" para baixo`}
-                onClick={() => moverBloco(row, 1)}
-              >
-                <ArrowDown size={15} />
-              </button>
-            </>
+            <RowActions
+              actions={[
+                { label: "Editar", onClick: () => setEditando(row.section_key), primary: true },
+                { label: row.enabled ? "Desligar" : "Ligar", onClick: () => alternarBloco(row), disabled: ocupado === row.section_key },
+                { label: "Mover para cima", onClick: () => moverBloco(row, -1), disabled: row.posicao === 1 || Boolean(ocupado) },
+                { label: "Mover para baixo", onClick: () => moverBloco(row, 1), disabled: row.posicao === linhas.length || Boolean(ocupado) },
+              ]}
+            />
           )}
           empty="Nenhum bloco cadastrado na landing."
         />
@@ -499,11 +478,13 @@ function ImageField({ label, value, alt, onChange, onAltChange, upload }) {
           </div>
         )}
         <div>
-          <Input label="Endereço da imagem" value={value || ""} onChange={onChange} />
-          <p className="field-hint">Envie um arquivo (até 6 MB) ou cole aqui o endereço de uma imagem já publicada.</p>
+          <p className="field-hint">
+            Anexe uma imagem de até 6 MB. Ela será publicada no R2 em <code>plataforma/landing/</code> e usada pela
+            página inicial.
+          </p>
           <div className="header-actions">
             <label className="secondary-button le-arquivo">
-              {uploading ? "Enviando…" : "Enviar arquivo"}
+              {uploading ? "Enviando…" : value ? "Substituir imagem" : "Anexar imagem"}
               <input type="file" accept="image/*" disabled={uploading} onChange={pick} />
             </label>
             {value && (
@@ -571,6 +552,8 @@ function SectionFields({ sectionKey, content, onChange, upload }) {
   const patchItem = (index, patch) => setItems(items.map((item, position) => (position === index ? { ...item, ...patch } : item)));
 
   if (sectionKey === "hero") {
+    const screens = asArray(content.screens);
+    const patchScreen = (index, patch) => set({ screens: screens.map((screen, position) => (position === index ? { ...screen, ...patch } : screen)) });
     return (
       <div className="stack">
         <div className="form-grid">
@@ -599,6 +582,11 @@ function SectionFields({ sectionKey, content, onChange, upload }) {
           onAltChange={(value) => set({ image_alt: value })}
           upload={upload}
         />
+        <section className="panel stack">
+          <div className="panel-heading"><div><h3>Telas do sistema em destaque</h3><p>Envie capturas reais do painel. Elas ocupam a faixa ampla do topo e alternam automaticamente.</p></div></div>
+          {screens.map((screen, index) => <ImageField key={`${screen.image || "screen"}-${index}`} label={`Tela ${index + 1}`} value={screen.image} alt={screen.image_alt} onChange={(value) => patchScreen(index, { image: value })} onAltChange={(value) => patchScreen(index, { image_alt: value })} upload={upload} />)}
+          {screens.length < 5 && <Button variant="secondary" onClick={() => set({ screens: [...screens, { image: "", image_alt: "" }] })}><Plus size={16} /> Adicionar tela</Button>}
+        </section>
       </div>
     );
   }
@@ -648,6 +636,17 @@ function SectionFields({ sectionKey, content, onChange, upload }) {
         )}
       </div>
     );
+  }
+
+  if (sectionKey === "about") {
+    return <div className="stack">
+      <div className="form-grid">
+        <Input label="Etiqueta" value={content.kicker || ""} onChange={(value) => set({ kicker: value })} />
+        <Input label="Título da seção" value={content.title || ""} onChange={(value) => set({ title: value })} />
+      </div>
+      <section className="panel stack"><div className="panel-heading"><div><h3>Produto</h3><p>Como a Aura Clinic se apresenta.</p></div></div><Input label="Nome" value={content.aura_title || ""} onChange={(value) => set({ aura_title: value })} /><Textarea label="Texto" value={content.aura_text || ""} onChange={(value) => set({ aura_text: value })} /></section>
+      <section className="panel stack"><div className="panel-heading"><div><h3>Empresa</h3><p>Como a Monitence se apresenta.</p></div></div><Input label="Nome" value={content.monitence_title || ""} onChange={(value) => set({ monitence_title: value })} /><Textarea label="Texto" value={content.monitence_text || ""} onChange={(value) => set({ monitence_text: value })} /></section>
+    </div>;
   }
 
   if (sectionKey === "carousel") {
@@ -798,7 +797,11 @@ function SectionFields({ sectionKey, content, onChange, upload }) {
           <Input label="Texto do rodapé" value={content.footer_text || ""} onChange={(value) => set({ footer_text: value })} />
           <Input label="Rótulo do link do rodapé" value={content.footer_link_label || ""} onChange={(value) => set({ footer_link_label: value })} />
           <Input label="Endereço do link do rodapé" value={content.footer_link_href || ""} onChange={(value) => set({ footer_link_href: value })} />
+          <Input label="WhatsApp público" value={content.contact_whatsapp || ""} onChange={(value) => set({ contact_whatsapp: value })} placeholder="Ex.: +55 77 9863-2417" />
+          <Input type="email" label="E-mail público" value={content.contact_email || ""} onChange={(value) => set({ contact_email: value })} placeholder="contato@suaempresa.com" />
+          <Input label="Instagram público" value={content.contact_instagram || ""} onChange={(value) => set({ contact_instagram: value })} placeholder="https://instagram.com/seuperfil" />
         </div>
+        <p className="field-hint">Estes são os canais exibidos no rodapé da Landing. Eles são independentes dos dados de cada clínica.</p>
       </div>
     );
   }

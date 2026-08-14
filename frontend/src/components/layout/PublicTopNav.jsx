@@ -8,7 +8,7 @@ import { BrandMark } from "../common/BrandMark";
 // não parecer que oferece um caminho onde o usuário já está.
 export function PublicTopNav({ current }) {
   return (
-    <header className="au-nav">
+    <header className="au-nav au-nav-dark">
       <div className="au-nav-inner">
         <a className="au-nav-brand" href="/" aria-label="Aura — página inicial">
           <BrandMark size={34} className="au-nav-mark" />
@@ -20,6 +20,7 @@ export function PublicTopNav({ current }) {
         <nav className="au-nav-links" aria-label="Navegação principal">
           <a className="au-nav-link" href="/#recursos">Recursos</a>
           <a className="au-nav-link" href="/#planos">Planos</a>
+          <a className="au-nav-link" href="/sobre" aria-current={current === "about" ? "page" : undefined}>Sobre nós</a>
         </nav>
 
         <div className="au-nav-actions">

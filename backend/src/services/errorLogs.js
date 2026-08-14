@@ -8,10 +8,48 @@ function clip(value, max) {
   return text.length > max ? text.slice(0, max) : text;
 }
 
+const SECRET_KEY = /^(authorization|password|senha|token|access_token|refresh_token|api_key|secret|cvv|ccv|card_number|numero_cartao)$/i;
+
+function redactText(value) {
+  return String(value ?? "")
+    .replace(/Bearer\s+[A-Za-z0-9._~+\/-]+/gi, "Bearer [REDACTED]")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[EMAIL_REDACTED]")
+    // CPF/CNPJ, telefone e PAN: sequências longas, mesmo com pontuação/espaço.
+    .replace(/(?<!\d)(?:\d[ .()\/-]?){10,18}\d(?!\d)/g, "[NUMBER_REDACTED]");
+}
+
+function sanitizeValue(value, depth = 0) {
+  if (depth > 5) return "[DEPTH_LIMIT]";
+  if (Array.isArray(value)) return value.slice(0, 50).map((item) => sanitizeValue(item, depth + 1));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).slice(0, 100).map(([key, item]) => [
+        key,
+        SECRET_KEY.test(key) ? "[REDACTED]" : sanitizeValue(item, depth + 1)
+      ])
+    );
+  }
+  return typeof value === "string" ? redactText(value) : value;
+}
+
+/** Remove credenciais e identificadores comuns da telemetria enviada pelo navegador. */
+export function sanitizeFrontendTelemetry(entry = {}) {
+  return {
+    ...entry,
+    message: redactText(entry.message),
+    stack: entry.stack == null ? null : redactText(entry.stack),
+    url: entry.url == null ? null : redactText(entry.url),
+    context: sanitizeValue(entry.context),
+    // Nunca confiar no e-mail informado por uma rota pública.
+    user_email: null
+  };
+}
+
 // Grava um erro na tabela central. `db` já está no schema do tenant da requisição.
 export async function recordError(db, entry = {}) {
   try {
-    const rawContext = entry.context;
+    const safeEntry = entry.source === "frontend" ? sanitizeFrontendTelemetry(entry) : entry;
+    const rawContext = safeEntry.context;
     const context = rawContext == null
       ? null
       : clip(typeof rawContext === "string" ? rawContext : JSON.stringify(rawContext), LIMITS.context);
@@ -20,16 +58,16 @@ export async function recordError(db, entry = {}) {
         (source, level, message, stack, url, method, status_code, user_id, user_email, user_agent, context)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        entry.source === "frontend" ? "frontend" : "backend",
-        clip(entry.level || "error", LIMITS.level),
-        clip(entry.message || "(sem mensagem)", LIMITS.message),
-        clip(entry.stack, LIMITS.stack),
-        clip(entry.url, LIMITS.url),
-        clip(entry.method, LIMITS.method),
-        Number.isFinite(Number(entry.status_code)) && entry.status_code != null ? Number(entry.status_code) : null,
-        entry.user_id != null && Number.isFinite(Number(entry.user_id)) ? Number(entry.user_id) : null,
-        clip(entry.user_email, LIMITS.email),
-        clip(entry.user_agent, LIMITS.ua),
+        safeEntry.source === "frontend" ? "frontend" : "backend",
+        clip(safeEntry.level || "error", LIMITS.level),
+        clip(safeEntry.message || "(sem mensagem)", LIMITS.message),
+        clip(safeEntry.stack, LIMITS.stack),
+        clip(safeEntry.url, LIMITS.url),
+        clip(safeEntry.method, LIMITS.method),
+        Number.isFinite(Number(safeEntry.status_code)) && safeEntry.status_code != null ? Number(safeEntry.status_code) : null,
+        safeEntry.user_id != null && Number.isFinite(Number(safeEntry.user_id)) ? Number(safeEntry.user_id) : null,
+        clip(safeEntry.user_email, LIMITS.email),
+        clip(safeEntry.user_agent, LIMITS.ua),
         context
       ]
     );

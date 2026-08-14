@@ -164,6 +164,8 @@ async function criarAgendamento(clinica, {
     whatsapp: whatsappUnico(),
     total_value: total,
     deposit_value: sinal,
+    deposit_status: sinal > 0 ? "pago" : "nao_aplicavel",
+    deposit_paid_at: sinal > 0 ? `${data}T${hora}:00` : null,
     deposit_payment_method: "Pix",
     remaining_payment_method: "Pix",
     status
@@ -232,7 +234,10 @@ test("revenueToday soma todos os tipos de pagamento do dia, não só o sinal", a
     const profissionalId = await criarProfissional(clinica);
     // Sinal de 100 pago hoje + restante de 150 registrado ao marcar 'atendido'.
     const agendamentoId = await criarAgendamento(clinica, { profissionalId, data: HOJE, hora: "09:00", total: 250, sinal: 100 });
-    const atendido = await clinica.api(`/appointments/${agendamentoId}`, { method: "PATCH", body: { status: "atendido" } });
+    const atendido = await clinica.api(`/appointments/${agendamentoId}/complete`, {
+      method: "POST",
+      body: { payments: [{ amount: 150, method: "Pix", status: "pago" }] }
+    });
     assert.equal(atendido.status, 200, JSON.stringify(atendido.json));
     assert.equal(atendido.json.status, "atendido");
 

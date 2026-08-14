@@ -91,15 +91,15 @@ export function cleanDisplayText(value = "") {
     .replace(/varia\?\?o/gi, "variação")
     .replace(/dispon\?vel/gi, "disponível")
     .replace(/observa\?\?o/gi, "observação")
-    .replace(/ÃƒÂ¢/g, "â")
-    .replace(/ÃƒÂ£/g, "ã")
-    .replace(/ÃƒÂ§/g, "ç")
-    .replace(/ÃƒÂ©/g, "é")
-    .replace(/ÃƒÂ­/g, "í")
-    .replace(/ÃƒÂ³/g, "ó")
-    .replace(/ÃƒÂµ/g, "õ")
-    .replace(/ÃƒÂº/g, "ú")
-    .replace(/Ã‚Â·/g, "·")
+    .replace(/ÃÂ¢/g, "â")
+    .replace(/ÃÂ£/g, "ã")
+    .replace(/ÃÂ§/g, "ç")
+    .replace(/ÃÂ©/g, "é")
+    .replace(/ÃÂ­/g, "í")
+    .replace(/ÃÂ³/g, "ó")
+    .replace(/ÃÂµ/g, "õ")
+    .replace(/ú/g, "ú")
+    .replace(/·/g, "·")
     .trim();
 }
 
@@ -107,7 +107,7 @@ export function elegantProductName(value = "") {
   const smallWords = new Set(["de", "da", "do", "das", "dos", "e", "com", "para"]);
   const normalized = cleanDisplayText(value)
     .replace(/^Joias Premium\b/i, "Joia Premium")
-    .replace(/\bTitanio\b/gi, "Titânio")
+    .replace(/\bTitânio\b/gi, "Titânio")
     .replace(/\bZirconia\b/gi, "Zircônia")
     .replace(/\s+/g, " ")
     .trim();
@@ -128,7 +128,7 @@ export function splitColorOptions(value = "") {
 
 export function normalizeJewelryMaterial(value = "") {
   const normalized = removeAccents(String(value).toLowerCase());
-  if (normalized.includes("titanio")) return "Titânio ASTM F136";
+  if (normalized.includes("titânio")) return "Titânio ASTM F136";
   if (normalized.includes("ouro 14")) return "Ouro 14k";
   if (normalized.includes("ouro 18")) return "Ouro 18k";
   if (normalized.includes("aco")) return "Aço";
@@ -153,6 +153,7 @@ export function defaultContentSection(order) {
     text: "Use este espaço para explicar materiais, cuidados, medidas, anodização, curadoria ou diferenciais da Aura Clinic.",
     media_type: "image",
     media_url: "https://images.unsplash.com/photo-1602751584552-8ba73aad10e1?auto=format&fit=crop&w=1200&q=85",
+    media_alt: "Joia para piercing em destaque",
     button_text: "Agendar atendimento",
     button_link: "/agendar",
     active: true,
@@ -181,4 +182,27 @@ export function catalogContentSections(value) {
   } catch {
     return [defaultContentSection(1)];
   }
+}
+
+function hasText(value) {
+  return typeof value === "string" ? Boolean(value.trim()) : value !== undefined && value !== null && value !== false;
+}
+
+// Public sections must not reserve layout space unless they can render useful
+// content. Keep this decision in one place so the storefront and its editor do
+// not drift into different definitions of an "empty" section.
+export function hasRenderableContent(section = {}) {
+  if (!section || section.active === false || section.is_active === 0 || section.is_active === "0") return false;
+  const type = section.type || section.section_type || "custom";
+  if (type === "location") return [section.address, section.map_url, section.iframe_url].some(hasText)
+    || (Number.isFinite(Number(section.latitude)) && Number.isFinite(Number(section.longitude)));
+  if (type === "instagram") return [section.username, section.url, section.embed_url].some(hasText);
+  if (type === "whatsapp") return [section.phone, section.url].some(hasText);
+  if (type === "banner") return [section.image_url, section.media_url].some(hasText);
+  if (type === "video" || type === "iframe") return [section.url, section.src, section.embed_url].some(hasText);
+  if (type === "footer") return [section.institutional_text, section.whatsapp_phone, section.company_instagram,
+    section.company_email, section.company_hours, section.company_address, section.logo_url, section.display_name,
+    section.slogan, section.copyright_text].some(hasText);
+  return [section.title, section.text, section.image_url, section.media_url, section.url].some(hasText)
+    || (Array.isArray(section.items) && section.items.length > 0);
 }

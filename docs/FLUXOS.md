@@ -11,7 +11,6 @@ Todos os valores abaixo são **defaults de desenvolvimento** — troque-os em pr
 | **Super-admin da plataforma** (`/plataforma`) | `superadmin@aura.local` / `superadmin123` | `backend/.env` (`PLATFORM_ADMIN_EMAIL`/`PLATFORM_ADMIN_PASSWORD`); semeado por `ensurePlatform()` no primeiro boot se `platform.platform_users` estiver vazia. |
 | **Clínica padrão** (código/slug) | `aura` | `backend/.env` (`DEFAULT_TENANT=aura`); é o tenant criado pela migração multi-tenant. |
 | **Admin da clínica migrada** (`/login`) | `admin@auraclinic.com` / `aura123` | Admin da clínica `aura` (senha padrão; **troque em produção**). O campo de e-mail do login já vem pré-preenchido com esse endereço. |
-| **Central Administrativa (frontend)** | senha `aura123` | `frontend/.env` (`VITE_ADMIN_PASSWORD`). |
 
 Observação: em **desenvolvimento local** (`localhost`, `NODE_ENV != production`), a API dispensa o token nas rotas protegidas e assume o admin do tenant resolvido — útil para testar rapidamente sem login. Em produção o token é sempre obrigatório.
 
@@ -41,7 +40,7 @@ Perfil `reception` (ou `admin`). Páginas típicas: agenda, clientes, vendas.
 
 1. **Login** — `/login` com código da clínica + e-mail + senha (`POST /api/login`). O token é guardado no navegador e usado nas chamadas seguintes.
 2. **Cadastrar um cliente** — na tela de Clientes, criar via `POST /api/clients` com `full_name` e `whatsapp` (obrigatórios) e, opcionalmente, `instagram`, `birth_date`, `notes`.
-3. **Agendar um atendimento** — na Agenda, criar o agendamento (`POST /api/appointments`): escolher profissional, data e hora (obrigatórios), o serviço/procedimento, região do piercing, a joia (e variação) se houver, e os valores (`total_value`, `deposit_value`, `remaining_value`). É possível anexar foto de referência (multipart). Se o horário já estiver ocupado, a API retorna `409`.
+3. **Agendar um atendimento** — na Agenda, criar o agendamento (`POST /api/appointments`): escolher profissional, data e hora (obrigatórios), um ou mais serviços/procedimentos, região do piercing, a joia (e variação) se houver, e os valores (`total_value`, `deposit_value`, `remaining_value`). É possível anexar foto de referência (multipart). Se o horário já estiver ocupado, a API retorna `409`.
    - Alternativamente, o agendamento pode chegar pelo **booking público** (`POST /api/booking/requests`), aparecendo como solicitação `pendente` para a recepção confirmar.
 4. **Receber o sinal (depósito)** — informar o valor e a forma de pagamento do sinal no agendamento; o comprovante pode ser anexado (`payment_proof_url`). O saldo restante fica registrado para cobrança no atendimento.
 5. **Acompanhar a agenda** — visualizar/filtrar agendamentos (`GET /api/appointments?status=&professional_id=`), remarcar/atualizar status (`PATCH /api/appointments/:id`) e consultar disponibilidade/bloqueios.

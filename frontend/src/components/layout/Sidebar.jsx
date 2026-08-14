@@ -1,35 +1,38 @@
 import React, { useState } from "react";
-import { BarChart3, Calendar, Gem, Home, Lock, LogOut, MessageCircle, Plug, ShieldCheck, ShoppingCart, Sparkles, UsersRound, WalletCards , LifeBuoy } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, BarChart3, Calendar, Gem, Home, Lock, LogOut, MessageCircle, Package, Plug, Settings, ShieldCheck, ShoppingCart, Sparkles, UsersRound, LifeBuoy } from "lucide-react";
 import { canAccessPage, planAllowsPage } from "../../lib/permissions";
 import { Modal } from "../common/Crud";
 
-export function Sidebar({ page, role, brand, features, trialDays, setPage, open, collapsed = false, onLogout }) {
+export function Sidebar({ page, role, brand, features, trialDays, setPage, open, onLogout }) {
   // Marca do tenant logado (com fallback para a marca-mãe "Aura").
   const brandName = brand?.name || "Aura";
   const brandShort = brand?.short || (brand?.name ? "" : "Clinic Piercing");
   const brandLogo = brand?.logoUrl || "";
 
-  // Menu em blocos por área de trabalho. Uma lista plana de 11 itens obriga a
-  // ler tudo para achar qualquer coisa; agrupado, o olho vai direto ao bloco.
-  // Um bloco só aparece se sobrar algum item depois do filtro por papel.
+  // Estrutura original por área de trabalho. O visual do menu pode evoluir,
+  // mas a organização funcional e os destinos permanecem estáveis.
   const groups = [
     ["", [
-      ["dashboard", Home, "Dashboard"]
+      ["dashboard", Home, "Dashboard"],
+      ["onboarding", Sparkles, "Onboarding"]
     ]],
     ["Atendimento", [
       ["agenda", Calendar, "Agenda"],
       ["client-center", UsersRound, "Clientes"]
     ]],
     ["Comercial", [
+      ["products", Package, "Produtos e estoque"],
       ["catalog", Gem, "Catálogo"],
       ["sales", ShoppingCart, "Vendas"],
       ["communications", MessageCircle, "Comunicações"]
     ]],
     ["Gestão", [
-      ["finance", WalletCards, "Financeiro"],
+      ["receivables", ArrowDownToLine, "Contas a receber"],
+      ["payables", ArrowUpFromLine, "Contas a pagar"],
       ["reports", BarChart3, "Relatórios"]
     ]],
     ["Sistema", [
+      ["settings", Settings, "Configurações"],
       ["admin", ShieldCheck, "Acessos"],
       ["integrations", Plug, "Integrações"],
       ["support", LifeBuoy, "Suporte"]

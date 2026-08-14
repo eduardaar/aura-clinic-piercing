@@ -1,7 +1,7 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useState } from "react";
-import { Button, Input, Metric, Select, StatusBadge } from "../../components/common/Ui";
-import { Modal, CrudHeader } from "../../components/common/Crud";
+import { Button, FinancialSummary, Input, Metric, Select, StatusBadge } from "../../components/common/Ui";
+import { Modal, CrudHeader, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { asArray, formatDate } from "../../lib/utils";
 import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
@@ -53,29 +53,78 @@ export function SalesWorkspace() {
   const paymentOptions = [...new Set(safeOrders.map((order) => order.payment_method || "Pix"))].sort();
   const selectedProduct = safeJewelry.find((item) => String(item.id) === String(line.product_id));
   const selectedVariants = asArray(selectedProduct?.variants).filter((variant) => Number(variant.is_active ?? 1));
+  // Espelha a regra de baixa do backend (`resolveStockTarget` em services/sales.js):
+  // sem variação escolhida a venda debita a primeira variação ativa com saldo e,
+  // se o produto não tem variação nenhuma, debita o saldo do próprio produto.
+  const stockVariant = line.product_variant_id
+    ? selectedVariants.find((variant) => String(variant.id) === String(line.product_variant_id)) || null
+    : selectedVariants.find((variant) => Number(variant.quantity || 0) > 0) || null;
+  const stockKey = stockVariant ? `variant:${stockVariant.id}` : `product:${line.product_id}`;
+  // O que já está no carrinho conta contra o mesmo saldo: duas linhas de 2 un.
+  // sobre um estoque de 3 são recusadas pelo backend, então a tela também soma.
+  const reservedInCart = items
+    .filter((item) => item.item_type === "produto" && item.stock_key === stockKey)
+    .reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+  const productStock = stockVariant
+    ? Number(stockVariant.quantity || 0)
+    : Number(selectedProduct?.inventory_quantity ?? selectedProduct?.quantity ?? 0);
+  // Saldo que a PRÓXIMA linha ainda pode consumir. `null` quando a pergunta não
+  // faz sentido (serviço, ou nenhuma joia escolhida ainda).
+  const availableQuantity = line.item_type === "produto" && selectedProduct
+    ? Math.max(0, productStock - reservedInCart)
+    : null;
+  const requestedQuantity = Math.max(1, Number(line.quantity || 1));
+  const exceedsStock = availableQuantity !== null && requestedQuantity > availableQuantity;
+  const defaultService = safeServices[0];
 
   useEffect(() => {
-    setLine((current) => ({ ...current, item_type: tab === "servico" ? "servico" : "produto" }));
-  }, [tab]);
-
-  useEffect(() => {
-    if (safeJewelry.length && tab !== "servico" && !line.product_id) {
-      const firstVariant = asArray(safeJewelry[0].variants).find((variant) => Number(variant.quantity || 0) > 0) || asArray(safeJewelry[0].variants)[0];
-      setLine((current) => ({
-        ...current,
-        product_id: String(safeJewelry[0].id),
-        product_variant_id: firstVariant?.id ? String(firstVariant.id) : "",
-        item_name: safeJewelry[0].name,
-        unit_price: firstVariant?.sale_value || safeJewelry[0].sale_value || 0
-      }));
+    if (defaultService && tab === "servico" && !line.service_id) {
+      setLine((current) => ({ ...current, service_id: String(defaultService.id), item_name: defaultService.name, unit_price: defaultService.base_price || defaultService.price || 0 }));
     }
-  }, [safeJewelry.length]);
+  }, [defaultService, tab, line.service_id]);
 
-  useEffect(() => {
-    if (safeServices.length && (tab === "servico" || tab === "ordem")) {
-      setLine((current) => ({ ...current, service_id: String(safeServices[0].id), item_name: safeServices[0].name, unit_price: safeServices[0].base_price || safeServices[0].price || 0 }));
+  function handleTabChange(nextTab) {
+    setTab(nextTab);
+    setItems([]);
+    setError("");
+
+    if (nextTab === "servico") {
+      setLine({
+        ...defaultSalesLine(),
+        item_type: "servico",
+        service_id: defaultService?.id ? String(defaultService.id) : "",
+        item_name: defaultService?.name || "",
+        unit_price: defaultService?.base_price || defaultService?.price || 0
+      });
+      return;
     }
-  }, [safeServices.length, tab]);
+
+    setLine({
+      ...defaultSalesLine(),
+      item_type: "produto",
+      product_id: "",
+      product_variant_id: "",
+      item_name: "",
+      unit_price: 0
+    });
+  }
+
+  function addSelectedJewelry(product) {
+    const variant = asArray(product?.variants).find((option) => Number(option.quantity || 0) > 0) || asArray(product?.variants)[0];
+    const unitPrice = Number(variant?.sale_value || product?.sale_value || 0);
+    const availableStock = variant ? Number(variant.quantity || 0) : Number(product?.inventory_quantity ?? product?.quantity ?? 0);
+    setLine({ ...defaultSalesLine(), item_type: "produto", product_id: String(product.id), product_variant_id: variant?.id ? String(variant.id) : "", item_name: product.name, unit_price: unitPrice });
+    setItems((current) => [...current, {
+      item_type: "produto", product_id: Number(product.id), service_id: null,
+      item_name: variant ? `${product.name} - ${variant.variation_name || variant.sku}` : product.name,
+      quantity: 1, product_variant_id: variant ? Number(variant.id) : null,
+      variation_name: variant?.variation_name || variant?.sku || "",
+      stock_key: variant ? `variant:${variant.id}` : `product:${product.id}`,
+      available_stock: availableStock, unit_price: unitPrice, notes: ""
+    }]);
+    setPriceQuote(null);
+    setError("");
+  }
 
   // A lista carrega sozinha: só a tabela espera pelos pedidos, o resto da tela
   // (métricas e modal de cadastro) não fica bloqueado pelos outros fetches.
@@ -107,13 +156,17 @@ export function SalesWorkspace() {
        safeServices.find((item) => String(item.id) === String(line.service_id))
       : safeJewelry.find((item) => String(item.id) === String(line.product_id));
     if (!entry) return;
-    const variant = line.item_type === "produto"
-      ? asArray(entry.variants).find((item) => String(item.id) === String(line.product_variant_id))
-      : null;
-    if (line.item_type === "produto" && variant && quantity > Number(variant.quantity || 0)) {
-      setError("Quantidade maior que o estoque disponivel da variacao.");
+    // A variação usada é a MESMA que o backend vai debitar (inclusive quando o
+    // caixa deixou "Sem variação"): é o que faz o aviso da tela e a recusa do
+    // servidor falarem do mesmo saldo.
+    const variant = line.item_type === "produto" ? stockVariant : null;
+    // Produto sem variação nenhuma nunca passava por checagem: era exatamente
+    // por aí que 50 unidades de um estoque de 3 entravam na venda.
+    if (line.item_type === "produto" && availableQuantity !== null && quantity > availableQuantity) {
+      setError(`Estoque insuficiente para ${entry.name}: ${availableQuantity} un. disponível(is)${reservedInCart ? ` (${reservedInCart} un. já nesta venda)` : ""}.`);
       return;
     }
+    setError("");
     setItems((current) => [...current, {
       item_type: line.item_type,
       product_id: line.item_type === "produto" ? Number(entry.id) : null,
@@ -121,6 +174,9 @@ export function SalesWorkspace() {
       item_name: variant ? `${entry.name} - ${variant.variation_name || variant.sku}` : entry.name,
       quantity,
       product_variant_id: variant ? Number(variant.id) : null,
+      // Só para a tela somar o que já foi adicionado contra o mesmo saldo; o
+      // backend ignora campos que não conhece.
+      stock_key: line.item_type === "produto" ? stockKey : null,
       unit_price: Number(line.unit_price || variant?.sale_value || entry.sale_value || entry.base_price || entry.price || 0),
       notes: line.notes || ""
     }]);
@@ -261,10 +317,10 @@ export function SalesWorkspace() {
             }
           ]}
           actions={(order) => (
-            <>
-              <button type="button" onClick={() => updateStatus(order.id, "concluida")}>Concluir</button>
-              <button type="button" onClick={() => updateStatus(order.id, "cancelada")}>Cancelar</button>
-            </>
+            <RowActions actions={[
+              { label: "Concluir", onClick: () => updateStatus(order.id, "concluida") },
+              { label: "Cancelar", onClick: () => updateStatus(order.id, "cancelada"), danger: true }
+            ]} />
           )}
           empty="Nenhuma venda registrada ainda."
         />
@@ -289,7 +345,7 @@ export function SalesWorkspace() {
             ["servico", "Venda de serviço"],
             ["ordem", "Ordem de serviço"]
           ].map(([id, label]) => (
-            <button key={id} type="button" className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}</button>
+            <button key={id} type="button" className={tab === id ? "active" : ""} onClick={() => handleTabChange(id)}>{label}</button>
           ))}
         </div>
 
@@ -351,17 +407,7 @@ export function SalesWorkspace() {
                   {safeServices.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
                 </Select>
               ) : (
-                <SmartCombobox label="Joia" value={line.product_id} options={safeJewelry} onChange={(value) => {
-                  const selected = safeJewelry.find((item) => String(item.id) === String(value));
-                  const firstVariant = asArray(selected?.variants).find((variant) => Number(variant.quantity || 0) > 0) || asArray(selected?.variants)[0];
-                  setLine({
-                    ...line,
-                    product_id: value,
-                    product_variant_id: firstVariant?.id ? String(firstVariant.id) : "",
-                    item_name: selected?.name || "",
-                    unit_price: firstVariant?.sale_value || selected?.sale_value || 0
-                  });
-                }} getMeta={(item) => [item.category, item.material, item.sku].filter(Boolean).join(" · ")} isDisabled={(item) => asArray(item.variants).length ? !asArray(item.variants).some((variant) => Number(variant.quantity || 0) > 0) : Number(item.inventory_quantity ?? item.quantity ?? 0) <= 0} />
+                <SmartCombobox label="Joia" value={line.product_id} options={safeJewelry} onChange={(value) => { if (!value) setLine({ ...defaultSalesLine(), item_type: "produto" }); }} onSelect={addSelectedJewelry} getMeta={(item) => [item.category, item.material, item.sku].filter(Boolean).join(" · ")} isDisabled={(item) => asArray(item.variants).length ? !asArray(item.variants).some((variant) => Number(variant.quantity || 0) > 0) : Number(item.inventory_quantity ?? item.quantity ?? 0) <= 0} />
               )}
               {line.item_type === "produto" && (
                 <Select label="Variação" value={line.product_variant_id} onChange={(value) => {
@@ -380,13 +426,22 @@ export function SalesWorkspace() {
                   ))}
                 </Select>
               )}
-              <Input type="number" label="Quantidade" value={line.quantity} onChange={(value) => setLine({ ...line, quantity: value })} />
+              <div>
+                <Input type="number" label="Quantidade" value={line.quantity} onChange={(value) => setLine({ ...line, quantity: value })} />
+                {availableQuantity !== null && (
+                  <span className={exceedsStock ? "field-hint is-error" : "field-hint"}>
+                    {availableQuantity > 0
+                      ? `${availableQuantity} un. disponível(is) em estoque${reservedInCart ? ` (${reservedInCart} un. já nesta venda)` : ""}.`
+                      : "Sem saldo em estoque para este item."}
+                  </span>
+                )}
+              </div>
               <Input type="number" label="Valor unitário" value={line.unit_price} onChange={(value) => setLine({ ...line, unit_price: value })} />
             </div>
             <label>Observações do item
               <textarea value={line.notes} onChange={(event) => setLine({ ...line, notes: event.target.value })} />
             </label>
-            <Button variant="secondary" type="button" onClick={addLineItem}>Adicionar item</Button>
+            <Button variant="secondary" type="button" onClick={addLineItem} disabled={exceedsStock}>Adicionar item</Button>
           </div>
 
           <div className="sales-items-list">
@@ -395,21 +450,15 @@ export function SalesWorkspace() {
                 <div>
                   <strong>{item.item_name}</strong>
                   <span>{saleItemLabel(item.item_type)} · {item.quantity}x · {currency.format(item.unit_price)}</span>
+                  {item.product_id && <small>ID {item.product_id} · {item.variation_name ? `Variação: ${item.variation_name} · ` : ""}Estoque: {item.available_stock ?? "—"} un.</small>}
+                  <small>Subtotal: {currency.format(Number(item.unit_price) * Number(item.quantity))}</small>
                   {item.notes && <small>{item.notes}</small>}
                 </div>
                 <button type="button" onClick={() => removeLine(index)}>Remover</button>
               </article>
             )) : <p className="empty-state">Nenhum item adicionado ainda.</p>}
           </div>
-          <div className="soft-card sales-financial-summary">
-            <strong>Resumo financeiro</strong>
-            <span>Produtos <b>{currency.format(productSubtotal)}</b></span>
-            <span>Serviços <b>{currency.format(serviceSubtotal)}</b></span>
-            <span>Subtotal <b>{currency.format(saleSubtotal)}</b></span>
-            {priceQuote?.promotion_discount > 0 && <span>Promoções <b>−{currency.format(priceQuote.promotion_discount)}</b></span>}
-            {priceQuote?.coupon_discount > 0 && <span>Cupom <b>−{currency.format(priceQuote.coupon_discount)}</b></span>}
-            <span className="total">Total final <b>{currency.format(saleTotal)}</b></span>
-          </div>
+          <FinancialSummary summary={{ grossTotal: saleSubtotal, serviceSubtotal, productSubtotal, discountTotal: Number(priceQuote?.promotion_discount || 0) + Number(priceQuote?.coupon_discount || 0), netTotal: saleTotal, depositPaid: 0, otherPayments: 0, totalPaid: 0, outstandingBalance: saleTotal, paymentStatus: "pendente", couponCode: priceQuote?.coupon?.code || form.coupon_code || "" }} />
           <div className="catalog-coupon-field">
             <Input label="Cupom" value={form.coupon_code || ""} onChange={(value) => { setForm({ ...form, coupon_code: value.toUpperCase() }); setPriceQuote(null); setCouponMessage(""); }} />
             <Button type="button" variant="secondary" onClick={applyCoupon} disabled={!form.coupon_code?.trim() || !items.length}>Aplicar cupom</Button>

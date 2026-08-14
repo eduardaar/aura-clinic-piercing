@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ChevronRight, Eye, EyeOff } from "lucide-react";
 import { apiFetch, setTenantSlug, tenantSlug } from "../../lib/api";
 import { PublicTopNav } from "../layout/PublicTopNav";
+import { PublicFooter } from "../layout/PublicFooter";
 
 export function Login({ onLogin }) {
   const [form, setForm] = useState({
@@ -10,9 +11,11 @@ export function Login({ onLogin }) {
     // credenciais de super-admin (isso é conta de plataforma, não de clínica).
     email: localStorage.getItem("aura-last-email") || "",
     password: "",
+    mfa_code: "",
   });
   const [rememberAccess, setRememberAccess] = useState(Boolean(localStorage.getItem("aura-admin-authenticated")));
   const [showPassword, setShowPassword] = useState(false);
+  const [mfaRequired, setMfaRequired] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -34,10 +37,11 @@ export function Login({ onLogin }) {
       setTenantSlug(slug);
       const response = await apiFetch("/login", {
         method: "POST",
-        body: JSON.stringify({ email, password: form.password }),
+        body: JSON.stringify({ email, password: form.password, ...(form.mfa_code ? { mfa_code: form.mfa_code.trim() } : {}) }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
+        setMfaRequired(payload.code === "mfa_required");
         // 404 clínica não encontrada / 403 suspensa / credenciais inválidas: o backend explica no payload.error.
         setError(payload.error || "E-mail ou senha incorretos. Por favor, tente novamente.");
         return;
@@ -91,7 +95,10 @@ export function Login({ onLogin }) {
                   autoComplete="username"
                   required
                   value={form.email}
-                  onChange={(event) => setForm({ ...form, email: event.target.value })}
+                  onChange={(event) => {
+                    setMfaRequired(false);
+                    setForm({ ...form, email: event.target.value, mfa_code: "" });
+                  }}
                   placeholder="seu@email.com"
                 />
               </div>
@@ -106,7 +113,10 @@ export function Login({ onLogin }) {
                     autoComplete="current-password"
                     required
                     value={form.password}
-                    onChange={(event) => setForm({ ...form, password: event.target.value })}
+                    onChange={(event) => {
+                      setMfaRequired(false);
+                      setForm({ ...form, password: event.target.value, mfa_code: "" });
+                    }}
                     placeholder="Digite a senha"
                   />
                   <button
@@ -120,6 +130,24 @@ export function Login({ onLogin }) {
                   </button>
                 </div>
               </div>
+
+              {mfaRequired && (
+                <div className="au-a-field">
+                  <label htmlFor="au-a-mfa">Código do autenticador</label>
+                  <input
+                    id="au-a-mfa"
+                    className="au-a-input"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    required
+                    autoFocus
+                    value={form.mfa_code}
+                    onChange={(event) => setForm({ ...form, mfa_code: event.target.value.replace(/\D/g, "") })}
+                    placeholder="000000"
+                  />
+                </div>
+              )}
 
               <label className="au-a-check">
                 <input type="checkbox" checked={rememberAccess} onChange={(event) => setRememberAccess(event.target.checked)} />
@@ -146,6 +174,7 @@ export function Login({ onLogin }) {
           <p className="au-a-aside-quote">Gestão inteligente para quem vive da perfuração.</p>
         </aside>
       </main>
+      <PublicFooter />
     </div>
   );
 }

@@ -31,6 +31,12 @@ import {
   recordCheck,
   tenantClient
 } from "../services/asaas/credentials.js";
+import {
+  removeWhatsAppCloudIntegration,
+  saveWhatsAppCloudIntegration,
+  testWhatsAppCloudConnection,
+  whatsappCloudStatus
+} from "../services/whatsappCloud.js";
 
 const router = Router();
 
@@ -81,6 +87,13 @@ const integrationSaveSchema = z
   })
   .passthrough();
 
+const whatsappCloudSaveSchema = z.object({
+  access_token: z.string().trim().min(20, "O token de acesso parece inválido.").optional(),
+  phone_number_id: z.string().trim().regex(/^\d+$/, "O ID do número deve conter somente dígitos.").optional(),
+  business_account_id: z.string().trim().regex(/^\d*$/, "O ID da conta empresarial deve conter somente dígitos.").optional(),
+  enabled: booleanLike.optional()
+}).strict();
+
 // Handshake real com o gateway + registro do diagnóstico.
 //
 // Nunca propaga exceção: uma chave recusada é resposta legítima da tela
@@ -120,6 +133,40 @@ async function handshake(db) {
 router.get("/api/integrations/asaas", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   res.json(await statusPayload(req, db));
+}));
+
+// WhatsApp Business Cloud API: configuração segura por tenant. O GET nunca
+// retorna o access token, apenas a máscara e o último diagnóstico.
+router.get("/api/integrations/whatsapp", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin"])) return;
+  res.json(await whatsappCloudStatus(db));
+}));
+
+router.put("/api/integrations/whatsapp", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin"])) return;
+  if (!validateBody(whatsappCloudSaveSchema, req, res)) return;
+  const current = await whatsappCloudStatus(db);
+  const { access_token: accessToken, phone_number_id: phoneNumberId, business_account_id: businessAccountId, enabled } = req.body;
+  const finalPhoneNumberId = phoneNumberId === undefined ? current.phone_number_id : phoneNumberId;
+  if (enabled === true && (!accessToken && !current.configured || !finalPhoneNumberId)) {
+    return res.status(400).json({ error: "Cadastre o token de acesso e o ID do número do WhatsApp Business antes de ativar a integração." });
+  }
+  await saveWhatsAppCloudIntegration(db, { accessToken, phoneNumberId, businessAccountId, enabled, userId: req.user?.id });
+  res.json(await whatsappCloudStatus(db));
+}));
+
+router.post("/api/integrations/whatsapp/test", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin"])) return;
+  res.json(await testWhatsAppCloudConnection(db));
+}));
+
+router.delete("/api/integrations/whatsapp", withDb(async (req, res, db) => {
+  if (!requireRole(req, res, ["admin"])) return;
+  if (req.body?.confirm !== true && req.body?.confirm !== "true") {
+    return res.status(400).json({ error: "Confirmação obrigatória: envie { \"confirm\": true }." });
+  }
+  await removeWhatsAppCloudIntegration(db);
+  res.json(await whatsappCloudStatus(db));
 }));
 
 // ---------------------------------------------------------------------------

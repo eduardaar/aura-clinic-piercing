@@ -1,9 +1,7 @@
 // Serviços de termo digital (anamnese): geração de PDF e listagem.
-import path from "path";
-import fs from "fs";
 import PDFDocument from "pdfkit";
-import { privateUploadsDir } from "../config/index.js";
 import { limitOffset, countRows } from "./pagination.js";
+import { buildKey, storage } from "./storage/index.js";
 import {
   parseTermFormData,
   signatureBufferFromDataUrl,
@@ -66,17 +64,29 @@ export async function getDigitalTerm(db, id) {
   return db.get(`${DIGITAL_TERM_QUERY} WHERE t.id = ?`, [id]);
 }
 
+// Id da clínica a partir da própria conexão: o `search_path` da requisição já
+// aponta para `tenant_<id>` (ver middleware/withDb.js). Assim a chave do
+// arquivo sai certa sem exigir que a rota passe o tenant à mão.
+async function tenantIdFromDb(db) {
+  const row = await db.get("SELECT current_schema() AS schema_name");
+  const match = /^tenant_(\d+)$/.exec(String(row?.schema_name || ""));
+  return match ? Number(match[1]) : null;
+}
+
 export async function createTermPdf(db, term, appointment = {}, userId = null) {
   const fileName = `termo-digital-${term.id}.pdf`;
-  const filePath = path.join(privateUploadsDir, fileName);
   const signatureBuffer = signatureBufferFromDataUrl(term.signature_data_url);
+  const guardianSignatureBuffer = signatureBufferFromDataUrl(term.guardian_signature_data_url);
   const formData = parseTermFormData(term.form_data);
-  await new Promise((resolve, reject) => {
+  // O PDF é montado em memória e vai direto para o bucket privado — não passa
+  // pelo disco: é justamente o termo de anamnese (dado de saúde) que não pode
+  // continuar num diretório compartilhado por todas as clínicas.
+  const pdfBuffer = await new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 42, size: "A4" });
-    const stream = fs.createWriteStream(filePath);
-    stream.on("finish", resolve);
-    stream.on("error", reject);
-    doc.pipe(stream);
+    const chunks = [];
+    doc.on("data", (chunk) => chunks.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
     doc.fontSize(20).text("Aura Clinic Piercing", { align: "center" });
     doc.fontSize(14).text("Ficha De Anamnese", { align: "center" });
     doc.moveDown(0.5);
@@ -118,6 +128,7 @@ export async function createTermPdf(db, term, appointment = {}, userId = null) {
       writeTermLine(doc, "Responsável Legal", formData.minor?.responsible_name || "Não informado");
       writeTermLine(doc, "Documento Do Responsável", formData.minor?.responsible_document || "Não informado");
       writeTermLine(doc, "Nome Do Menor", formData.minor?.minor_name || "Não informado");
+      writeTermLine(doc, "Assinatura Do Responsável", guardianSignatureBuffer ? "Assinatura digital anexada" : "Ausente");
     }
 
     writeTermSection(doc, "Assinaturas");
@@ -129,10 +140,21 @@ export async function createTermPdf(db, term, appointment = {}, userId = null) {
       doc.text("Assinatura digital:");
       doc.image(signatureBuffer, { width: 260 });
     }
+    if (formData.minor?.is_minor && guardianSignatureBuffer) {
+      doc.moveDown(0.4);
+      doc.text("Assinatura digital do responsável legal:");
+      doc.image(guardianSignatureBuffer, { width: 260 });
+    }
     doc.moveDown(0.4);
     doc.text("Aura Clinic Piercing  Atendimento premium e cuidadoso.", { align: "center" });
     doc.end();
   });
+  const tenantId = await tenantIdFromDb(db);
+  // `purpose: "digital_term"` é o que está no banco; a pasta correspondente é
+  // `termos` (o apelido mora em services/storage/keys.js, para que a leitura em
+  // GET /api/private-files e o script de migração cheguem à mesma chave).
+  const key = buildKey({ scope: "private", tenantId, purpose: "digital_term", filename: fileName });
+  await storage.putPrivate(key, pdfBuffer, { contentType: "application/pdf" });
   await db.run(
     "INSERT INTO private_files (filename, original_name, mime_type, purpose, uploaded_by) VALUES (?, ?, 'application/pdf', 'digital_term', ?) ON CONFLICT (filename) DO NOTHING",
     [fileName, fileName, userId]

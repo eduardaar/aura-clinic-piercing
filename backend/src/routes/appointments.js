@@ -18,6 +18,7 @@ import {
   registerCompletionPayments
 } from "../services/appointments.js";
 import { validateCoupon } from "../services/discounts.js";
+import { calculateOperationTotals, getAppointmentFinancialSnapshot } from "../services/finance.js";
 import { ensurePostCareFollowups } from "../services/postcare.js";
 import { awardLoyaltyForAppointment } from "../services/loyalty.js";
 import { ensureSalesOrderForAppointment } from "../services/sales.js";
@@ -25,6 +26,7 @@ import { validateBody } from "../middleware/validate.js";
 import { appointmentCreateSchema } from "../schemas/index.js";
 import { queueAppointmentReminderNotifications } from "../services/notifications.js";
 import { requireRole } from "../middleware/auth.js";
+import { invalidateUsageCache, requireWithinLimit } from "../services/planLimits.js";
 
 const router = Router();
 
@@ -109,6 +111,12 @@ router.post("/api/appointments", withDb(async (req, res, db) => {
   // Payload chega como multipart (multer já populou req.body). Valida os
   // obrigatórios (profissional/data/hora) preservando os demais campos.
   if (!validateBody(appointmentCreateSchema, req, res)) return;
+  // Cota do plano — a mais cara das quatro (conta o mês corrente numa coluna
+  // TEXT sem índice), por isso fica depois da validação e antes de qualquer
+  // consulta de negócio. Vale só para a agenda interna: o agendamento público
+  // (routes/booking.js) não passa por aqui, e é de propósito — o 409 chegaria
+  // ao cliente final da clínica, que não tem como resolver.
+  if (!(await requireWithinLimit(req, res, "appointments_month", db))) return;
   const body = normalizeAppointment(req.body);
   // Bloqueia horários já ocupados para o mesmo profissional.
   const conflict = await db.get(
@@ -135,8 +143,23 @@ router.post("/api/appointments", withDb(async (req, res, db) => {
   const couponQuote = body.coupon_code ? await validateCoupon(db, body.coupon_code, { amount: totals.totalValue, client_id: client.id, items: items.map((item) => ({ product_id: item.jewelry_id, category: item.category, unit_price: item.jewelry_unit_price, quantity: item.quantity })) }) : null;
   if (couponQuote && !couponQuote.valid) return res.status(400).json({ error: couponQuote.error });
   const discountValue = Number(couponQuote?.discount_amount || 0);
-  const totalValue = Math.max(0, totals.totalValue - discountValue);
-  const remainingValue = Math.max(0, totalValue - depositValue);
+  // Compatibilidade com integrações legadas: se enviaram apenas deposit_value,
+  // historicamente isso significava sinal já recebido. As telas atuais sempre
+  // enviam deposit_status e conseguem distinguir expectativa de recebimento.
+  const depositStatus = depositValue > 0 ? String(body.deposit_status || "pago").toLowerCase() : "nao_aplicavel";
+  const depositReceived = ["pago", "confirmado"].includes(depositStatus);
+  const operationTotals = calculateOperationTotals({
+    serviceSubtotal: totals.procedureValue,
+    productSubtotal: totals.jewelryValue,
+    discountTotal: discountValue,
+    payments: [{
+      status: depositReceived ? "pago" : "pendente",
+      payment_type: "sinal",
+      amount: depositValue
+    }]
+  });
+  const totalValue = operationTotals.netTotal;
+  const remainingValue = operationTotals.outstandingBalance;
   const duration = totals.durationMinutes || Number(service?.duration_minutes || body.duration_minutes || 40);
   const endTime = addMinutesToTime(body.appointment_time, duration);
   // Agendamento + itens + sinal formam um registro só: agendamento sem itens
@@ -146,7 +169,7 @@ router.post("/api/appointments", withDb(async (req, res, db) => {
       `INSERT INTO appointments
       (client_id, professional_id, service_id, jewelry_id, jewelry_variant_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, total_value, service_value, jewelry_value, subtotal_value, discount_value, coupon_id, coupon_code, coupon_snapshot, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, deposit_status, deposit_paid_at, financial_notes, status, notes, reference_photo_url, duration_minutes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-      [client.id, body.professional_id, serviceId || firstItem.service_id || null, jewelryId, variantId, body.procedure || firstItem.procedure_name || service?.name || "Atendimento", body.description, body.piercing_region || firstItem.region || "Atendimento", body.appointment_date, body.appointment_time, endTime, totalValue, totals.procedureValue, totals.jewelryValue, totals.totalValue, discountValue, couponQuote?.coupon?.id || null, couponQuote?.coupon?.code || null, couponQuote ? JSON.stringify(couponQuote) : null, depositValue, remainingValue, body.deposit_payment_method, body.remaining_payment_method, depositValue > 0 ? (body.deposit_status || "pago") : "nao_aplicavel", depositValue > 0 ? (body.deposit_paid_at || `${body.appointment_date}T${body.appointment_time}:00`) : null, body.financial_notes || "", body.status || "pendente", body.notes, photoUrl, duration]
+      [client.id, body.professional_id, serviceId || firstItem.service_id || null, jewelryId, variantId, body.procedure || firstItem.procedure_name || service?.name || "Atendimento", body.description, body.piercing_region || firstItem.region || "Atendimento", body.appointment_date, body.appointment_time, endTime, totalValue, totals.procedureValue, totals.jewelryValue, totals.totalValue, discountValue, couponQuote?.coupon?.id || null, couponQuote?.coupon?.code || null, couponQuote ? JSON.stringify(couponQuote) : null, depositValue, remainingValue, body.deposit_payment_method, body.remaining_payment_method, depositStatus, depositReceived ? (body.deposit_paid_at || localTimestamp()) : null, body.financial_notes || "", body.status || "pendente", body.notes, photoUrl, duration]
     );
     await replaceAppointmentItems(tx, result.returnedId, items);
     if (couponQuote?.coupon?.id) {
@@ -154,8 +177,8 @@ router.post("/api/appointments", withDb(async (req, res, db) => {
     }
     if (depositValue > 0) {
       await tx.run(
-        "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, 'sinal', ?, 'pago', ?)",
-        [result.returnedId, client.id, depositValue, body.deposit_payment_method || "Pix", `${body.appointment_date}T${body.appointment_time}:00`]
+        "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, 'sinal', ?, ?, ?)",
+        [result.returnedId, client.id, depositValue, body.deposit_payment_method || "Pix", depositReceived ? "pago" : "pendente", depositReceived ? (body.deposit_paid_at || localTimestamp()) : localTimestamp()]
       );
     }
     return result.returnedId;
@@ -199,6 +222,7 @@ router.patch("/api/appointments/:id", withDb(async (req, res, db) => {
 
   const hasSubmittedItems = appointmentItemsFromBody(req.body).length > 0;
   let pendingItems = null;
+  let operationTotals = null;
   if (hasSubmittedItems) {
     const serviceId = optionalId(req.body.service_id ?? appointment.service_id);
     const service = serviceId ? await db.get("SELECT * FROM services WHERE id = ?", [serviceId]) : null;
@@ -210,29 +234,60 @@ router.patch("/api/appointments/:id", withDb(async (req, res, db) => {
       total_value: req.body.total_value ?? appointment.total_value,
       deposit_value: req.body.deposit_value ?? appointment.deposit_value
     });
+    const couponCode = String(req.body.coupon_code ?? appointment.coupon_code ?? "").trim();
+    let couponQuote = null;
+    if (couponCode) {
+      couponQuote = await validateCoupon(db, couponCode, {
+        amount: totals.totalValue,
+        client_id: appointment.client_id,
+        items: items.map((item) => ({
+          service_id: item.service_id,
+          product_id: item.jewelry_id,
+          category: item.category,
+          unit_price: Number(item.jewelry_unit_price || 0),
+          quantity: Number(item.quantity || 1)
+        }))
+      });
+      if (!couponQuote?.valid) return res.status(400).json({ error: couponQuote?.error || "Cupom inválido ou não aplicável." });
+    }
+    const existingPayments = await db.all("SELECT * FROM payments WHERE appointment_id = ? AND status IN ('pago', 'confirmado')", [req.params.id]);
+    const discountTotal = Number(couponQuote?.discount_amount ?? appointment.discount_value ?? 0);
+    operationTotals = calculateOperationTotals({
+      serviceSubtotal: totals.procedureValue,
+      productSubtotal: totals.jewelryValue,
+      discountTotal,
+      payments: existingPayments.map((payment) => ({
+        amount: Number(payment.amount || 0),
+        status: payment.status,
+        payment_type: payment.payment_type,
+        type: payment.payment_type
+      }))
+    });
+
     req.body.service_id = serviceId || firstItem.service_id || null;
     req.body.jewelry_id = optionalId(firstItem.jewelry_id);
     req.body.jewelry_variant_id = optionalId(firstItem.jewelry_variant_id);
     req.body.procedure = req.body.procedure || firstItem.procedure_name || service?.name || appointment.procedure;
     req.body.piercing_region = req.body.piercing_region || firstItem.region || appointment.piercing_region;
-    req.body.total_value = totals.totalValue;
-    req.body.remaining_value = Math.max(totals.totalValue - Number(req.body.deposit_value ?? appointment.deposit_value ?? 0), 0);
+    req.body.total_value = operationTotals.netTotal;
+    req.body.discount_value = operationTotals.discountTotal;
+    req.body.deposit_value = Number(req.body.deposit_value ?? appointment.deposit_value ?? operationTotals.depositPaid ?? 0);
+    req.body.remaining_value = operationTotals.outstandingBalance;
     req.body.end_time = req.body.appointment_time ? addMinutesToTime(req.body.appointment_time, totals.durationMinutes || Number(service?.duration_minutes || appointment.duration_minutes || 40)) : req.body.end_time;
-    // Só grava dentro da transação abaixo: reescrever os itens aqui e falhar
-    // depois deixaria o agendamento sem os itens antigos nem os novos.
+    req.body.coupon_code = couponCode || null;
+    req.body.coupon_id = couponQuote?.coupon?.id || appointment.coupon_id || null;
+    req.body.coupon_snapshot = couponQuote ? JSON.stringify(couponQuote) : appointment.coupon_snapshot || null;
+    req.body.discount_value = operationTotals.discountTotal;
+    req.body.remaining_value = operationTotals.outstandingBalance;
     pendingItems = items;
   }
   if (req.body.status === "cancelado") {
     req.body.remaining_value = 0;
   }
 
-  const fields = ["status", "appointment_date", "appointment_time", "end_time", "professional_id", "service_id", "jewelry_id", "jewelry_variant_id", "procedure", "description", "piercing_region", "total_value", "deposit_value", "remaining_value", "deposit_payment_method", "remaining_payment_method", "notes"];
+  const fields = ["status", "appointment_date", "appointment_time", "end_time", "professional_id", "service_id", "jewelry_id", "jewelry_variant_id", "procedure", "description", "piercing_region", "total_value", "discount_value", "deposit_value", "remaining_value", "deposit_payment_method", "remaining_payment_method", "deposit_status", "deposit_paid_at", "financial_notes", "coupon_code", "coupon_id", "coupon_snapshot", "notes"];
   const updates = fields.filter((field) => req.body[field] !== undefined);
 
-  // Marcar "atendido" dispara cinco efeitos em cadeia (baixa de estoque,
-  // pagamento do restante, ordem de serviço, pós-atendimento e fidelidade).
-  // Tudo junto com o UPDATE do status: um erro no meio não pode deixar estoque
-  // baixado sem ordem de serviço nem atendimento concluído sem pagamento.
   await db.transaction(async (tx) => {
     if (pendingItems) await replaceAppointmentItems(tx, req.params.id, pendingItems);
     if (updates.length) {
@@ -240,6 +295,26 @@ router.patch("/api/appointments/:id", withDb(async (req, res, db) => {
         `UPDATE appointments SET ${updates.map((field) => `${field} = ?`).join(", ")} WHERE id = ?`,
         [...updates.map((field) => req.body[field]), req.params.id]
       );
+    }
+
+    const depositChanged = ["deposit_value", "deposit_status", "deposit_payment_method", "deposit_paid_at"]
+      .some((field) => req.body[field] !== undefined);
+    if (depositChanged) {
+      const current = await tx.get("SELECT * FROM appointments WHERE id = ? FOR UPDATE", [req.params.id]);
+      const expected = Math.max(0, Number(current.deposit_value || 0));
+      const status = expected > 0 ? String(current.deposit_status || "pendente").toLowerCase() : "nao_aplicavel";
+      if (!["pendente", "pago", "confirmado", "parcial", "isento", "cancelado", "estornado", "nao_aplicavel"].includes(status)) {
+        throw new Error("Status do sinal inválido.");
+      }
+      await tx.run("DELETE FROM payments WHERE appointment_id = ? AND payment_type = 'sinal'", [req.params.id]);
+      if (expected > 0 && !["isento", "cancelado", "estornado", "nao_aplicavel"].includes(status)) {
+        await tx.run(
+          "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at, created_by_user_id) VALUES (?, ?, ?, 'sinal', ?, ?, ?, ?)",
+          [current.id, current.client_id, expected, current.deposit_payment_method || "Pix", ["pago", "confirmado"].includes(status) ? "pago" : "pendente", ["pago", "confirmado"].includes(status) ? (current.deposit_paid_at || localTimestamp()) : localTimestamp(), req.user?.id || null]
+        );
+      }
+      const financial = await getAppointmentFinancialSnapshot(tx, req.params.id);
+      await tx.run("UPDATE appointments SET remaining_value = ?, deposit_paid_at = ?, updated_at = ? WHERE id = ?", [financial.outstandingBalance, ["pago", "confirmado"].includes(status) ? (current.deposit_paid_at || localTimestamp()) : null, localTimestamp(), req.params.id]);
     }
 
     if (req.body.status === "atendido") {
@@ -300,6 +375,9 @@ router.delete("/api/appointments/:id", withDb(async (req, res, db) => {
     await tx.run("DELETE FROM appointments WHERE id = ?", [req.params.id]);
     await tx.run("INSERT INTO administrative_audit_logs (entity_type, entity_id, action, reason, user_id, snapshot) VALUES ('appointment', ?, 'hard_delete', ?, ?, ?)", [req.params.id, reason, req.user?.id || null, JSON.stringify({ appointment, impact })]);
   });
+  // A cota conta agendamentos CRIADOS no mês; apagar um do mês corrente devolve
+  // a vaga, então a medição cacheada não serve mais.
+  invalidateUsageCache(req.tenant?.id);
   res.json({ ok: true, deleted: true });
 }));
 

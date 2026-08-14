@@ -13,7 +13,6 @@
 import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
 import { requireRole, verifyPlatformToken } from "../middleware/auth.js";
-import { clientIp } from "../middleware/rateLimit.js";
 import { invalidateTenantCache } from "../middleware/tenant.js";
 import { query } from "../database/connection.js";
 import { isProduction } from "../config/index.js";
@@ -48,8 +47,8 @@ function requirePlatform(req, res, next) {
 // Tradução de erro -> HTTP.
 //
 // Diferente da regra das telas públicas: aqui quem lê é o ADMIN da clínica (ou
-// o super-admin), e a mensagem técnica do gateway ("CPF/CNPJ inválido",
-// "cartão recusado pelo emissor") é exatamente o que resolve o problema dele.
+// o super-admin), e a mensagem técnica do gateway (por exemplo, CPF/CNPJ
+// inválido) é exatamente o que resolve o problema dele.
 // O `userMessage` genérico do AsaasError é para o cliente final, no catálogo.
 function handleBillingError(res, error) {
   // 409 de idempotência: chave reusada para outro corpo, ou checkout ainda em
@@ -68,10 +67,9 @@ function handleBillingError(res, error) {
   }
   // Só mensagem e stack, NUNCA o objeto de erro inteiro.
   //
-  // `console.error(error)` imprime também as propriedades próprias enumeráveis,
-  // e é comum um erro inesperado carregar a requisição que o originou. Este
-  // arquivo tem a única rota do sistema que recebe número de cartão e CVV —
-  // aqui o log genérico é o caminho mais curto para o PAN parar em disco.
+  // `console.error(error)` imprime também propriedades próprias enumeráveis e
+  // é comum um erro inesperado carregar a requisição que o originou. A rota
+  // recusa cartão, mas mantemos o log mínimo como defesa em profundidade.
   console.error(`[billing] ${error?.message || error}`, error?.stack || "");
   return res.status(500).json({
     error: isProduction ? "Erro interno no servidor." : `Erro interno: ${error.message}`
@@ -183,13 +181,35 @@ router.put(
   })
 );
 
-// Contrata (ou troca) o plano. É a única rota do sistema que recebe dados de
-// cartão — nada do corpo pode ir para log.
+// Contrata (ou troca) o plano usando somente a página hospedada pelo Asaas.
+//
+// Dados brutos de cartão nunca devem atravessar a API da Aura: isso amplia o
+// escopo PCI DSS para toda a aplicação e transforma logs, APM, proxies e
+// tratamento de erros em superfícies que poderiam capturar PAN/CVV.
 router.post(
   "/api/billing/checkout",
   withDb(async (req, res) => {
     if (!requireRole(req, res, ["admin"])) return;
     try {
+      const body = req.body || {};
+      const billingType = String(body.billing_type || "UNDEFINED").toUpperCase();
+
+      // Recusa antes até de consultar a configuração do gateway: assim o
+      // contrato "a Aura nunca recebe cartão" é verificável em qualquer
+      // ambiente e não muda conforme um secret esteja presente ou ausente.
+      if (billingType === "CREDIT_CARD" || body.credit_card || body.credit_card_holder_info) {
+        return res.status(400).json({
+          error: "Dados de cartão não são aceitos pela Aura. Use a página segura de pagamento do Asaas.",
+          code: "checkout_hospedado_obrigatorio"
+        });
+      }
+      if (billingType !== "UNDEFINED") {
+        return res.status(400).json({
+          error: "Forma de pagamento inválida. Use a página segura de pagamento do Asaas.",
+          code: "billing_type_invalido"
+        });
+      }
+
       if (!isPlatformEnabled()) {
         return res.status(503).json({
           error:
@@ -198,42 +218,29 @@ router.post(
         });
       }
 
-      const body = req.body || {};
-      const billingType = String(body.billing_type || "UNDEFINED").toUpperCase();
       const tenantId = req.tenant.id;
 
       const checkout = () =>
         startSubscriptionCheckout(tenantId, {
           planCode: body.plan_code,
-          billingType,
-          creditCard: body.credit_card,
-          creditCardHolderInfo: body.credit_card_holder_info,
-          // IP REAL do pagador: atrás do Cloudflare o req.ip é o do proxy, e o
-          // antifraude do Asaas recusa a transação com IP de datacenter.
-          remoteIp: billingType === "CREDIT_CARD" ? clientIp(req) : undefined
+          billingType: "UNDEFINED"
         });
 
-      if (billingType === "CREDIT_CARD") {
-        const idempotencyKey = String(req.headers["idempotency-key"] || "").trim();
-        if (!idempotencyKey) {
-          return res.status(400).json({
-            error:
-              "Header Idempotency-Key obrigatório na cobrança em cartão. Ele é o que impede um duplo-clique (ou uma repetição por timeout) de gerar uma segunda assinatura e uma segunda cobrança.",
-            code: "idempotency_key_ausente"
-          });
-        }
-        // O corpo entra aqui só para virar hash de comparação — o serviço nunca
-        // o grava, e é isso que impede a tabela de idempotência de acumular
-        // número de cartão e CVV. A chave é escopada por (clínica, endpoint).
-        const { result } = await runIdempotent(
-          { tenantId, endpoint: CHECKOUT_ENDPOINT, key: idempotencyKey, body },
-          checkout
-        );
-        // 201 também na repetição: para quem chamou, o recurso existe e é este.
-        return res.status(201).json(result);
+      // Mesmo no checkout hospedado, timeout/reenvio não pode criar duas
+      // assinaturas. A chave é obrigatória para qualquer método.
+      const idempotencyKey = String(req.headers["idempotency-key"] || "").trim();
+      if (!idempotencyKey) {
+        return res.status(400).json({
+          error: "Header Idempotency-Key obrigatório no checkout.",
+          code: "idempotency_key_ausente"
+        });
       }
-
-      res.status(201).json(await checkout());
+      const safeBody = { plan_code: body.plan_code, billing_type: "UNDEFINED" };
+      const { result } = await runIdempotent(
+        { tenantId, endpoint: CHECKOUT_ENDPOINT, key: idempotencyKey, body: safeBody },
+        checkout
+      );
+      res.status(201).json(result);
     } catch (error) {
       handleBillingError(res, error);
     }

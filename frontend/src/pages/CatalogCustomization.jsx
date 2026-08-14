@@ -1,18 +1,31 @@
-import { useEffect, useState } from "react";
-import { Heart, ImageIcon, Plus } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { GripVertical, ImageIcon, Plus, Redo2, Undo2 } from "lucide-react";
 import { Loading, ApiError } from "../components/common/Feedback";
 import { Input, Select, StatusBadge } from "../components/common/Ui";
-import { ConfirmDeleteModal, Modal } from "../components/common/Crud";
+import { ConfirmDeleteModal, Modal, RowActions } from "../components/common/Crud";
 import { DataView } from "../components/common/DataView";
 import { API_ORIGIN, apiFetch, tenantSlug, useFetch } from "../lib/api";
 import { asArray, asObject } from "../lib/utils";
 import { JEWELRY_CATEGORY_OPTIONS } from "../lib/defaultForms";
 import { catalogContentSections, defaultContentSection } from "../features/catalog/catalogUtils";
+import { CatalogPluginEditor } from "../features/catalog/CatalogPluginEditor";
 import { DEFAULT_IMAGE_TRANSFORM, ImageEditor, imageTransformStyle, normalizeImageTransform } from "../components/common/ImageEditor";
 import { SmartCombobox } from "../components/common/SmartCombobox";
 import { publicLinkForTenant } from "../lib/publicRoutes";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
+// Histórico só vive no navegador: rascunhos continuam sendo a fonte de
+// verdade no servidor, mas desfazer uma edição cotidiana não deve exigir uma
+// viagem de ida e volta. Mantemos cópias sem referências compartilhadas, pois
+// vários campos do construtor são objetos aninhados.
+function cloneCatalogDraft(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function sameCatalogDraft(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
 
 // `formatDate` de lib/utils devolve dd/MM sem ano: cupons e promoções de anos
 // diferentes ficariam com a mesma data na coluna de validade.
@@ -112,22 +125,103 @@ function CatalogPublicLinks() {
 
 export function CatalogCustomization() {
   const { data, refresh } = useFetch("/catalog-customization");
-  const [form, setForm] = useState(defaultCatalogCustomization());
+  const { data: historyData, refresh: refreshHistory } = useFetch("/catalog-customization/history");
+  const [form, setFormState] = useState(defaultCatalogCustomization());
   const [activeSection, setActiveSection] = useState("aparencia");
   const [previewDevice, setPreviewDevice] = useState("desktop");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [templateToApply, setTemplateToApply] = useState("");
+  const [version, setVersion] = useState({});
+  const [resetOpen, setResetOpen] = useState(false);
+  const [rollbackVersion, setRollbackVersion] = useState(null);
+  const [publishChecklist, setPublishChecklist] = useState(null);
+  const [checkingPublication, setCheckingPublication] = useState(false);
+  const formRef = useRef(form);
+  const undoRef = useRef([]);
+  const redoRef = useRef([]);
+  const loadedDraftVersionRef = useRef(null);
+  const [localHistory, setLocalHistory] = useState({ undo: 0, redo: 0, announcement: "" });
+
+  const syncLocalHistory = useCallback((announcement = "") => {
+    setLocalHistory({ undo: undoRef.current.length, redo: redoRef.current.length, announcement });
+  }, []);
+
+  const replaceForm = useCallback((nextForm, { clearHistory = true } = {}) => {
+    const next = cloneCatalogDraft(nextForm);
+    formRef.current = next;
+    setFormState(next);
+    if (clearHistory) {
+      undoRef.current = [];
+      redoRef.current = [];
+      syncLocalHistory("");
+    }
+  }, [syncLocalHistory]);
+
+  const setForm = useCallback((nextValue) => {
+    const current = formRef.current;
+    const next = typeof nextValue === "function" ? nextValue(current) : nextValue;
+    if (!next || sameCatalogDraft(current, next)) return;
+    undoRef.current = [...undoRef.current, cloneCatalogDraft(current)].slice(-80);
+    redoRef.current = [];
+    const snapshot = cloneCatalogDraft(next);
+    formRef.current = snapshot;
+    setFormState(snapshot);
+    syncLocalHistory("Alteração adicionada ao histórico local.");
+  }, [syncLocalHistory]);
+
+  const undo = useCallback(() => {
+    const previous = undoRef.current.pop();
+    if (!previous) return;
+    redoRef.current = [...redoRef.current, cloneCatalogDraft(formRef.current)].slice(-80);
+    formRef.current = previous;
+    setFormState(previous);
+    syncLocalHistory("Alteração desfeita. Salve o rascunho para manter esta versão.");
+  }, [syncLocalHistory]);
+
+  const redo = useCallback(() => {
+    const next = redoRef.current.pop();
+    if (!next) return;
+    undoRef.current = [...undoRef.current, cloneCatalogDraft(formRef.current)].slice(-80);
+    formRef.current = next;
+    setFormState(next);
+    syncLocalHistory("Alteração refeita. Salve o rascunho para manter esta versão.");
+  }, [syncLocalHistory]);
 
   useEffect(() => {
     if (!data || data.error) return;
-    setForm(normalizeCatalogCustomization(data));
-  }, [data]);
+    const remoteVersion = asObject(data).version;
+    // `refresh()` após salvar devolve o mesmo rascunho. Não limpamos o
+    // histórico local nessa situação; uma edição chegada de outra sessão sim.
+    if (loadedDraftVersionRef.current === null || loadedDraftVersionRef.current !== remoteVersion.draft) {
+      replaceForm(normalizeCatalogCustomization(data));
+      loadedDraftVersionRef.current = remoteVersion.draft;
+    }
+    setVersion(remoteVersion);
+  }, [data, replaceForm]);
+
+  useEffect(() => {
+    function onKeyDown(event) {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || String(event.key).toLowerCase() !== "z") return;
+      // Inputs mantêm seu próprio histórico de digitação; o histórico do
+      // construtor entra quando o foco está na página/controle, sem quebrar a
+      // expectativa usual de Ctrl/Cmd+Z dentro de um campo textual.
+      const tag = event.target?.tagName;
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(tag)) return;
+      event.preventDefault();
+      if (event.shiftKey) redo();
+      else undo();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [redo, undo]);
 
   if (!data) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
 
   const safeData = asObject(data);
   const products = asArray(safeData.products);
+  const pluginAccess = asObject(safeData.pluginAccess);
   const customizationOptions = asObject(safeData.inventoryOptions);
   const categoryOptions = [
     ...asArray(customizationOptions.category).map((item) => item.name),
@@ -137,17 +231,58 @@ export function CatalogCustomization() {
   async function save(path = "/catalog-customization", success = "Alterações salvas.") {
     setError("");
     setMessage("");
-    const payload = serializeCatalogCustomization(form);
+    const payload = path.includes("reset")
+      ? { expected_draft_version: version.draft }
+      : { ...serializeCatalogCustomization(form), expected_draft_version: version.draft };
     const response = await apiFetch(path, {
       method: "POST" === path.split("/").at(-1) ? "POST" : path.includes("publish") || path.includes("reset") ? "POST" : "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: path.includes("reset") ? undefined : JSON.stringify(payload)
+      body: JSON.stringify(payload)
     });
     const json = await response.json().catch(() => ({}));
+    if (json.checklist) setPublishChecklist(json.checklist);
     if (!response.ok) return setError(json.error || "Não foi possível salvar.");
-    if (path.includes("reset")) setForm(normalizeCatalogCustomization(json));
+    if (path.includes("reset")) replaceForm(normalizeCatalogCustomization(json));
+    else setForm(normalizeCatalogCustomization(json));
+    setVersion(asObject(json).version);
+    loadedDraftVersionRef.current = asObject(json).version?.draft ?? loadedDraftVersionRef.current;
     setMessage(success);
     refresh();
+    refreshHistory();
+  }
+
+  async function reviewPublication() {
+    setError("");
+    setMessage("");
+    setCheckingPublication(true);
+    try {
+      const response = await apiFetch("/catalog-customization/checklist");
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) return setError(json.error || "Não foi possível revisar a publicação.");
+      setPublishChecklist(asObject(json).checklist || asObject(json));
+      setMessage("Checklist atualizado com o rascunho salvo mais recente.");
+    } finally {
+      setCheckingPublication(false);
+    }
+  }
+
+  async function rollback(targetVersion) {
+    setError("");
+    setMessage("");
+    const response = await apiFetch(`/catalog-customization/rollback/${targetVersion}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expected_draft_version: version.draft, expected_published_version: version.published })
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok) return setError(json.error || "Não foi possível restaurar a revisão.");
+    replaceForm(normalizeCatalogCustomization(json));
+    setVersion(asObject(json).version);
+    loadedDraftVersionRef.current = asObject(json).version?.draft ?? loadedDraftVersionRef.current;
+    setRollbackVersion(null);
+    setMessage(`Versão ${targetVersion} restaurada e publicada como uma nova versão.`);
+    refresh();
+    refreshHistory();
   }
 
   return (
@@ -160,11 +295,26 @@ export function CatalogCustomization() {
             <p>Edite aparência, banners, categorias, produtos, promoções e textos sem mexer no código.</p>
           </div>
           <div>
-            <button className="secondary-button" type="button" onClick={() => save("/catalog-customization/reset", "Padrão restaurado.")}>Restaurar padrão</button>
+            <button className="secondary-button" type="button" onClick={() => setResetOpen(true)}>Restaurar padrão</button>
+            <button className="secondary-button" type="button" onClick={reviewPublication} disabled={checkingPublication}>{checkingPublication ? "Revisando…" : "Revisar publicação"}</button>
             <button className="primary-button" type="button" onClick={() => save("/catalog-customization/publish", "Catálogo publicado.")}>Publicar</button>
           </div>
         </header>
 
+        <div className="catalog-editor-history" aria-label="Histórico local de edição">
+          <div>
+            <strong>Histórico local</strong>
+            <small>Até 80 alterações nesta sessão. Use salvar para enviar o rascunho.</small>
+          </div>
+          <div>
+            <button type="button" className="secondary-button" disabled={!localHistory.undo} onClick={undo} title="Desfazer (Ctrl/Cmd + Z)"><Undo2 size={16} /> Desfazer{localHistory.undo ? ` (${localHistory.undo})` : ""}</button>
+            <button type="button" className="secondary-button" disabled={!localHistory.redo} onClick={redo} title="Refazer (Ctrl/Cmd + Shift + Z)"><Redo2 size={16} /> Refazer{localHistory.redo ? ` (${localHistory.redo})` : ""}</button>
+          </div>
+          <span className="sr-only" aria-live="polite">{localHistory.announcement}</span>
+        </div>
+
+        <CatalogBuilderStatus version={version} history={historyData} onRollback={setRollbackVersion} />
+        <CatalogPublishChecklist checklist={publishChecklist} />
         <CatalogPublicLinks />
 
         <nav className="customization-tabs">
@@ -173,6 +323,7 @@ export function CatalogCustomization() {
             ["layout", "Construtor"],
             ["banners", "Banners"],
             ["componentes", "Componentes"],
+            ["integracoes", "Integrações"],
             ["categorias", "Categorias"],
             ["produtos", "Produtos"],
             ["promocoes", "Promoções"],
@@ -188,9 +339,11 @@ export function CatalogCustomization() {
         </nav>
 
         {activeSection === "layout" && <CatalogLayoutBuilder form={form} setForm={setForm} />}
+        {activeSection === "integracoes" && <CatalogPluginEditor plugins={form.plugins} onChange={(plugins) => setForm({ ...form, plugins })} enabledFeatures={pluginAccess.enabledFeatures} pluginLimit={pluginAccess.pluginLimit} />}
 
         {activeSection === "aparencia" && (
           <CustomizationCard title="Aparência do catálogo">
+            <CatalogTemplatePicker activeTemplate={form.theme.theme} onSelect={setTemplateToApply} />
             <div className="form-grid">
               <ImageUploadField label="Logo" value={form.theme.logo_url} onChange={(value) => setForm(updateTheme(form, { logo_url: value }))} />
               <div className="form-grid compact-fields">
@@ -232,7 +385,7 @@ export function CatalogCustomization() {
                     aspectRatio="16/5"
                     contextLabel="banner desktop"
                     transform={banner.image_transform}
-                    onChange={(value) => setForm(updateList(form, "banners", index, { image_url: value }))}
+                    onChange={(value, asset) => setForm(updateList(form, "banners", index, { image_url: value, alt_text: banner.alt_text || asset?.alt_text || "" }))}
                     onTransformChange={(image_transform, original_image_url) => setForm(updateList(form, "banners", index, { image_transform, original_image_url }))}
                   />
                   <ImageUploadField label="Imagem mobile opcional" value={banner.mobile_image_url} aspectRatio="4/5" contextLabel="banner mobile" onChange={(value) => setForm(updateList(form, "banners", index, { mobile_image_url: value }))} />
@@ -283,7 +436,10 @@ export function CatalogCustomization() {
                     <Input label="Texto do botão" value={section.button_text} onChange={(value) => setForm(updateList(form, "contentSections", index, { button_text: value }))} />
                     <Input label="Link do botão" value={section.button_link} onChange={(value) => setForm(updateList(form, "contentSections", index, { button_link: value }))} />
                   </div>
-                  {section.media_type === "image" ? <ImageUploadField label="Foto do componente" value={section.media_url} onChange={(value) => setForm(updateList(form, "contentSections", index, { media_url: value }))} /> : <Input label="URL do vídeo incorporado" value={section.media_url} onChange={(value) => setForm(updateList(form, "contentSections", index, { media_url: value }))} />}
+                  {section.media_type === "image" ? <div className="catalog-content-media-fields"><ImageUploadField label="Foto do componente" value={section.media_url} onChange={(value, asset) => setForm(updateList(form, "contentSections", index, { media_url: value, media_alt: section.media_alt || asset?.alt_text || "" }))} /><Input label="Texto alternativo da imagem" value={section.media_alt || ""} onChange={(value) => setForm(updateList(form, "contentSections", index, { media_alt: value }))} /><small className="field-help">Descreva a imagem para leitores de tela. Não repita o título do bloco se ele já aparece ao lado.</small></div> : section.media_type === "video" ? <div>
+                    <Input label="URL do vídeo (YouTube ou Vimeo)" value={section.media_url} onChange={(value) => setForm(updateList(form, "contentSections", index, { media_url: value }))} />
+                    <small className="field-help">Cole um link de compartilhamento ou incorporado. Outros sites não são aceitos por segurança.</small>
+                  </div> : null}
                   <label>Texto
                     <textarea value={section.text} onChange={(event) => setForm(updateList(form, "contentSections", index, { text: event.target.value }))} />
                   </label>
@@ -467,12 +623,113 @@ export function CatalogCustomization() {
 
         {error && <span className="form-error">{error}</span>}
         {message && <span className="form-success">{message}</span>}
-        <button className="primary-button customization-save" type="button" onClick={() => save()}>Salvar alterações</button>
+        <button className="primary-button customization-save" type="button" onClick={() => save()}>Salvar rascunho</button>
       </div>
 
       <CatalogCustomizationPreview form={form} products={products} device={previewDevice} onDeviceChange={setPreviewDevice} />
+      <Modal
+        open={Boolean(templateToApply)}
+        title="Aplicar template"
+        subtitle="A alteração fica apenas no rascunho até você publicar."
+        size="sm"
+        onClose={() => setTemplateToApply("")}
+        footer={<>
+          <button type="button" className="secondary-button" onClick={() => setTemplateToApply("")}>Cancelar</button>
+          <button type="button" className="primary-button" onClick={() => {
+            setForm(applyCatalogTemplate(form, templateToApply));
+            setTemplateToApply("");
+            setMessage("Template aplicado ao rascunho. Revise a prévia e salve quando terminar.");
+          }}>Aplicar template</button>
+        </>}
+      >
+        <p>O template troca a paleta, tipografia e composição dos blocos. Sua marca, imagens, produtos e textos fora desses blocos permanecem preservados.</p>
+      </Modal>
+      <Modal
+        open={resetOpen}
+        title="Restaurar rascunho padrão"
+        subtitle="A vitrine publicada não será alterada."
+        size="sm"
+        onClose={() => setResetOpen(false)}
+        footer={<>
+          <button type="button" className="secondary-button" onClick={() => setResetOpen(false)}>Cancelar</button>
+          <button type="button" className="danger-button" onClick={() => { setResetOpen(false); save("/catalog-customization/reset", "Rascunho padrão restaurado. Revise e publique quando quiser."); }}>Restaurar rascunho</button>
+        </>}
+      >
+        <p>As alterações não publicadas deste rascunho serão substituídas pela composição padrão. As versões publicadas continuam disponíveis no histórico.</p>
+      </Modal>
+      <Modal
+        open={rollbackVersion !== null}
+        title="Restaurar versão publicada"
+        subtitle="O histórico é preservado; nenhuma versão antiga será apagada."
+        size="sm"
+        onClose={() => setRollbackVersion(null)}
+        footer={<>
+          <button type="button" className="secondary-button" onClick={() => setRollbackVersion(null)}>Cancelar</button>
+          <button type="button" className="primary-button" onClick={() => rollback(rollbackVersion)}>Restaurar e publicar</button>
+        </>}
+      >
+        <p>A versão {rollbackVersion} será clonada em uma nova revisão publicada. A vitrine voltará a esse conteúdo sem reescrever o passado.</p>
+      </Modal>
     </section>
   );
+}
+
+function CatalogBuilderStatus({ version, history, onRollback }) {
+  const safeVersion = asObject(version);
+  const revisions = asArray(asObject(history).revisions);
+  const draft = Number(safeVersion.draft || 0);
+  const published = Number(safeVersion.published || 0);
+  return (
+    <section className="catalog-builder-status" aria-label="Estado de publicação do catálogo">
+      <div className="catalog-builder-status__summary">
+        <span className="eyebrow">Builder versionado</span>
+        <strong>Rascunho v{draft} · Vitrine v{published || "—"}</strong>
+        <small>{safeVersion.updated_at ? `Rascunho atualizado em ${formatCatalogRevisionDate(safeVersion.updated_at)}.` : "Salve o rascunho antes de publicar."}</small>
+      </div>
+      <details>
+        <summary>Histórico de publicações ({revisions.length})</summary>
+        <div className="catalog-revision-list">
+          {!revisions.length && <span>Nenhuma versão publicada ainda.</span>}
+          {revisions.map((revision) => (
+            <div key={revision.id || revision.version}>
+              <span><strong>v{revision.version}</strong><small>{revision.action === "rollback" ? "restauração" : "publicação"} · {formatCatalogRevisionDate(revision.published_at || revision.created_at)}</small></span>
+              {Number(revision.version) !== published && <button type="button" className="secondary-button" onClick={() => onRollback(Number(revision.version))}>Restaurar</button>}
+              {Number(revision.version) === published && <em>Atual</em>}
+            </div>
+          ))}
+        </div>
+      </details>
+    </section>
+  );
+}
+
+function CatalogPublishChecklist({ checklist }) {
+  const safeChecklist = asObject(checklist);
+  const errors = asArray(safeChecklist.errors);
+  const warnings = asArray(safeChecklist.warnings);
+  if (!checklist) return null;
+  const items = [
+    ...errors.map((item) => ({ ...asObject(item), tone: "danger" })),
+    ...warnings.map((item) => ({ ...asObject(item), tone: "warn" }))
+  ];
+  return (
+    <section className={`catalog-publish-checklist ${errors.length ? "has-errors" : ""}`} aria-live="polite">
+      <div>
+        <span className="eyebrow">Revisão de publicação</span>
+        <strong>{errors.length ? "Há itens que impedem a publicação" : warnings.length ? "A publicação é possível, mas há pontos a revisar" : "Pronto para publicar"}</strong>
+        <small>{errors.length ? "Corrija os itens abaixo e revise novamente." : warnings.length ? "Os avisos não bloqueiam a vitrine, mas ajudam a manter qualidade e acessibilidade." : "O rascunho salvo passou pelas validações essenciais."}</small>
+      </div>
+      {!!items.length && <ul>
+        {items.map((item, index) => <li className={item.tone} key={`${item.code || item.message}-${index}`}><strong>{item.tone === "danger" ? "Corrigir" : "Revisar"}</strong><span>{item.message || "Item sem descrição."}</span></li>)}
+      </ul>}
+    </section>
+  );
+}
+
+function formatCatalogRevisionDate(value) {
+  const date = new Date(value || "");
+  if (Number.isNaN(date.getTime())) return "data indisponível";
+  return date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 }
 
 function FooterIdentityEditor({ form, setForm }) {
@@ -581,6 +838,9 @@ function ListWrap({ children }) {
 
 function CatalogLayoutBuilder({ form, setForm }) {
   const sections = asArray(form.catalogSections);
+  const [draggedKey, setDraggedKey] = useState("");
+  const [dropTargetKey, setDropTargetKey] = useState("");
+  const [dragAnnouncement, setDragAnnouncement] = useState("");
   function update(index, patch) {
     setForm({ ...form, catalogSections: sections.map((section, itemIndex) => itemIndex === index ? { ...section, ...patch } : section) });
   }
@@ -593,6 +853,21 @@ function CatalogLayoutBuilder({ form, setForm }) {
     next.splice(index + 1, 0, copy);
     setForm({ ...form, catalogSections: next.map((item, itemIndex) => ({ ...item, sort_order: itemIndex + 1 })) });
   }
+  function move(fromIndex, toIndex) {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
+    const next = [...sections];
+    const [item] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, item);
+    setForm({ ...form, catalogSections: next.map((section, index) => ({ ...section, sort_order: index + 1 })) });
+    setDragAnnouncement(`Bloco movido para a posição ${toIndex + 1}.`);
+  }
+  function dropOn(targetKey) {
+    const fromIndex = sections.findIndex((section) => section.section_key === draggedKey);
+    const toIndex = sections.findIndex((section) => section.section_key === targetKey);
+    move(fromIndex, toIndex);
+    setDraggedKey("");
+    setDropTargetKey("");
+  }
   return (
     <CustomizationCard title="Construtor visual" action={
       <Select value="" onChange={(value) => value && add(value)}>
@@ -600,12 +875,39 @@ function CatalogLayoutBuilder({ form, setForm }) {
         {CATALOG_SECTION_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </Select>
     }>
-      <p className="customization-help">A ordem abaixo é a ordem da página pública. Salvar mantém rascunho; Publicar atualiza a vitrine.</p>
-      <div className="custom-list">
+      <div className="catalog-builder-toolbar">
+        <p className="customization-help">A ordem abaixo é a ordem da página pública. Arraste um bloco pela alça no desktop; para teclado e celular, use Subir e Descer. Salvar mantém rascunho; Publicar atualiza a vitrine.</p>
+        <small>{sections.length} {sections.length === 1 ? "bloco" : "blocos"} no layout</small>
+      </div>
+      <span className="sr-only" aria-live="polite">{dragAnnouncement}</span>
+      <div className="custom-list catalog-layout-list" aria-label="Blocos do catálogo em ordem">
         {sections.map((section, index) => (
-          <article key={section.section_key}>
+          <article
+            key={section.section_key}
+            className={`catalog-layout-card${draggedKey === section.section_key ? " is-dragging" : ""}${dropTargetKey === section.section_key && draggedKey !== section.section_key ? " is-drop-target" : ""}`}
+            draggable
+            onDragStart={(event) => {
+              // O cartão inteiro recebe o evento para manter o drop simples,
+              // mas só a alça inicia arraste — editar um campo não deve mover
+              // o bloco por acidente.
+              if (!event.target.closest?.(".catalog-drag-handle")) {
+                event.preventDefault();
+                return;
+              }
+              event.dataTransfer.effectAllowed = "move";
+              event.dataTransfer.setData("text/plain", section.section_key);
+              setDraggedKey(section.section_key);
+            }}
+            onDragEnd={() => { setDraggedKey(""); setDropTargetKey(""); }}
+            onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDropTargetKey(section.section_key); }}
+            onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDropTargetKey(""); }}
+            onDrop={(event) => { event.preventDefault(); dropOn(section.section_key); }}
+          >
             <div className="panel-heading">
-              <div><strong>{CATALOG_SECTION_TYPES.find(([value]) => value === section.section_type)?.[1] || section.section_type}</strong><small>Posição {index + 1}</small></div>
+              <div className="catalog-layout-heading">
+                <button type="button" className="catalog-drag-handle" tabIndex={-1} aria-hidden="true" title="Arraste o bloco para mudar a posição"><GripVertical size={18} /></button>
+                <div><strong>{CATALOG_SECTION_TYPES.find(([value]) => value === section.section_type)?.[1] || section.section_type}</strong><small>Posição {index + 1}</small></div>
+              </div>
               <div className="customization-actions">
                 <button type="button" disabled={!index} onClick={() => setForm({ ...form, catalogSections: moveListItem(sections, index, -1) })}>Subir</button>
                 <button type="button" disabled={index === sections.length - 1} onClick={() => setForm({ ...form, catalogSections: moveListItem(sections, index, 1) })}>Descer</button>
@@ -769,16 +1071,10 @@ function CouponManager() {
           }
         ]}
         actions={(coupon) => (
-          <>
-            <button type="button" onClick={() => edit(coupon)}>Editar</button>
-            <button
-              type="button"
-              className="danger-link"
-              onClick={() => setDeleting({ message: `Excluir o cupom ${coupon.code}?`, run: () => remove(coupon) })}
-            >
-              Excluir
-            </button>
-          </>
+          <RowActions actions={[
+            { label: "Editar", onClick: () => edit(coupon), primary: true },
+            { label: "Excluir", onClick: () => setDeleting({ message: `Excluir o cupom ${coupon.code}?`, run: () => remove(coupon) }), danger: true }
+          ]} />
         )}
         empty="Nenhum cupom cadastrado ainda."
         emptyFiltered="Nenhum cupom corresponde à busca ou aos filtros."
@@ -969,20 +1265,18 @@ function PromotionManager() {
           }
         ]}
         actions={(promotion) => (
-          <>
-            <button type="button" onClick={() => edit(promotion)}>Editar</button>
-            <button type="button" onClick={() => request(`/promotions/${promotion.id}/duplicate`, { method: "POST" }, "Promoção duplicada.")}>Duplicar</button>
-            <button
-              type="button"
-              className="danger-link"
-              onClick={() => setEnding({
+          <RowActions actions={[
+            { label: "Editar", onClick: () => edit(promotion), primary: true },
+            { label: "Duplicar", onClick: () => request(`/promotions/${promotion.id}/duplicate`, { method: "POST" }, "Promoção duplicada.") },
+            {
+              label: "Excluir",
+              danger: true,
+              onClick: () => setEnding({
                 message: `Excluir a promoção ${promotion.name}? Ela será encerrada e sai da lista de campanhas.`,
                 run: () => request(`/promotions/${promotion.id}`, { method: "DELETE" }, "Promoção encerrada.")
-              })}
-            >
-              Excluir
-            </button>
-          </>
+              })
+            }
+          ]} />
         )}
         empty="Nenhuma promoção cadastrada ainda."
         emptyFiltered="Nenhuma promoção corresponde à busca ou aos filtros."
@@ -1074,66 +1368,79 @@ export function Toggle({ label, checked, onChange }) {
 }
 
 function CatalogCustomizationPreview({ form, products, device = "desktop", onDeviceChange }) {
-  const safeForm = asObject(form);
-  const theme = { ...defaultCatalogCustomization().theme, ...asObject(safeForm.theme) };
-  const activeBanner = [...asArray(safeForm.banners)].sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0)).find((banner) => Boolean(Number(banner.is_active))) || defaultCatalogBanner(1);
-  const previewProducts = asArray(products).slice(0, 4);
-  const style = {
-    "--preview-primary": theme.primary_color,
-    "--preview-secondary": theme.secondary_color,
-    "--preview-bg": theme.background_color,
-    "--preview-button": theme.button_color,
-    fontFamily: theme.body_font
-  };
+  const frameRef = useRef(null);
+  const theme = { ...defaultCatalogCustomization().theme, ...asObject(form).theme };
+  const previewUrl = catalogPreviewUrl();
+  const sendPreview = useCallback(() => frameRef.current?.contentWindow?.postMessage({
+    type: "aura-catalog-preview",
+    catalog: catalogPreviewPayload(form, products)
+  }, window.location.origin), [form, products]);
+
+  // Atualizações pequenas esperam um instante para não serializar a lista de
+  // produtos em cada tecla digitada. O iframe é a própria vitrine pública.
+  useEffect(() => {
+    const timer = window.setTimeout(sendPreview, 120);
+    return () => window.clearTimeout(timer);
+  }, [sendPreview]);
+
+  useEffect(() => {
+    const receiveReady = (event) => {
+      if (event.origin !== window.location.origin || event.source !== frameRef.current?.contentWindow) return;
+      if (asObject(event.data).type === "aura-catalog-preview-ready") sendPreview();
+    };
+    window.addEventListener("message", receiveReady);
+    return () => window.removeEventListener("message", receiveReady);
+  }, [sendPreview]);
+
   return (
-    <aside className={`catalog-live-preview theme-${theme.theme} preview-${device}`} style={style}>
+    <aside className={`catalog-live-preview preview-${device}`} style={{ "--preview-primary": theme.primary_color }}>
       <div className="preview-browser-bar">
         <span />
-        <strong>Pré-visualização em tempo real</strong>
+        <strong>Prévia fiel do rascunho</strong>
         <div className="preview-device-switcher">
           {["desktop", "tablet", "mobile"].map((item) => <button type="button" className={device === item ? "active" : ""} onClick={() => onDeviceChange(item)} key={item}>{item}</button>)}
         </div>
-        <a href={`/catalogo?t=${tenantSlug()}`} target="_blank" rel="noreferrer">Abrir</a>
+        <a href={`/catalogo?t=${tenantSlug()}`} target="_blank" rel="noreferrer">Vitrine publicada</a>
       </div>
       <div className="preview-storefront">
-        <header>
-          <div className="preview-brand">
-            {theme.logo_url ? <img src={catalogImageUrl(theme.logo_url)} alt={theme.brand_name} /> : <strong>{theme.brand_name?.slice(0, 1) || "A"}</strong>}
-            <span><b>{theme.brand_name}</b><small>{theme.slogan}</small></span>
-          </div>
-          {Boolean(Number(theme.show_favorites)) && <Heart size={18} />}
-        </header>
-        <section className="preview-banner" style={{ maxWidth: activeBanner.banner_width ? `${Number(activeBanner.banner_width)}px` : "none" }}>
-          <picture>
-            {activeBanner.mobile_image_url && <source media="(max-width: 600px)" srcSet={catalogImageUrl(activeBanner.mobile_image_url)} />}
-            <img src={catalogImageUrl(activeBanner.image_url)} alt={activeBanner.alt_text || activeBanner.title || "Banner do catálogo"} style={imageTransformStyle(activeBanner.image_transform)} />
-          </picture>
-          <div>
-            <h3 style={{ fontFamily: theme.title_font }}>{activeBanner.title}</h3>
-            <p>{activeBanner.subtitle}</p>
-            {activeBanner.button_text && <button>{activeBanner.button_text}</button>}
-          </div>
-        </section>
-        <div className="preview-categories">
-          {form.featuredCategories.filter((item) => Boolean(Number(item.is_active))).slice(0, 6).map((category, index) => (
-            <span key={`${category.public_name}-${index}`}>{category.public_name}</span>
-          ))}
-        </div>
-        <section className="preview-products">
-          {previewProducts.map((item) => (
-            <article key={item.id}>
-              <img src={catalogImageUrl(item.photo_url)} alt={item.name} />
-              <strong>{item.name}</strong>
-              <small>{item.material}</small>
-              <span>{currency.format(item.sale_value || 0)}</span>
-              {Boolean(Number(theme.show_schedule_button)) && <button>Agendar</button>}
-            </article>
-          ))}
-        </section>
-        <footer>{theme.footer_text}</footer>
+        <iframe
+          ref={frameRef}
+          title="Prévia do catálogo"
+          src={previewUrl}
+          onLoad={sendPreview}
+        />
       </div>
     </aside>
   );
+}
+
+function catalogPreviewUrl() {
+  const url = new URL("/catalogo", window.location.origin);
+  url.searchParams.set("t", tenantSlug());
+  url.searchParams.set("preview", "1");
+  return url.toString();
+}
+
+function catalogPreviewPayload(form, products) {
+  const safeForm = asObject(form);
+  const settings = asObject(safeForm.settings);
+  const featured = new Map(asArray(safeForm.featuredProducts).map((item) => [Number(item.product_id), item]));
+  return {
+    ...settings,
+    content_sections: JSON.stringify(asArray(safeForm.contentSections)),
+    categories: String(settings.categories || "").split(",").map((item) => item.trim()).filter(Boolean),
+    theme: asObject(safeForm.theme),
+    banners: asArray(safeForm.banners),
+    featuredCategories: asArray(safeForm.featuredCategories),
+    featuredProducts: asArray(safeForm.featuredProducts),
+    promotions: asArray(safeForm.promotions),
+    catalogSections: asArray(safeForm.catalogSections),
+    plugins: asArray(safeForm.plugins),
+    items: asArray(products).map((product) => ({
+      ...product,
+      badge: featured.get(Number(product.id))?.badge || product.badge || ""
+    }))
+  };
 }
 
 function normalizeCatalogCustomization(data) {
@@ -1153,7 +1460,8 @@ function normalizeCatalogCustomization(data) {
     featuredProducts: asArray(safeData.featuredProducts).map(normalizeBooleanRecord),
     promotions: asArray(safeData.promotions).map(normalizeBooleanRecord)
     ,
-    catalogSections: (asArray(safeData.catalogSections).length ? asArray(safeData.catalogSections) : defaultCatalogSections()).map(normalizeBooleanRecord)
+    catalogSections: (asArray(safeData.catalogSections).length ? asArray(safeData.catalogSections) : defaultCatalogSections()).map(normalizeBooleanRecord),
+    plugins: asArray(safeData.plugins)
   };
 }
 
@@ -1393,7 +1701,8 @@ function defaultCatalogCustomization() {
     featuredProducts: [],
     promotions: []
     ,
-    catalogSections: defaultCatalogSections()
+    catalogSections: defaultCatalogSections(),
+    plugins: []
   };
 }
 
@@ -1423,11 +1732,141 @@ function defaultCatalogSections() {
     .map((type, index) => defaultCatalogSection(type, index + 1));
 }
 
+const CATALOG_TEMPLATES = [
+  {
+    key: "minimalista",
+    name: "Minimal clean",
+    description: "Catálogo direto, claro e fácil de navegar.",
+    colors: ["#171512", "#F7F5F1"],
+    theme: { primary_color: "#24211d", secondary_color: "#ded8ce", background_color: "#f7f5f1", button_color: "#24211d", title_font: "Inter", body_font: "Inter" },
+    settings: { site_background: "#f7f5f1", section_background: "#ffffff", text_color: "#24211d", heading_color: "#171512", muted_text_color: "#716b62", border_color: "#ded8ce", footer_inherit_main_palette: "1" },
+    sections: ["hero", "categories", "featured_products", "new_products", "booking_cta", "footer"]
+  },
+  {
+    key: "premium",
+    name: "Luxe editorial",
+    description: "Imagem marcante e curadoria premium de joias.",
+    colors: ["#C8A96A", "#171512"],
+    theme: { primary_color: "#c8a96a", secondary_color: "#d8c3a5", background_color: "#f8f5f0", button_color: "#8b642f", title_font: "Playfair Display", body_font: "Inter" },
+    settings: { site_background: "#f8f5f0", section_background: "#ffffff", text_color: "#24211d", heading_color: "#171512", muted_text_color: "#716b62", border_color: "#d8c3a5", footer_inherit_main_palette: "0", footer_background_type: "gradient", footer_gradient_start_color: "#171512", footer_gradient_end_color: "#332a23" },
+    sections: ["hero", "categories", "featured_products", "best_sellers", "new_products", "custom_content", "booking_cta", "footer"]
+  },
+  {
+    key: "claro",
+    name: "Studio booking",
+    description: "Foco em atendimento, confiança e agendamento.",
+    colors: ["#7a5a45", "#fffaf6"],
+    theme: { primary_color: "#7a5a45", secondary_color: "#eadbd0", background_color: "#fffaf6", button_color: "#7a5a45", title_font: "Georgia", body_font: "Inter" },
+    settings: { site_background: "#fffaf6", section_background: "#ffffff", text_color: "#332b27", heading_color: "#332017", muted_text_color: "#786961", border_color: "#eadbd0", footer_inherit_main_palette: "1" },
+    sections: ["hero", "booking_cta", "categories", "featured_products", "custom_content", "location", "footer"]
+  },
+  {
+    key: "escuro",
+    name: "Campaign / lançamento",
+    description: "Contraste alto para campanhas, coleções e promoções.",
+    colors: ["#f0cf91", "#171512"],
+    theme: { primary_color: "#f0cf91", secondary_color: "#564737", background_color: "#171512", button_color: "#f0cf91", title_font: "Playfair Display", body_font: "Inter" },
+    settings: { site_background: "#171512", section_background: "#24201c", text_color: "#f8f1e5", heading_color: "#ffffff", muted_text_color: "#c7b9a6", border_color: "#564737", button_text_color: "#171512", footer_inherit_main_palette: "1" },
+    sections: ["hero", "promotions", "new_products", "featured_products", "in_stock", "booking_cta", "footer"]
+  }
+];
+
+function CatalogTemplatePicker({ activeTemplate, onSelect }) {
+  return (
+    <section className="catalog-template-picker" aria-label="Templates de catálogo">
+      <div><strong>Comece por um template</strong><span>Você poderá ajustar todos os blocos e cores depois.</span></div>
+      <div className="catalog-template-grid">
+        {CATALOG_TEMPLATES.map((template) => (
+          <button type="button" key={template.key} className={activeTemplate === template.key ? "active" : ""} onClick={() => onSelect(template.key)}>
+            <span className="catalog-template-swatch" style={{ "--template-primary": template.colors[0], "--template-surface": template.colors[1] }} aria-hidden="true"><i /><i /><i /></span>
+            <strong>{template.name}</strong>
+            <small>{template.description}</small>
+            <em>{activeTemplate === template.key ? "Em uso" : "Aplicar"}</em>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function applyCatalogTemplate(form, templateKey) {
+  const template = CATALOG_TEMPLATES.find((item) => item.key === templateKey);
+  if (!template) return form;
+  return {
+    ...form,
+    theme: { ...form.theme, ...template.theme, theme: template.key },
+    settings: { ...form.settings, ...template.settings },
+    catalogSections: template.sections.map((sectionType, index) => defaultCatalogSection(sectionType, index + 1))
+  };
+}
+
+function CatalogMediaPicker({ onClose, onSelect }) {
+  const [altDrafts, setAltDrafts] = useState({});
+  const [savingId, setSavingId] = useState(null);
+  const [error, setError] = useState("");
+  const { data: mediaData, refresh: refreshMedia } = useFetch("/catalog-media");
+  const assets = asArray(asObject(mediaData).items || mediaData);
+  const loading = !mediaData;
+
+  useEffect(() => {
+    setAltDrafts(Object.fromEntries(asArray(assets).map((asset) => [asset.id, asset.alt_text || ""])));
+    setError("");
+  }, [assets]);
+
+  async function saveAlt(asset) {
+    setSavingId(asset.id);
+    setError("");
+    try {
+      const response = await apiFetch(`/catalog-media/${asset.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ alt_text: altDrafts[asset.id] || "" })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Não foi possível atualizar o texto alternativo.");
+      refreshMedia();
+    } catch (saveError) {
+      setError(saveError.message || "Não foi possível atualizar o texto alternativo.");
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      title="Biblioteca de mídia"
+      subtitle="Selecione uma imagem já enviada. O texto alternativo fica salvo para reutilização acessível."
+      size="lg"
+      onClose={onClose}
+    >
+      {loading && <Loading />}
+      {(error || mediaData?.error) && <span className="form-error">{error || mediaData.error}</span>}
+      {!loading && !asArray(assets).length && <p className="empty-state">Ainda não há imagens nesta biblioteca. Envie um arquivo em qualquer campo de imagem para começar.</p>}
+      <div className="catalog-media-grid">
+        {asArray(assets).map((asset) => (
+          <article key={asset.id} className="catalog-media-card">
+            <img src={catalogImageUrl(asset.url)} alt={asset.alt_text || "Prévia da biblioteca de mídia"} />
+            <label>Texto alternativo
+              <input value={altDrafts[asset.id] ?? asset.alt_text ?? ""} maxLength={180} onChange={(event) => setAltDrafts((current) => ({ ...current, [asset.id]: event.target.value }))} placeholder="Descreva esta imagem" />
+            </label>
+            <div>
+              <button type="button" className="secondary-button" disabled={savingId === asset.id} onClick={() => saveAlt(asset)}>{savingId === asset.id ? "Salvando…" : "Salvar descrição"}</button>
+              <button type="button" className="primary-button" onClick={() => { onSelect({ ...asset, alt_text: altDrafts[asset.id] ?? asset.alt_text ?? "" }); onClose(); }}>Usar imagem</button>
+            </div>
+          </article>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
 export function ImageUploadField({ label, value, onChange, onTransformChange, transform, aspectRatio = "1/1", contextLabel = label }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
   const [editor, setEditor] = useState(null);
+  const [libraryOpen, setLibraryOpen] = useState(false);
 
   async function selectImage(event) {
     const file = event.target.files?.[0];
@@ -1456,11 +1895,16 @@ export function ImageUploadField({ label, value, onChange, onTransformChange, tr
         setUploading(true);
         const formData = new FormData();
         formData.append("file", editor.file);
-        const response = await apiFetch("/uploads", { method: "POST", body: formData });
+        // A rota específica registra a imagem no acervo da clínica; o fallback
+        // mantém uploads possíveis durante uma atualização gradual de API.
+        let response = await apiFetch("/catalog-media", { method: "POST", body: formData });
+        if (response.status === 404) response = await apiFetch("/uploads", { method: "POST", body: formData });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || "Upload inválido.");
-        imageUrl = data.url;
-        onChange(imageUrl);
+        const asset = data.asset || data.item || null;
+        imageUrl = data.url || asset?.url || "";
+        if (!imageUrl) throw new Error("O servidor não retornou a URL da imagem.");
+        onChange(imageUrl, asset || { url: imageUrl, alt_text: "" });
       }
       onTransformChange?.(imageTransform, imageUrl);
       setEditor(null);
@@ -1477,7 +1921,12 @@ export function ImageUploadField({ label, value, onChange, onTransformChange, tr
     if (!nextValue) onTransformChange?.(normalizeImageTransform({}, aspectRatio), "");
   }
 
-  const internalUpload = String(value || "").startsWith("/uploads/");
+  // Duas formas de "arquivo nosso", uma por modo de armazenamento: caminho
+  // relativo (disco) e URL absoluta do CDN (R2). No R2 a chave sempre começa por
+  // `tenant_<id>/` ou `plataforma/` — é a convenção de `services/storage/keys.js`.
+  // Sem reconhecer a segunda, uma imagem enviada pelo próprio painel voltaria a
+  // aparecer como "URL externa", num campo de texto editável.
+  const internalUpload = /^\/uploads\//.test(String(value || "")) || /\/(?:tenant_\d+|plataforma)\//.test(String(value || ""));
   return (
     <div className="image-upload-field">
       <span className="image-upload-label">{label}</span>
@@ -1491,6 +1940,7 @@ export function ImageUploadField({ label, value, onChange, onTransformChange, tr
       {internalUpload && <small>Arquivo enviado e armazenado com segurança.</small>}
       <div className="image-upload-actions">
         <label className="secondary-button">Escolher arquivo<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={selectImage} /></label>
+        <button type="button" className="secondary-button" onClick={() => setLibraryOpen(true)}>Biblioteca</button>
         {value && <button type="button" className="secondary-button" onClick={() => setEditor({ file: null, src: catalogImageUrl(value) })}>Editar enquadramento</button>}
         {value && <button type="button" className="danger-link" onClick={() => updateExternalUrl("")}>Remover</button>}
       </div>
@@ -1498,6 +1948,13 @@ export function ImageUploadField({ label, value, onChange, onTransformChange, tr
       {warning && <small className="form-warning">{warning}</small>}
       {error && <span className="form-error">{error}</span>}
       {editor && <ImageEditor file={editor.file} src={editor.src} initialTransform={transform} aspectRatio={aspectRatio} contextLabel={contextLabel} onCancel={() => setEditor(null)} onConfirm={confirmEdit} />}
+      {libraryOpen && <CatalogMediaPicker
+        onClose={() => setLibraryOpen(false)}
+        onSelect={(asset) => {
+          onChange(asset.url, asset);
+          onTransformChange?.(normalizeImageTransform({}, aspectRatio), asset.url);
+        }}
+      />}
     </div>
   );
 }

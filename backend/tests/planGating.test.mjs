@@ -9,14 +9,14 @@ const ctx = { platformToken: null, slug: null, tenantId: null, token: null, emai
 
 before(async () => {
   ctx.platformToken = await platformLogin();
-  // Cria uma clínica no plano ESSENCIAL (não tem finance/booking/terms).
+  // Cria uma clínica no plano Start (não tem finance/booking/terms).
   const suffix = Math.floor(performance.now() * 1000) % 1000000;
   ctx.slug = `gate-${suffix}`;
   ctx.email = `admin@${ctx.slug}.test`;
   ctx.password = "SenhaForte123";
   const signup = await req("/signup", {
     method: "POST",
-    body: { name: `Clinica Gate ${suffix}`, slug: ctx.slug, admin_email: ctx.email, admin_password: ctx.password, plan_code: "essencial" },
+    body: { name: `Clinica Gate ${suffix}`, slug: ctx.slug, admin_email: ctx.email, admin_password: ctx.password, plan_code: "start", legal_acceptances: { terms_of_use: 1, privacy_policy: 1 } },
   });
   assert.equal(signup.status, 201, JSON.stringify(signup.json));
   ctx.tenantId = signup.json.tenant.id;
@@ -31,7 +31,7 @@ function api(path, opts = {}) {
   return req(path, { token: ctx.token, tenant: ctx.slug, ...opts });
 }
 
-test("plano essencial NÃO acessa financeiro/agendamento/termos → 403 plan_upgrade_required", async () => {
+test("plano Start NÃO acessa financeiro/agendamento/termos → 403 plan_upgrade_required", async () => {
   const finance = await api("/finance");
   assert.equal(finance.status, 403, JSON.stringify(finance.json));
   assert.equal(finance.json.code, "plan_upgrade_required");
@@ -44,7 +44,7 @@ test("plano essencial NÃO acessa financeiro/agendamento/termos → 403 plan_upg
   assert.equal(terms.status, 403);
 });
 
-test("recursos-base continuam liberados no essencial (clientes)", async () => {
+test("recursos-base continuam liberados no Start (clientes)", async () => {
   const clients = await api("/clients");
   assert.equal(clients.status, 200, JSON.stringify(clients.json));
 });
@@ -82,4 +82,13 @@ test("super-admin troca plano e ativa a assinatura (PATCH /platform/tenants/:id/
   assert.equal(identity.status, 200);
   assert.equal(identity.json.subscription.plan_code, "studio");
   assert.equal(identity.json.subscription.status, "active");
+});
+
+test("assinatura ativa não permite autopromoção antes de ajustar a cobrança", async () => {
+  const change = await api("/subscription", { method: "PATCH", body: { plan_code: "profissional" } });
+  assert.equal(change.status, 409, JSON.stringify(change.json));
+  assert.equal(change.json.code, "plan_change_requires_support");
+
+  const identity = await api("/store-identity");
+  assert.equal(identity.json.subscription.plan_code, "studio");
 });

@@ -6,6 +6,7 @@ import { createSalesOrder, listSalesOrders, countSalesOrders, getSalesOrder, Sal
 import { parsePaging, pageResponse } from "../services/pagination.js";
 import { tenantClient } from "../services/asaas/credentials.js";
 import { createSalesOrderCharge } from "../services/tenantCharges.js";
+import { publicPaymentIntent } from "../services/payments.js";
 
 const router = Router();
 
@@ -54,7 +55,15 @@ router.get("/api/sales-orders", withDb(async (req, res, db) => {
 
 router.post("/api/sales-orders", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "finance", "reception", "piercer"])) return;
-  const order = await createSalesOrder(db, req.body || {}, req.user);
+  let order;
+  try {
+    order = await createSalesOrder(db, req.body || {}, req.user);
+  } catch (error) {
+    // Recusa de regra de negócio (estoque insuficiente, cupom inválido) é 400
+    // com o motivo em texto: sem isto virava 500 e a tela só dizia "erro".
+    if (error instanceof SalesOrderValidationError) return res.status(error.status).json({ error: error.message });
+    throw error;
+  }
   if (!order) return res.status(400).json({ error: "Não foi possível criar a venda." });
   res.status(201).json(order);
 }));
@@ -100,14 +109,14 @@ router.post("/api/sales-orders/public", withDb(async (req, res, db) => {
 
   res.status(201).json({
     ...order,
-    payment_intent: paymentIntent,
+    payment_intent: publicPaymentIntent(paymentIntent),
     payment_url: paymentIntent?.invoice_url || null,
     online_payment_available: Boolean(paymentIntent?.online_payment_available)
   });
 }));
 
 router.patch("/api/sales-orders/:id", withDb(async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "finance", "reception"])) return;
+  if (!requireRole(req, res, ["admin", "finance", "reception", "piercer"])) return;
   const current = await db.get("SELECT * FROM sales_orders WHERE id = ?", [req.params.id]);
   if (!current) return res.status(404).json({ error: "Venda não encontrada." });
   await db.run(

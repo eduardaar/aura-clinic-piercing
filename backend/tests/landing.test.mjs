@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { req, platformLogin, createTenant, loginTenant, deleteTenant } from "./helpers.mjs";
 
-const KEYS = ["hero", "features", "carousel", "plans", "showcase_links", "closing"];
+const KEYS = ["hero", "features", "about", "carousel", "plans", "showcase_links", "closing"];
 
 test("Landing: conteúdo público e editor da plataforma", async (t) => {
   const platformToken = await platformLogin();
@@ -132,7 +132,7 @@ test("Landing: conteúdo público e editor da plataforma", async (t) => {
   });
 
   await t.test("reordena", async () => {
-    const nova = ["closing", "hero", "features", "carousel", "plans", "showcase_links"];
+    const nova = ["closing", "hero", "features", "about", "carousel", "plans", "showcase_links"];
     const { status, json } = await req("/platform/landing/order", {
       ...plt,
       method: "PATCH",
@@ -226,9 +226,10 @@ test("Landing: conteúdo público e editor da plataforma", async (t) => {
     form.append("file", new Blob([png], { type: "image/png" }), "landing.png");
     const { status, json } = await req("/platform/landing/uploads", { ...plt, method: "POST", body: form });
     assert.equal(status, 201, JSON.stringify(json));
-    // Precisa ser um caminho sob /uploads e sem componente de diretório: é o que
-    // impede o valor de apontar para fora da pasta servida.
-    assert.match(json.url, /^\/uploads\/[^/]+$/);
+    // Dois formatos válidos, um por modo de armazenamento: em disco, caminho sob
+    // /uploads sem componente de diretório (é o que impede apontar para fora da
+    // pasta servida); em R2, a URL absoluta do CDN. A suíte roda em modo disco.
+    assert.match(json.url, /^(?:\/uploads\/[^/]+|https:\/\/[^/]+\/.+)$/);
   });
 
   await t.test("recusa arquivo que não é imagem", async () => {

@@ -115,12 +115,9 @@ jobs:
           npm --prefix frontend test
           npm --prefix frontend run build
 
-      # Informativo, NÃO bloqueante: o repositório carrega ~84 achados antigos
-      # (pendência 12) e reprovar o PR por eles pararia o trabalho de todo mundo
-      # sem relação com a mudança. Fica visível no log para a dívida não crescer
-      # em silêncio; vira bloqueante quando o passivo for zerado.
-      - name: Lint (informativo)
-        continue-on-error: true
+      # Erros de lint bloqueiam merge/deploy. Avisos permanecem visíveis para
+      # redução gradual, mas não escondem mais falhas reais de correção.
+      - name: Lint
         run: npm run lint
 
   # Sem o secret da chave SSH não há como deployar — pula (verde) com um aviso,
@@ -140,6 +137,13 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           ASAAS_API_KEY: ${{ secrets.ASAAS_API_KEY }}
           ASAAS_WEBHOOK_TOKEN: ${{ secrets.ASAAS_WEBHOOK_TOKEN }}
+          ASAAS_BASE_URL: ${{ vars.ASAAS_BASE_URL }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_PUBLIC: ${{ secrets.R2_BUCKET_PUBLIC }}
+          R2_BUCKET_PRIVATE: ${{ secrets.R2_BUCKET_PRIVATE }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
         run: |
           # Os secrets vêm por env, e não interpolados no script: um valor com
           # aspas ou quebra de linha quebraria o shell se fosse colado no corpo.
@@ -158,6 +162,31 @@ jobs:
           fi
           if [ -z "${ASAAS_API_KEY}" ]; then
             echo "::notice::Asaas não configurado — a cobrança online sobe desligada. Isso é esperado até os secrets serem preenchidos."
+          fi
+
+          # Chave de produção apontando para o sandbox cobra de mentira: o
+          # cliente vê "pago" e o dinheiro nunca entra. O boot da API também
+          # avisa, mas ali o aviso já está no log do container, longe de quem
+          # apertou o botão. Aviso, não erro — homologação é caso legítimo.
+          if [ -n "${ASAAS_API_KEY}" ] && [ "${ASAAS_BASE_URL}" != "https://api.asaas.com/v3" ]; then
+            echo "::warning::ASAAS_BASE_URL não é a URL de produção (https://api.asaas.com/v3). Valor atual: '${ASAAS_BASE_URL:-<vazio, o código cai no sandbox>}'. A cobrança das clínicas não será real."
+          fi
+
+          # R2 pela metade grava arquivo que ninguém consegue ler depois, então
+          # a API RECUSA subir em produção nessa condição (config/index.js).
+          # Nomear um bucket é a declaração de intenção de usar o R2; a partir
+          # daí o conjunto é indivisível. Erra aqui para o container não entrar
+          # em laço de reinício depois do deploy — mesma lógica do par
+          # ASAAS_API_KEY/ASAAS_WEBHOOK_TOKEN acima.
+          if [ -n "${R2_BUCKET_PUBLIC}" ] || [ -n "${R2_BUCKET_PRIVATE}" ]; then
+            r2_faltando=""
+            for v in R2_ENDPOINT R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET_PUBLIC R2_BUCKET_PRIVATE R2_PUBLIC_BASE_URL; do
+              [ -n "${!v:-}" ] || r2_faltando="${r2_faltando} ${v}"
+            done
+            if [ -n "${r2_faltando}" ]; then
+              echo "::error::Configuração do R2 incompleta — faltam:${r2_faltando}. Ou preencha todos os seis secrets, ou apague R2_BUCKET_PUBLIC/R2_BUCKET_PRIVATE para seguir no disco local. A API recusa subir em produção com R2 pela metade."
+              exit 1
+            fi
           fi
 
           echo "ready=true" >> "$GITHUB_OUTPUT"
@@ -196,15 +225,16 @@ jobs:
       # tropeçar no fail2ban). accept-new confia no host no 1º contato e a
       # conexão é multiplexada pelo deploy.sh (uma só para todo o deploy).
       #
-      # Os segredos do Asaas são repassados ao deploy.sh, que faz upsert no .env
-      # DO SERVIDOR (o rsync exclui .env de propósito). Secret ausente/vazio é
-      # pulado pelo script — nunca sobrescreve com vazio uma chave já em
-      # produção. Configure em Settings > Secrets and variables > Actions.
+      # Os segredos do Asaas e do R2 são repassados ao deploy.sh, que faz upsert
+      # no .env DO SERVIDOR (o rsync exclui .env de propósito). Secret
+      # ausente/vazio é pulado pelo script — nunca sobrescreve com vazio uma
+      # chave já em produção. Configure em Settings > Secrets and variables >
+      # Actions.
       - name: Deploy
         env:
           SSH_OPTS: -i ${{ github.workspace }}/.deploy_key -o UserKnownHostsFile=${{ github.workspace }}/.known_hosts -o StrictHostKeyChecking=accept-new
           ROLLBACK: ${{ inputs.rollback }}
-          ASAAS_BASE_URL: ${{ secrets.ASAAS_BASE_URL }}
+          ASAAS_BASE_URL: ${{ vars.ASAAS_BASE_URL }}
           ASAAS_API_KEY: ${{ secrets.ASAAS_API_KEY }}
           ASAAS_WEBHOOK_TOKEN: ${{ secrets.ASAAS_WEBHOOK_TOKEN }}
           ASAAS_VAULT_KEY: ${{ secrets.ASAAS_VAULT_KEY }}
@@ -212,6 +242,15 @@ jobs:
           # (/api/webhooks/asaas/<slug>). Usar API_URL aqui duplicaria o /api
           # na URL que a clínica cola no painel do Asaas.
           PUBLIC_API_URL: ${{ env.SITE_URL }}
+          # Cloudflare R2 (armazenamento de arquivos). Enquanto os secrets não
+          # existirem, todos chegam vazios, o script os pula e a API continua
+          # gravando no disco do container — que é o comportamento de hoje.
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_PUBLIC: ${{ secrets.R2_BUCKET_PUBLIC }}
+          R2_BUCKET_PRIVATE: ${{ secrets.R2_BUCKET_PRIVATE }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
         run: bash scripts/deploy.sh
 
       - name: Limpar chave

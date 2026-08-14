@@ -25,7 +25,7 @@ import { pool, query } from "../database/connection.js";
 import { AsaasError } from "./asaas/client.js";
 import { isPlatformEnabled, platformClient } from "./asaas/credentials.js";
 import { invalidateTenantCache } from "../middleware/tenant.js";
-import { listTenantInvoices } from "./platformBilling.js";
+import { listTenantInvoices, subscriptionSyncWarning, syncSubscriptionPrice } from "./platformBilling.js";
 import { tenantUsageReport } from "./planLimits.js";
 import { SUBSCRIPTION_STATUSES, normalizePlanCode, planByCode } from "./plans.js";
 import { invalidateSubscriptionCache, tenantSubscription } from "./subscriptions.js";
@@ -157,17 +157,26 @@ function subscriptionSnapshot(row) {
   };
 }
 
-// A recorrência no Asaas continua com o VALOR do plano anterior depois de uma
-// troca feita aqui — este arquivo mexe no nosso banco, não no gateway. Sem esse
-// aviso o super-admin sobe uma clínica de plano e ela segue pagando o preço
-// antigo (ou o contrário) até alguém reparar na fatura.
-function gatewayMismatchWarning(subscriptionRow, fromPlan, toPlan) {
-  if (!subscriptionRow?.asaas_subscription_id) return null;
-  if (fromPlan === toPlan) return null;
-  return (
-    `A assinatura ${subscriptionRow.asaas_subscription_id} no Asaas continua com o valor do plano ` +
-    `anterior (${planByCode(fromPlan).name}). Refaça o checkout ou ajuste a recorrência no gateway.`
-  );
+/**
+ * Auditoria de uma etapa que acontece FORA da transação da mudança.
+ *
+ * Aqui a regra 1 do topo do arquivo (mudança e auditoria commitam juntas) não
+ * se aplica, e é deliberado: a conversa com o gateway só pode acontecer depois
+ * do COMMIT (o acesso da clínica não pode depender do Asaas estar de pé), então
+ * não existe transação para carregar este registro junto. Deixar uma falha de
+ * INSERT derrubar a requisição faria o super-admin repetir a operação — e ele
+ * repetiria o reajuste de cobrança, que é muito pior do que perder uma linha de
+ * log. É a mesma escolha que `planAdmin.js` faz na propagação de preço.
+ */
+async function auditAfterCommit({ actor, action, tenantId, detail }) {
+  try {
+    await auditWithin(pool, { actor, action, tenantId, detail });
+  } catch (error) {
+    console.error(
+      `[accountAdmin] falha ao registrar "${action}" da clínica ${tenantId} na auditoria: ${error.message}. ` +
+        `Detalhe: ${JSON.stringify(detail)}`
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -243,8 +252,20 @@ export async function accountOverview(tenantId, { invoiceLimit = 5 } = {}) {
  * que também marcava 'active' com 30 dias. Separar é o ponto: uma clínica
  * inadimplente que muda de plano continua inadimplente, e "liberar acesso" é
  * uma decisão explícita — `forceSubscriptionStatus`.
+ *
+ * O VALOR NOVO VAI PARA O GATEWAY, e a ordem importa: primeiro o COMMIT daqui,
+ * depois o Asaas. O contrário — gateway primeiro — cobraria o preço novo de uma
+ * clínica cujo plano não chegou a mudar, se a transação falhasse na sequência.
+ * A propagação é BEST-EFFORT pelo mesmo motivo de sempre: o acesso da clínica
+ * já mudou, e uma indisponibilidade do gateway não pode desfazer nem travar
+ * isso. O que ela produz é um relatório (`gateway`) e, quando sobra dinheiro
+ * pendurado, um `warning` — reprocessável por `resyncAccountSubscription`.
+ *
+ * @param {number|string} tenantId
+ * @param {{ planCode: string, reason: string, actor?: object, gateway?: object }} options
+ *   `gateway` é ponto de injeção para teste; nenhuma rota o repassa.
  */
-export async function changeAccountPlan(tenantId, { planCode, reason, actor } = {}) {
+export async function changeAccountPlan(tenantId, { planCode, reason, actor, gateway } = {}) {
   const tenant = await loadTenant(tenantId);
   const motivo = requireReason(reason);
 
@@ -285,18 +306,89 @@ export async function changeAccountPlan(tenantId, { planCode, reason, actor } = 
   invalidateSubscriptionCache(tenant.id);
   invalidateTenantCache(tenant.slug);
 
+  // Reajuste da recorrência. Roda mesmo quando o plano "não mudou" (o operador
+  // reaplicando o mesmo plano é, na prática, um pedido de conserto): a própria
+  // sincronização compara o valor no gateway antes de escrever e devolve
+  // `ja_sincronizado` sem tocar em nada quando já está certo.
+  const gatewayResult = saved ? await syncSubscriptionPrice(tenant.id, { gateway }) : null;
+  if (gatewayResult) {
+    // Linha própria, separada de `conta.plano_alterado`: é ela que responde
+    // "a clínica chegou a ser cobrada pelo plano novo?" — pergunta que aparece
+    // meses depois, sozinha, quando alguém confere a fatura.
+    await auditAfterCommit({
+      actor,
+      action: "conta.plano_propagado_no_gateway",
+      tenantId: tenant.id,
+      detail: {
+        motivo,
+        de: fromPlan,
+        para: code,
+        gateway: gatewayResult
+      }
+    });
+  }
+
   return {
     ok: true,
     tenant_id: tenant.id,
     plan_code: code,
     plan_name: planByCode(code).name,
     subscription: saved,
+    // Relatório completo da propagação: a tela usa `status`/`detalhe` para
+    // contar o que aconteceu de fato, mesmo quando não há nada a avisar.
+    gateway: gatewayResult,
     // Sem assinatura, a troca ficou só em `tenants.plan` — o gating continua
     // sem linha para consultar. Quem cria a assinatura é o provisionamento ou o
     // checkout; avisar é melhor que fingir que a troca foi completa.
     warning: saved
-      ? gatewayMismatchWarning(before, fromPlan, code)
+      ? subscriptionSyncWarning(gatewayResult)
       : "Esta clínica não tem linha de assinatura; o plano foi gravado apenas no cadastro."
+  };
+}
+
+/**
+ * Reenvia ao Asaas o valor do plano vigente. É o caminho de reprocesso do
+ * `warning` da troca de plano ("falhou, tente novamente").
+ *
+ * Idempotente: `syncSubscriptionPrice` lê a assinatura antes de escrever e não
+ * faz nada se o gateway já cobra o valor certo. Não cria assinatura nem
+ * cobrança — só atualiza a recorrência que já existe —, então chamar dez vezes
+ * tem o mesmo efeito de chamar uma.
+ *
+ * O motivo é OPCIONAL aqui, e é a única ação deste arquivo em que ele é. As
+ * outras decidem acesso ou dinheiro e precisam responder "por quê?"; esta
+ * apenas faz o gateway concordar com uma decisão que JÁ está registrada (com o
+ * motivo dela) em `conta.plano_alterado`. Exigir um texto para clicar em
+ * "tentar de novo" só reduziria a chance de alguém tentar.
+ */
+export async function resyncAccountSubscription(tenantId, { reason, actor, gateway } = {}) {
+  const tenant = await loadTenant(tenantId);
+  const motivo = String(reason ?? "").trim().slice(0, 500) || "Reenvio do ajuste de valor ao gateway.";
+
+  const before = await loadSubscriptionRow(tenant.id);
+  if (!before) {
+    throw new AccountAdminError(
+      "Esta clínica não tem assinatura para sincronizar.",
+      409,
+      "assinatura_inexistente"
+    );
+  }
+
+  const gatewayResult = await syncSubscriptionPrice(tenant.id, { gateway });
+  await auditAfterCommit({
+    actor,
+    action: "conta.assinatura_ressincronizada",
+    tenantId: tenant.id,
+    detail: { motivo, gateway: gatewayResult }
+  });
+
+  return {
+    ok: true,
+    tenant_id: tenant.id,
+    plan_code: gatewayResult.plan_code,
+    plan_name: gatewayResult.plan_name,
+    gateway: gatewayResult,
+    warning: subscriptionSyncWarning(gatewayResult)
   };
 }
 

@@ -7,13 +7,19 @@ import { groupInventoryOptions, splitCatalogCategories } from "../services/utils
 import { validateCoupon } from "../services/discounts.js";
 import { quotePromotions } from "../services/promotions.js";
 import { parsePaging, fetchPage, pageResponse } from "../services/pagination.js";
+import { planLimit } from "../services/plans.js";
+import { tenantSubscription } from "../services/subscriptions.js";
+import { upload, parseUpload } from "../middleware/upload.js";
 import {
+  CatalogCustomizationError,
   getCatalogCustomization,
-  getCatalogSettings,
+  getCatalogCustomizationChecklist,
   saveCatalogCustomization,
   resetCatalogCustomization,
-  saveCatalogLayoutDraft,
-  publishCatalogLayout
+  publishCatalogCustomization,
+  listCatalogCustomizationHistory,
+  getCatalogCustomizationRevision,
+  rollbackCatalogCustomization
 } from "../services/catalog.js";
 
 const router = Router();
@@ -57,27 +63,39 @@ router.post("/api/catalog/events", withDb(async (req, res, db) => {
 
 const asArray = (value) => (Array.isArray(value) ? value : []);
 
+function catalogCustomizationError(res, error) {
+  if (!(error instanceof CatalogCustomizationError)) throw error;
+  return res.status(error.statusCode).json({
+    error: error.message,
+    code: error.code,
+    ...(error.details || {})
+  });
+}
+
+// O editor pode listar integrações, mas é o servidor que decide quais delas
+// pertencem ao plano do tenant. A feature principal já foi checada por
+// `withFeature`; esta lista detalha WhatsApp/agenda quando o snapshot muda.
+async function catalogPluginAccess(req) {
+  const subscription = await tenantSubscription(req.tenant?.id);
+  return {
+    enabledFeatures: Array.isArray(subscription?.features) ? subscription.features : [],
+    pluginLimit: subscription?.plan_code ? planLimit(subscription.plan_code, "catalog_plugins") : null
+  };
+}
+
 router.get("/api/catalog", withDb(async (_req, res, db) => {
   const customization = await getCatalogCustomization(db, { published: true });
+  const featuredByProduct = new Map(
+    asArray(customization.featuredProducts)
+      .filter((product) => Number(product.is_active ?? 1) === 1)
+      .map((product) => [Number(product.product_id), product])
+  );
   const productRows = await db.all(`
     SELECT
-      j.*,
-      COALESCE(
-        fp.badge,
-        CASE
-          WHEN j.is_promotion = 1 THEN 'Promoção'
-          WHEN j.is_last_units = 1 THEN 'Últimas unidades'
-          WHEN j.is_most_wanted = 1 THEN 'Mais desejado'
-          WHEN j.is_new = 1 THEN 'Lançamento'
-          WHEN j.is_featured = 1 THEN 'Destaque'
-          ELSE ''
-        END
-      ) AS badge,
-      fp.sort_order AS featured_order
+      j.*
     FROM jewelry_inventory j
-    LEFT JOIN catalog_featured_products fp ON fp.product_id = j.id AND fp.is_active = 1
     WHERE j.is_catalog_active = 1 AND j.status != 'arquivado'
-    ORDER BY COALESCE(fp.sort_order, 9999), j.category, j.name
+    ORDER BY j.category, j.name
   `);
   const items = (await attachVariants(db, productRows))
     .map((item) => ({
@@ -135,13 +153,19 @@ router.get("/api/catalog", withDb(async (_req, res, db) => {
         status: v.status,
         is_active: v.is_active
       })),
-      badge: item.badge,
+      badge: featuredByProduct.get(Number(item.id))?.badge ||
+        (item.is_promotion ? "Promoção" : item.is_last_units ? "Últimas unidades" : item.is_most_wanted ? "Mais desejado" : item.is_new ? "Lançamento" : item.is_featured ? "Destaque" : ""),
       is_featured: item.is_featured,
       is_new: item.is_new,
       is_promotion: item.is_promotion,
       is_last_units: item.is_last_units
       // Dados privados OCULTOS: cost_value, supplier, physical_location, notes, description, etc.
-    }));
+    }))
+    .sort((a, b) => {
+      const orderA = Number(featuredByProduct.get(Number(a.id))?.sort_order ?? 999999);
+      const orderB = Number(featuredByProduct.get(Number(b.id))?.sort_order ?? 999999);
+      return orderA - orderB || String(a.category || "").localeCompare(String(b.category || "")) || String(a.name || "").localeCompare(String(b.name || ""));
+    });
   res.json({
     ...customization.settings,
     theme: customization.theme,
@@ -149,6 +173,15 @@ router.get("/api/catalog", withDb(async (_req, res, db) => {
     featuredCategories: customization.featuredCategories,
     featuredProducts: customization.featuredProducts,
     promotions: customization.promotions,
+    catalogSections: customization.catalogSections,
+    plugins: customization.plugins,
+    // A vitrine precisa identificar a revisão publicada para métricas/cache,
+    // mas nunca deve revelar o lock nem a data do rascunho de quem edita.
+    version: {
+      published: customization.version?.published || 0,
+      revision_id: customization.version?.revision_id || null,
+      published_at: customization.version?.published_at || null
+    },
     categories: splitCatalogCategories(customization.settings.categories),
     items
   });
@@ -159,34 +192,153 @@ router.get("/api/catalog-customization", withFeature("public_catalog_customizati
   const customization = await getCatalogCustomization(db);
   const products = await attachVariants(db, await db.all("SELECT * FROM jewelry_inventory ORDER BY name"));
   const options = await db.all("SELECT * FROM inventory_options ORDER BY type, name");
-  res.json({ ...customization, products, inventoryOptions: groupInventoryOptions(options) });
+  // A interface usa este resumo apenas para desabilitar escolhas que o
+  // servidor também valida ao salvar. Nunca é uma autorização no cliente.
+  const pluginAccess = await catalogPluginAccess(req);
+  res.json({ ...customization, products, inventoryOptions: groupInventoryOptions(options), pluginAccess });
+}));
+
+// Biblioteca de imagens do editor. `withFeature` resolve o tenant e fixa o
+// schema antes de acessar a tabela; a chave do objeto também leva o tenant,
+// via `parseUpload(..., { category: 'catalog' })`.
+router.get("/api/catalog-media", withFeature("public_catalog_customization", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
+  const items = await db.all(
+    "SELECT id, url, storage_key, original_name, mime_type, alt_text, created_at, updated_at FROM catalog_media_assets ORDER BY created_at DESC, id DESC"
+  );
+  res.json({ items });
+}));
+
+router.post("/api/catalog-media", withFeature("public_catalog_customization", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
+  await parseUpload(upload.single("file"), req, res, { category: "catalog" });
+  if (!req.file?.publicUrl || !req.file?.storageKey) return res.status(400).json({ error: "Nenhum arquivo enviado." });
+  const created = await db.run(
+    `INSERT INTO catalog_media_assets (url, storage_key, original_name, mime_type, alt_text, created_by)
+     VALUES (?, ?, ?, ?, '', ?)
+     RETURNING id, url, storage_key, original_name, mime_type, alt_text, created_at, updated_at`,
+    [
+      req.file.publicUrl,
+      req.file.storageKey,
+      String(req.file.originalname || "").slice(0, 255),
+      String(req.file.mimetype || "application/octet-stream").slice(0, 100),
+      req.user?.id ?? null
+    ]
+  );
+  res.status(201).json({ item: created.rows[0] });
+}));
+
+router.patch("/api/catalog-media/:id", withFeature("public_catalog_customization", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: "Mídia inválida." });
+  const altText = String(req.body?.alt_text ?? "").replace(/\s+/g, " ").trim();
+  if (altText.length > 500) return res.status(422).json({ error: "O texto alternativo aceita no máximo 500 caracteres.", code: "catalog_media_alt_text_too_long" });
+  const hasUnsafeCharacter = [...altText].some((char) => {
+    const code = char.charCodeAt(0);
+    return code <= 31 || code === 127 || char === "<" || char === ">";
+  });
+  if (hasUnsafeCharacter) return res.status(422).json({ error: "O texto alternativo deve ser texto simples.", code: "catalog_media_alt_text_invalid" });
+  const updated = await db.run(
+    `UPDATE catalog_media_assets SET alt_text = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+     RETURNING id, url, storage_key, original_name, mime_type, alt_text, created_at, updated_at`,
+    [altText, id]
+  );
+  if (!updated.rows[0]) return res.status(404).json({ error: "Mídia não encontrada." });
+  res.json({ item: updated.rows[0] });
+}));
+
+// O checklist lê apenas o draft. Ele é útil para a interface avisar antes do
+// clique em "Publicar" e não expõe nenhuma revisão ou asset de outro tenant.
+router.get("/api/catalog-customization/checklist", withFeature("public_catalog_customization", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
+  try {
+    res.json({ checklist: await getCatalogCustomizationChecklist(db) });
+  } catch (error) {
+    catalogCustomizationError(res, error);
+  }
 }));
 
 router.patch("/api/catalog-customization", withFeature("public_catalog_customization", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
-  await saveCatalogCustomization(db, req.body || {});
-  if (Array.isArray(req.body?.catalogSections)) await saveCatalogLayoutDraft(db, req.body.catalogSections, req.user?.id);
-  res.json(await getCatalogCustomization(db));
+  try {
+    await saveCatalogCustomization(db, req.body || {}, { userId: req.user?.id, ...await catalogPluginAccess(req) });
+    res.json(await getCatalogCustomization(db));
+  } catch (error) {
+    catalogCustomizationError(res, error);
+  }
 }));
 
 router.post("/api/catalog-customization/publish", withFeature("public_catalog_customization", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
-  await saveCatalogCustomization(db, req.body || {});
-  if (Array.isArray(req.body?.catalogSections)) await saveCatalogLayoutDraft(db, req.body.catalogSections, req.user?.id);
-  const catalogSections = await publishCatalogLayout(db, req.user?.id);
-  res.json({ ok: true, published_at: new Date().toISOString(), ...(await getCatalogCustomization(db)), catalogSections });
+  try {
+    const published = await publishCatalogCustomization(db, req.body || {}, { userId: req.user?.id, ...await catalogPluginAccess(req) });
+    const customization = await getCatalogCustomization(db);
+    res.json({
+      ok: true,
+      published_at: published.revision.published_at,
+      revision: published.revision,
+      checklist: published.checklist,
+      ...customization
+    });
+  } catch (error) {
+    catalogCustomizationError(res, error);
+  }
 }));
 
 router.post("/api/catalog-customization/reset", withFeature("public_catalog_customization", async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
-  await resetCatalogCustomization(db);
-  res.json(await getCatalogCustomization(db));
+  try {
+    await resetCatalogCustomization(db, req.body || {}, { userId: req.user?.id });
+    res.json(await getCatalogCustomization(db));
+  } catch (error) {
+    catalogCustomizationError(res, error);
+  }
+}));
+
+router.get("/api/catalog-customization/history", withFeature("public_catalog_customization", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
+  try {
+    res.json(await listCatalogCustomizationHistory(db, { limit: req.query.limit }));
+  } catch (error) {
+    catalogCustomizationError(res, error);
+  }
+}));
+
+router.get("/api/catalog-customization/history/:version", withFeature("public_catalog_customization", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
+  try {
+    res.json({ revision: await getCatalogCustomizationRevision(db, req.params.version) });
+  } catch (error) {
+    catalogCustomizationError(res, error);
+  }
+}));
+
+router.post("/api/catalog-customization/rollback/:version", withFeature("public_catalog_customization", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
+  try {
+    const rolledBack = await rollbackCatalogCustomization(db, req.params.version, req.body || {}, { userId: req.user?.id, ...await catalogPluginAccess(req) });
+    const customization = await getCatalogCustomization(db);
+    res.json({
+      ok: true,
+      restored_from_version: rolledBack.restored_from_version,
+      published_at: rolledBack.revision.published_at,
+      revision: rolledBack.revision,
+      ...customization
+    });
+  } catch (error) {
+    catalogCustomizationError(res, error);
+  }
 }));
 
 router.get("/api/catalog-settings", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
-  const settings = await getCatalogSettings(db);
-  res.json({ ...settings, categories: splitCatalogCategories(settings.categories) });
+  const customization = await getCatalogCustomization(db);
+  res.json({
+    ...customization.settings,
+    categories: splitCatalogCategories(customization.settings.categories),
+    version: customization.version
+  });
 }));
 
 router.get("/api/coupons", withFeature("coupons", async (req, res, db) => {
@@ -468,15 +620,20 @@ router.patch("/api/catalog-settings", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   const allowed = ["title", "subtitle", "hero_title", "hero_subtitle", "hero_image_url", "categories", "whatsapp_phone", "whatsapp_message", "company_instagram", "company_email", "company_address", "company_hours", "layout_style"];
   const entries = Object.entries(req.body).filter(([key]) => allowed.includes(key));
-  for (const [key, value] of entries) {
-    const cleanValue = Array.isArray(value) ? value.filter(Boolean).join(",") : String(value || "");
-    await db.run(
-      "INSERT INTO catalog_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-      [key, cleanValue]
-    );
+  try {
+    await saveCatalogCustomization(db, {
+      settings: Object.fromEntries(entries.map(([key, value]) => [key, Array.isArray(value) ? value.filter(Boolean).join(",") : String(value || "")])),
+      expected_draft_version: req.body?.expected_draft_version
+    }, { userId: req.user?.id, ...await catalogPluginAccess(req) });
+    const customization = await getCatalogCustomization(db);
+    res.json({
+      ...customization.settings,
+      categories: splitCatalogCategories(customization.settings.categories),
+      version: customization.version
+    });
+  } catch (error) {
+    catalogCustomizationError(res, error);
   }
-  const settings = await getCatalogSettings(db);
-  res.json({ ...settings, categories: splitCatalogCategories(settings.categories) });
 }));
 
 export default router;
