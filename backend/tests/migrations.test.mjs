@@ -35,6 +35,10 @@ test("migrations versionadas têm baseline válido por escopo", () => {
   assert.match(platform[0].checksum, /^[a-f0-9]{64}$/);
 });
 
+test("checksum é estável entre checkout LF e CRLF", () => {
+  assert.equal(checksumSql("SELECT 1;\nSELECT 2;\n"), checksumSql("SELECT 1;\r\nSELECT 2;\r\n"));
+});
+
 test("--target aplica somente a versão explícita e exige dependências", async () => {
   const first = migration("0001");
   const second = migration("0002", "SELECT 2;");

@@ -32,5 +32,10 @@ commit do SQL. Em produção, execute `verify` no artefato que será publicado e
 `apply` como etapa explícita do deploy; o boot apenas aplica migrations quando
 `RUN_MIGRATIONS_ON_BOOT=true`.
 
+Em produção, o deploy normal não executa migrations. `apply` exige
+`--tenant=<id|slug>`; rollout global requer simultaneamente `--all` e
+`ALLOW_GLOBAL_MIGRATIONS=true`. O bootstrap legado global também fica desligado
+por padrão e não é autorizado apenas por `RUN_DATABASE_MIGRATIONS=true`.
+
 As migrations `0001_baseline.sql` apenas marcam o estado pré-existente criado
 pelos schemas idempotentes. Elas não recriam uma instalação vazia sozinhas.

@@ -8,6 +8,7 @@ import {
   migrationStatusForTarget
 } from "../src/db/migrations.js";
 import { inspectMigrationStructure } from "../src/db/migrationStructure.js";
+import { assertMigrationCliPolicy } from "../src/db/migrationPolicy.js";
 
 const command = process.argv[2] || "status";
 const option = (name) => process.argv.find((argument) => argument.startsWith(`${name}=`))?.slice(name.length + 1);
@@ -16,6 +17,7 @@ const targetVersion = option("--target");
 const adoptExisting = process.argv.includes("--adopt-existing");
 const dryRun = process.argv.includes("--dry-run");
 const allowReconciliation = process.argv.includes("--allow-reconciliation");
+const allTenants = process.argv.includes("--all");
 if (!new Set(["status", "verify", "apply"]).has(command)) {
   console.error("Uso: npm run migrations -- <status|verify|apply>");
   process.exitCode = 2;
@@ -52,6 +54,13 @@ if (!new Set(["status", "verify", "apply"]).has(command)) {
   }
 
   try {
+    assertMigrationCliPolicy({
+      command,
+      tenant: selectedTenant,
+      all: allTenants,
+      nodeEnv: process.env.NODE_ENV,
+      allowGlobal: process.env.ALLOW_GLOBAL_MIGRATIONS
+    });
     // O CLI é executado depois do bootstrap do app no pipeline de deploy. A
     // verificação abaixo dá uma mensagem clara caso alguém o rode num banco
     // sem o schema de plataforma, em vez de criar uma base incompleta.

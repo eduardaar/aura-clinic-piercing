@@ -40,7 +40,17 @@ function quoteIdentifier(identifier) {
 }
 
 export function checksumSql(sql) {
-  return crypto.createHash("sha256").update(sql, "utf8").digest("hex");
+  // O mesmo commit pode ser materializado como LF no Linux do deploy e CRLF
+  // no Windows operacional. O ledger representa o conteúdo SQL, não o estilo
+  // local de quebra de linha.
+  const canonicalSql = String(sql).replaceAll("\r\n", "\n");
+  return crypto.createHash("sha256").update(canonicalSql, "utf8").digest("hex");
+}
+
+function compatibleLineEndingChecksums(sql) {
+  const lf = String(sql).replaceAll("\r\n", "\n");
+  const crlf = lf.replaceAll("\n", "\r\n");
+  return [...new Set([lf, crlf].map((value) => crypto.createHash("sha256").update(value, "utf8").digest("hex")))];
 }
 
 // Carrega e valida os arquivos antes de abrir uma transação. Isso evita que
@@ -85,7 +95,8 @@ export function loadMigrations(scope, { root = DEFAULT_ROOT } = {}) {
         name: match[2],
         filename: entry.name,
         sql,
-        checksum: checksumSql(sql)
+        checksum: checksumSql(sql),
+        compatibleChecksums: compatibleLineEndingChecksums(sql)
       };
     })
     .sort((left, right) => left.version.localeCompare(right.version));
@@ -104,7 +115,7 @@ export function compareLedger(migrations, appliedRows) {
     const migration = expected.get(version);
     if (!migration) {
       unknown.push({ version, name: row.name });
-    } else if (row.checksum !== migration.checksum) {
+    } else if (!(migration.compatibleChecksums || [migration.checksum]).includes(row.checksum)) {
       changed.push({ version, name: migration.name, expected: migration.checksum, applied: row.checksum });
     }
   }
