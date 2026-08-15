@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { createTenant, deleteTenant, loginTenant, platformLogin, req } from "./helpers.mjs";
+import { query } from "../src/database/connection.js";
 
 const context = {};
 
@@ -8,17 +9,21 @@ before(async () => {
   context.platformToken = await platformLogin();
   context.a = await createTenant("qa-category-a");
   context.b = await createTenant("qa-category-b");
+  context.legacy = await createTenant("qa-category-legacy");
   context.tokenA = (await loginTenant(context.a.slug, context.a.adminEmail, context.a.adminPassword)).token;
+  context.tokenLegacy = (await loginTenant(context.legacy.slug, context.legacy.adminEmail, context.legacy.adminPassword)).token;
+  await query(`ALTER TABLE tenant_${context.legacy.tenant.id}.jewelry_inventory DROP COLUMN IF EXISTS category_id`);
 });
 
 after(async () => {
   await deleteTenant(context.platformToken, context.a.tenant.id, context.a.slug);
   await deleteTenant(context.platformToken, context.b.tenant.id, context.b.slug);
+  await deleteTenant(context.platformToken, context.legacy.tenant.id, context.legacy.slug);
 });
 
-async function createCategory(name) {
+async function createCategory(name, token = context.tokenA) {
   const result = await req("/inventory-categories", {
-    token: context.tokenA,
+    token,
     method: "POST",
     body: { name, description: "Categoria dinâmica", is_active: true }
   });
@@ -95,4 +100,24 @@ test("categoria e token de outro tenant não atravessam schemas", async () => {
     body: { name: "Tentativa cruzada" }
   });
   assert.equal(crossHeader.status, 403);
+});
+
+test("tenant sem 0005 mantém criação e edição pelo contrato category legado", async () => {
+  const category = await createCategory("Categoria Legada Sem 0005", context.tokenLegacy);
+  const created = await req("/jewelry", {
+    token: context.tokenLegacy,
+    method: "POST",
+    body: { name: "Produto sem coluna category_id", category_id: category.id, quantity: 0 }
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.json));
+  assert.equal(created.json.category, category.name);
+  assert.equal(created.json.category_id, undefined);
+
+  const updated = await req(`/jewelry/${created.json.id}`, {
+    token: context.tokenLegacy,
+    method: "PATCH",
+    body: { category_id: category.id }
+  });
+  assert.equal(updated.status, 200, JSON.stringify(updated.json));
+  assert.equal(updated.json.category, category.name);
 });

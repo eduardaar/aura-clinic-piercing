@@ -66,6 +66,18 @@ async function resolveActiveCategory(db, body) {
   return category;
 }
 
+async function supportsCategoryReference(db) {
+  const result = await db.get(`
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+       WHERE table_schema = current_schema()
+         AND table_name = 'jewelry_inventory'
+         AND column_name = 'category_id'
+    ) AS supported
+  `);
+  return Boolean(result?.supported);
+}
+
 // Whitelist de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
 const JEWELRY_SORTABLE = {
   name: "j.name",
@@ -416,7 +428,9 @@ router.post("/api/jewelry", withDb(async (req, res, db) => {
   if (!validateBody(jewelryCreateSchema, req, res)) return;
   const category = await resolveActiveCategory(db, req.body);
   if (!category) return res.status(400).json({ error: "Selecione uma categoria principal válida." });
-  req.body.category_id = category.id;
+  const hasCategoryReference = await supportsCategoryReference(db);
+  if (hasCategoryReference) req.body.category_id = category.id;
+  else delete req.body.category_id;
   req.body.category = category.name;
   if (rejectInvalidStockPayload(req, res)) return;
   // Cota do plano, antes do BEGIN: devolver 409 no meio da transação obrigaria a
@@ -438,9 +452,11 @@ router.post("/api/jewelry", withDb(async (req, res, db) => {
     const pricing = calculatePricing(req.body, pricingSettings);
     const result = await db.run(
       `INSERT INTO jewelry_inventory
-      (name, description, photo_url, gallery_urls, category, category_id, subcategory, variant_group, variation_label, material, color, stone, size, top_size_mm, thickness, stem_length, thread_type, piercing_type, weight_grams, package_length_cm, package_width_cm, package_height_cm, package_type, virtual_store_active, preparation_days, shipping_info, seo_title, seo_description, freight_notes, quantity, cost_value, sale_value, purchase_cost_cents, allocated_freight_cents, additional_cost_cents, total_cost_cents, price_multiplier, price_rounding_mode, suggested_price_cents, sale_price_cents, price_manually_overridden, cost_estimated, supplier, physical_location, sku, is_catalog_active, is_featured, is_new, is_most_wanted, is_promotion, is_last_units, notes, status, low_stock_threshold, critical_stock_threshold, image_url, is_published)
-      VALUES (${Array(57).fill("?").join(", ")}) RETURNING id`,
-      jewelryPayload(req.body, sku, pricing)
+      (name, description, photo_url, gallery_urls, category${hasCategoryReference ? ", category_id" : ""}, subcategory, variant_group, variation_label, material, color, stone, size, top_size_mm, thickness, stem_length, thread_type, piercing_type, weight_grams, package_length_cm, package_width_cm, package_height_cm, package_type, virtual_store_active, preparation_days, shipping_info, seo_title, seo_description, freight_notes, quantity, cost_value, sale_value, purchase_cost_cents, allocated_freight_cents, additional_cost_cents, total_cost_cents, price_multiplier, price_rounding_mode, suggested_price_cents, sale_price_cents, price_manually_overridden, cost_estimated, supplier, physical_location, sku, is_catalog_active, is_featured, is_new, is_most_wanted, is_promotion, is_last_units, notes, status, low_stock_threshold, critical_stock_threshold, image_url, is_published)
+      VALUES (${Array(hasCategoryReference ? 57 : 56).fill("?").join(", ")}) RETURNING id`,
+      hasCategoryReference
+        ? jewelryPayload(req.body, sku, pricing)
+        : jewelryPayload(req.body, sku, pricing).filter((_value, index) => index !== 5)
     );
     await replaceJewelryVariants(db, result.returnedId, req.body.variants || [variantFromLegacy({ ...req.body, sku: "" })]);
     await syncProductImages(db, result.returnedId, req.body.images || req.body.gallery_urls || [req.body.image_url || req.body.photo_url].filter(Boolean));
@@ -464,7 +480,8 @@ router.patch("/api/jewelry/:id", withDb(async (req, res, db) => {
   if (req.body.category !== undefined || req.body.category_id !== undefined) {
     const category = await resolveActiveCategory(db, req.body);
     if (!category) return res.status(400).json({ error: "Selecione uma categoria principal válida." });
-    req.body.category_id = category.id;
+    if (await supportsCategoryReference(db)) req.body.category_id = category.id;
+    else delete req.body.category_id;
     req.body.category = category.name;
   }
   if (rejectInvalidStockPayload(req, res)) return;

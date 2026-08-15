@@ -54,6 +54,7 @@ import supportRoutes from "./routes/support.js";
 import aiAssistantRoutes from "./routes/aiAssistant.js";
 import privacyRoutes from "./routes/privacy.js";
 import jobsRoutes from "./routes/jobs.js";
+import { databaseBootstrapIsDisabled } from "./db/migrationPolicy.js";
 import { startJobWorker } from "./services/jobWorker.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -149,14 +150,17 @@ app.use(jobsRoutes);
 // 3) Liga o worker de conciliação com o Asaas (rede de segurança para webhook
 //    perdido). DESLIGADO por padrão: só sobe com ASAAS_RECONCILE_ENABLED=true.
 //    Depende do schema já aplicado, por isso vem depois dos dois passos acima.
-if (process.env.SKIP_DATABASE_BOOTSTRAP !== "true") {
+if (process.env.NODE_ENV === "production" && process.env.RUN_MIGRATIONS_ON_BOOT === "true") {
+  throw new Error("RUN_MIGRATIONS_ON_BOOT=true é proibido em produção; use o CLI com --tenant explícito.");
+}
+if (!databaseBootstrapIsDisabled()) {
   await ensurePlatform();
   if (process.env.RUN_MIGRATIONS_ON_BOOT === "true") {
     await applyPlatformMigrations();
   }
   await applySchemaToAllTenants();
 } else {
-  console.log("[platform] Bootstrap de banco ignorado por SKIP_DATABASE_BOOTSTRAP=true.");
+  console.log("[platform] Bootstrap de banco ignorado; deploy/startup sem migrations ou DDL.");
 }
 // 3) Carrega os planos do banco para o registro em memória. A partir daqui o
 //    BANCO é a fonte da verdade de preço, features e limites; se a leitura

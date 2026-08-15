@@ -3,7 +3,7 @@
 # Deploy da Aura Clinic para o servidor de produção.
 #
 # Fluxo: build do frontend -> upload para release inativa -> backup -> rebuild
-# da API/migrations -> health profundo -> troca atômica do frontend. Se a API
+# da API sem migrations -> health profundo -> troca atômica do frontend. Se a API
 # falhar, o frontend que já estava no ar permanece intacto.
 #
 # Uso local (chave SSH):
@@ -244,7 +244,7 @@ fi
 
 echo "==> [4/6] Backup do banco + rebuild + restart da API"
 # shellcheck disable=SC2087
-${rsh} "${target}" REMOTE_COMPOSE_DIR="${REMOTE_COMPOSE_DIR}" bash -s <<'REMOTE'
+${rsh} "${target}" REMOTE_COMPOSE_DIR="${REMOTE_COMPOSE_DIR}" REMOTE_BACKEND="${REMOTE_BACKEND}" bash -s <<'REMOTE'
 set -euo pipefail
 cd "${REMOTE_COMPOSE_DIR}"
 
@@ -291,18 +291,24 @@ fi
 # Ponto de rollback da imagem (a que está no ar agora vira :rollback).
 docker tag aura-api:latest aura-api:rollback 2>/dev/null || true
 
-# Aplique migrations versionadas antes de servir a nova API. Isto dá ao deploy
-# uma falha explícita (e restaurável pelo backup acima) se algum SQL novo não
-# for compatível, em vez de descobrir a ausência de tabela no primeiro request.
+# Deploy da aplicação e rollout de banco são operações independentes. O
+# processo normal grava as flags fail-safe no .env e NÃO chama o runner. Um
+# rollout administrativo usa `migrations.mjs apply --tenant=... --target=...`.
+env_file="${REMOTE_BACKEND}/.env"
+touch "${env_file}"
+chmod 600 "${env_file}"
+for setting in RUN_DATABASE_MIGRATIONS=false SKIP_DATABASE_BOOTSTRAP=true RUN_MIGRATIONS_ON_BOOT=false; do
+  key="${setting%%=*}"
+  if grep -q "^${key}=" "${env_file}"; then
+    sed -i "s/^${key}=.*/${setting}/" "${env_file}"
+  else
+    printf '%s\n' "${setting}" >> "${env_file}"
+  fi
+done
+echo "   migrations automáticas: desativadas (rollout exige CLI explícito por tenant)"
 docker compose build aura-api
-# O script remoto chega ao host pelo stdin. `docker compose run` é interativo
-# por padrão e, sem redirecionamento, consome o restante desse próprio script:
-# a migration termina verde, mas as linhas de restart nunca são executadas.
-# Assim a entrada do container é fechada explicitamente.
-docker compose run --rm -T aura-api node scripts/migrations.mjs apply </dev/null
 
-# O boot preserva os schemas idempotentes legados durante a transição; os novos
-# arquivos devem sempre ser aplicados pelo comando versionado acima.
+# O boot não aplica schema.sql nem migrations no deploy normal.
 # `redis` explícito: guarda os contadores do loginGuard e precisa estar de pé
 # antes da API. Sem ele a API sobe do mesmo jeito (cai para contadores em
 # memória), mas a proteção fica mais fraca. A API é recriada de propósito:
