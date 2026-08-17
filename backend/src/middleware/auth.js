@@ -6,13 +6,32 @@
 import crypto from "crypto";
 import { AUTH_SECRET, isProduction } from "../config/index.js";
 import { ACCESS_TOKEN_MS, activeClinicSession } from "../services/sessions.js";
+import { query } from "../database/connection.js";
+
+const TOKEN_ISSUER = "aura-clinic-api";
+const CLINIC_AUDIENCE = "aura-clinic";
+const PLATFORM_AUDIENCE = "aura-platform";
+const PUBLIC_ROUTE_METHODS = new Set([
+  "POST /api/login",
+  "POST /api/auth/refresh",
+  "GET /api/health",
+  "GET /api/catalog",
+  "POST /api/catalog/coupon-quote",
+  "POST /api/catalog/promotion-quote",
+  "POST /api/catalog/price-quote",
+  "POST /api/sales-orders/public",
+  "GET /api/booking/readiness",
+  "GET /api/booking/config",
+  "GET /api/booking/slots",
+  "POST /api/booking/requests"
+]);
 
 // Define se a rota exige autenticação. Rotas públicas ficam de fora.
 export function requiresAuth(req) {
   if (!req.path.startsWith("/api")) return false;
-  if (["/api/login", "/api/auth/refresh", "/api/health", "/api/catalog", "/api/catalog/coupon-quote", "/api/catalog/promotion-quote", "/api/catalog/price-quote", "/api/sales-orders/public"].includes(req.path)) return false;
+  const publicRoute = `${req.method.toUpperCase()} ${req.path}`;
+  if (PUBLIC_ROUTE_METHODS.has(publicRoute)) return false;
   if (req.method === "POST" && req.path === "/api/catalog/events") return false;
-  if (req.path.startsWith("/api/booking")) return false;
   // Ingestão de erros do frontend: pública (captura erros de telas sem sessão).
   // A leitura/gestão (GET/PATCH/DELETE) continua exigindo auth + papel admin.
   if (req.method === "POST" && req.path === "/api/error-logs") return false;
@@ -27,7 +46,10 @@ export function requiresAuth(req) {
   // Só estas duas — a LISTAGEM de intents continua exigindo token. O recorte é
   // por regex e não por prefixo justamente para /api/payment-intents não virar
   // público inteiro por descuido.
-  if (/^\/api\/payment-intents\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/(pix|sync)$/i.test(req.path)) return false;
+  const publicPaymentPath = /^\/api\/payment-intents\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/(pix|sync)$/i.exec(req.path);
+  if (publicPaymentPath
+      && ((req.method === "GET" && publicPaymentPath[1].toLowerCase() === "pix")
+        || (req.method === "POST" && publicPaymentPath[1].toLowerCase() === "sync"))) return false;
   // Conteúdo da landing: é a página pública da plataforma, servida antes de
   // qualquer login. O editor vive em /api/platform/landing/* e se autentica com
   // token de plataforma, não com este caminho.
@@ -35,11 +57,15 @@ export function requiresAuth(req) {
   return true;
 }
 
-// Requisição de desenvolvimento local (localhost) — auth é dispensada.
+// Bypass local é opt-in e existe só para dados descartáveis. Vincular apenas a
+// NODE_ENV/Host seria fail-open: um deploy mal configurado poderia publicar a
+// aplicação inteira sem autenticação.
 export function isLocalDevRequest(req) {
   const host = String(req.hostname || "").toLowerCase();
   const forwardedHost = String(req.headers["x-forwarded-host"] || "").toLowerCase();
-  return !isProduction && ["localhost", "127.0.0.1", "::1"].includes(host || forwardedHost);
+  return !isProduction
+    && process.env.ALLOW_LOCAL_AUTH_BYPASS === "true"
+    && ["localhost", "127.0.0.1", "::1"].includes(host || forwardedHost);
 }
 
 // Assina um payload (objeto) e devolve o token "payload.assinatura".
@@ -76,12 +102,16 @@ export function extractBearerToken(req) {
 // Token de usuário de clínica: amarrado ao tenant (tid/tslug).
 export function createToken(user, tenant, { sessionId } = {}) {
   return signPayload({
+    iss: TOKEN_ISSUER,
+    aud: CLINIC_AUDIENCE,
+    typ: "clinic_access",
     sub: user.id,
     role: user.role,
     sv: Number(user.session_version || 1),
     tid: tenant?.id,
     tslug: tenant?.slug,
     ...(sessionId ? { sid: sessionId } : {}),
+    iat: Date.now(),
     exp: Date.now() + ACCESS_TOKEN_MS
   });
 }
@@ -90,10 +120,14 @@ export function createToken(user, tenant, { sessionId } = {}) {
 // ser aceito nas rotas de clínica (e tokens de clínica não têm plt).
 export function createPlatformToken(user) {
   return signPayload({
+    iss: TOKEN_ISSUER,
+    aud: PLATFORM_AUDIENCE,
+    typ: "platform_access",
     sub: user.id,
     role: "superadmin",
     plt: true,
     sv: Number(user.session_version || 1),
+    iat: Date.now(),
     exp: Date.now() + ACCESS_TOKEN_MS
   });
 }
@@ -101,8 +135,31 @@ export function createPlatformToken(user) {
 // Verifica o token de plataforma da requisição. Exige plt === true.
 export function verifyPlatformToken(req) {
   const decoded = decodeToken(extractBearerToken(req));
-  if (!decoded || decoded.plt !== true || !decoded.sub) return null;
+  if (!decoded || decoded.plt !== true || decoded.iss !== TOKEN_ISSUER
+      || decoded.aud !== PLATFORM_AUDIENCE || decoded.typ !== "platform_access" || !decoded.sub) return null;
   return decoded;
+}
+
+// Guarda único do painel da plataforma. Além da assinatura, consulta o usuário
+// a cada requisição para que troca de senha, ativação de MFA ou revogação de
+// sessão invalidem imediatamente tokens já emitidos.
+export async function requirePlatformAuth(req, res, next) {
+  try {
+    const decoded = verifyPlatformToken(req);
+    if (!decoded) return res.status(401).json({ error: "Sessão de plataforma inválida ou expirada." });
+    const result = await query(
+      "SELECT id, name, email, role, session_version FROM platform.platform_users WHERE id = $1",
+      [decoded.sub]
+    );
+    const user = result.rows[0];
+    if (!user || user.role !== "superadmin" || Number(user.session_version) !== Number(decoded.sv)) {
+      return res.status(401).json({ error: "Sessão de plataforma inválida ou expirada." });
+    }
+    req.platformUser = { ...decoded, name: user.name, email: user.email };
+    next();
+  } catch {
+    return res.status(401).json({ error: "Sessão de plataforma inválida ou expirada." });
+  }
 }
 
 export async function authenticateRequest(req, db) {
@@ -115,6 +172,7 @@ export async function authenticateRequest(req, db) {
     }
     const decoded = decodeToken(extractBearerToken(req));
     if (!decoded || !decoded.sub) return null;
+    if (decoded.iss !== TOKEN_ISSUER || decoded.aud !== CLINIC_AUDIENCE || decoded.typ !== "clinic_access") return null;
     // Tokens de plataforma não autenticam em rotas de clínica.
     if (decoded.plt === true) return null;
     // O token só vale para o tenant desta requisição (token de outra clínica → 401).

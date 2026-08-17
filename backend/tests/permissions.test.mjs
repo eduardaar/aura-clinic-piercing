@@ -68,14 +68,14 @@ after(async () => {
 // 2. USUÁRIOS por clínica — criação, validação, hash e login
 // ---------------------------------------------------------------------------
 
-test("POST /users senha < 8 → 400", async () => {
+test("POST /users senha < 12 → 400", async () => {
   const { status, json } = await req("/users", {
     token: ctx.adminToken,
     method: "POST",
     body: { name: "Curta", email: `curta@${ctx.tenant.slug}.test`, password: "1234567", role: "reception" }
   });
   assert.equal(status, 400, JSON.stringify(json));
-  assert.match(json.error, /8 caracteres/i);
+  assert.match(json.error, /12 caracteres/i);
 });
 
 test("POST /users role inválido → 400", async () => {
@@ -249,6 +249,29 @@ test("GET /finance com reception → 403", async () => {
 test("GET /finance com piercer → 403", async () => {
   const { status } = await req("/finance", { token: ctx.tokens.piercer });
   assert.equal(status, 403);
+});
+
+test("dashboard não expõe valores financeiros sem dashboard.financial", async () => {
+  const reception = await req("/dashboard", { token: ctx.tokens.reception });
+  assert.equal(reception.status, 200, JSON.stringify(reception.json));
+  assert.equal(reception.json.stats.revenueMonth, undefined);
+  assert.equal(reception.json.adminDashboard.monthlyRevenue, undefined);
+  assert.equal(reception.json.adminDashboard.executive.received, undefined);
+
+  const finance = await req("/dashboard", { token: ctx.tokens.finance });
+  assert.equal(finance.status, 200, JSON.stringify(finance.json));
+  assert.notEqual(finance.json.stats.revenueMonth, undefined);
+  assert.notEqual(finance.json.adminDashboard.executive.received, undefined);
+});
+
+test("opções de estoque só incluem configuração de custo para papel autorizado", async () => {
+  const reception = await req("/options", { token: ctx.tokens.reception });
+  assert.equal(reception.status, 200, JSON.stringify(reception.json));
+  assert.equal(reception.json.pricingSettings, undefined);
+
+  const finance = await req("/options", { token: ctx.tokens.finance });
+  assert.equal(finance.status, 200, JSON.stringify(finance.json));
+  assert.ok(finance.json.pricingSettings);
 });
 
 // -- ERP: restrito a admin -----------------------------------------------

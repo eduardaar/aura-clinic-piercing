@@ -9,7 +9,7 @@
 // super-admin não pertence a clínica nenhuma e os dados vivem no schema
 // `platform`, que é global.
 import { Router } from "express";
-import { verifyPlatformToken } from "../middleware/auth.js";
+import { requirePlatformAuth as requirePlatform } from "../middleware/auth.js";
 import { isProduction } from "../config/index.js";
 import { pageResponse, parsePaging } from "../services/pagination.js";
 import {
@@ -26,15 +26,6 @@ const router = Router();
 // Cópia local do guarda de plataforma, como em routes/landing.js e
 // routes/billing.js: são domínios diferentes e um não deve depender do outro por
 // causa de sete linhas. Sem bypass de dev.
-function requirePlatform(req, res, next) {
-  const decoded = verifyPlatformToken(req);
-  if (!decoded) {
-    return res.status(401).json({ error: "Sessão de plataforma inválida ou expirada." });
-  }
-  req.platformUser = decoded;
-  next();
-}
-
 function handleFinanceError(res, error) {
   if (error instanceof PlatformFinanceError) {
     return res.status(error.statusCode).json({ error: error.message });

@@ -14,7 +14,7 @@ const router = Router();
 // (No modo disco, sem R2 configurado, continua saindo `/uploads/<arquivo>`.)
 router.post("/api/uploads", withDb(async (req, res) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
-  await parseUpload(upload.single("file"), req, res, { category: "geral" });
+  await parseUpload(upload.single("file"), req, res, { category: "geral", imagesOnly: true });
   if (!req.file) return res.status(400).json({ error: "Nenhum arquivo enviado." });
   res.status(201).json({ url: req.file.publicUrl });
 }));
@@ -49,7 +49,8 @@ router.get("/api/private-files/:filename", withDb(async (req, res, db) => {
 
   res.type(file.mime_type || "application/pdf");
   const safeName = String(file.original_name || "ficha-anamnese.pdf").replace(/[\r\n"\\]/g, "-");
-  res.setHeader("Content-Disposition", `inline; filename="${safeName.replace(/[^\x20-\x7E]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(safeName)}`);
+  const disposition = file.purpose === "digital_term" ? "inline" : "attachment";
+  res.setHeader("Content-Disposition", `${disposition}; filename="${safeName.replace(/[^\x20-\x7E]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(safeName)}`);
   res.setHeader("Cache-Control", "private, no-store");
   if (object.contentLength) res.setHeader("Content-Length", String(object.contentLength));
   object.body.on("error", () => {

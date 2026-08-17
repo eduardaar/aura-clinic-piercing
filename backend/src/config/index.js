@@ -10,6 +10,7 @@ dotenv.config({ path: path.join(__dirname, "../../../.env") });
 
 export const PORT = process.env.PORT || 4000;
 export const isProduction = process.env.NODE_ENV === "production";
+export const API_BIND_HOST = process.env.API_BIND_HOST || (isProduction ? "0.0.0.0" : "127.0.0.1");
 
 // Valor padrão usado apenas em desenvolvimento local. Nunca deve ser aceito em produção.
 export const DEV_AUTH_SECRET = "aura-clinic-dev-secret";
@@ -25,6 +26,25 @@ if (isProduction && AUTH_SECRET === DEV_AUTH_SECRET) {
   throw new Error(
     "AUTH_SECRET não pode ser o valor padrão de desenvolvimento em produção. Defina um segredo forte no ambiente (.env)."
   );
+}
+if (isProduction && Buffer.byteLength(AUTH_SECRET, "utf8") < 32) {
+  throw new Error("AUTH_SECRET deve ter pelo menos 32 bytes em produção.");
+}
+
+// Guardas de deploy: opções que existem para a suíte/local nunca podem ser
+// habilitadas por acidente numa instância pública.
+const insecureTestEnvironment = process.env.ALLOW_INSECURE_TEST_ENV === "true";
+if (isProduction && process.env.DISABLE_RATE_LIMIT === "true" && !insecureTestEnvironment) {
+  throw new Error("DISABLE_RATE_LIMIT=true é proibido em produção.");
+}
+if (isProduction && process.env.ALLOW_LOCAL_AUTH_BYPASS === "true" && !insecureTestEnvironment) {
+  throw new Error("ALLOW_LOCAL_AUTH_BYPASS=true é proibido em produção.");
+}
+if (isProduction && !process.env.CORS_ORIGIN) {
+  throw new Error("CORS_ORIGIN é obrigatória em produção.");
+}
+if (isProduction && String(process.env.CORS_ORIGIN || "").split(",").some((origin) => origin.trim() === "*")) {
+  throw new Error("CORS_ORIGIN não pode conter '*' em produção.");
 }
 
 // ---------- Integração com o Asaas (gateway de pagamento) ----------
@@ -96,10 +116,8 @@ export const PUBLIC_API_URL = (
 // URL apontando para localhost. Ela cadastra, o Asaas nunca consegue entregar,
 // e o sintoma aparece só lá na frente como "o pagamento não baixa" — bem longe
 // da causa. Por isso o aviso é explícito no boot.
-if (isProduction && !process.env.PUBLIC_API_URL) {
-  console.warn(
-    "[Asaas] PUBLIC_API_URL não definida: a URL de webhook mostrada às clínicas apontará para localhost e nenhuma confirmação de pagamento chegará. Defina-a com o endereço público da API (sem /api no final)."
-  );
+if (isProduction && (!process.env.PUBLIC_API_URL || !PUBLIC_API_URL.startsWith("https://")) && !insecureTestEnvironment) {
+  throw new Error("PUBLIC_API_URL deve ser uma URL HTTPS pública em produção.");
 }
 
 // Sem ASAAS_VAULT_KEY o cofre das credenciais das clínicas deriva do
@@ -172,6 +190,10 @@ if (r2Declared && r2Missing.length) {
 
 // Ligado só com a configuração inteira de pé.
 export const r2Enabled = r2Declared && r2Missing.length === 0;
+
+if (isProduction && !r2Enabled && !insecureTestEnvironment) {
+  throw new Error("Cloudflare R2 é obrigatório em produção para isolar e persistir uploads públicos e privados.");
+}
 
 // ---------- Assistente de IA ----------
 // As chaves pertencem exclusivamente ao ambiente do servidor. Nunca são

@@ -11,7 +11,7 @@
 // qualquer um zerar o preço de todo mundo. A vitrine pública continua sendo
 // servida por `GET /api/plans`, que mostra só o necessário.
 import { Router } from "express";
-import { verifyPlatformToken } from "../middleware/auth.js";
+import { requirePlatformAuth as requirePlatform } from "../middleware/auth.js";
 import { isProduction } from "../config/index.js";
 import {
   CATALOGOS,
@@ -26,15 +26,6 @@ import {
 } from "../services/planAdmin.js";
 
 const router = Router();
-
-function requirePlatform(req, res, next) {
-  const decoded = verifyPlatformToken(req);
-  if (!decoded) {
-    return res.status(401).json({ error: "Sessão de plataforma inválida ou expirada." });
-  }
-  req.platformUser = decoded;
-  next();
-}
 
 // `code` e `details` vão junto do erro porque a tela precisa REAGIR a ele, não
 // só exibi-lo: "confirmacao_de_preco_necessaria" vira um diálogo com os números

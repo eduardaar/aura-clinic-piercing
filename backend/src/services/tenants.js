@@ -84,8 +84,8 @@ function validateProvisionInput({ name, slug, adminEmail, adminPassword }) {
   if (!EMAIL_REGEX.test(String(adminEmail || ""))) {
     throw new TenantServiceError(400, "E-mail do administrador inválido.");
   }
-  if (!adminPassword || String(adminPassword).length < 8) {
-    throw new TenantServiceError(400, "A senha do administrador deve ter pelo menos 8 caracteres.");
+  if (!adminPassword || String(adminPassword).length < 12) {
+    throw new TenantServiceError(400, "A senha do administrador deve ter pelo menos 12 caracteres.");
   }
 }
 
@@ -123,7 +123,7 @@ export async function provisionTenant({ name, slug, adminName, adminEmail, admin
     await client.query(`SET search_path TO "${schema}"`);
     await applySchemaSql(client);
     await applyMigrationsForTarget(client, { scope: "tenant", targetSchema: schema });
-    const passwordHash = await bcrypt.hash(String(adminPassword), 10);
+    const passwordHash = await bcrypt.hash(String(adminPassword), 12);
     const adminInsert = await client.query(
       "INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, 'admin') RETURNING id, name, email, role",
       [String(adminName || "Administrador").trim() || "Administrador", String(adminEmail).trim().toLowerCase(), passwordHash]
@@ -216,7 +216,7 @@ export async function ensurePlatform() {
 
   const email = envEmail || "superadmin@aura.local";
   const password = envPassword || "superadmin123";
-  const passwordHash = await bcrypt.hash(String(password), 10);
+  const passwordHash = await bcrypt.hash(String(password), 12);
   await query(
     "INSERT INTO platform.platform_users (name, email, password_hash, role) VALUES ($1, $2, $3, 'superadmin') ON CONFLICT (email) DO NOTHING",
     ["Super Admin", String(email).trim().toLowerCase(), passwordHash]

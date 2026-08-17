@@ -4,6 +4,12 @@
 > **Escopo:** aplicação, banco de dados, infraestrutura de produção, privacidade/LGPD, pagamentos, deploy, migrations, backup e continuidade.  
 > **Natureza:** avaliação técnica de prontidão e privacidade. Não substitui parecer jurídico, pentest independente ou auditoria PCI DSS.
 
+> **Atualização local em 17 de agosto de 2026:** dependências, autenticação de
+> plataforma, permissões financeiras/estoque, uploads e guardas de configuração
+> foram endurecidos no repositório. Estas mudanças ainda precisam passar pelo
+> processo de homologação e deploy; os bloqueadores externos abaixo continuam
+> válidos e a decisão permanece **NO-GO**.
+
 ## 1. Sumário executivo
 
 A Aura Clinic Piercing está funcional e possui fundamentos técnicos positivos, mas **ainda não deve ser considerada pronta para um lançamento comercial amplo com dados reais de saúde e pagamentos**.
@@ -12,7 +18,7 @@ Na data desta avaliação, a decisão recomendada é **NO-GO para lançamento p�
 
 | Área | Situação | Motivo principal |
 | --- | --- | --- |
-| Funcionalidade e testes | Boa | 472 testes do backend, typecheck, build e 104 testes do frontend passaram após as remediações de código. |
+| Funcionalidade e testes | Boa | 502 testes do backend, typecheck, build e 104 testes do frontend passaram na validação local mais recente. |
 | LGPD e governança | Crítica | Documentos, bases legais, retenção, direitos e contratos incompletos. |
 | Segurança da aplicação | Parcial/crítica | RBAC, access token curto, refresh rotativo, revogação de sessões, MFA TOTP opcional e auditoria prioritária existem no código; obrigatoriedade de MFA, headers do frontend e validação em produção ainda faltam. |
 | Infraestrutura | Crítica | Origem acessível fora do Cloudflare, SSH root por senha e host compartilhado. |
@@ -56,6 +62,29 @@ obrigatório, retenção/eliminação completa, contratos/LGPD, reconciliação 
 continuam pendentes. O acompanhamento por categoria está em
 [PLANO-DE-CORRECAO-CODIGO-E-OPERACAO.md](./PLANO-DE-CORRECAO-CODIGO-E-OPERACAO.md).
 
+### 1.2 Endurecimento local mais recente (ainda não publicado)
+
+- tokens de clínica e plataforma separados por emissor, audiência e tipo;
+- token da plataforma confrontado com papel e versão de sessão no banco a cada
+  requisição, permitindo revogação imediata;
+- permissão financeira aplicada ao payload do dashboard e custos de estoque
+  removidos para usuários sem `inventory.view_cost`;
+- autenticação local deixou de ser implícita: o bypass agora exige opção
+  explícita e é proibido em produção;
+- senhas novas elevadas para mínimo de 12 caracteres e bcrypt custo 12;
+- allowlist CORS exata, headers Helmet, limites HTTP, respostas de erro sem
+  detalhes internos e bind local restrito a `127.0.0.1`;
+- TLS do PostgreSQL com validação de certificado obrigatório em produção;
+- uploads limitados por tamanho/quantidade, imagens decodificadas e PDFs
+  sujeitos a validação estrutural básica; documentos sensíveis baixam como
+  anexo;
+- R2 completo obrigatório no boot e no guard de deploy de produção;
+- auditoria das três árvores npm zerada e promovida a portão do CI.
+
+Isso reduz riscos conhecidos, mas não constitui garantia de ausência de
+vulnerabilidades. Pentest independente, análise dinâmica e validação da
+infraestrutura continuam obrigatórios antes do GO.
+
 ## 2. Escopo e metodologia
 
 A análise combinou:
@@ -71,18 +100,20 @@ As observações de infraestrutura representam uma fotografia da produção em *
 
 ### 2.1 Resultado das verificações automatizadas
 
-- Backend: **472 testes aprovados**, incluindo sessões, privacidade,
+- Backend: **502 testes aprovados**, incluindo sessões, privacidade,
   pagamentos, migrations e jobs.
 - Frontend: **104 testes aprovados**, sendo 18 unitários e 86 de componentes.
 - Typecheck: aprovado.
 - Build de produção: aprovado.
-- Lint: aprovado com **0 erros e 81 avisos**; erros agora bloqueiam o CI.
+- Lint: aprovado com **0 erros e 79 avisos**; erros agora bloqueiam o CI.
 - Sintaxe do script de deploy: aprovada com `bash -n`.
 - Build da imagem Docker: não executado nesta estação porque o daemon Docker não estava disponível.
-- Dependências de produção do backend: **2 vulnerabilidades altas e 2 moderadas** na data da análise.
-- Dependências de produção do frontend: **2 vulnerabilidades moderadas** na data da análise.
+- Dependências do monorepo, backend e frontend: **0 vulnerabilidades conhecidas
+  pelo `npm audit`** na atualização local de 17/08/2026. O CI passa a falhar a
+  partir de qualquer severidade (`--audit-level=low`).
 
-Dependências afetadas incluem `express-rate-limit`, `exceljs`, `archiver`, `uuid`, `react-router` e dependências transitivas. Cada advisory deve ser corrigido ou ter sua não explorabilidade documentada e aprovada formalmente.
+Esse resultado é uma fotografia do banco de advisories do npm e não prova que
+as bibliotecas ou a aplicação não contenham falhas ainda desconhecidas.
 
 ## 3. Controles positivos existentes
 

@@ -4,10 +4,13 @@ import { withDb } from "../middleware/withDb.js";
 import { nextBirthdays } from "../services/utils.js";
 import { listCriticalStockItems } from "../services/inventory.js";
 import { listAppointments } from "../services/appointments.js";
+import { authorizePermission } from "../middleware/requirePermission.js";
+import { P } from "../config/permissions.js";
 
 const router = Router();
 
 router.get("/api/alerts", withDb(async (_req, res, db) => {
+  if (!authorizePermission(_req, res, P.DASHBOARD_VIEW)) return;
   const today = new Date().toISOString().slice(0, 10);
   const jewelry = await listCriticalStockItems(db, { limit: 12 });
   const upcomingAppointments = await listAppointments(

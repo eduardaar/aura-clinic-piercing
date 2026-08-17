@@ -24,6 +24,8 @@ const target = process.argv[2];
 const env = {
   ...process.env,
   NODE_ENV: "production",
+  ALLOW_INSECURE_TEST_ENV: "true",
+  CORS_ORIGIN: `http://localhost:${PORT}`,
   // Banco descartável da suíte: única exceção explícita ao bloqueio de
   // bootstrap global usado pelo deploy real.
   RUN_DATABASE_MIGRATIONS: "true",

@@ -12,7 +12,7 @@ import { checkAccess, registerFailure, registerSuccess } from "../services/login
 import bcrypt from "bcryptjs";
 import { pool, query } from "../database/connection.js";
 import { createDb } from "../db/postgres.js";
-import { createPlatformToken, verifyPlatformToken, createToken } from "../middleware/auth.js";
+import { createPlatformToken, requirePlatformAuth as requirePlatform, createToken } from "../middleware/auth.js";
 import { invalidateTenantCache } from "../middleware/tenant.js";
 import {
   provisionTenant,
@@ -80,15 +80,6 @@ function handleServiceError(res, error) {
 }
 
 // Auth do painel de plataforma. SEM bypass de dev: plataforma SEMPRE exige login.
-function requirePlatform(req, res, next) {
-  const decoded = verifyPlatformToken(req);
-  if (!decoded) {
-    return res.status(401).json({ error: "Sessão de plataforma inválida ou expirada." });
-  }
-  req.platformUser = decoded;
-  next();
-}
-
 // ---------- Signup público ----------
 router.post("/api/signup", signupLimiter, async (req, res) => {
   try {

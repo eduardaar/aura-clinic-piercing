@@ -16,6 +16,17 @@ if (!connectionString) {
   );
 }
 
+const production = process.env.NODE_ENV === "production";
+const insecureTestEnvironment = process.env.ALLOW_INSECURE_TEST_ENV === "true";
+const databaseSslEnabled = process.env.DATABASE_SSL === "true";
+const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false";
+if (production && !databaseSslEnabled && !insecureTestEnvironment) {
+  throw new Error("DATABASE_SSL=true é obrigatório em produção.");
+}
+if (production && databaseSslEnabled && !rejectUnauthorized && !insecureTestEnvironment) {
+  throw new Error("Desabilitar a validação do certificado TLS do banco é proibido em produção.");
+}
+
 // NUMERIC AQUI CONTINUA STRING — e isso é deliberado.
 //
 // Este módulo é a porta do schema `platform` (planos, assinaturas, faturas) e
@@ -35,7 +46,13 @@ if (!connectionString) {
 // definir o search_path do tenant (isolamento multi-tenant por schema).
 export const pool = new Pool({
   connectionString,
-  ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: false } : false,
+  ssl: databaseSslEnabled ? {
+    rejectUnauthorized,
+    ...(process.env.DATABASE_SSL_CA ? { ca: process.env.DATABASE_SSL_CA.replace(/\\n/g, "\n") } : {})
+  } : false,
+  max: Math.min(Math.max(Number(process.env.DATABASE_POOL_MAX || 10), 1), 50),
+  connectionTimeoutMillis: 10_000,
+  idleTimeoutMillis: 30_000,
 });
 
 export async function query(text, params = []) {

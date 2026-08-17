@@ -43,7 +43,7 @@ export const userCreateSchema = z
     email: nonEmptyString("E-mail"),
     password: z
       .string({ error: "Senha é obrigatória." })
-      .min(8, { message: "A senha deve ter no mínimo 8 caracteres." }),
+      .min(12, { message: "A senha deve ter no mínimo 12 caracteres." }),
     role: z.enum(USER_ROLES, { message: "Nível de acesso inválido." })
   })
   .passthrough();
@@ -53,7 +53,7 @@ export const userUpdateSchema = z
     // Todos opcionais no PATCH; quando presentes, validamos o tipo/tamanho.
     name: z.string().min(1, { message: "Nome não pode ser vazio." }).optional(),
     email: z.string().min(1, { message: "E-mail não pode ser vazio." }).optional(),
-    password: z.string().min(8, { message: "A senha deve ter no mínimo 8 caracteres." }).optional(),
+    password: z.string().min(12, { message: "A senha deve ter no mínimo 12 caracteres." }).optional(),
     role: z.enum(USER_ROLES, { message: "Nível de acesso inválido." }).optional()
   })
   .passthrough();
@@ -146,7 +146,8 @@ export const signupSchema = z
     slug: z.string().optional(),
     admin_name: z.string().optional(),
     admin_email: nonEmptyString("E-mail do administrador"),
-    admin_password: nonEmptyString("Senha do administrador")
+    admin_password: z.string({ error: "Senha do administrador é obrigatória." })
+      .min(12, { message: "A senha do administrador deve ter no mínimo 12 caracteres." })
   })
   .passthrough();
 

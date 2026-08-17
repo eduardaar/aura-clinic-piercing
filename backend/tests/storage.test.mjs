@@ -28,6 +28,8 @@ const PNG_VALIDO = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64"
 );
+const GIF_VALIDO = Buffer.from("R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==", "base64");
+const PDF_MINIMO_VALIDO = Buffer.from("%PDF-1.7\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF");
 
 /**
  * Dublê do cliente S3. Guarda os comandos recebidos porque metade do que
@@ -213,12 +215,14 @@ test("Upload: conteúdo que mente sobre o que é continua sendo recusado", async
 
   await t.test("PDF sem assinatura %PDF- não passa", async () => {
     await assert.rejects(() => validateFileContents({ mimetype: "application/pdf", buffer: Buffer.from("<html>oi</html>") }));
-    await validateFileContents({ mimetype: "application/pdf", buffer: Buffer.from("%PDF-1.7\n resto") });
+    await assert.rejects(() => validateFileContents({ mimetype: "application/pdf", buffer: Buffer.from("%PDF-1.7\n truncado") }));
+    await validateFileContents({ mimetype: "application/pdf", buffer: PDF_MINIMO_VALIDO });
   });
 
   await t.test("GIF só passa com GIF87a/GIF89a", async () => {
     await assert.rejects(() => validateFileContents({ mimetype: "image/gif", buffer: Buffer.from("GIF00a resto") }));
-    await validateFileContents({ mimetype: "image/gif", buffer: Buffer.from("GIF89a resto") });
+    await assert.rejects(() => validateFileContents({ mimetype: "image/gif", buffer: Buffer.from("GIF89a resto") }));
+    await validateFileContents({ mimetype: "image/gif", buffer: GIF_VALIDO });
   });
 
   await t.test("arquivo vazio não passa", async () => {

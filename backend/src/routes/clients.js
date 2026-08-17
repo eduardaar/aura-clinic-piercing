@@ -202,7 +202,7 @@ router.post("/api/clients/:id/loyalty-redemptions", withDb(async (req, res, db) 
 
 router.post("/api/clients/:id/medical-records", withDb(async (req, res, db) => {
   if (!authorizePermission(req, res, P.CLINICAL_FILES_EDIT)) return;
-  await parseUpload(privateUpload.fields([{ name: "before_photo", maxCount: 1 }, { name: "after_photo", maxCount: 1 }]), req, res);
+  await parseUpload(privateUpload.fields([{ name: "before_photo", maxCount: 1 }, { name: "after_photo", maxCount: 1 }]), req, res, { imagesOnly: true });
   await registerPrivateFiles(db, Object.values(req.files || {}).flat(), "medical_record", req.user?.id);
   const client = await db.get("SELECT id FROM clients WHERE id = ?", [req.params.id]);
   if (!client) return res.status(404).json({ error: "Cliente nao encontrado." });

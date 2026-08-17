@@ -16,6 +16,7 @@ import {
   assertNonNegativeStockQuantity,
   syncProductImages,
   syncProductInventory,
+  redactInventoryCosts,
   SkuConflictError,
   InvalidStockQuantityError
 } from "../services/inventory.js";
@@ -27,6 +28,7 @@ import { inventoryIntelligence, refreshInventorySuggestions } from "../services/
 import { parsePaging, fetchPage, pageResponse } from "../services/pagination.js";
 import { invalidateUsageCache, requireWithinLimit } from "../services/planLimits.js";
 import { JEWELRY_CATEGORIES } from "../config/index.js";
+import { hasPermission } from "../services/permissionService.js";
 
 const router = Router();
 
@@ -373,6 +375,7 @@ function updateValue(field, body) {
 }
 
 router.get("/api/jewelry", withDb(async (req, res, db) => {
+  if (!authorizePermission(req, res, P.INVENTORY_VIEW)) return;
   const clauses = [];
   const params = [];
   if (req.query.search) {
@@ -420,7 +423,9 @@ router.get("/api/jewelry", withDb(async (req, res, db) => {
     paging
   });
   // attachVariants agora roda só sobre a página, não sobre o estoque inteiro.
-  res.json(pageResponse(await attachVariants(db, rows), total, paging));
+  const items = await attachVariants(db, rows);
+  const visibleItems = hasPermission(req.user, P.INVENTORY_VIEW_COST) ? items : redactInventoryCosts(items);
+  res.json(pageResponse(visibleItems, total, paging));
 }));
 
 router.post("/api/jewelry", withDb(async (req, res, db) => {

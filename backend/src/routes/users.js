@@ -29,13 +29,13 @@ router.patch("/api/account/profile", withDb(async (req, res, db) => {
   if (!name || !email || !/^\S+@\S+\.\S+$/.test(email)) {
     return res.status(400).json({ error: "Informe nome e e-mail válidos." });
   }
-  if (newPassword && newPassword.length < 8) {
-    return res.status(400).json({ error: "A nova senha deve ter pelo menos 8 caracteres." });
+  if (newPassword && newPassword.length < 12) {
+    return res.status(400).json({ error: "A nova senha deve ter pelo menos 12 caracteres." });
   }
   if (newPassword && !(await bcrypt.compare(currentPassword, current.password_hash))) {
     return res.status(400).json({ error: "A senha atual não confere." });
   }
-  const passwordHash = newPassword ? await bcrypt.hash(newPassword, 10) : current.password_hash;
+  const passwordHash = newPassword ? await bcrypt.hash(newPassword, 12) : current.password_hash;
   try {
     await db.run(
       `UPDATE users
@@ -114,14 +114,14 @@ router.get("/api/users", withDb(async (req, res, db) => {
 
 router.post("/api/users", withDb(async (req, res, db) => {
   if (!authorizePermission(req, res, P.USERS_CREATE)) return;
-  // Valida presença/tipo dos campos e exige senha com no mínimo 8 caracteres.
+  // Valida presença/tipo dos campos e exige senha com no mínimo 12 caracteres.
   if (!validateBody(userCreateSchema, req, res)) return;
   // Cota do plano. Depois da validação (payload torto é 400, não 409) e antes do
   // bcrypt, que é a parte cara deste handler. Plano sem cota de usuários não
   // custa nem uma consulta: o guard sai antes de medir.
   if (!(await requireWithinLimit(req, res, "users", db))) return;
   const { name, email, password, role } = req.body;
-  const passwordHash = await bcrypt.hash(password, 10);
+  const passwordHash = await bcrypt.hash(password, 12);
   const result = await db.run(
     "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?) RETURNING id",
     [name.trim(), email.trim(), passwordHash, role]
@@ -133,7 +133,7 @@ router.post("/api/users", withDb(async (req, res, db) => {
 
 router.patch("/api/users/:id", withDb(async (req, res, db) => {
   if (!authorizePermission(req, res, P.USERS_EDIT)) return;
-  // Valida tipos dos campos presentes; se vier password, exige mínimo de 8 caracteres.
+  // Valida tipos dos campos presentes; se vier password, exige mínimo de 12 caracteres.
   if (!validateBody(userUpdateSchema, req, res)) return;
   const user = await db.get("SELECT * FROM users WHERE id = ?", [req.params.id]);
   if (!user) return res.status(404).json({ error: "Usuário não encontrado." });
@@ -141,7 +141,7 @@ router.patch("/api/users/:id", withDb(async (req, res, db) => {
   const continuityError = await assertAdminContinuity(db, user, role);
   if (continuityError) return res.status(409).json({ error: continuityError });
   // Só faz bcrypt hash quando o password vier no body (senão preserva o hash atual).
-  const passwordHash = req.body.password ? await bcrypt.hash(req.body.password, 10) : user.password_hash;
+  const passwordHash = req.body.password ? await bcrypt.hash(req.body.password, 12) : user.password_hash;
   const status = req.body.status || user.status || "active";
   if (!["active", "inactive"].includes(status)) return res.status(400).json({ error: "Status de usuário inválido." });
   const invalidatesSessions = Boolean(req.body.password) || role !== user.role || status !== user.status;

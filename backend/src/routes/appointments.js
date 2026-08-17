@@ -108,7 +108,7 @@ router.get("/api/appointments", withDb(async (req, res, db) => {
 
 router.post("/api/appointments", withDb(async (req, res, db) => {
   if (!authorizePermission(req, res, P.APPOINTMENTS_CREATE)) return;
-  await parseUpload(privateUpload.single("reference_photo"), req, res);
+  await parseUpload(privateUpload.single("reference_photo"), req, res, { imagesOnly: true });
   await registerPrivateFiles(db, req.file, "appointment_reference", req.user?.id);
   // Payload chega como multipart (multer já populou req.body). Valida os
   // obrigatórios (profissional/data/hora) preservando os demais campos.

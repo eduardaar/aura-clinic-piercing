@@ -3,7 +3,8 @@ import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 
 // Permite desligar o rate limit apenas na suíte de testes automatizados (muitas
 // requisições do mesmo IP em paralelo). NUNCA definir isso em produção.
-const disabled = process.env.DISABLE_RATE_LIMIT === "true";
+const disabled = process.env.DISABLE_RATE_LIMIT === "true"
+  && process.env.ALLOW_INSECURE_TEST_ENV === "true";
 const skip = () => disabled;
 
 // Chave do limite = IP calculado pelo Express a partir da cadeia de proxies

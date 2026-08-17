@@ -18,6 +18,8 @@ import {
 import { clientIp } from "../src/middleware/rateLimit.js";
 import { sanitizeFrontendTelemetry } from "../src/services/errorLogs.js";
 import { createAsaasClient } from "../src/services/asaas/client.js";
+import { query } from "../src/database/connection.js";
+import { decodeToken, requiresAuth } from "../src/middleware/auth.js";
 
 // Estado compartilhado do arquivo. Duas clínicas para provar isolamento (A e B).
 const ctx = {
@@ -64,6 +66,16 @@ after(async () => {
 // ---------------------------------------------------------------------------
 // 4. AUTENTICAÇÃO / ISOLAMENTO
 // ---------------------------------------------------------------------------
+
+test("allowlist pública também exige o método HTTP exato", () => {
+  assert.equal(requiresAuth({ path: "/api/catalog", method: "GET" }), false);
+  assert.equal(requiresAuth({ path: "/api/catalog", method: "POST" }), true);
+  assert.equal(requiresAuth({ path: "/api/booking/requests", method: "POST" }), false);
+  assert.equal(requiresAuth({ path: "/api/booking/requests", method: "GET" }), true);
+  const tokenPath = "/api/payment-intents/123e4567-e89b-42d3-a456-426614174000/pix";
+  assert.equal(requiresAuth({ path: tokenPath, method: "GET" }), false);
+  assert.equal(requiresAuth({ path: tokenPath, method: "POST" }), true);
+});
 
 test("rota protegida sem token (mas com X-Tenant válido) → 401", async () => {
   // Precisa do X-Tenant para o tenant resolver; sem token, authenticateRequest
@@ -279,7 +291,7 @@ test("POST /users com payload inválido (senha curta) → 400 com mensagem", asy
     body: { name: "Novo", email: "novo@qasec.test", password: "123", role: "reception" }
   });
   assert.equal(status, 400, JSON.stringify(json));
-  assert.match(json.error, /8 caracteres/i);
+  assert.match(json.error, /12 caracteres/i);
 });
 
 test("POST /appointments sem campos obrigatórios → 400 com mensagem", async () => {
@@ -389,4 +401,18 @@ test("admin habilita TOTP e o login passa a exigir o código", async () => {
   assert.equal(noCode.json.code, "mfa_required");
   const withCode = await req("/login", { method: "POST", tenant: ctx.a.slug, body: { email: ctx.a.adminEmail, password: ctx.a.adminPassword, mfa_code: totpForTest(setup.json.secret) } });
   assert.equal(withCode.status, 200, JSON.stringify(withCode.json));
+});
+
+test("incrementar session_version revoga imediatamente o token da plataforma", async () => {
+  const decoded = decodeToken(ctx.platformToken);
+  assert.ok(decoded?.sub);
+  await query(
+    "UPDATE platform.platform_users SET session_version = session_version + 1 WHERE id = $1",
+    [decoded.sub]
+  );
+  const revoked = await req("/platform/tenants", { token: ctx.platformToken, platform: true });
+  assert.equal(revoked.status, 401, JSON.stringify(revoked.json));
+  ctx.platformToken = await platformLogin();
+  const current = await req("/platform/tenants", { token: ctx.platformToken, platform: true });
+  assert.equal(current.status, 200, JSON.stringify(current.json));
 });

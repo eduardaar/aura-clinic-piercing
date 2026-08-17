@@ -5,6 +5,9 @@ import { localDate, nextBirthdays } from "../services/utils.js";
 import { listAppointments } from "../services/appointments.js";
 import { buildFinanceReport } from "../services/finance.js";
 import { listCriticalStockItems } from "../services/inventory.js";
+import { authorizePermission } from "../middleware/requirePermission.js";
+import { hasPermission } from "../services/permissionService.js";
+import { P } from "../config/permissions.js";
 
 const router = Router();
 
@@ -56,6 +59,8 @@ function buildAppointmentAlerts(appointments, now = new Date()) {
 }
 
 router.get("/api/dashboard", withDb(async (_req, res, db) => {
+  if (!authorizePermission(_req, res, P.DASHBOARD_VIEW)) return;
+  const canViewFinancial = hasPermission(_req.user, P.DASHBOARD_FINANCIAL);
   const today = localDate();
   const month = today.slice(0, 7);
   const periodDays = { "7d": 7, "30d": 30, "90d": 90, "365d": 365 }[_req.query.period] || 30;
@@ -173,6 +178,9 @@ router.get("/api/dashboard", withDb(async (_req, res, db) => {
   const catalogMetrics = Object.fromEntries(catalogKpis.map((item) => [item.event_type, Number(item.total || 0)]));
   const catalogViews = Number(catalogMetrics.catalog_view || 0);
   const catalogSelections = Number(catalogMetrics.product_selected || 0);
+  const visibleProfessionalRanking = canViewFinancial
+    ? professionalRanking
+    : professionalRanking.map(({ revenue: _revenue, ...item }) => item);
 
   res.json({
     stats: {
@@ -181,21 +189,25 @@ router.get("/api/dashboard", withDb(async (_req, res, db) => {
       confirmedCount: stats?.confirmed_count || 0,
       criticalStock: lowStockJewelry.length,
       lowStockCount: lowStockJewelry.length,
-      // Sinais do mês corrente (o painel que consome este valor é mensal).
-      depositReceived: Number(finance.deposits?.monthTotal || 0),
-      monthForecast: stats?.month_forecast || 0,
-      revenueToday: Number(revenueToday?.total || 0),
-      revenueMonth: Number(finance.totals?.month_total || 0),
-      expensesMonth: Number(finance.expensesSummary?.total || 0),
-      profitEstimated: Number(finance.profit?.estimated || 0),
+      ...(canViewFinancial ? {
+        // Sinais do mês corrente (o painel que consome este valor é mensal).
+        depositReceived: Number(finance.deposits?.monthTotal || 0),
+        monthForecast: stats?.month_forecast || 0,
+        revenueToday: Number(revenueToday?.total || 0),
+        revenueMonth: Number(finance.totals?.month_total || 0),
+        expensesMonth: Number(finance.expensesSummary?.total || 0),
+        profitEstimated: Number(finance.profit?.estimated || 0)
+      } : {}),
       newClientsMonth: Number(newClients?.total || 0)
     },
     todaysAppointments,
     alerts: { lowStockJewelry, birthdays, topClients },
     adminDashboard: {
-      monthlyRevenue: finance.monthlyRevenue,
-      weeklyRevenue: finance.weeklyRevenue,
-      dailyRevenue: finance.dailyRevenue,
+      ...(canViewFinancial ? {
+        monthlyRevenue: finance.monthlyRevenue,
+        weeklyRevenue: finance.weeklyRevenue,
+        dailyRevenue: finance.dailyRevenue
+      } : {}),
       procedureRanking,
       jewelryRanking,
       categoryRanking,
@@ -213,11 +225,13 @@ router.get("/api/dashboard", withDb(async (_req, res, db) => {
         cancellations: Number(appointmentKpis.canceled || 0),
         attendance_rate: Number(appointmentKpis.total || 0) ? Number(((Number(appointmentKpis.attended || 0) / Number(appointmentKpis.total)) * 100).toFixed(1)) : 0,
         cancellation_rate: Number(appointmentKpis.total || 0) ? Number(((Number(appointmentKpis.canceled || 0) / Number(appointmentKpis.total)) * 100).toFixed(1)) : 0,
-        average_ticket: Number(paymentKpis.received || appointmentKpis.average_ticket || 0) / Math.max(Number(appointmentKpis.attended || 0), 1),
-        received: Number(paymentKpis.received || 0),
-        deposits: Number(paymentKpis.deposits || 0),
-        payable: Number(financialPending.payable || 0),
-        receivable: Number(financialPending.receivable || 0),
+        ...(canViewFinancial ? {
+          average_ticket: Number(paymentKpis.received || appointmentKpis.average_ticket || 0) / Math.max(Number(appointmentKpis.attended || 0), 1),
+          received: Number(paymentKpis.received || 0),
+          deposits: Number(paymentKpis.deposits || 0),
+          payable: Number(financialPending.payable || 0),
+          receivable: Number(financialPending.receivable || 0)
+        } : {}),
         promotion_uses: Number(promotionKpis.uses || 0),
         coupon_uses: Number(couponKpis.uses || 0),
         catalog_conversion_rate: catalogViews ? Number(((catalogSelections / catalogViews) * 100).toFixed(1)) : 0,
@@ -225,7 +239,7 @@ router.get("/api/dashboard", withDb(async (_req, res, db) => {
         product_selections: catalogSelections
       },
       topViewed,
-      professionalRanking
+      professionalRanking: visibleProfessionalRanking
     }
   });
 }));

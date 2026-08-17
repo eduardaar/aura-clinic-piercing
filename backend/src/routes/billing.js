@@ -12,7 +12,7 @@
 // `db` da requisição.
 import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
-import { requireRole, verifyPlatformToken } from "../middleware/auth.js";
+import { requireRole, requirePlatformAuth as requirePlatform } from "../middleware/auth.js";
 import { invalidateTenantCache } from "../middleware/tenant.js";
 import { query } from "../database/connection.js";
 import { isProduction } from "../config/index.js";
@@ -35,15 +35,6 @@ const router = Router();
 // Auth do painel de plataforma. Cópia local do helper de routes/platform.js (e
 // não um import): são arquivos de domínios diferentes e um não deve depender do
 // outro só por causa de sete linhas. SEM bypass de dev, como lá.
-function requirePlatform(req, res, next) {
-  const decoded = verifyPlatformToken(req);
-  if (!decoded) {
-    return res.status(401).json({ error: "Sessão de plataforma inválida ou expirada." });
-  }
-  req.platformUser = decoded;
-  next();
-}
-
 // Tradução de erro -> HTTP.
 //
 // Diferente da regra das telas públicas: aqui quem lê é o ADMIN da clínica (ou

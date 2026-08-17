@@ -47,7 +47,7 @@ function withScope(instance, scope) {
 export const upload = withScope(
   multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 6 * 1024 * 1024 },
+    limits: { fileSize: 6 * 1024 * 1024, files: 1, fields: 50, fieldSize: 64 * 1024, parts: 51 },
     fileFilter
   }),
   "public"
@@ -56,7 +56,7 @@ export const upload = withScope(
 export const privateUpload = withScope(
   multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 6 * 1024 * 1024, files: 2 },
+    limits: { fileSize: 6 * 1024 * 1024, files: 2, fields: 50, fieldSize: 64 * 1024, parts: 52 },
     fileFilter
   }),
   "private"
@@ -84,12 +84,16 @@ export async function validateFileContents(file) {
 
   if (file.mimetype === "application/pdf") {
     if (buffer.subarray(0, 5).toString("ascii") !== "%PDF-") throw new Error("Conteúdo de arquivo inválido.");
+    if (!buffer.subarray(Math.max(0, buffer.length - 2048)).includes(Buffer.from("%%EOF"))) {
+      throw new Error("Conteúdo de arquivo inválido.");
+    }
     return;
   }
   if (file.mimetype === "image/gif") {
     if (!["GIF87a", "GIF89a"].includes(buffer.subarray(0, 6).toString("ascii"))) {
       throw new Error("Conteúdo de arquivo inválido.");
     }
+    await sharp(buffer, { limitInputPixels: 40_000_000, animated: true }).metadata();
     return;
   }
   await sharp(buffer, { limitInputPixels: 40_000_000 }).metadata();

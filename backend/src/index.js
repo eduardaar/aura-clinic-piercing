@@ -7,7 +7,7 @@ import cors from "cors";
 import helmet from "helmet";
 import path from "path";
 import { fileURLToPath } from "url";
-import { PORT, isProduction } from "./config/index.js";
+import { API_BIND_HOST, PORT, isProduction } from "./config/index.js";
 import { ensurePlatform, applyPlatformMigrations, applySchemaToAllTenants } from "./services/tenants.js";
 import { loadPlansFromDb } from "./services/plans.js";
 import { startReconcileWorker } from "./services/asaas/reconcile.js";
@@ -60,6 +60,7 @@ import { startJobWorker } from "./services/jobWorker.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
+app.disable("x-powered-by");
 
 // Em produção a API roda atrás de Cloudflare + nginx (2 hops que preenchem o
 // X-Forwarded-For). Confiar nesse número exato de proxies faz req.ip ser o IP
@@ -67,18 +68,47 @@ const app = express();
 // proxy (um balde único) e um pico coletivo derruba o limite pra todos, além de
 // resistir a spoofing (só os 2 hops mais próximos são confiáveis). Em dev o
 // acesso é direto (0 hops). Ajustável via TRUST_PROXY_HOPS se a topologia mudar.
-app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS ?? (isProduction ? 2 : 0)));
+const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS ?? (isProduction ? 2 : 0));
+if (!Number.isInteger(trustProxyHops) || trustProxyHops < 0 || trustProxyHops > 5) {
+  throw new Error("TRUST_PROXY_HOPS deve ser um inteiro entre 0 e 5.");
+}
+app.set("trust proxy", trustProxyHops);
 
 // ---------- Middlewares globais ----------
 
 // Cabeçalhos de segurança (Helmet). crossOriginResourcePolicy relaxado para
 // permitir que o frontend consuma as imagens servidas em /uploads.
-app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
-// CORS restrito à(s) origem(ns) configurada(s) em CORS_ORIGIN (separadas por vírgula).
-app.use(cors({ origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(",") : true, credentials: true }));
-app.use(express.json({ limit: "8mb" }));
+app.use(helmet());
+// CORS por allowlist exata. Requisições sem Origin (servidor-servidor, curl,
+// webhooks) continuam válidas; uma origem de navegador fora da lista é negada.
+const allowedOrigins = new Set(
+  String(process.env.CORS_ORIGIN || "http://localhost:5174")
+    .split(",")
+    .map((origin) => origin.trim().replace(/\/+$/, ""))
+    .filter(Boolean)
+);
+if (!isProduction) {
+  allowedOrigins.add("http://localhost:5174");
+  allowedOrigins.add("http://127.0.0.1:5174");
+}
+app.use(cors({
+  origin(origin, callback) {
+    const normalized = String(origin || "").replace(/\/+$/, "");
+    if (!origin || allowedOrigins.has(normalized)) return callback(null, true);
+    return callback(null, false);
+  },
+  credentials: true,
+  methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Authorization", "Content-Type", "X-Tenant", "X-Clinic", "Idempotency-Key"],
+  maxAge: 600
+}));
+app.use(express.json({ limit: "1mb", strict: true }));
 app.use((_req, res, next) => {
   res.charset = "utf-8";
+  next();
+});
+app.use("/api", (_req, res, next) => {
+  res.set("Cache-Control", "no-store");
   next();
 });
 // TRANSITÓRIO: com o R2 ligado, upload novo nenhum passa por aqui — a escrita
@@ -86,7 +116,16 @@ app.use((_req, res, next) => {
 // ar porque o banco está cheio de `/uploads/<arquivo>` gravados antes da
 // migração, e a migração roda DEPOIS do deploy. Só pode ser removido quando
 // nenhuma linha de imagem apontar mais para um caminho relativo.
-app.use("/uploads", express.static(path.join(__dirname, "data", "uploads")));
+app.use("/uploads", express.static(path.join(__dirname, "data", "uploads"), {
+  dotfiles: "deny",
+  index: false,
+  redirect: false,
+  fallthrough: false,
+  setHeaders(res) {
+    res.set("Cross-Origin-Resource-Policy", "cross-origin");
+    res.set("X-Content-Type-Options", "nosniff");
+  }
+}));
 
 // Webhooks de gateway ANTES do rate limit global, com limite próprio: o Asaas
 // entrega de poucos IPs fixos e todas as clínicas caem no mesmo bucket, então
@@ -142,6 +181,27 @@ app.use(aiAssistantRoutes);
 app.use(privacyRoutes);
 app.use(jobsRoutes);
 
+// Respostas previsíveis impedem fingerprinting pelos erros HTML padrão do
+// Express e nunca expõem stack/SQL ao cliente.
+app.use((_req, res) => res.status(404).json({ error: "Rota não encontrada." }));
+app.use((error, _req, res, _next) => {
+  console.error(`[http] ${error?.message || error}`);
+  if (res.headersSent) return;
+  if (error?.type === "entity.too.large" || error?.code === "LIMIT_FILE_SIZE") {
+    return res.status(413).json({ error: "Corpo ou arquivo da requisição muito grande." });
+  }
+  if (error?.type === "entity.parse.failed") {
+    return res.status(400).json({ error: "JSON inválido." });
+  }
+  if (String(error?.code || "").startsWith("LIMIT_")) {
+    return res.status(400).json({ error: "Upload inválido ou acima dos limites permitidos." });
+  }
+  if (error?.status === 404) {
+    return res.status(404).json({ error: "Arquivo não encontrado." });
+  }
+  return res.status(500).json({ error: "Erro interno no servidor." });
+});
+
 // ---------- Inicialização ----------
 // 1) Garante o schema de controle `platform` (tenants + superadmin inicial).
 // 2) Aplica o schema.sql idempotente legado em TODOS os tenants. Migrations
@@ -169,6 +229,9 @@ if (!databaseBootstrapIsDisabled()) {
 await loadPlansFromDb();
 startReconcileWorker();
 startJobWorker();
-app.listen(PORT, () => {
-  console.log(`Aura Clinic API em http://localhost:${PORT}`);
+const server = app.listen(PORT, API_BIND_HOST, () => {
+  console.log(`Aura Clinic API em http://${API_BIND_HOST}:${PORT}`);
 });
+server.requestTimeout = 30_000;
+server.headersTimeout = 35_000;
+server.keepAliveTimeout = 5_000;

@@ -4,13 +4,17 @@ import { withDb } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { JEWELRY_CATEGORIES, ARGOLA_SUBCATEGORIES } from "../config/index.js";
 import { groupInventoryOptions } from "../services/utils.js";
-import { attachVariants, countOptionUsage } from "../services/inventory.js";
+import { attachVariants, countOptionUsage, redactInventoryCosts } from "../services/inventory.js";
 import { getPricingSettings, savePricingSettings } from "../services/pricing.js";
 import { boolNumber } from "../services/utils.js";
+import { authorizePermission } from "../middleware/requirePermission.js";
+import { hasPermission } from "../services/permissionService.js";
+import { P } from "../config/permissions.js";
 
 const router = Router();
 
 router.get("/api/options", withDb(async (_req, res, db) => {
+  if (!authorizePermission(_req, res, P.INVENTORY_VIEW)) return;
   const professionals = await db.all("SELECT * FROM professionals WHERE active = 1 ORDER BY name");
   const jewelry = await attachVariants(db, await db.all("SELECT * FROM jewelry_inventory ORDER BY name"));
   const inventoryOptions = await db.all("SELECT * FROM inventory_options ORDER BY type, name");
@@ -18,12 +22,12 @@ router.get("/api/options", withDb(async (_req, res, db) => {
   const categoryManagement = await listInventoryCategories(db);
   res.json({
     professionals,
-    jewelry,
+    jewelry: hasPermission(_req.user, P.INVENTORY_VIEW_COST) ? jewelry : redactInventoryCosts(jewelry),
     jewelryCategories: JEWELRY_CATEGORIES,
     jewelrySubcategories: { Argolas: ARGOLA_SUBCATEGORIES },
     inventoryOptions: groupInventoryOptions(inventoryOptions),
     categoryManagement,
-    pricingSettings
+    ...(hasPermission(_req.user, P.INVENTORY_VIEW_COST) ? { pricingSettings } : {})
   });
 }));
 
@@ -109,6 +113,7 @@ async function moveCategoryProducts(db, fromName, toName) {
 }
 
 router.get("/api/inventory-categories", withDb(async (_req, res, db) => {
+  if (!authorizePermission(_req, res, P.INVENTORY_VIEW)) return;
   res.json(await listInventoryCategories(db));
 }));
 

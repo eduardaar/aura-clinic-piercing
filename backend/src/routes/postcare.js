@@ -82,7 +82,7 @@ router.get("/api/post-care", withFeature("automatic_followup", async (req, res, 
 
 router.patch("/api/post-care/:id", withFeature("automatic_followup", async (req, res, db) => {
   if (!authorizePermission(req, res, P.CLINICAL_FILES_EDIT)) return;
-  await parseUpload(privateUpload.single("client_photo"), req, res);
+  await parseUpload(privateUpload.single("client_photo"), req, res, { imagesOnly: true });
   await registerPrivateFiles(db, req.file, "postcare_photo", req.user?.id);
   const existing = await db.get("SELECT * FROM post_care_followups WHERE id = ?", [req.params.id]);
   if (!existing) return res.status(404).json({ error: "Acompanhamento não encontrado." });

@@ -8,7 +8,7 @@
 // nenhuma clínica, e o conteúdo vive no schema `platform`, que é global.
 import { Router } from "express";
 import path from "path";
-import { verifyPlatformToken } from "../middleware/auth.js";
+import { requirePlatformAuth as requirePlatform } from "../middleware/auth.js";
 import { upload, parseUpload } from "../middleware/upload.js";
 import { isProduction } from "../config/index.js";
 import { query } from "../database/connection.js";
@@ -20,15 +20,6 @@ import {
 } from "../services/landing.js";
 
 const router = Router();
-
-function requirePlatform(req, res, next) {
-  const decoded = verifyPlatformToken(req);
-  if (!decoded) {
-    return res.status(401).json({ error: "Sessão de plataforma inválida ou expirada." });
-  }
-  req.platformUser = decoded;
-  next();
-}
 
 function handleLandingError(res, error) {
   if (error instanceof LandingError) {

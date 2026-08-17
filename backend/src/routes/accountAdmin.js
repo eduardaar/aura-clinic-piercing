@@ -9,7 +9,7 @@
 // Nenhuma rota usa withDb: tudo mora no schema `platform`, e é o serviço que
 // entra no schema da clínica (só para MEDIR uso).
 import { Router } from "express";
-import { verifyPlatformToken } from "../middleware/auth.js";
+import { requirePlatformAuth as requirePlatform } from "../middleware/auth.js";
 import { isProduction } from "../config/index.js";
 import { AsaasError } from "../services/asaas/client.js";
 import {
@@ -41,15 +41,6 @@ export const ACCOUNT_ADMIN_OPTIONS = {
 // Auth do painel de plataforma. Cópia local do helper de routes/platform.js (e
 // não um import): sete linhas não justificam acoplar dois domínios. SEM bypass
 // de dev, como lá — plataforma sempre exige login.
-function requirePlatform(req, res, next) {
-  const decoded = verifyPlatformToken(req);
-  if (!decoded) {
-    return res.status(401).json({ error: "Sessão de plataforma inválida ou expirada." });
-  }
-  req.platformUser = decoded;
-  next();
-}
-
 function handleAccountError(res, error) {
   if (error instanceof AccountAdminError) {
     return res.status(error.statusCode).json({ error: error.message, code: error.code });

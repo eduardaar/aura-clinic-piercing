@@ -22,6 +22,25 @@ export class InvalidStockQuantityError extends Error {
   }
 }
 
+const INVENTORY_COST_FIELDS = new Set([
+  "cost_value", "purchase_cost_cents", "allocated_freight_cents",
+  "additional_cost_cents", "total_cost_cents", "price_multiplier",
+  "suggested_price_cents", "cost_estimated", "profit", "margin"
+]);
+
+function withoutCostFields(item) {
+  if (!item || typeof item !== "object") return item;
+  const safe = Object.fromEntries(
+    Object.entries(item).filter(([key]) => !INVENTORY_COST_FIELDS.has(key))
+  );
+  if (Array.isArray(item.variants)) safe.variants = item.variants.map(withoutCostFields);
+  return safe;
+}
+
+export function redactInventoryCosts(items) {
+  return Array.isArray(items) ? items.map(withoutCostFields) : withoutCostFields(items);
+}
+
 export function assertNonNegativeStockQuantity(value) {
   const quantity = Number(value ?? 0);
   if (!Number.isFinite(quantity) || quantity < 0) throw new InvalidStockQuantityError();

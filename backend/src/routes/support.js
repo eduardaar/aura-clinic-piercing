@@ -23,7 +23,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { withDb } from "../middleware/withDb.js";
-import { requireRole, verifyPlatformToken } from "../middleware/auth.js";
+import { requireRole, requirePlatformAuth as requirePlatform } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
 import { parsePaging, pageResponse } from "../services/pagination.js";
 import { isProduction } from "../config/index.js";
@@ -47,15 +47,6 @@ import {
 } from "../services/support.js";
 
 const router = Router();
-
-function requirePlatform(req, res, next) {
-  const decoded = verifyPlatformToken(req);
-  if (!decoded) {
-    return res.status(401).json({ error: "Sessão de plataforma inválida ou expirada." });
-  }
-  req.platformUser = decoded;
-  next();
-}
 
 // Erro de regra vira o status que o serviço escolheu (404 de isolamento, 409 de
 // chamado fechado, 429 do teto). Qualquer outro vira 500 sem detalhe em

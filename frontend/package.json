@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0 --port 5174",
+    "dev": "vite --host 127.0.0.1 --port 5174",
     "build": "vite build",
     "test": "npm run test:unit && npm run test:components",
-    "preview": "vite preview --host 0.0.0.0",
+    "preview": "vite preview --host 127.0.0.1",
     "test:unit": "node --test tests/*.test.mjs",
     "test:components": "vitest run",
     "test:watch": "vitest"
@@ -17,15 +17,15 @@
     "lucide-react": "^0.468.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.28.0"
+    "react-router-dom": "^7.18.2"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
-    "@vitejs/plugin-react": "^4.3.4",
+    "@vitejs/plugin-react": "^5.2.0",
     "jsdom": "^25.0.1",
-    "vite": "^5.4.11",
-    "vitest": "^2.1.9"
+    "vite": "^7.3.6",
+    "vitest": "^4.1.10"
   }
 }
