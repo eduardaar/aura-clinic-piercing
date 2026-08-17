@@ -338,10 +338,10 @@ INSERT INTO platform.landing_sections (section_key, enabled, sort_order, content
     "title": "Tudo que o estúdio precisa",
     "subtitle": "",
     "items": [
-      {"title": "Agendamento online", "text": "Seus clientes marcam horário sozinhos por um link só seu.", "image": "/assets/landing/aura-portfolio/portfolio-01.jpeg", "image_alt": "Orelha com composição de piercings em joias prateadas"},
-      {"title": "Catálogo de joias", "text": "Uma vitrine online da sua marca, pronta pra compartilhar.", "image": "/assets/landing/aura-portfolio/portfolio-02.jpeg", "image_alt": "Composição de piercing em orelha com joias"},
-      {"title": "Ficha digital", "text": "Anamnese e termo de consentimento assinados sem papel.", "image": "/assets/landing/aura-portfolio/portfolio-03.jpeg", "image_alt": "Detalhe de piercing em orelha"},
-      {"title": "Financeiro e estoque", "text": "Caixa, vendas e alertas de estoque baixo no mesmo lugar.", "image": "/assets/landing/aura-portfolio/portfolio-04.jpeg", "image_alt": "Joias de piercing em composição autoral"}
+      {"title": "Agendamento online", "text": "Seus clientes marcam horário sozinhos por um link só seu.", "image": "/assets/landing/system/agenda-demo.png", "image_alt": "Tela da agenda online da Aura Clinic com horários organizados"},
+      {"title": "Catálogo de joias", "text": "Uma vitrine online da sua marca, pronta pra compartilhar.", "image": "/assets/landing/system/catalogo-demo.png", "image_alt": "Tela do catálogo de joias e estoque da Aura Clinic"},
+      {"title": "Ficha digital", "text": "Anamnese e termo de consentimento assinados sem papel.", "image": "/assets/landing/feature-agenda.jpg", "image_alt": "Profissional usando tablet para atendimento digital"},
+      {"title": "Financeiro e estoque", "text": "Caixa, vendas e alertas de estoque baixo no mesmo lugar.", "image": "/assets/landing/system/financeiro-demo.png", "image_alt": "Tela de financeiro e indicadores da Aura Clinic"}
     ]
   }'::jsonb),
 
