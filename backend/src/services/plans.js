@@ -99,7 +99,7 @@ const DEFAULT_PLANS = [
   {
     code: "start",
     name: "Pacote Start",
-    price_cents: 4990,
+    price_cents: 4000,
     audience: "Para quem está organizando a operação solo",
     description: "Agenda, clientes, estoque e catálogo para começar com controle.",
     trial_days: 7,
@@ -110,7 +110,7 @@ const DEFAULT_PLANS = [
   {
     code: "profissional",
     name: "Pacote Profissional",
-    price_cents: 8990,
+    price_cents: 9000,
     audience: "Para transformar atendimento em uma operação profissional",
     description: "Agendamento online, financeiro, documentos digitais e catálogo personalizado.",
     trial_days: 7,
@@ -122,7 +122,7 @@ const DEFAULT_PLANS = [
   {
     code: "studio",
     name: "Pacote Studio",
-    price_cents: 14990,
+    price_cents: 15000,
     audience: "Para estúdios com equipe, vendas e crescimento",
     description: "Automação, campanhas, catálogo avançado, Analytics e gestão completa da equipe.",
     trial_days: 7,

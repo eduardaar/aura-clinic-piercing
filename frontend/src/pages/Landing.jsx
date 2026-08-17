@@ -96,16 +96,6 @@ function FloatingWhatsApp({ phone }) {
 /* ---------- blocos ------------------------------------------------------- */
 
 function HeroSection({ content }) {
-  const screens = contentItems(content, "screens", "image");
-  const slides = screens.length ? screens : [{ key: content.image || "hero", image: content.image, image_alt: content.image_alt, caption: content.caption }];
-  const [active, setActive] = useState(0);
-  const reducedMotion = usePrefersReducedMotion();
-  useEffect(() => {
-    if (slides.length < 2 || reducedMotion) return undefined;
-    const timer = window.setInterval(() => setActive((current) => (current + 1) % slides.length), 3000);
-    return () => window.clearInterval(timer);
-  }, [slides.length, reducedMotion]);
-  const current = active % slides.length;
   return (
     <section className="au-l-hero">
       <div className="au-l-hero-inner">
@@ -113,28 +103,20 @@ function HeroSection({ content }) {
           {content.kicker && <span className="au-l-kicker">{content.kicker}</span>}
           <h1>{content.title}</h1>
           <p>{content.subtitle}</p>
+          <ol className="au-l-hero-benefits">
+            <li><span>01</span><div><strong>Agenda sem atrito</strong><small>Um link próprio para seus clientes agendarem sozinhos.</small></div></li>
+            <li><span>02</span><div><strong>Clientes e fichas digitais</strong><small>Histórico, anamnese e termos assinados sem papel.</small></div></li>
+            <li><span>03</span><div><strong>Catálogo de joias</strong><small>Uma vitrine online pronta para compartilhar e vender.</small></div></li>
+            <li><span>04</span><div><strong>Financeiro e estoque</strong><small>Caixa, vendas e alertas de reposição sob controle.</small></div></li>
+            <li><span>05</span><div><strong>Comunicação automatizada</strong><small>Lembretes e pós-atendimento para manter o vínculo.</small></div></li>
+            <li><span>06</span><div><strong>Equipe e resultados</strong><small>Relatórios para acompanhar o crescimento do estúdio.</small></div></li>
+          </ol>
+          <div className="au-l-hero-actions">
+            <a className="au-l-btn au-l-hero-primary" href="/cadastro">Criar minha clínica</a>
+            <a className="au-l-btn au-l-btn-ghost" href="/planos">Ver planos e recursos</a>
+          </div>
           {content.note && <span className="au-l-note">{content.note}</span>}
         </div>
-
-        <figure className="au-l-hero-media">
-          {slides.map((slide, index) => <img
-            key={slide.key}
-            className={index === current ? "is-active" : ""}
-            src={imageUrl(slide.image)}
-            alt={index === current ? slide.image_alt || "" : ""}
-            width={IMAGE_SIZE.hero.width}
-            height={IMAGE_SIZE.hero.height}
-            fetchpriority={index === 0 ? "high" : undefined}
-            loading={index === 0 ? undefined : "lazy"}
-            decoding="async"
-          />)}
-          {slides[current]?.caption && <figcaption className="au-l-hero-strip">{slides[current].caption}</figcaption>}
-          {slides.length > 1 && <>
-            <button type="button" className="au-l-hero-arrow is-prev" aria-label="Tela anterior" onClick={() => setActive((current - 1 + slides.length) % slides.length)}><ChevronLeft size={21} aria-hidden="true" /></button>
-            <button type="button" className="au-l-hero-arrow is-next" aria-label="Próxima tela" onClick={() => setActive((current + 1) % slides.length)}><ChevronRight size={21} aria-hidden="true" /></button>
-          </>}
-          {slides.length > 1 && <div className="au-l-hero-dots" aria-label="Telas do sistema">{slides.map((slide, index) => <button key={slide.key} type="button" className={index === current ? "is-active" : ""} aria-label={`Ver tela ${index + 1}`} aria-current={index === current ? "true" : undefined} onClick={() => setActive(index)} />)}</div>}
-        </figure>
       </div>
     </section>
   );
@@ -405,7 +387,6 @@ function ClosingSection({ content }) {
 const SECTION_COMPONENTS = {
   hero: HeroSection,
   features: FeaturesSection,
-  carousel: CarouselSection,
   plans: PlansSection,
   closing: ClosingSection
 };
@@ -502,7 +483,7 @@ export function Landing() {
 
       <main className="au-l-root">
         {/* Ordem da API (já vem ordenada); sem ela, a ordem do embutido. */}
-        {sections.filter((section) => section.section_key !== "plans").map((section) => {
+        {sections.filter((section) => section.section_key !== "plans" && section.section_key !== "carousel").map((section) => {
           const Section = SECTION_COMPONENTS[section.section_key];
           if (!Section) return null;
           const rendered = (

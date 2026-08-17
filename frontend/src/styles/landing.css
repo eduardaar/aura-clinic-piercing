@@ -180,14 +180,19 @@
   width: 100%;
   max-width: var(--au-l-max);
   margin: 0 auto;
-  padding: 22px var(--au-l-pad) 26px;
+  padding: 18px var(--au-l-pad) 20px;
   display: grid;
-  gap: 30px;
+  gap: 16px;
   align-items: center;
   min-width: 0;
 }
 
-.au-l-root .au-l-hero-copy { min-width: 0; }
+.au-l-root .au-l-hero-copy {
+  display: grid;
+  justify-items: center;
+  min-width: 0;
+  text-align: center;
+}
 
 .au-l-root .au-l-kicker {
   display: inline-flex;
@@ -205,25 +210,73 @@
 }
 
 .au-l-root .au-l-hero-copy h1 {
-  margin: 18px 0 14px;
+  margin: 12px 0 8px;
   font-size: clamp(32px, 7.4vw, 58px);
 }
 
 .au-l-root .au-l-hero-copy > p {
   max-width: 46ch;
+  margin-inline: auto;
   color: var(--au-l-body);
   font-size: clamp(16px, 2.4vw, 19px);
   line-height: 1.55;
 }
 
+.au-l-root .au-l-hero-benefits {
+  display: grid;
+  width: 100%;
+  gap: 8px;
+  margin: 16px 0 2px;
+  padding: 0;
+  list-style: none;
+}
+
+.au-l-root .au-l-hero-benefits li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgb(255 255 255 / .58);
+  text-align: left;
+}
+
+.au-l-root .au-l-hero-benefits > li > span {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--gold-light);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .04em;
+}
+
+.au-l-root .au-l-hero-benefits strong,
+.au-l-root .au-l-hero-benefits small { display: block; }
+.au-l-root .au-l-hero-benefits strong { color: var(--ink); font-size: 14px; }
+.au-l-root .au-l-hero-benefits small { margin-top: 3px; color: var(--au-l-body); font-size: 12px; line-height: 1.45; }
+
 .au-l-root .au-l-hero-actions {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 12px;
-  margin: 24px 0 12px;
+  margin: 16px 0 8px;
 }
 
 .au-l-root .au-l-hero-actions .au-l-btn { flex: 1 1 auto; min-width: 0; }
+.au-l-root .au-l-hero-actions .au-l-hero-primary {
+  border-color: #25d366;
+  background: #25d366;
+  color: #073b20;
+  box-shadow: 0 12px 26px rgb(7 59 32 / .22);
+}
+.au-l-root .au-l-hero-actions .au-l-hero-primary:hover { background: #32df76; transform: translateY(-2px); }
 
 .au-l-root .au-l-note {
   display: block;
@@ -692,7 +745,8 @@
   }
 
 
-  .au-l-root .au-l-hero-inner { padding: 48px var(--au-l-pad) 56px; }
+  .au-l-root .au-l-hero-inner { padding: 30px var(--au-l-pad) 34px; }
+  .au-l-root .au-l-hero-benefits { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
   .au-l-root .au-l-hero-actions .au-l-btn { flex: 0 0 auto; }
   .au-l-root .au-l-hero-media { aspect-ratio: 16 / 10; }
   .au-l-root .au-l-hero-strip {
@@ -728,7 +782,7 @@
   .au-l-root { --au-l-pad: 32px; }
 
   .au-l-root .au-l-hero-inner {
-    grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+    grid-template-columns: minmax(0, 1fr);
     gap: 36px;
     padding: 34px var(--au-l-pad) 40px;
   }

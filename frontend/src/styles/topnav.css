@@ -17,8 +17,10 @@
    altura. As telas de auth precisam disso para o split continuar colando no
    rodapé da viewport agora que existe um cabeçalho acima delas. */
 .au-shell {
+  --au-nav-height: 64px;
   min-height: 100vh;   /* fallback */
   min-height: 100svh;  /* a barra do navegador mobile não corta o conteúdo */
+  padding-top: var(--au-nav-height);
   display: flex;
   flex-direction: column;
   background: var(--paper);
@@ -38,8 +40,9 @@
 /* ---------- barra ---------- */
 
 .au-nav {
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
   z-index: 30;
   width: 100%;
   background: rgba(252, 251, 248, .92);

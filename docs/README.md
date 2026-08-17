@@ -21,6 +21,7 @@ O projeto é um **monorepo** com backend (Node/Express + PostgreSQL, multi-tenan
 | [PADRAO-VISUAL.md](./PADRAO-VISUAL.md) | Como escrever tela nova sem criar mais um sistema de CSS: a ordem de busca (componente → classe → CSS próprio), o catálogo de primitivas, as camadas da cascata, a armadilha do scroll e os anti-padrões observados no painel da plataforma. |
 | [PRONTIDAO-PRODUCAO-LGPD-SEGURANCA.md](./PRONTIDAO-PRODUCAO-LGPD-SEGURANCA.md) | Auditoria de prontidão para produção: decisão GO/NO-GO, LGPD, segurança, pagamentos, backups, infraestrutura, migrations, plano de correção e critérios objetivos de lançamento. |
 | [PLANO-DE-CORRECAO-CODIGO-E-OPERACAO.md](./PLANO-DE-CORRECAO-CODIGO-E-OPERACAO.md) | Plano executável separado entre correções já feitas no código, backlog de desenvolvimento, itens híbridos e dependências externas de infraestrutura, jurídico e operação. |
+| [ROADMAP-LANCAMENTO-CODIGO.md](./ROADMAP-LANCAMENTO-CODIGO.md) | Roadmap de lançamento focado exclusivamente em código: arquitetura, migrations, segurança, pagamentos, mecanismos de LGPD, desempenho, otimização, E2E e testes de carga. |
 | [JOBS-EM-SEGUNDO-PLANO.md](./JOBS-EM-SEGUNDO-PLANO.md) | Fila persistente por clínica, exportações assíncronas, idempotência, worker opt-in e limites operacionais. |
 
 ## Por onde começar
@@ -33,3 +34,4 @@ O projeto é um **monorepo** com backend (Node/Express + PostgreSQL, multi-tenan
 - **Escrevendo tela nova?** Leia [PADRAO-VISUAL.md](./PADRAO-VISUAL.md) **antes** de criar um `.css` — o projeto já tem o componente e a classe, e CSS sem `@layer` quebra o layout do sistema inteiro.
 - **Preparando lançamento ou auditando riscos?** Use [PRONTIDAO-PRODUCAO-LGPD-SEGURANCA.md](./PRONTIDAO-PRODUCAO-LGPD-SEGURANCA.md) como checklist de liberação e registro das evidências.
 - **Planejando as correções?** Use [PLANO-DE-CORRECAO-CODIGO-E-OPERACAO.md](./PLANO-DE-CORRECAO-CODIGO-E-OPERACAO.md) para saber o que está no repositório e o que depende do ambiente ou da operação.
+- **Preparando a versão candidata pelo código?** Siga os gates e critérios de aceite de [ROADMAP-LANCAMENTO-CODIGO.md](./ROADMAP-LANCAMENTO-CODIGO.md).
