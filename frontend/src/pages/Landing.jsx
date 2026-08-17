@@ -308,7 +308,7 @@ function CarouselSection({ content }) {
 // Os planos continuam vindo de `GET /api/plans` — preço e recursos são dado
 // vivo da plataforma, não texto de marketing. Do conteúdo editável vêm só o
 // título, o subtítulo e o rótulo/destino do botão.
-function PlansSection({ content, plans }) {
+export function PlansSection({ content, plans }) {
   const [comparisonOpen, setComparisonOpen] = useState(false);
   const visibleFeatures = (plan) => asArray(plan.features).slice(0, 5);
   const allFeatures = [...new Set(plans.flatMap((plan) => asArray(plan.features)))];
@@ -430,6 +430,27 @@ export function AboutPage() {
   </div>;
 }
 
+export function PlansPage() {
+  const [plans, setPlans] = useState([]);
+  useEffect(() => {
+    let active = true;
+    fetch(`${API}/plans`)
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((payload) => { if (active) setPlans(asArray(payload.plans)); })
+      .catch(() => { if (active) setPlans([]); });
+    return () => { active = false; };
+  }, []);
+  const orderedPlans = useMemo(
+    () => [...plans].sort((a, b) => Number(a.price_cents || 0) - Number(b.price_cents || 0)),
+    [plans]
+  );
+  return <div className="au-shell">
+    <PublicTopNav current="plans" />
+    <main className="au-l-root"><PlansSection content={LANDING_DEFAULTS.plans} plans={orderedPlans} /></main>
+    <PublicFooter />
+  </div>;
+}
+
 export function Landing() {
   // Começa JÁ com o conteúdo embutido, não com lista vazia. A landing é a porta
   // de entrada de quem vai assinar: API fora, lenta ou devolvendo lista vazia
@@ -474,7 +495,6 @@ export function Landing() {
     const closing = sections.find((section) => section.section_key === "closing");
     return mergeContent("closing", closing?.content);
   }, [sections]);
-  const hasPlansSection = sections.some((section) => section.section_key === "plans");
 
   return (
     <div className="au-shell">
@@ -482,7 +502,7 @@ export function Landing() {
 
       <main className="au-l-root">
         {/* Ordem da API (já vem ordenada); sem ela, a ordem do embutido. */}
-        {sections.filter((section) => !hasPlansSection || section.section_key !== "closing").map((section) => {
+        {sections.filter((section) => section.section_key !== "plans").map((section) => {
           const Section = SECTION_COMPONENTS[section.section_key];
           if (!Section) return null;
           const rendered = (
@@ -492,9 +512,6 @@ export function Landing() {
               plans={orderedPlans}
             />
           );
-          if (section.section_key === "plans") {
-            return [<ClosingSection key="closing-before-plans" content={closingContent} />, rendered];
-          }
           return rendered;
         })}
       </main>

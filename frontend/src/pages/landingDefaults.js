@@ -120,6 +120,5 @@ export const DEFAULT_LANDING_SECTIONS = [
   { section_key: "hero", enabled: true, sort_order: 10, content: LANDING_DEFAULTS.hero },
   { section_key: "features", enabled: true, sort_order: 20, content: LANDING_DEFAULTS.features },
   { section_key: "about", enabled: true, sort_order: 30, content: LANDING_DEFAULTS.about },
-  { section_key: "plans", enabled: true, sort_order: 40, content: LANDING_DEFAULTS.plans },
   { section_key: "closing", enabled: true, sort_order: 60, content: LANDING_DEFAULTS.closing }
 ];

@@ -75,9 +75,9 @@ ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS listed BOOLEAN NOT NULL DE
 
 INSERT INTO platform.subscription_plans (code, name, price_cents, audience, trial_days, features, is_recommended)
 VALUES
-  ('start', 'Pacote Start', 4990, 'Para quem está organizando a operação solo', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports"]'::jsonb, false),
-  ('profissional', 'Pacote Profissional', 8990, 'Para transformar atendimento em uma operação profissional', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","anamnesis","digital_terms","basic_finance","deposits","stock_alerts","automatic_followup","message_templates","public_catalog_customization"]'::jsonb, true),
-  ('studio', 'Pacote Studio', 14990, 'Para estúdios com equipe, vendas e crescimento', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","anamnesis","digital_terms","basic_finance","deposits","stock_alerts","automatic_followup","message_templates","public_catalog_customization","multi_user","commissions","monthly_reports","coupons","returns","full_client_history","jewelry_sales_report","advanced_catalog","catalog_analytics","featured_products","promotional_banner","campaigns","advanced_finance","variation_inventory","visual_search","alert_center","courses","priority_support"]'::jsonb, false)
+  ('start', 'Pacote Start', 4000, 'Para quem está organizando a operação solo', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports"]'::jsonb, false),
+  ('profissional', 'Pacote Profissional', 9000, 'Para transformar atendimento em uma operação profissional', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","anamnesis","digital_terms","basic_finance","deposits","stock_alerts","automatic_followup","message_templates","public_catalog_customization"]'::jsonb, true),
+  ('studio', 'Pacote Studio', 15000, 'Para estúdios com equipe, vendas e crescimento', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","anamnesis","digital_terms","basic_finance","deposits","stock_alerts","automatic_followup","message_templates","public_catalog_customization","multi_user","commissions","monthly_reports","coupons","returns","full_client_history","jewelry_sales_report","advanced_catalog","catalog_analytics","featured_products","promotional_banner","campaigns","advanced_finance","variation_inventory","visual_search","alert_center","courses","priority_support"]'::jsonb, false)
 -- DO NOTHING, e não DO UPDATE.
 --
 -- Este INSERT é SEMENTE: popula os planos no primeiro boot e nunca mais toca
@@ -540,7 +540,7 @@ BEGIN
 
     UPDATE platform.subscription_plans
        SET name = 'Pacote Start',
-           price_cents = 4990,
+           price_cents = 4000,
            audience = 'Para quem está organizando a operação solo',
            description = 'Agenda, clientes, estoque e catálogo para começar com controle.',
            features = '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports"]'::jsonb,
@@ -554,7 +554,7 @@ BEGIN
 
     UPDATE platform.subscription_plans
        SET name = 'Pacote Profissional',
-           price_cents = 8990,
+           price_cents = 9000,
            audience = 'Para transformar atendimento em uma operação profissional',
            description = 'Agendamento online, financeiro, documentos digitais e catálogo personalizado.',
            features = '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","anamnesis","digital_terms","basic_finance","deposits","stock_alerts","automatic_followup","message_templates","public_catalog_customization"]'::jsonb,
@@ -568,7 +568,7 @@ BEGIN
 
     UPDATE platform.subscription_plans
        SET name = 'Pacote Studio',
-           price_cents = 14990,
+           price_cents = 15000,
            audience = 'Para estúdios com equipe, vendas e crescimento',
            description = 'Automação, campanhas, catálogo avançado, Analytics e gestão completa da equipe.',
            features = '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","anamnesis","digital_terms","basic_finance","deposits","stock_alerts","automatic_followup","message_templates","public_catalog_customization","multi_user","commissions","monthly_reports","coupons","returns","full_client_history","jewelry_sales_report","advanced_catalog","catalog_analytics","featured_products","promotional_banner","campaigns","advanced_finance","variation_inventory","visual_search","alert_center","courses","priority_support"]'::jsonb,
