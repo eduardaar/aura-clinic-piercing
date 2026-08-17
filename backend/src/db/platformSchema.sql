@@ -338,14 +338,14 @@ INSERT INTO platform.landing_sections (section_key, enabled, sort_order, content
     "title": "Tudo que o estúdio precisa",
     "subtitle": "",
     "items": [
-      {"title": "Agendamento online", "text": "Seus clientes marcam horário sozinhos por um link só seu.", "image": "/assets/landing/feature-agenda.jpg", "image_alt": "Recepcionista de estúdio atendendo com um tablet em uma recepção clara"},
-      {"title": "Catálogo de joias", "text": "Uma vitrine online da sua marca, pronta pra compartilhar.", "image": "/assets/landing/feature-jewelry.jpg", "image_alt": "Argolas douradas de piercing sobre uma base de pedra clara"},
-      {"title": "Ficha digital", "text": "Anamnese e termo de consentimento assinados sem papel.", "image": "/assets/landing/feature-care.jpg", "image_alt": "Orelha com vários piercings cicatrizados no hélix e no lóbulo"},
-      {"title": "Financeiro e estoque", "text": "Caixa, vendas e alertas de estoque baixo no mesmo lugar.", "image": "/assets/landing/showcase-1.jpg", "image_alt": "Brinco dourado texturizado em close-up"}
+      {"title": "Agendamento online", "text": "Seus clientes marcam horário sozinhos por um link só seu.", "image": "/assets/landing/aura-portfolio/portfolio-01.jpeg", "image_alt": "Orelha com composição de piercings em joias prateadas"},
+      {"title": "Catálogo de joias", "text": "Uma vitrine online da sua marca, pronta pra compartilhar.", "image": "/assets/landing/aura-portfolio/portfolio-02.jpeg", "image_alt": "Composição de piercing em orelha com joias"},
+      {"title": "Ficha digital", "text": "Anamnese e termo de consentimento assinados sem papel.", "image": "/assets/landing/aura-portfolio/portfolio-03.jpeg", "image_alt": "Detalhe de piercing em orelha"},
+      {"title": "Financeiro e estoque", "text": "Caixa, vendas e alertas de estoque baixo no mesmo lugar.", "image": "/assets/landing/aura-portfolio/portfolio-04.jpeg", "image_alt": "Joias de piercing em composição autoral"}
     ]
   }'::jsonb),
 
-  ('carousel', true, 30, '{
+  ('carousel', false, 30, '{
     "title": "Piercing é identidade",
     "subtitle": "Resultados reais de quem transforma detalhes em expressão.",
     "autoplay_seconds": 6,

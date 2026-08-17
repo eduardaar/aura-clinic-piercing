@@ -41,26 +41,26 @@ export const LANDING_DEFAULTS = {
       {
         title: "Agendamento online",
         text: "Seus clientes marcam horário sozinhos por um link só seu.",
-        image: "/assets/landing/feature-agenda.jpg",
-        image_alt: "Recepcionista de estúdio atendendo com um tablet em uma recepção clara"
+        image: "/assets/landing/aura-portfolio/portfolio-01.jpeg",
+        image_alt: "Orelha com composição de piercings em joias prateadas"
       },
       {
         title: "Catálogo de joias",
         text: "Uma vitrine online da sua marca, pronta pra compartilhar.",
-        image: "/assets/landing/feature-jewelry.jpg",
-        image_alt: "Argolas douradas de piercing sobre uma base de pedra clara"
+        image: "/assets/landing/aura-portfolio/portfolio-02.jpeg",
+        image_alt: "Composição de piercing em orelha com joias"
       },
       {
         title: "Ficha digital",
         text: "Anamnese e termo de consentimento assinados sem papel.",
-        image: "/assets/landing/feature-care.jpg",
-        image_alt: "Orelha com vários piercings cicatrizados no hélix e no lóbulo"
+        image: "/assets/landing/aura-portfolio/portfolio-03.jpeg",
+        image_alt: "Detalhe de piercing em orelha"
       },
       {
         title: "Financeiro e estoque",
         text: "Caixa, vendas e alertas de estoque baixo no mesmo lugar.",
-        image: "/assets/landing/showcase-1.jpg",
-        image_alt: "Brinco dourado texturizado em close-up"
+        image: "/assets/landing/aura-portfolio/portfolio-04.jpeg",
+        image_alt: "Joias de piercing em composição autoral"
       }
     ]
   },
@@ -113,12 +113,12 @@ export const LANDING_DEFAULTS = {
 };
 
 // A página inteira no formato que `GET /api/landing` devolve: já ordenada e só
-// com os blocos LIGADOS.
+// com os blocos LIGADOS. O carrossel é opcional e nasce desligado: a galeria
+// principal fica nos próprios cards de recursos.
 export const DEFAULT_LANDING_SECTIONS = [
   { section_key: "hero", enabled: true, sort_order: 10, content: LANDING_DEFAULTS.hero },
   { section_key: "features", enabled: true, sort_order: 20, content: LANDING_DEFAULTS.features },
-  { section_key: "carousel", enabled: true, sort_order: 30, content: LANDING_DEFAULTS.carousel },
-  { section_key: "about", enabled: true, sort_order: 35, content: LANDING_DEFAULTS.about },
+  { section_key: "about", enabled: true, sort_order: 30, content: LANDING_DEFAULTS.about },
   { section_key: "plans", enabled: true, sort_order: 40, content: LANDING_DEFAULTS.plans },
   { section_key: "closing", enabled: true, sort_order: 60, content: LANDING_DEFAULTS.closing }
 ];
