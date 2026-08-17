@@ -1,7 +1,7 @@
 ﻿// Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight, Copy, ExternalLink, List, Plus, Settings2 } from "lucide-react";
-import { Button, FinancialSummary, Input, PaymentSelect, Select, StatusBadge, StatusSelect } from "../../components/common/Ui";
+import { Button, Checkbox, FinancialSummary, Input, PaymentSelect, Select, StatusBadge, StatusSelect } from "../../components/common/Ui";
 import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { Loading } from "../../components/common/Feedback";
@@ -1579,7 +1579,7 @@ export function BookingAdmin({ onBack, initialTab }) {
                 const day = weeklyDays.find((item) => Number(item.weekday) === weekday) || defaultWeeklyDay(weekday);
                 const active = Boolean(day.is_active);
                 return <article className={`weekly-schedule-row ${active ? "" : "is-inactive"}`} key={weekday}>
-                  <label className="weekly-day-toggle"><input type="checkbox" checked={active} onChange={(event) => updateWeeklyDay(weekday, { is_active: event.target.checked })} /><span><strong>{weekdayLabel(weekday)}</strong><small>{active ? "Atende" : "Fechado"}</small></span></label>
+                  <Checkbox className="weekly-day-toggle" checked={active} onChange={(is_active) => updateWeeklyDay(weekday, { is_active })} label={<span><strong>{weekdayLabel(weekday)}</strong><small>{active ? "Atende" : "Fechado"}</small></span>} />
                   <label><span>Início</span><input type="time" value={day.start_time || "09:00"} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { start_time: event.target.value })} /></label>
                   <label><span>Fim</span><input type="time" value={day.end_time || "18:00"} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { end_time: event.target.value })} /></label>
                   <label><span>Pausa</span><input type="time" value={day.lunch_start || ""} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { lunch_start: event.target.value })} /></label>

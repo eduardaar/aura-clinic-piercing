@@ -160,7 +160,7 @@ backend/src/
 │   ├── auth.js, clients.js, appointments.js, services.js, procedures.js,
 │   ├── jewelry.js, sales.js, finance.js, expenses (em finance/erp), terms.js,
 │   ├── postcare.js, catalog.js, booking.js, options.js, professionals.js,
-│   ├── availability.js, scheduleBlocks.js, users.js, admin.js, dashboard.js,
+│   ├── availability.js, scheduleBlocks.js, users.js, dashboard.js,
 │   ├── erp.js, alerts.js, uploads.js, health.js
 │   └── platform.js          Signup público + painel da plataforma (super-admin)
 ├── services/                Regras de negócio (sem HTTP)

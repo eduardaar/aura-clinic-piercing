@@ -317,7 +317,7 @@ export function PlansSection({ content, plans }) {
                 {visibleFeatures(plan).map((f) => <li key={f}>{featureLabel(f)}</li>)}
               </ul>
               {asArray(plan.features).length > 5 && <span className="au-l-plan-more">E mais recursos para sua operação.</span>}
-              <a className="au-l-btn au-l-btn-plan" href={`/cadastro?plano=${encodeURIComponent(plan.code)}`}>Selecionar {plan.name.replace(/^Pacote\s+/i, "")}</a>
+              <a className="au-l-btn au-l-btn-plan" href={`/cadastro?plano=${encodeURIComponent(plan.code)}`}>Quero esse</a>
             </article>
           ))}
         </div>

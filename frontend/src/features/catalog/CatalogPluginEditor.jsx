@@ -6,6 +6,7 @@ import {
   normalizeCatalogBuilderPluginConfig
 } from "./builderPluginRegistry";
 import styles from "./CatalogPluginEditor.module.css";
+import { Checkbox, Select } from "../../components/common/Ui";
 
 const asArray = (value) => Array.isArray(value) ? value : [];
 const asObject = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -69,22 +70,18 @@ function KnownField({ field, config, errors, baseId, onChange }) {
 
   if (field.type === "boolean") {
     return (
-      <label className={styles.checkField} htmlFor={id}>
-        <input id={id} type="checkbox" checked={Boolean(value)} onChange={(event) => onChange(event.target.checked)} />
-        <span>{field.label}</span>
-      </label>
+      <Checkbox className={styles.checkField} label={field.label} checked={Boolean(value)} onChange={onChange} />
     );
   }
 
   if (field.type === "select") {
     return (
-      <label className={styles.field} htmlFor={id}>
-        <span>{field.label}{field.required ? " *" : ""}</span>
-        <select id={id} value={value} aria-describedby={describedBy} onChange={(event) => onChange(event.target.value)}>
+      <>
+        <Select className={styles.field} id={id} label={`${field.label}${field.required ? " *" : ""}`} value={value} onChange={onChange}>
           {(field.options || []).map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}
-        </select>
+        </Select>
         {messages.length > 0 && <FieldErrors id={`${id}-error`} errors={messages} />}
-      </label>
+      </>
     );
   }
 
@@ -184,10 +181,7 @@ function PluginInstanceCard({ instance, index, canEnable, onUpdate, onRemove }) 
           <p>Integração nativa #{index + 1} · Recurso: <code>{plugin.featureFlag}</code></p>
         </div>
         <div className={styles.instanceActions}>
-          <label className={styles.checkField} htmlFor={`catalog-plugin-${instance.id}-enabled`}>
-            <input id={`catalog-plugin-${instance.id}-enabled`} type="checkbox" checked={instance.enabled} disabled={!instance.enabled && !canEnable} onChange={(event) => onUpdate({ enabled: event.target.checked })} />
-            <span>Ativo</span>
-          </label>
+          <Checkbox className={styles.checkField} label="Ativo" checked={instance.enabled} disabled={!instance.enabled && !canEnable} onChange={(enabled) => onUpdate({ enabled })} />
           <button type="button" className={styles.removeButton} onClick={onRemove}>Remover</button>
         </div>
       </header>

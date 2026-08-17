@@ -4,6 +4,8 @@
 // - CrudHeader: cabeçalho de página com título e botão "Novo".
 // Reaproveitam o CSS existente (.modal-backdrop, .table-wrap, .panel-heading).
 import React, { useEffect, useState } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { AlertTriangle, MoreHorizontal, Plus, X } from "lucide-react";
 
 /**
@@ -18,44 +20,26 @@ import { AlertTriangle, MoreHorizontal, Plus, X } from "lucide-react";
  * @param {"sm" | "md" | "lg"} [props.size] Padrão: "md".
  */
 export function Modal({ open, title, subtitle, onClose, children, footer, size = "md" }) {
-  useEffect(() => {
-    if (!open) return undefined;
-    const onKey = (event) => { if (event.key === "Escape") onClose?.(); };
-    document.addEventListener("keydown", onKey);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [open, onClose]);
-
-  if (!open) return null;
   return (
-    <div className="modal-backdrop" onClick={(event) => {
-      // Conteúdo renderizado em portal (como o seletor de joias) continua
-      // propagando pelo tree React. Só o clique no backdrop real deve fechar.
-      if (event.target === event.currentTarget) onClose?.();
-    }}>
-      <div
-        className={`modal-card modal-${size}`}
-        role="dialog"
-        aria-modal="true"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="modal-header">
-          <div>
-            <h2>{title}</h2>
-            {subtitle && <span>{subtitle}</span>}
-          </div>
-          <button type="button" className="modal-close" aria-label="Fechar" onClick={onClose}>
-            <X size={18} />
-          </button>
-        </div>
-        <div className="modal-body">{children}</div>
-        {footer && <div className="modal-actions">{footer}</div>}
-      </div>
-    </div>
+    <Dialog.Root open={Boolean(open)} onOpenChange={(nextOpen) => { if (!nextOpen) onClose?.(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="modal-backdrop">
+          <Dialog.Content className={`modal-card modal-${size}`}>
+            <div className="modal-header">
+              <div>
+                <Dialog.Title>{title}</Dialog.Title>
+                {subtitle && <Dialog.Description asChild><span>{subtitle}</span></Dialog.Description>}
+              </div>
+              <Dialog.Close asChild>
+                <button type="button" className="modal-close" aria-label="Fechar"><X size={18} /></button>
+              </Dialog.Close>
+            </div>
+            <div className="modal-body">{children}</div>
+            {footer && <div className="modal-actions">{footer}</div>}
+          </Dialog.Content>
+        </Dialog.Overlay>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
@@ -184,16 +168,33 @@ export function RowActions({ actions = [] }) {
     <button key={action.label} type="button" className={className} onClick={action.onClick} disabled={action.disabled}>{action.label}</button>
   );
 
+  const renderMenuAction = (action) => action.href ? (
+    <DropdownMenu.Item key={action.label} className={action.danger ? "danger" : ""} asChild>
+      <a href={action.href} target={action.target} rel={action.rel}>{action.label}</a>
+    </DropdownMenu.Item>
+  ) : (
+    <DropdownMenu.Item
+      key={action.label}
+      className={action.danger ? "danger" : ""}
+      disabled={action.disabled}
+      onSelect={() => action.onClick?.()}
+    >
+      {action.label}
+    </DropdownMenu.Item>
+  );
+
   return (
     <div className="row-actions-menu">
       {renderAction(primary, "row-action-primary")}
       {secondary.length > 0 && (
-        <details className="row-actions-more">
-          <summary aria-label="Mais ações" title="Mais ações"><MoreHorizontal size={18} /></summary>
-          <div className="row-actions-popover" role="menu">
-            {secondary.map((action) => renderAction(action, action.danger ? "danger" : ""))}
-          </div>
-        </details>
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger className="row-actions-more" aria-label="Mais ações" title="Mais ações"><MoreHorizontal size={18} /></DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content className="row-actions-popover" align="end" sideOffset={6}>
+              {secondary.map(renderMenuAction)}
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
       )}
     </div>
   );

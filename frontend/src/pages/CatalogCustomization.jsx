@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GripVertical, ImageIcon, Plus, Redo2, Undo2 } from "lucide-react";
 import { Loading, ApiError } from "../components/common/Feedback";
-import { Input, Select, StatusBadge } from "../components/common/Ui";
+import { Checkbox, Input, Select, StatusBadge } from "../components/common/Ui";
 import { ConfirmDeleteModal, Modal, RowActions } from "../components/common/Crud";
 import { DataView } from "../components/common/DataView";
 import { API_ORIGIN, apiFetch, tenantSlug, useFetch } from "../lib/api";
@@ -129,6 +129,7 @@ export function CatalogCustomization() {
   const [form, setFormState] = useState(defaultCatalogCustomization());
   const [activeSection, setActiveSection] = useState("aparencia");
   const [previewDevice, setPreviewDevice] = useState("desktop");
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [templateToApply, setTemplateToApply] = useState("");
@@ -295,6 +296,7 @@ export function CatalogCustomization() {
             <p>Edite aparência, banners, categorias, produtos, promoções e textos sem mexer no código.</p>
           </div>
           <div>
+            <button className="secondary-button" type="button" onClick={() => setPreviewOpen(true)}>Abrir prévia</button>
             <button className="secondary-button" type="button" onClick={() => setResetOpen(true)}>Restaurar padrão</button>
             <button className="secondary-button" type="button" onClick={reviewPublication} disabled={checkingPublication}>{checkingPublication ? "Revisando…" : "Revisar publicação"}</button>
             <button className="primary-button" type="button" onClick={() => save("/catalog-customization/publish", "Catálogo publicado.")}>Publicar</button>
@@ -626,7 +628,15 @@ export function CatalogCustomization() {
         <button className="primary-button customization-save" type="button" onClick={() => save()}>Salvar rascunho</button>
       </div>
 
-      <CatalogCustomizationPreview form={form} products={products} device={previewDevice} onDeviceChange={setPreviewDevice} />
+      <Modal
+        open={previewOpen}
+        title="Prévia do catálogo"
+        subtitle="Visualização fiel do rascunho atual. As alterações aparecem automaticamente."
+        size="lg"
+        onClose={() => setPreviewOpen(false)}
+      >
+        <CatalogCustomizationPreview form={form} products={products} device={previewDevice} onDeviceChange={setPreviewDevice} modal />
+      </Modal>
       <Modal
         open={Boolean(templateToApply)}
         title="Aplicar template"
@@ -1360,14 +1370,11 @@ function promotionValueLabel(promotion) {
 
 export function Toggle({ label, checked, onChange }) {
   return (
-    <label className="toggle-field">
-      <input type="checkbox" checked={Boolean(Number(checked))} onChange={(event) => onChange(event.target.checked)} />
-      <span>{label}</span>
-    </label>
+    <Checkbox className="toggle-field" label={label} checked={Boolean(Number(checked))} onChange={onChange} />
   );
 }
 
-function CatalogCustomizationPreview({ form, products, device = "desktop", onDeviceChange }) {
+function CatalogCustomizationPreview({ form, products, device = "desktop", onDeviceChange, modal = false }) {
   const frameRef = useRef(null);
   const theme = { ...defaultCatalogCustomization().theme, ...asObject(form).theme };
   const previewUrl = catalogPreviewUrl();
@@ -1393,7 +1400,7 @@ function CatalogCustomizationPreview({ form, products, device = "desktop", onDev
   }, [sendPreview]);
 
   return (
-    <aside className={`catalog-live-preview preview-${device}`} style={{ "--preview-primary": theme.primary_color }}>
+    <section className={`catalog-live-preview preview-${device}${modal ? " preview-modal" : ""}`} style={{ "--preview-primary": theme.primary_color }}>
       <div className="preview-browser-bar">
         <span />
         <strong>Prévia fiel do rascunho</strong>
@@ -1410,7 +1417,7 @@ function CatalogCustomizationPreview({ form, products, device = "desktop", onDev
           onLoad={sendPreview}
         />
       </div>
-    </aside>
+    </section>
   );
 }
 

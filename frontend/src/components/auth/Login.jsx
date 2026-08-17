@@ -3,6 +3,7 @@ import { ChevronRight, Eye, EyeOff } from "lucide-react";
 import { apiFetch, setTenantSlug, tenantSlug } from "../../lib/api";
 import { PublicTopNav } from "../layout/PublicTopNav";
 import { PublicFooter } from "../layout/PublicFooter";
+import { Checkbox } from "../common/Ui";
 
 export function Login({ onLogin }) {
   const [form, setForm] = useState({
@@ -149,10 +150,7 @@ export function Login({ onLogin }) {
                 </div>
               )}
 
-              <label className="au-a-check">
-                <input type="checkbox" checked={rememberAccess} onChange={(event) => setRememberAccess(event.target.checked)} />
-                <span>Manter conectado</span>
-              </label>
+              <Checkbox className="au-a-check" label="Manter conectado" checked={rememberAccess} onChange={setRememberAccess} />
 
               {error && <p className="au-a-error" role="alert">{error}</p>}
 
@@ -165,7 +163,6 @@ export function Login({ onLogin }) {
               Ainda não tem uma clínica? <a href="/cadastro">Criar minha clínica</a>
             </p>
 
-            <p className="au-a-legal">Aura Clinic® · Sistema proprietário</p>
           </div>
         </section>
 

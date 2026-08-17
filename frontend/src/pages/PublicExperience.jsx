@@ -20,7 +20,7 @@ import {
   Star
 } from "lucide-react";
 import { Loading, ApiError } from "../components/common/Feedback";
-import { BookingChoiceGrid, Input, Select } from "../components/common/Ui";
+import { BookingChoiceGrid, Checkbox, Input, Select } from "../components/common/Ui";
 import { API_ORIGIN, publicApiFetch, usePublicFetch } from "../lib/api";
 import { asArray, asNumber, asObject, formatLongDate, removeAccents } from "../lib/utils";
 import { readRecentSearches, saveRecentSearch, smartSearchMatches, useDebouncedValue } from "../lib/smartSearch";
@@ -677,12 +677,12 @@ function CatalogDiscovery({ section, style, className, discoveryRef, productsRef
         <CatalogSelect label="Tamanho" value={filters.size} options={options.sizes} onChange={(value) => setFilters({ ...filters, size: value })} />
         <CatalogSelect label="Tamanho do topo" value={filters.topSize} options={options.topSizes.map((number) => ({ value: String(number), label: `${number.toLocaleString("pt-BR", { minimumFractionDigits: 1 })} mm` }))} onChange={(value) => setFilters({ ...filters, topSize: value })} />
         <CatalogSelect label="Disponibilidade" value={filters.availability} options={[{ value: "true", label: "Em estoque" }, { value: "false", label: "Esgotados" }]} onChange={(value) => setFilters({ ...filters, availability: value })} />
-        <label className="catalog-sort">
+        <div className="catalog-sort">
           <SlidersHorizontal size={16} />
-          <select value={sort} onChange={(event) => setSort(event.target.value)}>
+          <Select label={null} ariaLabel="Ordenar catálogo" value={sort} onChange={setSort}>
             <option value="recentes">Mais recentes</option><option value="menor-preco">Menor preço</option><option value="maior-preco">Maior preço</option><option value="nome-az">Nome de A a Z</option><option value="nome-za">Nome de Z a A</option><option value="estoque">Em estoque primeiro</option>
-          </select>
-        </label>
+          </Select>
+        </div>
       </div>
     </section>
   );
@@ -933,16 +933,14 @@ function safeJson(value) {
 function CatalogSelect({ label, value, options, onChange }) {
   const safeOptions = asArray(options);
   return (
-    <label className="catalog-filter-select">
-      <select value={value} onChange={(event) => onChange(event.target.value)}>
+    <Select className="catalog-filter-select" label={null} ariaLabel={label} value={value} onChange={onChange}>
         <option value="">{label}</option>
         {safeOptions.map((option) => {
           const optionValue = typeof option === "object" ? option.value : option;
           const optionLabel = typeof option === "object" ? option.label : elegantProductName(option);
           return <option key={optionValue} value={optionValue}>{optionLabel}</option>;
         })}
-      </select>
-    </label>
+    </Select>
   );
 }
 
@@ -1207,23 +1205,17 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
             <p className="catalog-product-description">{description}</p>
             {availableVariants.length > 0 && (
               <div className="catalog-variant-picker">
-                <label>
-                  <span>Escolha a Variação</span>
-                  <select value={selectedVariantId} onChange={(event) => setSelectedVariantId(event.target.value)}>
+                <Select label="Escolha a Variação" value={selectedVariantId} onChange={setSelectedVariantId}>
                     {availableVariants.map((variant) => (
                       <option key={variant.id} value={variant.id} disabled={Number(variant.quantity || 0) <= 0}>
                         {variantCatalogLabel(variant)} · {variant.quantity > 0 ? `${variant.quantity} disponíveis` : "Indisponível"}
                       </option>
                     ))}
-                  </select>
-                </label>
+                </Select>
                 {colorOptions.length > 0 && (
-                  <label>
-                    <span>Observação de Cor / Anodização</span>
-                    <select value={selectedColor} onChange={(event) => setSelectedColor(event.target.value)}>
+                  <Select label="Observação de Cor / Anodização" value={selectedColor} onChange={setSelectedColor}>
                       {colorOptions.map((color) => <option key={color}>{color}</option>)}
-                    </select>
-                  </label>
+                  </Select>
                 )}
               </div>
             )}
@@ -1540,7 +1532,7 @@ export function PublicCheckout() {
             <label>Observações
               <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Observação de cor, tamanho, envio ou retirada." />
             </label>
-            <label className="checkout-policy"><input type="checkbox" checked={form.accepted_policies} onChange={(event) => setForm({ ...form, accepted_policies: event.target.checked })} /> Li e aceito as políticas da clínica.</label>
+            <Checkbox className="checkout-policy" label="Li e aceito as políticas da clínica." checked={form.accepted_policies} onChange={(accepted_policies) => setForm({ ...form, accepted_policies })} />
             {error && <span className="form-error">{error}</span>}
             <button className="primary-button" type="submit">Confirmar compra</button>
           </form>

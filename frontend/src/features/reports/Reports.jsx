@@ -10,7 +10,8 @@ const TYPES = [
   ["financial", "Financeiro"], ["sales", "Vendas"], ["stock", "Estoque"], ["services", "Serviços"],
   ["clients", "Clientes"], ["professionals", "Profissionais"], ["appointments", "Agendamentos"],
   ["cancellations", "Cancelamentos"], ["promotions", "Promoções"], ["coupons", "Cupons"],
-  ["commissions", "Comissões"], ["payments", "Pagamentos"], ["catalog_conversion", "Conversão do catálogo"]
+  ["commissions", "Comissões"], ["payments", "Pagamentos"], ["catalog_conversion", "Conversão do catálogo"],
+  ["abc", "Curva ABC de estoque"]
 ];
 
 // `formatDate` de lib/utils devolve dd/MM sem ano, e um relatório pode ser
@@ -54,6 +55,11 @@ const COLUMN_LABELS = {
   cost_value: "Custo",
   sale_value: "Preço de venda",
   supplier: "Fornecedor",
+  abc_class: "Classe ABC",
+  units_out: "Saídas",
+  movement_value: "Valor movimentado",
+  daily_demand: "Demanda diária",
+  days_to_stockout: "Previsão de ruptura (dias)",
   // Serviços
   service: "Serviço",
   appointments: "Atendimentos",
@@ -130,6 +136,9 @@ const COLUMN_KINDS = {
   average_ticket: "money",
   appointments: "count",
   quantity: "count",
+  units_out: "count",
+  daily_demand: "count",
+  days_to_stockout: "count",
   usage_limit: "count",
   uses: "count",
   events: "count",
@@ -256,14 +265,25 @@ function buildColumns(rows) {
 export function Reports() {
   const today = new Date().toISOString().slice(0, 10);
   const [filters, setFilters] = useState({ type: "sales", from: `${today.slice(0, 7)}-01`, to: today, status: "", professional_id: "" });
+  const isAbcReport = filters.type === "abc";
   const { data: professionals } = useFetch("/professionals");
   const params = new URLSearchParams({ from: filters.from, to: filters.to, ...(filters.status ? { status: filters.status } : {}), ...(filters.professional_id ? { professional_id: filters.professional_id } : {}) });
   // Período e status continuam sendo filtro de servidor: mudam a consulta e o
   // arquivo exportado. A DataView cuida só do que já veio (busca, ordenação e
   // paginação), por isso mode="client".
-  const { data, loading, error } = useFetch(`/reports/${filters.type}?${params}`);
+  const { data, loading, error } = useFetch(isAbcReport ? "/inventory/intelligence?days=90" : `/reports/${filters.type}?${params}`);
   const report = asObject(data);
-  const reportRows = asArray(report.rows);
+  const reportRows = isAbcReport
+    ? asArray(report.items).map((item) => ({
+      name: item.name,
+      sku: item.sku,
+      abc_class: item.abc_class,
+      units_out: item.units_out,
+      movement_value: item.movement_value,
+      daily_demand: item.daily_demand,
+      days_to_stockout: item.days_to_stockout
+    }))
+    : asArray(report.rows);
 
   const columns = useMemo(() => buildColumns(reportRows), [reportRows]);
 
@@ -279,25 +299,27 @@ export function Reports() {
     <section className="stack">
       <div className="panel">
         <div className="panel-heading">
-          <div><h2>Central de relatórios</h2><span>Dados reais e isolados por clínica, com exportação em três formatos.</span></div>
-          <div className="export-actions">
+          <div><h2>Central de relatórios</h2><span>{isAbcReport ? "Giro de estoque calculado pelas saídas dos últimos 90 dias." : "Dados reais e isolados por clínica, com exportação em três formatos."}</span></div>
+          {!isAbcReport && <div className="export-actions">
             {["pdf", "xlsx", "csv"].map((format) => <Button key={format} variant="secondary" onClick={() => download(format)}><Download size={15} /> {format.toUpperCase()}</Button>)}
-          </div>
+          </div>}
         </div>
         <div className="form-grid">
           <Select label="Relatório" value={filters.type} onChange={(value) => setFilters({ ...filters, type: value })}>
             {TYPES.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
           </Select>
-          <Input type="date" label="De" value={filters.from} onChange={(value) => setFilters({ ...filters, from: value })} />
-          <Input type="date" label="Até" value={filters.to} onChange={(value) => setFilters({ ...filters, to: value })} />
-          <Input label="Status (opcional)" value={filters.status} onChange={(value) => setFilters({ ...filters, status: value })} />
-          {["professionals", "commissions", "appointments", "cancellations"].includes(filters.type) && <Select label="Profissional" value={filters.professional_id} onChange={(value) => setFilters({ ...filters, professional_id: value })}><option value="">Todos</option>{asArray(professionals).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</Select>}
+          {!isAbcReport && <>
+            <Input type="date" label="De" value={filters.from} onChange={(value) => setFilters({ ...filters, from: value })} />
+            <Input type="date" label="Até" value={filters.to} onChange={(value) => setFilters({ ...filters, to: value })} />
+            <Input label="Status (opcional)" value={filters.status} onChange={(value) => setFilters({ ...filters, status: value })} />
+            {["professionals", "commissions", "appointments", "cancellations"].includes(filters.type) && <Select label="Profissional" value={filters.professional_id} onChange={(value) => setFilters({ ...filters, professional_id: value })}><option value="">Todos</option>{asArray(professionals).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</Select>}
+          </>}
         </div>
       </div>
       <div className="panel">
         <div className="panel-heading">
           <h2>{TYPES.find(([value]) => value === filters.type)?.[1]}</h2>
-          <span>{loading ? "Carregando…" : `${report.total_rows || 0} registro(s)`}</span>
+          <span>{loading ? "Carregando…" : `${isAbcReport ? reportRows.length : report.total_rows || 0} registro(s)`}</span>
         </div>
         <DataView
           // Cada relatório tem colunas próprias: remontar zera busca e ordenação

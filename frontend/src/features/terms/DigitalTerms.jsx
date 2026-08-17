@@ -1,7 +1,7 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import React, { useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
-import { Button, Input, Select, StatusBadge } from "../../components/common/Ui";
+import { Button, Checkbox, Input, Select, StatusBadge } from "../../components/common/Ui";
 import { Modal, CrudHeader, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { asArray, asObject, formatDate } from "../../lib/utils";
@@ -190,17 +190,14 @@ export function DigitalTerms({ onBack }) {
           <h3>Estilo De Vida</h3>
           <div className="term-lifestyle-grid">
             {DIGITAL_TERM_LIFESTYLE_ITEMS.map((item) => (
-              <label key={item.key} className="term-choice">
-                {item.label}
-                <select value={form.form_data.lifestyle[item.key]} onChange={(event) => updateFormData("lifestyle", item.key, event.target.value)}>
+              <Select key={item.key} className="term-choice" label={item.label} value={form.form_data.lifestyle[item.key]} onChange={(value) => updateFormData("lifestyle", item.key, value)}>
                   <option value="">Não Informado</option>
                   <option value="Sim">Sim</option>
                   <option value="Não">Não</option>
                   <option value="Às Vezes">Às Vezes</option>
                   {item.key === "blood_pressure" && <option value="Normal">Normal</option>}
                   {item.key === "blood_pressure" && <option value="Alterada">Alterada</option>}
-                </select>
-              </label>
+              </Select>
             ))}
           </div>
         </section>
@@ -208,24 +205,14 @@ export function DigitalTerms({ onBack }) {
 
         {formTab === "consentimento" && <>
         <section className="term-section term-consent-section">
-          <label className="checkbox-line">
-            <input type="checkbox" checked={form.orientations_confirmed} onChange={(event) => updateField("orientations_confirmed", event.target.checked)} />
-            Confirmo que recebi orientações sobre cuidados, higienização, riscos, cicatrização e retornos.
-          </label>
+          <Checkbox className="checkbox-line" checked={form.orientations_confirmed} onChange={(value) => updateField("orientations_confirmed", value)} label="Confirmo que recebi orientações sobre cuidados, higienização, riscos, cicatrização e retornos." />
           <p>Declaro que recebi todas as informações referentes ao procedimento e que os materiais utilizados são devidamente esterilizados, lacrados e descartados após o atendimento.</p>
         </section>
 
         <section className="term-section">
           <div className="term-section-heading">
           <h3>Autorização para Menores</h3>
-            <label className="checkbox-line compact">
-              <input
-                type="checkbox"
-                checked={form.form_data.minor.is_minor}
-                onChange={(event) => updateFormData("minor", "is_minor", event.target.checked)}
-              />
-              Cliente Menor De Idade
-            </label>
+            <Checkbox className="checkbox-line compact" checked={form.form_data.minor.is_minor} onChange={(value) => updateFormData("minor", "is_minor", value)} label="Cliente Menor De Idade" />
           </div>
           {form.form_data.minor.is_minor && (
             <div className="form-grid">

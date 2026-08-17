@@ -37,7 +37,6 @@ Copie `backend/.env.example` para `backend/.env` e ajuste. Variáveis principais
 | `DEFAULT_TENANT` | Clínica assumida quando a requisição não traz token nem `X-Tenant` (ex.: `aura`). Útil em dev; **omita** em produção multi-clínica para exigir `X-Tenant` explícito. |
 | `PLATFORM_ADMIN_EMAIL` / `PLATFORM_ADMIN_PASSWORD` | Super-admin da plataforma, semeado no primeiro boot se não houver nenhum. **Obrigatórias em produção** (sem elas o boot não cria credenciais padrão). |
 | `ALLOW_PUBLIC_SIGNUP` | `false` desabilita `POST /api/signup` (só o super-admin cria clínicas). Qualquer outro valor mantém o cadastro público ativo. |
-| `ALLOW_DEMO_RESET` | `true` libera `POST /api/admin/reset-demo-data` em produção (bloqueado por padrão). |
 
 ### 3. `.env` do frontend
 

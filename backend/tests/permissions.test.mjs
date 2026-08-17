@@ -427,16 +427,6 @@ test("termo de menor exige identificação e assinatura do responsável", async 
   assert.match(json.error, /responsável legal/i);
 });
 
-// -- Reset destrutivo exige admin E gate de produção ---------------------
-test("POST /admin/reset-clinic-data com reception → 403", async () => {
-  const { status } = await req("/admin/reset-clinic-data", {
-    token: ctx.tokens.reception,
-    method: "POST",
-    body: { confirmation: "RESETAR DADOS", reset_type: "operational" }
-  });
-  assert.equal(status, 403);
-});
-
 // -- Serviços/catálogo: papéis intermediários (admin/reception) ----------
 test("POST /services com admin → 201", async () => {
   const { status, json } = await req("/services", {

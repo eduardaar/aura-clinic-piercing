@@ -147,7 +147,7 @@ export const signupSchema = z
     admin_name: z.string().optional(),
     admin_email: nonEmptyString("E-mail do administrador"),
     admin_password: z.string({ error: "Senha do administrador é obrigatória." })
-      .min(12, { message: "A senha do administrador deve ter no mínimo 12 caracteres." })
+      .min(8, { message: "A senha do administrador deve ter no mínimo 8 caracteres." })
   })
   .passthrough();
 

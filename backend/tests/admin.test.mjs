@@ -211,75 +211,6 @@ test("DELETE em tenant inexistente → 404", async () => {
   assert.equal(status, 404);
 });
 
-// ---------------------------------------------------------------------------
-// 6. RESET seguro de dados da clínica
-// ---------------------------------------------------------------------------
-
-test("POST /admin/reset-clinic-data exige confirmação literal", async () => {
-  const { status, json } = await req("/admin/reset-clinic-data", {
-    token: ctx.tenantToken,
-    method: "POST",
-    body: { confirmation: "RESETAR", reset_type: "operational" }
-  });
-  assert.equal(status, 400, JSON.stringify(json));
-  assert.match(json.error, /RESETAR DADOS/i);
-});
-
-test("reset operacional apaga operação e preserva cadastros estruturais", async () => {
-  const client = await req("/clients", {
-    token: ctx.tenantToken,
-    method: "POST",
-    body: { full_name: "Cliente Reset", whatsapp: "11999990000" }
-  });
-  assert.equal(client.status, 201, JSON.stringify(client.json));
-  const service = await req("/services", {
-    token: ctx.tenantToken,
-    method: "POST",
-    body: { name: "Servico Reset", price: 80, duration_minutes: 40 }
-  });
-  assert.equal(service.status, 201, JSON.stringify(service.json));
-  const professional = await req("/professionals", {
-    token: ctx.tenantToken,
-    method: "POST",
-    body: { name: "Prof Reset" }
-  });
-  assert.equal(professional.status, 201, JSON.stringify(professional.json));
-  const appointment = await req("/appointments", {
-    token: ctx.tenantToken,
-    method: "POST",
-    body: {
-      client_id: client.json.id,
-      full_name: "Cliente Reset",
-      whatsapp: "11999990000",
-      professional_id: professional.json.id,
-      service_id: service.json.id,
-      procedure: "Servico Reset",
-      piercing_region: "Orelha",
-      appointment_date: "2026-08-01",
-      appointment_time: "10:00",
-      deposit_value: 25
-    }
-  });
-  assert.equal(appointment.status, 201, JSON.stringify(appointment.json));
-
-  const reset = await req("/admin/reset-clinic-data", {
-    token: ctx.tenantToken,
-    method: "POST",
-    body: { confirmation: "RESETAR DADOS", reset_type: "operational" }
-  });
-  assert.equal(reset.status, 200, JSON.stringify(reset.json));
-  assert.equal(reset.json.type, "operational");
-  assert.ok(Number(reset.json.removed.appointments || 0) >= 1);
-
-  const appointments = await req("/appointments", { token: ctx.tenantToken });
-  assert.equal(appointments.status, 200);
-  assert.equal(appointments.json.length, 0, "agenda deve ficar limpa");
-  const services = await req("/services", { token: ctx.tenantToken });
-  assert.ok(services.json.some((item) => item.id === service.json.id), "serviços devem ser preservados");
-  const clients = await req("/clients", { token: ctx.tenantToken });
-  assert.ok(clients.json.some((item) => item.id === client.json.id), "clientes devem ser preservados no reset operacional");
-});
-
 test("script restore-admin restaura conta existente sem duplicar usuário", async () => {
   const reserveEmail = `admin-reserva@${ctx.tenantSlug}.test`;
   const reservePassword = "SenhaForte123";
@@ -325,35 +256,4 @@ test("script restore-admin restaura conta existente sem duplicar usuário", asyn
     method: "DELETE"
   });
   assert.equal(removeReserve.status, 200, JSON.stringify(removeReserve.json));
-});
-
-test("reset completo preserva login/admin e limpa dados da clínica", async () => {
-  const reset = await req("/admin/reset-clinic-data", {
-    token: ctx.tenantToken,
-    method: "POST",
-    body: { confirmation: "RESETAR DADOS", reset_type: "complete" }
-  });
-  assert.equal(reset.status, 200, JSON.stringify(reset.json));
-  assert.equal(reset.json.type, "complete");
-
-  const login = await loginTenant(ctx.tenantSlug, ctx.tenantAdminEmail, ctx.tenantAdminPassword);
-  assert.equal(login.user.role, "admin");
-  ctx.tenantToken = login.token;
-
-  const users = await req("/users", { token: ctx.tenantToken });
-  assert.equal(users.status, 200, JSON.stringify(users.json));
-  assert.ok(users.json.some((user) => user.email === ctx.tenantAdminEmail && user.role === "admin"));
-  const clients = await req("/clients", { token: ctx.tenantToken });
-  assert.equal(clients.status, 200);
-  assert.equal(clients.json.length, 0);
-});
-
-test("POST /admin/reset-demo-data mantém compatibilidade com reset operacional", async () => {
-  const { status, json } = await req("/admin/reset-demo-data", {
-    token: ctx.tenantToken,
-    method: "POST",
-    body: { confirmation: "RESETAR" }
-  });
-  assert.equal(status, 200, JSON.stringify(json));
-  assert.equal(json.type, "operational");
 });

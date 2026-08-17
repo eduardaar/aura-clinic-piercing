@@ -23,6 +23,16 @@ if (!globalThis.localStorage || typeof globalThis.localStorage.clear !== "functi
   Object.defineProperty(window, "localStorage", { configurable: true, value: storage });
 }
 
+// Primitivos do Radix usam APIs de ponteiro presentes nos navegadores, mas não
+// implementadas pelo jsdom. Estes no-ops mantêm os testes de interação fiéis à
+// semântica do componente sem simular comportamento visual do navegador.
+if (!HTMLElement.prototype.hasPointerCapture) {
+  HTMLElement.prototype.hasPointerCapture = () => false;
+  HTMLElement.prototype.setPointerCapture = () => {};
+  HTMLElement.prototype.releasePointerCapture = () => {};
+}
+if (!HTMLElement.prototype.scrollIntoView) HTMLElement.prototype.scrollIntoView = () => {};
+
 afterEach(() => {
   cleanup();
 });

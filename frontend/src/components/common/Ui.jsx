@@ -1,5 +1,7 @@
 import React from "react";
-import { BadgeCheck, Banknote, CircleDollarSign, Clock3, CreditCard, FileChartColumn, ListFilter, Receipt, Tag } from "lucide-react";
+import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
+import * as SelectPrimitive from "@radix-ui/react-select";
+import { BadgeCheck, Banknote, Check, ChevronDown, CircleDollarSign, Clock3, CreditCard, FileChartColumn, ListFilter, Receipt, Tag } from "lucide-react";
 import { API_ORIGIN, apiFetch } from "../../lib/api";
 
 /**
@@ -117,13 +119,50 @@ export function Input({ label, value, onChange, type = "text", required, min }) 
  * @param {React.ReactNode} [props.children] As `<option>`.
  * @param {boolean} [props.required]
  */
-export function Select({ label, value, onChange, children, required }) {
+const EMPTY_SELECT_VALUE = "__aura_empty_select_value__";
+
+function selectItems(children) {
+  return React.Children.toArray(children).flatMap((child) => {
+    if (!React.isValidElement(child)) return [];
+    if (child.type === "optgroup") {
+      return (
+        <SelectPrimitive.Group key={child.key ?? child.props.label}>
+          <SelectPrimitive.Label className="ui-select-group-label">{child.props.label}</SelectPrimitive.Label>
+          {selectItems(child.props.children)}
+        </SelectPrimitive.Group>
+      );
+    }
+    if (child.type !== "option") return [];
+    const optionValue = child.props.value ?? child.props.children;
+    const normalizedValue = String(optionValue ?? "") || EMPTY_SELECT_VALUE;
+    return (
+      <SelectPrimitive.Item key={child.key ?? normalizedValue} className="ui-select-item" value={normalizedValue} disabled={child.props.disabled}>
+        <SelectPrimitive.ItemText>{child.props.children}</SelectPrimitive.ItemText>
+        <SelectPrimitive.ItemIndicator className="ui-select-item-indicator"><Check size={15} /></SelectPrimitive.ItemIndicator>
+      </SelectPrimitive.Item>
+    );
+  });
+}
+
+export function Select({ label, value, onChange, children, required, className = "", triggerClassName = "", id, ariaLabel }) {
+  const normalizedValue = String(value ?? "") || EMPTY_SELECT_VALUE;
+  const content = (
+    <SelectPrimitive.Root value={normalizedValue} onValueChange={(nextValue) => onChange(nextValue === EMPTY_SELECT_VALUE ? "" : nextValue)} required={required}>
+      <SelectPrimitive.Trigger id={id} className={`ui-select-trigger${triggerClassName ? ` ${triggerClassName}` : ""}`} aria-label={ariaLabel || (typeof label === "string" ? label : undefined)}>
+        <SelectPrimitive.Value />
+        <SelectPrimitive.Icon className="ui-select-icon"><ChevronDown size={17} /></SelectPrimitive.Icon>
+      </SelectPrimitive.Trigger>
+      <SelectPrimitive.Portal>
+        <SelectPrimitive.Content className="ui-select-content" position="popper" sideOffset={6}>
+          <SelectPrimitive.Viewport className="ui-select-viewport">{selectItems(children)}</SelectPrimitive.Viewport>
+        </SelectPrimitive.Content>
+      </SelectPrimitive.Portal>
+    </SelectPrimitive.Root>
+  );
   return (
-    <label>
-      {label}
-      <select value={value} required={required} onChange={(event) => onChange(event.target.value)}>
-        {children}
-      </select>
+    <label className={`ui-select-field${className ? ` ${className}` : ""}`}>
+      {label && <span className="ui-select-label">{label}</span>}
+      {content}
     </label>
   );
 }
@@ -261,10 +300,12 @@ export function Textarea({ label, value, onChange, rows = 3, required, placehold
  * @param {boolean} props.checked
  * @param {(checked: boolean) => void} props.onChange Recebe o BOOLEANO, não o evento.
  */
-export function Checkbox({ label, checked, onChange }) {
+export function Checkbox({ label, checked, onChange, disabled = false, className = "" }) {
   return (
-    <label className="checkbox-field">
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+    <label className={`checkbox-field${className ? ` ${className}` : ""}`}>
+      <CheckboxPrimitive.Root className="ui-checkbox" checked={checked} disabled={disabled} onCheckedChange={(nextChecked) => onChange(Boolean(nextChecked))}>
+        <CheckboxPrimitive.Indicator><Check size={14} /></CheckboxPrimitive.Indicator>
+      </CheckboxPrimitive.Root>
       <span>{label}</span>
     </label>
   );

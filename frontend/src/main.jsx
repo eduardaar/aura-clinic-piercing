@@ -1,7 +1,8 @@
 import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Bell, Calendar, ChevronDown, Menu, MessageCircle, PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
+import { Bell, Calendar, ChevronDown, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Search, Settings as SettingsIcon } from "lucide-react";
 import "./styles.css";
 import "./styles/topnav.css";
 import "./styles/landing.css";
@@ -163,6 +164,15 @@ function App() {
     setSession(nextSession);
   }
 
+  function handleLogout() {
+    // Revoga também o refresh HttpOnly da sessão ativa. A limpeza local
+    // continua imediata, então o usuário não espera a rede para sair.
+    void apiFetch("/auth/logout", { method: "POST" }).catch(() => {});
+    localStorage.removeItem("aura-session");
+    localStorage.removeItem("aura-admin-authenticated");
+    setSession(null);
+  }
+
   async function openAlerts() {
     setAlertsOpen(true);
     setAlertsLoading(true);
@@ -290,10 +300,6 @@ function App() {
   }
   
   const activePage = canAccessPage(normalizedSession.user, page) ? page : defaultPageForRole(normalizedSession.user);
-  // Informação de plano é do administrador: para os demais papéis o atalho
-  // "Ver planos" seria um botão morto (a navegação cairia no reset de página).
-  const canSeePlan = canAccessPage(normalizedSession.user, "meu-plano");
-
   return (
     <div className={`app-shell ${navCollapsed ? "nav-collapsed" : ""}`}>
       {/* Sidebar apenas renderizado se autenticado */}
@@ -312,14 +318,6 @@ function App() {
           }}
           open={sidebarOpen}
           collapsed={navCollapsed}
-          onLogout={() => {
-            // Revoga também o refresh HttpOnly da sessão ativa. A limpeza local
-            // continua imediata, então o usuário não espera a rede para sair.
-            void apiFetch("/auth/logout", { method: "POST" }).catch(() => {});
-            localStorage.removeItem("aura-session");
-            localStorage.removeItem("aura-admin-authenticated");
-            setSession(null);
-          }}
         />
       )}
       {isAdminAuthenticated && sidebarOpen && (
@@ -360,12 +358,20 @@ function App() {
               {asNumber(alertsData.count) > 0 && <span>{asNumber(alertsData.count)}</span>}
             </button>
             <button type="button" className="topbar-icon-action" onClick={() => navigate("agenda")} aria-label="Abrir agenda" title="Agenda"><Calendar size={20} /></button>
-            <button type="button" className="topbar-icon-action" onClick={() => navigate("communications")} aria-label="Abrir comunicações" title="Comunicações"><MessageCircle size={20} /></button>
-            <button type="button" className="user-chip" onClick={() => navigate("settings")} title={`${normalizedSession.user?.name || "Usuário"} · ${roleLabel(normalizedSession.user?.role)}`}>
-              <span className="user-avatar">{firstName(normalizedSession.user?.name || "U").charAt(0).toUpperCase()}</span>
-              <span className="user-chip-copy"><strong>{normalizedSession.user?.name || "Usuário"}</strong><small>{roleLabel(normalizedSession.user?.role)}</small></span>
-              <ChevronDown size={16} aria-hidden="true" />
-            </button>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger className="user-chip" title={`${normalizedSession.user?.name || "Usuário"} · ${roleLabel(normalizedSession.user?.role)}`}>
+                <span className="user-avatar">{firstName(normalizedSession.user?.name || "U").charAt(0).toUpperCase()}</span>
+                <span className="user-chip-copy"><strong>{normalizedSession.user?.name || "Usuário"}</strong><small>{roleLabel(normalizedSession.user?.role)}</small></span>
+                <ChevronDown size={16} aria-hidden="true" />
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content className="user-menu-popover" align="end" sideOffset={8}>
+                  <DropdownMenu.Item onSelect={() => navigate("settings")}><SettingsIcon size={16} /> Configurações</DropdownMenu.Item>
+                  <DropdownMenu.Separator />
+                  <DropdownMenu.Item className="danger" onSelect={handleLogout}><LogOut size={16} /> Sair</DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
           </div>
         </header>
         {/* Único elemento com rolagem: o menu lateral e o topo ficam fixos. */}
@@ -377,7 +383,6 @@ function App() {
                 ? "Seu período de teste terminou. Escolha um plano para continuar usando todos os recursos."
                 : `Teste grátis: ${trialDays} dia(s) restante(s).`}
             </span>
-            {canSeePlan && <button type="button" onClick={() => navigate("meu-plano")}>Ver planos</button>}
           </div>
         )}
         <Suspense fallback={<Loading />}>

@@ -1,9 +1,9 @@
 import React, { useState } from "react";
-import { ArrowDownToLine, ArrowUpFromLine, BarChart3, Calendar, Gem, Home, Lock, LogOut, MessageCircle, Package, Plug, Settings, ShieldCheck, ShoppingCart, Sparkles, UsersRound, LifeBuoy } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, BarChart3, Calendar, Gem, Home, Lock, Package, Settings, ShieldCheck, ShoppingCart, Sparkles, Table2, UsersRound, LifeBuoy } from "lucide-react";
 import { canAccessPage, planAllowsPage } from "../../lib/permissions";
 import { Modal } from "../common/Crud";
 
-export function Sidebar({ page, role, user, brand, features, trialDays, setPage, open, onLogout }) {
+export function Sidebar({ page, role, user, brand, features, trialDays, setPage, open }) {
   // Marca do tenant logado (com fallback para a marca-mãe "Aura").
   const brandName = brand?.name || "Aura";
   const brandShort = brand?.short || (brand?.name ? "" : "Clinic Piercing");
@@ -21,10 +21,10 @@ export function Sidebar({ page, role, user, brand, features, trialDays, setPage,
       ["client-center", UsersRound, "Clientes"]
     ]],
     ["Comercial", [
-      ["products", Package, "Produtos e estoque"],
+      ["products", Package, "Produtos"],
+      ["inventory", Table2, "Estoque"],
       ["catalog", Gem, "Catálogo"],
-      ["sales", ShoppingCart, "Vendas"],
-      ["communications", MessageCircle, "Comunicações"]
+      ["sales", ShoppingCart, "Vendas"]
     ]],
     ["Gestão", [
       ["receivables", ArrowDownToLine, "Contas a receber"],
@@ -34,7 +34,6 @@ export function Sidebar({ page, role, user, brand, features, trialDays, setPage,
     ["Sistema", [
       ["settings", Settings, "Configurações"],
       ["admin", ShieldCheck, "Acessos"],
-      ["integrations", Plug, "Integrações"],
       ["support", LifeBuoy, "Suporte"]
     ]]
   ]
@@ -95,10 +94,6 @@ export function Sidebar({ page, role, user, brand, features, trialDays, setPage,
             {typeof trialDays === "number" && <span className="trial-badge">{trialDays}d</span>}
           </button>
         )}
-        <button className="logout-button" onClick={onLogout} title="Sair">
-          <LogOut size={18} />
-          <span className="nav-label">Sair</span>
-        </button>
       </div>
     </aside>
     {/* Fora do <aside> de propósito: dentro dele o modal herdaria as cores e o

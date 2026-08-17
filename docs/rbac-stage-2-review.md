@@ -58,7 +58,6 @@ As **89 chamadas restantes** não foram substituídas por permissões genéricas
 | `uploads.js` | upload e arquivo privado (2) | arquivo genérico/privado | permissão por `purpose` | uma guarda única permitiria leitura clínica indevida |
 | `notifications.js` | compra de créditos, edição de templates/regras e histórico (4) | administração de comunicação | `communication.manage/billing` | `communication.send` seria amplo demais |
 | `integrations.js` | Asaas e WhatsApp (9) | segredos e integrações | `integrations.view/edit/test/rotate/delete` | contém credenciais; permanece admin-only |
-| `admin.js` | reset de dados (1) | operação destrutiva | `settings.reset_data` | deve continuar excepcional e com confirmação forte |
 | `options.js` | categorias, precificação e opções estruturais (10) | estrutura de estoque/preço | `inventory.manage_structure`, `settings.pricing` | `inventory.edit` não deve permitir apagar taxonomias |
 | `clients.js` | resgate de fidelidade (1) | aplicar benefício | `loyalty.redeem` | não há domínio de fidelidade no catálogo atual |
 

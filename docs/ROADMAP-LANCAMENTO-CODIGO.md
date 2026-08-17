@@ -125,7 +125,7 @@ incrementais e garantir evolução segura para todos os tenants.
       [rbac-stage-2-review.md](./rbac-stage-2-review.md).
 - [ ] Criar permissões para catálogo, promoções, billing, MFA, profissionais,
       serviços, procedimentos, observabilidade, privacidade, jobs, uploads,
-      suporte, integrações, opções estruturais, fidelidade e reset de dados.
+      suporte, integrações, opções estruturais e fidelidade.
 - [ ] Separar leitura, criação, edição, exclusão, publicação, exportação e ações
       destrutivas.
 - [ ] Adotar negação por padrão para permissão ou papel desconhecido.

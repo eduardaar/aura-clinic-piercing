@@ -3,6 +3,7 @@ import { Instagram, MapPin, MessageCircle, Star } from "lucide-react";
 import { tenantSlug } from "../../lib/api";
 import { normalizeCatalogBuilderPluginConfig } from "./builderPluginRegistry";
 import styles from "./CatalogNativePlugins.module.css";
+import { Checkbox } from "../../components/common/Ui";
 
 const EMPTY_OBJECT = Object.freeze({});
 
@@ -182,10 +183,7 @@ function ConsentPreferences({ purposes, consent, onSave }) {
         <fieldset>
           <legend>Integrações opcionais</legend>
           {purposes.map((purpose) => (
-            <label key={purpose}>
-              <input type="checkbox" checked={Boolean(draft[purpose])} onChange={(event) => setDraft((current) => ({ ...current, [purpose]: event.target.checked }))} />
-              <span>{labels[purpose]}</span>
-            </label>
+            <Checkbox key={purpose} label={labels[purpose]} checked={Boolean(draft[purpose])} onChange={(checked) => setDraft((current) => ({ ...current, [purpose]: checked }))} />
           ))}
         </fieldset>
         <div className={styles.consentActions}>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FlipHorizontal2, Minus, Plus, RotateCcw, RotateCw, Scan, Undo2, X } from "lucide-react";
+import { Select } from "./Ui";
 
 export const DEFAULT_IMAGE_TRANSFORM = {
   fitMode: "contain",
@@ -88,13 +89,11 @@ export function ImageEditor({ file, src, initialTransform, aspectRatio = "16/5",
             <p className="image-editor-help">Arraste sobre a imagem para definir o ponto focal. A original será preservada.</p>
           </div>
           <div className="image-editor-controls">
-            <label>Modo de exibição
-              <select value={transform.fitMode} onChange={(event) => patch({ fitMode: event.target.value, zoom: 1 })}>
+            <Select label="Modo de exibição" value={transform.fitMode} onChange={(value) => patch({ fitMode: value, zoom: 1 })}>
                 <option value="contain">Mostrar imagem inteira</option>
                 <option value="cover">Preencher toda a área</option>
                 <option value="custom">Recorte personalizado</option>
-              </select>
-            </label>
+            </Select>
             <label>Zoom <strong>{Math.round(transform.zoom * 100)}%</strong>
               <input type="range" min=".5" max="3" step=".05" value={transform.zoom} onChange={(event) => patch({ zoom: Number(event.target.value), fitMode: "custom" })} />
             </label>

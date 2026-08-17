@@ -43,6 +43,9 @@
      nunca como HTML. `overflow-wrap` impede que uma URL colada estoure a coluna. */
   .sup-msg p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.5; }
 
+  .support-ticket-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; color: var(--muted); font-size: 13px; }
+  .support-ticket-status strong { color: var(--ink); }
+
   /* Ponto de "tem novidade". Fica ANTES do assunto porque é o que decide se a
      linha precisa ser aberta. */
   .sup-dot {

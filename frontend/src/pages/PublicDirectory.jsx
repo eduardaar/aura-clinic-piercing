@@ -3,6 +3,7 @@ import { MapPin, Search, SlidersHorizontal, X } from "lucide-react";
 import { API, API_ORIGIN } from "../lib/api";
 import { asArray, initials, removeAccents } from "../lib/utils";
 import { PublicTopNav } from "../components/layout/PublicTopNav";
+import { Checkbox, Select } from "../components/common/Ui";
 
 function logoUrl(url) {
   if (!url) return "";
@@ -150,49 +151,29 @@ export function PublicDirectory({ mode = "catalog" }) {
             </div>
 
             {states.length > 0 && (
-              <div className="au-dir-filter">
-                <label htmlFor="au-dir-uf">Estado</label>
-                <select
-                  id="au-dir-uf"
-                  value={state}
-                  onChange={(event) => { setState(event.target.value); setCity(""); }}
-                >
+              <Select className="au-dir-filter" id="au-dir-uf" label="Estado" value={state} onChange={(value) => { setState(value); setCity(""); }}>
                   <option value="">Todos</option>
                   {states.map((uf) => <option key={uf} value={uf}>{uf}</option>)}
-                </select>
-              </div>
+              </Select>
             )}
 
             {cities.length > 0 && (
-              <div className="au-dir-filter">
-                <label htmlFor="au-dir-city">Cidade</label>
-                <select id="au-dir-city" value={city} onChange={(event) => setCity(event.target.value)}>
+              <Select className="au-dir-filter" id="au-dir-city" label="Cidade" value={city} onChange={setCity}>
                   <option value="">Todas</option>
                   {cities.map((name) => <option key={name} value={name}>{name}</option>)}
-                </select>
-              </div>
+              </Select>
             )}
 
             {/* No modo agendamento a lista já está recortada — o filtro seria redundante. */}
             {mode === "catalog" && (
               <div className="au-dir-filter">
-                <label className="au-dir-check">
-                  <input
-                    type="checkbox"
-                    checked={onlyBooking}
-                    onChange={(event) => setOnlyBooking(event.target.checked)}
-                  />
-                  <span>Só com agendamento online</span>
-                </label>
+                <Checkbox className="au-dir-check" label="Só com agendamento online" checked={onlyBooking} onChange={setOnlyBooking} />
               </div>
             )}
 
-            <div className="au-dir-filter">
-              <label htmlFor="au-dir-sort">Ordenar por</label>
-              <select id="au-dir-sort" value={sort} onChange={(event) => setSort(event.target.value)}>
+            <Select className="au-dir-filter" id="au-dir-sort" label="Ordenar por" value={sort} onChange={setSort}>
                 {SORTS.map((option) => <option key={option.code} value={option.code}>{option.label}</option>)}
-              </select>
-            </div>
+            </Select>
 
             {activeFilters > 0 && (
               <button type="button" className="au-dir-clear" onClick={clearFilters}>

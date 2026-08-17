@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
 import { ArrowLeft, Check, CheckCircle2, ChevronRight } from "lucide-react";
 import { API, setTenantSlug } from "../../lib/api";
 import { asArray } from "../../lib/utils";
 import { featureLabel } from "../../lib/planFeatures";
 import { PublicTopNav } from "../../components/layout/PublicTopNav";
 import { PublicFooter } from "../../components/layout/PublicFooter";
+import { Modal } from "../../components/common/Crud";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -48,9 +50,9 @@ export function Signup() {
   const [plans, setPlans] = useState(fallbackPlans);
   const [form, setForm] = useState({
     name: "",
-    admin_name: "",
     admin_email: "",
     admin_password: "",
+    admin_password_confirmation: "",
     plan_code: selectedPlanFromUrl()
   });
   const [error, setError] = useState("");
@@ -58,11 +60,16 @@ export function Signup() {
   const [createdTenant, setCreatedTenant] = useState(null);
   const [legalDocuments, setLegalDocuments] = useState([]);
   const [legalAccepted, setLegalAccepted] = useState({ terms_of_use: false, privacy_policy: false });
+  const [openLegalDocument, setOpenLegalDocument] = useState(null);
   const selectedPlan = useMemo(
     () => plans.find((plan) => plan.code === form.plan_code) || plans.find((plan) => plan.code === "profissional") || plans[0],
     [plans, form.plan_code]
   );
   const slug = useMemo(() => slugPreview(form.name), [form.name]);
+  const legalDocument = useMemo(
+    () => legalDocuments.find((document) => document.key === openLegalDocument) || null,
+    [legalDocuments, openLegalDocument]
+  );
 
   useEffect(() => {
     fetch(`${API}/plans`)
@@ -89,6 +96,7 @@ export function Signup() {
       if (!form.name.trim()) return setError("Informe o nome da sua clínica ou studio.");
       if (!form.admin_email.trim()) return setError("Informe um e-mail para acesso.");
       if (form.admin_password.length < 8) return setError("Crie uma senha com no mínimo 8 caracteres.");
+      if (form.admin_password !== form.admin_password_confirmation) return setError("As senhas não conferem.");
       if (slug.length < 3) return setError("Use um nome com pelo menos 3 letras para gerar o endereço da loja.");
     }
     setStep((current) => Math.min(current + 1, 2));
@@ -97,9 +105,9 @@ export function Signup() {
   async function submit(event) {
     event.preventDefault();
     setError("");
-    if (!form.name.trim() || !form.admin_email.trim() || form.admin_password.length < 8) {
+    if (!form.name.trim() || !form.admin_email.trim() || form.admin_password.length < 8 || form.admin_password !== form.admin_password_confirmation) {
       setStep(1);
-      return setError("Preencha nome da clínica, e-mail e senha (mín. 8 caracteres).");
+      return setError("Preencha nome da clínica, e-mail e as duas senhas iguais (mín. 8 caracteres).");
     }
     const terms = legalDocuments.find((document) => document.key === "terms_of_use");
     const privacy = legalDocuments.find((document) => document.key === "privacy_policy");
@@ -114,7 +122,6 @@ export function Signup() {
         // slug é OMITIDO de propósito: o backend deriva do nome e garante unicidade.
         body: JSON.stringify({
           name: form.name.trim(),
-          admin_name: form.admin_name.trim() || undefined,
           admin_email: form.admin_email.trim(),
           admin_password: form.admin_password,
           plan_code: form.plan_code,
@@ -135,7 +142,7 @@ export function Signup() {
         localStorage.setItem("aura-session", JSON.stringify(session));
         localStorage.setItem("aura-last-email", form.admin_email.trim());
         localStorage.setItem("aura-admin-authenticated", "true");
-        window.location.href = "/";
+        window.location.href = "/app/onboarding";
         return;
       }
       // Fallback (backend antigo sem token): mostra o código e leva ao login.
@@ -225,17 +232,6 @@ export function Signup() {
                 </div>
 
                 <div className="au-a-field">
-                  <label htmlFor="au-a-admin-name">Seu nome <span className="au-a-optional">(opcional)</span></label>
-                  <input
-                    id="au-a-admin-name"
-                    className="au-a-input"
-                    value={form.admin_name}
-                    onChange={(event) => setForm({ ...form, admin_name: event.target.value })}
-                    placeholder="ex.: Ana Souza"
-                  />
-                </div>
-
-                <div className="au-a-field">
                   <label htmlFor="au-a-admin-email">E-mail de acesso</label>
                   <input
                     id="au-a-admin-email"
@@ -261,13 +257,32 @@ export function Signup() {
                     placeholder="Mínimo 8 caracteres"
                   />
                 </div>
+
+                <div className="au-a-field">
+                  <label htmlFor="au-a-admin-password-confirmation">Confirme a senha</label>
+                  <input
+                    id="au-a-admin-password-confirmation"
+                    className="au-a-input"
+                    type="password"
+                    minLength={8}
+                    required
+                    value={form.admin_password_confirmation}
+                    onChange={(event) => setForm({ ...form, admin_password_confirmation: event.target.value })}
+                    placeholder="Digite a mesma senha novamente"
+                  />
+                </div>
               </>
             )}
 
             {step === 2 && (
               <>
                 <div className="au-a-head">
-                  <h1 className="au-a-title">Escolha seu plano</h1>
+                  <div className="au-a-plan-heading">
+                    <button type="button" className="au-a-plan-back" aria-label="Voltar para os dados da clínica" title="Voltar" onClick={() => setStep(1)}>
+                      <ArrowLeft size={18} aria-hidden="true" />
+                    </button>
+                    <h1 className="au-a-title">Escolha seu plano</h1>
+                  </div>
                   <p className="au-a-subtitle">Sem cobrança agora. Você pode trocar quando quiser.</p>
                 </div>
 
@@ -304,16 +319,23 @@ export function Signup() {
                   <span><strong>{form.name}</strong> · /{slug}</span>
                   <span><strong>{selectedPlan?.name}</strong> · 7 dias grátis · depois {currency.format(Number(selectedPlan?.price_cents || 0) / 100)}/mês</span>
                 </p>
-                <p className="au-a-plan-roles">Papéis disponíveis conforme o limite do plano: administrador, piercer, recepção e financeiro. Dados nunca são apagados ao trocar de plano.</p>
                 <div className="au-a-legal" aria-label="Aceites obrigatórios">
-                  <label>
-                    <input type="checkbox" checked={legalAccepted.terms_of_use} onChange={(event) => setLegalAccepted((current) => ({ ...current, terms_of_use: event.target.checked }))} />
-                    <span>Li e aceito os <a href="/termos-de-uso" target="_blank" rel="noreferrer">Termos de Uso</a>.</span>
+                  <CheckboxPrimitive.Root
+                    id="au-a-legal-acceptance"
+                    className="au-a-legal-checkbox"
+                    checked={legalAccepted.terms_of_use && legalAccepted.privacy_policy}
+                    onCheckedChange={(checked) => setLegalAccepted({ terms_of_use: Boolean(checked), privacy_policy: Boolean(checked) })}
+                  >
+                    <CheckboxPrimitive.Indicator><Check size={13} strokeWidth={3} /></CheckboxPrimitive.Indicator>
+                  </CheckboxPrimitive.Root>
+                  <label htmlFor="au-a-legal-acceptance">
+                    Li e aceito os <button type="button" className="au-a-legal-link" onClick={() => setOpenLegalDocument("terms_of_use")}>Termos de Uso</button> e a <button type="button" className="au-a-legal-link" onClick={() => setOpenLegalDocument("privacy_policy")}>Política de Privacidade</button>.
                   </label>
-                  <label>
-                    <input type="checkbox" checked={legalAccepted.privacy_policy} onChange={(event) => setLegalAccepted((current) => ({ ...current, privacy_policy: event.target.checked }))} />
-                    <span>Li e aceito a <a href="/politica-de-privacidade" target="_blank" rel="noreferrer">Política de Privacidade</a>.</span>
-                  </label>
+                </div>
+                <div className="au-a-actions au-a-plan-submit">
+                  <button key="signup-submit" type="submit" className="au-a-submit" disabled={loading}>
+                    {loading ? "Criando…" : "Criar conta"} <ChevronRight size={18} aria-hidden="true" />
+                  </button>
                 </div>
               </>
             )}
@@ -321,11 +343,6 @@ export function Signup() {
             {error && <p className="au-a-error" role="alert">{error}</p>}
 
             <div className="au-a-actions">
-              {step > 1 && (
-                <button type="button" className="au-a-ghost" onClick={() => setStep((current) => current - 1)}>
-                  <ArrowLeft size={16} aria-hidden="true" /> Voltar
-                </button>
-              )}
               {/* As `key` distintas são obrigatórias, não cosméticas: sem elas o React
                   reaproveita o MESMO nó DOM entre os dois ramos do ternário e só troca o
                   atributo type de "button" para "submit". Como isso acontece durante o
@@ -336,11 +353,7 @@ export function Signup() {
                 <button key="signup-next" type="button" className="au-a-submit" onClick={next}>
                   Continuar <ChevronRight size={18} aria-hidden="true" />
                 </button>
-              ) : (
-                <button key="signup-submit" type="submit" className="au-a-submit" disabled={loading}>
-                  {loading ? "Criando…" : "Criar conta"} <ChevronRight size={18} aria-hidden="true" />
-                </button>
-              )}
+              ) : null}
             </div>
           </form>
 
@@ -349,6 +362,17 @@ export function Signup() {
         </section>
       </main>
       <PublicFooter />
+      <Modal
+        open={Boolean(openLegalDocument)}
+        title={legalDocument?.title || "Documento legal"}
+        subtitle={legalDocument?.version ? `Versão ${legalDocument.version}` : undefined}
+        size="lg"
+        onClose={() => setOpenLegalDocument(null)}
+      >
+        <div className="au-a-legal-modal-content">
+          {String(legalDocument?.content || "Este documento está sendo carregado. Tente novamente em instantes.").split(/\n\s*\n/).filter(Boolean).map((paragraph, index) => <p key={index}>{paragraph}</p>)}
+        </div>
+      </Modal>
     </div>
   );
 }

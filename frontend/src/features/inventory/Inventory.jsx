@@ -1,6 +1,6 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useState } from "react";
-import { ArrowLeft, CheckCircle2, Gem, ImageIcon, LayoutGrid, ListFilter, Pencil, Search, SlidersHorizontal, Sparkles, Table2, Trash2, X } from "lucide-react";
+import { CheckCircle2, Gem, ImageIcon, LayoutGrid, ListFilter, Pencil, Search, SlidersHorizontal, Table2, Trash2, X } from "lucide-react";
 import { Button, Input, Metric, Select, StatusBadge } from "../../components/common/Ui";
 import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
@@ -96,6 +96,7 @@ export function JewelryCards({ items, onOpen, onEdit, onMovement, onArchive }) {
 }
 
 export function Inventory2({ initialTab = "produtos" }) {
+  const inventoryWorkspace = ["unidades", "inteligencia"].includes(initialTab);
   const [view, setView] = useState("table");
   const [sectionTab, setSectionTab] = useState(initialTab);
   const [inventoryMode] = useState("internal");
@@ -105,10 +106,7 @@ export function Inventory2({ initialTab = "produtos" }) {
   const [statusTab, setStatusTab] = useState("todos");
   const [badgeTab, setBadgeTab] = useState("todos");
   const [showEditor, setShowEditor] = useState(false);
-  const [showManagement, setShowManagement] = useState(false);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-  const [showVisualSearch, setShowVisualSearch] = useState(false);
-  const [pricingSaving, setPricingSaving] = useState(false);
   const { data: options } = useFetch("/options");
   const { data: intelligence } = useFetch("/inventory/intelligence?days=90");
   const { data: inventorySuggestions } = useFetch("/inventory/suggestions");
@@ -161,16 +159,6 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
   asArray(item?.variants)
 );
   const variantOptions = (field) => [...new Set(allVariants.map((variant) => variant[field]).filter(Boolean))].sort();
-  async function savePricingSettings(patch) {
-    setPricingSaving(true);
-    const response = await apiFetch("/pricing-settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...pricingSettings, ...patch })
-    });
-    setPricingSaving(false);
-    if (response.ok) refreshOptions();
-  }
   const filteredItems = items.filter((item) => {
     if (inventoryMode === "virtual") {
       if (badgeTab === "todos") return true;
@@ -198,14 +186,15 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
     invested: allJewelry.reduce((sum, item) => sum + Number(item.cost_value || 0) * Number(item.quantity || 0), 0),
     potential: allJewelry.reduce((sum, item) => sum + Number(item.sale_value || 0) * Number(item.quantity || 0), 0)
   };
-  const topValueItems =[...allJewelry].sort((a, b) => (Number(b.sale_value || 0) * Number(b.quantity || 0)) - (Number(a.sale_value || 0) * Number(a.quantity || 0))).slice(0, 8);
-  const allTabs = [
-    { id: "produtos", label: "Produtos", icon: LayoutGrid },
-    { id: "categorias", label: "Categorias", icon: ListFilter },
-    { id: "unidades", label: "Estoque", icon: Table2 },
-    { id: "abc", label: "Curva ABC", icon: Sparkles },
-    { id: "inteligencia", label: "Inteligência", icon: SlidersHorizontal }
-  ];
+  const allTabs = inventoryWorkspace
+    ? [
+      { id: "unidades", label: "Estoque", icon: Table2 },
+      { id: "inteligencia", label: "Inteligência", icon: SlidersHorizontal }
+    ]
+    : [
+      { id: "produtos", label: "Produtos", icon: LayoutGrid },
+      { id: "categorias", label: "Categorias", icon: ListFilter }
+    ];
   useEffect(() => setSectionTab(initialTab), [initialTab]);
 
   useEffect(() => {
@@ -304,12 +293,16 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
     <section className="inventory-studio">
       <div className="inventory-main">
         <div className="panel products-crud-header">
-          <CrudHeader title="Produtos e estoque" subtitle="Cadastre joias, controle quantidades, preços, categorias e reposição em um só lugar." actionLabel="Novo produto" onAction={openNewProduct} />
-          <div className="product-shortcuts">
-            <Button variant="secondary" onClick={() => setSectionTab("categorias")}><ListFilter size={16} /> Gerenciar categorias</Button>
-            <Button variant="secondary" onClick={() => setShowVisualSearch(true)}><ImageIcon size={16} /> Buscar por foto</Button>
-            <Button variant="secondary" onClick={printLabels}><Table2 size={16} /> Imprimir etiquetas</Button>
-          </div>
+          {inventoryWorkspace ? (
+            <CrudHeader title="Estoque" subtitle="Acompanhe o saldo das peças e os indicadores de reposição." />
+          ) : (
+            <>
+              <CrudHeader title="Produtos" subtitle="Cadastre joias, preços e categorias do catálogo." actionLabel="Novo produto" onAction={openNewProduct} />
+              <div className="product-shortcuts">
+                <Button variant="secondary" onClick={printLabels}><Table2 size={16} /> Imprimir etiquetas</Button>
+              </div>
+            </>
+          )}
         </div>
 
         <nav className="inventory-module-tabs" aria-label="Áreas de produtos e estoque">
@@ -352,20 +345,6 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
                   </button>
                 ))}
               </div>
-
-              <section className="panel pricing-settings-panel">
-                <div>
-                  <strong>Precificação padrão</strong>
-                  <small>Usada como base para novas joias e variações. O preço final ainda pode ser ajustado manualmente.</small>
-                </div>
-                <Select label="Multiplicador padrão" value={pricingSettings.default_price_multiplier || 3} onChange={(value) => savePricingSettings({ default_price_multiplier: Number(value) })}>
-                  {PRICE_MULTIPLIER_OPTIONS.map((option) => <option key={option} value={option}>{option}x</option>)}
-                </Select>
-                <Select label="Arredondamento" value={pricingSettings.price_rounding_mode || "exact"} onChange={(value) => savePricingSettings({ price_rounding_mode: value })}>
-                  {PRICE_ROUNDING_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                </Select>
-                {pricingSaving && <span className="form-success">Salvando...</span>}
-              </section>
 
               <div className="inventory-filter-row simplified">
                 <label className="search-field">
@@ -439,32 +418,10 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
           )}
 
           {sectionTab === "categorias" && (
-            <div className="inventory-section-card">
-              <div className="panel-heading">
-                <div>
-                  <h2>Categorias e cadastros auxiliares</h2>
-                  <span>Organize categorias, tamanhos, espessuras e profissionais sem sair desta página.</span>
-                </div>
-                <div className="module-heading-actions">
-                  <Button variant="secondary" onClick={() => setSectionTab("produtos")}><ArrowLeft size={16} /> Voltar para produtos</Button>
-                  <Button variant="secondary" onClick={() => setShowManagement((value) => !value)}>{showManagement ? "Ocultar cadastros" : "Abrir cadastros"}</Button>
-                </div>
-              </div>
-              <div className="inventory-summary-grid compact">
-                <Metric label="Categorias" value={String(categoryManagement.length)} />
-                <Metric label="Tamanhos" value={String(inventoryOptions.size?.length || 0)} />
-                <Metric label="Espessuras" value={String(inventoryOptions.thickness?.length || 0)} />
-                <Metric label="Profissionais" value={String(asArray(safeOptions.professionals).length)} />
-              </div>
-              {showManagement && (
-                <InventoryManagement
-                  options={inventoryOptions}
-                  categories={categoryManagement}
-                  professionals={asArray(safeOptions.professionals)}
-                  onChanged={() => { refreshOptions(); refreshJewelry(); }}
-                />
-              )}
-            </div>
+            <CategoryManager
+              categories={categoryManagement}
+              onChanged={() => { refreshOptions(); refreshJewelry(); }}
+            />
           )}
 
           {sectionTab === "unidades" && (
@@ -504,28 +461,6 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
             </div>
           )}
 
-          {sectionTab === "abc" && (
-            <div className="inventory-section-card">
-              <div className="panel-heading">
-                <div>
-                  <h2>Curva ABC</h2>
-                  <span>Peças com maior valor total em estoque.</span>
-                </div>
-              </div>
-              <div className="inventory-abc-list">
-                {topValueItems.map((item, index) => (
-                  <div key={item.id}>
-                    <span>{String(index + 1).padStart(2, "0")}</span>
-                    <div>
-                      <strong>{item.name}</strong>
-                      <small>{currency.format(Number(item.sale_value || 0) * Number(item.quantity || 0))}</small>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           {sectionTab === "inteligencia" && (
             <InventoryIntelligence
               data={intelligence}
@@ -544,7 +479,6 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
         </div>
       </div>
       {movementTarget && <StockMovementModal item={movementTarget} initialType={movementTarget.movement_type} onClose={() => setMovementTarget(null)} onSave={handleMovementSave} />}
-      {showVisualSearch && <VisualSearchModal onClose={() => setShowVisualSearch(false)} onOpenProduct={(item) => { setShowVisualSearch(false); openProduct(item); }} />}
       <Modal
         open={showEditor}
         size="lg"
@@ -1620,8 +1554,13 @@ export function CategoryManager({ categories = [], onChanged }) {
   }
 
   return (
-    <article className="manager-card category-manager-card">
-      <CrudHeader title="Categorias" actionLabel="Nova categoria" onAction={openNew} />
+    <section className="panel category-manager-panel">
+      <CrudHeader
+        title="Categorias"
+        subtitle="Organize os tipos de joia usados no cadastro e nos filtros de produtos."
+        actionLabel="Nova categoria"
+        onAction={openNew}
+      />
       {error && !modalOpen && !deleteTarget && <span className="form-error">{error}</span>}
       <CategoryManagementTable
         rows={rows}
@@ -1684,7 +1623,7 @@ export function CategoryManager({ categories = [], onChanged }) {
           </div>
         )}
       </Modal>
-    </article>
+    </section>
   );
 }
 

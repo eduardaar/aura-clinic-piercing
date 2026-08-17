@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Sparkles } from "lucide-react";
 import { apiFetch } from "../../lib/api";
 import { asArray } from "../../lib/utils";
@@ -26,6 +26,10 @@ const featureLabels = {
 export function MyPlan({ subscription, plans, onChanged }) {
   const [saving, setSaving] = useState("");
   const [error, setError] = useState("");
+  const [billing, setBilling] = useState(null);
+  const [billingForm, setBillingForm] = useState({ tax_id: "", email: "", phone: "" });
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [checkingOut, setCheckingOut] = useState("");
   const list = asArray(plans);
   const currentCode = subscription?.plan_code || "";
   const daysLeft = Number(subscription?.days_left ?? 0);
@@ -34,6 +38,25 @@ export function MyPlan({ subscription, plans, onChanged }) {
   const isInactive = status && status !== "active" && !(isTrial && daysLeft > 0);
 
   const currentPlan = useMemo(() => list.find((p) => p.code === currentCode), [list, currentCode]);
+  const billingProfile = billing?.billing_profile;
+  const checkoutAvailable = Boolean(billing?.gateway_enabled && billingProfile?.complete && !billing?.subscription?.asaas_subscription_id);
+
+  useEffect(() => {
+    let active = true;
+    apiFetch("/billing/subscription")
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((payload) => {
+        if (!active) return;
+        setBilling(payload);
+        setBillingForm((current) => ({
+          ...current,
+          email: payload?.billing_profile?.email || "",
+          phone: payload?.billing_profile?.phone || ""
+        }));
+      })
+      .catch(() => { if (active) setBilling(null); });
+    return () => { active = false; };
+  }, []);
 
   async function changePlan(code) {
     if (code === currentCode || saving) return;
@@ -54,6 +77,52 @@ export function MyPlan({ subscription, plans, onChanged }) {
     }
   }
 
+  async function saveBillingProfile(event) {
+    event.preventDefault();
+    setError("");
+    setSavingProfile(true);
+    try {
+      const response = await apiFetch("/billing/profile", {
+        method: "PUT",
+        body: JSON.stringify(billingForm)
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) return setError(payload.error || "Não foi possível salvar os dados de cobrança.");
+      setBilling((current) => current ? { ...current, billing_profile: payload } : current);
+    } catch {
+      setError("Não foi possível conectar ao servidor.");
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
+  async function startCheckout(planCode) {
+    if (checkingOut) return;
+    if (!billing?.gateway_enabled) return setError("Pagamento online ainda não está configurado.");
+    if (!billingProfile?.complete) return setError("Informe o CPF ou CNPJ antes de contratar.");
+    setCheckingOut(planCode);
+    setError("");
+    try {
+      const idempotencyKey = globalThis.crypto?.randomUUID?.() || `subscription-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const response = await apiFetch("/billing/checkout", {
+        method: "POST",
+        headers: { "Idempotency-Key": idempotencyKey },
+        body: JSON.stringify({ plan_code: planCode, billing_type: "UNDEFINED" })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) return setError(payload.error || "Não foi possível iniciar a contratação.");
+      if (payload.invoice_url) {
+        window.location.assign(payload.invoice_url);
+        return;
+      }
+      setError("Assinatura criada. Aguarde alguns instantes e consulte a primeira fatura em Meu plano.");
+    } catch {
+      setError("Não foi possível conectar ao servidor.");
+    } finally {
+      setCheckingOut("");
+    }
+  }
+
   return (
     <div className="stack myplan">
       <section className="panel">
@@ -70,6 +139,33 @@ export function MyPlan({ subscription, plans, onChanged }) {
         </div>
         {error && <span className="form-error">{error}</span>}
       </section>
+
+      {billing && !billing.gateway_enabled && (
+        <section className="panel myplan-billing-notice">
+          <strong>Pagamento online indisponível</strong>
+          <p>A cobrança automática ainda não está configurada. Fale com a Monitence para concluir a contratação.</p>
+        </section>
+      )}
+
+      {billing?.gateway_enabled && !billingProfile?.complete && (
+        <section className="panel myplan-billing-profile">
+          <div className="panel-heading">
+            <div><h2>Dados para pagamento</h2><span>Informe o CPF ou CNPJ do responsável para continuar no checkout seguro.</span></div>
+          </div>
+          <form className="form-grid" onSubmit={saveBillingProfile}>
+            <label>CPF ou CNPJ
+              <input required value={billingForm.tax_id} onChange={(event) => setBillingForm((current) => ({ ...current, tax_id: event.target.value }))} placeholder="Somente números" inputMode="numeric" />
+            </label>
+            <label>E-mail para cobrança
+              <input type="email" value={billingForm.email} onChange={(event) => setBillingForm((current) => ({ ...current, email: event.target.value }))} placeholder="financeiro@clinica.com" />
+            </label>
+            <label>Telefone
+              <input value={billingForm.phone} onChange={(event) => setBillingForm((current) => ({ ...current, phone: event.target.value }))} placeholder="(00) 00000-0000" inputMode="tel" />
+            </label>
+            <div className="myplan-billing-action"><button className="primary-button" type="submit" disabled={savingProfile}>{savingProfile ? "Salvando…" : "Continuar para pagamento"}</button></div>
+          </form>
+        </section>
+      )}
 
       <section className="panel">
         <div className="panel-heading">
@@ -88,14 +184,20 @@ export function MyPlan({ subscription, plans, onChanged }) {
                 <ul>{asArray(plan.features).slice(0, 8).map((feature) => (
                   <li key={feature}><CheckCircle2 size={13} /> {featureLabels[feature] || feature}</li>
                 ))}</ul>
-                <button
-                  type="button"
-                  className={active ? "secondary-button" : "primary-button"}
-                  disabled={active || saving === plan.code}
-                  onClick={() => changePlan(plan.code)}
-                >
-                  {active ? "Plano atual" : saving === plan.code ? "Trocando…" : "Escolher"}
-                </button>
+                {checkoutAvailable ? (
+                  <button type="button" className="primary-button" disabled={checkingOut === plan.code} onClick={() => startCheckout(plan.code)}>
+                    {checkingOut === plan.code ? "Abrindo pagamento…" : active ? "Contratar agora" : "Contratar este plano"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className={active ? "secondary-button" : "primary-button"}
+                    disabled={active || saving === plan.code}
+                    onClick={() => changePlan(plan.code)}
+                  >
+                    {active ? "Plano atual" : saving === plan.code ? "Trocando…" : "Escolher"}
+                  </button>
+                )}
               </div>
             );
           })}

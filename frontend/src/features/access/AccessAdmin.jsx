@@ -1,6 +1,6 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useState } from "react";
-import { Button, Input, Select, StatusBadge } from "../../components/common/Ui";
+import { Button, Checkbox, Input, Select, StatusBadge } from "../../components/common/Ui";
 import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
@@ -18,10 +18,6 @@ export function AccessAdmin() {
   const [editing, setEditing] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [error, setError] = useState("");
-  const [resetConfirmation, setResetConfirmation] = useState("");
-  const [resetType, setResetType] = useState("operational");
-  const [resetMessage, setResetMessage] = useState("");
-  const [resetLoading, setResetLoading] = useState(false);
   const [deleting, setDeleting] = useState(null);
   const [permissionCatalog, setPermissionCatalog] = useState([]);
   const [rolePermissions, setRolePermissions] = useState([]);
@@ -95,24 +91,6 @@ export function AccessAdmin() {
     refresh();
   }
 
-  async function resetClinicData() {
-    setResetLoading(true);
-    setResetMessage("");
-    const response = await apiFetch("/admin/reset-clinic-data", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ confirmation: resetConfirmation, reset_type: resetType })
-    });
-    const payload = await response.json().catch(() => ({}));
-    setResetLoading(false);
-    if (!response.ok) {
-      setResetMessage(payload.error || "Não foi possível limpar os dados.");
-      return;
-    }
-    setResetConfirmation("");
-    setResetMessage(payload.message || "Reset concluído com segurança.");
-  }
-
   return (
     <section className="stack">
       <div className="panel">
@@ -181,7 +159,7 @@ export function AccessAdmin() {
               {permissionCatalog.map((permission) => {
                 const custom = Object.hasOwn(permissionOverrides, permission);
                 const effective = custom ? permissionOverrides[permission] : rolePermissions.includes("*") || rolePermissions.includes(permission);
-                return <label key={permission} className="checkbox-row"><input type="checkbox" checked={effective} disabled={form.role === "admin"} onChange={(event) => setPermissionOverrides({ ...permissionOverrides, [permission]: event.target.checked })} /><span>{permission} <small>{custom ? (permissionOverrides[permission] ? "· personalizada" : "· bloqueada") : "· padrão do cargo"}</small></span></label>;
+                return <Checkbox key={permission} className="checkbox-row" checked={effective} disabled={form.role === "admin"} onChange={(checked) => setPermissionOverrides({ ...permissionOverrides, [permission]: checked })} label={<span>{permission} <small>{custom ? (permissionOverrides[permission] ? "· personalizada" : "· bloqueada") : "· padrão do cargo"}</small></span>} />;
               })}
             </div>
             <Button type="button" variant="secondary" onClick={() => setPermissionOverrides({})}>Restaurar permissões padrão do cargo</Button>
@@ -191,35 +169,6 @@ export function AccessAdmin() {
           {error && <span className="form-error">{error}</span>}
         </form>
       </Modal>
-
-      <article className="panel admin-reset-panel">
-        <div>
-          <span className="eyebrow">Zona de perigo</span>
-          <h2>Resetar dados da clínica</h2>
-          <p>Use apenas quando precisar limpar dados reais de operação. A ação não pode ser desfeita e exige confirmação digitada.</p>
-        </div>
-        <div className="admin-reset-action">
-          <Select label="Tipo de reset" value={resetType} onChange={setResetType}>
-            <option value="operational">Reset operacional</option>
-            <option value="complete">Reset completo da clínica</option>
-          </Select>
-          <p className="danger-zone-copy">
-            {resetType === "complete"
-              ? "Apaga clientes, agenda, vendas, financeiro, produtos, serviços, profissionais e configurações operacionais. Preserva a clínica e a conta administradora."
-              : "Apaga agendamentos, vendas, ordens de serviço, financeiro, prontuários, termos, pós-atendimento e histórico operacional. Preserva cadastros estruturais."}
-          </p>
-          <Input label="Digite RESETAR DADOS para confirmar" value={resetConfirmation} onChange={setResetConfirmation} />
-          <Button
-            type="button"
-            variant="danger"
-            disabled={resetConfirmation !== "RESETAR DADOS" || resetLoading}
-            onClick={resetClinicData}
-          >
-            {resetLoading ? "Resetando..." : "Confirmar reset"}
-          </Button>
-        </div>
-        {resetMessage && <span className="admin-reset-message">{resetMessage}</span>}
-      </article>
 
       <ConfirmDeleteModal
         open={!!deleting}

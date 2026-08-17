@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Check, Palette, UserRound } from "lucide-react";
-import { Button, Input } from "../../components/common/Ui";
-import { apiFetch } from "../../lib/api";
+import { Button, Checkbox, Input, Select } from "../../components/common/Ui";
+import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
+import { asObject } from "../../lib/utils";
+import { PRICE_MULTIPLIER_OPTIONS, PRICE_ROUNDING_OPTIONS } from "../../lib/defaultForms";
 import { UI_THEMES } from "../../lib/uiTheme";
 import { roleLabel } from "../shared/helpers";
 
@@ -11,16 +13,12 @@ export function Settings({ user, theme, onThemeChange, navCollapsed, onNavCollap
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const [mfa, setMfa] = useState({ loading: user?.role === "admin", enabled: false, secret: "", code: "", setupPassword: "" });
+  const [pricingSaving, setPricingSaving] = useState(false);
+  const { data: options } = useFetch(user?.role === "admin" ? "/options" : null);
+  const invalidate = useApiInvalidate();
+  const pricingSettings = asObject(asObject(options).pricingSettings);
 
   useEffect(() => setProfile({ name: user?.name || "", email: user?.email || "" }), [user?.name, user?.email]);
-  useEffect(() => {
-    if (user?.role !== "admin") return setMfa((current) => ({ ...current, loading: false }));
-    apiFetch("/account/mfa")
-      .then((response) => response.json().then((payload) => ({ ok: response.ok, payload })))
-      .then(({ ok, payload }) => setMfa((current) => ({ ...current, loading: false, enabled: ok && Boolean(payload.enabled) })))
-      .catch(() => setMfa((current) => ({ ...current, loading: false })));
-  }, [user?.role]);
 
   async function saveProfile(event) {
     event.preventDefault();
@@ -52,22 +50,18 @@ export function Settings({ user, theme, onThemeChange, navCollapsed, onNavCollap
     }
   }
 
-  async function setupMfa() {
-    setError(""); setMessage("");
-    const response = await apiFetch("/account/mfa/setup", { method: "POST", body: JSON.stringify({ current_password: mfa.setupPassword }) });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) return setError(payload.error || "Não foi possível iniciar a configuração do autenticador.");
-    setMfa((current) => ({ ...current, secret: payload.secret, code: "" }));
-    setMessage("Adicione a chave no seu aplicativo autenticador e confirme o código gerado.");
-  }
-
-  async function verifyMfa() {
-    setError(""); setMessage("");
-    const response = await apiFetch("/account/mfa/verify", { method: "POST", body: JSON.stringify({ code: mfa.code }) });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) return setError(payload.error || "Código inválido.");
-    setMfa((current) => ({ ...current, enabled: true, secret: "", code: "", setupPassword: "" }));
-    setMessage("Autenticação em duas etapas ativada.");
+  async function savePricingSettings(patch) {
+    setPricingSaving(true);
+    try {
+      await apiFetch("/pricing-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...pricingSettings, ...patch })
+      });
+      invalidate("/options");
+    } finally {
+      setPricingSaving(false);
+    }
   }
 
   return (
@@ -89,8 +83,25 @@ export function Settings({ user, theme, onThemeChange, navCollapsed, onNavCollap
             </button>;
           })}
         </div>
-        <label className="settings-toggle"><input type="checkbox" checked={navCollapsed} onChange={(event) => onNavCollapsedChange(event.target.checked)} /> <span><strong>Menu lateral compacto</strong><small>Deixa mais espaço livre para tabelas e relatórios.</small></span></label>
+        <Checkbox className="settings-toggle" checked={navCollapsed} onChange={onNavCollapsedChange} label={<span><strong>Menu lateral compacto</strong><small>Deixa mais espaço livre para tabelas e relatórios.</small></span>} />
       </div>
+
+      {user?.role === "admin" && (
+        <div className="panel pricing-settings-panel">
+          <div className="panel-heading">
+            <div><h2>Parâmetros de precificação</h2><span>Defina a regra sugerida para novas joias e variações. Cada produto ainda pode ter seu preço ajustado manualmente.</span></div>
+          </div>
+          <div className="settings-form pricing-settings-form">
+            <Select label="Multiplicador padrão" value={pricingSettings.default_price_multiplier || 3} onChange={(value) => savePricingSettings({ default_price_multiplier: Number(value) })}>
+              {PRICE_MULTIPLIER_OPTIONS.map((option) => <option key={option} value={option}>{option}x</option>)}
+            </Select>
+            <Select label="Arredondamento" value={pricingSettings.price_rounding_mode || "exact"} onChange={(value) => savePricingSettings({ price_rounding_mode: value })}>
+              {PRICE_ROUNDING_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </Select>
+          </div>
+          {pricingSaving && <p className="form-success">Salvando...</p>}
+        </div>
+      )}
 
       <div className="panel settings-account">
         <div className="panel-heading"><div><h2>Sua conta</h2><span>Atualize seus dados de acesso. Seu nível atual é {roleLabel(user?.role)}.</span></div><UserRound size={22} /></div>
@@ -107,23 +118,6 @@ export function Settings({ user, theme, onThemeChange, navCollapsed, onNavCollap
         </form>
       </div>
 
-      {user?.role === "admin" && (
-        <div className="panel settings-account">
-          <div className="panel-heading"><div><h2>Autenticação em duas etapas</h2><span>Proteja o acesso administrativo com um aplicativo autenticador.</span></div></div>
-          {mfa.loading ? <p>Carregando proteção da conta…</p> : mfa.enabled ? <p className="form-success">Autenticador ativo. O código será exigido nos próximos logins.</p> : (
-            <div className="settings-form">
-              <Input label="Confirme sua senha atual" type="password" value={mfa.setupPassword} onChange={(value) => setMfa({ ...mfa, setupPassword: value })} />
-              <div className="settings-form-actions"><Button type="button" onClick={setupMfa} disabled={!mfa.setupPassword}>Gerar chave do autenticador</Button></div>
-              {mfa.secret && <>
-                <p>Adicione esta chave no Google Authenticator, 1Password ou app equivalente:</p>
-                <code style={{ overflowWrap: "anywhere" }}>{mfa.secret}</code>
-                <Input label="Código de 6 dígitos" value={mfa.code} onChange={(value) => setMfa({ ...mfa, code: value.replace(/\D/g, "").slice(0, 6) })} />
-                <div className="settings-form-actions"><Button type="button" onClick={verifyMfa} disabled={mfa.code.length !== 6}>Ativar autenticação em duas etapas</Button></div>
-              </>}
-            </div>
-          )}
-        </div>
-      )}
     </section>
   );
 }

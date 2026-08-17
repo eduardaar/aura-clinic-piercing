@@ -16,6 +16,7 @@
 //       base inteira só para exibir 20 linhas.
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Filter, Search, X } from "lucide-react";
+import { Select } from "./Ui";
 
 const PAGE_SIZES = [10, 25, 50, 100];
 
@@ -359,29 +360,32 @@ export function DataView({
       {filters.length > 0 && filtersOpen && (
         <div className="dataview-filters">
           {filters.map((filter) => (
-            <label key={filter.key} className="dataview-filter">
-              <span>{filter.label}</span>
-              {filter.type === "select" ? (
-                <select
-                  value={filterValues[filter.key] ?? ""}
-                  onChange={(event) => setFilters({ ...filterValues, [filter.key]: event.target.value })}
-                >
+            filter.type === "select" ? (
+              <Select
+                key={filter.key}
+                className="dataview-filter"
+                label={filter.label}
+                value={filterValues[filter.key] ?? ""}
+                onChange={(value) => setFilters({ ...filterValues, [filter.key]: value })}
+              >
                   <option value="">Todos</option>
                   {(filter.options || []).map((option) => {
                     const value = typeof option === "string" ? option : option.value;
                     const label = typeof option === "string" ? option : option.label;
                     return <option key={value} value={value}>{label}</option>;
                   })}
-                </select>
-              ) : (
+              </Select>
+            ) : (
+              <label key={filter.key} className="dataview-filter">
+                <span>{filter.label}</span>
                 <input
                   type={filter.type === "date" ? "date" : "text"}
                   value={filterValues[filter.key] ?? ""}
                   placeholder={filter.placeholder || ""}
                   onChange={(event) => setFilters({ ...filterValues, [filter.key]: event.target.value })}
                 />
-              )}
-            </label>
+              </label>
+            )
           ))}
           {hasQuery && (
             <button type="button" className="dataview-clear" onClick={clearAll}>
@@ -452,12 +456,9 @@ export function DataView({
             {firstRow}–{lastRow} de {total}
           </span>
 
-          <label className="dataview-pagesize">
-            Por página
-            <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}>
+          <Select className="dataview-pagesize" label="Por página" value={pageSize} onChange={(value) => setPageSize(Number(value))}>
               {PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
-            </select>
-          </label>
+          </Select>
 
           <div className="dataview-pager">
             <button

@@ -22,17 +22,12 @@
 //      rota da clínica nunca devolve nota interna — a anotação da equipe não
 //      passa por aqui em momento nenhum.
 import { useState } from "react";
-import { LifeBuoy, Lock } from "lucide-react";
-import { AlertBlock, Button, Select, StatusBadge, Textarea } from "../../components/common/Ui";
+import { Button, Select, StatusBadge, Textarea } from "../../components/common/Ui";
 import { CrudHeader, Modal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { Loading } from "../../components/common/Feedback";
 import { apiFetch, useFetch } from "../../lib/api";
 import { asArray, asNumber, asObject } from "../../lib/utils";
-// `.platform-split` mora na camada do painel, mas é layout genérico de
-// mestre-detalhe: esta tela usa o mesmo. Ver o relato — a classe deveria perder
-// o prefixo `platform-` e virar primitiva compartilhada.
-import "../../styles/platform-panel.css";
 import "../../styles/support.css";
 
 // Espelham os CHECKs de platform.support_tickets (backend/src/db/platformSchema.sql).
@@ -204,8 +199,7 @@ export function Support() {
 
   return (
     <section className="stack">
-      <div className="platform-split platform-split--wide">
-        <article className="panel">
+      <div className="panel">
           <CrudHeader
             title="Suporte"
             subtitle="Fale com a equipe da Monitence e acompanhe as respostas"
@@ -276,70 +270,36 @@ export function Support() {
             empty="Nenhum chamado aberto até agora."
             emptyFiltered="Nenhum chamado com esse status."
           />
-        </article>
-
-        {/* ---------------------------------------------------------------- */}
-        {/* Conversa do chamado aberto                                        */}
-        {/* ---------------------------------------------------------------- */}
-        <article className="panel">
-          {!openId ? (
-            <p className="empty-state">Escolha um chamado na lista para ler a conversa e responder.</p>
-          ) : detail.error ? (
-            <span className="form-error">{detail.error}</span>
-          ) : detail.loading ? (
-            <Loading />
-          ) : (
-            <>
-              <div className="panel-heading">
-                <div>
-                  <h2>{ticket?.subject || "Chamado"}</h2>
-                  {ticket?.id && <span>Chamado #{ticket.id}</span>}
-                </div>
-                <div className="header-actions">
-                  {!isClosed && (
-                    <>
-                      <Button variant="primary" onClick={() => { setShowReply(true); setError(""); }} disabled={isBusy}>
-                        Responder
-                      </Button>
-                      <Button variant="secondary" onClick={closeTicket} disabled={isBusy}>
-                        {busy === "close" ? "Encerrando…" : "Encerrar chamado"}
-                      </Button>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <div className="stack">
-                <p className="field-hint">
-                  <StatusBadge tone={STATUS_TONE[ticket?.status] || "neutral"}>
-                    {label(STATUS_LABEL, ticket?.status)}
-                  </StatusBadge>{" "}
-                  · Categoria <strong>{label(CATEGORY_LABEL, ticket?.category)}</strong>
-                  {" "}· Aberto em <strong>{formatMoment(ticket?.created_at)}</strong>
-                  {ticket?.opened_by_name ? <> por <strong>{ticket.opened_by_name}</strong></> : null}
-                </p>
-
-                <div className="sup-thread">
-                  {messages.map((item) => <ThreadMessage key={item.id} message={item} />)}
-                </div>
-
-                {message && <span className="form-success">{message}</span>}
-                {error && !showReply && <span className="form-error">{error}</span>}
-
-                {/* `.platform-notice`, igual à caixa de entrada do suporte: não é
-                    estado vazio (a conversa está logo acima), é o callout âmbar
-                    que explica por que os botões de escrever sumiram. */}
-                {isClosed && (
-                  <p className="platform-notice">
-                    Este chamado está encerrado. Se o assunto voltar, abra um novo chamado — assim o histórico de
-                    cada problema fica separado.
-                  </p>
-                )}
-              </div>
-            </>
-          )}
-        </article>
       </div>
+
+      <Modal
+        open={Boolean(openId)}
+        title={ticket?.subject || "Detalhes do chamado"}
+        subtitle={ticket?.id ? `Chamado #${ticket.id}` : "Carregando chamado…"}
+        size="lg"
+        onClose={() => { setOpenId(null); setReply(""); setError(""); setMessage(""); }}
+        footer={!ticket || isClosed ? null : (
+          <>
+            <Button variant="secondary" onClick={closeTicket} disabled={isBusy}>{busy === "close" ? "Encerrando…" : "Encerrar chamado"}</Button>
+            <Button variant="primary" onClick={() => { setShowReply(true); setError(""); }} disabled={isBusy}>Responder</Button>
+          </>
+        )}
+      >
+        {detail.error ? <span className="form-error">{detail.error}</span> : detail.loading ? <Loading /> : (
+          <div className="stack">
+            <div className="support-ticket-status">
+              <StatusBadge tone={STATUS_TONE[ticket?.status] || "neutral"}>{label(STATUS_LABEL, ticket?.status)}</StatusBadge>
+              <span>Categoria: <strong>{label(CATEGORY_LABEL, ticket?.category)}</strong></span>
+              <span>Aberto em <strong>{formatMoment(ticket?.created_at)}</strong></span>
+            </div>
+            <div className="sup-thread">
+              {messages.map((item) => <ThreadMessage key={item.id} message={item} />)}
+            </div>
+            {message && <span className="form-success">{message}</span>}
+            {error && !showReply && <span className="form-error">{error}</span>}
+          </div>
+        )}
+      </Modal>
 
       {/* ------------------------------------------------------------------ */}
       {/* Novo chamado                                                        */}
@@ -437,27 +397,6 @@ export function Support() {
         </form>
       </Modal>
 
-      <article className="panel">
-        {/* `.field-hint` nas linhas: é o que as outras telas do painel usam dentro
-            do AlertBlock. `<p>` nu herda a margem de 1em do navegador e o bloco
-            ficava com um respiro diferente do mesmo bloco nas outras abas. */}
-        <AlertBlock icon={LifeBuoy} title="Como funciona o suporte">
-          <p className="field-hint">
-            O chamado vai direto para a equipe da Monitence. A resposta aparece aqui mesmo, nesta tela — não é
-            preciso ficar de olho no e-mail.
-          </p>
-          <p className="field-hint">
-            Um chamado por assunto: misturar dois problemas no mesmo chamado atrasa os dois. Enquanto houver
-            chamados seus em aberto, resolva ou encerre algum antes de abrir muitos novos.
-          </p>
-        </AlertBlock>
-        <AlertBlock icon={Lock} title="O que não enviar aqui">
-          <p className="field-hint">
-            Nunca escreva senhas, chaves de API ou dados de cartão numa mensagem de suporte. A equipe nunca vai
-            pedir isso — se alguém pedir, é golpe.
-          </p>
-        </AlertBlock>
-      </article>
     </section>
   );
 }

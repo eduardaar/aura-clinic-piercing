@@ -84,8 +84,8 @@ function validateProvisionInput({ name, slug, adminEmail, adminPassword }) {
   if (!EMAIL_REGEX.test(String(adminEmail || ""))) {
     throw new TenantServiceError(400, "E-mail do administrador inválido.");
   }
-  if (!adminPassword || String(adminPassword).length < 12) {
-    throw new TenantServiceError(400, "A senha do administrador deve ter pelo menos 12 caracteres.");
+  if (!adminPassword || String(adminPassword).length < 8) {
+    throw new TenantServiceError(400, "A senha do administrador deve ter pelo menos 8 caracteres.");
   }
 }
 
@@ -106,7 +106,7 @@ export async function provisionTenant({ name, slug, adminName, adminEmail, admin
     `INSERT INTO platform.tenants (name, slug, plan, store_short_name, responsible_name, phone, city, state, logo_url)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING id, name, slug, status, plan, created_at`,
-    [String(name).trim(), normalizedSlug, planCode, String(name).trim(), String(adminName || "").trim(), String(phone || "").trim(), String(city || "").trim(), String(state || "").trim(), String(logoUrl || "").trim()]
+    [String(name).trim(), normalizedSlug, planCode, String(name).trim(), String(adminName || "").trim().toUpperCase(), String(phone || "").trim(), String(city || "").trim(), String(state || "").trim(), String(logoUrl || "").trim()]
   );
   const tenant = inserted.rows[0];
   const schema = `tenant_${tenant.id}`;
@@ -126,7 +126,7 @@ export async function provisionTenant({ name, slug, adminName, adminEmail, admin
     const passwordHash = await bcrypt.hash(String(adminPassword), 12);
     const adminInsert = await client.query(
       "INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, 'admin') RETURNING id, name, email, role",
-      [String(adminName || "Administrador").trim() || "Administrador", String(adminEmail).trim().toLowerCase(), passwordHash]
+      [String(adminName || "Administrador").trim().toUpperCase() || "ADMINISTRADOR", String(adminEmail).trim().toLowerCase(), passwordHash]
     );
     admin = adminInsert.rows[0];
     // Tema padrão do catálogo (linha única id=1) para o catálogo não quebrar.
