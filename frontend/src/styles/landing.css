@@ -726,12 +726,12 @@
   .au-l-root { --au-l-pad: 32px; }
 
   .au-l-root .au-l-hero-inner {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
     gap: 36px;
     padding: 34px var(--au-l-pad) 40px;
   }
 
-  .au-l-root .au-l-hero-media { aspect-ratio: 16 / 9; }
+  .au-l-root .au-l-hero-media { aspect-ratio: 16 / 9; justify-self:end; }
 
   .au-l-root .au-l-value-inner { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 64px; align-items: center; }
 
