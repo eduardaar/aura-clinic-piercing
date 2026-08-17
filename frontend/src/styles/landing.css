@@ -774,7 +774,7 @@
 @media (min-width: 1200px) {
   .au-l-root { --au-l-pad: 40px; }
 
-  .au-l-root .au-l-features { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .au-l-root .au-l-features { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .au-l-root .au-l-feature-media { aspect-ratio: 4 / 3; }
 
   .au-l-root .au-l-sec-head { max-width: 40ch; }
