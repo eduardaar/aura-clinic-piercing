@@ -25,9 +25,9 @@ function slugPreview(value) {
 }
 
 const fallbackPlans = [
-  { code: "start", name: "Pacote Start", price_cents: 4990, audience: "Para quem está organizando a operação solo", features: ["clients", "agenda", "basic_catalog", "basic_reports"] },
-  { code: "profissional", name: "Pacote Profissional", price_cents: 8990, audience: "Para transformar atendimento em uma operação profissional", badge: "Mais recomendado", highlight: true, features: ["online_booking", "basic_finance", "digital_terms", "public_catalog_customization"] },
-  { code: "studio", name: "Pacote Studio", price_cents: 14990, audience: "Para estúdios com equipe, vendas e crescimento", features: ["multi_user", "advanced_catalog", "campaigns", "catalog_analytics"] }
+  { code: "start", name: "Pacote Start", price_cents: 3990, audience: "Para quem está organizando a operação solo", features: ["clients", "agenda", "basic_catalog", "basic_reports"] },
+  { code: "profissional", name: "Pacote Profissional", price_cents: 6990, audience: "Para transformar atendimento em uma operação profissional", badge: "Mais recomendado", highlight: true, features: ["online_booking", "basic_finance", "digital_terms", "public_catalog_customization"] },
+  { code: "studio", name: "Pacote Studio", price_cents: 11990, audience: "Para estúdios com equipe, vendas e crescimento", features: ["multi_user", "advanced_catalog", "campaigns", "catalog_analytics"] }
 ];
 
 // A tela de contratação deve responder "o que eu levo?" antes de a pessoa

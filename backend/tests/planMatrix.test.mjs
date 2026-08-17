@@ -40,9 +40,9 @@ test("oferta comercial tem três planos, preços e limites publicados", () => {
   assert.deepEqual(
     SUBSCRIPTION_PLANS.map(({ code, price_cents }) => ({ code, price_cents })),
     [
-      { code: "start", price_cents: 4990 },
-      { code: "profissional", price_cents: 8990 },
-      { code: "studio", price_cents: 14990 }
+      { code: "start", price_cents: 3990 },
+      { code: "profissional", price_cents: 6990 },
+      { code: "studio", price_cents: 11990 }
     ]
   );
   assert.deepEqual(SUBSCRIPTION_PLANS.find((plan) => plan.code === "start")?.limits, {

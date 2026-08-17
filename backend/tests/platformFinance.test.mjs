@@ -28,7 +28,7 @@ const MARCO = "2026-03";
 const FEVEREIRO = "2026-02";
 
 // Preço de tabela dos planos-semente, em centavos (platformSchema.sql).
-const PRECO = { start: 4990, profissional: 8990, studio: 14990 };
+const PRECO = { start: 3990, profissional: 6990, studio: 11990 };
 
 // Sufixo único por execução: dois runs simultâneos não podem colidir no índice
 // único de asaas_payment_id nem no de asaas_subscription_id.
