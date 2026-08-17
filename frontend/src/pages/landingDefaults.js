@@ -93,7 +93,7 @@ export const LANDING_DEFAULTS = {
     signature: "Aura Clinic — técnica, cuidado e joalheria para valorizar a sua essência.",
     image: "/assets/landing/aura-portfolio/sobre-nos-eduarda.jpeg",
     image_alt: "Eduarda, idealizadora e proprietária da Aura Clinic",
-    image_caption: "Eduarda · idealizadora da Aura Clinic"
+    image_caption: "Eduarda Santos · idealizadora do projeto"
   },
 
   closing: {
