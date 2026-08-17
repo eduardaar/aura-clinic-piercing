@@ -621,7 +621,7 @@
    enquadramento vertical em vez de ficar espremida em meia coluna. */
 .au-l-root .au-l-shots img:only-child {
   grid-column: 1 / -1;
-  width: min(100%, 360px);
+  width: min(100%, 260px);
   justify-self: end;
   aspect-ratio: 3 / 4;
   object-position: center;
