@@ -1,6 +1,6 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useState } from "react";
-import { CheckCircle2, Gem, ImageIcon, LayoutGrid, ListFilter, Pencil, Search, SlidersHorizontal, Table2, Trash2, X } from "lucide-react";
+import { CheckCircle2, Gem, ImageIcon, LayoutGrid, ListFilter, Pencil, Search, SlidersHorizontal, Table2, Trash2 } from "lucide-react";
 import { Button, Input, Metric, Select, StatusBadge } from "../../components/common/Ui";
 import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
@@ -485,6 +485,12 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
         title={editingJewelry ? "Editar produto" : "Novo produto"}
         subtitle="Dados, variações e estoque do produto."
         onClose={() => closeProduct({ keepCategory: false })}
+        footer={(
+          <>
+            <Button variant="secondary" onClick={() => closeProduct({ keepCategory: false })}>Cancelar</Button>
+            <Button variant="primary" type="submit" form="jewelry-editor-form">{editingJewelry ? "Salvar produto" : "Cadastrar produto"}</Button>
+          </>
+        )}
       >
         <JewelryEditor
           options={inventoryOptions}
@@ -493,7 +499,6 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
           pricingSettings={safeOptions.pricingSettings}
           editing={editingJewelry}
           onMovementOpen={openMovement}
-          onCancel={() => closeProduct({ keepCategory: false })}
           onSaved={() => { closeProduct({ keepCategory: false }); refreshJewelry(); refreshOptions(); }}
         />
       </Modal>
@@ -857,7 +862,7 @@ function ProductGalleryManager({ images = [], productName = "", onChange }) {
   );
 }
 
-export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTIONS, categories = [], pricingSettings = {}, editing, onSaved, onCancel, onMovementOpen }) {
+export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTIONS, categories = [], pricingSettings = {}, editing, onSaved, onMovementOpen }) {
   const [form, setForm] = useState(defaultJewelry());
   const [error, setError] = useState("");
   const [editorTab, setEditorTab] = useState("dados");
@@ -995,7 +1000,7 @@ export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTI
   }
 
   return (
-    <form className="panel jewelry-editor stock-editor" onSubmit={submit}>
+    <form id="jewelry-editor-form" className="panel jewelry-editor stock-editor" onSubmit={submit}>
       <div className="panel-heading">
         <div>
           <span className="eyebrow">Categoria → Produto → Variações</span>
@@ -1205,10 +1210,6 @@ export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTI
       )}
 
       {error && <span className="form-error">{error}</span>}
-      <div className="modal-actions">
-        {editing && <Button variant="secondary" onClick={onCancel}>Cancelar edição</Button>}
-        <Button variant="primary" type="submit">{editing ? "Salvar joia" : "Cadastrar joia"}</Button>
-      </div>
     </form>
   );
 }
@@ -1242,13 +1243,15 @@ export function VariantEditModal({ category, variant, pricingSettings = {}, onCh
   }
 
   return (
-    <div className="modal-backdrop variant-modal-backdrop" onClick={onClose}>
-      <section className="panel variant-edit-modal" onClick={(event) => event.stopPropagation()}>
-        <header>
-          <div><h2>Editar Variação</h2><p>Configure apenas as especificações necessárias para {category || "esta categoria"}.</p></div>
-          <button type="button" aria-label="Fechar" onClick={onClose}><X size={18} /></button>
-        </header>
-        <div className="variant-modal-fields">
+    <Modal
+      open
+      title="Editar variação"
+      subtitle={`Configure apenas as especificações necessárias para ${category || "esta categoria"}.`}
+      size="lg"
+      onClose={onClose}
+      footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={onClose}>Salvar variação</Button></>}
+    >
+      <div className="variant-modal-fields">
           <Input label="Nome da Variação" value={variant.variation_name} onChange={(value) => onChange({ variation_name: value })} />
           <Input type="number" step="0.1" min="0" label="Tamanho do Topo (mm)" value={variant.top_size_mm ?? ""} onChange={(value) => onChange({ top_size_mm: value })} />
           {usesSize && <Input label="Tamanho / Medida" value={variant.size} onChange={(value) => onChange({ size: value })} />}
@@ -1356,10 +1359,8 @@ export function VariantEditModal({ category, variant, pricingSettings = {}, onCh
             <Input type="number" label="Estoque Mínimo" value={variant.low_stock_threshold} onChange={(value) => onChange({ low_stock_threshold: value })} />
           </div>
           <Toggle label="Variação Ativa" checked={variant.is_active} onChange={(value) => onChange({ is_active: value })} />
-        </div>
-        <footer><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={onClose}>Salvar Variação</Button></footer>
-      </section>
-    </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -1422,12 +1423,14 @@ export function StockMovementModal({ item, initialType = "Entrada", onClose, onS
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <form className="panel stock-movement-modal" onClick={(event) => event.stopPropagation()} onSubmit={submit}>
-        <div className="panel-heading">
-          <h2>{item.name}</h2>
-          <span>{initialType === "Saída" ? "Saída rápida" : "Entrada rápida"}</span>
-        </div>
+    <Modal
+      open
+      title={item.name}
+      subtitle={initialType === "Saída" ? "Saída rápida" : "Entrada rápida"}
+      onClose={onClose}
+      footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button variant="primary" type="submit" form="stock-movement-form">Salvar movimentação</Button></>}
+    >
+      <form id="stock-movement-form" className="stock-movement-form" onSubmit={submit}>
         <div className="form-grid">
           <SmartCombobox label="Variação" value={form.variant_id} options={item.variants || []} onChange={(value) => setForm({ ...form, variant_id: value })} required getLabel={(variant) => variant.variation_name || variant.sku} getMeta={(variant) => [variant.sku, variant.material, variant.color, variant.size, `${variant.quantity} un`].filter(Boolean).join(" · ")} isDisabled={(variant) => initialType === "Saída" && Number(variant.quantity || 0) <= 0} />
           <Input type="number" label="Quantidade" value={form.quantity} onChange={(value) => setForm({ ...form, quantity: value })} required />
@@ -1443,12 +1446,8 @@ export function StockMovementModal({ item, initialType = "Entrada", onClose, onS
           <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
         </label>
         <p className="movement-date-hint">Data automática: {new Date().toLocaleDateString("pt-BR")}</p>
-        <div className="modal-actions">
-          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" type="submit">Salvar movimentação</Button>
-        </div>
       </form>
-    </div>
+    </Modal>
   );
 }
 

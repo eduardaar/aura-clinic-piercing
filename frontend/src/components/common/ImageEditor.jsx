@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FlipHorizontal2, Minus, Plus, RotateCcw, RotateCw, Scan, Undo2, X } from "lucide-react";
+import { FlipHorizontal2, Minus, Plus, RotateCcw, RotateCw, Scan, Undo2 } from "lucide-react";
+import { Modal } from "./Crud";
 import { Select } from "./Ui";
 
 export const DEFAULT_IMAGE_TRANSFORM = {
@@ -65,13 +66,15 @@ export function ImageEditor({ file, src, initialTransform, aspectRatio = "16/5",
   }
 
   return (
-    <div className="image-editor-backdrop" role="presentation">
-      <section className="image-editor-modal" role="dialog" aria-modal="true" aria-labelledby="image-editor-title">
-        <header>
-          <div><span>Editor visual</span><h2 id="image-editor-title">Ajustar {contextLabel}</h2></div>
-          <button type="button" aria-label="Fechar editor" onClick={onCancel}><X /></button>
-        </header>
-        <div className="image-editor-layout">
+    <Modal
+      open
+      title={`Ajustar ${contextLabel}`}
+      subtitle="Editor visual"
+      size="lg"
+      onClose={onCancel}
+      footer={<><button type="button" className="secondary-button" onClick={onCancel}>Cancelar</button><button type="button" className="primary-button" onClick={() => onConfirm(normalizeImageTransform(transform, aspectRatio))}>Confirmar edição</button></>}
+    >
+      <div className="image-editor-layout">
           <div>
             <div
               ref={stageRef}
@@ -113,13 +116,8 @@ export function ImageEditor({ file, src, initialTransform, aspectRatio = "16/5",
               <label>Foco Y<input type="number" min="0" max="100" value={Math.round(transform.focalPointY)} onChange={(event) => patch({ focalPointY: Number(event.target.value) })} /></label>
             </div>
           </div>
-        </div>
-        <footer>
-          <button type="button" className="secondary-button" onClick={onCancel}>Cancelar</button>
-          <button type="button" className="primary-button" onClick={() => onConfirm(normalizeImageTransform(transform, aspectRatio))}>Confirmar edição</button>
-        </footer>
-      </section>
-    </div>
+      </div>
+    </Modal>
   );
 }
 

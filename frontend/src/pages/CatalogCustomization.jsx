@@ -101,8 +101,8 @@ function CatalogPublicLinks() {
   return (
     <section className="catalog-links">
       <div className="catalog-links-title">
-        <strong>Seus links exclusivos</strong>
-        <span>Código da clínica: <b>{slug}</b> — compartilhe estes endereços com seus clientes.</span>
+        <strong>Links para compartilhar</strong>
+        <span>Código da clínica: <b>{slug}</b></span>
       </div>
       <div className="catalog-links-grid">
         {!links.length && <span className="form-error">Cadastre um slug público para compartilhar catálogo e agendamento.</span>}
@@ -138,6 +138,7 @@ export function CatalogCustomization() {
   const [rollbackVersion, setRollbackVersion] = useState(null);
   const [publishChecklist, setPublishChecklist] = useState(null);
   const [checkingPublication, setCheckingPublication] = useState(false);
+  const [utilitiesOpen, setUtilitiesOpen] = useState(false);
   const formRef = useRef(form);
   const undoRef = useRef([]);
   const redoRef = useRef([]);
@@ -291,33 +292,36 @@ export function CatalogCustomization() {
       <div className="catalog-customization-panel">
         <header className="customization-header">
           <div>
-            <span className="eyebrow">Catálogo</span>
-            <h2>Personalização do Catálogo</h2>
-            <p>Edite aparência, banners, categorias, produtos, promoções e textos sem mexer no código.</p>
+            <h2>Catálogo</h2>
+            <p>Personalize sua vitrine e publique quando estiver pronta.</p>
           </div>
-          <div>
+          <div className="catalog-header-actions">
             <button className="secondary-button" type="button" onClick={() => setPreviewOpen(true)}>Abrir prévia</button>
-            <button className="secondary-button" type="button" onClick={() => setResetOpen(true)}>Restaurar padrão</button>
-            <button className="secondary-button" type="button" onClick={reviewPublication} disabled={checkingPublication}>{checkingPublication ? "Revisando…" : "Revisar publicação"}</button>
             <button className="primary-button" type="button" onClick={() => save("/catalog-customization/publish", "Catálogo publicado.")}>Publicar</button>
+            <button className="secondary-button" type="button" onClick={() => setUtilitiesOpen((open) => !open)} aria-expanded={utilitiesOpen}>Mais opções</button>
           </div>
         </header>
 
-        <div className="catalog-editor-history" aria-label="Histórico local de edição">
+        <div className="catalog-editor-toolbar" aria-label="Controles do rascunho">
+          <small>Rascunho v{version.draft || 0}</small>
           <div>
-            <strong>Histórico local</strong>
-            <small>Até 80 alterações nesta sessão. Use salvar para enviar o rascunho.</small>
-          </div>
-          <div>
-            <button type="button" className="secondary-button" disabled={!localHistory.undo} onClick={undo} title="Desfazer (Ctrl/Cmd + Z)"><Undo2 size={16} /> Desfazer{localHistory.undo ? ` (${localHistory.undo})` : ""}</button>
-            <button type="button" className="secondary-button" disabled={!localHistory.redo} onClick={redo} title="Refazer (Ctrl/Cmd + Shift + Z)"><Redo2 size={16} /> Refazer{localHistory.redo ? ` (${localHistory.redo})` : ""}</button>
+            <button type="button" className="secondary-button catalog-history-button" aria-label="Desfazer" disabled={!localHistory.undo} onClick={undo} title="Desfazer (Ctrl/Cmd + Z)"><Undo2 size={16} /></button>
+            <button type="button" className="secondary-button catalog-history-button" aria-label="Refazer" disabled={!localHistory.redo} onClick={redo} title="Refazer (Ctrl/Cmd + Shift + Z)"><Redo2 size={16} /></button>
           </div>
           <span className="sr-only" aria-live="polite">{localHistory.announcement}</span>
         </div>
 
-        <CatalogBuilderStatus version={version} history={historyData} onRollback={setRollbackVersion} />
+        {utilitiesOpen && (
+          <section className="catalog-utilities" aria-label="Opções avançadas do catálogo">
+            <div className="catalog-utilities-actions">
+              <button className="secondary-button" type="button" onClick={reviewPublication} disabled={checkingPublication}>{checkingPublication ? "Revisando…" : "Revisar publicação"}</button>
+              <button className="secondary-button" type="button" onClick={() => setResetOpen(true)}>Restaurar padrão</button>
+            </div>
+            <CatalogBuilderStatus version={version} history={historyData} onRollback={setRollbackVersion} />
+            <CatalogPublicLinks />
+          </section>
+        )}
         <CatalogPublishChecklist checklist={publishChecklist} />
-        <CatalogPublicLinks />
 
         <nav className="customization-tabs">
           {[
@@ -692,9 +696,8 @@ function CatalogBuilderStatus({ version, history, onRollback }) {
   return (
     <section className="catalog-builder-status" aria-label="Estado de publicação do catálogo">
       <div className="catalog-builder-status__summary">
-        <span className="eyebrow">Builder versionado</span>
-        <strong>Rascunho v{draft} · Vitrine v{published || "—"}</strong>
-        <small>{safeVersion.updated_at ? `Rascunho atualizado em ${formatCatalogRevisionDate(safeVersion.updated_at)}.` : "Salve o rascunho antes de publicar."}</small>
+        <strong>Rascunho v{draft} · Publicada v{published || "—"}</strong>
+        <small>{safeVersion.updated_at ? `Atualizado em ${formatCatalogRevisionDate(safeVersion.updated_at)}.` : "Ainda não há uma versão salva."}</small>
       </div>
       <details>
         <summary>Histórico de publicações ({revisions.length})</summary>
