@@ -25,6 +25,9 @@ import { tenantSubscription } from "../services/subscriptions.js";
 import { pageResponse, parsePaging } from "../services/pagination.js";
 import {
   PlatformBillingError,
+  billingSchedule,
+  cancelTenantSubscription,
+  getTenantPixPayment,
   listTenantInvoices,
   startSubscriptionCheckout,
   syncInvoice
@@ -100,7 +103,7 @@ async function billingProfile(tenantId) {
     tax_id_hint: maskTaxId(tenant.tax_id),
     email: tenant.email || null,
     phone: tenant.phone || null,
-    complete: Boolean(tenant.tax_id)
+    complete: Boolean(tenant.tax_id && tenant.email)
   };
 }
 
@@ -148,8 +151,8 @@ router.put(
       if (!parsed.ok) return res.status(400).json({ error: parsed.error, code: "tax_id_invalido" });
 
       const email = String(body.email || "").trim() || null;
-      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        return res.status(400).json({ error: "E-mail inválido." });
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ error: "Informe um e-mail válido para receber as faturas." });
       }
       const phone = String(body.phone || "").replace(/\D/g, "") || null;
 
@@ -183,20 +186,20 @@ router.post(
     if (!requireRole(req, res, ["admin"])) return;
     try {
       const body = req.body || {};
-      const billingType = String(body.billing_type || "UNDEFINED").toUpperCase();
+      const billingType = String(body.billing_type || "CREDIT_CARD").toUpperCase();
 
       // Recusa antes até de consultar a configuração do gateway: assim o
       // contrato "a Aura nunca recebe cartão" é verificável em qualquer
       // ambiente e não muda conforme um secret esteja presente ou ausente.
-      if (billingType === "CREDIT_CARD" || body.credit_card || body.credit_card_holder_info) {
+      if (body.credit_card || body.credit_card_holder_info) {
         return res.status(400).json({
           error: "Dados de cartão não são aceitos pela Aura. Use a página segura de pagamento do Asaas.",
           code: "checkout_hospedado_obrigatorio"
         });
       }
-      if (billingType !== "UNDEFINED") {
+      if (!["CREDIT_CARD", "PIX"].includes(billingType)) {
         return res.status(400).json({
-          error: "Forma de pagamento inválida. Use a página segura de pagamento do Asaas.",
+          error: "Forma de pagamento inválida. Escolha cartão de crédito ou PIX.",
           code: "billing_type_invalido"
         });
       }
@@ -214,7 +217,7 @@ router.post(
       const checkout = () =>
         startSubscriptionCheckout(tenantId, {
           planCode: body.plan_code,
-          billingType: "UNDEFINED"
+          billingType
         });
 
       // Mesmo no checkout hospedado, timeout/reenvio não pode criar duas
@@ -226,12 +229,54 @@ router.post(
           code: "idempotency_key_ausente"
         });
       }
-      const safeBody = { plan_code: body.plan_code, billing_type: "UNDEFINED" };
+      const safeBody = { plan_code: body.plan_code, billing_type: billingType };
       const { result } = await runIdempotent(
         { tenantId, endpoint: CHECKOUT_ENDPOINT, key: idempotencyKey, body: safeBody },
         checkout
       );
       res.status(201).json(result);
+    } catch (error) {
+      handleBillingError(res, error);
+    }
+  })
+);
+
+// Agenda financeira dos próximos 12 meses. Linhas sem payment_id são apenas
+// projeções; as cobranças reais continuam sendo emitidas pelo Asaas.
+router.get(
+  "/api/billing/schedule",
+  withDb(async (req, res) => {
+    if (!requireRole(req, res, ["admin"])) return;
+    try {
+      res.json(await billingSchedule(req.tenant.id, 12));
+    } catch (error) {
+      handleBillingError(res, error);
+    }
+  })
+);
+
+router.get(
+  "/api/billing/invoices/:id/pix",
+  withDb(async (req, res) => {
+    if (!requireRole(req, res, ["admin"])) return;
+    try {
+      const invoiceId = Number(req.params.id);
+      if (!Number.isInteger(invoiceId) || invoiceId <= 0) {
+        return res.status(400).json({ error: "Identificador de fatura inválido." });
+      }
+      res.json(await getTenantPixPayment(req.tenant.id, invoiceId));
+    } catch (error) {
+      handleBillingError(res, error);
+    }
+  })
+);
+
+router.post(
+  "/api/billing/subscription/cancel",
+  withDb(async (req, res) => {
+    if (!requireRole(req, res, ["admin"])) return;
+    try {
+      res.json(await cancelTenantSubscription(req.tenant.id));
     } catch (error) {
       handleBillingError(res, error);
     }

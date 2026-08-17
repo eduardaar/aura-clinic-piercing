@@ -55,6 +55,7 @@ import privacyRoutes from "./routes/privacy.js";
 import jobsRoutes from "./routes/jobs.js";
 import { databaseBootstrapIsDisabled } from "./db/migrationPolicy.js";
 import { startJobWorker } from "./services/jobWorker.js";
+import { startBillingLifecycleWorker } from "./services/billingLifecycle.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -227,6 +228,7 @@ if (!databaseBootstrapIsDisabled()) {
 await loadPlansFromDb();
 startReconcileWorker();
 startJobWorker();
+startBillingLifecycleWorker();
 const server = app.listen(PORT, API_BIND_HOST, () => {
   console.log(`Aura Clinic API em http://${API_BIND_HOST}:${PORT}`);
 });

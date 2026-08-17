@@ -150,13 +150,21 @@ acaba pausando a fila.
 | --- | --- | --- |
 | `GET` | `/api/billing/subscription` | Plano, faturas recentes, `gateway_enabled` e `billing_profile` |
 | `PUT` | `/api/billing/profile` | CPF/CNPJ e e-mail do responsável — **pré-requisito do checkout** |
-| `POST` | `/api/billing/checkout` | `{ plan_code, billing_type: "UNDEFINED" }` |
+| `POST` | `/api/billing/checkout` | `{ plan_code, billing_type: "CREDIT_CARD" | "PIX" }` |
 | `GET` | `/api/billing/invoices` | Paginado |
+| `GET` | `/api/billing/schedule` | 12 competências futuras; fatos + projeções |
+| `GET` | `/api/billing/invoices/:id/pix` | QR Code e copia-e-cola da própria clínica |
+| `POST` | `/api/billing/subscription/cancel` | Cancela a recorrência no Asaas e localmente |
 
-`billing_type` é exclusivamente `UNDEFINED`: o Asaas hospeda a página e o
-pagador escolhe PIX, boleto ou cartão sem que número, validade ou CVV passem
-pela infraestrutura da Aura. Payloads com dados brutos de cartão são rejeitados
-antes de qualquer chamada ao gateway.
+Não há boleto neste fluxo. `CREDIT_CARD` usa o Checkout hospedado do Asaas,
+restrito a cartão e recorrência mensal; número, validade e CVV nunca passam pela
+Aura. `PIX` cria a assinatura recorrente diretamente no Asaas e a Aura apenas
+exibe o QR Code/copia-e-cola devolvido pelo gateway. Payloads com dados brutos de
+cartão são rejeitados antes de qualquer chamada externa.
+
+O quadro de 12 meses é uma **projeção**, não doze cobranças antecipadas. O Asaas
+gera as cobranças futuras gradualmente conforme o ciclo; quando uma cobrança
+real existe, ela substitui a projeção da competência na tela.
 
 **`Idempotency-Key` é obrigatório em todo checkout.** Sem ele um duplo-clique —
 ou uma repetição por timeout de rede — poderia gerar outra assinatura e outra
@@ -264,6 +272,21 @@ worker acabaria batendo no gateway a cada `npm test`.
 
 O `sync` é a saída para o webhook que se perdeu ("paguei e continua atrasada"):
 relê a cobrança no Asaas e reaplica o efeito.
+
+### Carência, e-mails e bloqueio
+
+`PAYMENT_OVERDUE` marca a fatura atrasada e abre cinco dias completos de
+carência. Durante esse prazo a assinatura fica `overdue`, mas
+`access_active=true`; depois dele o worker `billingLifecycle` muda para
+`suspended`. Pagamento confirmado durante ou depois da suspensão financeira
+reativa automaticamente. Suspensão manual e cancelamento nunca são revertidos
+por webhook.
+
+O Asaas permanece responsável pela emissão e pelas notificações financeiras
+nativas. A Aura complementa com e-mails de vencimento, carência e bloqueio via
+Resend, deduplicados em `platform.billing_notifications`. O worker fica ativo
+por padrão em produção (`BILLING_LIFECYCLE_ENABLED=false` o desliga) e também
+concilia checkouts de cartão concluídos cuja entrega de webhook tenha atrasado.
 
 #### Troca de plano propaga o preço no gateway
 

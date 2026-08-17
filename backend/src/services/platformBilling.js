@@ -20,7 +20,8 @@
 //     uma transação, senão existiria fatura paga com assinatura inativa (ou o
 //     contrário) na janela entre os dois UPDATEs.
 import { pool, query } from "../database/connection.js";
-import { AsaasError, onlyDigits } from "./asaas/client.js";
+import { PUBLIC_APP_URL } from "../config/index.js";
+import { AsaasError, minimumDueDate, onlyDigits } from "./asaas/client.js";
 import { isPlatformEnabled, platformClient } from "./asaas/credentials.js";
 import { isCanceledStatus, isPaidStatus } from "./asaas/events.js";
 import { SUBSCRIPTION_PLANS, normalizePlanCode, planByCode } from "./plans.js";
@@ -40,7 +41,7 @@ export class PlatformBillingError extends Error {
 
 // A Aura usa somente checkout/fatura hospedada. Aceitar cartão bruto aqui
 // colocaria toda a API no escopo PCI DSS e criaria risco de PAN/CVV em logs.
-export const BILLING_TYPES = ["UNDEFINED"];
+export const BILLING_TYPES = ["CREDIT_CARD", "PIX"];
 
 // ---------------------------------------------------------------------------
 // Infraestrutura
@@ -121,8 +122,6 @@ export async function ensureAsaasCustomer(tenantId) {
   );
   const tenant = found.rows[0];
   if (!tenant) throw new PlatformBillingError("Clínica não encontrada.", 404);
-  if (tenant.asaas_customer_id) return tenant.asaas_customer_id;
-
   // Falha cedo e com nome: o Asaas recusa criar cliente sem CPF/CNPJ, e o erro
   // dele ("invalid_cpfCnpj") não diz à clínica ONDE preencher o dado.
   const taxId = onlyDigits(tenant.tax_id);
@@ -132,6 +131,17 @@ export async function ensureAsaasCustomer(tenantId) {
       400,
       "tax_id_ausente"
     );
+  }
+
+  if (tenant.asaas_customer_id) {
+    await platformClient().updateCustomer(tenant.asaas_customer_id, {
+      name: tenant.name,
+      taxId,
+      email: tenant.email,
+      phone: tenant.phone,
+      externalReference: `tenant:${tenant.id}`
+    });
+    return tenant.asaas_customer_id;
   }
 
   const customer = await platformClient().createCustomer({
@@ -223,7 +233,7 @@ async function upsertInvoice(runner, { tenantId, subscriptionId, planCode, payme
  */
 export async function startSubscriptionCheckout(
   tenantId,
-  { planCode, billingType = "UNDEFINED" } = {}
+  { planCode, billingType = "CREDIT_CARD" } = {}
 ) {
   ensureGatewayEnabled();
 
@@ -240,10 +250,10 @@ export async function startSubscriptionCheckout(
   }
   const plan = planByCode(code);
 
-  const type = String(billingType || "UNDEFINED").toUpperCase();
+  const type = String(billingType || "CREDIT_CARD").toUpperCase();
   if (!BILLING_TYPES.includes(type)) {
     throw new PlatformBillingError(
-      "Forma de pagamento inválida. Use a página segura de pagamento do Asaas.",
+      "Forma de pagamento inválida. Escolha cartão de crédito ou PIX.",
       400,
       "billing_type_invalido"
     );
@@ -252,17 +262,109 @@ export async function startSubscriptionCheckout(
   const customerId = await ensureAsaasCustomer(tenantId);
 
   const currentResult = await query(
-    "SELECT id, plan_code, status, asaas_subscription_id FROM platform.tenant_subscriptions WHERE tenant_id = $1",
+    `SELECT id, plan_code, status, billing_type, asaas_subscription_id, asaas_checkout_id,
+            checkout_url, checkout_expires_at
+       FROM platform.tenant_subscriptions WHERE tenant_id = $1`,
     [tenantId]
   );
   const current = currentResult.rows[0] || null;
 
-  if (current?.asaas_subscription_id) {
+  if (current?.asaas_subscription_id && current.status !== "canceled") {
     throw new PlatformBillingError(
       "Já existe uma assinatura no gateway. A troca de plano deve passar pelo suporte até que o fluxo de prorrata esteja disponível.",
       409,
       "plan_change_requires_support"
     );
+  }
+
+  // Reabrir um checkout de cartão ainda válido é mais seguro do que criar
+  // vários links para o mesmo plano em duplo-clique/reentrada posterior.
+  if (
+    type === "CREDIT_CARD" &&
+    current?.plan_code === code &&
+    current?.billing_type === type &&
+    current?.asaas_checkout_id &&
+    current?.checkout_url &&
+    new Date(current.checkout_expires_at).getTime() > Date.now()
+  ) {
+    return {
+      subscription_id: current.id,
+      asaas_subscription_id: null,
+      billing_type: type,
+      checkout_url: current.checkout_url,
+      status: current.status
+    };
+  }
+
+  if (current?.asaas_checkout_id) {
+    try {
+      await platformClient().cancelCheckout(current.asaas_checkout_id);
+    } catch (error) {
+      // 404 significa que o link já não existe. Qualquer outra falha deixa o
+      // estado incerto; criar outro checkout nessa situação poderia duplicar
+      // a recorrência, então interrompemos.
+      if (error?.status !== 404) throw error;
+    }
+  }
+
+  if (type === "CREDIT_CARD") {
+    let checkout;
+    try {
+      checkout = await platformClient().createCheckout({
+        billingTypes: ["CREDIT_CARD"],
+        customer: customerId,
+        externalReference: `tenant:${tenantId}`,
+        items: [{
+          name: `Plano ${plan.name}`,
+          description: "Assinatura mensal Aura Clinic",
+          quantity: 1,
+          value: plan.price_cents / 100
+        }],
+        subscription: { cycle: "MONTHLY", nextDueDate: `${minimumDueDate()} 12:00:00` },
+        callback: {
+          successUrl: `${PUBLIC_APP_URL}/app/meu-plano?checkout=sucesso`,
+          cancelUrl: `${PUBLIC_APP_URL}/app/meu-plano?checkout=cancelado`,
+          expiredUrl: `${PUBLIC_APP_URL}/app/meu-plano?checkout=expirado`
+        }
+      });
+    } catch (error) {
+      logGatewayError(`falha ao criar checkout de cartão do tenant ${tenantId}`, error);
+      throw error;
+    }
+    const checkoutId = checkout?.id;
+    const checkoutUrl = checkout?.link || (checkoutId ? `https://asaas.com/checkoutSession/show?id=${checkoutId}` : null);
+    if (!checkoutId || !checkoutUrl) {
+      throw new AsaasError("O gateway não devolveu o link do checkout.", { status: 502 });
+    }
+    const savedCheckout = await withTransaction(async (client) => {
+      const row = await client.query(
+        `INSERT INTO platform.tenant_subscriptions
+           (tenant_id, plan_code, status, billing_type, asaas_checkout_id, checkout_url,
+            checkout_expires_at, updated_at)
+         VALUES ($1, $2, 'trial_active', $3, $4, $5, now() + INTERVAL '24 hours', now())
+         ON CONFLICT (tenant_id) DO UPDATE SET
+           plan_code = excluded.plan_code,
+           billing_type = excluded.billing_type,
+           asaas_subscription_id = NULL,
+           asaas_checkout_id = excluded.asaas_checkout_id,
+           checkout_url = excluded.checkout_url,
+           checkout_expires_at = excluded.checkout_expires_at,
+           canceled_at = NULL,
+           updated_at = now()
+         RETURNING id, status`,
+        [tenantId, code, type, checkoutId, checkoutUrl]
+      );
+      await client.query("UPDATE platform.tenants SET plan = $1 WHERE id = $2", [code, tenantId]);
+      return row.rows[0];
+    });
+    invalidateSubscriptionCache(tenantId);
+    return {
+      subscription_id: savedCheckout.id,
+      asaas_subscription_id: null,
+      billing_type: type,
+      checkout_url: checkoutUrl,
+      status: savedCheckout.status
+    };
   }
 
   let subscription;
@@ -301,6 +403,9 @@ export async function startSubscriptionCheckout(
          plan_code = excluded.plan_code,
          asaas_subscription_id = excluded.asaas_subscription_id,
          billing_type = excluded.billing_type,
+         asaas_checkout_id = NULL,
+         checkout_url = NULL,
+         checkout_expires_at = NULL,
          canceled_at = NULL,
          updated_at = now()
        RETURNING id, status, plan_code, billing_type, asaas_subscription_id`,
@@ -435,6 +540,21 @@ async function lockInvoice(client, paymentId) {
   return result.rows[0] || null;
 }
 
+async function attachRemoteSubscription(client, charge, payment) {
+  if (!payment?.subscription) return;
+  await client.query(
+    `UPDATE platform.tenant_subscriptions
+        SET asaas_subscription_id = COALESCE(asaas_subscription_id, $1),
+            billing_type = COALESCE($2, billing_type),
+            asaas_checkout_id = NULL,
+            checkout_url = NULL,
+            checkout_expires_at = NULL,
+            updated_at = now()
+      WHERE id = $3`,
+    [payment.subscription, payment.billingType || null, charge.subscriptionId]
+  );
+}
+
 async function applyCreated({ payment, charge }) {
   const existing = await query(
     "SELECT id FROM platform.tenant_invoices WHERE asaas_payment_id = $1",
@@ -442,13 +562,17 @@ async function applyCreated({ payment, charge }) {
   );
   if (existing.rows[0]) return { applied: false, detail: "fatura-ja-registrada" };
 
-  await upsertInvoice(pool, {
-    tenantId: charge.tenantId,
-    subscriptionId: charge.subscriptionId,
-    planCode: charge.planCode,
-    payment,
-    status: "pendente"
+  await withTransaction(async (client) => {
+    await attachRemoteSubscription(client, charge, payment);
+    await upsertInvoice(client, {
+      tenantId: charge.tenantId,
+      subscriptionId: charge.subscriptionId,
+      planCode: charge.planCode,
+      payment,
+      status: "pendente"
+    });
   });
+  invalidateSubscriptionCache(charge.tenantId);
   return { applied: true, detail: `fatura-criada:${payment.id}` };
 }
 
@@ -459,6 +583,7 @@ async function applyPaid({ payment, charge }) {
     // exceção: sair cedo evita empurrar o vencimento um mês a cada entrega.
     if (invoice?.status === "paga") return { applied: false, detail: "ja-paga" };
 
+    await attachRemoteSubscription(client, charge, payment);
     await upsertInvoice(client, {
       tenantId: charge.tenantId,
       subscriptionId: charge.subscriptionId ?? invoice?.subscription_id ?? null,
@@ -476,8 +601,12 @@ async function applyPaid({ payment, charge }) {
               current_period_ends_at =
                 GREATEST(COALESCE(current_period_ends_at, now()), now()) + INTERVAL '1 month',
               canceled_at = NULL,
+              grace_ends_at = NULL,
+              billing_suspended_at = NULL,
               updated_at = now()
-        WHERE tenant_id = $1`,
+        WHERE tenant_id = $1
+          AND (status <> 'canceled')
+          AND (status <> 'suspended' OR billing_suspended_at IS NOT NULL)`,
       [charge.tenantId]
     );
     return { applied: true, detail: `fatura-paga:${payment.id}` };
@@ -496,6 +625,7 @@ async function applyOverdue({ payment, charge }) {
       return { applied: false, detail: `fatura-${invoice.status}` };
     }
 
+    await attachRemoteSubscription(client, charge, payment);
     await upsertInvoice(client, {
       tenantId: charge.tenantId,
       subscriptionId: charge.subscriptionId ?? invoice?.subscription_id ?? null,
@@ -504,14 +634,17 @@ async function applyOverdue({ payment, charge }) {
       status: "atrasada"
     });
 
-    // Só rebaixa quem estava em dia. 'canceled'/'suspended' são decisões
-    // manuais da plataforma e não podem ser revertidas por um webhook;
-    // 'trial_expired' já está bloqueado e não ganha nada virando 'overdue'.
+    // O atraso abre cinco dias completos de carência. `overdue` continua com
+    // acesso enquanto grace_ends_at não passou; o worker de ciclo financeiro
+    // converte em `suspended` somente depois desse prazo.
     await client.query(
       `UPDATE platform.tenant_subscriptions
-          SET status = 'overdue', updated_at = now()
+          SET status = 'overdue',
+              grace_ends_at = COALESCE($2::date, CURRENT_DATE) + INTERVAL '6 days',
+              billing_suspended_at = NULL,
+              updated_at = now()
         WHERE tenant_id = $1 AND status IN ('active', 'trial_active')`,
-      [charge.tenantId]
+      [charge.tenantId, payment.dueDate || null]
     );
     return { applied: true, detail: `fatura-atrasada:${payment.id}` };
   });
@@ -890,4 +1023,193 @@ export async function listTenantInvoices(tenantId, { limit = 20, offset = 0 } = 
   );
 
   return { items: rows.rows, total: counted.rows[0]?.total || 0, limit: size, offset: skip };
+}
+
+function isoDate(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
+}
+
+function addUtcMonths(date, amount) {
+  const source = new Date(`${isoDate(date)}T12:00:00Z`);
+  const day = source.getUTCDate();
+  source.setUTCDate(1);
+  source.setUTCMonth(source.getUTCMonth() + amount);
+  const lastDay = new Date(Date.UTC(source.getUTCFullYear(), source.getUTCMonth() + 1, 0)).getUTCDate();
+  source.setUTCDate(Math.min(day, lastDay));
+  return isoDate(source);
+}
+
+/** Doze competências futuras, mesclando fatos do Asaas com projeções visuais. */
+export async function billingSchedule(tenantId, months = 12) {
+  const size = Math.min(Math.max(Number(months) || 12, 1), 12);
+  const subscriptionResult = await query(
+    `SELECT s.*, p.name AS plan_name, p.price_cents
+       FROM platform.tenant_subscriptions s
+       LEFT JOIN platform.subscription_plans p ON p.code = s.plan_code
+      WHERE s.tenant_id = $1`,
+    [tenantId]
+  );
+  const subscription = subscriptionResult.rows[0];
+  if (!subscription) return { items: [], months: size };
+
+  const actualResult = await query(
+    `SELECT id, asaas_payment_id, amount, status, billing_type, due_date, paid_at, invoice_url
+       FROM platform.tenant_invoices
+      WHERE tenant_id = $1
+        AND due_date >= date_trunc('month', CURRENT_DATE)::date
+        AND due_date < (date_trunc('month', CURRENT_DATE) + INTERVAL '12 months')::date
+      ORDER BY due_date, id`,
+    [tenantId]
+  );
+  const byMonth = new Map(actualResult.rows.map((invoice) => [String(invoice.due_date).slice(0, 7), invoice]));
+  const latestDue = actualResult.rows.at(-1)?.due_date;
+  const anchor = latestDue || minimumDueDate();
+  const anchorDay = Number(String(anchor).slice(8, 10)) || 1;
+  const start = new Date();
+  start.setUTCHours(12, 0, 0, 0);
+  start.setUTCDate(Math.min(anchorDay, new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0)).getUTCDate()));
+
+  const items = [];
+  for (let index = 0; index < size; index += 1) {
+    const dueDate = addUtcMonths(start, index);
+    const actual = byMonth.get(dueDate.slice(0, 7));
+    items.push(actual ? { ...actual, kind: "actual" } : {
+      id: null,
+      asaas_payment_id: null,
+      amount: Number(subscription.price_cents || 0) / 100,
+      status: "projetada",
+      billing_type: subscription.billing_type,
+      due_date: dueDate,
+      paid_at: null,
+      invoice_url: null,
+      kind: "projection"
+    });
+  }
+  return { items, months: size, projected: true };
+}
+
+export async function getTenantPixPayment(tenantId, invoiceId) {
+  ensureGatewayEnabled();
+  const found = await query(
+    `SELECT id, asaas_payment_id, status, billing_type, due_date, amount, invoice_url
+       FROM platform.tenant_invoices WHERE id = $1 AND tenant_id = $2`,
+    [invoiceId, tenantId]
+  );
+  const invoice = found.rows[0];
+  if (!invoice) throw new PlatformBillingError("Fatura não encontrada.", 404);
+  if (String(invoice.billing_type).toUpperCase() !== "PIX") {
+    throw new PlatformBillingError("Esta fatura não é PIX.", 400, "fatura_nao_pix");
+  }
+  if (["paga", "cancelada", "estornada"].includes(invoice.status)) {
+    throw new PlatformBillingError("Esta fatura não está disponível para pagamento.", 409, "fatura_encerrada");
+  }
+  if (!invoice.asaas_payment_id) {
+    throw new PlatformBillingError("A cobrança ainda não foi emitida pelo Asaas.", 409, "cobranca_nao_emitida");
+  }
+  const pix = await platformClient().getPixQrCode(invoice.asaas_payment_id);
+  return {
+    invoice,
+    encoded_image: pix?.encodedImage || null,
+    payload: pix?.payload || null,
+    expiration_date: pix?.expirationDate || null
+  };
+}
+
+export async function cancelTenantSubscription(tenantId) {
+  ensureGatewayEnabled();
+  const found = await query(
+    `SELECT id, status, asaas_subscription_id, asaas_checkout_id
+       FROM platform.tenant_subscriptions WHERE tenant_id = $1`,
+    [tenantId]
+  );
+  const current = found.rows[0];
+  if (!current) throw new PlatformBillingError("Assinatura não encontrada.", 404);
+  if (current.status === "canceled") return { canceled: true, idempotent: true };
+
+  if (current.asaas_subscription_id) {
+    await platformClient().cancelSubscription(current.asaas_subscription_id);
+  } else if (current.asaas_checkout_id) {
+    await platformClient().cancelCheckout(current.asaas_checkout_id);
+  }
+  await query(
+    `UPDATE platform.tenant_subscriptions
+        SET status = 'canceled', canceled_at = now(), grace_ends_at = NULL,
+            billing_suspended_at = NULL, asaas_checkout_id = NULL,
+            asaas_subscription_id = NULL,
+            checkout_url = NULL, checkout_expires_at = NULL,
+            updated_at = now()
+      WHERE tenant_id = $1`,
+    [tenantId]
+  );
+  invalidateSubscriptionCache(tenantId);
+  return { canceled: true, idempotent: false };
+}
+
+// Concilia checkouts de cartão que já foram concluídos. O webhook de PAYMENT é
+// o caminho principal; esta função cobre a janela em que o Checkout terminou,
+// mas a assinatura/pagamento ainda não foram materializados localmente.
+export async function syncPendingCheckouts(limit = 20) {
+  ensureGatewayEnabled();
+  const pending = await query(
+    `SELECT id, tenant_id, plan_code, asaas_checkout_id
+       FROM platform.tenant_subscriptions
+      WHERE asaas_subscription_id IS NULL
+        AND asaas_checkout_id IS NOT NULL
+        AND status <> 'canceled'
+      ORDER BY updated_at
+      LIMIT $1`,
+    [Math.min(Math.max(Number(limit) || 20, 1), 100)]
+  );
+  let synced = 0;
+  for (const local of pending.rows) {
+    try {
+      const checkout = await platformClient().getCheckout(local.asaas_checkout_id);
+      const checkoutStatus = String(checkout?.status || "").toUpperCase();
+      if (["CANCELED", "EXPIRED"].includes(checkoutStatus)) {
+        await query(
+          `UPDATE platform.tenant_subscriptions
+              SET checkout_expires_at = now(), checkout_url = NULL, updated_at = now()
+            WHERE id = $1`,
+          [local.id]
+        );
+        continue;
+      }
+      if (checkoutStatus !== "PAID") continue;
+      const subscriptions = await platformClient().listSubscriptions({ externalReference: `tenant:${local.tenant_id}` });
+      const remote = subscriptions.find((item) => item?.id && !item?.deleted) || subscriptions[0];
+      if (!remote?.id) continue;
+      await query(
+        `UPDATE platform.tenant_subscriptions
+            SET asaas_subscription_id = $1, billing_type = 'CREDIT_CARD',
+                asaas_checkout_id = NULL, checkout_url = NULL, checkout_expires_at = NULL,
+                updated_at = now()
+          WHERE id = $2 AND asaas_subscription_id IS NULL`,
+        [remote.id, local.id]
+      );
+      const payments = await platformClient().getSubscriptionPayments(remote.id);
+      for (const payment of payments) {
+        const normalized = {
+          id: String(payment.id),
+          status: payment.status,
+          subscription: remote.id,
+          customer: payment.customer || remote.customer || null,
+          externalReference: payment.externalReference || `tenant:${local.tenant_id}`,
+          value: payment.value,
+          dueDate: payment.dueDate,
+          paymentDate: payment.paymentDate || payment.clientPaymentDate || null,
+          billingType: payment.billingType || "CREDIT_CARD",
+          invoiceUrl: payment.invoiceUrl || null
+        };
+        const status = String(payment.status || "").toUpperCase();
+        const action = isPaidStatus(status) ? "paid" : status === "OVERDUE" ? "overdue" : "created";
+        await applyPlatformPaymentEvent({ action, payment: normalized });
+      }
+      invalidateSubscriptionCache(local.tenant_id);
+      synced += 1;
+    } catch (error) {
+      logGatewayError(`falha ao conciliar checkout ${local.asaas_checkout_id}`, error);
+    }
+  }
+  return synced;
 }

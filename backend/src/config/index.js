@@ -111,6 +111,12 @@ if (isProduction && ASAAS_BASE_URL.includes("sandbox")) {
 export const PUBLIC_API_URL = (
   process.env.PUBLIC_API_URL || `http://localhost:${PORT}`
 ).replace(/\/+$/, "");
+// Origem do painel usada nos retornos do Checkout Asaas. Na instalação atual
+// API e SPA compartilham o domínio, por isso PUBLIC_API_URL é um fallback
+// seguro; instalações separadas podem definir PUBLIC_APP_URL explicitamente.
+export const PUBLIC_APP_URL = (
+  process.env.PUBLIC_APP_URL || PUBLIC_API_URL
+).replace(/\/+$/, "");
 
 // Sem esta variável em produção, a tela de Integrações entrega à clínica uma
 // URL apontando para localhost. Ela cadastra, o Asaas nunca consegue entregar,

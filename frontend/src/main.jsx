@@ -106,9 +106,8 @@ function App() {
   const isAdminAuthenticated = Boolean(session?.user?.id);
   const planFeatures = Array.isArray(subscription?.features) ? subscription.features : [];
   const trialDays = subscription?.status === "trial_active" ? Number(subscription?.days_left ?? 0) : null;
-  const subscriptionInactive = !!subscription
-    && subscription.status !== "active"
-    && !(subscription.status === "trial_active" && Number(subscription?.days_left ?? 0) > 0);
+  const subscriptionInactive = !!subscription && subscription.access_active === false;
+  const subscriptionInGrace = subscription?.status === "overdue" && subscription?.access_active !== false;
 
   // Monta a URL do logo do tenant (arquivos em /uploads são servidos pelo backend).
   const brandLogoUrl = identity?.logo_url
@@ -381,11 +380,17 @@ function App() {
         </header>
         {/* Único elemento com rolagem: o menu lateral e o topo ficam fixos. */}
         <div className="content-scroll">
-        {(trialDays !== null || subscriptionInactive) && activePage !== "meu-plano" && (
+        {(trialDays !== null || subscriptionInactive || subscriptionInGrace) && activePage !== "meu-plano" && (
           <div className={`plan-banner ${subscriptionInactive ? "danger" : "warn"}`}>
             <span>
               {subscriptionInactive
-                ? "Seu período de teste terminou. Escolha um plano para continuar usando todos os recursos."
+                ? subscription?.status === "suspended"
+                  ? "Acesso bloqueado por pagamento pendente. Abra Meu plano para pagar e reativar."
+                  : subscription?.status === "canceled"
+                    ? "Sua recorrência foi cancelada. Abra Meu plano para contratar novamente."
+                    : "Seu período de teste terminou. Escolha um plano para continuar usando todos os recursos."
+                : subscriptionInGrace
+                  ? `Pagamento pendente: ${Number(subscription?.grace_days_left || 0)} dia(s) de carência restante(s).`
                 : `Teste grátis: ${trialDays} dia(s) restante(s).`}
             </span>
           </div>

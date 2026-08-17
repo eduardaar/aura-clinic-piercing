@@ -49,7 +49,12 @@ export async function tenantSubscription(tenantId) {
       plan_name: plan.name,
       price_cents: plan.price_cents,
       features: plan.features,
-      days_left: daysUntil(row.trial_ends_at || row.current_period_ends_at)
+      days_left: daysUntil(row.trial_ends_at || row.current_period_ends_at),
+      grace_days_left: row.status === "overdue" ? daysUntil(row.grace_ends_at) : 0,
+      access_active:
+        row.status === "active" ||
+        (row.status === "trial_active" && initialDaysLeft > 0) ||
+        (row.status === "overdue" && daysUntil(row.grace_ends_at) > 0)
     };
   }
   subCache.set(key, { value, expiresAt: Date.now() + SUB_CACHE_TTL_MS });
@@ -66,9 +71,11 @@ export function hasFeature(subscription, feature) {
 // estado (trial_expired, overdue, canceled, suspended) é considerado inativo.
 export function isSubscriptionActive(subscription) {
   if (!subscription) return false;
+  if (typeof subscription.access_active === "boolean") return subscription.access_active;
   const status = String(subscription.status || "");
   if (status === "active") return true;
   if (status === "trial_active") return (subscription.days_left ?? 0) > 0;
+  if (status === "overdue") return (subscription.grace_days_left ?? 0) > 0;
   return false;
 }
 

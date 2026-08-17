@@ -159,6 +159,16 @@ export function createAsaasClient({ apiKey, baseUrl = ASAAS_BASE_URL, label = "a
     getCustomer(customerId) {
       return request("GET", `/customers/${encodeURIComponent(customerId)}`);
     },
+    updateCustomer(customerId, { name, taxId, email, phone, externalReference }) {
+      return request("PUT", `/customers/${encodeURIComponent(customerId)}`, {
+        name,
+        cpfCnpj: onlyDigits(taxId),
+        email,
+        mobilePhone: onlyDigits(phone),
+        externalReference,
+        notificationDisabled: false
+      });
+    },
 
     // ---- Cobranças avulsas ----
     //
@@ -207,6 +217,28 @@ export function createAsaasClient({ apiKey, baseUrl = ASAAS_BASE_URL, label = "a
       return request("GET", `/payments/${encodeURIComponent(paymentId)}/pixQrCode`);
     },
 
+    // Checkout hospedado mantém PAN/CVV totalmente fora da Aura e permite
+    // restringir os meios exibidos. O produto usa isto para cartão recorrente,
+    // sem deixar boleto aparecer como alternativa.
+    createCheckout({ billingTypes, items, customer, subscription, callback, externalReference }) {
+      return request("POST", "/checkouts", {
+        billingTypes,
+        chargeTypes: ["RECURRENT"],
+        minutesToExpire: 1440,
+        externalReference,
+        callback,
+        items,
+        customer,
+        subscription
+      });
+    },
+    getCheckout(checkoutId) {
+      return request("GET", `/checkouts/${encodeURIComponent(checkoutId)}`);
+    },
+    cancelCheckout(checkoutId) {
+      return request("POST", `/checkouts/${encodeURIComponent(checkoutId)}/cancel`);
+    },
+
     // ---- Assinaturas recorrentes ----
     createSubscription({
       customer,
@@ -217,15 +249,16 @@ export function createAsaasClient({ apiKey, baseUrl = ASAAS_BASE_URL, label = "a
       externalReference,
       billingType = "UNDEFINED"
     }) {
-      if (String(billingType).toUpperCase() !== "UNDEFINED") {
+      const type = String(billingType).toUpperCase();
+      if (type !== "PIX") {
         throw new AsaasError(
-          "Assinaturas devem usar o checkout hospedado; cartão bruto não é aceito.",
+          "Cartão recorrente deve usar o checkout hospedado; cartão bruto não é aceito.",
           { status: 400, code: "hosted_checkout_required" }
         );
       }
       const body = {
         customer,
-        billingType: "UNDEFINED",
+        billingType: type,
         value: toAsaasValue(value),
         nextDueDate: nextDueDate || minimumDueDate(),
         cycle,
@@ -236,6 +269,12 @@ export function createAsaasClient({ apiKey, baseUrl = ASAAS_BASE_URL, label = "a
     },
     getSubscription(subscriptionId) {
       return request("GET", `/subscriptions/${encodeURIComponent(subscriptionId)}`);
+    },
+    async listSubscriptions({ externalReference } = {}) {
+      const params = new URLSearchParams({ limit: "100" });
+      if (externalReference) params.set("externalReference", externalReference);
+      const body = await request("GET", `/subscriptions?${params.toString()}`);
+      return Array.isArray(body?.data) ? body.data : [];
     },
     // Faturas geradas por uma assinatura. Envelope { data: [...] }.
     async getSubscriptionPayments(subscriptionId) {

@@ -123,10 +123,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_tenants_asaas_customer
 
 -- Assinatura recorrente no Asaas que espelha a linha de tenant_subscriptions.
 ALTER TABLE platform.tenant_subscriptions ADD COLUMN IF NOT EXISTS asaas_subscription_id TEXT;
--- Como a clínica paga. A aplicação aceita somente UNDEFINED: PIX/boleto/cartão
--- são coletados na página hospedada do Asaas, nunca pela infraestrutura Aura.
+-- Como a clínica paga. Boleto não é oferecido: PIX é emitido diretamente e
+-- cartão é coletado no Checkout hospedado do Asaas.
 ALTER TABLE platform.tenant_subscriptions ADD COLUMN IF NOT EXISTS billing_type TEXT;
 ALTER TABLE platform.tenant_subscriptions ADD COLUMN IF NOT EXISTS canceled_at TIMESTAMPTZ;
+ALTER TABLE platform.tenant_subscriptions ADD COLUMN IF NOT EXISTS asaas_checkout_id TEXT;
+ALTER TABLE platform.tenant_subscriptions ADD COLUMN IF NOT EXISTS checkout_url TEXT;
+ALTER TABLE platform.tenant_subscriptions ADD COLUMN IF NOT EXISTS checkout_expires_at TIMESTAMPTZ;
+ALTER TABLE platform.tenant_subscriptions ADD COLUMN IF NOT EXISTS grace_ends_at TIMESTAMPTZ;
+ALTER TABLE platform.tenant_subscriptions ADD COLUMN IF NOT EXISTS billing_suspended_at TIMESTAMPTZ;
 
 CREATE UNIQUE INDEX IF NOT EXISTS ux_tenant_subscriptions_asaas
   ON platform.tenant_subscriptions (asaas_subscription_id)
@@ -162,6 +167,25 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_tenant_invoices_asaas_payment
   WHERE asaas_payment_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_tenant_invoices_tenant ON platform.tenant_invoices (tenant_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS ix_tenant_invoices_status ON platform.tenant_invoices (status, due_date);
+
+-- Dedupe dos avisos próprios da Aura. Os avisos financeiros normais continuam
+-- sendo enviados pelo Asaas; esta tabela cobre a carência e o bloqueio.
+CREATE TABLE IF NOT EXISTS platform.billing_notifications (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id INTEGER NOT NULL REFERENCES platform.tenants(id) ON DELETE CASCADE,
+  invoice_id INTEGER NOT NULL REFERENCES platform.tenant_invoices(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'sending' CHECK (status IN ('sending', 'sent', 'failed')),
+  attempts INTEGER NOT NULL DEFAULT 1,
+  provider_message_id TEXT,
+  last_error TEXT,
+  sent_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (invoice_id, kind)
+);
+CREATE INDEX IF NOT EXISTS ix_billing_notifications_retry
+  ON platform.billing_notifications (status, updated_at);
 
 -- Log de TODO webhook recebido (plataforma e clínicas), inclusive os
 -- rejeitados. Serve a três coisas: idempotência, auditoria de tentativa de
