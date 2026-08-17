@@ -616,6 +616,17 @@
   background: var(--au-l-media-bg);
 }
 
+/* A foto de encerramento é uma apresentação pessoal, não uma grade de
+   referências. Quando há uma só, ela ganha a largura do bloco e preserva o
+   enquadramento vertical em vez de ficar espremida em meia coluna. */
+.au-l-root .au-l-shots img:only-child {
+  grid-column: 1 / -1;
+  width: min(100%, 360px);
+  justify-self: end;
+  aspect-ratio: 3 / 4;
+  object-position: center;
+}
+
 .au-l-root .au-l-foot {
   display: flex;
   flex-direction: column;

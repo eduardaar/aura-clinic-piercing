@@ -319,8 +319,6 @@ ON CONFLICT (document_key) DO NOTHING;
 -- no primeiro boot e, a partir daí, nunca mais sobrescreve o que o super-admin
 -- editou. Sem essa cláusula, todo deploy desfaria as edições dele.
 --
--- O bloco `carousel` nasce DESLIGADO: ele não existe na página hoje, e ligá-lo
--- sozinho num deploy mudaria a landing sem ninguém ter pedido.
 INSERT INTO platform.landing_sections (section_key, enabled, sort_order, content) VALUES
   ('hero', true, 10, '{
     "kicker": "Para estúdios de piercing",
@@ -347,14 +345,17 @@ INSERT INTO platform.landing_sections (section_key, enabled, sort_order, content
     ]
   }'::jsonb),
 
-  ('carousel', false, 30, '{
-    "title": "Feito para o seu trabalho",
-    "subtitle": "",
+  ('carousel', true, 30, '{
+    "title": "Piercing é identidade",
+    "subtitle": "Resultados reais de quem transforma detalhes em expressão.",
     "autoplay_seconds": 6,
     "items": [
-      {"image": "/assets/landing/showcase-1.jpg", "image_alt": "Brinco dourado texturizado em close-up", "caption": ""},
-      {"image": "/assets/landing/showcase-2.jpg", "image_alt": "", "caption": ""},
-      {"image": "/assets/landing/showcase-3.jpg", "image_alt": "", "caption": ""}
+      {"image": "/assets/landing/aura-portfolio/portfolio-01.jpeg", "image_alt": "Orelha com composição de piercings em joias prateadas", "caption": ""},
+      {"image": "/assets/landing/aura-portfolio/portfolio-02.jpeg", "image_alt": "Composição de piercing em orelha com joias", "caption": ""},
+      {"image": "/assets/landing/aura-portfolio/portfolio-03.jpeg", "image_alt": "Detalhe de piercing em orelha", "caption": ""},
+      {"image": "/assets/landing/aura-portfolio/portfolio-04.jpeg", "image_alt": "Joias de piercing em composição autoral", "caption": ""},
+      {"image": "/assets/landing/aura-portfolio/portfolio-05.jpeg", "image_alt": "Detalhe de piercing com joias", "caption": ""},
+      {"image": "/assets/landing/aura-portfolio/portfolio-06.jpeg", "image_alt": "Composição final de piercings", "caption": ""}
     ]
   }'::jsonb),
 
@@ -389,8 +390,7 @@ INSERT INTO platform.landing_sections (section_key, enabled, sort_order, content
     "primary_href": "/cadastro",
     "note": "7 dias grátis · sem cartão de crédito",
     "images": [
-      {"image": "/assets/landing/showcase-2.jpg", "image_alt": ""},
-      {"image": "/assets/landing/showcase-3.jpg", "image_alt": ""}
+      {"image": "/assets/landing/aura-portfolio/eduarda.jpeg", "image_alt": "Eduarda, body piercer e criadora da Aura Clinic"}
     ],
     "footer_text": "Plataforma de gestão para estúdios de piercing.",
     "footer_link_label": "Entrar na minha conta",

@@ -66,13 +66,16 @@ export const LANDING_DEFAULTS = {
   },
 
   carousel: {
-    title: "Feito para o seu trabalho",
-    subtitle: "",
+    title: "Piercing é identidade",
+    subtitle: "Resultados reais de quem transforma detalhes em expressão.",
     autoplay_seconds: 6,
     items: [
-      { image: "/assets/landing/showcase-1.jpg", image_alt: "Brinco dourado texturizado em close-up", caption: "" },
-      { image: "/assets/landing/showcase-2.jpg", image_alt: "", caption: "" },
-      { image: "/assets/landing/showcase-3.jpg", image_alt: "", caption: "" }
+      { image: "/assets/landing/aura-portfolio/portfolio-01.jpeg", image_alt: "Orelha com composição de piercings em joias prateadas", caption: "" },
+      { image: "/assets/landing/aura-portfolio/portfolio-02.jpeg", image_alt: "Composição de piercing em orelha com joias", caption: "" },
+      { image: "/assets/landing/aura-portfolio/portfolio-03.jpeg", image_alt: "Detalhe de piercing em orelha", caption: "" },
+      { image: "/assets/landing/aura-portfolio/portfolio-04.jpeg", image_alt: "Joias de piercing em composição autoral", caption: "" },
+      { image: "/assets/landing/aura-portfolio/portfolio-05.jpeg", image_alt: "Detalhe de piercing com joias", caption: "" },
+      { image: "/assets/landing/aura-portfolio/portfolio-06.jpeg", image_alt: "Composição final de piercings", caption: "" }
     ]
   },
 
@@ -98,8 +101,7 @@ export const LANDING_DEFAULTS = {
     primary_href: "/cadastro",
     note: "7 dias grátis · sem cartão de crédito",
     images: [
-      { image: "/assets/landing/showcase-2.jpg", image_alt: "" },
-      { image: "/assets/landing/showcase-3.jpg", image_alt: "" }
+      { image: "/assets/landing/aura-portfolio/eduarda.jpeg", image_alt: "Eduarda, body piercer e criadora da Aura Clinic" }
     ],
     footer_text: "Plataforma de gestão para estúdios de piercing.",
     footer_link_label: "Entrar na minha conta",
@@ -111,13 +113,12 @@ export const LANDING_DEFAULTS = {
 };
 
 // A página inteira no formato que `GET /api/landing` devolve: já ordenada e só
-// com os blocos LIGADOS. O `carousel` fica de fora de propósito — ele nasce
-// desligado na semente, e incluí-lo aqui faria a landing mudar sozinha sempre
-// que a API estivesse fora.
+// com os blocos LIGADOS.
 export const DEFAULT_LANDING_SECTIONS = [
   { section_key: "hero", enabled: true, sort_order: 10, content: LANDING_DEFAULTS.hero },
   { section_key: "features", enabled: true, sort_order: 20, content: LANDING_DEFAULTS.features },
-  { section_key: "about", enabled: true, sort_order: 30, content: LANDING_DEFAULTS.about },
+  { section_key: "carousel", enabled: true, sort_order: 30, content: LANDING_DEFAULTS.carousel },
+  { section_key: "about", enabled: true, sort_order: 35, content: LANDING_DEFAULTS.about },
   { section_key: "plans", enabled: true, sort_order: 40, content: LANDING_DEFAULTS.plans },
   { section_key: "closing", enabled: true, sort_order: 60, content: LANDING_DEFAULTS.closing }
 ];

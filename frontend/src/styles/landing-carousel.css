@@ -11,6 +11,8 @@
 
 .au-l-root .au-l-carousel {
   position: relative;
+  width: min(100%, 520px);
+  margin-inline: auto;
   min-width: 0;
 }
 
@@ -19,7 +21,7 @@
    a primeira foto chegasse. */
 .au-l-root .au-l-carousel-stage {
   position: relative;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 3 / 4;
   overflow: hidden;
   border-radius: var(--au-l-radius);
   background: var(--au-l-media-bg);
@@ -113,7 +115,7 @@
    ========================================================================= */
 
 @media (min-width: 640px) {
-  .au-l-root .au-l-carousel-stage { aspect-ratio: 16 / 10; }
+  .au-l-root .au-l-carousel-stage { aspect-ratio: 3 / 4; }
 
   .au-l-root .au-l-carousel-caption {
     left: 18px;
@@ -125,7 +127,7 @@
 }
 
 @media (min-width: 900px) {
-  .au-l-root .au-l-carousel-stage { aspect-ratio: 16 / 9; }
+  .au-l-root .au-l-carousel-stage { aspect-ratio: 3 / 4; }
   .au-l-root .au-l-carousel-dots { margin-top: 20px; }
 }
 
