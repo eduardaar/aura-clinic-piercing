@@ -168,15 +168,26 @@ function FeaturesSection({ content }) {
 }
 
 export function AboutSection({ content }) {
+  const paragraphs = String(content.body || "").split(/\n\s*\n/).filter(Boolean);
+
   return <section className="au-l-about" id="sobre">
     <div className="au-l-about-inner">
       <div className="au-l-sec-head">
         {content.kicker && <span className="au-l-kicker">{content.kicker}</span>}
         <h2>{content.title}</h2>
       </div>
-      <div className="au-l-about-grid">
-        <article><span>Produto</span><h3>{content.aura_title}</h3><p>{content.aura_text}</p></article>
-        <article><span>Quem desenvolve</span><h3>{content.monitence_title}</h3><p>{content.monitence_text}</p></article>
+      <div className="au-l-about-layout">
+        {content.image && <figure className="au-l-about-media">
+          <img src={content.image} alt={content.image_alt || "Eduarda, idealizadora da Aura Clinic"} />
+          {content.image_caption && <figcaption>{content.image_caption}</figcaption>}
+        </figure>}
+        <div className="au-l-about-copy">
+          {paragraphs.length > 0 ? paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>) : <>
+            <p>{content.aura_text}</p>
+            <p>{content.monitence_text}</p>
+          </>}
+          {content.signature && <p className="au-l-about-signature">{content.signature}</p>}
+        </div>
       </div>
     </div>
   </section>;

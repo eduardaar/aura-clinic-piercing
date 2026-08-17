@@ -374,15 +374,17 @@
   line-height: 1.5;
 }
 
-/* Apresentação institucional: duas colunas curtas para explicar produto e
-   empresa sem virar um bloco longo de texto comercial. */
+/* Apresentação institucional: retrato e texto para tornar a marca pessoal
+   sem comprometer a leitura em telas pequenas. */
 .au-l-root .au-l-about { width:100%; background:#f6f2eb; }
 .au-l-root .au-l-about-inner { width:100%; max-width:var(--au-l-max); margin:0 auto; padding:48px var(--au-l-pad); }
-.au-l-root .au-l-about-grid { display:grid; gap:14px; }
-.au-l-root .au-l-about-grid article { padding:22px; border:1px solid var(--line); border-radius:var(--au-l-radius); background:#fff; }
-.au-l-root .au-l-about-grid article > span { color:var(--gold-dark); font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
-.au-l-root .au-l-about-grid h3 { margin:9px 0 8px; font-size:22px; }
-.au-l-root .au-l-about-grid p { color:var(--au-l-body); line-height:1.6; }
+.au-l-root .au-l-about-layout { display:grid; gap:28px; align-items:start; }
+.au-l-root .au-l-about-media { margin:0; overflow:hidden; border-radius:var(--au-l-radius); background:#d7d0c4; }
+.au-l-root .au-l-about-media img { display:block; width:100%; aspect-ratio:4 / 5; object-fit:cover; object-position:center 68%; }
+.au-l-root .au-l-about-media figcaption { padding:11px 14px; color:var(--au-l-body); font-size:13px; background:#fff; }
+.au-l-root .au-l-about-copy { display:grid; gap:16px; }
+.au-l-root .au-l-about-copy p { color:var(--au-l-body); line-height:1.7; }
+.au-l-root .au-l-about-copy .au-l-about-signature { padding-top:4px; color:var(--ink); font-weight:750; }
 
 /* Faixa escura deliberada entre seções claras: cria uma pausa de leitura e
    apresenta as integrações que dão escala ao estúdio sem trocar a paleta Aura. */
@@ -699,7 +701,7 @@
   }
 
   .au-l-root .au-l-features { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .au-l-root .au-l-about-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  .au-l-root .au-l-about-layout { grid-template-columns:minmax(220px, .75fr) minmax(0, 1.25fr); gap:32px; }
   .au-l-root .au-l-value-inner { padding: 64px var(--au-l-pad); }
 
   .au-l-root .au-l-sec { padding: 56px var(--au-l-pad); }

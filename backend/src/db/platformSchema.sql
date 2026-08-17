@@ -368,11 +368,12 @@ INSERT INTO platform.landing_sections (section_key, enabled, sort_order, content
 
   ('about', true, 30, '{
     "kicker": "Sobre nós",
-    "title": "Tecnologia feita para a rotina de quem atende.",
-    "aura_title": "Aura Clinic",
-    "aura_text": "A Aura Clinic é a plataforma de gestão criada para estúdios de piercing organizarem agenda, clientes, catálogo, estoque, financeiro e comunicação em um só lugar.",
-    "monitence_title": "Monitence",
-    "monitence_text": "A Monitence desenvolve produtos digitais que tornam operações de serviço mais simples, conectadas e preparadas para crescer."
+    "title": "Sobre a Aura Clinic",
+    "body": "A Aura Clinic nasceu com o propósito de transformar o body piercing em uma experiência que une estética, segurança e cuidado.\n\nCada atendimento é realizado de forma individualizada, respeitando a anatomia, o estilo e as necessidades de cada cliente. Trabalhamos com protocolos rigorosos de biossegurança e esterilização, priorizando materiais de alta qualidade, como titânio grau implante ASTM F136 e ouro sólido 14k e 18k.\n\nMais do que realizar uma perfuração, buscamos acompanhar cada etapa da experiência — desde a escolha da joia e planejamento da composição até as orientações de cuidados e acompanhamento da cicatrização.\n\nNa Aura Clinic, acreditamos que cada joia pode representar uma escolha, um momento ou uma parte da sua identidade.",
+    "signature": "Aura Clinic — técnica, cuidado e joalheria para valorizar a sua essência.",
+    "image": "/assets/landing/aura-portfolio/sobre-nos-eduarda.jpeg",
+    "image_alt": "Eduarda, idealizadora e proprietária da Aura Clinic",
+    "image_caption": "Eduarda · idealizadora da Aura Clinic"
   }'::jsonb),
 
   ('showcase_links', true, 50, '{
