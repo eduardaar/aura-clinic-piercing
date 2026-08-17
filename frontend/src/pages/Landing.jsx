@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BellRing, Check, ChevronLeft, ChevronRight, MessageCircle, Sparkles, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, MessageCircle, X } from "lucide-react";
 import { API, API_ORIGIN } from "../lib/api";
 import { asArray, asNumber, asObject } from "../lib/utils";
 import { featureLabel } from "../lib/planFeatures";
@@ -197,34 +197,6 @@ export function AboutSection({ content }) {
       </div>
     </div>
   </section>;
-}
-
-// Faixa de valor comercial entre os recursos e a escolha de plano. Não é mais
-// um card: o contraste intencional cria pausa na rolagem e explica por que o
-// Aura resolve a operação inteira, não apenas a agenda.
-function PlatformValueSection() {
-  const items = [
-    { icon: Sparkles, title: "Assistente com IA", text: "Crie mensagens, resumos e respostas para ganhar tempo no atendimento." },
-    { icon: MessageCircle, title: "WhatsApp integrado", text: "Centralize lembretes, confirmações e conversas com crédito controlado." },
-    { icon: BellRing, title: "Automação que acompanha", text: "Avise, faça pós-atendimento e mantenha cada cliente no fluxo certo." }
-  ];
-  return (
-    <section className="au-l-value" id="plataforma">
-      <div className="au-l-value-inner">
-        <div className="au-l-value-copy">
-          <span className="au-l-kicker">Feito para a rotina real</span>
-          <h2>Mais que agenda: uma operação conectada.</h2>
-          <p>Do primeiro contato à recompra, o Aura organiza atendimento, estoque, financeiro e comunicação em um só lugar.</p>
-        </div>
-        <div className="au-l-value-list">
-          {items.map(({ icon: Icon, title, text }) => <article key={title}>
-            <Icon size={22} aria-hidden="true" />
-            <div><h3>{title}</h3><p>{text}</p></div>
-          </article>)}
-        </div>
-      </div>
-    </section>
-  );
 }
 
 // Preferência de sistema, lida ao vivo: quem liga "reduzir movimento" no meio da
@@ -502,6 +474,7 @@ export function Landing() {
     const closing = sections.find((section) => section.section_key === "closing");
     return mergeContent("closing", closing?.content);
   }, [sections]);
+  const hasPlansSection = sections.some((section) => section.section_key === "plans");
 
   return (
     <div className="au-shell">
@@ -509,7 +482,7 @@ export function Landing() {
 
       <main className="au-l-root">
         {/* Ordem da API (já vem ordenada); sem ela, a ordem do embutido. */}
-        {sections.map((section) => {
+        {sections.filter((section) => !hasPlansSection || section.section_key !== "closing").map((section) => {
           const Section = SECTION_COMPONENTS[section.section_key];
           if (!Section) return null;
           const rendered = (
@@ -520,7 +493,7 @@ export function Landing() {
             />
           );
           if (section.section_key === "plans") {
-            return [<PlatformValueSection key="platform-value-before-plans" />, rendered];
+            return [<ClosingSection key="closing-before-plans" content={closingContent} />, rendered];
           }
           return rendered;
         })}
