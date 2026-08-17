@@ -71,6 +71,12 @@ function whatsappUrl(phone) {
   return digits ? `https://wa.me/${digits}` : "";
 }
 
+function WhatsAppIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path fill="currentColor" d="M12.04 2A9.78 9.78 0 0 0 3.7 16.9L2.5 21.5l4.7-1.24A9.78 9.78 0 1 0 12.04 2Zm0 17.8a8 8 0 0 1-4.08-1.12l-.3-.18-2.79.73.75-2.72-.2-.32a8 8 0 1 1 6.62 3.61Zm4.39-5.97c-.24-.12-1.44-.71-1.66-.79-.22-.08-.38-.12-.54.12-.16.24-.63.79-.77.95-.14.16-.29.18-.53.06-1.45-.72-2.4-1.28-3.35-2.9-.25-.43.25-.4.72-1.34.08-.16.04-.3-.02-.42-.06-.12-.54-1.3-.74-1.78-.2-.47-.4-.41-.54-.42h-.46c-.16 0-.42.06-.64.3-.22.24-.84.82-.84 2 0 1.18.86 2.32.98 2.48.12.16 1.7 2.6 4.12 3.64.57.25 1.02.4 1.37.51.58.18 1.1.16 1.52.1.46-.07 1.44-.59 1.64-1.15.2-.57.2-1.05.14-1.15-.06-.1-.22-.16-.46-.28Z" />
+  </svg>;
+}
+
 function FloatingWhatsApp({ phone }) {
   const href = whatsappUrl(phone);
   if (!href) return null;
@@ -82,7 +88,7 @@ function FloatingWhatsApp({ phone }) {
       rel="noreferrer"
       aria-label="Falar conosco pelo WhatsApp"
     >
-      <MessageCircle size={24} aria-hidden="true" />
+      <WhatsAppIcon />
     </a>
   );
 }

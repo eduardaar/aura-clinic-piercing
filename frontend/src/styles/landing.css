@@ -71,8 +71,8 @@
   z-index: 30;
   right: max(18px, env(safe-area-inset-right));
   bottom: max(18px, env(safe-area-inset-bottom));
-  display: inline-flex;
-  align-items: start;
+  display: inline-grid;
+  place-items: center;
   width: 54px;
   height: 54px;
   justify-content: center;
@@ -84,6 +84,8 @@
   line-height: 1;
   transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
 }
+
+.au-l-whatsapp-float svg { display:block; width:27px; height:27px; }
 
 .au-l-whatsapp-float:hover {
   transform: translateY(-2px);
