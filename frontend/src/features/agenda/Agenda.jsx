@@ -1,7 +1,7 @@
 ﻿// Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight, Copy, ExternalLink, List, Plus, Settings2 } from "lucide-react";
-import { Button, Checkbox, FinancialSummary, Input, PaymentSelect, Select, StatusBadge, StatusSelect } from "../../components/common/Ui";
+import { Accordion, Button, Checkbox, FinancialSummary, Input, PaymentSelect, Select, StatusBadge, StatusSelect, Switch, Tabs, Textarea } from "../../components/common/Ui";
 import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { Loading } from "../../components/common/Feedback";
@@ -10,9 +10,9 @@ import { apiFetch, readStoredSession, tenantSlug, useApiInvalidate, useFetch } f
 import { buildCalendar, buildTimeSlots, dateKey, movePeriod } from "../../lib/calendarUtils";
 import { defaultAppointment, defaultProcedureForm, defaultProfessionalForm, defaultScheduleBlock, defaultServiceForm } from "../../lib/defaultForms";
 import { appointmentWhatsAppMessage, calcRemaining, currency, personName, statusClass, statuses, weekdayLabel, whatsappUrl } from "../../features/shared/helpers";
-import { Toggle } from "../../pages/CatalogCustomization";
 import { SmartCombobox } from "../../components/common/SmartCombobox";
 import { publicLinkForTenant } from "../../lib/publicRoutes";
+import "../../styles/agenda-admin-responsive.css";
 
 // formatDate() de lib/utils devolve dd/MM sem ano, e a agenda lista atendimentos
 // de anos diferentes na mesma tabela — aqui a data precisa do ano para não virar
@@ -197,8 +197,8 @@ export function Appointments() {
         onClose={() => setModalOpen(false)}
         footer={(
           <>
-            <button type="button" className="secondary-button" onClick={() => setModalOpen(false)}>Cancelar</button>
-            <button type="submit" form="appointment-form" className="primary-button" disabled={!form.appointment_time}>Salvar agendamento</button>
+            <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>
+            <Button type="submit" form="appointment-form" disabled={!form.appointment_time}>Salvar agendamento</Button>
           </>
         )}
       >
@@ -245,9 +245,7 @@ export function Appointments() {
               {!loadingSlots && form.appointment_date && form.service_id && form.professional_id && !asArray(slots).length && <small>Nenhum horário livre neste dia.</small>}
             </div>
           </div>
-          <label>Descrição do atendimento
-            <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-          </label>
+          <Textarea label="Descrição do atendimento" value={form.description} onChange={(value) => setForm({ ...form, description: value })} />
         </div>
         <div className="form-section">
           <h3>Financeiro</h3>
@@ -262,10 +260,8 @@ export function Appointments() {
             <PaymentSelect label="Forma de pagamento restante" value={form.remaining_payment_method} onChange={(v) => setForm({ ...form, remaining_payment_method: v })} />
             <StatusSelect value={form.status} onChange={(v) => setForm({ ...form, status: v })} />
           </div>
-          <label>Observações financeiras<textarea value={form.financial_notes || ""} onChange={(e) => setForm({ ...form, financial_notes: e.target.value })} /></label>
-          <label>Observações importantes
-            <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-          </label>
+          <Textarea label="Observações financeiras" value={form.financial_notes || ""} onChange={(value) => setForm({ ...form, financial_notes: value })} />
+          <Textarea label="Observações importantes" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} />
           <label>Foto de referência
             <input type="file" accept="image/*" onChange={(event) => setForm({ ...form, reference_photo: event.target.files?.[0] || null })} />
             <small>Opcional. Use uma foto nítida da referência enviada pela cliente.</small>
@@ -390,7 +386,7 @@ function AppointmentItemsEditor({ form, services, procedures = [], jewelry, onCh
     <div className="appointment-items-editor">
       <div className="section-inline-header">
         <strong>Procedimentos E Joias</strong>
-        <button type="button" className="secondary-button" onClick={() => onChange(withAppointmentItems(form, [...items, emptyAppointmentItem()], services, jewelry))}>Adicionar item</button>
+        <Button variant="secondary" onClick={() => onChange(withAppointmentItems(form, [...items, emptyAppointmentItem()], services, jewelry))}>Adicionar item</Button>
       </div>
       {items.map((item, index) => {
         const selectedJewelry = asArray(jewelry).find((product) => String(product.id) === String(item.jewelry_id));
@@ -438,7 +434,7 @@ function AppointmentItemsEditor({ form, services, procedures = [], jewelry, onCh
               ))}
             </Select>
             <Input type="number" label="Qtd." value={item.quantity} onChange={(value) => updateItem(index, { quantity: value })} />
-            <button type="button" className="secondary-button danger" onClick={() => removeItem(index)} disabled={items.length === 1}>Remover</button>
+            <Button variant="secondary" className="danger" onClick={() => removeItem(index)} disabled={items.length === 1}>Remover</Button>
             {selectedJewelry && <div className="appointment-jewelry-selected" data-product-id={selectedJewelry.id}>
               <strong>{selectedJewelry.name}</strong><span>ID {selectedJewelry.id}</span>
               <span>{selectedVariant ? `Variação: ${selectedVariant.variation_name || selectedVariant.sku}` : "Sem variação"}</span>
@@ -717,8 +713,8 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
       onClose={onClose}
       footer={(
         <>
-          <button type="button" className="secondary-button" onClick={onClose}>Cancelar</button>
-          <button type="submit" form="visual-appointment-form" className="primary-button">Salvar agendamento</button>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button type="submit" form="visual-appointment-form">Salvar agendamento</Button>
         </>
       )}
     >
@@ -747,9 +743,7 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
           compact
         />
         <AppointmentValueSummary form={form} services={safeServices} jewelry={safeJewelry} />
-        <label>Observações
-          <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
-        </label>
+        <Textarea label="Observações" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} />
         {error && <span className="form-error">{error}</span>}
       </form>
     </Modal>
@@ -867,8 +861,8 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
       onClose={onClose}
       footer={(
         <>
-          <button type="button" className="secondary-button" onClick={onClose}>Fechar</button>
-          <button type="button" className="primary-button" onClick={() => saveAppointment()}>Salvar alterações</button>
+          <Button variant="secondary" onClick={onClose}>Fechar</Button>
+          <Button onClick={() => saveAppointment()}>Salvar alterações</Button>
         </>
       )}
     >
@@ -893,30 +887,28 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
             compact
           />
           <AppointmentValueSummary form={form} services={safeServices} jewelry={safeJewelry} />
-          <label>Observação
-            <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
-          </label>
+          <Textarea label="Observação" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} />
           {form.status !== "atendido" && <section className="soft-card stack">
-            <div className="section-inline-header"><strong>Conferência financeira</strong><button type="button" className="secondary-button" onClick={() => setPayments([...payments, { method: "Pix", amount: 0, status: "pago", installments: 1, fee_amount: 0, expected_receipt_date: "" }])}>Dividir pagamento</button></div>
+            <div className="section-inline-header"><strong>Conferência financeira</strong><Button variant="secondary" onClick={() => setPayments([...payments, { method: "Pix", amount: 0, status: "pago", installments: 1, fee_amount: 0, expected_receipt_date: "" }])}>Dividir pagamento</Button></div>
             {payments.map((payment, index) => <div className="form-grid" key={`${index}-${payment.method}`}>
               <PaymentSelect label={`Forma ${index + 1}`} value={payment.method} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, method: value } : item))} />
               <Input type="number" label="Valor" value={payment.amount} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, amount: value } : item))} />
               <Select label="Status" value={payment.status} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, status: value } : item))}><option value="pago">Pago</option><option value="pendente">Pendente</option></Select>
               {String(payment.method).toLowerCase().includes("crédito") && <><Input type="number" label="Parcelas" value={payment.installments} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, installments: value } : item))} /><Input type="number" label="Taxa" value={payment.fee_amount} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, fee_amount: value } : item))} /><Input type="date" label="Previsão de recebimento" value={payment.expected_receipt_date} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, expected_receipt_date: value } : item))} /></>}
-              {payments.length > 1 && <button type="button" className="secondary-button danger" onClick={() => setPayments(payments.filter((_, itemIndex) => itemIndex !== index))}>Remover</button>}
+              {payments.length > 1 && <Button variant="secondary" className="danger" onClick={() => setPayments(payments.filter((_, itemIndex) => itemIndex !== index))}>Remover</Button>}
             </div>)}
-            <label>Observações financeiras<textarea value={financialNotes} onChange={(event) => setFinancialNotes(event.target.value)} /></label>
+            <Textarea label="Observações financeiras" value={financialNotes} onChange={setFinancialNotes} />
             <small>Sinal preservado: {currency.format(Number(appointment.deposit_value || 0))} · saldo atual: {currency.format(Number(appointment.remaining_value || 0))}</small>
           </section>}
           <div className="toolbar compact-actions">
-            <button type="button" className="secondary-button" onClick={() => saveAppointment({ status: "confirmado" })}>Confirmar</button>
-            <button type="button" className="secondary-button" onClick={() => saveAppointment({ status: "remarcado" })}>Reagendar</button>
-            <button type="button" className="secondary-button danger" onClick={() => saveAppointment({ status: "cancelado" })}>Cancelar</button>
-            <button type="button" className="primary-button" onClick={completeAppointment}>Revisar e finalizar</button>
+            <Button variant="secondary" onClick={() => saveAppointment({ status: "confirmado" })}>Confirmar</Button>
+            <Button variant="secondary" onClick={() => saveAppointment({ status: "remarcado" })}>Reagendar</Button>
+            <Button variant="secondary" className="danger" onClick={() => saveAppointment({ status: "cancelado" })}>Cancelar</Button>
+            <Button onClick={completeAppointment}>Revisar e finalizar</Button>
           </div>
-          {readStoredSession()?.user?.role === "admin" && <button type="button" className="secondary-button danger" onClick={openDeletion}>Excluir definitivamente</button>}
+          {readStoredSession()?.user?.role === "admin" && <Button variant="secondary" className="danger" onClick={openDeletion}>Excluir definitivamente</Button>}
           {error && <span className="form-error">{error}</span>}
-          <Modal open={!!deletion} title="Excluir definitivamente" subtitle="Esta ação exige análise e confirmação" onClose={() => !deletion?.busy && setDeletion(null)} footer={<><button type="button" className="secondary-button" onClick={() => setDeletion(null)}>Voltar</button><button type="button" className="primary-button danger" disabled={!deletion?.canDelete || deletion?.busy || deletion?.confirmation !== "EXCLUIR AGENDAMENTO" || !deletion?.reason?.trim()} onClick={deleteAppointment}>{deletion?.busy ? "Excluindo…" : "Excluir agendamento"}</button></>}>
+          <Modal open={!!deletion} title="Excluir definitivamente" subtitle="Esta ação exige análise e confirmação" onClose={() => !deletion?.busy && setDeletion(null)} footer={<><Button variant="secondary" onClick={() => setDeletion(null)}>Voltar</Button><Button variant="danger" disabled={!deletion?.canDelete || deletion?.busy || deletion?.confirmation !== "EXCLUIR AGENDAMENTO" || !deletion?.reason?.trim()} onClick={deleteAppointment}>{deletion?.busy ? "Excluindo…" : "Excluir agendamento"}</Button></>}>
             {deletion && <div className="stack"><div className="soft-card"><strong>{deletion.canDelete ? "Agendamento de teste sem vínculos" : "Exclusão bloqueada"}</strong><p>{deletion.canDelete ? "A exclusão é irreversível e ficará registrada na auditoria." : "Existem vínculos financeiros, clínicos ou de estoque. Cancele o agendamento para preservar o histórico."}</p></div><div className="summary-grid">{Object.entries(deletion.impact).map(([key, value]) => <span key={key}>{key.replaceAll("_", " ")}: <strong>{value}</strong></span>)}</div><Input label="Motivo obrigatório" value={deletion.reason} onChange={(reason) => setDeletion({ ...deletion, reason })} /><Input label="Digite EXCLUIR AGENDAMENTO" value={deletion.confirmation} onChange={(confirmation) => setDeletion({ ...deletion, confirmation })} /></div>}
           </Modal>
         </div>
@@ -1322,15 +1314,17 @@ export function BookingAdmin({ onBack, initialTab }) {
           <Button variant="secondary" onClick={onBack}><ArrowLeft size={16} /> Voltar para agenda</Button>
         </div>
       </header>
-      <nav className="customization-tabs">
-        {[
-          ["profissionais", "Profissionais"],
-          ["servicos", "Serviços"],
-          ["horarios", "Agenda semanal"],
-          ["bloqueios", "Disponibilidade avançada"],
-          ["solicitacoes", "Solicitações pendentes"]
-        ].map(([id, label]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}</button>)}
-      </nav>
+      <Tabs value={tab} onValueChange={setTab}>
+        <Tabs.List className="customization-tabs" aria-label="Configurações da agenda">
+          {[
+            ["profissionais", "Profissionais"],
+            ["servicos", "Serviços"],
+            ["horarios", "Agenda semanal"],
+            ["bloqueios", "Disponibilidade avançada"],
+            ["solicitacoes", "Solicitações pendentes"]
+          ].map(([id, label]) => <Tabs.Trigger key={id} value={id}>{label}</Tabs.Trigger>)}
+        </Tabs.List>
+      </Tabs>
 
       {tab === "profissionais" && (
         <div className="panel">
@@ -1381,8 +1375,8 @@ export function BookingAdmin({ onBack, initialTab }) {
             onClose={() => setProfessionalModalOpen(false)}
             footer={(
               <>
-                <button type="button" className="secondary-button" onClick={() => setProfessionalModalOpen(false)}>Cancelar</button>
-                <button type="submit" form="professional-form" className="primary-button">Salvar profissional</button>
+                <Button variant="secondary" onClick={() => setProfessionalModalOpen(false)}>Cancelar</Button>
+                <Button type="submit" form="professional-form">Salvar profissional</Button>
               </>
             )}
           >
@@ -1395,13 +1389,13 @@ export function BookingAdmin({ onBack, initialTab }) {
                 <Input type="email" label="E-mail" value={professionalForm.email} onChange={(value) => setProfessionalForm({ ...professionalForm, email: value })} />
                 <Input type="color" label="Cor na agenda" value={professionalForm.calendar_color} onChange={(value) => setProfessionalForm({ ...professionalForm, calendar_color: value })} />
               </div>
-              <Toggle label="Profissional ativo" checked={professionalForm.active} onChange={(value) => setProfessionalForm({ ...professionalForm, active: value })} />
-              <Toggle label="Receber notificações automáticas" checked={professionalForm.notification_opt_in} onChange={(value) => setProfessionalForm({ ...professionalForm, notification_opt_in: value })} />
+              <Switch label="Profissional ativo" checked={professionalForm.active} onChange={(value) => setProfessionalForm({ ...professionalForm, active: value })} />
+              <Switch label="Receber notificações automáticas" checked={professionalForm.notification_opt_in} onChange={(value) => setProfessionalForm({ ...professionalForm, notification_opt_in: value })} />
               <div className="form-section">
                 <h3>Serviços que realiza</h3>
                 <div className="toggle-grid">
                   {safeServices.map((service) => (
-                    <Toggle
+                    <Switch
                       key={service.id}
                       label={service.name}
                       checked={asArray(professionalForm.service_ids).map(String).includes(String(service.id))}
@@ -1511,8 +1505,8 @@ export function BookingAdmin({ onBack, initialTab }) {
             onClose={() => setServiceModalOpen(false)}
             footer={(
               <>
-                <button type="button" className="secondary-button" onClick={() => setServiceModalOpen(false)}>Cancelar</button>
-                <button type="submit" form="service-form" className="primary-button">{editingServiceId ? "Salvar alterações" : "Salvar serviço"}</button>
+                <Button variant="secondary" onClick={() => setServiceModalOpen(false)}>Cancelar</Button>
+                <Button type="submit" form="service-form">{editingServiceId ? "Salvar alterações" : "Salvar serviço"}</Button>
               </>
             )}
           >
@@ -1523,8 +1517,8 @@ export function BookingAdmin({ onBack, initialTab }) {
                 <Input type="number" label="Preço base" value={serviceForm.base_price} onChange={(value) => setServiceForm({ ...serviceForm, base_price: value })} />
                 <Input type="number" label="Sinal obrigatório" value={serviceForm.deposit_value} onChange={(value) => setServiceForm({ ...serviceForm, deposit_value: value })} />
               </div>
-              <label>Descrição<textarea value={serviceForm.description} onChange={(event) => setServiceForm({ ...serviceForm, description: event.target.value })} /></label>
-              <Toggle label="Serviço ativo" checked={serviceForm.is_active} onChange={(value) => setServiceForm({ ...serviceForm, is_active: value })} />
+              <Textarea label="Descrição" value={serviceForm.description} onChange={(value) => setServiceForm({ ...serviceForm, description: value })} />
+              <Switch label="Serviço ativo" checked={serviceForm.is_active} onChange={(value) => setServiceForm({ ...serviceForm, is_active: value })} />
               {serviceError && <span className="form-error">{serviceError}</span>}
             </form>
           </Modal>
@@ -1536,8 +1530,8 @@ export function BookingAdmin({ onBack, initialTab }) {
             onClose={() => setProcedureModalOpen(false)}
             footer={(
               <>
-                <button type="button" className="secondary-button" onClick={() => setProcedureModalOpen(false)}>Cancelar</button>
-                <button type="submit" form="procedure-form" className="primary-button">{editingProcedureId ? "Salvar alterações" : "Salvar procedimento"}</button>
+                <Button variant="secondary" onClick={() => setProcedureModalOpen(false)}>Cancelar</Button>
+                <Button type="submit" form="procedure-form">{editingProcedureId ? "Salvar alterações" : "Salvar procedimento"}</Button>
               </>
             )}
           >
@@ -1552,9 +1546,9 @@ export function BookingAdmin({ onBack, initialTab }) {
                 <Input type="number" label="Preço" value={procedureForm.price} onChange={(value) => setProcedureForm({ ...procedureForm, price: value })} />
                 <Input type="number" label="Duração em minutos" value={procedureForm.duration_minutes} onChange={(value) => setProcedureForm({ ...procedureForm, duration_minutes: value })} />
               </div>
-              <label>Descrição<textarea value={procedureForm.description} onChange={(event) => setProcedureForm({ ...procedureForm, description: event.target.value })} /></label>
-              <label>Orientações pós-atendimento<textarea value={procedureForm.aftercare_instructions} onChange={(event) => setProcedureForm({ ...procedureForm, aftercare_instructions: event.target.value })} /></label>
-              <Toggle label="Procedimento ativo" checked={procedureForm.is_active} onChange={(value) => setProcedureForm({ ...procedureForm, is_active: value })} />
+              <Textarea label="Descrição" value={procedureForm.description} onChange={(value) => setProcedureForm({ ...procedureForm, description: value })} />
+              <Textarea label="Orientações pós-atendimento" value={procedureForm.aftercare_instructions} onChange={(value) => setProcedureForm({ ...procedureForm, aftercare_instructions: value })} />
+              <Switch label="Procedimento ativo" checked={procedureForm.is_active} onChange={(value) => setProcedureForm({ ...procedureForm, is_active: value })} />
               {procedureError && <span className="form-error">{procedureError}</span>}
             </form>
           </Modal>
@@ -1584,11 +1578,17 @@ export function BookingAdmin({ onBack, initialTab }) {
                   <label><span>Fim</span><input type="time" value={day.end_time || "18:00"} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { end_time: event.target.value })} /></label>
                   <label><span>Pausa</span><input type="time" value={day.lunch_start || ""} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { lunch_start: event.target.value })} /></label>
                   <label><span>Retorno</span><input type="time" value={day.lunch_end || ""} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { lunch_end: event.target.value })} /></label>
-                  <details className="weekly-schedule-advanced">
-                    <summary>Ajustes</summary>
-                    <label><span>Duração (min.)</span><input type="number" min="1" value={day.duration_minutes || 40} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { duration_minutes: event.target.value })} /></label>
-                    <label><span>Intervalo (min.)</span><input type="number" min="0" value={day.buffer_minutes || 10} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { buffer_minutes: event.target.value })} /></label>
-                  </details>
+                  <Accordion className="weekly-schedule-advanced">
+                    <Accordion.Item value="ajustes">
+                      <Accordion.Header><Accordion.Trigger>Ajustes</Accordion.Trigger></Accordion.Header>
+                      <Accordion.Content>
+                        <div className="weekly-schedule-advanced-fields">
+                          <label><span>Duração (min.)</span><input type="number" min="1" value={day.duration_minutes || 40} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { duration_minutes: event.target.value })} /></label>
+                          <label><span>Intervalo (min.)</span><input type="number" min="0" value={day.buffer_minutes || 10} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { buffer_minutes: event.target.value })} /></label>
+                        </div>
+                      </Accordion.Content>
+                    </Accordion.Item>
+                  </Accordion>
                 </article>;
               })}
             </div>
@@ -1654,8 +1654,8 @@ export function BookingAdmin({ onBack, initialTab }) {
             onClose={() => { setBlockModalOpen(false); setEditingBlockId(null); }}
             footer={(
               <>
-                <button type="button" className="secondary-button" onClick={() => { setBlockModalOpen(false); setEditingBlockId(null); }}>Cancelar</button>
-                <button type="submit" form="block-form" className="primary-button">Salvar regra</button>
+                <Button variant="secondary" onClick={() => { setBlockModalOpen(false); setEditingBlockId(null); }}>Cancelar</Button>
+                <Button type="submit" form="block-form">Salvar regra</Button>
               </>
             )}
           >
@@ -1687,9 +1687,9 @@ export function BookingAdmin({ onBack, initialTab }) {
                   <Input type="number" label="Intervalo" value={blockForm.buffer_minutes} onChange={(value) => setBlockForm({ ...blockForm, buffer_minutes: value })} />
                 </div>
               )}
-              <Toggle label="Dia inteiro" checked={blockForm.is_full_day} onChange={(value) => setBlockForm({ ...blockForm, is_full_day: value })} />
-              <Toggle label="Recorrente" checked={blockForm.is_recurring} onChange={(value) => setBlockForm({ ...blockForm, is_recurring: value })} />
-              <label>Observação<textarea value={blockForm.notes} onChange={(event) => setBlockForm({ ...blockForm, notes: event.target.value })} /></label>
+              <Switch label="Dia inteiro" checked={blockForm.is_full_day} onChange={(value) => setBlockForm({ ...blockForm, is_full_day: value })} />
+              <Switch label="Recorrente" checked={blockForm.is_recurring} onChange={(value) => setBlockForm({ ...blockForm, is_recurring: value })} />
+              <Textarea label="Observação" value={blockForm.notes} onChange={(value) => setBlockForm({ ...blockForm, notes: value })} />
               {blockError && <span className="form-error">{blockError}</span>}
             </form>
           </Modal>
@@ -1705,8 +1705,8 @@ export function BookingAdmin({ onBack, initialTab }) {
                 <div className="time-box"><strong>{item.appointment_time}</strong><span>{formatDate(item.appointment_date)}</span></div>
                 <div><h3>{personName(item)}</h3><p>{item.procedure} · {currency.format(item.deposit_value || 0)} de sinal</p><small>{item.professional_name} · {item.whatsapp}</small></div>
                 <div className="row-actions">
-                  <button onClick={() => updateRequest(item.id, "confirmado")}>Confirmar</button>
-                  <button onClick={() => updateRequest(item.id, "recusado")}>Recusar</button>
+                  <Button onClick={() => updateRequest(item.id, "confirmado")}>Confirmar</Button>
+                  <Button variant="secondary" className="danger" onClick={() => updateRequest(item.id, "recusado")}>Recusar</Button>
                 </div>
               </article>
             ))}

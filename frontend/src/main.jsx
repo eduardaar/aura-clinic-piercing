@@ -13,6 +13,11 @@ import "./styles/settings.css";
 // Por último de propósito: é a camada que define o layout do shell autenticado.
 import "./styles/appshell.css";
 import "./styles/catalog-v2.css";
+// Ajustes responsivos específicos das telas internas; carregado por último para
+// manter a adaptação de cada módulo coesa sem aumentar o CSS legado global.
+import "./styles/operations-responsive.css";
+// Última camada: invariantes responsivas compartilhadas por todo o produto.
+import "./styles/responsive.css";
 import { Login } from "./components/auth/Login";
 import { Sidebar } from "./components/layout/Sidebar";
 import { Loading } from "./components/common/Feedback";

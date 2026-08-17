@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Sparkles } from "lucide-react";
+import { Button, Input } from "../../components/common/Ui";
 import { apiFetch } from "../../lib/api";
 import { asArray } from "../../lib/utils";
+import "../../styles/myplan.css";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -153,16 +155,10 @@ export function MyPlan({ subscription, plans, onChanged }) {
             <div><h2>Dados para pagamento</h2><span>Informe o CPF ou CNPJ do responsável para continuar no checkout seguro.</span></div>
           </div>
           <form className="form-grid" onSubmit={saveBillingProfile}>
-            <label>CPF ou CNPJ
-              <input required value={billingForm.tax_id} onChange={(event) => setBillingForm((current) => ({ ...current, tax_id: event.target.value }))} placeholder="Somente números" inputMode="numeric" />
-            </label>
-            <label>E-mail para cobrança
-              <input type="email" value={billingForm.email} onChange={(event) => setBillingForm((current) => ({ ...current, email: event.target.value }))} placeholder="financeiro@clinica.com" />
-            </label>
-            <label>Telefone
-              <input value={billingForm.phone} onChange={(event) => setBillingForm((current) => ({ ...current, phone: event.target.value }))} placeholder="(00) 00000-0000" inputMode="tel" />
-            </label>
-            <div className="myplan-billing-action"><button className="primary-button" type="submit" disabled={savingProfile}>{savingProfile ? "Salvando…" : "Continuar para pagamento"}</button></div>
+            <Input label="CPF ou CNPJ" required value={billingForm.tax_id} onChange={(tax_id) => setBillingForm((current) => ({ ...current, tax_id }))} placeholder="Somente números" inputMode="numeric" />
+            <Input label="E-mail para cobrança" type="email" value={billingForm.email} onChange={(email) => setBillingForm((current) => ({ ...current, email }))} placeholder="financeiro@clinica.com" />
+            <Input label="Telefone" value={billingForm.phone} onChange={(phone) => setBillingForm((current) => ({ ...current, phone }))} placeholder="(00) 00000-0000" inputMode="tel" />
+            <div className="myplan-billing-action"><Button type="submit" disabled={savingProfile}>{savingProfile ? "Salvando…" : "Continuar para pagamento"}</Button></div>
           </form>
         </section>
       )}
@@ -185,18 +181,17 @@ export function MyPlan({ subscription, plans, onChanged }) {
                   <li key={feature}><CheckCircle2 size={13} /> {featureLabels[feature] || feature}</li>
                 ))}</ul>
                 {checkoutAvailable ? (
-                  <button type="button" className="primary-button" disabled={checkingOut === plan.code} onClick={() => startCheckout(plan.code)}>
+                  <Button disabled={checkingOut === plan.code} onClick={() => startCheckout(plan.code)}>
                     {checkingOut === plan.code ? "Abrindo pagamento…" : active ? "Contratar agora" : "Contratar este plano"}
-                  </button>
+                  </Button>
                 ) : (
-                  <button
-                    type="button"
-                    className={active ? "secondary-button" : "primary-button"}
+                  <Button
+                    variant={active ? "secondary" : "primary"}
                     disabled={active || saving === plan.code}
                     onClick={() => changePlan(plan.code)}
                   >
                     {active ? "Plano atual" : saving === plan.code ? "Trocando…" : "Escolher"}
-                  </button>
+                  </Button>
                 )}
               </div>
             );

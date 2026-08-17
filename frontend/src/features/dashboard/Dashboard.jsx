@@ -1,11 +1,12 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useState } from "react";
 import { Bell, Cake, Calendar, ChevronRight, CircleDollarSign, Gem, Trophy, UsersRound, } from "lucide-react";
-import { Button, StatusBadge } from "../../components/common/Ui";
+import { Button, StatusBadge, Tabs } from "../../components/common/Ui";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, asNumber, asObject, formatDate, formatLongDate, initials } from "../../lib/utils";
 import { useFetch } from "../../lib/api";
 import { currency, formatRevenueAxisLabel, formatRevenueLabel, personName, statusClass } from "../../features/shared/helpers";
+import "../../styles/agenda-admin-responsive.css";
 
 export function Dashboard({ user, setPage, alertsOpen, setAlertsOpen, alertsData, alertsLoading }) {
   const [period, setPeriod] = useState("30d");
@@ -74,11 +75,13 @@ export function PremiumDashboard({ data, user, setPage, period, setPeriod, alert
           {["7d", "30d", "90d", "365d"].map((value) => <button type="button" key={value} className={period === value ? "active" : ""} onClick={() => setPeriod(value)}>{value}</button>)}
         </div>
       </div>
-      <nav className="dashboard-section-tabs" aria-label="Áreas do dashboard">
+      <Tabs value={section} onValueChange={setSection}>
+      <Tabs.List className="dashboard-section-tabs" aria-label="Áreas do dashboard">
         {[['geral', 'Dashboard geral'], ['estoque', 'Estoque'], ['financeiro', 'Financeiro']].map(([value, label]) => (
-          <button type="button" key={value} className={section === value ? "active" : ""} onClick={() => setSection(value)}>{label}</button>
+          <Tabs.Trigger value={value} key={value}>{label}</Tabs.Trigger>
         ))}
-      </nav>
+      </Tabs.List>
+      </Tabs>
 
       {section === "geral" && <>
         <div className="metric-grid dashboard-executive-metrics">

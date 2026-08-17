@@ -1,0 +1,483 @@
+/*
+ * Camada responsiva dos módulos operacionais.
+ *
+ * As telas usam os componentes compartilhados (CrudHeader, DataView, Modal,
+ * Metric, Input e Select). Estes ajustes só definem como eles se rearranjam
+ * nos espaços menores, evitando que cada feature recrie uma versão mobile.
+ */
+
+@layer telas {
+
+.sales-page,
+.finance-page,
+.payables-page,
+.clients-page,
+.postcare-page,
+.support-page,
+.terms-page,
+.inventory-studio,
+.reports-page,
+.integrations-page,
+.communications-page,
+.onboarding-page {
+  min-width: 0;
+}
+
+.sales-page .panel,
+.finance-page .panel,
+.payables-page .panel,
+.clients-page .panel,
+.postcare-page .panel,
+.support-page .panel,
+.terms-page .panel {
+  min-width: 0;
+}
+
+.reports-page .panel,
+.integrations-page .panel,
+.communications-page .panel,
+.onboarding-page .panel {
+  min-width: 0;
+}
+
+/* Mantém controles de cabeçalho agrupados e evita que botões fiquem fora da
+ * área útil entre tablet e desktop compacto. */
+.sales-page .crud-header,
+.finance-page .crud-header,
+.payables-page .crud-header,
+.clients-page .crud-header,
+.support-page .crud-header,
+.terms-page .crud-header,
+.inventory-studio .crud-header,
+.reports-page .panel-heading,
+.integrations-page .crud-header,
+.communications-page .panel-heading,
+.onboarding-page .panel-heading,
+.finance-page .panel-heading,
+.inventory-studio .panel-heading {
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.sales-page .crud-new-button,
+.finance-page .crud-new-button,
+.payables-page .crud-new-button,
+.clients-page .crud-new-button,
+.support-page .crud-new-button,
+.terms-page .crud-new-button,
+.inventory-studio .crud-new-button {
+  flex: 0 0 auto;
+}
+
+.reports-page .export-actions,
+.integrations-page .catalog-link-actions,
+.communications-page .communication-topup-actions {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.integrations-page .catalog-link-row,
+.integrations-page .catalog-links-grid,
+.communications-page .communication-tabs,
+.communications-page .assistant-workspace,
+.communications-page .communication-topups,
+.onboarding-page .onboarding-items article {
+  min-width: 0;
+}
+
+.sales-page .sales-tabs,
+.terms-page .term-form-tabs,
+.inventory-studio .inventory-module-tabs,
+.inventory-studio .inventory-category-strip,
+.inventory-studio .inventory-badge-tabs {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
+.sales-page .sales-tabs button,
+.terms-page .term-form-tabs button,
+.inventory-studio .inventory-module-tabs button,
+.inventory-studio .inventory-category-strip button,
+.inventory-studio .inventory-badge-tabs button {
+  flex: 0 0 auto;
+}
+
+.sales-page .sales-line-builder,
+.inventory-studio .inventory-advanced-filters,
+.inventory-studio .price-formation-grid,
+.inventory-studio .management-grid {
+  min-width: 0;
+}
+
+.postcare-page .post-care-form,
+.terms-page .term-form,
+.clients-page .client-edit-form {
+  min-width: 0;
+}
+
+/* Estados Radix substituem as classes `active` dos controles legados. */
+.terms-page .term-form-tabs .ui-tabs-trigger[data-state="active"] {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.communications-page .communication-tabs .ui-tabs-trigger[data-state="active"] {
+  border-color: color-mix(in srgb, var(--gold) 38%, var(--line));
+  background: color-mix(in srgb, var(--gold) 12%, var(--white));
+  color: var(--gold-dark);
+}
+
+.communications-page .communication-tabs .ui-tabs-trigger[data-state="active"] strong {
+  color: var(--gold-dark);
+}
+
+.premium-dashboard .dashboard-section-tabs .ui-tabs-trigger[data-state="active"] {
+  background: var(--gold);
+  color: var(--white);
+}
+
+.catalog-builder-history {
+  flex: 0 0 auto;
+}
+
+.catalog-builder-history .ui-accordion-trigger {
+  color: var(--gold-dark);
+  font-weight: 850;
+}
+
+@media (max-width: 900px) {
+  .sales-page .metric-grid,
+  .finance-page .metric-grid,
+  .payables-page .metric-grid,
+  .clients-page .metric-grid,
+  .postcare-page .metric-grid,
+  .inventory-studio .metric-grid,
+  .inventory-studio .inventory-summary-grid.compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .finance-page .finance-grid,
+  .communications-page .assistant-workspace,
+  .communications-page .communication-topups,
+  .inventory-studio .management-grid,
+  .inventory-studio .price-formation-grid,
+  .inventory-studio .inventory-alert-grid,
+  .inventory-studio .inventory-benefits {
+    grid-template-columns: 1fr;
+  }
+
+  .sales-page .form-grid,
+  .finance-page .form-grid,
+  .payables-page .form-grid,
+  .clients-page .form-grid,
+  .postcare-page .form-grid,
+  .terms-page .form-grid,
+  .support-page .form-grid,
+  .reports-page .form-grid,
+  .integrations-page .form-grid,
+  .inventory-studio .form-grid,
+  .inventory-studio .inventory-advanced-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inventory-studio .inventory-filter-row {
+    grid-template-columns: minmax(0, 1fr) minmax(150px, .55fr) minmax(130px, .48fr);
+  }
+
+  .inventory-studio .inventory-filter-row .search-field {
+    min-width: 0;
+  }
+
+  .finance-page .export-actions {
+    width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .sales-page,
+  .finance-page,
+  .payables-page,
+  .clients-page,
+  .postcare-page,
+  .support-page,
+  .terms-page,
+  .inventory-studio,
+  .reports-page,
+  .integrations-page,
+  .communications-page,
+  .onboarding-page {
+    gap: 14px;
+  }
+
+  .sales-page .panel,
+  .finance-page .panel,
+  .payables-page .panel,
+  .clients-page .panel,
+  .postcare-page .panel,
+  .support-page .panel,
+  .terms-page .panel,
+  .inventory-studio .panel,
+  .reports-page .panel,
+  .integrations-page .panel,
+  .communications-page .panel,
+  .onboarding-page .panel,
+  .inventory-studio .inventory-panel-shell {
+    border-radius: 14px;
+  }
+
+  .sales-page .crud-header,
+  .finance-page .crud-header,
+  .payables-page .crud-header,
+  .clients-page .crud-header,
+  .support-page .crud-header,
+  .terms-page .crud-header,
+  .inventory-studio .crud-header,
+  .reports-page .panel-heading,
+  .integrations-page .crud-header,
+  .communications-page .panel-heading,
+  .onboarding-page .panel-heading,
+  .finance-page .panel-heading,
+  .inventory-studio .panel-heading {
+    align-items: stretch;
+  }
+
+  .sales-page .crud-new-button,
+  .finance-page .crud-new-button,
+  .payables-page .crud-new-button,
+  .clients-page .crud-new-button,
+  .support-page .crud-new-button,
+  .terms-page .crud-new-button,
+  .inventory-studio .crud-new-button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .sales-page .metric-grid,
+  .finance-page .metric-grid,
+  .payables-page .metric-grid,
+  .clients-page .metric-grid,
+  .postcare-page .metric-grid,
+  .inventory-studio .metric-grid,
+  .inventory-studio .inventory-summary-grid.compact {
+    grid-template-columns: 1fr;
+  }
+
+  .sales-page .form-grid,
+  .finance-page .form-grid,
+  .payables-page .form-grid,
+  .clients-page .form-grid,
+  .postcare-page .form-grid,
+  .terms-page .form-grid,
+  .support-page .form-grid,
+  .reports-page .form-grid,
+  .integrations-page .form-grid,
+  .inventory-studio .form-grid,
+  .inventory-studio .inventory-advanced-filters,
+  .terms-page .term-check-grid,
+  .terms-page .term-lifestyle-grid,
+  .inventory-studio .chip-toggle-grid,
+  .inventory-studio .anodization-color-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .payables-page .finance-period-filter {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .sales-page .sales-tabs,
+  .terms-page .term-form-tabs,
+  .inventory-studio .inventory-module-tabs,
+  .inventory-studio .inventory-category-strip,
+  .inventory-studio .inventory-badge-tabs {
+    margin-inline: -2px;
+    padding-bottom: 4px;
+  }
+
+  .sales-page .sales-tabs button,
+  .terms-page .term-form-tabs button,
+  .inventory-studio .inventory-module-tabs button,
+  .inventory-studio .inventory-category-strip button,
+  .inventory-studio .inventory-badge-tabs button {
+    min-height: 40px;
+  }
+
+  .sales-page .sales-line-builder {
+    padding: 14px;
+  }
+
+  .sales-page .sales-items-list article,
+  .inventory-studio .inventory-mini-row,
+  .inventory-studio .inventory-product-row {
+    align-items: flex-start;
+  }
+
+  .sales-page .sales-items-list article {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .sales-page .sales-items-list article > button {
+    width: 100%;
+  }
+
+  .finance-page .export-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .finance-page .export-actions button {
+    min-width: 0;
+    justify-content: center;
+    padding-inline: 8px;
+  }
+
+  .inventory-studio .inventory-filter-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .inventory-studio .inventory-filter-row .search-field,
+  .inventory-studio .inventory-filter-row .advanced-filter-toggle {
+    grid-column: 1 / -1;
+  }
+
+  .inventory-studio .inventory-filter-row .icon-toggle {
+    justify-self: end;
+  }
+
+  .inventory-studio .inventory-product-row,
+  .inventory-studio .inventory-mini-row {
+    grid-template-columns: 48px minmax(0, 1fr);
+  }
+
+  .inventory-studio .inventory-product-row > :last-child,
+  .inventory-studio .inventory-mini-row > :last-child {
+    grid-column: 2;
+  }
+
+  .terms-page .term-section,
+  .terms-page .term-intro {
+    padding: 16px;
+  }
+
+  .terms-page .term-check-item {
+    min-height: 54px;
+  }
+
+  .postcare-page .module-backbar .secondary-button,
+  .terms-page .module-backbar .secondary-button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .support-page .support-ticket-status {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .support-page .sup-thread {
+    padding: 0;
+  }
+
+  /* Modais dos fluxos operacionais preservam o rodapé fixo compartilhado e
+   * ganham uma área confortável para toque em celular. */
+  .modal-card:has(.sales-tabs),
+  .modal-card:has(.term-form),
+  .modal-card:has(.post-care-form),
+  .modal-card:has(.client-edit-form) {
+    width: min(100%, calc(100vw - 16px));
+  }
+
+  .reports-page .export-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .reports-page .export-actions button {
+    min-width: 0;
+    justify-content: center;
+    padding-inline: 8px;
+  }
+
+  .integrations-page .catalog-link-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .integrations-page .catalog-link-actions,
+  .integrations-page .catalog-link-actions > button,
+  .integrations-page .card-actions,
+  .integrations-page .card-actions > button {
+    width: 100%;
+  }
+
+  .integrations-page .admin-reset-panel,
+  .onboarding-page .onboarding-header,
+  .onboarding-page .onboarding-items article {
+    align-items: flex-start;
+  }
+
+  .onboarding-page .onboarding-header {
+    gap: 12px;
+  }
+
+  .onboarding-page .onboarding-items article {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .onboarding-page .onboarding-items article button {
+    grid-column: 1 / -1;
+    width: 100%;
+    margin-left: 0;
+    justify-content: center;
+  }
+
+  .communications-page .communication-tabs {
+    display: flex;
+    padding-bottom: 6px;
+  }
+
+  .communications-page .communication-tabs button {
+    flex: 0 0 min(82vw, 260px);
+  }
+
+  .communications-page .communication-credit-balance,
+  .communications-page .communication-topups,
+  .communications-page .assistant-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .communications-page .communication-topup-actions,
+  .communications-page .communication-topup-actions > button,
+  .communications-page .assistant-form .primary-button {
+    width: 100%;
+  }
+
+  .terms-page .signature-heading {
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .terms-page .signature-box canvas {
+    height: 180px;
+  }
+
+  .terms-page .loyalty-summary,
+  .terms-page .term-section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .terms-page .loyalty-grid,
+  .terms-page .loyalty-history {
+    grid-template-columns: 1fr;
+  }
+}
+
+} /* @layer telas */

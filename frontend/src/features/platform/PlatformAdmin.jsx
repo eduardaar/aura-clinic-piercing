@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronRight, Eye, EyeOff, LogOut } from "lucide-react";
-import { Button } from "../../components/common/Ui";
+import { Button, Input, Tabs } from "../../components/common/Ui";
 import { Modal } from "../../components/common/Crud";
 import { API } from "../../lib/api";
 import { BrandMark } from "../../components/common/BrandMark";
@@ -246,74 +246,62 @@ export function PlatformAdmin() {
             <h1 className="au-a-title">Acesso restrito</h1>
 
             <form className="au-a-form" onSubmit={submitLogin}>
-              <div className="au-a-field">
-                <label htmlFor="au-p-email">E-mail</label>
-                <input
-                  id="au-p-email"
-                  className="au-a-input"
-                  type="email"
-                  autoComplete="username"
-                  required
-                  value={loginForm.email}
-                  onChange={(event) => {
+              <Input
+                fieldClassName="au-a-field"
+                label="E-mail"
+                id="au-p-email"
+                className="au-a-input"
+                type="email"
+                autoComplete="username"
+                required
+                value={loginForm.email}
+                onChange={(email) => {
                     setMfaRequired(false);
-                    setLoginForm({ ...loginForm, email: event.target.value, mfa_code: "" });
-                  }}
-                  placeholder="seu@email.com"
-                />
-              </div>
+                    setLoginForm({ ...loginForm, email, mfa_code: "" });
+                }}
+                placeholder="seu@email.com"
+              />
 
               <div className="au-a-field">
                 <label htmlFor="au-p-password">Senha</label>
                 <div className="au-a-pass">
-                  <input
+                  <Input
+                    label={null}
+                    fieldClassName="au-a-pass-control"
                     id="au-p-password"
                     className="au-a-input"
                     type={showPassword ? "text" : "password"}
                     autoComplete="current-password"
                     required
                     value={loginForm.password}
-                    onChange={(event) => {
+                    onChange={(password) => {
                       setMfaRequired(false);
-                      setLoginForm({ ...loginForm, password: event.target.value, mfa_code: "" });
+                      setLoginForm({ ...loginForm, password, mfa_code: "" });
                     }}
                     placeholder="Digite a senha"
                   />
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
                     className="au-a-eye"
                     onClick={() => setShowPassword((current) => !current)}
                     aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                     aria-pressed={showPassword}
                   >
                     {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
-                  </button>
+                  </Button>
                 </div>
               </div>
 
               {mfaRequired && (
-                <div className="au-a-field">
-                  <label htmlFor="au-p-mfa">Código do autenticador</label>
-                  <input
-                    id="au-p-mfa"
-                    className="au-a-input"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    maxLength={6}
-                    required
-                    autoFocus
-                    value={loginForm.mfa_code}
-                    onChange={(event) => setLoginForm({ ...loginForm, mfa_code: event.target.value.replace(/\D/g, "") })}
-                    placeholder="000000"
-                  />
-                </div>
+                <Input fieldClassName="au-a-field" label="Código do autenticador" id="au-p-mfa" className="au-a-input" inputMode="numeric" autoComplete="one-time-code" maxLength={6} required autoFocus value={loginForm.mfa_code} onChange={(mfa_code) => setLoginForm({ ...loginForm, mfa_code: mfa_code.replace(/\D/g, "") })} placeholder="000000" />
               )}
 
               {loginError && <p className="au-a-error" role="alert">{loginError}</p>}
 
-              <button type="submit" className="au-a-submit" disabled={loginLoading}>
+              <Button type="submit" className="au-a-submit" disabled={loginLoading}>
                 {loginLoading ? "Entrando…" : "Entrar"} <ChevronRight size={18} aria-hidden="true" />
-              </button>
+              </Button>
             </form>
           </div>
         </section>
@@ -323,6 +311,7 @@ export function PlatformAdmin() {
 
   return (
     <main className="main-content">
+      <Tabs value={tab} onChange={navigateTo} className="platform-tabs-root">
       <header className="topbar platform-topbar">
         <div className="topbar-title">
           <span className="eyebrow">Aura Clinic · Plataforma</span>
@@ -330,30 +319,27 @@ export function PlatformAdmin() {
           <p>{TAB_HEADINGS[tab].subtitle}</p>
         </div>
         <nav className="platform-tabs" aria-label="Áreas do painel">
-          {TABS.map(([id, label]) => (
-            <a
-              key={id}
-              href={TAB_PATHS[id]}
-              className={tab === id ? "active" : ""}
-              aria-current={tab === id ? "page" : undefined}
-              onClick={(event) => {
-                event.preventDefault();
-                navigateTo(id);
-              }}
-            >
-              {label}
-              {id === "suporte" && (
-                <SupportOpenBadge
-                  token={token}
-                  onUnauthorized={clearPlatformSession}
-                  refreshKey={supportKey}
-                />
-              )}
-            </a>
-          ))}
-          <button type="button" className="platform-logout" onClick={clearPlatformSession}>
+          <Tabs.List asChild aria-label="Áreas do painel">
+            <div className="platform-tabs-list">
+              {TABS.map(([id, label]) => (
+                <Tabs.Trigger key={id} value={id} asChild>
+                  <a href={TAB_PATHS[id]} onClick={(event) => event.preventDefault()}>
+                    {label}
+                    {id === "suporte" && (
+                      <SupportOpenBadge
+                        token={token}
+                        onUnauthorized={clearPlatformSession}
+                        refreshKey={supportKey}
+                      />
+                    )}
+                  </a>
+                </Tabs.Trigger>
+              ))}
+            </div>
+          </Tabs.List>
+          <Button type="button" variant="ghost" className="platform-logout" onClick={clearPlatformSession}>
             <LogOut size={16} aria-hidden="true" /> Sair
-          </button>
+          </Button>
         </nav>
       </header>
 
@@ -365,30 +351,30 @@ export function PlatformAdmin() {
         <div className="stack">
 
         {visitadas.has("landing") && (
-          <div hidden={tab !== "landing"}>
+          <Tabs.Content value="landing" forceMount className="platform-tab-content">
             <LandingEditor token={token} onUnauthorized={clearPlatformSession} />
-          </div>
+          </Tabs.Content>
         )}
 
-        {tab === "legal" && <LegalEditor token={token} onUnauthorized={clearPlatformSession} />}
+        <Tabs.Content value="legal" className="platform-tab-content"><LegalEditor token={token} onUnauthorized={clearPlatformSession} /></Tabs.Content>
 
         {visitadas.has("planos") && (
-          <div hidden={tab !== "planos"}>
+          <Tabs.Content value="planos" forceMount className="platform-tab-content">
             <PlansAdmin token={token} onUnauthorized={clearPlatformSession} />
-          </div>
+          </Tabs.Content>
         )}
 
-        {tab === "contas" && <AccountsAdmin token={token} onUnauthorized={clearPlatformSession} onCreate={openCreate} refreshKey={accountsRefresh} />}
+        <Tabs.Content value="contas" className="platform-tab-content"><AccountsAdmin token={token} onUnauthorized={clearPlatformSession} onCreate={openCreate} refreshKey={accountsRefresh} /></Tabs.Content>
 
-        {tab === "dashboard" && <PlatformFinance token={token} onUnauthorized={clearPlatformSession} />}
+        <Tabs.Content value="dashboard" className="platform-tab-content"><PlatformFinance token={token} onUnauthorized={clearPlatformSession} /></Tabs.Content>
 
-        {tab === "suporte" && (
+        <Tabs.Content value="suporte" className="platform-tab-content">
           <SupportInbox
             token={token}
             onUnauthorized={clearPlatformSession}
             onChanged={() => setSupportKey((k) => k + 1)}
           />
-        )}
+        </Tabs.Content>
 
         <Modal
           open={showCreate}
@@ -404,26 +390,11 @@ export function PlatformAdmin() {
         >
           <form id="platform-tenant-form" onSubmit={submitCreate}>
             <div className="form-grid">
-              <label>
-                Nome da clínica
-                <input type="text" required value={createForm.name} onChange={(event) => setCreateForm({ ...createForm, name: event.target.value })} placeholder="ex.: Aura Clinic Piercing" />
-              </label>
-              <label>
-                Código (slug)
-                <input type="text" required value={createForm.slug} onChange={(event) => setCreateForm({ ...createForm, slug: event.target.value.toLowerCase() })} placeholder="ex.: aura" />
-              </label>
-              <label>
-                Nome do responsável (opcional)
-                <input type="text" value={createForm.admin_name} onChange={(event) => setCreateForm({ ...createForm, admin_name: event.target.value })} placeholder="ex.: Eduarda Santos" />
-              </label>
-              <label>
-                E-mail do administrador
-                <input type="email" required value={createForm.admin_email} onChange={(event) => setCreateForm({ ...createForm, admin_email: event.target.value })} placeholder="admin@clinica.com" />
-              </label>
-              <label>
-                Senha do administrador (mín. 8)
-                <input type="password" required minLength={8} value={createForm.admin_password} onChange={(event) => setCreateForm({ ...createForm, admin_password: event.target.value })} placeholder="Senha inicial" />
-              </label>
+              <Input label="Nome da clínica" required value={createForm.name} onChange={(name) => setCreateForm({ ...createForm, name })} placeholder="ex.: Aura Clinic Piercing" />
+              <Input label="Código (slug)" required value={createForm.slug} onChange={(slug) => setCreateForm({ ...createForm, slug: slug.toLowerCase() })} placeholder="ex.: aura" />
+              <Input label="Nome do responsável (opcional)" value={createForm.admin_name} onChange={(admin_name) => setCreateForm({ ...createForm, admin_name })} placeholder="ex.: Eduarda Santos" />
+              <Input label="E-mail do administrador" type="email" required value={createForm.admin_email} onChange={(admin_email) => setCreateForm({ ...createForm, admin_email })} placeholder="admin@clinica.com" />
+              <Input label="Senha do administrador (mín. 8)" type="password" required minLength={8} value={createForm.admin_password} onChange={(admin_password) => setCreateForm({ ...createForm, admin_password })} placeholder="Senha inicial" />
             </div>
             {createError && <span className="form-error">{createError}</span>}
           </form>
@@ -431,6 +402,7 @@ export function PlatformAdmin() {
 
         </div>
       </div>
+      </Tabs>
     </main>
   );
 }

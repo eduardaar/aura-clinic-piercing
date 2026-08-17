@@ -998,16 +998,18 @@ export function AccountsAdmin({ token, onUnauthorized, onCreate, refreshKey = 0 
         </div>
 
         {exigeCodigo && (
-          <label className="confirm-delete-field">
-            Digite <strong>{clinica.slug}</strong> para confirmar que é esta a clínica
-            <input
+          <div className="confirm-delete-field">
+            <span>Digite <strong>{clinica.slug}</strong> para confirmar que é esta a clínica</span>
+            <Input
+              label={null}
+              fieldClassName="confirm-delete-input"
               type="text"
               value={codigoDigitado}
               autoComplete="off"
               placeholder={clinica.slug}
-              onChange={(event) => setCodigoDigitado(event.target.value)}
+              onChange={setCodigoDigitado}
             />
-          </label>
+          </div>
         )}
 
         {erroDaAcao.mensagem && (

@@ -37,6 +37,13 @@ function cabecalho(nome) {
 const botaoAnterior = () => screen.getByRole("button", { name: "Página anterior" });
 const botaoProxima = () => screen.getByRole("button", { name: "Próxima página" });
 
+// Select agora usa Radix: o usuário abre o combobox e escolhe a opção visível,
+// em vez de operar um <select> nativo que já não existe no DOM.
+async function selecionar(user, campo, opcao) {
+  await user.click(screen.getByRole("combobox", { name: campo }));
+  await user.click(screen.getByRole("option", { name: opcao }));
+}
+
 // ---------------------------------------------------------------- paginação
 
 describe("paginação", () => {
@@ -94,7 +101,7 @@ describe("paginação", () => {
     await user.click(botaoProxima());
     expect(screen.getByText("2 / 2")).toBeInTheDocument();
 
-    await user.selectOptions(screen.getByLabelText("Por página"), "10");
+    await selecionar(user, "Por página", "10");
 
     expect(screen.getByText("1–10 de 30")).toBeInTheDocument();
     expect(screen.getByText("1 / 3")).toBeInTheDocument();
@@ -399,7 +406,7 @@ describe("filtros", () => {
     render(<DataView columns={COLUNA_NOME} rows={linhas} filters={filtros} />);
 
     await user.click(screen.getByRole("button", { name: /Filtros/ }));
-    await user.selectOptions(screen.getByLabelText("Situação"), "inativo");
+    await selecionar(user, "Situação", "Inativo");
 
     expect(celulasDaPrimeiraColuna()).toEqual(["Bruno"]);
   });
@@ -412,7 +419,7 @@ describe("filtros", () => {
     expect(alternar).toHaveAccessibleName("Filtros");
 
     await user.click(alternar);
-    await user.selectOptions(screen.getByLabelText("Situação"), "ativo");
+    await selecionar(user, "Situação", "Ativo");
 
     expect(screen.getByRole("button", { name: /Filtros/ })).toHaveAccessibleName("Filtros 1");
   });
@@ -422,7 +429,7 @@ describe("filtros", () => {
     render(<DataView columns={COLUNA_NOME} rows={linhas} filters={filtros} />);
 
     await user.click(screen.getByRole("button", { name: /Filtros/ }));
-    await user.selectOptions(screen.getByLabelText("Situação"), "inativo");
+    await selecionar(user, "Situação", "Inativo");
     expect(celulasDaPrimeiraColuna()).toEqual(["Bruno"]);
 
     await user.click(screen.getByRole("button", { name: "Limpar filtros" }));
@@ -453,7 +460,7 @@ describe("filtros", () => {
     render(<DataView columns={COLUNA_NOME} rows={cadastros} filters={filtroSimples} />);
 
     await user.click(screen.getByRole("button", { name: /Filtros/ }));
-    await user.selectOptions(screen.getByLabelText("Situação"), "Ativo");
+    await selecionar(user, "Situação", "Ativo");
 
     expect(celulasDaPrimeiraColuna()).toEqual(["Ana"]);
   });
@@ -468,7 +475,7 @@ describe("filtros", () => {
     expect(screen.getByText("3 / 3")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Filtros/ }));
-    await user.selectOptions(screen.getByLabelText("Situação"), "ativo");
+    await selecionar(user, "Situação", "Ativo");
 
     expect(screen.getByText("1 / 2")).toBeInTheDocument();
     expect(screen.getByText("1–10 de 15")).toBeInTheDocument();
@@ -553,7 +560,7 @@ describe("estados de carregando, erro e vazio", () => {
     );
 
     await user.click(screen.getByRole("button", { name: /Filtros/ }));
-    await user.selectOptions(screen.getByLabelText("Situação"), "inativo");
+    await selecionar(user, "Situação", "inativo");
 
     expect(screen.getByText("Nenhum cliente corresponde aos filtros.")).toBeInTheDocument();
     expect(screen.queryByText("Nenhum cliente cadastrado.")).not.toBeInTheDocument();
@@ -702,7 +709,7 @@ describe("modo server", () => {
     expect(celulasDaPrimeiraColuna()).toHaveLength(3);
 
     await user.click(screen.getByRole("button", { name: /Filtros/ }));
-    await user.selectOptions(screen.getByLabelText("Situação"), "");
+    await selecionar(user, "Situação", "Todos");
 
     expect(onFilterChange).toHaveBeenCalledWith({ status: "" });
   });

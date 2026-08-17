@@ -100,18 +100,23 @@
   font-weight: 400;
 }
 
-.faq details {
+.faqAccordion :global(.ui-accordion-item) {
   padding: 12px 0;
   border-top: 1px solid color-mix(in srgb, var(--catalog-border, #d8c3a5) 55%, transparent);
 }
 
-.faq summary {
-  cursor: pointer;
+.faqAccordion :global(.ui-accordion-trigger) {
+  width: 100%;
+  justify-content: space-between;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--catalog-heading, #1c1c1c);
+  text-align: left;
   font-weight: 720;
 }
 
-.faq p {
+.faqAccordion p {
   margin: 10px 0 0;
   color: var(--catalog-muted, #74685e);
   line-height: 1.55;

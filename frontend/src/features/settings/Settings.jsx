@@ -6,6 +6,7 @@ import { asObject } from "../../lib/utils";
 import { PRICE_MULTIPLIER_OPTIONS, PRICE_ROUNDING_OPTIONS } from "../../lib/defaultForms";
 import { UI_THEMES } from "../../lib/uiTheme";
 import { roleLabel } from "../shared/helpers";
+import "../../styles/agenda-admin-responsive.css";
 
 export function Settings({ user, theme, onThemeChange, navCollapsed, onNavCollapsedChange, onUserChanged }) {
   const [profile, setProfile] = useState({ name: user?.name || "", email: user?.email || "" });

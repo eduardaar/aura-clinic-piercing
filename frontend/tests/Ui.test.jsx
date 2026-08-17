@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { Modal, RowActions } from "../src/components/common/Crud";
-import { Checkbox, Select } from "../src/components/common/Ui";
+import { Accordion, Button, Checkbox, Input, Select, Switch, Tabs, Textarea } from "../src/components/common/Ui";
 
 describe("componentes Radix compartilhados", () => {
   it("mantém a opção vazia e atualiza o valor do select", async () => {
@@ -53,5 +53,64 @@ describe("componentes Radix compartilhados", () => {
     expect(screen.getByRole("dialog", { name: "Editar categoria" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Fechar" }));
     expect(closed).toBe(true);
+  });
+
+  it("troca abas com a semântica e o teclado do Radix", async () => {
+    const user = userEvent.setup();
+    let selected = "overview";
+    render(
+      <Tabs defaultValue="overview" onChange={(value) => { selected = value; }}>
+        <Tabs.List aria-label="Seções do cadastro">
+          <Tabs.Trigger value="overview">Visão geral</Tabs.Trigger>
+          <Tabs.Trigger value="history">Histórico</Tabs.Trigger>
+        </Tabs.List>
+        <Tabs.Content value="overview">Resumo</Tabs.Content>
+        <Tabs.Content value="history">Alterações</Tabs.Content>
+      </Tabs>
+    );
+
+    screen.getByRole("tab", { name: "Visão geral" }).focus();
+    await user.keyboard("{ArrowRight}");
+    expect(selected).toBe("history");
+    expect(screen.getByRole("tabpanel")).toHaveTextContent("Alterações");
+  });
+
+  it("abre e fecha conteúdo do accordion", async () => {
+    const user = userEvent.setup();
+    render(
+      <Accordion defaultValue="details">
+        <Accordion.Item value="details">
+          <Accordion.Header><Accordion.Trigger>Mais detalhes</Accordion.Trigger></Accordion.Header>
+          <Accordion.Content>Conteúdo expansível</Accordion.Content>
+        </Accordion.Item>
+      </Accordion>
+    );
+
+    const trigger = screen.getByRole("button", { name: "Mais detalhes" });
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("expõe switch e campos com atributos HTML encaminhados", async () => {
+    const user = userEvent.setup();
+    let enabled = false;
+    let fieldValue = "";
+    render(
+      <>
+        <Switch label="Ativar lembretes" checked={false} onChange={(value) => { enabled = value; }} />
+        <Input label="Telefone" value={fieldValue} onChange={(value) => { fieldValue = value; }} id="phone" name="phone" placeholder="(00) 00000-0000" inputMode="tel" maxLength={16} autoComplete="tel" />
+        <Textarea label="Observação" value="" onChange={() => {}} id="note" disabled rows={5} />
+        <Button aria-label="Salvar formulário" form="profile-form">Salvar</Button>
+      </>
+    );
+
+    const toggle = screen.getByRole("switch", { name: "Ativar lembretes" });
+    await user.click(toggle);
+    expect(enabled).toBe(true);
+    expect(screen.getByLabelText("Telefone")).toHaveAttribute("inputmode", "tel");
+    expect(screen.getByLabelText("Telefone")).toHaveAttribute("maxlength", "16");
+    expect(screen.getByLabelText("Observação")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Salvar formulário" })).toHaveAttribute("form", "profile-form");
   });
 });

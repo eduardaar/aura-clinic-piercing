@@ -198,7 +198,7 @@ export function Support() {
   }
 
   return (
-    <section className="stack">
+    <section className="stack support-page">
       <div className="panel">
           <CrudHeader
             title="Suporte"

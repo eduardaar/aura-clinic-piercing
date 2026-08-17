@@ -27,7 +27,7 @@
 //     `.form-error`. O CSS de finance-admin.css cobre só o gráfico SVG.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
-import { Button, Input, Select, StatusBadge } from "../../components/common/Ui";
+import { Accordion, Button, Input, Select, StatusBadge, Tabs } from "../../components/common/Ui";
 import { CrudHeader, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { Loading } from "../../components/common/Feedback";
@@ -706,8 +706,10 @@ function GraficoSerie({ itens }) {
 
       {/* O gráfico dá a forma; a tabela dá o número — e é a versão que funciona
           para quem lê por leitor de tela ou precisa copiar os valores. */}
-      <details>
-        <summary>Ver os números em tabela</summary>
+      <Accordion className="finance-chart-table">
+        <Accordion.Item value="numbers">
+          <Accordion.Header><Accordion.Trigger>Ver os números em tabela</Accordion.Trigger></Accordion.Header>
+          <Accordion.Content>
         <DataView
           rows={itens}
           rowKey={(item) => item.mes}
@@ -747,7 +749,9 @@ function GraficoSerie({ itens }) {
           ]}
           empty="Sem faturas no período."
         />
-      </details>
+          </Accordion.Content>
+        </Accordion.Item>
+      </Accordion>
     </div>
   );
 }
@@ -969,19 +973,22 @@ export function PlatformFinance({ token, onUnauthorized }) {
         </div>
       </section>
 
-      <nav className="dashboard-section-tabs" aria-label="Visões do financeiro da plataforma">
-        {[
-          ["resumo", "Resumo"],
-          ["receitas", "Receitas"],
-          ["cobrancas", "Cobranças"],
-        ].map(([valor, rotulo]) => (
-          <button type="button" key={valor} className={aba === valor ? "active" : ""} onClick={() => setAba(valor)}>
-            {rotulo}
-          </button>
-        ))}
-      </nav>
+      <Tabs value={aba} onChange={setAba}>
+        <Tabs.List asChild aria-label="Visões do financeiro da plataforma">
+          <nav className="dashboard-section-tabs">
+            {[
+              ["resumo", "Resumo"],
+              ["receitas", "Receitas"],
+              ["cobrancas", "Cobranças"],
+            ].map(([valor, rotulo]) => (
+              <Tabs.Trigger key={valor} value={valor} asChild><button type="button">{rotulo}</button></Tabs.Trigger>
+            ))}
+          </nav>
+        </Tabs.List>
+      </Tabs>
 
-      {aba === "resumo" && <Bloco
+      <Tabs.Content value="resumo" className="platform-finance-tab-content">
+      <Bloco
         titulo="Resumo"
         subtitulo="MRR, caixa, valores a receber e saúde da base de clientes."
         carregando={resumo.carregando}
@@ -989,9 +996,10 @@ export function PlatformFinance({ token, onUnauthorized }) {
         onRecarregar={resumo.recarregar}
       >
         <Resumo dados={resumo.dados} />
-      </Bloco>}
+      </Bloco>
+      </Tabs.Content>
 
-      {aba === "cobrancas" && <>
+      <Tabs.Content value="cobrancas" className="platform-finance-tab-content">
       <Bloco
         titulo="Inadimplência"
         subtitulo="Quem cobrar hoje, da clínica mais atrasada para a menos."
@@ -1045,9 +1053,9 @@ export function PlatformFinance({ token, onUnauthorized }) {
           onTamanho={setTamanhoVencimento}
         />
       </Bloco>
-      </>}
+      </Tabs.Content>
 
-      {aba === "receitas" && <>
+      <Tabs.Content value="receitas" className="platform-finance-tab-content">
       <Bloco
         titulo="Receita mês a mês"
         subtitulo="Recebido é caixa (data do pagamento); emitido é competência (o mês a que a cobrança se refere)."
@@ -1074,7 +1082,7 @@ export function PlatformFinance({ token, onUnauthorized }) {
       >
         <PorPlano dados={planos.dados} />
       </Bloco>
-      </>}
+      </Tabs.Content>
     </div>
   );
 }

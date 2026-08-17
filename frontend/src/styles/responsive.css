@@ -1,0 +1,194 @@
+/* Fundação responsiva única. Componentes e telas podem especializar o visual,
+   mas não devem reintroduzir overflow horizontal ou ações inacessíveis. */
+@layer telas {
+
+:root {
+  --responsive-page-gap: clamp(14px, 2.4vw, 28px);
+  --responsive-control-height: 42px;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 0;
+}
+
+body {
+  overflow-x: clip;
+}
+
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+
+input,
+textarea,
+select,
+.ui-select-trigger {
+  max-width: 100%;
+}
+
+/* Barras que concentram ações nunca devem alargar a página. Em telas pequenas
+   elas preservam o conteúdo em uma faixa rolável, em vez de quebrar os cards. */
+.segmented,
+.customization-tabs,
+.inventory-module-tabs,
+.inventory-category-strip,
+.inventory-list-breadcrumb,
+.catalog-category-strip,
+.dashboard-section-tabs {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+}
+
+.form-grid,
+.form-section,
+.stack,
+.panel,
+.modal-body,
+.dataview,
+.customization-card {
+  min-width: 0;
+}
+
+.form-grid > *,
+.form-section > *,
+.panel-heading > *,
+.crud-header > *,
+.customization-header > * {
+  min-width: 0;
+}
+
+.primary-button,
+.secondary-button,
+.ghost-button,
+.danger-button {
+  min-height: var(--responsive-control-height);
+}
+
+@media (max-width: 900px) {
+  .content-scroll {
+    padding-inline: var(--responsive-page-gap);
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-grid > .form-grid {
+    grid-column: auto;
+  }
+
+  .panel-heading,
+  .crud-header,
+  .customization-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .panel-heading > :last-child:not(:only-child),
+  .crud-header > :last-child:not(:only-child),
+  .customization-header > :last-child:not(:only-child) {
+    max-width: 100%;
+  }
+
+  .toolbar,
+  .dataview-toolbar,
+  .dataview-filters,
+  .modal-actions {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --responsive-control-height: 44px;
+  }
+
+  .content-scroll {
+    padding-inline: max(14px, env(safe-area-inset-left));
+    padding-bottom: calc(36px + env(safe-area-inset-bottom));
+  }
+
+  .panel-heading,
+  .crud-header,
+  .customization-header,
+  .toolbar,
+  .dataview-toolbar,
+  .dataview-filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .panel-heading > :last-child:not(:only-child),
+  .crud-header > :last-child:not(:only-child),
+  .customization-header > :last-child:not(:only-child),
+  .toolbar > *,
+  .dataview-toolbar > *,
+  .dataview-filters > * {
+    width: 100%;
+    max-width: none;
+  }
+
+  .panel-heading .primary-button,
+  .crud-header .primary-button,
+  .customization-header .primary-button,
+  .toolbar .primary-button,
+  .toolbar .secondary-button,
+  .dataview-toolbar-extra > * {
+    justify-content: center;
+  }
+
+  .modal-header {
+    padding: 16px;
+  }
+
+  .modal-body {
+    padding: 16px;
+  }
+
+  .modal-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  }
+
+  .modal-actions > * {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .data-table td {
+    align-items: flex-start;
+  }
+
+  .data-table td > :last-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 420px) {
+  .topbar-title .eyebrow {
+    display: none;
+  }
+
+  .topbar-title h1 {
+    font-size: 17px;
+  }
+
+  .panel,
+  .dataview {
+    border-radius: 12px;
+  }
+}
+
+} /* @layer telas */

@@ -34,7 +34,8 @@ describe("CatalogNativePlugins", () => {
     expect(screen.queryByText("Não aparece?")).not.toBeInTheDocument();
   });
 
-  it("mantém Maps como link até o visitante consentir e renderiza FAQ como conteúdo de texto", () => {
+  it("mantém Maps como link até o visitante consentir e renderiza FAQ como conteúdo de texto", async () => {
+    const user = userEvent.setup();
     const { container } = render(<CatalogNativePlugins plugins={[
       {
         id: "mapa", pluginId: "maps_location", config: {
@@ -52,7 +53,7 @@ describe("CatalogNativePlugins", () => {
     expect(screen.getByRole("link", { name: "Abrir no Google Maps" })).toHaveAttribute("href", "https://www.google.com/maps/search/?api=1&query=Rua%20das%20Joias%2C%2010");
     expect(container.querySelector("iframe")).toBeNull();
     expect(screen.getByText(/sua privacidade/i)).toBeInTheDocument();
-    expect(screen.getByText("Posso agendar?")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Posso agendar?" }));
     expect(screen.getByText(/Sem precisar de HTML/)).toBeInTheDocument();
   });
 

@@ -15,7 +15,7 @@ aura-clinic-piercing/
 ```
 
 - **Backend** — `backend/`: API REST em Node.js + Express 5, persistência em PostgreSQL. Autenticação por token HMAC próprio (sem JWT externo). Arquivos novos vão ao Cloudflare R2 quando as seis variáveis `R2_*` estão configuradas; o disco local é o fallback de desenvolvimento e de arquivos ainda não migrados.
-- **Frontend** — `frontend/`: SPA em React 18 + Vite 5, ícones `lucide-react`. Sem framework de UI externo — os componentes reutilizáveis são próprios. As telas públicas são escolhidas por `window.location.pathname`; o painel mantém URLs em `/app/*` por `appRoutes.js`, com controle de acesso por papel. As telas de cada feature são carregadas sob demanda (`React.lazy` + `Suspense`).
+- **Frontend** — `frontend/`: SPA em React 18 + Vite 5, ícones `lucide-react` e primitives comportamentais do Radix UI. Os componentes reutilizáveis e a identidade visual continuam próprios, centralizados em `components/common/Ui.jsx`. As telas públicas são escolhidas por `window.location.pathname`; o painel mantém URLs em `/app/*` por `appRoutes.js`, com controle de acesso por papel. As telas de cada feature são carregadas sob demanda (`React.lazy` + `Suspense`).
 
 Scripts da raiz (`package.json`):
 
@@ -232,16 +232,17 @@ frontend/src/
 
 ## 8. Componentes de UI reutilizáveis
 
-O frontend não usa biblioteca de componentes externa; a UI compartilhada vive em `frontend/src/components/common/`. Os principais:
+O frontend não usa um framework visual externo; a UI compartilhada vive em `frontend/src/components/common/` e usa Radix apenas para comportamentos acessíveis. Os principais:
 
 - **`Modal`** (`Crud.jsx`) — janela sobreposta genérica usada por formulários e diálogos. Props: `open`, `title`, `subtitle`, `onClose`, `children`, `footer`, `size` (`sm`/`md`/…). Fecha com Escape e clique no backdrop, trava o scroll do body enquanto aberta e é acessível (`role="dialog"`, `aria-modal`).
-- **`Button`** (`Ui.jsx`) — botão padronizado. Prop `variant` ∈ `primary | secondary | ghost | danger`, mapeada para as classes visuais correspondentes; repassa demais props ao `<button>`.
+- **`Button`** (`Ui.jsx`) — botão padronizado. Prop `variant` ∈ `primary | secondary | ghost | danger`, mapeada para as classes visuais correspondentes; repassa atributos HTML e `ref` ao `<button>`.
+- **`Tabs` / `Accordion` / `Switch`** (`Ui.jsx`) — primitives Radix para abas, conteúdo expansível e toggles. Use a composição `Tabs.List`/`Trigger`/`Content` e `Accordion.Item`/`Header`/`Trigger`/`Content`; os callbacks entregam valores, não eventos.
 - **`StatusBadge`** (`Ui.jsx`) — selo colorido de status (ex.: agendamento pendente/atendido/cancelado, estoque disponível/baixo/crítico). Normaliza o `status` (minúsculas, sem acentos) e o mapeia para um tom (`ok | warn | info | danger | neutral`); aceita `tone` explícito.
 - **`DataTable`** (`Crud.jsx`) — tabela reutilizável das telas de listagem/CRUD. Props: `columns` (`[{ key, label, render?, align? }]`), `rows`, `actions?(row)` (botões por linha), `rowKey` e `empty` (estado vazio). Suporta layout responsivo por célula.
 - **`CrudHeader`** (`Crud.jsx`) — cabeçalho padrão das telas de gestão: `title`, `subtitle` e botão primário (`actionLabel`, default "Novo") via `onAction`, ligando a listagem ao formulário/modal.
 - **`ConfirmDeleteModal`** (`Feedback.jsx`) — modal de confirmação de exclusão que **exige digitar uma palavra** (`confirmWord`, default "sim") para habilitar o botão Excluir, evitando remoções acidentais. Props: `open`, `onClose`, `onConfirm`, `title`, `message`, `confirmWord`, `loading`.
 
-Complementam a UI base: `Input`, `Select`, `Textarea`, `Checkbox`, `PaymentSelect`, `StatusSelect`, `Metric`, `AlertBlock` (em `Ui.jsx`) e `Loading`, `ApiError` (em `Feedback.jsx`). Esses blocos são combinados em cada tela de `features/` para compor as interfaces de CRUD (listar, criar, editar, excluir) de forma consistente. Consulte `docs/API.md` para os endpoints que essas telas consomem e `docs/FLUXOS.md` para os fluxos de uso.
+Complementam a UI base: `Input`, `Select`, `Textarea`, `Checkbox`, `PaymentSelect`, `StatusSelect`, `Metric`, `AlertBlock` (em `Ui.jsx`) e `Loading`, `ApiError` (em `Feedback.jsx`). `Input` e `Textarea` encaminham atributos HTML ao controle nativo; `className` é do controle e `fieldClassName` do invólucro. Esses blocos são combinados em cada tela de `features/` para compor as interfaces de CRUD (listar, criar, editar, excluir) de forma consistente. Consulte `docs/API.md` para os endpoints que essas telas consomem e `docs/FLUXOS.md` para os fluxos de uso.
 
 ## 9. Referências de código
 

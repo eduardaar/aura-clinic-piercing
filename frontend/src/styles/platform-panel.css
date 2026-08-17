@@ -61,6 +61,24 @@
     display: none;
   }
 
+  /* A lista é Radix Tabs, mas o nav continua sendo a faixa horizontal fixa do
+     painel. A primitive só adiciona semântica e teclado; não cria uma segunda
+     moldura visual dentro dela. */
+  .platform-tabs .ui-tabs-list,
+  .platform-tabs-list {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 6px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    overflow: visible;
+  }
+
+  .platform-tab-content { padding-top: 0; }
+  .platform-finance-tab-content { padding-top: 0; }
+
   .platform-tabs a,
   .platform-tabs button {
     flex: 0 0 auto;
@@ -89,9 +107,16 @@
   }
 
   .platform-tabs a.active,
-  .platform-tabs button.active {
+  .platform-tabs button.active,
+  .platform-tabs a[data-state="active"],
+  .platform-tabs button[data-state="active"] {
     color: var(--black);
     border-bottom-color: var(--black);
+  }
+
+  .dashboard-section-tabs button[data-state="active"] {
+    background: var(--ink);
+    color: var(--gold-light);
   }
 
   .platform-tabs .platform-logout {
@@ -230,6 +255,20 @@
     .platform-metrics { grid-template-columns: 1fr; }
     .platform-facts { grid-template-columns: 1fr; }
     .platform-quota-head { align-items: flex-start; flex-direction: column; gap: 3px; }
+
+    /* Cabeçalhos de painéis e formulários não podem manter ações espremidas
+       ao lado de títulos longos. A partir daqui a ação ganha sua própria
+       linha e fica fácil de tocar. */
+    .platform-account-workspace-header .panel-heading,
+    .platform-split .panel-heading { align-items: stretch; flex-direction: column; }
+    .platform-account-workspace-header .header-actions,
+    .platform-split .header-actions { width: 100%; }
+    .platform-account-workspace-header .header-actions > button,
+    .platform-split .header-actions > button { flex: 1 1 auto; }
+
+    /* As listas da plataforma mantêm uma coluna e não empurram a viewport. */
+    .platform-split .data-view,
+    .platform-split .table-wrap { max-width: 100%; }
   }
 
   /* ---------------------------------------------------------------------

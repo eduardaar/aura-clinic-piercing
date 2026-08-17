@@ -8,6 +8,7 @@ import { asArray } from "../../lib/utils";
 import { apiFetch, useFetch } from "../../lib/api";
 import { defaultAccessUser } from "../../lib/defaultForms";
 import { roleLabel } from "../../features/shared/helpers";
+import "../../styles/agenda-admin-responsive.css";
 
 const ROLE_OPTIONS = ["admin", "piercer", "reception", "finance"]
   .map((value) => ({ value, label: roleLabel(value) }));

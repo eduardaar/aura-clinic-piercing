@@ -164,12 +164,19 @@
   font-weight: 600;
 }
 
+.au-a-root .au-a-signup-name-control { display: block; }
+
 /* Campo de senha com botão mostrar/ocultar */
 
 .au-a-root .au-a-pass {
   position: relative;
   min-width: 0;
 }
+
+/* Input compartilhado conserva o wrapper semântico mesmo dentro do campo de
+   senha; aqui ele só ocupa a largura toda para o botão de visibilidade ficar
+   sobreposto como antes. */
+.au-a-root .au-a-pass-control { display: block; }
 
 .au-a-root .au-a-pass .au-a-input {
   padding-right: 52px;
@@ -624,23 +631,11 @@
   text-align: left;
 }
 
-.au-a-root .au-a-legal label { display: block; flex: 1; min-width: 0; text-align: left; cursor:pointer; }
-.au-a-root .au-a-legal-checkbox {
-  display: block;
-  flex: 0 0 16px;
-  width: 16px;
-  min-height: 16px;
-  height: 16px;
-  margin: 0;
-  padding: 0;
-  border: 1px solid var(--muted);
-  border-radius: 4px;
-  background: var(--white);
-  color: var(--black);
-  cursor: pointer;
-}
-.au-a-root .au-a-legal-checkbox[data-state="checked"] { border-color: var(--gold-dark); background: var(--gold); }
-.au-a-root .au-a-legal-checkbox svg { display: block; }
+.au-a-root .au-a-legal .au-a-legal-checkbox { display:flex; align-items:flex-start; flex:1; min-width:0; gap:9px; margin:0; text-align:left; }
+.au-a-root .au-a-legal .au-a-legal-checkbox > span { display:block; flex:1; min-width:0; text-align:left; cursor:pointer; }
+.au-a-root .au-a-legal .au-a-legal-checkbox .ui-checkbox { flex:0 0 16px; width:16px; height:16px; min-height:16px; margin:2px 0 0; padding:0; border-color:var(--muted); border-radius:4px; color:var(--black); }
+.au-a-root .au-a-legal .au-a-legal-checkbox .ui-checkbox[data-state="checked"] { border-color: var(--gold-dark); background: var(--gold); }
+.au-a-root .au-a-legal .au-a-legal-checkbox .ui-checkbox svg { display: block; }
 .au-a-root .au-a-legal-link { padding: 0; border: 0; background: none; color:var(--brown-dark); font: inherit; font-weight:700; text-decoration: underline; cursor: pointer; }
 .au-a-root .au-a-legal-link:focus-visible { outline: 2px solid var(--gold-dark); outline-offset: 2px; border-radius: 2px; }
 

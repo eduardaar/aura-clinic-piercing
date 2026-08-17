@@ -1,6 +1,6 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useState } from "react";
-import { Button, FinancialSummary, Input, Metric, Select, StatusBadge } from "../../components/common/Ui";
+import { Button, FinancialSummary, Input, Metric, Select, StatusBadge, Tabs, Textarea } from "../../components/common/Ui";
 import { Modal, CrudHeader, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { asArray, formatDate } from "../../lib/utils";
@@ -339,15 +339,15 @@ export function SalesWorkspace() {
           </>
         )}
       >
-        <div className="customization-tabs sales-tabs">
-          {[
-            ["produto", "Venda de produto"],
-            ["servico", "Venda de serviço"],
-            ["ordem", "Ordem de serviço"]
-          ].map(([id, label]) => (
-            <button key={id} type="button" className={tab === id ? "active" : ""} onClick={() => handleTabChange(id)}>{label}</button>
-          ))}
-        </div>
+        <Tabs value={tab} onValueChange={handleTabChange}>
+          <Tabs.List className="customization-tabs sales-tabs" aria-label="Tipo de venda">
+            {[
+              ["produto", "Venda de produto"],
+              ["servico", "Venda de serviço"],
+              ["ordem", "Ordem de serviço"]
+            ].map(([id, label]) => <Tabs.Trigger key={id} value={id}>{label}</Tabs.Trigger>)}
+          </Tabs.List>
+        </Tabs>
 
         <form id="sales-order-form" onSubmit={saveOrder}>
           <div className="form-grid">
@@ -438,9 +438,7 @@ export function SalesWorkspace() {
               </div>
               <Input type="number" label="Valor unitário" value={line.unit_price} onChange={(value) => setLine({ ...line, unit_price: value })} />
             </div>
-            <label>Observações do item
-              <textarea value={line.notes} onChange={(event) => setLine({ ...line, notes: event.target.value })} />
-            </label>
+            <Textarea label="Observações do item" value={line.notes} onChange={(value) => setLine({ ...line, notes: value })} />
             <Button variant="secondary" type="button" onClick={addLineItem} disabled={exceedsStock}>Adicionar item</Button>
           </div>
 
@@ -454,7 +452,7 @@ export function SalesWorkspace() {
                   <small>Subtotal: {currency.format(Number(item.unit_price) * Number(item.quantity))}</small>
                   {item.notes && <small>{item.notes}</small>}
                 </div>
-                <button type="button" onClick={() => removeLine(index)}>Remover</button>
+                <Button variant="secondary" onClick={() => removeLine(index)}>Remover</Button>
               </article>
             )) : <p className="empty-state">Nenhum item adicionado ainda.</p>}
           </div>
@@ -466,9 +464,7 @@ export function SalesWorkspace() {
           </div>
           {couponMessage && <span className="form-success">{couponMessage}</span>}
 
-          <label>Observações da venda
-            <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
-          </label>
+          <Textarea label="Observações da venda" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} />
           {error && <span className="form-error">{error}</span>}
         </form>
       </Modal>

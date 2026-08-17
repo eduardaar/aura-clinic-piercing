@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GripVertical, ImageIcon, Plus, Redo2, Undo2 } from "lucide-react";
 import { Loading, ApiError } from "../components/common/Feedback";
-import { Checkbox, Input, Select, StatusBadge } from "../components/common/Ui";
+import { Accordion, Button, Checkbox, Input, Select, StatusBadge, Tabs, Textarea } from "../components/common/Ui";
 import { ConfirmDeleteModal, Modal, RowActions } from "../components/common/Crud";
 import { DataView } from "../components/common/DataView";
 import { API_ORIGIN, apiFetch, tenantSlug, useFetch } from "../lib/api";
@@ -296,17 +296,17 @@ export function CatalogCustomization() {
             <p>Personalize sua vitrine e publique quando estiver pronta.</p>
           </div>
           <div className="catalog-header-actions">
-            <button className="secondary-button" type="button" onClick={() => setPreviewOpen(true)}>Abrir prévia</button>
-            <button className="primary-button" type="button" onClick={() => save("/catalog-customization/publish", "Catálogo publicado.")}>Publicar</button>
-            <button className="secondary-button" type="button" onClick={() => setUtilitiesOpen((open) => !open)} aria-expanded={utilitiesOpen}>Mais opções</button>
+            <Button variant="secondary" onClick={() => setPreviewOpen(true)}>Abrir prévia</Button>
+            <Button onClick={() => save("/catalog-customization/publish", "Catálogo publicado.")}>Publicar</Button>
+            <Button variant="secondary" onClick={() => setUtilitiesOpen((open) => !open)} aria-expanded={utilitiesOpen}>Mais opções</Button>
           </div>
         </header>
 
         <div className="catalog-editor-toolbar" aria-label="Controles do rascunho">
           <small>Rascunho v{version.draft || 0}</small>
           <div>
-            <button type="button" className="secondary-button catalog-history-button" aria-label="Desfazer" disabled={!localHistory.undo} onClick={undo} title="Desfazer (Ctrl/Cmd + Z)"><Undo2 size={16} /></button>
-            <button type="button" className="secondary-button catalog-history-button" aria-label="Refazer" disabled={!localHistory.redo} onClick={redo} title="Refazer (Ctrl/Cmd + Shift + Z)"><Redo2 size={16} /></button>
+            <Button variant="secondary" className="catalog-history-button" aria-label="Desfazer" disabled={!localHistory.undo} onClick={undo} title="Desfazer (Ctrl/Cmd + Z)"><Undo2 size={16} /></Button>
+            <Button variant="secondary" className="catalog-history-button" aria-label="Refazer" disabled={!localHistory.redo} onClick={redo} title="Refazer (Ctrl/Cmd + Shift + Z)"><Redo2 size={16} /></Button>
           </div>
           <span className="sr-only" aria-live="polite">{localHistory.announcement}</span>
         </div>
@@ -314,8 +314,8 @@ export function CatalogCustomization() {
         {utilitiesOpen && (
           <section className="catalog-utilities" aria-label="Opções avançadas do catálogo">
             <div className="catalog-utilities-actions">
-              <button className="secondary-button" type="button" onClick={reviewPublication} disabled={checkingPublication}>{checkingPublication ? "Revisando…" : "Revisar publicação"}</button>
-              <button className="secondary-button" type="button" onClick={() => setResetOpen(true)}>Restaurar padrão</button>
+              <Button variant="secondary" onClick={reviewPublication} disabled={checkingPublication}>{checkingPublication ? "Revisando…" : "Revisar publicação"}</Button>
+              <Button variant="secondary" onClick={() => setResetOpen(true)}>Restaurar padrão</Button>
             </div>
             <CatalogBuilderStatus version={version} history={historyData} onRollback={setRollbackVersion} />
             <CatalogPublicLinks />
@@ -323,7 +323,8 @@ export function CatalogCustomization() {
         )}
         <CatalogPublishChecklist checklist={publishChecklist} />
 
-        <nav className="customization-tabs">
+        <Tabs value={activeSection} onValueChange={setActiveSection}>
+          <Tabs.List className="customization-tabs" aria-label="Seções de personalização do catálogo">
           {[
             ["aparencia", "Aparência"],
             ["layout", "Construtor"],
@@ -340,9 +341,10 @@ export function CatalogCustomization() {
             ["rodape", "Rodapé e identidade"],
             ["seo", "SEO"]
           ].map(([id, label]) => (
-            <button key={id} type="button" className={activeSection === id ? "active" : ""} onClick={() => setActiveSection(id)}>{label}</button>
+            <Tabs.Trigger key={id} value={id}>{label}</Tabs.Trigger>
           ))}
-        </nav>
+          </Tabs.List>
+        </Tabs>
 
         {activeSection === "layout" && <CatalogLayoutBuilder form={form} setForm={setForm} />}
         {activeSection === "integracoes" && <CatalogPluginEditor plugins={form.plugins} onChange={(plugins) => setForm({ ...form, plugins })} enabledFeatures={pluginAccess.enabledFeatures} pluginLimit={pluginAccess.pluginLimit} />}
@@ -446,9 +448,7 @@ export function CatalogCustomization() {
                     <Input label="URL do vídeo (YouTube ou Vimeo)" value={section.media_url} onChange={(value) => setForm(updateList(form, "contentSections", index, { media_url: value }))} />
                     <small className="field-help">Cole um link de compartilhamento ou incorporado. Outros sites não são aceitos por segurança.</small>
                   </div> : null}
-                  <label>Texto
-                    <textarea value={section.text} onChange={(event) => setForm(updateList(form, "contentSections", index, { text: event.target.value }))} />
-                  </label>
+                  <Textarea label="Texto" value={section.text} onChange={(text) => setForm(updateList(form, "contentSections", index, { text }))} />
                   <Toggle label="Componente ativo" checked={section.active} onChange={(value) => setForm(updateList(form, "contentSections", index, { active: value }))} />
                   <button type="button" className="danger-link" onClick={() => setForm(removeListItem(form, "contentSections", index))}>Remover componente</button>
                 </article>
@@ -482,7 +482,7 @@ export function CatalogCustomization() {
                     <Toggle label="Ativa" checked={category.is_active} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { is_active: value }))} />
                     <Toggle label="Destaque" checked={category.is_featured} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { is_featured: value }))} />
                   </div>
-                  <label>Descrição<textarea value={category.description || ""} onChange={(event) => setForm(updateList(form, "featuredCategories", index, { description: event.target.value }))} /></label>
+                  <Textarea label="Descrição" value={category.description || ""} onChange={(description) => setForm(updateList(form, "featuredCategories", index, { description }))} />
                   <ImageUploadField label="Imagem da categoria" value={category.image_url} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { image_url: value }))} />
                   <ImageUploadField label="Banner da categoria" value={category.banner_url} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { banner_url: value }))} />
                   <button type="button" className="danger-link" onClick={() => setForm(removeListItem(form, "featuredCategories", index))}>Remover categoria</button>
@@ -569,12 +569,8 @@ export function CatalogCustomization() {
               <Input label="Mensagem indisponível" value={form.settings.unavailable_message} onChange={(value) => setForm(updateSettings(form, { unavailable_message: value }))} />
               <Input label="Mensagem poucas unidades" value={form.settings.low_stock_message} onChange={(value) => setForm(updateSettings(form, { low_stock_message: value }))} />
             </div>
-            <label>Texto institucional
-              <textarea value={form.settings.institutional_text} onChange={(event) => setForm(updateSettings(form, { institutional_text: event.target.value }))} />
-            </label>
-            <label>Texto do rodapé
-              <textarea value={form.theme.footer_text} onChange={(event) => setForm(updateTheme(form, { footer_text: event.target.value }))} />
-            </label>
+            <Textarea label="Texto institucional" value={form.settings.institutional_text} onChange={(institutional_text) => setForm(updateSettings(form, { institutional_text }))} />
+            <Textarea label="Texto do rodapé" value={form.theme.footer_text} onChange={(footer_text) => setForm(updateTheme(form, { footer_text }))} />
           </CustomizationCard>
         )}
 
@@ -594,22 +590,16 @@ export function CatalogCustomization() {
               <Input label="Site" value={form.settings.company_website} onChange={(value) => setForm(updateSettings(form, { company_website: value }))} />
               <Input label="Google Maps" value={form.settings.company_maps_url} onChange={(value) => setForm(updateSettings(form, { company_maps_url: value }))} />
             </div>
-            <label>Descrição curta
-              <textarea value={form.settings.company_short_description} onChange={(event) => setForm(updateSettings(form, { company_short_description: event.target.value }))} />
-            </label>
-            <label>Endereço
-              <textarea value={form.settings.company_address} onChange={(event) => setForm(updateSettings(form, { company_address: event.target.value }))} placeholder="Rua, número, bairro, cidade e estado" />
-            </label>
-            <label>Mensagem Inicial do WhatsApp
-              <textarea value={form.settings.whatsapp_message} onChange={(event) => setForm(updateSettings(form, { whatsapp_message: event.target.value }))} />
-            </label>
+            <Textarea label="Descrição curta" value={form.settings.company_short_description} onChange={(company_short_description) => setForm(updateSettings(form, { company_short_description }))} />
+            <Textarea label="Endereço" value={form.settings.company_address} placeholder="Rua, número, bairro, cidade e estado" onChange={(company_address) => setForm(updateSettings(form, { company_address }))} />
+            <Textarea label="Mensagem inicial do WhatsApp" value={form.settings.whatsapp_message} onChange={(whatsapp_message) => setForm(updateSettings(form, { whatsapp_message }))} />
             <div className="form-grid">
-              <label>Política de atendimento<textarea value={form.settings.service_policy} onChange={(event) => setForm(updateSettings(form, { service_policy: event.target.value }))} /></label>
-              <label>Política de sinal<textarea value={form.settings.deposit_policy} onChange={(event) => setForm(updateSettings(form, { deposit_policy: event.target.value }))} /></label>
-              <label>Política de cancelamento<textarea value={form.settings.cancellation_policy} onChange={(event) => setForm(updateSettings(form, { cancellation_policy: event.target.value }))} /></label>
-              <label>Política de troca<textarea value={form.settings.exchange_policy} onChange={(event) => setForm(updateSettings(form, { exchange_policy: event.target.value }))} /></label>
-              <label>Biossegurança<textarea value={form.settings.biosafety_text} onChange={(event) => setForm(updateSettings(form, { biosafety_text: event.target.value }))} /></label>
-              <label>Materiais<textarea value={form.settings.materials_text} onChange={(event) => setForm(updateSettings(form, { materials_text: event.target.value }))} /></label>
+              <Textarea label="Política de atendimento" value={form.settings.service_policy} onChange={(service_policy) => setForm(updateSettings(form, { service_policy }))} />
+              <Textarea label="Política de sinal" value={form.settings.deposit_policy} onChange={(deposit_policy) => setForm(updateSettings(form, { deposit_policy }))} />
+              <Textarea label="Política de cancelamento" value={form.settings.cancellation_policy} onChange={(cancellation_policy) => setForm(updateSettings(form, { cancellation_policy }))} />
+              <Textarea label="Política de troca" value={form.settings.exchange_policy} onChange={(exchange_policy) => setForm(updateSettings(form, { exchange_policy }))} />
+              <Textarea label="Biossegurança" value={form.settings.biosafety_text} onChange={(biosafety_text) => setForm(updateSettings(form, { biosafety_text }))} />
+              <Textarea label="Materiais" value={form.settings.materials_text} onChange={(materials_text) => setForm(updateSettings(form, { materials_text }))} />
             </div>
           </CustomizationCard>
         )}
@@ -629,7 +619,7 @@ export function CatalogCustomization() {
 
         {error && <span className="form-error">{error}</span>}
         {message && <span className="form-success">{message}</span>}
-        <button className="primary-button customization-save" type="button" onClick={() => save()}>Salvar rascunho</button>
+        <Button className="customization-save" onClick={() => save()}>Salvar rascunho</Button>
       </div>
 
       <Modal
@@ -648,12 +638,12 @@ export function CatalogCustomization() {
         size="sm"
         onClose={() => setTemplateToApply("")}
         footer={<>
-          <button type="button" className="secondary-button" onClick={() => setTemplateToApply("")}>Cancelar</button>
-          <button type="button" className="primary-button" onClick={() => {
+          <Button variant="secondary" onClick={() => setTemplateToApply("")}>Cancelar</Button>
+          <Button onClick={() => {
             setForm(applyCatalogTemplate(form, templateToApply));
             setTemplateToApply("");
             setMessage("Template aplicado ao rascunho. Revise a prévia e salve quando terminar.");
-          }}>Aplicar template</button>
+          }}>Aplicar template</Button>
         </>}
       >
         <p>O template troca a paleta, tipografia e composição dos blocos. Sua marca, imagens, produtos e textos fora desses blocos permanecem preservados.</p>
@@ -665,8 +655,8 @@ export function CatalogCustomization() {
         size="sm"
         onClose={() => setResetOpen(false)}
         footer={<>
-          <button type="button" className="secondary-button" onClick={() => setResetOpen(false)}>Cancelar</button>
-          <button type="button" className="danger-button" onClick={() => { setResetOpen(false); save("/catalog-customization/reset", "Rascunho padrão restaurado. Revise e publique quando quiser."); }}>Restaurar rascunho</button>
+          <Button variant="secondary" onClick={() => setResetOpen(false)}>Cancelar</Button>
+          <Button variant="danger" onClick={() => { setResetOpen(false); save("/catalog-customization/reset", "Rascunho padrão restaurado. Revise e publique quando quiser."); }}>Restaurar rascunho</Button>
         </>}
       >
         <p>As alterações não publicadas deste rascunho serão substituídas pela composição padrão. As versões publicadas continuam disponíveis no histórico.</p>
@@ -678,8 +668,8 @@ export function CatalogCustomization() {
         size="sm"
         onClose={() => setRollbackVersion(null)}
         footer={<>
-          <button type="button" className="secondary-button" onClick={() => setRollbackVersion(null)}>Cancelar</button>
-          <button type="button" className="primary-button" onClick={() => rollback(rollbackVersion)}>Restaurar e publicar</button>
+          <Button variant="secondary" onClick={() => setRollbackVersion(null)}>Cancelar</Button>
+          <Button onClick={() => rollback(rollbackVersion)}>Restaurar e publicar</Button>
         </>}
       >
         <p>A versão {rollbackVersion} será clonada em uma nova revisão publicada. A vitrine voltará a esse conteúdo sem reescrever o passado.</p>
@@ -699,19 +689,23 @@ function CatalogBuilderStatus({ version, history, onRollback }) {
         <strong>Rascunho v{draft} · Publicada v{published || "—"}</strong>
         <small>{safeVersion.updated_at ? `Atualizado em ${formatCatalogRevisionDate(safeVersion.updated_at)}.` : "Ainda não há uma versão salva."}</small>
       </div>
-      <details>
-        <summary>Histórico de publicações ({revisions.length})</summary>
-        <div className="catalog-revision-list">
-          {!revisions.length && <span>Nenhuma versão publicada ainda.</span>}
-          {revisions.map((revision) => (
-            <div key={revision.id || revision.version}>
-              <span><strong>v{revision.version}</strong><small>{revision.action === "rollback" ? "restauração" : "publicação"} · {formatCatalogRevisionDate(revision.published_at || revision.created_at)}</small></span>
-              {Number(revision.version) !== published && <button type="button" className="secondary-button" onClick={() => onRollback(Number(revision.version))}>Restaurar</button>}
-              {Number(revision.version) === published && <em>Atual</em>}
+      <Accordion className="catalog-builder-history" type="single" collapsible>
+        <Accordion.Item value="published-history">
+          <Accordion.Header><Accordion.Trigger>Histórico de publicações ({revisions.length})</Accordion.Trigger></Accordion.Header>
+          <Accordion.Content>
+            <div className="catalog-revision-list">
+              {!revisions.length && <span>Nenhuma versão publicada ainda.</span>}
+              {revisions.map((revision) => (
+                <div key={revision.id || revision.version}>
+                  <span><strong>v{revision.version}</strong><small>{revision.action === "rollback" ? "restauração" : "publicação"} · {formatCatalogRevisionDate(revision.published_at || revision.created_at)}</small></span>
+                  {Number(revision.version) !== published && <Button variant="secondary" onClick={() => onRollback(Number(revision.version))}>Restaurar</Button>}
+                  {Number(revision.version) === published && <em>Atual</em>}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </details>
+          </Accordion.Content>
+        </Accordion.Item>
+      </Accordion>
     </section>
   );
 }
@@ -795,7 +789,7 @@ function FooterIdentityEditor({ form, setForm }) {
         <legend>Cores específicas do rodapé</legend>
         <div className="form-grid">{colorFields.map(([key, label]) => <Input key={key} type="color" label={label} value={settings[key]} onChange={(value) => update({ [key]: value })} />)}</div>
       </fieldset>
-      <label>Copyright<textarea value={settings.footer_copyright_text} onChange={(event) => update({ footer_copyright_text: event.target.value })} /></label>
+      <Textarea label="Copyright" value={settings.footer_copyright_text} onChange={(footer_copyright_text) => update({ footer_copyright_text })} />
       <div className={`contrast-warning ${contrast >= 4.5 ? "ok" : "risk"}`} role="status">
         Contraste texto/fundo: {contrast.toFixed(2)}:1 — {contrast >= 4.5 ? "adequado para texto normal." : `leitura prejudicada; considere texto ${bestTextColor(footerBackground) === "#ffffff" ? "claro" : "escuro"}.`}
       </div>
@@ -1140,7 +1134,7 @@ function CouponManager() {
           </Select>
         </div>
         <label>Descrição
-          <textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} />
+          <Textarea label="Descrição" value={draft.description} onChange={(description) => setDraft({ ...draft, description })} />
         </label>
         <div className="form-grid">
           <Toggle label="Somente primeira compra" checked={draft.first_purchase_only} onChange={(value) => setDraft({ ...draft, first_purchase_only: value })} />
@@ -1350,8 +1344,8 @@ function PromotionManager() {
           <Input label="Serviços" value={draft.service_ids} onChange={(value) => setDraft({ ...draft, service_ids: value })} />
           <Input label="Selo" value={draft.badge} onChange={(value) => setDraft({ ...draft, badge: value })} />
         </div>
-        <label>Descrição<textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label>
-        <label>Texto legal<textarea value={draft.legal_text} onChange={(event) => setDraft({ ...draft, legal_text: event.target.value })} /></label>
+        <Textarea label="Descrição" value={draft.description} onChange={(description) => setDraft({ ...draft, description })} />
+        <Textarea label="Texto legal" value={draft.legal_text} onChange={(legal_text) => setDraft({ ...draft, legal_text })} />
         <div className="form-grid">
           <Toggle label="Pode acumular" checked={draft.is_stackable} onChange={(value) => setDraft({ ...draft, is_stackable: value })} />
           <Toggle label="Acumula com cupom" checked={draft.stackable_with_coupon} onChange={(value) => setDraft({ ...draft, stackable_with_coupon: value })} />

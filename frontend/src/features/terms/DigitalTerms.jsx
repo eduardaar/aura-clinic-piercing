@@ -1,7 +1,7 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import React, { useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
-import { Button, Checkbox, Input, Select, StatusBadge } from "../../components/common/Ui";
+import { Button, Checkbox, Input, Select, StatusBadge, Tabs, Textarea } from "../../components/common/Ui";
 import { Modal, CrudHeader, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { asArray, asObject, formatDate } from "../../lib/utils";
@@ -136,9 +136,11 @@ export function DigitalTerms({ onBack }) {
       </div>
       <Modal open={modalOpen} size="lg" title="Novo termo digital" subtitle="Preencha a ficha por etapas e colete a assinatura." onClose={() => setModalOpen(false)} footer={<><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button><Button type="submit" form="digital-term-form">Salvar termo</Button></>}>
       <form id="digital-term-form" className="term-form" onSubmit={submit}>
-        <nav className="term-form-tabs" aria-label="Etapas do termo">
-          {[["dados", "Dados"], ["saude", "Saúde"], ["consentimento", "Consentimento"], ["assinatura", "Assinatura"]].map(([id, label]) => <button type="button" key={id} className={formTab === id ? "active" : ""} onClick={() => setFormTab(id)}>{label}</button>)}
-        </nav>
+        <Tabs value={formTab} onValueChange={setFormTab}>
+          <Tabs.List className="term-form-tabs" aria-label="Etapas do termo">
+            {[["dados", "Dados"], ["saude", "Saúde"], ["consentimento", "Consentimento"], ["assinatura", "Assinatura"]].map(([id, label]) => <Tabs.Trigger value={id} key={id}>{label}</Tabs.Trigger>)}
+          </Tabs.List>
+        </Tabs>
         {formTab === "dados" && <>
         <section className="term-section">
           <h3>Agendamento Vinculado</h3>
@@ -243,8 +245,8 @@ export function DigitalTerms({ onBack }) {
             <Input label="Joia" value={form.form_data.information.jewelry} onChange={(value) => updateFormData("information", "jewelry", value)} />
             <Input label="Valor informado no contexto" value={form.form_data.information.value} onChange={(value) => updateFormData("information", "value", value)} />
           </div>
-          <label className="term-notes">Observação operacional<textarea value={form.form_data.information.observation} onChange={(event) => updateFormData("information", "observation", event.target.value)} /></label>
-          <label className="term-notes">Declaração de Saúde e Observações<textarea value={form.health_declaration} onChange={(event) => updateField("health_declaration", event.target.value)} /></label>
+          <div className="term-notes"><Textarea label="Observação operacional" value={form.form_data.information.observation} onChange={(value) => updateFormData("information", "observation", value)} /></div>
+          <div className="term-notes"><Textarea label="Declaração de Saúde e Observações" value={form.health_declaration} onChange={(value) => updateField("health_declaration", value)} /></div>
         </section>
         </>}
         {error && <span className="form-error">{error}</span>}
@@ -442,7 +444,7 @@ export function SignaturePad({ onChange, clearKey, label = "Assinatura digital" 
     <div className="signature-box">
       <div className="signature-heading">
         <span>{label}</span>
-        <button type="button" onClick={clear}>Limpar</button>
+        <Button type="button" variant="secondary" onClick={clear}>Limpar</Button>
       </div>
       <canvas ref={canvasRef} width="720" height="220" onMouseDown={start} onMouseMove={move} onMouseUp={stop} onMouseLeave={stop} onTouchStart={start} onTouchMove={move} onTouchEnd={stop} />
     </div>

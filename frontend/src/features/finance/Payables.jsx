@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Button, Input, Metric, PaymentSelect, Select, StatusBadge } from "../../components/common/Ui";
+import { Button, Input, Metric, PaymentSelect, Select, StatusBadge, Textarea } from "../../components/common/Ui";
 import { CrudHeader, Modal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
@@ -104,7 +104,7 @@ export function PayablesAdmin() {
   const overdue = entries.filter((entry) => entry.status === "overdue");
   const openTotal = pending.reduce((total, entry) => total + Math.max(0, asNumber(entry.amount) - asNumber(entry.paid_amount)), 0);
 
-  return <section className="stack">
+  return <section className="stack payables-page">
     <div className="metric-grid">
       <Metric label="Em aberto" value={currency.format(openTotal)} />
       <Metric label="Vencidas" value={currency.format(overdue.reduce((total, entry) => total + Math.max(0, asNumber(entry.amount) - asNumber(entry.paid_amount)), 0))} />
@@ -158,7 +158,7 @@ export function PayablesAdmin() {
           <PaymentSelect label="Forma de pagamento" value={form.payment_method} onChange={(value) => setForm({ ...form, payment_method: value })} />
           <Input label="Conta ou caixa" value={form.payment_account || ""} onChange={(value) => setForm({ ...form, payment_account: value })} />
         </div>
-        <label>Observações (ex.: juros, número do contrato ou fornecedor)<textarea value={form.notes || ""} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
+        <Textarea label="Observações (ex.: juros, número do contrato ou fornecedor)" value={form.notes || ""} onChange={(notes) => setForm({ ...form, notes })} />
         {error && <span className="form-error">{error}</span>}
       </form>
     </Modal>
@@ -172,7 +172,7 @@ export function PayablesAdmin() {
     </Modal>
 
     {lifecycle && <Modal open title="Motivo do cancelamento" size="sm" onClose={() => setLifecycle(null)} footer={<><Button variant="secondary" onClick={() => setLifecycle(null)}>Voltar</Button><Button onClick={updateLifecycle}>Cancelar conta</Button></>}>
-      <label>Justificativa obrigatória<textarea required value={lifecycle.reason} onChange={(event) => setLifecycle((current) => ({ ...current, reason: event.target.value }))} /></label>
+      <Textarea label="Justificativa obrigatória" required value={lifecycle.reason} onChange={(reason) => setLifecycle((current) => ({ ...current, reason }))} />
       {lifecycle.error && <span className="form-error">{lifecycle.error}</span>}
     </Modal>}
   </section>;

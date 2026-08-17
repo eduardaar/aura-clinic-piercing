@@ -1,7 +1,7 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useState } from "react";
 import { Download } from "lucide-react";
-import { Button, Input, Metric, PaymentSelect, Select, StatusBadge } from "../../components/common/Ui";
+import { Button, Input, Metric, PaymentSelect, Select, StatusBadge, Textarea } from "../../components/common/Ui";
 import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
@@ -97,7 +97,7 @@ export function FinanceAdmin() {
   }
 
   return (
-    <section className="stack">
+    <section className="stack finance-page">
       <div className="metric-grid">
         <Metric label="Faturamento diário" value={currency.format(asNumber(totals.day_total))} />
         <Metric label="Faturamento semanal" value={currency.format(asNumber(totals.week_total))} />
@@ -227,9 +227,7 @@ export function FinanceAdmin() {
             <Input label="Conta ou caixa" value={expense.payment_account} onChange={(value) => setExpense({ ...expense, payment_account: value })} />
             {expense.status === "paga" && <Input type="date" label="Data do pagamento" value={expense.paid_at} onChange={(value) => setExpense({ ...expense, paid_at: value })} />}
           </div>
-          <label>Observações
-            <textarea value={expense.notes} onChange={(event) => setExpense({ ...expense, notes: event.target.value })} />
-          </label>
+          <Textarea label="Observações" value={expense.notes} onChange={(notes) => setExpense({ ...expense, notes })} />
           {error && <span className="form-error">{error}</span>}
         </form>
       </Modal>
@@ -327,7 +325,7 @@ export function AccountsReceivable() {
   }
 
   return (
-    <section className="stack">
+    <section className="stack finance-page">
       <div className="metric-grid">
         <Metric label="Em aberto" value={currency.format(asNumber(ledger.receivable))} />
         <Metric label="Recebido no período" value={currency.format(asNumber(ledger.cashflow?.received))} />
@@ -386,7 +384,7 @@ export function AccountsReceivable() {
             <PaymentSelect label="Forma de recebimento" value={form.payment_method} onChange={(value) => setForm({ ...form, payment_method: value })} />
             <Input label="Conta ou caixa" value={form.payment_account} onChange={(value) => setForm({ ...form, payment_account: value })} />
           </div>
-          <label>Observações<textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
+          <Textarea label="Observações" value={form.notes} onChange={(notes) => setForm({ ...form, notes })} />
           {error && <span className="form-error">{error}</span>}
         </form>
       </Modal>
@@ -607,7 +605,7 @@ function AdvancedFinance() {
         onClose={() => setLifecycle(null)} footer={<><Button variant="secondary" onClick={() => setLifecycle(null)}>Voltar</Button><Button type="submit" form="lifecycle-form">Confirmar</Button></>}>
         <form id="lifecycle-form" onSubmit={submitLifecycle} className="stack">
           <p>O registro será preservado na auditoria e {lifecycle?.action === "restore" ? "voltará aos indicadores" : "será desconsiderado de caixa, DRE e metas"}.</p>
-          <label>Justificativa obrigatória<textarea required value={lifecycle?.reason || ""} onChange={(event) => setLifecycle((current) => ({ ...current, reason: event.target.value }))} /></label>
+          <Textarea label="Justificativa obrigatória" required value={lifecycle?.reason || ""} onChange={(reason) => setLifecycle((current) => ({ ...current, reason }))} />
           {lifecycle?.error && <span className="form-error">{lifecycle.error}</span>}
         </form>
       </Modal>
@@ -633,7 +631,7 @@ function AdvancedFinance() {
             <PaymentSelect label="Forma" value={form.payment_method} onChange={(value) => setForm({ ...form, payment_method: value })} />
             <Input label="Conta/caixa" value={form.payment_account} onChange={(value) => setForm({ ...form, payment_account: value })} />
           </div>
-          <label>Observações<textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
+          <Textarea label="Observações" value={form.notes} onChange={(notes) => setForm({ ...form, notes })} />
           {error && <span className="form-error">{error}</span>}
         </form>
       </Modal>

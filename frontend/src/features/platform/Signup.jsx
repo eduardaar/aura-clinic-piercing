@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
 import { ArrowLeft, Check, CheckCircle2, ChevronRight } from "lucide-react";
 import { API, setTenantSlug } from "../../lib/api";
 import { asArray } from "../../lib/utils";
@@ -7,6 +6,7 @@ import { featureLabel } from "../../lib/planFeatures";
 import { PublicTopNav } from "../../components/layout/PublicTopNav";
 import { PublicFooter } from "../../components/layout/PublicFooter";
 import { Modal } from "../../components/common/Crud";
+import { Button, Checkbox, Input } from "../../components/common/Ui";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -173,9 +173,9 @@ export function Signup() {
 
             <p className="au-a-code">Código da loja: <strong>{createdTenant.slug}</strong></p>
 
-            <button type="button" className="au-a-submit" onClick={goToLogin}>
+            <Button type="button" className="au-a-submit" onClick={goToLogin}>
               Ir para o login <ChevronRight size={18} aria-hidden="true" />
-            </button>
+            </Button>
           </div>
           </section>
         </main>
@@ -219,58 +219,25 @@ export function Signup() {
 
                 <div className="au-a-field">
                   <label htmlFor="au-a-name">Nome da clínica ou studio</label>
-                  <input
+                  <Input
+                    label={null}
+                    fieldClassName="au-a-signup-name-control"
                     id="au-a-name"
                     className="au-a-input"
                     required
                     autoFocus
                     value={form.name}
-                    onChange={(event) => setForm({ ...form, name: event.target.value })}
+                    onChange={(name) => setForm({ ...form, name })}
                     placeholder="ex.: Studio Lua Piercing"
                   />
                   {slug.length >= 3 && <small className="au-a-hint">Endereço da sua loja: <strong>/{slug}</strong></small>}
                 </div>
 
-                <div className="au-a-field">
-                  <label htmlFor="au-a-admin-email">E-mail de acesso</label>
-                  <input
-                    id="au-a-admin-email"
-                    className="au-a-input"
-                    type="email"
-                    required
-                    value={form.admin_email}
-                    onChange={(event) => setForm({ ...form, admin_email: event.target.value })}
-                    placeholder="seu@email.com"
-                  />
-                </div>
+                <Input fieldClassName="au-a-field" label="E-mail de acesso" id="au-a-admin-email" className="au-a-input" type="email" required value={form.admin_email} onChange={(admin_email) => setForm({ ...form, admin_email })} placeholder="seu@email.com" />
 
-                <div className="au-a-field">
-                  <label htmlFor="au-a-admin-password">Senha</label>
-                  <input
-                    id="au-a-admin-password"
-                    className="au-a-input"
-                    type="password"
-                    minLength={8}
-                    required
-                    value={form.admin_password}
-                    onChange={(event) => setForm({ ...form, admin_password: event.target.value })}
-                    placeholder="Mínimo 8 caracteres"
-                  />
-                </div>
+                <Input fieldClassName="au-a-field" label="Senha" id="au-a-admin-password" className="au-a-input" type="password" minLength={8} required value={form.admin_password} onChange={(admin_password) => setForm({ ...form, admin_password })} placeholder="Mínimo 8 caracteres" />
 
-                <div className="au-a-field">
-                  <label htmlFor="au-a-admin-password-confirmation">Confirme a senha</label>
-                  <input
-                    id="au-a-admin-password-confirmation"
-                    className="au-a-input"
-                    type="password"
-                    minLength={8}
-                    required
-                    value={form.admin_password_confirmation}
-                    onChange={(event) => setForm({ ...form, admin_password_confirmation: event.target.value })}
-                    placeholder="Digite a mesma senha novamente"
-                  />
-                </div>
+                <Input fieldClassName="au-a-field" label="Confirme a senha" id="au-a-admin-password-confirmation" className="au-a-input" type="password" minLength={8} required value={form.admin_password_confirmation} onChange={(admin_password_confirmation) => setForm({ ...form, admin_password_confirmation })} placeholder="Digite a mesma senha novamente" />
               </>
             )}
 
@@ -278,9 +245,9 @@ export function Signup() {
               <>
                 <div className="au-a-head">
                   <div className="au-a-plan-heading">
-                    <button type="button" className="au-a-plan-back" aria-label="Voltar para os dados da clínica" title="Voltar" onClick={() => setStep(1)}>
+                    <Button type="button" variant="ghost" className="au-a-plan-back" aria-label="Voltar para os dados da clínica" title="Voltar" onClick={() => setStep(1)}>
                       <ArrowLeft size={18} aria-hidden="true" />
-                    </button>
+                    </Button>
                     <h1 className="au-a-title">Escolha seu plano</h1>
                   </div>
                   <p className="au-a-subtitle">Sem cobrança agora. Você pode trocar quando quiser.</p>
@@ -320,22 +287,19 @@ export function Signup() {
                   <span><strong>{selectedPlan?.name}</strong> · 7 dias grátis · depois {currency.format(Number(selectedPlan?.price_cents || 0) / 100)}/mês</span>
                 </p>
                 <div className="au-a-legal" aria-label="Aceites obrigatórios">
-                  <CheckboxPrimitive.Root
-                    id="au-a-legal-acceptance"
+                  <Checkbox
                     className="au-a-legal-checkbox"
                     checked={legalAccepted.terms_of_use && legalAccepted.privacy_policy}
-                    onCheckedChange={(checked) => setLegalAccepted({ terms_of_use: Boolean(checked), privacy_policy: Boolean(checked) })}
-                  >
-                    <CheckboxPrimitive.Indicator><Check size={13} strokeWidth={3} /></CheckboxPrimitive.Indicator>
-                  </CheckboxPrimitive.Root>
-                  <label htmlFor="au-a-legal-acceptance">
-                    Li e aceito os <button type="button" className="au-a-legal-link" onClick={() => setOpenLegalDocument("terms_of_use")}>Termos de Uso</button> e a <button type="button" className="au-a-legal-link" onClick={() => setOpenLegalDocument("privacy_policy")}>Política de Privacidade</button>.
-                  </label>
+                    onChange={(checked) => setLegalAccepted({ terms_of_use: checked, privacy_policy: checked })}
+                    label={<>
+                      Li e aceito os <Button type="button" variant="ghost" className="au-a-legal-link" onClick={() => setOpenLegalDocument("terms_of_use")}>Termos de Uso</Button> e a <Button type="button" variant="ghost" className="au-a-legal-link" onClick={() => setOpenLegalDocument("privacy_policy")}>Política de Privacidade</Button>.
+                    </>}
+                  />
                 </div>
                 <div className="au-a-actions au-a-plan-submit">
-                  <button key="signup-submit" type="submit" className="au-a-submit" disabled={loading}>
+                  <Button key="signup-submit" type="submit" className="au-a-submit" disabled={loading}>
                     {loading ? "Criando…" : "Criar conta"} <ChevronRight size={18} aria-hidden="true" />
-                  </button>
+                  </Button>
                 </div>
               </>
             )}
@@ -350,9 +314,9 @@ export function Signup() {
                   o browser executa a ação padrão já com o elemento virado em submit e envia
                   o formulário — criando a clínica no passo 1 e pulando a escolha de plano. */}
               {step < 2 ? (
-                <button key="signup-next" type="button" className="au-a-submit" onClick={next}>
+                <Button key="signup-next" type="button" className="au-a-submit" onClick={next}>
                   Continuar <ChevronRight size={18} aria-hidden="true" />
-                </button>
+                </Button>
               ) : null}
             </div>
           </form>

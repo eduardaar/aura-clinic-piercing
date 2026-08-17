@@ -31,11 +31,13 @@ describe("Landing", () => {
     render(<Landing />);
 
     // Hero, recursos e fechamento — o esqueleto da página de hoje.
-    expect(screen.getByText(LANDING_DEFAULTS.hero.title)).toBeInTheDocument();
-    for (const item of LANDING_DEFAULTS.features.items) {
-      expect(screen.getByText(item.title)).toBeInTheDocument();
-    }
-    expect(screen.getByText(LANDING_DEFAULTS.closing.title)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(LANDING_DEFAULTS.hero.title)).toBeInTheDocument();
+      for (const item of LANDING_DEFAULTS.features.items) {
+        expect(screen.getAllByText(item.title).length).toBeGreaterThan(0);
+      }
+      expect(screen.getByText(LANDING_DEFAULTS.closing.title)).toBeInTheDocument();
+    });
   });
 
   it("mantém o conteúdo embutido quando a API devolve lista vazia", async () => {

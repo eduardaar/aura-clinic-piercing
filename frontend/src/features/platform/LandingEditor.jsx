@@ -513,7 +513,7 @@ function ItemHeading({ title, index, total, onMove, onRemove }) {
     <div className="panel-heading">
       <h3>{title}</h3>
       <div className="header-actions">
-        <button
+        <Button
           type="button"
           className="icon-button"
           disabled={index === 0}
@@ -521,8 +521,8 @@ function ItemHeading({ title, index, total, onMove, onRemove }) {
           onClick={() => onMove(-1)}
         >
           <ArrowUp size={16} />
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           className="icon-button"
           disabled={index === total - 1}
@@ -530,11 +530,11 @@ function ItemHeading({ title, index, total, onMove, onRemove }) {
           onClick={() => onMove(1)}
         >
           <ArrowDown size={16} />
-        </button>
+        </Button>
         {onRemove && (
-          <button type="button" className="icon-button le-remover" aria-label={`Remover ${title}`} onClick={onRemove}>
+          <Button type="button" className="icon-button le-remover" aria-label={`Remover ${title}`} onClick={onRemove}>
             <Trash2 size={16} />
-          </button>
+          </Button>
         )}
       </div>
     </div>

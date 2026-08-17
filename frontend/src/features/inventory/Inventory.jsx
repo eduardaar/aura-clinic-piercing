@@ -1,7 +1,7 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useState } from "react";
 import { CheckCircle2, Gem, ImageIcon, LayoutGrid, ListFilter, Pencil, Search, SlidersHorizontal, Table2, Trash2 } from "lucide-react";
-import { Button, Input, Metric, Select, StatusBadge } from "../../components/common/Ui";
+import { Button, Input, Metric, Select, StatusBadge, Switch, Tabs, Textarea } from "../../components/common/Ui";
 import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { asArray, asObject, formatDate, removeAccents } from "../../lib/utils";
@@ -10,7 +10,7 @@ import { useDebouncedValue } from "../../lib/smartSearch";
 import { ANODIZATION_COLOR_OPTIONS, JEWELRY_CATEGORY_OPTIONS, JEWELRY_LENGTH_OPTIONS, JEWELRY_THICKNESS_OPTIONS, JEWELRY_THREAD_OPTIONS, PRICE_MULTIPLIER_OPTIONS, PRICE_ROUNDING_OPTIONS, calculateVariantPricing, centsToMoney, defaultJewelry, defaultJewelryVariant, normalizeJewelryForm, parseGalleryUrls } from "../../lib/defaultForms";
 import { catalogFilterOptions, cleanDisplayText, elegantProductName, splitColorOptions } from "../../features/catalog/catalogUtils";
 import { catalogImageUrl, currency, inventoryStatusClass, inventoryStatusLabel, inventoryStockState, jewelrySkuBase } from "../../features/shared/helpers";
-import { CatalogCustomization, Toggle } from "../../pages/CatalogCustomization";
+import { CatalogCustomization } from "../../pages/CatalogCustomization";
 import { SmartCombobox } from "../../components/common/SmartCombobox";
 
 function normalizeManagedCategory(item = {}, index = 0) {
@@ -83,10 +83,10 @@ export function JewelryCards({ items, onOpen, onEdit, onMovement, onArchive }) {
               <strong>A partir de {currency.format(item.sale_value || 0)}</strong>
             </div>
             <div className="card-actions">
-              {onMovement && <button type="button" onClick={(event) => { event.stopPropagation(); onMovement(item, "Entrada"); }}>Entrada</button>}
-              {onMovement && <button type="button" onClick={(event) => { event.stopPropagation(); onMovement(item, "Saída"); }}>Saída</button>}
-              <button type="button" onClick={(event) => { event.stopPropagation(); onEdit(item); }}>Editar</button>
-              {onArchive && <button type="button" onClick={(event) => { event.stopPropagation(); onArchive(item); }}>Arquivar</button>}
+              {onMovement && <Button variant="secondary" onClick={(event) => { event.stopPropagation(); onMovement(item, "Entrada"); }}>Entrada</Button>}
+              {onMovement && <Button variant="secondary" onClick={(event) => { event.stopPropagation(); onMovement(item, "Saída"); }}>Saída</Button>}
+              <Button variant="secondary" onClick={(event) => { event.stopPropagation(); onEdit(item); }}>Editar</Button>
+              {onArchive && <Button variant="secondary" className="danger" onClick={(event) => { event.stopPropagation(); onArchive(item); }}>Arquivar</Button>}
             </div>
           </div>
         </article>
@@ -305,14 +305,16 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
           )}
         </div>
 
-        <nav className="inventory-module-tabs" aria-label="Áreas de produtos e estoque">
-          {allTabs.map(({ id, label, icon: Icon }) => (
-            <button key={id} type="button" className={sectionTab === id ? "active" : ""} onClick={() => setSectionTab(id)}>
+        <Tabs value={sectionTab} onValueChange={setSectionTab}>
+          <Tabs.List className="inventory-module-tabs" aria-label="Áreas de produtos e estoque">
+            {allTabs.map(({ id, label, icon: Icon }) => (
+            <Tabs.Trigger key={id} value={id}>
               <Icon size={16} />
               <span>{label}</span>
-            </button>
-          ))}
-        </nav>
+            </Tabs.Trigger>
+            ))}
+          </Tabs.List>
+        </Tabs>
 
         <div className="inventory-panel-shell">
           {sectionTab === "produtos" && (
@@ -828,10 +830,10 @@ function ProductGalleryManager({ images = [], productName = "", onChange }) {
               <strong>{image.is_primary ? "Imagem Principal" : "Imagem Secundária"}</strong>
             </div>
             <div className="gallery-actions">
-              <button type="button" onClick={() => setPrimary(index)} disabled={image.is_primary}>{image.is_primary ? "Principal" : "Definir Principal"}</button>
-              <button type="button" onClick={() => move(index, -1)}>Subir</button>
-              <button type="button" onClick={() => move(index, 1)}>Descer</button>
-              <button type="button" onClick={() => setRemovingIndex(index)}>Remover</button>
+              <Button variant="secondary" onClick={() => setPrimary(index)} disabled={image.is_primary}>{image.is_primary ? "Principal" : "Definir Principal"}</Button>
+              <Button variant="secondary" onClick={() => move(index, -1)}>Subir</Button>
+              <Button variant="secondary" onClick={() => move(index, 1)}>Descer</Button>
+              <Button variant="secondary" className="danger" onClick={() => setRemovingIndex(index)}>Remover</Button>
             </div>
           </article>
         ))}
@@ -1009,17 +1011,17 @@ export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTI
         </div>
       </div>
 
-      <nav className="editor-tabs">
+      <Tabs value={editorTab} onValueChange={setEditorTab}>
+      <Tabs.List className="editor-tabs" aria-label="Seções do produto">
         {[
           ["dados", "Dados"],
           ["variacoes", `Variações (${form.variants.length})`],
           ["movimentacao", "Movimentação"],
           ["comercial", "Comercial"],
           ["virtual", "Catálogo"]
-        ].map(([id, label]) => (
-          <button key={id} type="button" className={editorTab === id ? "active" : ""} onClick={() => setEditorTab(id)}>{label}</button>
-        ))}
-      </nav>
+        ].map(([id, label]) => <Tabs.Trigger key={id} value={id}>{label}</Tabs.Trigger>)}
+      </Tabs.List>
+      </Tabs>
 
       {editorTab === "dados" && (
         <div className="editor-section">
@@ -1050,12 +1052,8 @@ export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTI
             <Input label="Pedra" value={form.stone} onChange={(value) => setForm({ ...form, stone: value })} />
             <Input label="Indicação de Uso" value={form.piercing_type} onChange={(value) => setForm({ ...form, piercing_type: value })} />
           </div>
-          <label>Descrição curta
-            <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
-          </label>
-          <label>Observações internas
-            <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
-          </label>
+          <Textarea label="Descrição curta" value={form.description} onChange={(value) => setForm({ ...form, description: value })} />
+          <Textarea label="Observações internas" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} />
         </div>
       )}
 
@@ -1167,12 +1165,12 @@ export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTI
             <div><span>Lucro Potencial</span><strong>{currency.format(potentialProfit)}</strong></div>
           </div>
           <div className="chip-toggle-grid">
-            <ToggleChip label="Ativo no catálogo" checked={form.is_catalog_active} onChange={(value) => setForm({ ...form, is_catalog_active: value })} />
-            <ToggleChip label="Destaque" checked={form.is_featured} onChange={(value) => setForm({ ...form, is_featured: value })} />
-            <ToggleChip label="Promoção" checked={form.is_promotion} onChange={(value) => setForm({ ...form, is_promotion: value })} />
-            <ToggleChip label="Lançamento" checked={form.is_new} onChange={(value) => setForm({ ...form, is_new: value })} />
-            <ToggleChip label="Mais desejado" checked={form.is_most_wanted} onChange={(value) => setForm({ ...form, is_most_wanted: value })} />
-            <ToggleChip label="Últimas unidades" checked={form.is_last_units} onChange={(value) => setForm({ ...form, is_last_units: value })} />
+            <Switch className="toggle-chip" label="Ativo no catálogo" checked={form.is_catalog_active} onChange={(value) => setForm({ ...form, is_catalog_active: value })} />
+            <Switch className="toggle-chip" label="Destaque" checked={form.is_featured} onChange={(value) => setForm({ ...form, is_featured: value })} />
+            <Switch className="toggle-chip" label="Promoção" checked={form.is_promotion} onChange={(value) => setForm({ ...form, is_promotion: value })} />
+            <Switch className="toggle-chip" label="Lançamento" checked={form.is_new} onChange={(value) => setForm({ ...form, is_new: value })} />
+            <Switch className="toggle-chip" label="Mais desejado" checked={form.is_most_wanted} onChange={(value) => setForm({ ...form, is_most_wanted: value })} />
+            <Switch className="toggle-chip" label="Últimas unidades" checked={form.is_last_units} onChange={(value) => setForm({ ...form, is_last_units: value })} />
           </div>
         </div>
       )}
@@ -1180,8 +1178,8 @@ export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTI
       {editorTab === "virtual" && (
         <div className="editor-section">
           <div className="form-grid">
-            <Toggle label="Loja virtual ativa" checked={form.virtual_store_active} onChange={(value) => setForm({ ...form, virtual_store_active: value })} />
-            <Toggle label="Publicar no catálogo público" checked={form.is_published} onChange={(value) => setForm({ ...form, is_published: value })} />
+            <Switch label="Loja virtual ativa" checked={form.virtual_store_active} onChange={(value) => setForm({ ...form, virtual_store_active: value })} />
+            <Switch label="Publicar no catálogo público" checked={form.is_published} onChange={(value) => setForm({ ...form, is_published: value })} />
           </div>
           {Boolean(form.virtual_store_active) && (
             <>
@@ -1194,12 +1192,8 @@ export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTI
                 <Input label="Tipo de embalagem" value={form.package_type} onChange={(value) => setForm({ ...form, package_type: value })} />
                 <Input type="number" label="Prazo de preparação (dias)" value={form.preparation_days} onChange={(value) => setForm({ ...form, preparation_days: value })} />
               </div>
-              <label>Informações de frete / envio
-                <textarea value={form.shipping_info} onChange={(event) => setForm({ ...form, shipping_info: event.target.value })} placeholder="Ex.: Envio para todo o Brasil, cálculo por Correios ou transportadora, embalagem protegida." />
-              </label>
-              <label>Observações de frete e envio
-                <textarea value={form.freight_notes} onChange={(event) => setForm({ ...form, freight_notes: event.target.value })} placeholder="Ex.: proteger pedra ou opala, usar caixa pequena, separar por variações." />
-              </label>
+              <Textarea label="Informações de frete / envio" value={form.shipping_info} onChange={(value) => setForm({ ...form, shipping_info: value })} placeholder="Ex.: Envio para todo o Brasil, cálculo por Correios ou transportadora, embalagem protegida." />
+              <Textarea label="Observações de frete e envio" value={form.freight_notes} onChange={(value) => setForm({ ...form, freight_notes: value })} placeholder="Ex.: proteger pedra ou opala, usar caixa pequena, separar por variações." />
               <div className="form-grid">
                 <Input label="SEO título" value={form.seo_title} onChange={(value) => setForm({ ...form, seo_title: value })} />
                 <Input label="SEO descrição" value={form.seo_description} onChange={(value) => setForm({ ...form, seo_description: value })} />
@@ -1358,7 +1352,7 @@ export function VariantEditModal({ category, variant, pricingSettings = {}, onCh
             <Input type="number" min="0" label="Estoque Atual" value={variant.quantity} onChange={(value) => onChange({ quantity: value })} required />
             <Input type="number" label="Estoque Mínimo" value={variant.low_stock_threshold} onChange={(value) => onChange({ low_stock_threshold: value })} />
           </div>
-          <Toggle label="Variação Ativa" checked={variant.is_active} onChange={(value) => onChange({ is_active: value })} />
+          <Switch label="Variação Ativa" checked={variant.is_active} onChange={(value) => onChange({ is_active: value })} />
       </div>
     </Modal>
   );
@@ -1381,14 +1375,6 @@ export function StockMovementHistory({ jewelryId }) {
         {!movements.length && <p className="empty-state">Nenhuma movimentação registrada.</p>}
       </div>
     </div>
-  );
-}
-
-export function ToggleChip({ label, checked, onChange }) {
-  return (
-    <button type="button" className={`toggle-chip ${checked ? "active" : ""}`} onClick={() => onChange(!checked)}>
-      {label}
-    </button>
   );
 }
 
@@ -1442,9 +1428,7 @@ export function StockMovementModal({ item, initialType = "Entrada", onClose, onS
             <option>Perda</option>
           </Select>
         </div>
-        <label>Observação
-          <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
-        </label>
+        <Textarea label="Observação" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} />
         <p className="movement-date-hint">Data automática: {new Date().toLocaleDateString("pt-BR")}</p>
       </form>
     </Modal>
@@ -1573,17 +1557,15 @@ export function CategoryManager({ categories = [], onChanged }) {
         onClose={() => setModalOpen(false)}
         footer={(
           <>
-            <button type="button" className="secondary-button" onClick={() => setModalOpen(false)}>Cancelar</button>
-            <button type="submit" form="category-form" className="primary-button">Salvar</button>
+            <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>
+            <Button type="submit" form="category-form">Salvar</Button>
           </>
         )}
       >
         <form id="category-form" onSubmit={save} className="stack">
           <Input label="Nome" value={form.name} onChange={(value) => setForm({ ...form, name: value })} required />
-          <label>Descrição
-            <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
-          </label>
-          <Toggle label="Categoria Ativa" checked={form.is_active} onChange={(value) => setForm({ ...form, is_active: value })} />
+          <Textarea label="Descrição" value={form.description} onChange={(value) => setForm({ ...form, description: value })} />
+          <Switch label="Categoria Ativa" checked={form.is_active} onChange={(value) => setForm({ ...form, is_active: value })} />
           {error && <span className="form-error">{error}</span>}
         </form>
       </Modal>
@@ -1593,8 +1575,8 @@ export function CategoryManager({ categories = [], onChanged }) {
         onClose={() => setDeleteTarget(null)}
         footer={(
           <>
-            <button type="button" className="secondary-button" onClick={() => setDeleteTarget(null)}>Cancelar</button>
-            <button type="button" className="primary-button" onClick={confirmCategoryAction}>Confirmar</button>
+            <Button variant="secondary" onClick={() => setDeleteTarget(null)}>Cancelar</Button>
+            <Button onClick={confirmCategoryAction}>Confirmar</Button>
           </>
         )}
       >
@@ -1760,8 +1742,8 @@ export function OptionManager({ title, type, items = [], onChanged, placeholder 
         onClose={() => setModalOpen(false)}
         footer={(
           <>
-            <button type="button" className="secondary-button" onClick={() => setModalOpen(false)}>Cancelar</button>
-            <button type="submit" form={formId} className="primary-button">{editing ? "Salvar" : "Criar"}</button>
+            <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>
+            <Button type="submit" form={formId}>{editing ? "Salvar" : "Criar"}</Button>
           </>
         )}
       >
@@ -1855,8 +1837,8 @@ export function ProfessionalManager({ professionals = [], onChanged }) {
         onClose={() => setModalOpen(false)}
         footer={(
           <>
-            <button type="button" className="secondary-button" onClick={() => setModalOpen(false)}>Cancelar</button>
-            <button type="submit" form="inventory-professional-form" className="primary-button">{editing ? "Salvar" : "Criar"}</button>
+            <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>
+            <Button type="submit" form="inventory-professional-form">{editing ? "Salvar" : "Criar"}</Button>
           </>
         )}
       >

@@ -296,7 +296,7 @@ export function Reports() {
 
   const download = (format) => downloadApiFile(`/reports/${filters.type}?${params}&format=${format}`, `${filters.type}-${filters.from}-${filters.to}.${format}`);
   return (
-    <section className="stack">
+    <section className="stack reports-page">
       <div className="panel">
         <div className="panel-heading">
           <div><h2>Central de relatórios</h2><span>{isAbcReport ? "Giro de estoque calculado pelas saídas dos últimos 90 dias." : "Dados reais e isolados por clínica, com exportação em três formatos."}</span></div>

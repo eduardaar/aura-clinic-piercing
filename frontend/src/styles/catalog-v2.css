@@ -1,3 +1,5 @@
+@layer telas {
+
 .catalog-carousel-hero{position:relative;min-height:0;aspect-ratio:16/5;overflow:hidden;background:var(--catalog-section-bg,#fff)}
 .catalog-carousel-hero::before,.catalog-carousel-hero::after{pointer-events:none}.catalog-carousel-hero .public-banner__media{position:absolute;inset:0;display:block;width:100%;height:100%;background:var(--catalog-section-bg,#fff)}.catalog-carousel-hero .public-banner__image{display:block!important;width:100%;height:100%;transform-origin:center}.catalog-carousel-hero .catalog-hero-copy{position:relative;z-index:3;max-width:min(560px,72%)}
 .public-banner__arrow{position:absolute;z-index:5;top:50%;translate:0 -50%;display:grid;place-items:center;width:44px;height:44px;border-radius:50%;border:1px solid #ffffffa6;background:#14120f7a;color:#fff;backdrop-filter:blur(8px)}.public-banner__arrow:hover{background:#14120fbf}.public-banner__arrow--previous{left:18px}.public-banner__arrow--next{right:18px}.catalog-carousel-dots{position:absolute;z-index:5;left:50%;bottom:14px;translate:-50% 0}
@@ -12,3 +14,101 @@
 .catalog-results{display:grid;gap:18px;scroll-margin-top:18px}.catalog-results-heading{display:flex;align-items:end;justify-content:space-between;gap:16px}.catalog-results-heading h2{margin:3px 0 0}.catalog-results-heading>strong{color:var(--catalog-primary,#8a6727)}.catalog-filters{padding:8px!important;gap:8px!important}.catalog-filters select{min-height:38px!important}.catalog-results .catalog-grid{margin:0!important}.appointment-jewelry-selected{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:12px 14px;border:1px solid #dfcfb4;border-radius:14px;background:var(--white)}.appointment-jewelry-selected strong{flex-basis:100%}.appointment-jewelry-selected span{font-size:.82rem;color:#62594c}
 @media(max-width:767px){.catalog-page{overflow-x:hidden;padding-inline:12px;padding-bottom:calc(88px + env(safe-area-inset-bottom))}.catalog-search-desktop{display:none}.catalog-search-mobile{display:flex;width:100%}.catalog-discovery{position:relative;padding:12px;border:1px solid color-mix(in srgb,var(--catalog-primary,var(--gold)) 22%,transparent);border-radius:18px;background:color-mix(in srgb,var(--catalog-section-bg,#fff) 94%,transparent)}.catalog-discovery .catalog-filters{display:none}.catalog-results-heading{align-items:flex-start}.catalog-results-heading h2{font-size:1.45rem}.catalog-results-heading>strong{font-size:.78rem;text-align:right}.catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:12px}.catalog-product-card figure{height:auto!important;aspect-ratio:1/1}.catalog-product-card img{width:100%!important;height:100%!important}.catalog-product-info{min-height:0!important;padding:14px!important}.catalog-company-contact{grid-template-columns:1fr!important}.catalog-dynamic-footer{padding:22px!important}.floating-whatsapp span{display:none}.floating-whatsapp{width:50px;height:50px;padding:0;display:grid;place-items:center;border-radius:50%}}
 @media(max-width:420px){.catalog-grid{grid-template-columns:1fr!important}.catalog-product-card figure{aspect-ratio:4/3}.catalog-product-card .catalog-sku,.catalog-product-card .catalog-payment-line.muted{display:none}.catalog-product-card{width:100%;max-width:none}}
+
+/* As abas do construtor são Radix Tabs; preserva a aparência do editor legado
+   usando o estado acessível em vez de uma classe controlada manualmente. */
+.customization-tabs .ui-tabs-trigger[data-state="active"]{background:var(--paper);color:var(--ink);border-color:var(--nude)}
+
+/* -------------------------------------------------------------------------
+   Catálogo público e editor — ajustes de toque e telas estreitas.
+   Este bloco fica aqui (e não no legado styles.css) porque os dois contextos
+   compartilham o namespace catalog-*. O objetivo é manter cada região dentro
+   da viewport, sem depender de larguras mínimas de desktop.
+   ------------------------------------------------------------------------- */
+@media (max-width: 760px) {
+  .catalog-customization-page,
+  .catalog-customization-panel { gap: 14px; }
+
+  .customization-header { padding: 18px; gap: 14px; }
+  .customization-header h2 { font-size: clamp(26px, 8vw, 34px); }
+  .catalog-header-actions,
+  .customization-header > div:last-child,
+  .catalog-utilities-actions { width: 100%; }
+  .catalog-header-actions > button,
+  .customization-header > div:last-child > button,
+  .catalog-utilities-actions > button { flex: 1 1 140px; }
+
+  .catalog-editor-toolbar { align-items: stretch; }
+  .catalog-editor-toolbar > div { display: flex; width: 100%; }
+  .catalog-editor-toolbar .catalog-history-button { flex: 1 1 0; min-height: 44px; }
+  .catalog-builder-toolbar { padding: 13px; }
+  .catalog-builder-toolbar .secondary-button { width: 100%; }
+  .catalog-links { padding: 13px; margin-bottom: 4px; }
+  .catalog-link-row { align-items: stretch; padding: 12px; }
+  .catalog-link-row > div:first-child { min-width: 0; }
+  .catalog-customization-panel .catalog-link-actions { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+  .catalog-customization-panel .catalog-link-actions .primary-button,
+  .catalog-customization-panel .catalog-link-actions .secondary-button { display: inline-flex; justify-content: center; min-height: 42px; }
+
+  .customization-tabs { margin-inline: -2px; padding-inline: 2px; scroll-snap-type: x proximity; }
+  .customization-tabs button { min-height: 44px; scroll-snap-align: start; }
+  .customization-card .panel-heading { align-items: stretch; gap: 12px; }
+  .customization-card .panel-heading > div { min-width: 0; }
+  .customization-card .panel-heading > button,
+  .customization-card .panel-heading .primary-button { width: 100%; }
+  .customization-actions { width: 100%; }
+  .customization-actions > button { flex: 1 1 110px; min-height: 40px; }
+  .catalog-template-grid,
+  .catalog-media-grid { grid-template-columns: 1fr; }
+  .catalog-media-grid { max-height: none; overflow: visible; }
+  .catalog-template-grid button { grid-template-columns: 48px minmax(0, 1fr); }
+  .catalog-template-grid button em { grid-column: 2; grid-row: auto; }
+  .catalog-builder-status { align-items: stretch; }
+  .catalog-builder-status details { width: 100%; }
+  .catalog-revision-list { width: 100%; max-width: 100%; }
+  .catalog-publish-checklist { gap: 12px; }
+  .catalog-publish-checklist li { align-items: start; }
+  .catalog-live-preview .preview-browser-bar { min-height: 50px; padding: 8px 12px; flex-wrap: wrap; }
+  .preview-browser-bar > a { margin-left: auto; }
+  .preview-device-switcher { width: 100%; order: 3; }
+  .preview-device-switcher button { flex: 1 1 0; min-height: 34px; }
+  .catalog-live-preview.preview-modal .preview-storefront { height: min(64dvh, 600px); }
+
+  .catalog-page { padding: 12px; }
+  .catalog-main { width: 100%; padding: 0; }
+  .catalog-topbar { margin-bottom: 14px; }
+  .catalog-client-brand { min-width: 0; width: 100%; }
+  .catalog-client-brand strong,
+  .catalog-client-brand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .catalog-top-actions { gap: 10px; }
+  .catalog-top-actions > .catalog-icon-action { flex: 1 1 0; justify-content: center; min-width: 0; }
+  .catalog-title h1 { font-size: clamp(28px, 9vw, 38px); flex-wrap: wrap; }
+  .catalog-title p { font-size: 1rem; }
+  .catalog-drawer { width: min(100%, 440px); padding: 18px; gap: 14px; }
+  .catalog-drawer-list article { grid-template-columns: 60px minmax(0, 1fr) auto; gap: 9px; padding: 10px; }
+  .catalog-drawer-list img { width: 60px; height: 60px; }
+
+  .public-booking-page { padding: 12px; }
+  .booking-public-header { align-items: flex-start; padding: 12px 14px; }
+  .booking-public-header > * { min-width: 0; }
+  .booking-hero { padding: 24px 18px; }
+  .booking-hero h1,
+  .availability-header h2 { font-size: clamp(30px, 10vw, 42px); }
+  .booking-progress { display: flex; overflow-x: auto; padding-bottom: 4px; scroll-snap-type: x proximity; }
+  .booking-progress button { flex: 0 0 112px; min-height: 54px; scroll-snap-align: start; }
+  .booking-choice-grid { grid-template-columns: 1fr; }
+  .booking-choice-grid button { min-height: 116px; }
+  .booking-date-card,
+  .booking-time-card { border-radius: 18px; }
+}
+
+@media (max-width: 420px) {
+  .catalog-header-actions > button,
+  .customization-header > div:last-child > button,
+  .catalog-utilities-actions > button { flex-basis: 100%; }
+  .catalog-customization-panel .catalog-link-actions { grid-template-columns: 1fr; }
+  .catalog-drawer footer div { align-items: stretch; flex-direction: column; }
+  .catalog-drawer footer .whatsapp-checkout { width: 100%; min-height: 46px; }
+}
+
+} /* @layer telas */

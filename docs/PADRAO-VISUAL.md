@@ -20,6 +20,9 @@ A ordem de busca, na prática:
 | Cabeçalho com botão "Novo" | `<CrudHeader>` | `components/common/Crud.jsx` |
 | Confirmar exclusão | `<ConfirmDeleteModal>` | `components/common/Crud.jsx` |
 | Botão | `<Button variant=…>` | `components/common/Ui.jsx` |
+| Navegar entre seções | `<Tabs>` | `components/common/Ui.jsx` |
+| Mostrar conteúdo progressivamente | `<Accordion>` | `components/common/Ui.jsx` |
+| Ligar/desligar uma preferência | `<Switch>` | `components/common/Ui.jsx` |
 | Selo de status | `<StatusBadge>` | `components/common/Ui.jsx` |
 | Empilhar blocos numa página | `.stack` | `styles.css` |
 | Bloco de conteúdo | `.panel` + `.panel-heading` | `styles.css` |
@@ -50,7 +53,11 @@ prévia da imagem fica ao lado dos controles"), ela pertence ao CSS da tela.
 | `ConfirmDeleteModal` | Exclusão com palavra digitada. Use em **toda** exclusão | `components/common/Crud.jsx` |
 | `CrudHeader` | Título + subtítulo + botão de ação | `components/common/Crud.jsx` |
 | `Input` `Select` `Textarea` `Checkbox` | Campos controlados; `onChange` recebe o **valor**, não o evento | `components/common/Ui.jsx` |
-| `Button` | `variant`: `primary` \| `secondary` \| `ghost` \| `danger` | `components/common/Ui.jsx` |
+| `Tabs` | Composição `Tabs.List`, `Tabs.Trigger`, `Tabs.Content`; `onChange`/`onValueChange` recebem a aba | `components/common/Ui.jsx` |
+| `Accordion` | Composição `Accordion.Item`, `Header`, `Trigger`, `Content`; suporta `single` e `multiple` | `components/common/Ui.jsx` |
+| `Switch` | Toggle Radix; `onChange` recebe booleano; `switchClassName` estiliza só o controle | `components/common/Ui.jsx` |
+| `Input` / `Textarea` | `className` vai ao controle nativo e `fieldClassName` ao invólucro; demais atributos HTML são encaminhados | `components/common/Ui.jsx` |
+| `Button` | `variant`: `primary` \| `secondary` \| `ghost` \| `danger`; encaminha atributos e `ref` ao `<button>` | `components/common/Ui.jsx` |
 | `StatusBadge` | Selo colorido; mapeia o texto do status para o tom | `components/common/Ui.jsx` |
 | `AlertBlock` | Lista de avisos com estado vazio embutido | `components/common/Ui.jsx` |
 

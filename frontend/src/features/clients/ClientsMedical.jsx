@@ -1,7 +1,7 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useState } from "react";
 import { FileSignature, HeartPulse } from "lucide-react";
-import { Button, Input, SecureImage, Select, StatusBadge } from "../../components/common/Ui";
+import { Button, Input, SecureImage, Select, StatusBadge, Textarea } from "../../components/common/Ui";
 import { Modal, CrudHeader, RowActions } from "../../components/common/Crud";
 import { DataView, MONTH_OPTIONS } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
@@ -81,7 +81,7 @@ export function ClientsMedical() {
   }
 
   return (
-    <section className="stack">
+    <section className="stack clients-page">
       <div className="panel">
         <CrudHeader
           title="Clientes"
@@ -271,9 +271,7 @@ export function ClientEditForm({ client, onSaved, onCancel, formId }) {
         <Input label="CPF" value={form.cpf} onChange={(value) => setForm({ ...form, cpf: value })} />
         <Input type="date" label="Nascimento" value={form.birth_date} onChange={(value) => setForm({ ...form, birth_date: value })} />
       </div>
-      <label>Observacoes importantes
-        <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
-      </label>
+      <Textarea label="Observações importantes" value={form.notes} onChange={(notes) => setForm({ ...form, notes })} />
       {error && <span className="form-error">{error}</span>}
       {!formId && (
         <div className="modal-actions">
@@ -315,12 +313,8 @@ export function MedicalRecordForm({ client, onSaved }) {
           {asArray(client.history).map((item) => <option key={item.id} value={item.id}>{formatDate(item.appointment_date)} · {item.procedure}</option>)}
         </Select>
       </div>
-      <label>Histórico de perfurações
-        <textarea value={record.piercing_history} onChange={(event) => setRecord({ ...record, piercing_history: event.target.value })} />
-      </label>
-      <label>Joias usadas
-        <textarea value={record.jewelry_used} onChange={(event) => setRecord({ ...record, jewelry_used: event.target.value })} />
-      </label>
+      <Textarea label="Histórico de perfurações" value={record.piercing_history} onChange={(piercing_history) => setRecord({ ...record, piercing_history })} />
+      <Textarea label="Joias usadas" value={record.jewelry_used} onChange={(jewelry_used) => setRecord({ ...record, jewelry_used })} />
       <div className="form-grid">
         <label>Foto antes
           <input type="file" accept="image/*" onChange={(event) => setFiles({ ...files, before_photo: event.target.files[0] })} />
@@ -329,21 +323,11 @@ export function MedicalRecordForm({ client, onSaved }) {
           <input type="file" accept="image/*" onChange={(event) => setFiles({ ...files, after_photo: event.target.files[0] })} />
         </label>
       </div>
-      <label>Intercorrências
-        <textarea value={record.occurrences} onChange={(event) => setRecord({ ...record, occurrences: event.target.value })} />
-      </label>
-      <label>Orientações passadas
-        <textarea value={record.guidance} onChange={(event) => setRecord({ ...record, guidance: event.target.value })} />
-      </label>
-      <label>Alergias ou observações importantes
-        <textarea value={record.allergies_notes} onChange={(event) => setRecord({ ...record, allergies_notes: event.target.value })} />
-      </label>
-      <label>Evolução da cicatrização
-        <textarea value={record.healing_evolution} onChange={(event) => setRecord({ ...record, healing_evolution: event.target.value })} />
-      </label>
-      <label>Retornos realizados
-        <textarea value={record.returns_done} onChange={(event) => setRecord({ ...record, returns_done: event.target.value })} />
-      </label>
+      <Textarea label="Intercorrências" value={record.occurrences} onChange={(occurrences) => setRecord({ ...record, occurrences })} />
+      <Textarea label="Orientações passadas" value={record.guidance} onChange={(guidance) => setRecord({ ...record, guidance })} />
+      <Textarea label="Alergias ou observações importantes" value={record.allergies_notes} onChange={(allergies_notes) => setRecord({ ...record, allergies_notes })} />
+      <Textarea label="Evolução da cicatrização" value={record.healing_evolution} onChange={(healing_evolution) => setRecord({ ...record, healing_evolution })} />
+      <Textarea label="Retornos realizados" value={record.returns_done} onChange={(returns_done) => setRecord({ ...record, returns_done })} />
       {error && <span className="form-error">{error}</span>}
       <Button variant="primary">Salvar prontuário</Button>
     </form>
@@ -369,7 +353,7 @@ export function MedicalRecordTimeline({ client, onChanged }) {
                 <strong>{formatLongDate(record.record_date)}</strong>
                 <span>{record.procedure || "Registro avulso"} · {record.piercing_region || "sem região vinculada"}</span>
               </div>
-              <button onClick={() => setDeleting({ message: "Excluir este registro do prontuário?", run: () => remove(record.id) })}>Excluir</button>
+              <Button variant="danger" onClick={() => setDeleting({ message: "Excluir este registro do prontuário?", run: () => remove(record.id) })}>Excluir</Button>
             </header>
             <div className="record-photos">
               {record.before_photo_url && (

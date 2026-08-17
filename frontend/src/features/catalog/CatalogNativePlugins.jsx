@@ -3,7 +3,7 @@ import { Instagram, MapPin, MessageCircle, Star } from "lucide-react";
 import { tenantSlug } from "../../lib/api";
 import { normalizeCatalogBuilderPluginConfig } from "./builderPluginRegistry";
 import styles from "./CatalogNativePlugins.module.css";
-import { Checkbox } from "../../components/common/Ui";
+import { Accordion, Checkbox } from "../../components/common/Ui";
 
 const EMPTY_OBJECT = Object.freeze({});
 
@@ -279,12 +279,14 @@ function FaqPlugin({ config }) {
   return (
     <section className={`${styles.block} ${styles.faq}`} aria-label={config.title || "Dúvidas frequentes"}>
       <h2>{config.title || "Dúvidas frequentes"}</h2>
-      {items.map((item) => (
-        <details key={`${item.question}-${item.answer}`}>
-          <summary>{item.question}</summary>
-          <p>{item.answer}</p>
-        </details>
-      ))}
+      <Accordion className={styles.faqAccordion} type="single" collapsible>
+        {items.map((item, index) => (
+          <Accordion.Item key={`${item.question}-${item.answer}`} value={`faq-${index}`}>
+            <Accordion.Header><Accordion.Trigger>{item.question}</Accordion.Trigger></Accordion.Header>
+            <Accordion.Content><p>{item.answer}</p></Accordion.Content>
+          </Accordion.Item>
+        ))}
+      </Accordion>
     </section>
   );
 }

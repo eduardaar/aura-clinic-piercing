@@ -1,6 +1,9 @@
 import React from "react";
+import * as AccordionPrimitive from "@radix-ui/react-accordion";
 import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
 import * as SelectPrimitive from "@radix-ui/react-select";
+import * as SwitchPrimitive from "@radix-ui/react-switch";
+import * as TabsPrimitive from "@radix-ui/react-tabs";
 import { BadgeCheck, Banknote, Check, ChevronDown, CircleDollarSign, Clock3, CreditCard, FileChartColumn, ListFilter, Receipt, Tag } from "lucide-react";
 import { API_ORIGIN, apiFetch } from "../../lib/api";
 
@@ -86,39 +89,47 @@ export function FinancialSummary({ summary = {} }) {
         <div><CircleDollarSign size={19} /><span>{overpayment > 0 ? "Excedente" : "Saldo final"}</span><strong>{money(overpayment > 0 ? overpayment : outstanding)}</strong></div>
         {couponCode && <div><Tag size={19} /><span>Cupom aplicado</span><strong>{couponCode} <BadgeCheck size={17} aria-label="válido" /></strong><small>− {money(discount)}{couponPercent > 0 ? ` (${couponPercent}%)` : ""}</small></div>}
       </div>
-      <details className="financial-composition"><summary>Ver composição do valor bruto</summary><div><span>Serviços <strong>{money(summary.serviceSubtotal ?? summary.service_value)}</strong></span><span>Produtos <strong>{money(summary.productSubtotal ?? summary.product_value)}</strong></span></div></details>
+      <Accordion className="financial-composition">
+        <Accordion.Item value="composition">
+          <Accordion.Header><Accordion.Trigger>Ver composição do valor bruto</Accordion.Trigger></Accordion.Header>
+          <Accordion.Content><div className="financial-composition-values"><span>Serviços <strong>{money(summary.serviceSubtotal ?? summary.service_value)}</strong></span><span>Produtos <strong>{money(summary.productSubtotal ?? summary.product_value)}</strong></span></div></Accordion.Content>
+        </Accordion.Item>
+      </Accordion>
       {couponCode && <div className="coupon-success"><BadgeCheck size={24} /><div><strong>Cupom aplicado com sucesso.</strong><span>Desconto de {money(discount)}{couponPercent > 0 ? ` (${couponPercent}%)` : ""} aplicado sobre o valor elegível.</span></div></div>}
     </section>
   );
 }
 
-// Campo controlado: `onChange` recebe o VALOR já extraído, não o evento.
 /**
- * @param {object} props
- * @param {React.ReactNode} props.label
- * @param {string | number} props.value
- * @param {(value: string) => void} props.onChange
- * @param {string} [props.type] Padrão: "text".
- * @param {boolean} [props.required]
- * @param {string | number} [props.min]
+ * @typedef {Omit<React.ComponentPropsWithoutRef<"input">, "onChange" | "value" | "type"> & {
+ *   label?: React.ReactNode,
+ *   value?: string | number,
+ *   onChange?: (value: string) => void,
+ *   type?: React.HTMLInputTypeAttribute,
+ *   fieldClassName?: string
+ * }} InputProps
  */
-export function Input({ label, value, onChange, type = "text", required, min }) {
+// Campo controlado: `onChange` recebe o VALOR já extraído, não o evento.
+export const Input = React.forwardRef(
+  /** @param {InputProps} props @param {React.ForwardedRef<HTMLInputElement>} ref */
+  function Input({ label, value, onChange, type = "text", fieldClassName = "", className = "", ...inputProps }, ref) {
   return (
-    <label>
-      {label}
-      <input type={type} value={value} min={min} required={required} onChange={(event) => onChange(event.target.value)} />
+    <label className={`ui-input-field${fieldClassName ? ` ${fieldClassName}` : ""}`}>
+      {label && <span className="ui-input-label">{label}</span>}
+      <input
+        {...inputProps}
+        ref={ref}
+        type={type}
+        className={`ui-input${className ? ` ${className}` : ""}`}
+        value={value ?? ""}
+        onChange={onChange ? (event) => onChange(event.target.value) : undefined}
+      />
     </label>
   );
-}
+  }
+);
 
-/**
- * @param {object} props
- * @param {React.ReactNode} [props.label]
- * @param {string | number} props.value
- * @param {(value: string) => void} props.onChange
- * @param {React.ReactNode} [props.children] As `<option>`.
- * @param {boolean} [props.required]
- */
+/** @typedef {{ label?: React.ReactNode, value?: string | number, onChange: (value: string) => void, children?: React.ReactNode, required?: boolean, className?: string, triggerClassName?: string, id?: string, ariaLabel?: string }} SelectProps */
 const EMPTY_SELECT_VALUE = "__aura_empty_select_value__";
 
 function selectItems(children) {
@@ -144,6 +155,7 @@ function selectItems(children) {
   });
 }
 
+/** @param {SelectProps} props */
 export function Select({ label, value, onChange, children, required, className = "", triggerClassName = "", id, ariaLabel }) {
   const normalizedValue = String(value ?? "") || EMPTY_SELECT_VALUE;
   const content = (
@@ -187,12 +199,7 @@ export function PaymentSelect(props) {
 // A lista padrão é a do STATUS de AGENDAMENTO. Outras entidades (venda, ordem,
 // assinatura) têm status próprios — passe `options` em vez de aceitar o padrão,
 // senão a tela oferece um status que aquela entidade não conhece.
-/**
- * @param {object} props
- * @param {string} props.value
- * @param {(value: string) => void} props.onChange
- * @param {string[]} [props.options]
- */
+/** @param {{ value?: string, onChange: (value: string) => void, options?: string[] }} props */
 export function StatusSelect({ value, onChange, options = ["pendente", "confirmado", "recusado", "atendido", "cancelado", "remarcado"] }) {
   return (
     <Select label="Status" value={value} onChange={onChange}>
@@ -234,22 +241,18 @@ const BUTTON_VARIANT = {
   ghost: "ghost-button",
   danger: "danger-button",
 };
-/**
- * @param {object} props
- * @param {"primary" | "secondary" | "ghost" | "danger"} [props.variant]
- * @param {"button" | "submit" | "reset"} [props.type] Padrão: "button" — nunca deixe
- *   um botão dentro de `<form>` cair no "submit" implícito sem querer.
- * @param {string} [props.className] Classe EXTRA, somada à da variante.
- * @param {React.ReactNode} [props.children]
- */
-export function Button({ variant = "primary", type = "button", className = "", children, ...props }) {
+/** @typedef {Omit<React.ComponentPropsWithoutRef<"button">, "type"> & { variant?: "primary" | "secondary" | "ghost" | "danger", type?: "button" | "submit" | "reset" }} ButtonProps */
+export const Button = React.forwardRef(
+  /** @param {ButtonProps} props @param {React.ForwardedRef<HTMLButtonElement>} ref */
+  function Button({ variant = "primary", type = "button", className = "", children, ...props }, ref) {
   const base = BUTTON_VARIANT[variant] || BUTTON_VARIANT.primary;
   return (
-    <button type={type} className={`${base}${className ? ` ${className}` : ""}`} {...props}>
+    <button {...props} ref={ref} type={type} className={`${base}${className ? ` ${className}` : ""}`}>
       {children}
     </button>
   );
-}
+  }
+);
 
 // Etiqueta de status colorida (Disponível=verde, Aviso=amarelo, Sem estoque=vermelho…).
 // Mapeia o texto do status para um tom da paleta; aceita `tone` explícito.
@@ -276,30 +279,27 @@ export function StatusBadge({ status, tone, children, className = "" }) {
   return <span className={`status-badge tone-${resolved}${className ? ` ${className}` : ""}`}>{label}</span>;
 }
 
-/**
- * @param {object} props
- * @param {React.ReactNode} props.label
- * @param {string} props.value
- * @param {(value: string) => void} props.onChange
- * @param {number} [props.rows]
- * @param {boolean} [props.required]
- * @param {string} [props.placeholder]
- */
-export function Textarea({ label, value, onChange, rows = 3, required, placeholder }) {
+/** @typedef {Omit<React.ComponentPropsWithoutRef<"textarea">, "onChange" | "value"> & { label?: React.ReactNode, value?: string | number, onChange?: (value: string) => void, fieldClassName?: string }} TextareaProps */
+export const Textarea = React.forwardRef(
+  /** @param {TextareaProps} props @param {React.ForwardedRef<HTMLTextAreaElement>} ref */
+  function Textarea({ label, value, onChange, rows = 3, fieldClassName = "", className = "", ...textareaProps }, ref) {
   return (
-    <label>
-      {label}
-      <textarea value={value} rows={rows} required={required} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
+    <label className={`ui-textarea-field${fieldClassName ? ` ${fieldClassName}` : ""}`}>
+      {label && <span className="ui-textarea-label">{label}</span>}
+      <textarea
+        {...textareaProps}
+        ref={ref}
+        rows={rows}
+        className={`ui-textarea${className ? ` ${className}` : ""}`}
+        value={value ?? ""}
+        onChange={onChange ? (event) => onChange(event.target.value) : undefined}
+      />
     </label>
   );
-}
+  }
+);
 
-/**
- * @param {object} props
- * @param {React.ReactNode} props.label
- * @param {boolean} props.checked
- * @param {(checked: boolean) => void} props.onChange Recebe o BOOLEANO, não o evento.
- */
+/** @param {{ label: React.ReactNode, checked: boolean, onChange: (checked: boolean) => void, disabled?: boolean, className?: string }} props */
 export function Checkbox({ label, checked, onChange, disabled = false, className = "" }) {
   return (
     <label className={`checkbox-field${className ? ` ${className}` : ""}`}>
@@ -308,6 +308,122 @@ export function Checkbox({ label, checked, onChange, disabled = false, className
       </CheckboxPrimitive.Root>
       <span>{label}</span>
     </label>
+  );
+}
+
+/**
+ * Abas acessíveis baseadas em Radix. Use a composição `Tabs.List`,
+ * `Tabs.Trigger` e `Tabs.Content`; `onChange` é um alias de `onValueChange`
+ * para manter a convenção dos campos controlados da aplicação.
+ */
+/** @param {{ value?: string, defaultValue?: string, onValueChange?: (value: string) => void, onChange?: (value: string) => void, className?: string, children?: React.ReactNode, [key: string]: any }} props */
+export function Tabs({ value, defaultValue, onValueChange, onChange, className = "", children, ...props }) {
+  const handleValueChange = (nextValue) => {
+    onValueChange?.(nextValue);
+    onChange?.(nextValue);
+  };
+  return (
+    <TabsPrimitive.Root {...props} value={value} defaultValue={defaultValue} onValueChange={handleValueChange} className={`ui-tabs${className ? ` ${className}` : ""}`}>
+      {children}
+    </TabsPrimitive.Root>
+  );
+}
+
+/** @param {{ className?: string, children?: React.ReactNode, "aria-label"?: string, [key: string]: any }} props */
+Tabs.List = function TabsList({ className = "", children, "aria-label": ariaLabel = "Abas", ...props }) {
+  return <TabsPrimitive.List {...props} aria-label={ariaLabel} className={`ui-tabs-list${className ? ` ${className}` : ""}`}>{children}</TabsPrimitive.List>;
+};
+/** @param {{ value: string, className?: string, children?: React.ReactNode, [key: string]: any }} props */
+Tabs.Trigger = function TabsTrigger({ className = "", children, ...props }) {
+  return <TabsPrimitive.Trigger {...props} className={`ui-tabs-trigger${className ? ` ${className}` : ""}`}>{children}</TabsPrimitive.Trigger>;
+};
+/** @param {{ value: string, className?: string, children?: React.ReactNode, [key: string]: any }} props */
+Tabs.Content = function TabsContent({ className = "", children, ...props }) {
+  return <TabsPrimitive.Content {...props} className={`ui-tabs-content${className ? ` ${className}` : ""}`}>{children}</TabsPrimitive.Content>;
+};
+
+/**
+ * Área expansível acessível. `type="single"` permite `collapsible`; em
+ * `multiple`, `value` e `defaultValue` são arrays conforme o contrato Radix.
+ */
+/** @param {{ type?: "single" | "multiple", value?: string | string[], defaultValue?: string | string[], onValueChange?: (value: string | string[]) => void, collapsible?: boolean, className?: string, children?: React.ReactNode, [key: string]: any }} props */
+export function Accordion({ type = "single", value, defaultValue, onValueChange, collapsible = true, className = "", children, ...props }) {
+  const rootClassName = `ui-accordion${className ? ` ${className}` : ""}`;
+  if (type === "multiple") {
+    return (
+      <AccordionPrimitive.Root
+        {...props}
+        type="multiple"
+        value={Array.isArray(value) ? value : undefined}
+        defaultValue={Array.isArray(defaultValue) ? defaultValue : undefined}
+        onValueChange={(nextValue) => onValueChange?.(nextValue)}
+        className={rootClassName}
+      >
+        {children}
+      </AccordionPrimitive.Root>
+    );
+  }
+  return (
+    <AccordionPrimitive.Root
+      {...props}
+      type="single"
+      value={typeof value === "string" ? value : undefined}
+      defaultValue={typeof defaultValue === "string" ? defaultValue : undefined}
+      onValueChange={(nextValue) => onValueChange?.(nextValue)}
+      collapsible={collapsible}
+      className={rootClassName}
+    >
+      {children}
+    </AccordionPrimitive.Root>
+  );
+}
+
+/** @param {{ value: string, className?: string, children?: React.ReactNode, [key: string]: any }} props */
+Accordion.Item = function AccordionItem({ className = "", children, ...props }) {
+  return <AccordionPrimitive.Item {...props} className={`ui-accordion-item${className ? ` ${className}` : ""}`}>{children}</AccordionPrimitive.Item>;
+};
+/** @param {{ className?: string, children?: React.ReactNode, [key: string]: any }} props */
+Accordion.Header = function AccordionHeader({ className = "", children, ...props }) {
+  return <AccordionPrimitive.Header {...props} className={`ui-accordion-header${className ? ` ${className}` : ""}`}>{children}</AccordionPrimitive.Header>;
+};
+/** @param {{ className?: string, children?: React.ReactNode, [key: string]: any }} props */
+Accordion.Trigger = function AccordionTrigger({ className = "", children, ...props }) {
+  return <AccordionPrimitive.Trigger {...props} className={`ui-accordion-trigger${className ? ` ${className}` : ""}`}>{children}<ChevronDown className="ui-accordion-chevron" size={18} aria-hidden="true" /></AccordionPrimitive.Trigger>;
+};
+/** @param {{ className?: string, children?: React.ReactNode, [key: string]: any }} props */
+Accordion.Content = function AccordionContent({ className = "", children, ...props }) {
+  return <AccordionPrimitive.Content {...props} className={`ui-accordion-content${className ? ` ${className}` : ""}`}><div className="ui-accordion-content-inner">{children}</div></AccordionPrimitive.Content>;
+};
+
+/**
+ * Toggle booleano acessível. `onChange` recebe booleano; `className` estiliza
+ * o invólucro e `switchClassName` o controle Radix.
+ */
+export function Switch({ label, description, checked, defaultChecked, onChange, disabled = false, id, className = "", switchClassName = "", ...props }) {
+  const generatedId = React.useId();
+  const controlId = id || generatedId;
+  const control = (
+    <SwitchPrimitive.Root
+      {...props}
+      id={controlId}
+      checked={checked}
+      defaultChecked={defaultChecked}
+      disabled={disabled}
+      onCheckedChange={(nextChecked) => onChange?.(Boolean(nextChecked))}
+      className={`ui-switch${switchClassName ? ` ${switchClassName}` : ""}`}
+    >
+      <SwitchPrimitive.Thumb className="ui-switch-thumb" />
+    </SwitchPrimitive.Root>
+  );
+  if (!label && !description) return control;
+  return (
+    <div className={`ui-switch-field${className ? ` ${className}` : ""}`}>
+      {control}
+      <label htmlFor={controlId}>
+        {label && <span className="ui-switch-label">{label}</span>}
+        {description && <small className="ui-switch-description">{description}</small>}
+      </label>
+    </div>
   );
 }
 

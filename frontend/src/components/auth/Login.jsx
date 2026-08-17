@@ -3,7 +3,7 @@ import { ChevronRight, Eye, EyeOff } from "lucide-react";
 import { apiFetch, setTenantSlug, tenantSlug } from "../../lib/api";
 import { PublicTopNav } from "../layout/PublicTopNav";
 import { PublicFooter } from "../layout/PublicFooter";
-import { Checkbox } from "../common/Ui";
+import { Button, Checkbox, Input } from "../common/Ui";
 
 export function Login({ onLogin }) {
   const [form, setForm] = useState({
@@ -73,90 +73,89 @@ export function Login({ onLogin }) {
             <h1 className="au-a-title">Entrar na sua conta</h1>
 
             <form className="au-a-form" onSubmit={submit}>
-              <div className="au-a-field">
-                <label htmlFor="au-a-slug">Código da clínica</label>
-                <input
-                  id="au-a-slug"
-                  className="au-a-input"
-                  type="text"
-                  autoComplete="organization"
-                  required
-                  value={form.slug}
-                  onChange={(event) => setForm({ ...form, slug: event.target.value.toLowerCase() })}
-                  placeholder="ex.: aura"
-                />
-              </div>
+              <Input
+                fieldClassName="au-a-field"
+                label="Código da clínica"
+                id="au-a-slug"
+                className="au-a-input"
+                autoComplete="organization"
+                required
+                value={form.slug}
+                onChange={(slug) => setForm({ ...form, slug: slug.toLowerCase() })}
+                placeholder="ex.: aura"
+              />
 
-              <div className="au-a-field">
-                <label htmlFor="au-a-email">E-mail</label>
-                <input
-                  id="au-a-email"
-                  className="au-a-input"
-                  type="email"
-                  autoComplete="username"
-                  required
-                  value={form.email}
-                  onChange={(event) => {
+              <Input
+                fieldClassName="au-a-field"
+                label="E-mail"
+                id="au-a-email"
+                className="au-a-input"
+                type="email"
+                autoComplete="username"
+                required
+                value={form.email}
+                onChange={(email) => {
                     setMfaRequired(false);
-                    setForm({ ...form, email: event.target.value, mfa_code: "" });
-                  }}
-                  placeholder="seu@email.com"
-                />
-              </div>
+                    setForm({ ...form, email, mfa_code: "" });
+                }}
+                placeholder="seu@email.com"
+              />
 
               <div className="au-a-field">
                 <label htmlFor="au-a-password">Senha</label>
                 <div className="au-a-pass">
-                  <input
+                  <Input
+                    label={null}
+                    fieldClassName="au-a-pass-control"
                     id="au-a-password"
                     className="au-a-input"
                     type={showPassword ? "text" : "password"}
                     autoComplete="current-password"
                     required
                     value={form.password}
-                    onChange={(event) => {
+                    onChange={(password) => {
                       setMfaRequired(false);
-                      setForm({ ...form, password: event.target.value, mfa_code: "" });
+                      setForm({ ...form, password, mfa_code: "" });
                     }}
                     placeholder="Digite a senha"
                   />
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
                     className="au-a-eye"
                     onClick={() => setShowPassword((current) => !current)}
                     aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                     aria-pressed={showPassword}
                   >
                     {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
-                  </button>
+                  </Button>
                 </div>
               </div>
 
               {mfaRequired && (
-                <div className="au-a-field">
-                  <label htmlFor="au-a-mfa">Código do autenticador</label>
-                  <input
-                    id="au-a-mfa"
-                    className="au-a-input"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    maxLength={6}
-                    required
-                    autoFocus
-                    value={form.mfa_code}
-                    onChange={(event) => setForm({ ...form, mfa_code: event.target.value.replace(/\D/g, "") })}
-                    placeholder="000000"
-                  />
-                </div>
+                <Input
+                  fieldClassName="au-a-field"
+                  label="Código do autenticador"
+                  id="au-a-mfa"
+                  className="au-a-input"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  required
+                  autoFocus
+                  value={form.mfa_code}
+                  onChange={(mfa_code) => setForm({ ...form, mfa_code: mfa_code.replace(/\D/g, "") })}
+                  placeholder="000000"
+                />
               )}
 
               <Checkbox className="au-a-check" label="Manter conectado" checked={rememberAccess} onChange={setRememberAccess} />
 
               {error && <p className="au-a-error" role="alert">{error}</p>}
 
-              <button className="au-a-submit" disabled={loading}>
+              <Button type="submit" className="au-a-submit" disabled={loading}>
                 {loading ? "Entrando…" : "Entrar"} <ChevronRight size={18} aria-hidden="true" />
-              </button>
+              </Button>
             </form>
 
             <p className="au-a-alt">

@@ -1,0 +1,13 @@
+/* Tela "Meu plano" é carregada fora do painel /plataforma; portanto suas
+   regras de celular vivem com o próprio recurso, sem depender do CSS da área
+   administrativa ter sido carregado antes. */
+@layer telas {
+  @media (max-width: 560px) {
+    .myplan-billing-profile .form-grid,
+    .myplan .plan-grid { grid-template-columns: 1fr; }
+
+    .myplan-billing-action { grid-column: auto; }
+    .myplan-billing-action .primary-button,
+    .myplan .plan-card > button { width: 100%; min-height: 46px; }
+  }
+}

@@ -6,7 +6,7 @@ import {
   normalizeCatalogBuilderPluginConfig
 } from "./builderPluginRegistry";
 import styles from "./CatalogPluginEditor.module.css";
-import { Checkbox, Select } from "../../components/common/Ui";
+import { Checkbox, Input, Select, Switch, Textarea } from "../../components/common/Ui";
 
 const asArray = (value) => Array.isArray(value) ? value : [];
 const asObject = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -70,7 +70,7 @@ function KnownField({ field, config, errors, baseId, onChange }) {
 
   if (field.type === "boolean") {
     return (
-      <Checkbox className={styles.checkField} label={field.label} checked={Boolean(value)} onChange={onChange} />
+      <Switch className={styles.checkField} label={field.label} checked={Boolean(value)} onChange={onChange} />
     );
   }
 
@@ -85,19 +85,17 @@ function KnownField({ field, config, errors, baseId, onChange }) {
     );
   }
 
-  const isMultiline = field.type === "textarea";
   const inputType = field.type === "phone" ? "tel" : field.type === "url" ? "url" : "text";
   return (
-    <label className={styles.field} htmlFor={id}>
-      <span>{field.label}{field.required ? " *" : ""}</span>
-      {isMultiline ? (
-        <textarea id={id} value={value} maxLength={field.maxLength} aria-describedby={describedBy} onChange={(event) => onChange(event.target.value)} />
+    <>
+      {field.type === "textarea" ? (
+        <Textarea fieldClassName={styles.field} id={id} label={`${field.label}${field.required ? " *" : ""}`} value={value} maxLength={field.maxLength} aria-describedby={describedBy} onChange={onChange} />
       ) : (
-        <input id={id} type={inputType} value={value} maxLength={field.maxLength} inputMode={field.type === "phone" ? "tel" : field.type === "url" ? "url" : undefined} aria-describedby={describedBy} onChange={(event) => onChange(event.target.value)} />
+        <Input fieldClassName={styles.field} id={id} label={`${field.label}${field.required ? " *" : ""}`} type={inputType} value={value} maxLength={field.maxLength} inputMode={field.type === "phone" ? "tel" : field.type === "url" ? "url" : undefined} aria-describedby={describedBy} onChange={onChange} />
       )}
       {field.type === "url" && <small>Somente URL HTTPS aprovada para esta integração.</small>}
       {messages.length > 0 && <FieldErrors id={`${id}-error`} errors={messages} />}
-    </label>
+    </>
   );
 }
 
@@ -122,12 +120,8 @@ function FaqItemsField({ field, value, errors, baseId, onChange }) {
           const itemErrors = errors.filter((error) => error.field === `items.${index}.question` || error.field === `items.${index}.answer`);
           return (
             <li key={`${index}-${item.question || "new"}`}>
-              <label htmlFor={questionId}>Pergunta {index + 1}
-                <input id={questionId} value={item.question || ""} maxLength={180} onChange={(event) => updateItem(index, { question: event.target.value })} />
-              </label>
-              <label htmlFor={answerId}>Resposta {index + 1}
-                <textarea id={answerId} value={item.answer || ""} maxLength={2000} onChange={(event) => updateItem(index, { answer: event.target.value })} />
-              </label>
+              <Input id={questionId} label={`Pergunta ${index + 1}`} value={item.question || ""} maxLength={180} onChange={(question) => updateItem(index, { question })} />
+              <Textarea id={answerId} label={`Resposta ${index + 1}`} value={item.answer || ""} maxLength={2000} onChange={(answer) => updateItem(index, { answer })} />
               <button type="button" className={styles.textButton} onClick={() => removeItem(index)} aria-label={`Remover pergunta ${index + 1}`}>Remover</button>
               {itemErrors.length > 0 && <FieldErrors id={`${baseId}-${index}-error`} errors={itemErrors} />}
             </li>
@@ -181,7 +175,7 @@ function PluginInstanceCard({ instance, index, canEnable, onUpdate, onRemove }) 
           <p>Integração nativa #{index + 1} · Recurso: <code>{plugin.featureFlag}</code></p>
         </div>
         <div className={styles.instanceActions}>
-          <Checkbox className={styles.checkField} label="Ativo" checked={instance.enabled} disabled={!instance.enabled && !canEnable} onChange={(enabled) => onUpdate({ enabled })} />
+          <Switch className={styles.checkField} label="Ativo" checked={instance.enabled} disabled={!instance.enabled && !canEnable} onChange={(enabled) => onUpdate({ enabled })} />
           <button type="button" className={styles.removeButton} onClick={onRemove}>Remover</button>
         </div>
       </header>

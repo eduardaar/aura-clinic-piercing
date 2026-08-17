@@ -1,7 +1,7 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useState } from "react";
 import { ArrowLeft } from "lucide-react";
-import { Button, Metric, SecureImage, Select, StatusBadge } from "../../components/common/Ui";
+import { Button, Metric, SecureImage, Select, StatusBadge, Textarea } from "../../components/common/Ui";
 import { Modal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
@@ -57,7 +57,7 @@ export function PostCare({ onBack }) {
   const dueCount = followups.filter(isOverdue).length;
 
   return (
-    <section className="stack">
+    <section className="stack postcare-page">
       <div className="module-backbar"><Button variant="secondary" onClick={onBack}><ArrowLeft size={16} /> Voltar para clientes</Button></div>
       <div className="metric-grid">
         <Metric label="Lembretes totais" value={followups.length} />
@@ -196,9 +196,7 @@ export function PostCareEditor({ item, onChanged }) {
       </dl>
       {item.client_photo_url && <SecureImage className="post-care-photo" src={item.client_photo_url} alt="Foto enviada pelo cliente" />}
       <form id="post-care-form" onSubmit={save} className="post-care-form">
-        <label>Mensagem personalizada de cuidados
-          <textarea value={form.care_message} onChange={(event) => setForm({ ...form, care_message: event.target.value })} />
-        </label>
+        <Textarea label="Mensagem personalizada de cuidados" value={form.care_message} onChange={(care_message) => setForm({ ...form, care_message })} />
         <div className="form-grid">
           <Select label="Status da cicatrização" value={form.healing_status} onChange={(value) => setForm({ ...form, healing_status: value })}>
             {withCurrent(HEALING_STATUS_OPTIONS, item.healing_status).map((option) => <option key={option}>{option}</option>)}
@@ -207,9 +205,7 @@ export function PostCareEditor({ item, onChanged }) {
             {withCurrent(REMINDER_STATUS_OPTIONS, item.status).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </Select>
         </div>
-        <label>Observações do cliente
-          <textarea value={form.client_notes} onChange={(event) => setForm({ ...form, client_notes: event.target.value })} />
-        </label>
+        <Textarea label="Observações do cliente" value={form.client_notes} onChange={(client_notes) => setForm({ ...form, client_notes })} />
         <label>Foto enviada pelo cliente
           <input type="file" accept="image/*" onChange={(event) => setPhoto(event.target.files[0])} />
         </label>

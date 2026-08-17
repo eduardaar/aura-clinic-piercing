@@ -316,7 +316,7 @@ export function Integrations() {
   }
 
   return (
-    <section className="stack">
+    <section className="stack integrations-page">
       <WhatsAppCloudIntegration />
       <article className="panel">
         <CrudHeader

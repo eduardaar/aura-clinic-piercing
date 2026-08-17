@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { MessageCircle, Play, Save, Sparkles } from "lucide-react";
 import { apiFetch, useFetch } from "../../lib/api";
 import { asArray } from "../../lib/utils";
-import { Checkbox, Input, Select, StatusBadge, Textarea } from "../../components/common/Ui";
+import { Button, Checkbox, Input, Select, StatusBadge, Tabs, Textarea } from "../../components/common/Ui";
 import { RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 
@@ -178,24 +178,26 @@ export function Communications() {
         </div>
       </section>
 
-      <nav className="communication-tabs" aria-label="Áreas de comunicação">
-        <button className={tab === "service" ? "active" : ""} onClick={() => setTab("service")} aria-current={tab === "service" ? "page" : undefined}>
+      <Tabs value={tab} onValueChange={setTab}>
+        <Tabs.List className="communication-tabs" aria-label="Áreas de comunicação">
+        <Tabs.Trigger value="service">
           <strong>Atendimento</strong>
           <span>Fila e histórico de mensagens</span>
-        </button>
-        <button className={tab === "automation" ? "active" : ""} onClick={() => setTab("automation")} aria-current={tab === "automation" ? "page" : undefined}>
+        </Tabs.Trigger>
+        <Tabs.Trigger value="automation">
           <strong>Automações</strong>
           <span>Regras de lembretes e retornos</span>
-        </button>
-        <button className={tab === "templates" ? "active" : ""} onClick={() => setTab("templates")} aria-current={tab === "templates" ? "page" : undefined}>
+        </Tabs.Trigger>
+        <Tabs.Trigger value="templates">
           <strong>Modelos</strong>
           <span>Textos reutilizáveis por contexto</span>
-        </button>
-        <button className={tab === "assistant" ? "active" : ""} onClick={() => setTab("assistant")} aria-current={tab === "assistant" ? "page" : undefined}>
+        </Tabs.Trigger>
+        <Tabs.Trigger value="assistant">
           <strong>Assistente IA</strong>
           <span>Ajuda para redigir e resumir</span>
-        </button>
-      </nav>
+        </Tabs.Trigger>
+        </Tabs.List>
+      </Tabs>
 
       {feedback && <p className="form-message">{feedback}</p>}
 
@@ -206,9 +208,9 @@ export function Communications() {
               <h2>Fila de atendimento</h2>
               <span>Prepare as mensagens e abra o WhatsApp para concluir cada contato.</span>
             </div>
-            <button className="primary-button" disabled={busy === "process"} onClick={processQueue}>
+            <Button disabled={busy === "process"} onClick={processQueue}>
               <Play size={16} /> {busy === "process" ? "Processando…" : "Processar fila"}
-            </button>
+            </Button>
           </div>
           <div className="metrics-grid">
             <article className="metric-card"><span>Prontas para envio</span><strong>{ready.length}</strong></article>
@@ -227,7 +229,7 @@ export function Communications() {
           <div className="communication-topups">
             <div><h3>Recargas avulsas</h3><span>Solicite créditos extras; eles só entram após a confirmação do pagamento.</span></div>
             <div className="communication-topup-actions">
-              {creditProducts.map((product) => <button key={product.key} className="secondary-button" disabled={busy === `topup-${product.key}`} onClick={() => requestTopup(product)}>{busy === `topup-${product.key}` ? "Solicitando…" : `${product.name} · ${(Number(product.price_cents || 0) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`}</button>)}
+              {creditProducts.map((product) => <Button key={product.key} variant="secondary" disabled={busy === `topup-${product.key}`} onClick={() => requestTopup(product)}>{busy === `topup-${product.key}` ? "Solicitando…" : `${product.name} · ${(Number(product.price_cents || 0) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`}</Button>)}
             </div>
           </div>
         </section>
@@ -299,9 +301,9 @@ export function Communications() {
                     <Input label="Minutos antes/depois" type="number" value={rule.offset_minutes ?? 0} onChange={(value) => updateRule(rule.id, "offset_minutes", Number(value))} />
                     <Checkbox label="Automação ativa" checked={Boolean(Number(rule.is_active))} onChange={(value) => updateRule(rule.id, "is_active", value ? 1 : 0)} />
                     <small>Modelo: {rule.template_name || rule.template_key} · execuções: {rule.run_count || 0}</small>
-                    <button className="secondary-button" disabled={busy === `rule-${rule.id}`} onClick={() => saveRule(rule)}>
+                    <Button variant="secondary" disabled={busy === `rule-${rule.id}`} onClick={() => saveRule(rule)}>
                       <Save size={15} /> Salvar automação
-                    </button>
+                    </Button>
                   </article>
                 ))}
               </div>
@@ -321,9 +323,9 @@ export function Communications() {
                     <Input label="Nome" value={template.name || ""} onChange={(value) => updateTemplate(template.id, "name", value)} />
                     <Textarea label="Mensagem" rows={7} value={template.body || ""} onChange={(value) => updateTemplate(template.id, "body", value)} />
                     <Checkbox label="Modelo ativo" checked={Boolean(Number(template.is_active))} onChange={(value) => updateTemplate(template.id, "is_active", value ? 1 : 0)} />
-                    <button className="secondary-button" disabled={busy === `template-${template.id}`} onClick={() => saveTemplate(template)}>
+                    <Button variant="secondary" disabled={busy === `template-${template.id}`} onClick={() => saveTemplate(template)}>
                       <Save size={15} /> Salvar modelo
-                    </button>
+                    </Button>
                   </article>
                 ))}
               </div>
@@ -357,9 +359,9 @@ export function Communications() {
                 onChange={setAssistantInput}
               />
               <small>Não informe senhas, documentos ou dados sensíveis além do necessário para a tarefa.</small>
-              <button className="primary-button" disabled={busy === "assistant" || !aiStatusRequest.data?.enabled} onClick={askAssistant}>
+              <Button disabled={busy === "assistant" || !aiStatusRequest.data?.enabled} onClick={askAssistant}>
                 <Sparkles size={16} /> {busy === "assistant" ? "Preparando…" : "Gerar sugestão"}
-              </button>
+              </Button>
               {assistantError && <p className="form-error">{assistantError}</p>}
               {!aiStatusRequest.data?.enabled && <p className="field-optional">O administrador precisa configurar uma chave OpenAI ou Gemini no ambiente seguro do servidor.</p>}
             </div>
