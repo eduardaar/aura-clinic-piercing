@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, MessageCircle, X } from "lucide-react";
+import { Check, ChevronRight, X } from "lucide-react";
 import { API, API_ORIGIN } from "../lib/api";
-import { asArray, asNumber, asObject } from "../lib/utils";
+import { asArray, asObject } from "../lib/utils";
 import { featureLabel } from "../lib/planFeatures";
 import { PublicTopNav } from "../components/layout/PublicTopNav";
 import { PublicFooter } from "../components/layout/PublicFooter";
@@ -179,112 +179,6 @@ export function AboutSection({ content }) {
       </div>
     </div>
   </section>;
-}
-
-// Preferência de sistema, lida ao vivo: quem liga "reduzir movimento" no meio da
-// visita para o autoplay na hora, sem recarregar a página.
-function usePrefersReducedMotion() {
-  const [reduced, setReduced] = useState(() => {
-    try {
-      return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    } catch {
-      return false;
-    }
-  });
-  useEffect(() => {
-    let media;
-    try {
-      media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    } catch {
-      return;
-    }
-    const onChange = (event) => setReduced(event.matches);
-    media.addEventListener("change", onChange);
-    return () => media.removeEventListener("change", onChange);
-  }, []);
-  return reduced;
-}
-
-function CarouselSection({ content }) {
-  const items = contentItems(content, "items", "image");
-  const [active, setActive] = useState(0);
-  // Hover e foco pausam: ninguém consegue ler uma legenda (nem clicar num ponto)
-  // que troca sozinha embaixo do cursor.
-  const [paused, setPaused] = useState(false);
-  const reducedMotion = usePrefersReducedMotion();
-
-  const seconds = asNumber(content.autoplay_seconds, 0);
-  // Uma imagem só não é carrossel: sem pontos e sem rotação.
-  const canRotate = items.length > 1 && seconds > 0 && !paused && !reducedMotion;
-  const total = items.length;
-
-  useEffect(() => {
-    if (!canRotate) return;
-    const timer = window.setInterval(() => {
-      setActive((current) => (current + 1) % total);
-    }, seconds * 1000);
-    return () => window.clearInterval(timer);
-  }, [canRotate, seconds, total]);
-
-  if (!total) return null;
-  // O painel pode ter removido imagens desde o último clique nos pontos.
-  const current = active % total;
-
-  return (
-    <section
-      className="au-l-sec au-l-carousel-sec"
-      aria-roledescription="carrossel"
-      aria-label={content.title || "Galeria"}
-    >
-      <div className="au-l-sec-head">
-        <h2>{content.title}</h2>
-        {content.subtitle && <p>{content.subtitle}</p>}
-      </div>
-
-      <div
-        className="au-l-carousel"
-        onMouseEnter={() => setPaused(true)}
-        onMouseLeave={() => setPaused(false)}
-        onFocus={() => setPaused(true)}
-        onBlur={() => setPaused(false)}
-      >
-        <div className="au-l-carousel-stage">
-          {items.map((item, index) => (
-            <figure
-              key={item.key}
-              className={`au-l-carousel-slide ${index === current ? "is-active" : ""}`}
-              aria-hidden={index === current ? undefined : "true"}
-            >
-              <img
-                src={imageUrl(item.image)}
-                alt={item.image_alt || ""}
-                width={IMAGE_SIZE.carousel.width}
-                height={IMAGE_SIZE.carousel.height}
-                loading="lazy"
-                decoding="async"
-              />
-              {item.caption && <figcaption className="au-l-carousel-caption">{item.caption}</figcaption>}
-            </figure>
-          ))}
-        </div>
-
-        {total > 1 && (
-          <div className="au-l-carousel-dots">
-            {items.map((item, index) => (
-              <button
-                key={item.key}
-                type="button"
-                className={index === current ? "is-active" : ""}
-                aria-label={`Ver imagem ${index + 1} de ${total}`}
-                aria-current={index === current ? "true" : undefined}
-                onClick={() => setActive(index)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </section>
-  );
 }
 
 // Os planos continuam vindo de `GET /api/plans` — preço e recursos são dado

@@ -135,7 +135,6 @@ export function Inventory2({ initialTab = "produtos" }) {
       ...JEWELRY_CATEGORY_OPTIONS
     ].filter(Boolean))
   ];
-  const pricingSettings = asObject(safeOptions.pricingSettings);
   const inventoryOptions = {
     category: asArray(rawInventoryOptions.category),
     size: asArray(rawInventoryOptions.size),
@@ -666,61 +665,6 @@ function InventoryIntelligence({ data, suggestions, onRefresh, onReview }) {
         </Modal>
       )}
     </div>
-  );
-}
-
-function VisualSearchModal({ onClose, onOpenProduct }) {
-  const [file, setFile] = useState(null);
-  const [preview, setPreview] = useState("");
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  function choose(event) {
-    const selected = event.target.files?.[0];
-    if (!selected) return;
-    if (preview) URL.revokeObjectURL(preview);
-    setFile(selected);
-    setPreview(URL.createObjectURL(selected));
-    setResults([]);
-    setError("");
-  }
-
-  async function search() {
-    if (!file) return;
-    setLoading(true);
-    setError("");
-    const body = new FormData();
-    body.append("image", file);
-    const response = await apiFetch("/jewelry/visual-search", { method: "POST", body });
-    const json = await response.json().catch(() => ({}));
-    setLoading(false);
-    if (!response.ok) return setError(json.error || "Não foi possível pesquisar a imagem.");
-    setResults(asArray(json.results));
-  }
-
-  return (
-    <Modal open title="Buscar por foto" onClose={onClose} size="lg">
-      <div className="visual-search-upload">
-        <label className="secondary-button">
-          <ImageIcon size={17} /> Tirar ou escolher foto
-          <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={choose} />
-        </label>
-        {preview && <img src={preview} alt="Imagem selecionada para busca" />}
-        <Button variant="primary" disabled={!file || loading} onClick={search}>{loading ? "Comparando..." : "Buscar semelhantes"}</Button>
-        <small>A imagem é processada em memória e não é armazenada.</small>
-      </div>
-      {error && <span className="form-error">{error}</span>}
-      <div className="visual-search-results">
-        {results.map((item) => (
-          <button type="button" key={item.id} onClick={() => onOpenProduct(item)}>
-            <img src={catalogImageUrl(item.image_url)} alt={item.name} />
-            <span><strong>{item.name}</strong><small>{item.sku} · {item.category} · {item.material} · {item.color}</small><em>{item.similarity}% semelhante · {item.quantity} em estoque · {currency.format(item.sale_value || 0)}</em></span>
-          </button>
-        ))}
-        {!loading && file && !results.length && !error && <p className="empty-state">Envie a imagem para ver produtos semelhantes.</p>}
-      </div>
-    </Modal>
   );
 }
 

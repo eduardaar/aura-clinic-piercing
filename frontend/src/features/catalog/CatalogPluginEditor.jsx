@@ -6,7 +6,7 @@ import {
   normalizeCatalogBuilderPluginConfig
 } from "./builderPluginRegistry";
 import styles from "./CatalogPluginEditor.module.css";
-import { Checkbox, Input, Select, Switch, Textarea } from "../../components/common/Ui";
+import { Input, Select, Switch, Textarea } from "../../components/common/Ui";
 
 const asArray = (value) => Array.isArray(value) ? value : [];
 const asObject = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
