@@ -8,6 +8,10 @@ import * as Dialog from "@radix-ui/react-dialog";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { AlertTriangle, MoreHorizontal, Plus, X } from "lucide-react";
 
+// Primitive compartilhado para menus específicos de páginas. Assim a camada
+// comum continua sendo a única dependente diretamente do Radix.
+export { DropdownMenu };
+
 /**
  * Janela sobreposta. Fecha no Esc, no clique fora e trava o scroll do body.
  * @param {object} props

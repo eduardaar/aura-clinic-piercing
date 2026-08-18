@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { GripVertical, ImageIcon, Plus, Redo2, Undo2 } from "lucide-react";
+import { GripVertical, ImageIcon, MoreHorizontal, Plus, Undo2 } from "lucide-react";
 import { Loading, ApiError } from "../components/common/Feedback";
-import { Accordion, Button, Checkbox, Input, Select, StatusBadge, Tabs, Textarea } from "../components/common/Ui";
-import { ConfirmDeleteModal, Modal, RowActions } from "../components/common/Crud";
+import { Accordion, Button, Checkbox, Input, Select, StatusBadge, Textarea } from "../components/common/Ui";
+import { ConfirmDeleteModal, DropdownMenu, Modal, RowActions } from "../components/common/Crud";
 import { DataView } from "../components/common/DataView";
 import { API_ORIGIN, apiFetch, tenantSlug, useFetch } from "../lib/api";
 import { asArray, asObject } from "../lib/utils";
@@ -57,6 +57,19 @@ const DISCOUNT_TYPE_LABELS = {
 
 const COUPON_STATUS_LABELS = { active: "Ativo", paused: "Pausado", inactive: "Inativo" };
 const PROMOTION_STATUS_LABELS = { active: "Ativa", paused: "Pausada", ended: "Encerrada", inactive: "Inativa" };
+
+const CATALOG_MORE_SECTIONS = [
+  ["layout", "Componentes da página"],
+  ["produtos", "Produtos em destaque"],
+  ["promocoes", "Promoções"],
+  ["cupons", "Cupons"],
+  ["exibicao", "Regras de exibição"],
+  ["textos", "Textos gerais"],
+  ["contato", "Contato e políticas"],
+  ["rodape", "Rodapé e identidade"],
+  ["integracoes", "Integrações"],
+  ["seo", "SEO"]
+];
 
 const statusTone = (status) => (status === "active" ? "ok" : status === "paused" ? "warn" : "danger");
 
@@ -127,9 +140,11 @@ export function CatalogCustomization() {
   const { data, refresh } = useFetch("/catalog-customization");
   const { data: historyData, refresh: refreshHistory } = useFetch("/catalog-customization/history");
   const [form, setFormState] = useState(defaultCatalogCustomization());
-  const [activeSection, setActiveSection] = useState("aparencia");
+  const [activeSection, setActiveSection] = useState("layout");
   const [previewDevice, setPreviewDevice] = useState("desktop");
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [templateToApply, setTemplateToApply] = useState("");
@@ -297,62 +312,45 @@ export function CatalogCustomization() {
             <p>Edite, salve o rascunho para não perder alterações e publique apenas quando quiser atualizar a vitrine pública.</p>
           </div>
           <div className="catalog-header-actions">
+            <Button variant="secondary" disabled={!localHistory.undo} onClick={undo} title="Voltar à alteração anterior (Ctrl/Cmd + Z)"><Undo2 size={16} /> Voltar alteração</Button>
+            <Button variant="secondary" onClick={() => setAppearanceOpen(true)}>Aparência</Button>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <Button variant="secondary" aria-label="Mais opções do catálogo"><MoreHorizontal size={17} /> Mais opções</Button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content className="catalog-options-popover" align="end" sideOffset={6}>
+                  {CATALOG_MORE_SECTIONS.map(([id, label]) => (
+                    <DropdownMenu.Item key={id} className={activeSection === id ? "active" : ""} onSelect={() => setActiveSection(id)}>{label}</DropdownMenu.Item>
+                  ))}
+                  <DropdownMenu.Separator />
+                  <DropdownMenu.Item onSelect={reviewPublication} disabled={checkingPublication}>{checkingPublication ? "Revisando publicação…" : "Revisar publicação"}</DropdownMenu.Item>
+                  <DropdownMenu.Item onSelect={() => setUtilitiesOpen((open) => !open)}>{utilitiesOpen ? "Ocultar histórico e links" : "Histórico, versões e links"}</DropdownMenu.Item>
+                  <DropdownMenu.Separator />
+                  <DropdownMenu.Item className="danger" onSelect={() => setResetOpen(true)}>Restaurar padrão</DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
             <Button variant="secondary" onClick={() => { setPreviewDevice("desktop"); setPreviewOpen(true); }}>Abrir prévia</Button>
-            <Button variant="secondary" onClick={() => save()}>Salvar alterações</Button>
-            <Button onClick={() => save("/catalog-customization/publish", "Catálogo publicado.")}>Publicar catálogo</Button>
-            <Button variant="secondary" onClick={() => setUtilitiesOpen((open) => !open)} aria-expanded={utilitiesOpen}>Mais opções</Button>
+            <Button variant="secondary" onClick={() => save()}>Salvar rascunho</Button>
+            <Button onClick={() => setPublishConfirmOpen(true)}>Publicar</Button>
           </div>
         </header>
-
-        <div className="catalog-editor-toolbar" aria-label="Controles do rascunho">
-          <small>Rascunho v{version.draft || 0}</small>
-          <div>
-            <Button variant="secondary" className="catalog-history-button" aria-label="Desfazer" disabled={!localHistory.undo} onClick={undo} title="Desfazer (Ctrl/Cmd + Z)"><Undo2 size={16} /></Button>
-            <Button variant="secondary" className="catalog-history-button" aria-label="Refazer" disabled={!localHistory.redo} onClick={redo} title="Refazer (Ctrl/Cmd + Shift + Z)"><Redo2 size={16} /></Button>
-          </div>
-          <span className="sr-only" aria-live="polite">{localHistory.announcement}</span>
-        </div>
+        <span className="sr-only" aria-live="polite">{localHistory.announcement}</span>
 
         {utilitiesOpen && (
           <section className="catalog-utilities" aria-label="Opções avançadas do catálogo">
-            <div className="catalog-utilities-actions">
-              <Button variant="secondary" onClick={reviewPublication} disabled={checkingPublication}>{checkingPublication ? "Revisando…" : "Revisar publicação"}</Button>
-              <Button variant="secondary" onClick={() => setResetOpen(true)}>Restaurar padrão</Button>
-            </div>
             <CatalogBuilderStatus version={version} history={historyData} onRollback={setRollbackVersion} />
             <CatalogPublicLinks />
           </section>
         )}
         <CatalogPublishChecklist checklist={publishChecklist} />
 
-        <Tabs value={activeSection} onValueChange={setActiveSection}>
-          <Tabs.List className="customization-tabs" aria-label="Seções de personalização do catálogo">
-          {[
-            ["aparencia", "Aparência"],
-            ["layout", "Construtor"],
-            ["banners", "Banners"],
-            ["componentes", "Componentes"],
-            ["integracoes", "Integrações"],
-            ["categorias", "Categorias"],
-            ["produtos", "Produtos"],
-            ["promocoes", "Promoções"],
-            ["cupons", "Cupons"],
-            ["exibicao", "Exibição"],
-            ["textos", "Textos"],
-            ["contato", "Contato"],
-            ["rodape", "Rodapé e identidade"],
-            ["seo", "SEO"]
-          ].map(([id, label]) => (
-            <Tabs.Trigger key={id} value={id}>{label}</Tabs.Trigger>
-          ))}
-          </Tabs.List>
-        </Tabs>
-
         {activeSection === "layout" && <CatalogLayoutBuilder form={form} setForm={setForm} />}
         {activeSection === "integracoes" && <CatalogPluginEditor plugins={form.plugins} onChange={(plugins) => setForm({ ...form, plugins })} enabledFeatures={pluginAccess.enabledFeatures} pluginLimit={pluginAccess.pluginLimit} />}
 
-        {activeSection === "aparencia" && (
-          <CustomizationCard title="Aparência do catálogo">
+        <Modal open={appearanceOpen} title="Aparência do catálogo" subtitle="Ajuste identidade, cores e tipografia sem sair dos componentes." size="lg" onClose={() => setAppearanceOpen(false)} footer={<Button onClick={() => setAppearanceOpen(false)}>Concluir</Button>}>
+          <div className="stack catalog-appearance-modal">
             <CatalogTemplatePicker activeTemplate={form.theme.theme} onSelect={setTemplateToApply} />
             <div className="form-grid">
               <ImageUploadField label="Logo" value={form.theme.logo_url} onChange={(value) => setForm(updateTheme(form, { logo_url: value }))} />
@@ -374,8 +372,8 @@ export function CatalogCustomization() {
                 </Select>
               </div>
             </div>
-          </CustomizationCard>
-        )}
+          </div>
+        </Modal>
 
         {activeSection === "banners" && (
           <CustomizationCard title="Banner principal e carrossel" action={<div className="customization-actions"><button type="button" onClick={() => setForm({ ...form, banners: normalizeSortOrder(form.banners, "asc") })}>Ordem 1, 2, 3</button><button type="button" onClick={() => setForm({ ...form, banners: normalizeSortOrder(form.banners, "desc") })}>Inverter ordem</button><button type="button" onClick={() => setForm({ ...form, banners: [...form.banners, defaultCatalogBanner(form.banners.length + 1)] })}>Novo banner</button></div>}>
@@ -633,6 +631,20 @@ export function CatalogCustomization() {
         <CatalogCustomizationPreview form={form} products={products} device={previewDevice} onDeviceChange={setPreviewDevice} modal />
       </Modal>
       <Modal
+        open={publishConfirmOpen}
+        title="Publicar catálogo"
+        subtitle="Confirme antes de atualizar a página que seus clientes acessam."
+        size="sm"
+        onClose={() => setPublishConfirmOpen(false)}
+        footer={<>
+          <Button variant="secondary" onClick={() => setPublishConfirmOpen(false)}>Voltar</Button>
+          <Button variant="secondary" onClick={() => { setPublishConfirmOpen(false); save(); }}>Salvar rascunho</Button>
+          <Button onClick={() => { setPublishConfirmOpen(false); save("/catalog-customization/publish", "Catálogo publicado."); }}>Publicar agora</Button>
+        </>}
+      >
+        <p>O rascunho atual substituirá a versão pública do catálogo. Você ainda poderá restaurar versões anteriores pelo histórico.</p>
+      </Modal>
+      <Modal
         open={Boolean(templateToApply)}
         title="Aplicar template"
         subtitle="A alteração fica apenas no rascunho até você publicar."
@@ -887,28 +899,132 @@ function ListWrap({ children }) {
 }
 
 function CatalogLayoutBuilder({ form, setForm }) {
-  const sections = asArray(form.catalogSections);
+  const sections = normalizeCatalogLayout(form.catalogSections);
+  const [blockModalOpen, setBlockModalOpen] = useState(false);
+  const [libraryTarget, setLibraryTarget] = useState(null);
+  const [componentEditor, setComponentEditor] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [draggedKey, setDraggedKey] = useState("");
   const [dropTargetKey, setDropTargetKey] = useState("");
   const [dragAnnouncement, setDragAnnouncement] = useState("");
-  function update(index, patch) {
-    setForm({ ...form, catalogSections: sections.map((section, itemIndex) => itemIndex === index ? { ...section, ...patch } : section) });
+
+  function commit(next) {
+    setForm({ ...form, catalogSections: withCatalogLayoutOrder(next) });
   }
-  function add(type = "custom_content") {
-    setForm({ ...form, catalogSections: [...sections, defaultCatalogSection(type, sections.length + 1)] });
+
+  function addBlock(columnsCount) {
+    commit([...sections, defaultCatalogLayoutRow(columnsCount, sections.length + 1)]);
+    setBlockModalOpen(false);
   }
-  function duplicate(index) {
-    const copy = { ...sections[index], id: undefined, section_key: `${sections[index].section_type}-${Date.now()}`, title: `${sections[index].title || "Seção"} (cópia)` };
+
+  function updateRow(rowKey, patch) {
+    commit(sections.map((row) => row.section_key === rowKey ? { ...row, ...patch } : row));
+  }
+
+  function resizeRow(rowKey, columnsCount) {
+    const count = Math.min(3, Math.max(1, Number(columnsCount) || 1));
+    commit(sections.map((row) => {
+      if (row.section_key !== rowKey || row.columns_count === count) return row;
+      const kept = row.columns.slice(0, count).map((column) => ({ ...column, components: [...column.components] }));
+      while (kept.length < count) kept.push(defaultCatalogColumn(row.section_key, kept.length + 1));
+      row.columns.slice(count).forEach((column) => kept[count - 1].components.push(...column.components));
+      return { ...row, columns_count: count, columns: kept };
+    }));
+  }
+
+  function openNewComponent(type) {
+    setLibraryTarget(null);
+    setComponentEditor({ ...libraryTarget, isNew: true, draft: defaultCatalogComponent(type) });
+  }
+
+  function saveComponent() {
+    if (!componentEditor) return;
+    const { rowKey, columnKey, componentKey, isNew, draft } = componentEditor;
+    commit(sections.map((row) => row.section_key !== rowKey ? row : {
+      ...row,
+      columns: row.columns.map((column) => column.column_key !== columnKey ? column : {
+        ...column,
+        components: isNew
+          ? [...column.components, draft]
+          : column.components.map((component) => component.section_key === componentKey ? draft : component)
+      })
+    }));
+    setComponentEditor(null);
+  }
+
+  function removeComponent(rowKey, columnKey, componentKey) {
+    commit(sections.map((row) => row.section_key !== rowKey ? row : {
+      ...row,
+      columns: row.columns.map((column) => column.column_key !== columnKey ? column : {
+        ...column,
+        components: column.components.filter((component) => component.section_key !== componentKey)
+      })
+    }));
+  }
+
+  function patchComponent(rowKey, columnKey, componentKey, patch) {
+    commit(sections.map((row) => row.section_key !== rowKey ? row : {
+      ...row,
+      columns: row.columns.map((column) => column.column_key !== columnKey ? column : {
+        ...column,
+        components: column.components.map((component) => component.section_key === componentKey ? { ...component, ...patch } : component)
+      })
+    }));
+  }
+
+  function moveComponent(sourceRowKey, sourceColumnKey, componentKey, destination) {
+    if (!destination) return;
+    const [targetRowKey, targetColumnKey] = destination.split("::");
+    let moving;
+    const withoutSource = sections.map((row) => ({
+      ...row,
+      columns: row.columns.map((column) => ({
+        ...column,
+        components: column.components.filter((component) => {
+          const match = row.section_key === sourceRowKey && column.column_key === sourceColumnKey && component.section_key === componentKey;
+          if (match) moving = component;
+          return !match;
+        })
+      }))
+    }));
+    if (!moving) return;
+    commit(withoutSource.map((row) => row.section_key !== targetRowKey ? row : {
+      ...row,
+      columns: row.columns.map((column) => column.column_key === targetColumnKey ? { ...column, components: [...column.components, moving] } : column)
+    }));
+  }
+
+  function duplicateComponent(rowKey, columnKey, component) {
+    const copy = cloneCatalogDraft(component);
+    copy.id = undefined;
+    copy.section_key = catalogEditorKey(component.section_type || "component");
+    copy.title = `${component.title || catalogComponentLabel(component)} (cópia)`;
+    commit(sections.map((row) => row.section_key !== rowKey ? row : {
+      ...row,
+      columns: row.columns.map((column) => column.column_key === columnKey ? { ...column, components: [...column.components, copy] } : column)
+    }));
+  }
+
+  function duplicateRow(index) {
+    const copy = cloneCatalogDraft(sections[index]);
+    copy.id = undefined;
+    copy.section_key = catalogEditorKey("row");
+    copy.columns = copy.columns.map((column, columnIndex) => ({
+      ...column,
+      column_key: `${copy.section_key}-column-${columnIndex + 1}`,
+      components: column.components.map((component) => ({ ...component, id: undefined, section_key: catalogEditorKey(component.section_type || "component") }))
+    }));
     const next = [...sections];
     next.splice(index + 1, 0, copy);
-    setForm({ ...form, catalogSections: next.map((item, itemIndex) => ({ ...item, sort_order: itemIndex + 1 })) });
+    commit(next);
   }
+
   function move(fromIndex, toIndex) {
     if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
     const next = [...sections];
     const [item] = next.splice(fromIndex, 1);
     next.splice(toIndex, 0, item);
-    setForm({ ...form, catalogSections: next.map((section, index) => ({ ...section, sort_order: index + 1 })) });
+    commit(next);
     setDragAnnouncement(`Bloco movido para a posição ${toIndex + 1}.`);
   }
   function dropOn(targetKey) {
@@ -919,99 +1035,110 @@ function CatalogLayoutBuilder({ form, setForm }) {
     setDropTargetKey("");
   }
   return (
-    <CustomizationCard title="Construtor visual" action={
-      <Select value="" onChange={(value) => value && add(value)}>
-        <option value="">Adicionar seção</option>
-        {CATALOG_SECTION_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-      </Select>
-    }>
+    <CustomizationCard title="Página inicial" subtitle="Monte a vitrine com linhas de até três colunas." action={<div className="catalog-layout-main-actions"><Button variant="secondary" onClick={() => setDeleteTarget({ title: "Resetar página", message: "Remover todos os blocos e voltar ao layout mínimo com apenas o Menu?", run: () => commit(defaultCatalogSections()) })}>Resetar página</Button><Button onClick={() => setBlockModalOpen(true)}><Plus size={16} /> Adicionar bloco</Button></div>}>
       <div className="catalog-builder-toolbar">
-        <p className="customization-help">A ordem abaixo é a ordem da página pública. Arraste um bloco pela alça no desktop; para teclado e celular, use Subir e Descer. Salvar mantém rascunho; Publicar atualiza a vitrine.</p>
+        <p className="customization-help">Cada bloco é uma linha. Dentro dele, as colunas organizam os componentes.</p>
         <small>{sections.length} {sections.length === 1 ? "bloco" : "blocos"} no layout</small>
       </div>
       <span className="sr-only" aria-live="polite">{dragAnnouncement}</span>
+      {!sections.length && <div className="catalog-layout-empty"><strong>Sua página está pronta para ser montada.</strong><p>Adicione o primeiro bloco e escolha entre uma, duas ou três colunas.</p><Button onClick={() => setBlockModalOpen(true)}><Plus size={16} /> Adicionar primeiro bloco</Button></div>}
       <div className="custom-list catalog-layout-list" aria-label="Blocos do catálogo em ordem">
-        {sections.map((section, index) => <CatalogLayoutItem
-          key={section.section_key}
-          section={section}
-          index={index}
-          total={sections.length}
-          dragging={draggedKey === section.section_key}
-          dropTarget={dropTargetKey === section.section_key && draggedKey !== section.section_key}
-          onDragStart={(event) => {
-            if (!event.target.closest?.(".catalog-drag-handle")) { event.preventDefault(); return; }
-            event.dataTransfer.effectAllowed = "move";
-            event.dataTransfer.setData("text/plain", section.section_key);
-            setDraggedKey(section.section_key);
-          }}
-          onDragEnd={() => { setDraggedKey(""); setDropTargetKey(""); }}
-          onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDropTargetKey(section.section_key); }}
-          onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDropTargetKey(""); }}
-          onDrop={(event) => { event.preventDefault(); dropOn(section.section_key); }}
-          onMove={(direction) => move(index, index + direction)}
-          onDuplicate={() => duplicate(index)}
-          onDelete={() => setForm({ ...form, catalogSections: sections.filter((_, itemIndex) => itemIndex !== index) })}
-          onUpdate={(patch) => update(index, patch)}
-        />)}
+        {sections.map((row, rowIndex) => (
+          <article
+            key={row.section_key}
+            className={`catalog-layout-card catalog-layout-row${row.is_active ? "" : " is-hidden"}${draggedKey === row.section_key ? " is-dragging" : ""}${dropTargetKey === row.section_key && draggedKey !== row.section_key ? " is-drop-target" : ""}`}
+            draggable
+            onDragStart={(event) => {
+              if (!event.target.closest?.(".catalog-drag-handle")) { event.preventDefault(); return; }
+              event.dataTransfer.effectAllowed = "move";
+              event.dataTransfer.setData("text/plain", row.section_key);
+              setDraggedKey(row.section_key);
+            }}
+            onDragEnd={() => { setDraggedKey(""); setDropTargetKey(""); }}
+            onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDropTargetKey(row.section_key); }}
+            onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDropTargetKey(""); }}
+            onDrop={(event) => { event.preventDefault(); dropOn(row.section_key); }}
+          >
+            <header className="catalog-layout-row-header">
+              <div className="catalog-layout-row-title"><button type="button" className="catalog-drag-handle" aria-label={`Mover bloco ${rowIndex + 1}`}><GripVertical size={18} /></button><b className="catalog-layout-row-number">{rowIndex + 1}</b><span><strong>Bloco {rowIndex + 1}</strong><small>{row.columns_count} {row.columns_count === 1 ? "coluna" : "colunas"} · <em>{row.is_active ? "Visível" : "Oculto"}</em></small></span></div>
+              <div className="catalog-layout-row-actions">
+                <Select value={String(row.columns_count)} onChange={(value) => resizeRow(row.section_key, value)} ariaLabel="Quantidade de colunas"><option value="1">1 coluna</option><option value="2">2 colunas</option><option value="3">3 colunas</option></Select>
+                <Button variant="secondary" disabled={!rowIndex} onClick={() => move(rowIndex, rowIndex - 1)}>Subir</Button>
+                <Button variant="secondary" disabled={rowIndex === sections.length - 1} onClick={() => move(rowIndex, rowIndex + 1)}>Descer</Button>
+                <DropdownMenu.Root><DropdownMenu.Trigger asChild><Button variant="secondary" aria-label={`Mais opções do bloco ${rowIndex + 1}`}><MoreHorizontal size={17} /></Button></DropdownMenu.Trigger><DropdownMenu.Portal><DropdownMenu.Content className="catalog-options-popover" align="end" sideOffset={6}><DropdownMenu.Item onSelect={() => duplicateRow(rowIndex)}>Duplicar bloco</DropdownMenu.Item><DropdownMenu.Item onSelect={() => updateRow(row.section_key, { is_active: !row.is_active })}>{row.is_active ? "Ocultar bloco" : "Exibir bloco"}</DropdownMenu.Item><DropdownMenu.Separator /><DropdownMenu.Item className="danger" onSelect={() => setDeleteTarget({ title: "Excluir bloco", message: `Excluir o bloco ${rowIndex + 1} e todos os seus componentes?`, run: () => commit(sections.filter((item) => item.section_key !== row.section_key)) })}>Excluir bloco</DropdownMenu.Item></DropdownMenu.Content></DropdownMenu.Portal></DropdownMenu.Root>
+              </div>
+            </header>
+            <div className="catalog-layout-columns" style={{ display: "grid", gridTemplateColumns: `repeat(${row.columns_count}, minmax(0, 1fr))`, gap: 12 }}>
+              {row.columns.map((column, columnIndex) => (
+                <section className="catalog-layout-column" key={column.column_key} aria-label={`Coluna ${columnIndex + 1}`}>
+                  <small className="catalog-layout-column-label">Coluna {columnIndex + 1}</small>
+                  {column.components.map((component) => (
+                    <div className={`catalog-layout-component${component.is_active ? "" : " is-hidden"}`} data-component-type={component.section_type || "custom_content"} key={component.section_key}>
+                      <div><strong>{component.title || catalogComponentLabel(component)}</strong><span className="catalog-layout-component-meta"><small className="catalog-layout-component-type">{catalogComponentLabel(component)}</small><small className="catalog-layout-component-state">{component.is_active ? "Visível" : "Oculto"}</small></span></div>
+                      <div className="catalog-layout-component-actions">
+                        <Button variant="secondary" onClick={() => setComponentEditor({ rowKey: row.section_key, columnKey: column.column_key, componentKey: component.section_key, isNew: false, draft: cloneCatalogDraft(component) })}>Editar</Button>
+                        <Select value="" ariaLabel={`Mover ${catalogComponentLabel(component)}`} onChange={(destination) => moveComponent(row.section_key, column.column_key, component.section_key, destination)}><option value="">Mover para…</option>{sections.flatMap((targetRow, targetRowIndex) => targetRow.columns.map((targetColumn, targetColumnIndex) => <option key={`${targetRow.section_key}-${targetColumn.column_key}`} value={`${targetRow.section_key}::${targetColumn.column_key}`} disabled={targetRow.section_key === row.section_key && targetColumn.column_key === column.column_key}>Bloco {targetRowIndex + 1}, coluna {targetColumnIndex + 1}</option>))}</Select>
+                        <DropdownMenu.Root><DropdownMenu.Trigger asChild><Button variant="secondary" aria-label={`Mais opções de ${catalogComponentLabel(component)}`}><MoreHorizontal size={17} /></Button></DropdownMenu.Trigger><DropdownMenu.Portal><DropdownMenu.Content className="catalog-options-popover" align="end" sideOffset={6}><DropdownMenu.Item onSelect={() => duplicateComponent(row.section_key, column.column_key, component)}>Duplicar</DropdownMenu.Item><DropdownMenu.Item onSelect={() => patchComponent(row.section_key, column.column_key, component.section_key, { is_active: !component.is_active })}>{component.is_active ? "Ocultar" : "Exibir"}</DropdownMenu.Item><DropdownMenu.Separator /><DropdownMenu.Item className="danger" onSelect={() => setDeleteTarget({ title: "Excluir componente", message: `Excluir “${component.title || catalogComponentLabel(component)}”?`, run: () => removeComponent(row.section_key, column.column_key, component.section_key) })}>Excluir</DropdownMenu.Item></DropdownMenu.Content></DropdownMenu.Portal></DropdownMenu.Root>
+                      </div>
+                    </div>
+                  ))}
+                  <Button variant="secondary" className="catalog-add-component" onClick={() => setLibraryTarget({ rowKey: row.section_key, columnKey: column.column_key })}><Plus size={16} /> Adicionar componente</Button>
+                </section>
+              ))}
+            </div>
+          </article>
+        ))}
       </div>
+
+      <Modal open={blockModalOpen} title="Adicionar bloco" subtitle="Quantas colunas esta linha deve ter?" onClose={() => setBlockModalOpen(false)}>
+        <div className="catalog-column-picker">{[1, 2, 3].map((count) => <button type="button" key={count} className="catalog-column-choice" onClick={() => addBlock(count)}><span>{Array.from({ length: count }).map((_, index) => <i key={index} />)}</span><strong>{count} {count === 1 ? "coluna" : "colunas"}</strong></button>)}</div>
+      </Modal>
+
+      <Modal open={Boolean(libraryTarget)} title="Adicionar componente" subtitle="Escolha o que deseja mostrar nesta coluna." size="lg" onClose={() => setLibraryTarget(null)}>
+        <div className="catalog-component-library">{CATALOG_COMPONENT_TYPES.map(([value, label, description]) => <button type="button" key={value} data-component-type={value} className="catalog-component-choice" onClick={() => openNewComponent(value)}><strong>{label}</strong><span>{description}</span></button>)}</div>
+      </Modal>
+
+      <Modal open={Boolean(componentEditor)} title={componentEditor?.isNew ? `Configurar ${catalogComponentLabel(componentEditor?.draft)}` : `Editar ${catalogComponentLabel(componentEditor?.draft)}`} subtitle="Ao salvar, a alteração entra imediatamente na montagem da página." size="lg" onClose={() => setComponentEditor(null)} footer={<><Button variant="secondary" onClick={() => setComponentEditor(null)}>Cancelar</Button><Button onClick={saveComponent}>Salvar componente</Button></>}>
+        {componentEditor && <CatalogComponentEditorFields component={componentEditor.draft} onChange={(patch) => setComponentEditor((current) => ({ ...current, draft: { ...current.draft, ...patch } }))} />}
+      </Modal>
+
+      <ConfirmDeleteModal open={Boolean(deleteTarget)} title={deleteTarget?.title || "Excluir"} message={deleteTarget?.message || "Esta ação será aplicada ao rascunho."} onClose={() => setDeleteTarget(null)} onConfirm={async () => { deleteTarget?.run?.(); setDeleteTarget(null); }} />
     </CustomizationCard>
   );
 }
 
-function CatalogLayoutItem({ section, index, total, dragging, dropTarget, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop, onMove, onDuplicate, onDelete, onUpdate }) {
-  const [open, setOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const label = CATALOG_SECTION_TYPES.find(([value]) => value === section.section_type)?.[1] || section.section_type;
-  const meta = `Posição ${index + 1} · ${section.is_active ? "Ativo" : "Oculto"}`;
+function CatalogComponentEditorFields({ component, onChange }) {
+  const type = component.section_type || component.component_type || component.type || "custom_content";
+  const menuItems = asArray(component.menu_items);
+  function updateMenuItem(index, patch) {
+    onChange({ menu_items: menuItems.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item) });
+  }
   return (
-    <>
-      <article
-        className={`catalog-layout-card${dragging ? " is-dragging" : ""}${dropTarget ? " is-drop-target" : ""}`}
-        draggable
-        onDragStart={onDragStart}
-        onDragEnd={onDragEnd}
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        onDrop={onDrop}
-      >
-        <div className="catalog-config-item">
-          <div className="catalog-config-item-summary">
-            <span><strong>{label}</strong><small>{meta}</small></span>
-            <div className="catalog-config-item-actions">
-              <button type="button" className="catalog-drag-handle" tabIndex={-1} aria-hidden="true" title="Arraste o bloco para mudar a posição"><GripVertical size={18} /></button>
-              <Button variant="secondary" onClick={() => setOpen(true)}>Detalhar</Button>
-              <Button variant="secondary" disabled={!index} onClick={() => onMove(-1)}>Subir</Button>
-              <Button variant="secondary" disabled={index === total - 1} onClick={() => onMove(1)}>Descer</Button>
-              <Button variant="secondary" onClick={onDuplicate}>Duplicar</Button>
-              <Button variant="danger" onClick={() => setDeleting(true)}>Excluir</Button>
-            </div>
-          </div>
-        </div>
-      </article>
-      <Modal open={open} title={label} subtitle={meta} size="lg" onClose={() => setOpen(false)} footer={<Button onClick={() => setOpen(false)}>Concluir</Button>}>
-        <div className="catalog-config-item-content">
+    <div className="catalog-config-item-content">
+      {type === "menu" ? (
+        <>
+          <div className="form-grid"><Input label="Nome do menu" value={component.title || "Menu"} onChange={(title) => onChange({ title })} /><ImageUploadField label="Logo no menu" value={component.logo_url || ""} onChange={(logo_url) => onChange({ logo_url })} /><Toggle label="Menu visível" checked={component.is_active} onChange={(is_active) => onChange({ is_active })} /></div>
+          <div className="catalog-menu-items"><div className="custom-item-toolbar"><strong>Itens do menu</strong><Button variant="secondary" onClick={() => onChange({ menu_items: [...menuItems, { label: "Novo link", url: "/", is_active: true }] })}><Plus size={16} /> Adicionar item</Button></div>{menuItems.map((item, index) => <div className="catalog-menu-item" key={`menu-item-${index}`}><Input label="Nome" value={item.label || ""} onChange={(label) => updateMenuItem(index, { label })} /><Input label="Link" value={item.url || ""} onChange={(url) => updateMenuItem(index, { url })} /><Toggle label="Visível" checked={item.is_active !== false} onChange={(is_active) => updateMenuItem(index, { is_active })} /><Button variant="danger" onClick={() => onChange({ menu_items: menuItems.filter((_, itemIndex) => itemIndex !== index) })}>Excluir</Button></div>)}</div>
+        </>
+      ) : (
+        <>
           <div className="form-grid">
-            <Input label="Título" value={section.title} onChange={(value) => onUpdate({ title: value })} />
-            <Input label="Subtítulo" value={section.subtitle} onChange={(value) => onUpdate({ subtitle: value })} />
-            <Select label="Exibição" value={section.display_mode} onChange={(value) => onUpdate({ display_mode: value })}><option value="grid">Grade</option><option value="carousel">Carrossel</option><option value="list">Lista</option></Select>
-            <Select label="Largura" value={section.width_mode} onChange={(value) => onUpdate({ width_mode: value })}><option value="contained">Limitada</option><option value="full">Total</option></Select>
-            <Select label="Alinhamento" value={section.alignment} onChange={(value) => onUpdate({ alignment: value })}><option value="left">Esquerda</option><option value="center">Centro</option><option value="right">Direita</option></Select>
-            <Input type="number" label="Espaçamento" value={section.spacing} onChange={(value) => onUpdate({ spacing: value })} />
-            <Input label="Fundo" value={section.background} onChange={(value) => onUpdate({ background: value })} />
-            <Select label="Ordenação" value={section.product_sort} onChange={(value) => onUpdate({ product_sort: value })}><option value="recent">Recentes</option><option value="best_sellers">Mais vendidos</option><option value="price_asc">Menor preço</option><option value="price_desc">Maior preço</option><option value="stock">Estoque</option><option value="manual">Manual</option></Select>
-            <Input label="Filtro de categoria" value={section.category_filter} onChange={(value) => onUpdate({ category_filter: value })} />
-            <Toggle label="Seção ativa" checked={section.is_active} onChange={(value) => onUpdate({ is_active: value })} />
+            <Input label="Título" value={component.title || ""} onChange={(title) => onChange({ title })} />
+            <Input label="Subtítulo" value={component.subtitle || ""} onChange={(subtitle) => onChange({ subtitle })} />
+            <Select label="Exibição" value={component.display_mode || "grid"} onChange={(display_mode) => onChange({ display_mode })}><option value="grid">Grade</option><option value="carousel">Carrossel</option><option value="list">Lista</option></Select>
+            <Select label="Largura" value={component.width_mode || "contained"} onChange={(width_mode) => onChange({ width_mode })}><option value="contained">Limitada</option><option value="full">Total</option></Select>
+            <Select label="Alinhamento" value={component.alignment || "left"} onChange={(alignment) => onChange({ alignment })}><option value="left">Esquerda</option><option value="center">Centro</option><option value="right">Direita</option></Select>
+            <Input type="number" label="Espaçamento" value={component.spacing ?? 24} onChange={(spacing) => onChange({ spacing })} />
+            <Input type="color" label="Cor de fundo" value={component.background || "#ffffff"} onChange={(background) => onChange({ background })} />
+            <Toggle label="Componente visível" checked={component.is_active} onChange={(is_active) => onChange({ is_active })} />
           </div>
-        </div>
-      </Modal>
-      <ConfirmDeleteModal
-        open={deleting}
-        title="Excluir bloco do catálogo"
-        message={`Excluir o bloco “${section.title || label}”? Esta ação será aplicada ao rascunho atual.`}
-        onClose={() => setDeleting(false)}
-        onConfirm={async () => { onDelete(); setDeleting(false); }}
-      />
-    </>
+          {["hero", "secondary_banners"].includes(type) && <div className="form-grid"><ImageUploadField label="Imagem" value={component.image_url || ""} aspectRatio="16/5" onChange={(image_url) => onChange({ image_url })} /><Input label="Texto do botão" value={component.button_text || ""} onChange={(button_text) => onChange({ button_text })} /><Input label="Link do botão" value={component.button_link || ""} onChange={(button_link) => onChange({ button_link })} /></div>}
+          {["categories", "category_products"].includes(type) && <div className="form-grid"><Input label="Categoria do estoque" value={component.category_filter || ""} onChange={(category_filter) => onChange({ category_filter })} /><Input type="number" label="Quantidade" value={component.items_limit || 6} onChange={(items_limit) => onChange({ items_limit })} /></div>}
+          {["featured_products", "best_sellers", "new_products", "premium_products", "in_stock", "out_of_stock", "category_products", "promotions"].includes(type) && <div className="form-grid"><Select label="Ordenação" value={component.product_sort || "recent"} onChange={(product_sort) => onChange({ product_sort })}><option value="recent">Recentes</option><option value="best_sellers">Mais vendidos</option><option value="price_asc">Menor preço</option><option value="price_desc">Maior preço</option><option value="stock">Estoque</option><option value="manual">Manual</option></Select><Input type="number" label="Quantidade" value={component.items_limit || 8} onChange={(items_limit) => onChange({ items_limit })} /></div>}
+          {["custom_content", "services", "professionals", "location", "contact", "policies", "biosafety", "materials", "testimonials", "instagram", "booking_cta", "footer"].includes(type) && <><Textarea label="Conteúdo" value={component.text || ""} onChange={(text) => onChange({ text })} /><div className="form-grid"><Input label="Texto do botão" value={component.button_text || ""} onChange={(button_text) => onChange({ button_text })} /><Input label="Link do botão" value={component.button_link || ""} onChange={(button_link) => onChange({ button_link })} /></div></>}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -1536,7 +1663,7 @@ function normalizeCatalogCustomization(data) {
     featuredProducts: asArray(safeData.featuredProducts).map(normalizeBooleanRecord),
     promotions: asArray(safeData.promotions).map(normalizeBooleanRecord)
     ,
-    catalogSections: (asArray(safeData.catalogSections).length ? asArray(safeData.catalogSections) : defaultCatalogSections()).map(normalizeBooleanRecord),
+    catalogSections: normalizeCatalogLayout(asArray(safeData.catalogSections).length ? safeData.catalogSections : defaultCatalogSections()),
     plugins: asArray(safeData.plugins)
   };
 }
@@ -1801,6 +1928,128 @@ const CATALOG_SECTION_TYPES = [
   ["custom_content", "Conteúdo personalizado"]
 ];
 
+const CATALOG_COMPONENT_TYPES = [
+  ["menu", "Menu", "Navegação, logo e links que aparecem no topo da página."],
+  ["hero", "Banner principal", "Imagem de destaque com título, texto e chamada."],
+  ["secondary_banners", "Banners", "Campanhas e destaques visuais adicionais."],
+  ["categories", "Categorias", "Atalhos para as categorias escolhidas."],
+  ["featured_products", "Produtos em destaque", "Uma seleção manual dos principais produtos."],
+  ["best_sellers", "Mais vendidos", "Produtos ordenados pelo desempenho de vendas."],
+  ["new_products", "Novidades", "Os produtos adicionados mais recentemente."],
+  ["promotions", "Promoções", "Ofertas e campanhas que estão ativas."],
+  ["custom_content", "Texto e imagem", "Conteúdo livre para apresentar a marca."],
+  ["booking_cta", "Agendamento", "Chamada para o cliente iniciar um agendamento."],
+  ["location", "Localização", "Endereço, mapa e informações de visita."],
+  ["contact", "Contato", "Canais de atendimento da clínica."],
+  ["instagram", "Instagram", "Conteúdo e chamada para a rede social."],
+  ["testimonials", "Depoimentos", "Prova social com relatos de clientes."],
+  ["footer", "Rodapé", "Informações finais, links e identidade."],
+  ...CATALOG_SECTION_TYPES.filter(([type]) => !["hero", "secondary_banners", "categories", "featured_products", "best_sellers", "new_products", "promotions", "custom_content", "booking_cta", "location", "contact", "instagram", "testimonials", "footer"].includes(type)).map(([type, label]) => [type, label, `Adicione ${label.toLowerCase()} à página.`])
+];
+
+function catalogEditorKey(prefix = "item") {
+  const random = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 10);
+  return `${prefix}-${Date.now()}-${random}`;
+}
+
+function defaultCatalogColumn(rowKey, number) {
+  return { column_key: `${rowKey}-column-${number}`, components: [] };
+}
+
+function defaultCatalogLayoutRow(columnsCount = 1, order = 1) {
+  const count = Math.min(3, Math.max(1, Number(columnsCount) || 1));
+  const sectionKey = catalogEditorKey("row");
+  return {
+    section_key: sectionKey,
+    section_type: "layout_row",
+    sort_order: order,
+    is_active: true,
+    columns_count: count,
+    columns: Array.from({ length: count }, (_, index) => defaultCatalogColumn(sectionKey, index + 1))
+  };
+}
+
+function defaultCatalogComponent(sectionType) {
+  if (sectionType === "menu") return {
+    section_key: catalogEditorKey("menu"),
+    section_type: "menu",
+    title: "Menu",
+    logo_url: "",
+    is_active: true,
+    menu_items: [
+      { label: "Início", url: "#inicio", is_active: true },
+      { label: "Catálogo", url: "#catalogo", is_active: true },
+      { label: "Agendar", url: "/agendar", is_active: true }
+    ]
+  };
+  return { ...defaultCatalogSection(sectionType, 1), section_key: catalogEditorKey(sectionType) };
+}
+
+function catalogComponentLabel(component) {
+  const type = component?.section_type || component?.component_type || component?.type || "custom_content";
+  return CATALOG_COMPONENT_TYPES.find(([value]) => value === type)?.[1] || CATALOG_SECTION_TYPES.find(([value]) => value === type)?.[1] || "Componente";
+}
+
+function normalizeCatalogComponent(component, fallbackIndex = 0) {
+  const safe = asObject(component);
+  const type = safe.section_type || safe.component_type || safe.type || "custom_content";
+  const normalized = {
+    ...defaultCatalogComponent(type),
+    ...safe,
+    section_key: safe.section_key || catalogEditorKey(`${type}-${fallbackIndex + 1}`),
+    section_type: type,
+    is_active: safe.is_active === undefined ? true : Boolean(Number(safe.is_active))
+  };
+  if (type === "menu") normalized.menu_items = asArray(safe.menu_items).map((item) => ({ ...item, is_active: item.is_active === undefined ? true : Boolean(Number(item.is_active)) }));
+  return normalized;
+}
+
+function normalizeCatalogLayout(value) {
+  const raw = asArray(value);
+  if (!raw.length) return [];
+  const rows = raw.map((item, itemIndex) => {
+    const safe = asObject(item);
+    const isRow = safe.section_type === "layout_row" || Array.isArray(safe.columns);
+    if (!isRow) {
+      const row = defaultCatalogLayoutRow(1, itemIndex + 1);
+      row.section_key = `legacy-row-${safe.section_key || itemIndex + 1}`;
+      row.columns = [{ column_key: `${row.section_key}-column-1`, components: [normalizeCatalogComponent(safe, itemIndex)] }];
+      return row;
+    }
+    const sectionKey = safe.section_key || catalogEditorKey(`row-${itemIndex + 1}`);
+    const requestedCount = Math.min(3, Math.max(1, Number(safe.columns_count || asArray(safe.columns).length) || 1));
+    const columns = asArray(safe.columns).slice(0, requestedCount).map((column, columnIndex) => ({
+      ...asObject(column),
+      column_key: asObject(column).column_key || `${sectionKey}-column-${columnIndex + 1}`,
+      components: asArray(asObject(column).components).map((component, componentIndex) => normalizeCatalogComponent(component, componentIndex))
+    }));
+    while (columns.length < requestedCount) columns.push(defaultCatalogColumn(sectionKey, columns.length + 1));
+    return {
+      ...safe,
+      section_key: sectionKey,
+      section_type: "layout_row",
+      sort_order: Number(safe.sort_order || itemIndex + 1),
+      is_active: safe.is_active === undefined ? true : Boolean(Number(safe.is_active)),
+      columns_count: requestedCount,
+      columns
+    };
+  });
+  return withCatalogLayoutOrder(rows.sort((left, right) => Number(left.sort_order || 0) - Number(right.sort_order || 0)));
+}
+
+function withCatalogLayoutOrder(rows) {
+  return asArray(rows).map((row, rowIndex) => ({
+    ...row,
+    section_type: "layout_row",
+    sort_order: rowIndex + 1,
+    columns_count: Math.min(3, Math.max(1, Number(row.columns_count || asArray(row.columns).length) || 1)),
+    columns: asArray(row.columns).map((column) => ({
+      ...column,
+      components: asArray(column.components).map((component, componentIndex) => ({ ...component, sort_order: componentIndex + 1 }))
+    }))
+  }));
+}
+
 function defaultCatalogSection(sectionType, order) {
   const label = CATALOG_SECTION_TYPES.find(([value]) => value === sectionType)?.[1] || "Seção";
   return {
@@ -1812,8 +2061,9 @@ function defaultCatalogSection(sectionType, order) {
 }
 
 function defaultCatalogSections() {
-  return ["hero", "categories", "featured_products", "best_sellers", "new_products", "promotions", "booking_cta", "location", "footer"]
-    .map((type, index) => defaultCatalogSection(type, index + 1));
+  const row = defaultCatalogLayoutRow(1, 1);
+  row.columns[0].components = [defaultCatalogComponent("menu")];
+  return [row];
 }
 
 const CATALOG_TEMPLATES = [
@@ -1880,7 +2130,11 @@ function applyCatalogTemplate(form, templateKey) {
     ...form,
     theme: { ...form.theme, ...template.theme, theme: template.key },
     settings: { ...form.settings, ...template.settings },
-    catalogSections: template.sections.map((sectionType, index) => defaultCatalogSection(sectionType, index + 1))
+    catalogSections: ["menu", ...template.sections].map((sectionType, index) => {
+      const row = defaultCatalogLayoutRow(1, index + 1);
+      row.columns[0].components = [defaultCatalogComponent(sectionType)];
+      return row;
+    })
   };
 }
 

@@ -211,10 +211,24 @@ function normalizeBanner(banner, index) {
   return next;
 }
 
-function normalizeSection(section, index) {
+function normalizeMenuItems(value) {
+  return jsonArray(value).map((item) => {
+    const source = jsonObject(item);
+    return {
+      label: String(source.label || ""),
+      url: String(source.url || ""),
+      is_active: boolNumber(source.is_active ?? 1)
+    };
+  });
+}
+
+function normalizeSection(section, index, context = {}) {
   const next = omitSystemFields(section);
-  return {
-    section_key: String(next.section_key || `section-${index + 1}`),
+  const fallbackKey = context.columnIndex
+    ? `component-${context.rowIndex}-${context.columnIndex}-${index + 1}`
+    : `section-${index + 1}`;
+  const normalized = {
+    section_key: String(next.section_key || fallbackKey),
     section_type: String(next.section_type || "custom_content"),
     title: String(next.title || ""),
     subtitle: String(next.subtitle || next.kicker || ""),
@@ -230,11 +244,46 @@ function normalizeSection(section, index) {
     card_size: String(next.card_size || "medium"),
     product_sort: String(next.product_sort || "recent"),
     category_filter: String(next.category_filter || ""),
+    items_limit: Math.max(0, Number(next.items_limit || 0)),
+    image_url: String(next.image_url || ""),
     media_url: String(next.media_url || ""),
     button_text: String(next.button_text || ""),
     button_link: String(next.button_link || ""),
     body_text: String(next.body_text || next.text || "")
   };
+
+  if (normalized.section_type === "menu") {
+    normalized.logo_url = String(next.logo_url || "");
+    normalized.brand_name = String(next.brand_name || "");
+    normalized.slogan = String(next.slogan || "");
+    normalized.show_search = boolNumber(next.show_search ?? 1);
+    normalized.show_favorites = boolNumber(next.show_favorites ?? 1);
+    normalized.show_cart = boolNumber(next.show_cart ?? 1);
+    normalized.show_booking = boolNumber(next.show_booking ?? 0);
+    normalized.menu_items = normalizeMenuItems(next.menu_items);
+  }
+
+  if (normalized.section_type === "layout_row") {
+    const columns = jsonArray(next.columns);
+    normalized.columns_count = Number(next.columns_count ?? (columns.length || 1));
+    normalized.columns = columns.map((column, columnIndex) => {
+      const source = jsonObject(column);
+      return {
+        column_key: String(source.column_key || `column-${context.rowIndex ?? index + 1}-${columnIndex + 1}`),
+        components: jsonArray(source.components).map((component, componentIndex) => normalizeSection(
+          component,
+          componentIndex,
+          { rowIndex: context.rowIndex ?? index + 1, columnIndex: columnIndex + 1 }
+        ))
+      };
+    });
+  }
+
+  return normalized;
+}
+
+export function normalizeCatalogSections(sections = []) {
+  return jsonArray(sections).map((section, index) => normalizeSection(section, index, { rowIndex: index + 1 }));
 }
 
 function normalizeSnapshot(snapshot, base = {}) {
@@ -258,8 +307,8 @@ function normalizeSnapshot(snapshot, base = {}) {
       ? source.promotions.map(omitSystemFields)
       : jsonArray(previous.promotions).map(omitSystemFields),
     catalogSections: Array.isArray(source.catalogSections)
-      ? source.catalogSections.map(normalizeSection)
-      : jsonArray(previous.catalogSections).map(normalizeSection),
+      ? normalizeCatalogSections(source.catalogSections)
+      : normalizeCatalogSections(previous.catalogSections),
     // Plugins vivem no mesmo documento versionado que os blocos. Mesmo uma
     // revisão legada/externa não injeta campos livres: o normalizador reduz a
     // lista ao registro fechado antes de ela chegar à vitrine.
@@ -538,7 +587,7 @@ const KNOWN_CATALOG_SECTION_TYPES = new Set([
   "hero", "secondary_banners", "categories", "featured_products", "best_sellers", "new_products",
   "promotions", "premium_products", "in_stock", "out_of_stock", "category_products", "services",
   "professionals", "location", "contact", "policies", "biosafety", "materials", "testimonials",
-  "instagram", "booking_cta", "footer", "custom_content"
+  "instagram", "booking_cta", "footer", "custom_content", "menu", "layout_row"
 ]);
 
 const BUILTIN_CATALOG_ANCHORS = new Set(["catalog-products", "catalog-agenda", "catalog-search-history"]);
@@ -650,13 +699,34 @@ function contrastRatio(foreground, background) {
   return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
 }
 
+function catalogSectionEntries(sections, { path = "catalogSections", depth = 0 } = {}) {
+  const entries = [];
+  for (const [index, section] of jsonArray(sections).entries()) {
+    const sectionPath = `${path}[${index}]`;
+    entries.push({ section, path: sectionPath, depth, index });
+    if (catalogString(section?.section_type) !== "layout_row") continue;
+    for (const [columnIndex, column] of jsonArray(section?.columns).entries()) {
+      entries.push(...catalogSectionEntries(column?.components, {
+        path: `${sectionPath}.columns[${columnIndex}].components`,
+        depth: depth + 1
+      }));
+    }
+  }
+  return entries;
+}
+
 function collectCatalogCtas(snapshot) {
   const ctas = [];
   for (const [index, banner] of jsonArray(snapshot?.banners).entries()) {
     ctas.push({ path: `banners[${index}].button_link`, value: banner?.button_link });
   }
-  for (const [index, section] of jsonArray(snapshot?.catalogSections).entries()) {
-    ctas.push({ path: `catalogSections[${index}].button_link`, value: section?.button_link });
+  for (const { section, path } of catalogSectionEntries(snapshot?.catalogSections)) {
+    ctas.push({ path: `${path}.button_link`, value: section?.button_link });
+    if (catalogString(section?.section_type) === "menu") {
+      for (const [itemIndex, item] of jsonArray(section?.menu_items).entries()) {
+        ctas.push({ path: `${path}.menu_items[${itemIndex}].url`, value: item?.url });
+      }
+    }
   }
   for (const [index, section] of readLegacyContentSections(snapshot).entries()) {
     ctas.push({ path: `settings.content_sections[${index}].button_link`, value: section?.button_link });
@@ -700,36 +770,72 @@ export function catalogPublishChecklist(snapshot = {}) {
   }
 
   const sectionKeys = new Set();
-  const sectionOrders = new Map();
-  for (const [index, section] of jsonArray(source.catalogSections).entries()) {
+  const sectionOrdersByGroup = new Map();
+  const columnKeys = new Set();
+  for (const { section, path, depth, index } of catalogSectionEntries(source.catalogSections)) {
     const type = catalogString(section?.section_type || "custom_content");
     if (type && !KNOWN_CATALOG_SECTION_TYPES.has(type)) {
-      errors.push(catalogChecklistItem("unknown_catalog_block", `catalogSections[${index}].section_type`, `O bloco "${type}" não é reconhecido pela vitrine.`));
+      errors.push(catalogChecklistItem("unknown_catalog_block", `${path}.section_type`, `O bloco "${type}" não é reconhecido pela vitrine.`));
+    }
+    if (type === "layout_row" && depth > 0) {
+      errors.push(catalogChecklistItem("invalid_layout_row", `${path}.section_type`, "Uma linha de layout não pode ser adicionada dentro de outra linha."));
     }
     const key = catalogString(section?.section_key);
     if (!/^[a-z][a-z0-9-]{0,79}$/.test(key)) {
-      warnings.push(catalogChecklistItem("invalid_section_reference", `catalogSections[${index}].section_key`, "A referência da seção deve usar letras minúsculas, números e hífens."));
+      warnings.push(catalogChecklistItem("invalid_section_reference", `${path}.section_key`, "A referência da seção deve usar letras minúsculas, números e hífens."));
     } else if (sectionKeys.has(key)) {
-      warnings.push(catalogChecklistItem("duplicate_section_reference", `catalogSections[${index}].section_key`, `A referência "${key}" é usada por mais de uma seção.`));
+      warnings.push(catalogChecklistItem("duplicate_section_reference", `${path}.section_key`, `A referência "${key}" é usada por mais de uma seção.`));
     } else {
       sectionKeys.add(key);
     }
     const order = Number(section?.sort_order);
+    const orderGroup = path.replace(/\[\d+\]$/, "");
+    const sectionOrders = sectionOrdersByGroup.get(orderGroup) || new Map();
+    sectionOrdersByGroup.set(orderGroup, sectionOrders);
     if (!Number.isInteger(order) || order < 1) {
-      warnings.push(catalogChecklistItem("invalid_section_order", `catalogSections[${index}].sort_order`, "A ordem da seção deve ser um número inteiro maior que zero."));
+      warnings.push(catalogChecklistItem("invalid_section_order", `${path}.sort_order`, "A ordem da seção deve ser um número inteiro maior que zero."));
     } else if (sectionOrders.has(order)) {
-      warnings.push(catalogChecklistItem("duplicate_section_order", `catalogSections[${index}].sort_order`, `A ordem ${order} também é usada pela seção ${sectionOrders.get(order) + 1}.`));
+      warnings.push(catalogChecklistItem("duplicate_section_order", `${path}.sort_order`, `A ordem ${order} também é usada por outro bloco deste grupo.`));
     } else {
       sectionOrders.set(order, index);
     }
     const reason = unsafeCatalogCtaUrl(section?.button_link);
-    if (reason) errors.push(catalogChecklistItem("unsafe_cta_url", `catalogSections[${index}].button_link`, `Link do botão ${reason}.`));
+    if (reason) errors.push(catalogChecklistItem("unsafe_cta_url", `${path}.button_link`, `Link do botão ${reason}.`));
+
+    if (type === "menu") {
+      for (const [itemIndex, item] of jsonArray(section?.menu_items).entries()) {
+        const menuReason = unsafeCatalogCtaUrl(item?.url);
+        if (menuReason) errors.push(catalogChecklistItem("unsafe_cta_url", `${path}.menu_items[${itemIndex}].url`, `Link do menu ${menuReason}.`));
+      }
+    }
+
+    if (type === "layout_row") {
+      const columns = jsonArray(section?.columns);
+      const columnsCount = Number(section?.columns_count);
+      if (!Number.isInteger(columnsCount) || columnsCount < 1 || columnsCount > 3) {
+        errors.push(catalogChecklistItem("invalid_layout_columns", `${path}.columns_count`, "A linha deve ter entre 1 e 3 colunas."));
+      }
+      if (columns.length !== columnsCount || columns.length < 1 || columns.length > 3) {
+        errors.push(catalogChecklistItem("invalid_layout_columns", `${path}.columns`, "A quantidade de colunas deve corresponder à configuração da linha e ficar entre 1 e 3."));
+      }
+      for (const [columnIndex, column] of columns.entries()) {
+        const columnPath = `${path}.columns[${columnIndex}]`;
+        const columnKey = catalogString(column?.column_key);
+        if (!/^[a-z][a-z0-9-]{0,79}$/.test(columnKey)) {
+          warnings.push(catalogChecklistItem("invalid_column_reference", `${columnPath}.column_key`, "A referência da coluna deve usar letras minúsculas, números e hífens."));
+        } else if (columnKeys.has(columnKey)) {
+          warnings.push(catalogChecklistItem("duplicate_column_reference", `${columnPath}.column_key`, `A referência "${columnKey}" é usada por mais de uma coluna.`));
+        } else {
+          columnKeys.add(columnKey);
+        }
+      }
+    }
 
     const looksLikeEmbed = ["video", "iframe", "embed"].includes(catalogString(section?.media_type || section?.type))
       || Object.hasOwn(section || {}, "embed_url") || Object.hasOwn(section || {}, "iframe_url");
     const embed = section?.embed_url || section?.iframe_url || (looksLikeEmbed ? section?.media_url || section?.src : "");
     if (catalogString(embed) && !isAllowedCatalogEmbedUrl(embed)) {
-      errors.push(catalogChecklistItem("unallowed_catalog_embed", `catalogSections[${index}].media_url`, "Embed não permitido. Use um vídeo público do YouTube ou Vimeo."));
+      errors.push(catalogChecklistItem("unallowed_catalog_embed", `${path}.media_url`, "Embed não permitido. Use um vídeo público do YouTube ou Vimeo."));
     }
   }
 

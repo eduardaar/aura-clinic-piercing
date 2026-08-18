@@ -1,5 +1,24 @@
 @layer telas {
 
+/* Linhas publicadas pelo construtor visual. Cada coluna também é uma pilha,
+   permitindo mais de um componente sem perder a ordem definida no editor. */
+.catalog-layout-row{display:grid;grid-template-columns:repeat(var(--catalog-row-columns,1),minmax(0,1fr));align-items:start;gap:clamp(12px,2vw,24px);width:100%;min-width:0;border-radius:24px}
+.catalog-layout-column{display:flex;flex-direction:column;gap:clamp(12px,2vw,24px);min-width:0}
+.catalog-layout-column>.catalog-configured-block{max-width:100%;margin:0}
+.catalog-layout-column .catalog-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr))}
+.catalog-layout-column .catalog-product-rail__track{grid-auto-columns:minmax(min(100%,210px),1fr)}
+
+/* O menu é um componente do layout, portanto funciona tanto sozinho quanto
+   dentro de uma das três colunas sem pressupor uma largura de desktop. */
+.catalog-builder-menu{display:flex;align-items:center;justify-content:space-between;gap:16px;border:1px solid color-mix(in srgb,var(--catalog-border,#d8c3a5) 74%,transparent);background:var(--catalog-section-bg,#fff)}
+.catalog-builder-menu__brand-and-links{display:flex;align-items:center;flex-wrap:wrap;gap:14px 24px;min-width:0}
+.catalog-builder-menu .catalog-client-brand{width:auto;min-width:0;padding:0;background:transparent;border:0;box-shadow:none}
+.catalog-builder-menu__links{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+.catalog-builder-menu__links a{padding:9px 11px;border-radius:999px;color:var(--catalog-link);font-size:.9rem;font-weight:650;text-decoration:none}
+.catalog-builder-menu__links a:hover{background:color-mix(in srgb,var(--catalog-primary,#c8a96a) 13%,transparent);color:var(--catalog-link-hover)}
+.catalog-builder-menu__actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;min-width:0}
+.catalog-builder-menu__search{min-width:min(260px,100%)}
+
 .catalog-carousel-hero{position:relative;min-height:0;aspect-ratio:16/5;overflow:hidden;background:var(--catalog-section-bg,#fff)}
 .catalog-carousel-hero::before,.catalog-carousel-hero::after{pointer-events:none}.catalog-carousel-hero .public-banner__media{position:absolute;inset:0;display:block;width:100%;height:100%;background:var(--catalog-section-bg,#fff)}.catalog-carousel-hero .public-banner__image{display:block!important;width:100%;height:100%;transform-origin:center}.catalog-carousel-hero .catalog-hero-copy{position:relative;z-index:3;max-width:min(560px,72%)}
 .public-banner__arrow{position:absolute;z-index:5;top:50%;translate:0 -50%;display:grid;place-items:center;width:44px;height:44px;border-radius:50%;border:1px solid #ffffffa6;background:#14120f7a;color:#fff;backdrop-filter:blur(8px)}.public-banner__arrow:hover{background:#14120fbf}.public-banner__arrow--previous{left:18px}.public-banner__arrow--next{right:18px}.catalog-carousel-dots{position:absolute;z-index:5;left:50%;bottom:14px;translate:-50% 0}
@@ -13,6 +32,7 @@
 .catalog-discovery{display:grid;gap:14px;scroll-margin-top:10px}.catalog-search-mobile{display:none}.catalog-discovery .catalog-category-strip,.catalog-discovery .catalog-filters{order:initial}.catalog-dynamic-footer{width:min(100%,var(--footer-width,1280px));overflow:hidden}.catalog-company-contact{width:100%}.catalog-company-contact>a,.catalog-company-contact>div{max-width:100%;overflow:hidden}.floating-whatsapp{bottom:calc(16px + env(safe-area-inset-bottom));right:max(14px,env(safe-area-inset-right))}
 .catalog-results{display:grid;gap:18px;scroll-margin-top:18px}.catalog-results-heading{display:flex;align-items:end;justify-content:space-between;gap:16px}.catalog-results-heading h2{margin:3px 0 0}.catalog-results-heading>strong{color:var(--catalog-primary,#8a6727)}.catalog-filters{padding:8px!important;gap:8px!important}.catalog-filters select{min-height:38px!important}.catalog-results .catalog-grid{margin:0!important}.appointment-jewelry-selected{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:12px 14px;border:1px solid #dfcfb4;border-radius:14px;background:var(--white)}.appointment-jewelry-selected strong{flex-basis:100%}.appointment-jewelry-selected span{font-size:.82rem;color:#62594c}
 @media(max-width:767px){.catalog-page{overflow-x:hidden;padding-inline:12px;padding-bottom:calc(88px + env(safe-area-inset-bottom))}.catalog-search-desktop{display:none}.catalog-search-mobile{display:flex;width:100%}.catalog-discovery{position:relative;padding:12px;border:1px solid color-mix(in srgb,var(--catalog-primary,var(--gold)) 22%,transparent);border-radius:18px;background:color-mix(in srgb,var(--catalog-section-bg,#fff) 94%,transparent)}.catalog-discovery .catalog-filters{display:none}.catalog-results-heading{align-items:flex-start}.catalog-results-heading h2{font-size:1.45rem}.catalog-results-heading>strong{font-size:.78rem;text-align:right}.catalog-grid{gap:12px}.catalog-product-card figure{height:auto!important;aspect-ratio:1/1}.catalog-product-card img{width:100%!important;height:100%!important}.catalog-product-info{min-height:0!important;padding:14px!important}.catalog-company-contact{grid-template-columns:1fr!important}.catalog-dynamic-footer{padding:22px!important}.floating-whatsapp span{display:none}.floating-whatsapp{width:50px;height:50px;padding:0;display:grid;place-items:center;border-radius:50%}}
+@media(max-width:767px){.catalog-layout-row{grid-template-columns:1fr!important;padding:12px!important}.catalog-builder-menu{align-items:stretch;flex-direction:column}.catalog-builder-menu__brand-and-links{align-items:flex-start;flex-direction:column}.catalog-builder-menu__links{width:100%}.catalog-builder-menu__actions{justify-content:stretch;width:100%}.catalog-builder-menu__search{width:100%;min-width:0}.catalog-builder-menu__actions>.catalog-icon-action{flex:1 1 120px;justify-content:center}}
 @media(max-width:420px){.catalog-product-card figure{aspect-ratio:4/3}.catalog-product-card .catalog-sku,.catalog-product-card .catalog-payment-line.muted{display:none}.catalog-product-card{width:100%;max-width:none}}
 
 /* As abas do construtor são Radix Tabs; preserva a aparência do editor legado

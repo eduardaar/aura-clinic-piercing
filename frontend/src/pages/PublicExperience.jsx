@@ -235,9 +235,12 @@ export function PublicCatalog() {
   const theme = asObject(safeData.theme);
   const settings = safeData;
   const layoutSections = asArray(safeData.catalogSections);
+  const layoutRows = catalogLayoutRows(layoutSections);
+  const hasLayoutRows = layoutRows.length > 0;
+  const hasBuilderMenu = layoutRows.some((row) => row.columns.some((column) => column.components.some((component) => component.section_type === "menu")));
   // A ordem é parte do conteúdo publicado. Nunca usamos `.find()` aqui: duas
   // seções do mesmo tipo precisam continuar sendo duas instâncias distintas.
-  const publishedLayout = catalogLayoutSections(layoutSections);
+  const publishedLayout = hasLayoutRows ? [] : catalogLayoutSections(layoutSections);
   const contentSections = catalogContentSections(settings.content_sections);
   const activeBanners = asArray(safeData.banners).filter((banner) => Boolean(asNumber(banner?.is_active))).sort((a, b) => asNumber(a?.sort_order) - asNumber(b?.sort_order));
   const fallbackBanner = {
@@ -370,7 +373,7 @@ function addToOrder(item) {
   return (
     <main className={`catalog-page theme-${theme.theme || "premium"}`} style={catalogStyle}>
       <section className="catalog-main">
-        <header className="catalog-topbar" style={{ order: -30 }}>
+        {!hasBuilderMenu && <header className="catalog-topbar" style={{ order: -30 }}>
           <a className="catalog-client-brand" href={catalogUrl()}>
             {theme.logo_url && <img src={catalogImageUrl(theme.logo_url)} alt={theme.brand_name || settings.company_display_name || "Estúdio"} />}
             <strong>{theme.brand_name || settings.company_display_name || data.brand_name || "Estúdio"}</strong>
@@ -393,14 +396,56 @@ function addToOrder(item) {
             {Boolean(Number(theme.show_favorites || 1)) && <button className="catalog-icon-action" onClick={() => setDrawer("favorites")} aria-label="Favoritos"><Heart size={18} /><span>{favoriteIds.length}</span></button>}
             <button className="catalog-icon-action primary-cart" onClick={() => setDrawer("order")}><ShoppingCart size={19} /> Pedido <span>{orderItems.reduce((sum, item) => sum + Number(item.qty || 1), 0)}</span></button>
           </div>
-        </header>
+        </header>}
 
-        <div className="catalog-title" style={{ order: -20 }}>
+        {!hasLayoutRows && <div className="catalog-title" style={{ order: -20 }}>
           <span className="eyebrow">Catálogo online</span>
           <h1 style={{ fontFamily: theme.title_font || "Georgia" }}>{settings.page_title || "Catálogo Online"} <Sparkles size={26} /></h1>
           <p>{data.title || "Escolha a joia perfeita para você"}</p>
           {data.subtitle && <small>{data.subtitle}</small>}
-        </div>
+        </div>}
+
+        {layoutRows.map((row) => (
+          <CatalogLayoutRow
+            key={`${row.section_key}-${row._sourceIndex}`}
+            row={row}
+            data={data}
+            settings={settings}
+            theme={theme}
+            banners={banners}
+            activeBanner={activeBanner}
+            activeBannerIndex={bannerIndex % banners.length}
+            onBannerChange={setBannerIndex}
+            categories={categories}
+            activeCategory={activeCategory}
+            setActiveCategory={setActiveCategory}
+            search={search}
+            setSearch={setSearch}
+            recentSearches={recentSearches}
+            setRecentSearches={setRecentSearches}
+            filters={filters}
+            setFilters={setFilters}
+            options={options}
+            sort={sort}
+            setSort={setSort}
+            productsRef={productsRef}
+            discoveryRef={discoveryRef}
+            items={items}
+            publishedItems={publishedItems}
+            latestItems={latestItems}
+            bestSellerItems={bestSellerItems}
+            promoItems={promoItems}
+            contentSections={contentSections}
+            favoriteIds={favoriteIds}
+            orderCount={orderItems.reduce((sum, item) => sum + Number(item.qty || 1), 0)}
+            onOpenFavorites={() => setDrawer("favorites")}
+            onOpenOrder={() => setDrawer("order")}
+            onToggleFavorite={toggleFavorite}
+            onAdd={(item) => { addToOrder(item); setDrawer("order"); }}
+            footerLogo={footerLogo}
+            footerDisplayName={footerDisplayName}
+          />
+        ))}
 
         {publishedLayout.map((section) => (
           <CatalogLayoutBlock
@@ -418,6 +463,8 @@ function addToOrder(item) {
             setActiveCategory={setActiveCategory}
             search={search}
             setSearch={setSearch}
+            recentSearches={recentSearches}
+            setRecentSearches={setRecentSearches}
             filters={filters}
             setFilters={setFilters}
             options={options}
@@ -487,6 +534,126 @@ const CATALOG_SECTION_TITLES = {
   footer: "Atendimento",
   custom_content: "Conteúdo especial"
 };
+
+function catalogIsActive(value, fallback = true) {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (typeof value === "string") return !["0", "false", "off", "no"].includes(value.toLowerCase());
+  return Boolean(value);
+}
+
+function catalogComponent(component, index) {
+  const source = asObject(component);
+  const nested = asObject(source.config || source.settings);
+  return {
+    ...nested,
+    ...source,
+    section_key: String(source.section_key || source.component_key || `component-${index + 1}`),
+    section_type: String(source.section_type || source.component_type || source.type || "custom_content"),
+    sort_order: Number(source.sort_order ?? index + 1),
+    _sourceIndex: index
+  };
+}
+
+/**
+ * Normaliza o contrato do construtor sem exigir que todas as colunas ou
+ * componentes estejam completos. Linhas antigas continuam fora deste fluxo.
+ */
+function catalogLayoutRows(sections) {
+  return asArray(sections)
+    .map((row, index) => ({ ...asObject(row), _sourceIndex: index }))
+    .filter((row) => String(row.section_type || row.type) === "layout_row" && catalogIsActive(row.is_active))
+    .map((row) => {
+      const rawColumns = asArray(row.columns);
+      const columnsCount = Math.min(3, Math.max(1, Number(row.columns_count) || rawColumns.length || 1));
+      const columns = Array.from({ length: columnsCount }, (_, columnIndex) => {
+        const column = asObject(rawColumns[columnIndex]);
+        const components = asArray(column.components)
+          .map(catalogComponent)
+          .filter((component) => catalogIsActive(component.is_active))
+          .sort((left, right) => left.sort_order - right.sort_order || left._sourceIndex - right._sourceIndex);
+        return {
+          ...column,
+          column_key: String(column.column_key || `column-${columnIndex + 1}`),
+          components
+        };
+      });
+      return {
+        ...row,
+        section_key: String(row.section_key || `row-${index + 1}`),
+        sort_order: Number(row.sort_order ?? index + 1),
+        columns_count: columnsCount,
+        columns
+      };
+    })
+    .sort((left, right) => left.sort_order - right.sort_order || left._sourceIndex - right._sourceIndex);
+}
+
+function CatalogLayoutRow({ row, ...blockProps }) {
+  const rowStyle = catalogSectionStyle(row);
+  return (
+    <section
+      className={`catalog-layout-row catalog-layout-row--${row.columns_count}`}
+      style={{ ...rowStyle, "--catalog-row-columns": row.columns_count }}
+      data-layout-row={row.section_key}
+    >
+      {row.columns.map((column) => (
+        <div className="catalog-layout-column" key={column.column_key}>
+          {column.components.map((component) => component.section_type === "menu"
+            ? <CatalogMenuBlock key={component.section_key} section={component} {...blockProps} />
+            : <CatalogLayoutBlock key={component.section_key} section={component} {...blockProps} />)}
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function CatalogMenuBlock({ section, data, settings, theme, search, setSearch, recentSearches, setRecentSearches, favoriteIds, orderCount, onOpenFavorites, onOpenOrder }) {
+  const items = asArray(section.menu_items)
+    .map((item, index) => ({ ...asObject(item), _sourceIndex: index }))
+    .filter((item) => catalogIsActive(item.is_active))
+    .filter((item) => String(item.label || "").trim());
+  const logo = String(section.logo_url || theme.logo_url || "").trim();
+  const brand = String(section.brand_name || section.display_name || theme.brand_name || settings.company_display_name || data.brand_name || "Estúdio").trim();
+  const slogan = String(section.slogan || theme.slogan || data.slogan || "").trim();
+  const showSearch = catalogIsActive(section.show_search, true);
+  const showFavorites = catalogIsActive(section.show_favorites, Number(theme.show_favorites ?? 1) !== 0);
+  const showCart = catalogIsActive(section.show_cart, true);
+  const showBooking = catalogIsActive(section.show_booking, false);
+  const searchHistoryId = `catalog-builder-search-${String(section.section_key || "menu").replace(/[^a-z0-9_-]/gi, "-")}`;
+
+  return (
+    <header className={catalogSectionClass(section, "catalog-builder-menu")} style={catalogSectionStyle(section)}>
+      <div className="catalog-builder-menu__brand-and-links">
+        <a className="catalog-client-brand" href={catalogUrl()}>
+          {logo && <img src={catalogImageUrl(logo)} alt={brand} onError={useNeutralImageFallback} />}
+          <strong>{brand}</strong>
+          {slogan && <span>{slogan}</span>}
+        </a>
+        {items.length > 0 && <nav className="catalog-builder-menu__links" aria-label="Menu principal">
+          {items.map((item) => <a key={`${item.label}-${item._sourceIndex}`} {...catalogLinkProps(item.url, catalogUrl())}>{item.label}</a>)}
+        </nav>}
+      </div>
+      <div className="catalog-top-actions catalog-builder-menu__actions">
+        {showSearch && <label className="catalog-search catalog-builder-menu__search">
+          <Search size={17} />
+          <input
+            value={search}
+            list={searchHistoryId}
+            onChange={(event) => setSearch?.(event.target.value)}
+            onBlur={() => setRecentSearches?.(saveRecentSearch("aura-catalog-recent-searches", search))}
+            placeholder="Buscar no catálogo"
+          />
+          <datalist id={searchHistoryId}>
+            {asArray(recentSearches).map((item) => <option key={item} value={item} />)}
+          </datalist>
+        </label>}
+        {showBooking && <a className="catalog-icon-action" href={publicUrl("/agendar")}><Clock size={18} /> Agendar</a>}
+        {showFavorites && <button type="button" className="catalog-icon-action" onClick={onOpenFavorites} aria-label="Favoritos"><Heart size={18} /><span>{asArray(favoriteIds).length}</span></button>}
+        {showCart && <button type="button" className="catalog-icon-action primary-cart" onClick={onOpenOrder}><ShoppingCart size={19} /> Pedido <span>{Number(orderCount || 0)}</span></button>}
+      </div>
+    </header>
+  );
+}
 
 function catalogLayoutSections(sections) {
   const source = asArray(sections).length
