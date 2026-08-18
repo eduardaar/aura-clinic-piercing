@@ -843,8 +843,38 @@
    tela conta sobre si, melhor — ela não deve se anunciar a quem chegou por
    acaso. */
 .au-a-root.au-a-restricted {
+  position: relative;
   grid-template-columns: minmax(0, 1fr);
   place-items: center;
+}
+
+.au-a-root.au-a-restricted .au-a-restricted-back {
+  position: absolute;
+  z-index: 1;
+  top: max(20px, env(safe-area-inset-top));
+  left: max(20px, env(safe-area-inset-left));
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--white);
+  color: var(--brown-dark);
+  box-shadow: 0 8px 24px rgb(from var(--ink) r g b / .08);
+  text-decoration: none;
+  transition: border-color .16s ease, color .16s ease, box-shadow .16s ease;
+}
+
+.au-a-root.au-a-restricted .au-a-restricted-back:hover {
+  border-color: var(--gold-dark);
+  color: var(--gold-dark);
+  box-shadow: 0 10px 28px rgb(from var(--ink) r g b / .13);
+}
+
+.au-a-root.au-a-restricted .au-a-restricted-back:focus-visible {
+  outline: 2px solid var(--gold-dark);
+  outline-offset: 3px;
 }
 
 .au-a-root.au-a-restricted .au-a-panel {

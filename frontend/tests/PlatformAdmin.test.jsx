@@ -37,4 +37,11 @@ describe("navegação do painel da plataforma", () => {
     expect(screen.queryByText("Conteúdo Clínicas")).not.toBeInTheDocument();
     expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
   });
+
+  it("permite voltar do login restrito para a tela inicial", () => {
+    localStorage.removeItem("aura-platform-session");
+    render(<PlatformAdmin />);
+
+    expect(screen.getByRole("link", { name: "Voltar para a tela inicial" })).toHaveAttribute("href", "/");
+  });
 });

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ChevronRight, Eye, EyeOff, LogOut } from "lucide-react";
+import { ArrowLeft, ChevronRight, Eye, EyeOff, LogOut } from "lucide-react";
 import { Button, Input, Tabs } from "../../components/common/Ui";
 import { Modal } from "../../components/common/Crud";
 import { API } from "../../lib/api";
@@ -224,6 +224,9 @@ export function PlatformAdmin() {
   if (!token) {
     return (
       <main className="au-a-root au-a-restricted">
+        <a className="au-a-restricted-back" href="/" aria-label="Voltar para a tela inicial" title="Voltar para a tela inicial">
+          <ArrowLeft size={19} aria-hidden="true" />
+        </a>
         <section className="au-a-panel">
           <div className="au-a-inner">
             <header className="au-a-restricted-brand">
