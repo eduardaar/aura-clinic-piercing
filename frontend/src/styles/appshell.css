@@ -1110,6 +1110,61 @@
   background: var(--paper);
 }
 
+.dataview-applied-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--gold-soft) 32%, var(--white));
+}
+.dataview-applied-filters > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.dataview-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid var(--nude);
+  border-radius: 999px;
+  background: var(--white);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.dataview-filter-chip:hover { border-color: var(--nude-strong); }
+.dataview-filter-chip svg { color: var(--muted); }
+.dataview-filter-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.inventory-applied-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+}
+.inventory-applied-filters > span { color: var(--muted); font-size: 12px; font-weight: 600; }
+.inventory-applied-filters > button:not(.link-button) {
+  border: 1px solid var(--nude);
+  border-radius: 999px;
+  background: var(--white);
+  color: var(--ink);
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
 .dataview-filter { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .dataview-filter span {
   font-size: 11px;

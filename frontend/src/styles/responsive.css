@@ -102,6 +102,7 @@ select,
   .toolbar,
   .dataview-toolbar,
   .dataview-filters,
+  .dataview-applied-filters,
   .modal-actions {
     flex-wrap: wrap;
   }

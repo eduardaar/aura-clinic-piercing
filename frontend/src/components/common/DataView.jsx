@@ -17,6 +17,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Filter, Search, X } from "lucide-react";
 import { Select } from "./Ui";
+import { Modal } from "./Crud";
 
 const PAGE_SIZES = [10, 25, 50, 100];
 
@@ -227,6 +228,7 @@ export function DataView({
   const [pageState, setPageState] = useState(1);
   const [pageSizeState, setPageSizeState] = useState(defaultPageSize);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [draftFilters, setDraftFilters] = useState({});
 
   const search = searchProp !== undefined ? searchProp : searchState;
   const filterValues = filterValuesProp !== undefined ? filterValuesProp : filterState;
@@ -309,9 +311,26 @@ export function DataView({
     setSort(null);
   }
 
-  function clearAll() {
-    setSearch("");
+  function openFilters() {
+    setDraftFilters({ ...filterValues });
+    setFiltersOpen(true);
+  }
+
+  function applyFilters() {
+    setFilters(draftFilters);
+    setFiltersOpen(false);
+  }
+
+  function clearFilters() {
     setFilters({});
+    setFiltersOpen(false);
+  }
+
+  function filterLabel(key, value) {
+    const filter = filters.find((item) => item.key === key);
+    if (!filter) return String(value);
+    const option = (filter.options || []).find((item) => String(typeof item === "string" ? item : item.value) === String(value));
+    return String(typeof option === "string" ? option : option?.label || value);
   }
 
   const showToolbar = searchable || filters.length > 0 || toolbar;
@@ -343,9 +362,9 @@ export function DataView({
           {filters.length > 0 && (
             <button
               type="button"
-              className={`dataview-filter-toggle ${filtersOpen ? "open" : ""} ${activeFilters.length ? "has-filters" : ""}`}
-              onClick={() => setFiltersOpen((open) => !open)}
-              aria-expanded={filtersOpen}
+              className={`dataview-filter-toggle ${activeFilters.length ? "has-filters" : ""}`}
+              onClick={openFilters}
+              aria-haspopup="dialog"
             >
               <Filter size={15} />
               Filtros
@@ -357,43 +376,55 @@ export function DataView({
         </div>
       )}
 
-      {filters.length > 0 && filtersOpen && (
-        <div className="dataview-filters">
+      {activeFilters.length > 0 && (
+        <div className="dataview-applied-filters" aria-label="Filtros aplicados">
+          <span>Filtros aplicados:</span>
+          {activeFilters.map(([key, value]) => {
+            const filter = filters.find((item) => item.key === key);
+            return (
+              <button key={key} type="button" className="dataview-filter-chip" onClick={() => setFilters({ ...filterValues, [key]: "" })}>
+                <strong>{filter?.label || key}:</strong> {filterLabel(key, value)} <X size={13} aria-label={`Remover filtro ${filter?.label || key}`} />
+              </button>
+            );
+          })}
+          <button type="button" className="dataview-clear" onClick={clearFilters}>Limpar filtros</button>
+        </div>
+      )}
+
+      <Modal
+        open={filtersOpen}
+        title="Filtros"
+        subtitle="Escolha os filtros e aplique quando terminar."
+        size="md"
+        onClose={() => setFiltersOpen(false)}
+        footer={(
+          <>
+            <button type="button" className="secondary-button" onClick={() => setFiltersOpen(false)}>Cancelar</button>
+            <button type="button" className="secondary-button" onClick={() => setDraftFilters({})}>Limpar</button>
+            <button type="button" className="primary-button" onClick={applyFilters}>Aplicar filtros</button>
+          </>
+        )}
+      >
+        <div className="dataview-filter-modal-grid">
           {filters.map((filter) => (
             filter.type === "select" ? (
-              <Select
-                key={filter.key}
-                className="dataview-filter"
-                label={filter.label}
-                value={filterValues[filter.key] ?? ""}
-                onChange={(value) => setFilters({ ...filterValues, [filter.key]: value })}
-              >
-                  <option value="">Todos</option>
-                  {(filter.options || []).map((option) => {
-                    const value = typeof option === "string" ? option : option.value;
-                    const label = typeof option === "string" ? option : option.label;
-                    return <option key={value} value={value}>{label}</option>;
-                  })}
+              <Select key={filter.key} className="dataview-filter" label={filter.label} value={draftFilters[filter.key] ?? ""} onChange={(value) => setDraftFilters({ ...draftFilters, [filter.key]: value })}>
+                <option value="">Todos</option>
+                {(filter.options || []).map((option) => {
+                  const value = typeof option === "string" ? option : option.value;
+                  const label = typeof option === "string" ? option : option.label;
+                  return <option key={value} value={value}>{label}</option>;
+                })}
               </Select>
             ) : (
               <label key={filter.key} className="dataview-filter">
                 <span>{filter.label}</span>
-                <input
-                  type={filter.type === "date" ? "date" : "text"}
-                  value={filterValues[filter.key] ?? ""}
-                  placeholder={filter.placeholder || ""}
-                  onChange={(event) => setFilters({ ...filterValues, [filter.key]: event.target.value })}
-                />
+                <input type={filter.type === "date" ? "date" : "text"} value={draftFilters[filter.key] ?? ""} placeholder={filter.placeholder || ""} onChange={(event) => setDraftFilters({ ...draftFilters, [filter.key]: event.target.value })} />
               </label>
             )
           ))}
-          {hasQuery && (
-            <button type="button" className="dataview-clear" onClick={clearAll}>
-              Limpar filtros
-            </button>
-          )}
         </div>
-      )}
+      </Modal>
 
       {error ? (
         <div className="dataview-state dataview-error" role="alert">{error}</div>

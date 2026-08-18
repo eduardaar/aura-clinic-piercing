@@ -106,7 +106,8 @@ export function Inventory2({ initialTab = "produtos" }) {
   const [statusTab, setStatusTab] = useState("todos");
   const [badgeTab, setBadgeTab] = useState("todos");
   const [showEditor, setShowEditor] = useState(false);
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [filterModalOpen, setFilterModalOpen] = useState(false);
+  const [filterDraft, setFilterDraft] = useState({});
   const { data: options } = useFetch("/options");
   const { data: intelligence } = useFetch("/inventory/intelligence?days=90");
   const { data: inventorySuggestions } = useFetch("/inventory/suggestions");
@@ -158,6 +159,14 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
   asArray(item?.variants)
 );
   const variantOptions = (field) => [...new Set(allVariants.map((variant) => variant[field]).filter(Boolean))].sort();
+  const inventoryFilterLabels = {
+    category: "Categoria", status: "Status", material: "Material", color: "Observação de cor",
+    thread_type: "Tipo de rosca", thickness: "Espessura", length: "Comprimento", diameter: "Diâmetro", supplier: "Fornecedor"
+  };
+  const activeInventoryFilters = Object.entries(filters).filter(([key, value]) => key !== "search" && Boolean(value));
+  const openFilterModal = () => { setFilterDraft({ ...filters }); setFilterModalOpen(true); };
+  const applyInventoryFilters = () => { setFilters((current) => ({ ...current, ...filterDraft, search: current.search })); setFilterModalOpen(false); };
+  const clearInventoryFilters = () => setFilters((current) => ({ ...current, category: "", subcategory: "", material: "", color: "", size: "", thickness: "", length: "", diameter: "", thread_type: "", supplier: "", physical_location: "", status: "" }));
   const filteredItems = items.filter((item) => {
     if (inventoryMode === "virtual") {
       if (badgeTab === "todos") return true;
@@ -352,18 +361,8 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
                   <Search size={17} />
                   <input placeholder="Buscar joia, SKU ou variação..." value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} />
                 </label>
-                <Select label="Categoria" value={filters.category} onChange={(value) => setFilters({ ...filters, category: value })}>
-                  <option value="">Categoria</option>
-                  {catalogFilterOptions(allJewelry).categories.map((option) => <option key={option}>{option}</option>)}
-                </Select>
-                <Select label="Status" value={filters.status} onChange={(value) => setFilters({ ...filters, status: value })}>
-                  <option value="">Status</option>
-                  <option value="ativos">Ativos</option>
-                  <option value="critico">Crítico</option>
-                  <option value="esgotados">Esgotados</option>
-                </Select>
-                <button type="button" className={`advanced-filter-toggle ${showAdvancedFilters ? "active" : ""}`} onClick={() => setShowAdvancedFilters((value) => !value)}>
-                  <SlidersHorizontal size={17} /> Filtros Avançados
+                <button type="button" className={`advanced-filter-toggle ${activeInventoryFilters.length ? "active" : ""}`} onClick={openFilterModal} aria-haspopup="dialog">
+                  <SlidersHorizontal size={17} /> Filtros{activeInventoryFilters.length ? ` (${activeInventoryFilters.length})` : ""}
                 </button>
                 <div className="icon-toggle">
                   <button className={view === "cards" ? "active" : ""} onClick={() => setView("cards")} aria-label="Cards"><LayoutGrid size={18} /></button>
@@ -371,38 +370,15 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
                 </div>
               </div>
 
-              {showAdvancedFilters && (
-                <div className="inventory-advanced-filters">
-                  <Select label="Material" value={filters.material} onChange={(value) => setFilters({ ...filters, material: value })}>
-                    <option value="">Todos os Materiais</option>
-                    {variantOptions("material").map((option) => <option key={option}>{option}</option>)}
-                  </Select>
-                  <Select label="Observação de Cor" value={filters.color} onChange={(value) => setFilters({ ...filters, color: value })}>
-                    <option value="">Todas</option>
-                    {variantOptions("color").map((option) => <option key={option}>{option}</option>)}
-                  </Select>
-                  <Select label="Tipo de Rosca" value={filters.thread_type} onChange={(value) => setFilters({ ...filters, thread_type: value })}>
-                    <option value="">Todos</option>
-                    {variantOptions("thread_type").map((option) => <option key={option}>{option}</option>)}
-                  </Select>
-                  <Select label="Espessura" value={filters.thickness} onChange={(value) => setFilters({ ...filters, thickness: value })}>
-                    <option value="">Todas</option>
-                    {variantOptions("thickness").map((option) => <option key={option}>{option}</option>)}
-                  </Select>
-                  <Select label="Comprimento" value={filters.length} onChange={(value) => setFilters({ ...filters, length: value })}>
-                    <option value="">Todos</option>
-                    {variantOptions("length").map((option) => <option key={option}>{option}</option>)}
-                  </Select>
-                  <Select label="Diâmetro" value={filters.diameter} onChange={(value) => setFilters({ ...filters, diameter: value })}>
-                    <option value="">Todos</option>
-                    {variantOptions("diameter").map((option) => <option key={option}>{option}</option>)}
-                  </Select>
-                  <Select label="Fornecedor" value={filters.supplier} onChange={(value) => setFilters({ ...filters, supplier: value })}>
-                    <option value="">Todos</option>
-                    {variantOptions("supplier").map((option) => <option key={option}>{option}</option>)}
-                  </Select>
+              {activeInventoryFilters.length > 0 && <div className="inventory-applied-filters"><span>Filtros aplicados:</span>{activeInventoryFilters.map(([key, value]) => <button key={key} type="button" onClick={() => setFilters((current) => ({ ...current, [key]: "" }))}>{inventoryFilterLabels[key] || key}: {value} ×</button>)}<button type="button" className="link-button" onClick={clearInventoryFilters}>Limpar filtros</button></div>}
+
+              <Modal open={filterModalOpen} title="Filtros de produtos" subtitle="Escolha os filtros e aplique quando terminar." onClose={() => setFilterModalOpen(false)} footer={<><Button variant="secondary" onClick={() => setFilterModalOpen(false)}>Cancelar</Button><Button variant="secondary" onClick={() => setFilterDraft({})}>Limpar</Button><Button onClick={applyInventoryFilters}>Aplicar filtros</Button></>}>
+                <div className="form-grid">
+                  <Select label="Categoria" value={filterDraft.category ?? ""} onChange={(value) => setFilterDraft({ ...filterDraft, category: value })}><option value="">Todas</option>{catalogFilterOptions(allJewelry).categories.map((option) => <option key={option}>{option}</option>)}</Select>
+                  <Select label="Status" value={filterDraft.status ?? ""} onChange={(value) => setFilterDraft({ ...filterDraft, status: value })}><option value="">Todos</option><option value="ativos">Ativos</option><option value="critico">Crítico</option><option value="esgotados">Esgotados</option></Select>
+                  {[['material','Material'],['color','Observação de cor'],['thread_type','Tipo de rosca'],['thickness','Espessura'],['length','Comprimento'],['diameter','Diâmetro'],['supplier','Fornecedor']].map(([key, label]) => <Select key={key} label={label} value={filterDraft[key] ?? ""} onChange={(value) => setFilterDraft({ ...filterDraft, [key]: value })}><option value="">Todos</option>{variantOptions(key).map((option) => <option key={option}>{option}</option>)}</Select>)}
                 </div>
-              )}
+              </Modal>
 
               {!displayItems.length ? (
                 <div className="inventory-empty-state">

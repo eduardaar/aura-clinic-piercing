@@ -44,6 +44,12 @@ async function selecionar(user, campo, opcao) {
   await user.click(screen.getByRole("option", { name: opcao }));
 }
 
+async function aplicarFiltro(user, campo, opcao) {
+  await user.click(screen.getByRole("button", { name: /Filtros/ }));
+  await selecionar(user, campo, opcao);
+  await user.click(screen.getByRole("button", { name: "Aplicar filtros" }));
+}
+
 // ---------------------------------------------------------------- paginação
 
 describe("paginação", () => {
@@ -405,8 +411,7 @@ describe("filtros", () => {
     const user = userEvent.setup();
     render(<DataView columns={COLUNA_NOME} rows={linhas} filters={filtros} />);
 
-    await user.click(screen.getByRole("button", { name: /Filtros/ }));
-    await selecionar(user, "Situação", "Inativo");
+    await aplicarFiltro(user, "Situação", "Inativo");
 
     expect(celulasDaPrimeiraColuna()).toEqual(["Bruno"]);
   });
@@ -420,6 +425,7 @@ describe("filtros", () => {
 
     await user.click(alternar);
     await selecionar(user, "Situação", "Ativo");
+    await user.click(screen.getByRole("button", { name: "Aplicar filtros" }));
 
     expect(screen.getByRole("button", { name: /Filtros/ })).toHaveAccessibleName("Filtros 1");
   });
@@ -428,8 +434,7 @@ describe("filtros", () => {
     const user = userEvent.setup();
     render(<DataView columns={COLUNA_NOME} rows={linhas} filters={filtros} />);
 
-    await user.click(screen.getByRole("button", { name: /Filtros/ }));
-    await selecionar(user, "Situação", "Inativo");
+    await aplicarFiltro(user, "Situação", "Inativo");
     expect(celulasDaPrimeiraColuna()).toEqual(["Bruno"]);
 
     await user.click(screen.getByRole("button", { name: "Limpar filtros" }));
@@ -438,16 +443,16 @@ describe("filtros", () => {
     expect(screen.getByRole("button", { name: /Filtros/ })).toHaveAccessibleName("Filtros");
   });
 
-  test("'Limpar filtros' também zera a busca", async () => {
+  test("'Limpar filtros' preserva a busca", async () => {
     const user = userEvent.setup();
     render(<DataView columns={COLUNA_NOME} rows={linhas} filters={filtros} />);
 
     await user.type(screen.getByRole("searchbox"), "ana");
-    await user.click(screen.getByRole("button", { name: /Filtros/ }));
+    await aplicarFiltro(user, "Situação", "Inativo");
     await user.click(screen.getByRole("button", { name: "Limpar filtros" }));
 
-    expect(screen.getByRole("searchbox")).toHaveValue("");
-    expect(celulasDaPrimeiraColuna()).toHaveLength(3);
+    expect(screen.getByRole("searchbox")).toHaveValue("ana");
+    expect(celulasDaPrimeiraColuna()).toHaveLength(1);
   });
 
   test("sem match declarado, o filtro compara row[key] ignorando acento e caixa", async () => {
@@ -459,8 +464,7 @@ describe("filtros", () => {
     ];
     render(<DataView columns={COLUNA_NOME} rows={cadastros} filters={filtroSimples} />);
 
-    await user.click(screen.getByRole("button", { name: /Filtros/ }));
-    await selecionar(user, "Situação", "Ativo");
+    await aplicarFiltro(user, "Situação", "Ativo");
 
     expect(celulasDaPrimeiraColuna()).toEqual(["Ana"]);
   });
@@ -474,8 +478,7 @@ describe("filtros", () => {
     await user.click(botaoProxima());
     expect(screen.getByText("3 / 3")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /Filtros/ }));
-    await selecionar(user, "Situação", "Ativo");
+    await aplicarFiltro(user, "Situação", "Ativo");
 
     expect(screen.getByText("1 / 2")).toBeInTheDocument();
     expect(screen.getByText("1–10 de 15")).toBeInTheDocument();
@@ -559,8 +562,7 @@ describe("estados de carregando, erro e vazio", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /Filtros/ }));
-    await selecionar(user, "Situação", "inativo");
+    await aplicarFiltro(user, "Situação", "inativo");
 
     expect(screen.getByText("Nenhum cliente corresponde aos filtros.")).toBeInTheDocument();
     expect(screen.queryByText("Nenhum cliente cadastrado.")).not.toBeInTheDocument();
@@ -708,8 +710,7 @@ describe("modo server", () => {
 
     expect(celulasDaPrimeiraColuna()).toHaveLength(3);
 
-    await user.click(screen.getByRole("button", { name: /Filtros/ }));
-    await selecionar(user, "Situação", "Todos");
+    await aplicarFiltro(user, "Situação", "Todos");
 
     expect(onFilterChange).toHaveBeenCalledWith({ status: "" });
   });
