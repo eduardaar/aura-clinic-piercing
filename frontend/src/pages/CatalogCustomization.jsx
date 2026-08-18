@@ -476,7 +476,6 @@ export function CatalogCustomization() {
                       <option value="gem">diamante</option><option value="heart">coração</option><option value="star">estrela</option><option value="sparkles">brilho</option><option value="shield">escudo</option>
                     </Select>
                     <Input type="number" label="Ordem" value={category.sort_order} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { sort_order: value }))} />
-                    <Input type="number" label="Quantidade de produtos" value={category.product_limit || 12} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { product_limit: value }))} />
                     <Select label="Exibição" value={category.display_mode || "grid"} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { display_mode: value }))}><option value="grid">Grade</option><option value="carousel">Carrossel</option><option value="list">Lista</option></Select>
                     <Input type="color" label="Cor" value={category.color || "#C8A96A"} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { color: value }))} />
                     <Toggle label="Ativa" checked={category.is_active} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { is_active: value }))} />
@@ -928,8 +927,6 @@ function CatalogLayoutBuilder({ form, setForm }) {
               <Select label="Exibição" value={section.display_mode} onChange={(value) => update(index, { display_mode: value })}><option value="grid">Grade</option><option value="carousel">Carrossel</option><option value="list">Lista</option></Select>
               <Select label="Largura" value={section.width_mode} onChange={(value) => update(index, { width_mode: value })}><option value="contained">Limitada</option><option value="full">Total</option></Select>
               <Select label="Alinhamento" value={section.alignment} onChange={(value) => update(index, { alignment: value })}><option value="left">Esquerda</option><option value="center">Centro</option><option value="right">Direita</option></Select>
-              <Input type="number" label="Colunas" value={section.columns_count} onChange={(value) => update(index, { columns_count: value })} />
-              <Input type="number" label="Quantidade de itens" value={section.item_limit} onChange={(value) => update(index, { item_limit: value })} />
               <Input type="number" label="Espaçamento" value={section.spacing} onChange={(value) => update(index, { spacing: value })} />
               <Input label="Fundo" value={section.background} onChange={(value) => update(index, { background: value })} />
               <Select label="Ordenação" value={section.product_sort} onChange={(value) => update(index, { product_sort: value })}><option value="recent">Recentes</option><option value="best_sellers">Mais vendidos</option><option value="price_asc">Menor preço</option><option value="price_desc">Maior preço</option><option value="stock">Estoque</option><option value="manual">Manual</option></Select>
@@ -1540,7 +1537,7 @@ function defaultCatalogBanner(order) {
 }
 
 function defaultFeaturedCategory(order) {
-  return { category_id: "", public_name: "Nova categoria", icon: "gem", image_url: "", banner_url: "", description: "", display_mode: "grid", product_limit: 12, color: "#C8A96A", is_featured: false, is_active: true, sort_order: order };
+  return { category_id: "", public_name: "Nova categoria", icon: "gem", image_url: "", banner_url: "", description: "", display_mode: "grid", color: "#C8A96A", is_featured: false, is_active: true, sort_order: order };
 }
 
 function defaultFeaturedProduct() {
@@ -1725,8 +1722,8 @@ function defaultCatalogSection(sectionType, order) {
   const label = CATALOG_SECTION_TYPES.find(([value]) => value === sectionType)?.[1] || "Seção";
   return {
     section_key: `${sectionType}-${order}`, section_type: sectionType, title: label, subtitle: "", is_active: true,
-    sort_order: order, alignment: "left", background: "", spacing: 24, item_limit: 8, display_mode: "grid",
-    width_mode: "contained", height: "", columns_count: 4, image_ratio: "1:1", card_size: "medium",
+    sort_order: order, alignment: "left", background: "", spacing: 24, display_mode: "grid",
+    width_mode: "contained", height: "", image_ratio: "1:1", card_size: "medium",
     product_sort: sectionType === "best_sellers" ? "best_sellers" : "recent", category_filter: ""
   };
 }

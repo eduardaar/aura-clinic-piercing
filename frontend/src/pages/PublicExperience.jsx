@@ -274,9 +274,9 @@ export function PublicCatalog() {
   });
   const items = [...filteredItems].sort((a, b) => sort === "menor-preco" ? a.sale_value - b.sale_value : sort === "maior-preco" ? b.sale_value - a.sale_value : sort === "nome-az" ? a.name.localeCompare(b.name) : sort === "nome-za" ? b.name.localeCompare(a.name) : sort === "estoque" ? Number(b.quantity) - Number(a.quantity) : b.id - a.id);
   const options = catalogFilterOptions(publishedItems);
-  const latestItems = publishedItems.filter((item) => Number(item.quantity || 0) > 0).sort((a, b) => b.id - a.id).slice(0, 8);
-  const bestSellerItems = publishedItems.filter((item) => Number(item.quantity || 0) > 0).sort((a, b) => Number(b.sale_value || 0) - Number(a.sale_value || 0)).slice(0, 8);
-  const promoItems = publishedItems.filter((item) => catalogPromotionForItem(item, asArray(safeData.promotions))).slice(0, 8);
+  const latestItems = publishedItems.filter((item) => Number(item.quantity || 0) > 0).sort((a, b) => b.id - a.id);
+  const bestSellerItems = publishedItems.filter((item) => Number(item.quantity || 0) > 0).sort((a, b) => Number(b.sale_value || 0) - Number(a.sale_value || 0));
+  const promoItems = publishedItems.filter((item) => catalogPromotionForItem(item, asArray(safeData.promotions)));
   const safeFavoriteIds = asArray(favoriteIds);
   const safeOrderItems = asArray(orderItems);
   const favoriteItems = publishedItems.filter((item) => safeFavoriteIds.includes(item.id));
@@ -519,8 +519,7 @@ function catalogSectionStyle(section = {}) {
     backgroundColor: safeCatalogColor(section.background) || undefined,
     padding: `${spacing}px`,
     minHeight: height ? `${height}px` : undefined,
-    textAlign: alignment,
-    "--catalog-section-columns": Math.min(6, Math.max(1, Number(section.columns_count || 4)))
+    textAlign: alignment
   };
 }
 
@@ -530,10 +529,6 @@ function catalogSectionTitle(section, fallback) {
 
 function catalogSectionSubtitle(section, fallback = "") {
   return String(section.subtitle || fallback || "").trim();
-}
-
-function catalogSectionLimit(section, fallback = 8) {
-  return Math.min(48, Math.max(1, Number(section.item_limit || fallback)));
 }
 
 function catalogSectionProducts(section, source, { category = "", forceSort = "" } = {}) {
@@ -551,7 +546,7 @@ function catalogSectionProducts(section, source, { category = "", forceSort = ""
           : productSort === "recent" ? (left, right) => Number(right.id || 0) - Number(left.id || 0)
             : null;
   if (compare) items.sort(compare);
-  return items.slice(0, catalogSectionLimit(section));
+  return items;
 }
 
 function CatalogLayoutBlock({
@@ -605,8 +600,11 @@ function CatalogLayoutBlock({
         setSort={setSort}
       />;
     case "featured_products": {
-      const productSource = configuredFeatured.length || section.category_filter ? (configuredFeatured.length ? configuredFeatured : publishedItems) : items;
-      return <CatalogProductsBlock section={section} style={style} className={className("catalog-results")} productsRef={productsRef} items={catalogSectionProducts(section, productSource)} activeCategory={activeCategory} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={onToggleFavorite} onAdd={onAdd} />;
+      // Ao escolher uma categoria, a vitrine deixa de ser uma seleção curada e
+      // exibe todos os produtos que passaram pelos filtros públicos.
+      const hasCategorySelection = activeCategory && activeCategory !== "Todos";
+      const productSource = section.category_filter ? publishedItems : (hasCategorySelection ? items : (configuredFeatured.length ? configuredFeatured : items));
+      return <CatalogProductsBlock section={section} style={style} className={className("catalog-results")} productsRef={productsRef} items={catalogSectionProducts(section, productSource, { category: hasCategorySelection ? activeCategory : "" })} activeCategory={activeCategory} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={onToggleFavorite} onAdd={onAdd} />;
     }
     case "best_sellers":
       return rail("Mais desejadas", "Peças premium em destaque para composições especiais.", bestSellerItems, { forceSort: "best_sellers" });
@@ -711,7 +709,7 @@ function CatalogSecondaryBanners({ banners, section, style, className }) {
     <section className={className} style={style}>
       <div className="catalog-section-heading"><span className="eyebrow">{catalogSectionSubtitle(section, "Destaques")}</span><h2>{catalogSectionTitle(section, "Destaques")}</h2></div>
       <div className={`catalog-secondary-banners__grid catalog-display-${section.display_mode || "grid"}`}>
-        {secondary.slice(0, catalogSectionLimit(section)).map((banner) => (
+        {secondary.map((banner) => (
           <article key={banner.id || banner.banner_id || banner.sort_order || banner.image_url || banner.title}>
             {banner.image_url && <img src={catalogImageUrl(banner.image_url)} alt={banner.alt_text || banner.title || "Destaque"} loading="lazy" onError={useNeutralImageFallback} />}
             <div>{banner.title && <h3>{banner.title}</h3>}{banner.subtitle && <p>{banner.subtitle}</p>}{banner.button_text && <a className="secondary-button" {...catalogLinkProps(banner.button_link)}>{banner.button_text}</a>}</div>
@@ -731,7 +729,7 @@ function CatalogBookingDirectory({ kind, section, style, className }) {
     <section className={className} style={style}>
       <div className="catalog-section-heading"><span className="eyebrow">Agenda online</span><h2>{title}</h2>{catalogSectionSubtitle(section) && <p>{catalogSectionSubtitle(section)}</p>}</div>
       <div className={`catalog-directory-grid catalog-display-${section.display_mode || "grid"}`}>
-        {rows.slice(0, catalogSectionLimit(section)).map((row) => (
+        {rows.map((row) => (
           <article key={row.id || row.name}><i>{kind === "services" ? <Sparkles size={21} /> : <Star size={21} />}</i><strong>{row.name}</strong>{row.description && <p>{row.description}</p>}</article>
         ))}
       </div>

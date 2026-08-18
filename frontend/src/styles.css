@@ -11809,3 +11809,11 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--gold); width: 
   .communication-credit-balance,
   .communication-topups { grid-template-columns: 1fr; }
 }
+
+/* Grade pública: sem quantidade/colunas manuais. As faixas se adaptam ao
+   espaço disponível e centralizam a última linha sem esticar os cards. */
+.catalog-grid,
+.catalog-product-rail.catalog-display-grid > div {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 280px));
+  justify-content: center;
+}

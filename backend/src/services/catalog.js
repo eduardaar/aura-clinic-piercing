@@ -223,11 +223,9 @@ function normalizeSection(section, index) {
     alignment: String(next.alignment || "left"),
     background: String(next.background || ""),
     spacing: Number(next.spacing ?? 24),
-    item_limit: Number(next.item_limit ?? 8),
     display_mode: String(next.display_mode || "grid"),
     width_mode: String(next.width_mode || "contained"),
     height: next.height === "" || next.height === undefined ? null : Number(next.height),
-    columns_count: Number(next.columns_count ?? 4),
     image_ratio: String(next.image_ratio || "1:1"),
     card_size: String(next.card_size || "medium"),
     product_sort: String(next.product_sort || "recent"),
@@ -248,9 +246,11 @@ function normalizeSnapshot(snapshot, base = {}) {
     banners: Array.isArray(source.banners)
       ? source.banners.map(normalizeBanner)
       : jsonArray(previous.banners).map(normalizeBanner),
-    featuredCategories: Array.isArray(source.featuredCategories)
-      ? source.featuredCategories.map((item, index) => ({ ...omitSystemFields(item), is_active: boolNumber(item?.is_active ?? 1), is_featured: boolNumber(item?.is_featured ?? 0), sort_order: Number(item?.sort_order ?? index + 1) }))
-      : jsonArray(previous.featuredCategories).map((item, index) => ({ ...omitSystemFields(item), is_active: boolNumber(item?.is_active ?? 1), is_featured: boolNumber(item?.is_featured ?? 0), sort_order: Number(item?.sort_order ?? index + 1) })),
+    featuredCategories: (Array.isArray(source.featuredCategories) ? source.featuredCategories : jsonArray(previous.featuredCategories))
+      .map((item, index) => {
+        const { product_limit: _productLimit, ...category } = omitSystemFields(item);
+        return { ...category, is_active: boolNumber(item?.is_active ?? 1), is_featured: boolNumber(item?.is_featured ?? 0), sort_order: Number(item?.sort_order ?? index + 1) };
+      }),
     featuredProducts: Array.isArray(source.featuredProducts)
       ? source.featuredProducts.map((item, index) => ({ ...omitSystemFields(item), product_id: Number(item?.product_id || 0), badge: String(item?.badge || ""), is_active: boolNumber(item?.is_active ?? 1), sort_order: Number(item?.sort_order ?? index + 1) })).filter((item) => item.product_id > 0)
       : jsonArray(previous.featuredProducts).map((item, index) => ({ ...omitSystemFields(item), product_id: Number(item?.product_id || 0), badge: String(item?.badge || ""), is_active: boolNumber(item?.is_active ?? 1), sort_order: Number(item?.sort_order ?? index + 1) })).filter((item) => item.product_id > 0),
