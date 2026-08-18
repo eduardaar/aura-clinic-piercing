@@ -2909,6 +2909,15 @@ small {
   font-size: 12px;
   line-height: 1.25;
   overflow: hidden;
+  cursor: pointer;
+  transition: transform .16s ease, box-shadow .16s ease;
+}
+
+.calendar-event:hover,
+.calendar-event:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgb(from var(--ink) r g b / .14);
+  outline: none;
 }
 
 .calendar-event strong,
@@ -3684,6 +3693,17 @@ small {
   background: var(--white);
 }
 
+.customization-card-subtitle { margin: 4px 0 0; color: var(--muted); font-size: .88rem; font-weight: 500; }
+.catalog-config-list { gap: 9px; }
+.catalog-config-item { border: 1px solid rgb(from var(--nude) r g b / .5); border-radius: 12px; background: var(--white); overflow: hidden; }
+.catalog-config-item-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 60px; padding: 11px 14px; }
+.catalog-config-item-summary > span { display: grid; gap: 2px; min-width: 0; }
+.catalog-config-item-summary strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.catalog-config-item-summary small { color: var(--muted); }
+.catalog-config-item-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 7px; }
+.catalog-config-item-actions .button { min-height: 34px; }
+.catalog-config-item-content { display: grid; gap: 12px; padding: 14px; }
+
 .catalog-builder-toolbar {
   display: flex;
   align-items: flex-start;
@@ -3701,6 +3721,9 @@ small {
 .catalog-layout-card {
   transition: opacity .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease;
 }
+
+.catalog-layout-list .catalog-layout-card { padding: 0; border: 0; background: transparent; gap: 0; }
+.catalog-layout-list .catalog-layout-card.is-drop-target .catalog-config-item { border-color: var(--gold); box-shadow: 0 0 0 3px rgb(from var(--gold) r g b / .18); }
 
 .catalog-layout-card.is-dragging {
   opacity: .48;
@@ -3882,6 +3905,8 @@ small {
   .catalog-media-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .catalog-layout-card { touch-action: pan-y; }
   .catalog-drag-handle { display: none; }
+  .catalog-config-item-summary { align-items: flex-start; flex-direction: column; }
+  .catalog-config-item-actions { width: 100%; justify-content: flex-start; }
 
   .toggle-grid {
     grid-template-columns: 1fr;
@@ -9833,6 +9858,9 @@ body {
 .modal-card.modal-lg:has(.catalog-live-preview.preview-modal) { width: min(1280px, calc(100vw - 32px)); }
 .modal-card:has(.catalog-live-preview.preview-modal) .modal-body { padding: 0; overflow: hidden; }
 .catalog-live-preview.preview-modal .preview-storefront { height: min(72vh, 760px); }
+.modal-card.modal-lg:has(.catalog-live-preview.preview-modal) { width: min(1440px, calc(100vw - 24px)); max-width: min(1440px, calc(100vw - 24px)); }
+.catalog-live-preview.preview-modal.preview-desktop .preview-storefront { --preview-canvas-width: 100%; --preview-scale: 1; height: min(78vh, 820px); }
+.catalog-live-preview.preview-modal.preview-desktop .preview-storefront iframe { width: 100%; height: 100%; transform: none; }
 
 @media (max-width: 620px) {
   .catalog-template-grid {
@@ -10767,6 +10795,15 @@ body,
 }
 .modal-card.modal-sm { width: min(460px, 100%); }
 .modal-card.modal-lg { width: min(920px, 100%); }
+
+/* Detalhes do agendamento concentram dados clínicos, financeiros e itens em uma
+   única leitura. Mantém o rodapé fixo do modal e dá espaço real ao conteúdo
+   rolável em telas largas. */
+.modal-card.modal-lg:has(.appointment-details-content) {
+  width: min(1120px, calc(100vw - 32px));
+  max-width: min(1120px, calc(100vw - 32px));
+}
+.appointment-details-content { min-width: 0; }
 
 .modal-header {
   display: flex;

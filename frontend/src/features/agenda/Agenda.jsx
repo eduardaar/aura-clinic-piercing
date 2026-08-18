@@ -1,6 +1,6 @@
 ﻿// Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ChevronLeft, ChevronRight, Copy, ExternalLink, List, Plus, Settings2 } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Copy, ExternalLink, Plus, Settings2 } from "lucide-react";
 import { Accordion, Button, Checkbox, FinancialSummary, Input, PaymentSelect, Select, StatusBadge, StatusSelect, Switch, Tabs, Textarea } from "../../components/common/Ui";
 import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
@@ -9,7 +9,7 @@ import { asArray, asNumber, asObject, formatDate } from "../../lib/utils";
 import { apiFetch, readStoredSession, tenantSlug, useApiInvalidate, useFetch } from "../../lib/api";
 import { buildCalendar, buildTimeSlots, dateKey, movePeriod } from "../../lib/calendarUtils";
 import { defaultAppointment, defaultProcedureForm, defaultProfessionalForm, defaultScheduleBlock, defaultServiceForm } from "../../lib/defaultForms";
-import { appointmentWhatsAppMessage, calcRemaining, currency, personName, statusClass, statuses, weekdayLabel, whatsappUrl } from "../../features/shared/helpers";
+import { appointmentWhatsAppMessage, calcRemaining, currency, personName, statusClass, weekdayLabel, whatsappUrl } from "../../features/shared/helpers";
 import { SmartCombobox } from "../../components/common/SmartCombobox";
 import { publicLinkForTenant } from "../../lib/publicRoutes";
 import "../../styles/agenda-admin-responsive.css";
@@ -32,6 +32,7 @@ const APPOINTMENT_STATUS_OPTIONS = [
   { value: "confirmado", label: "Confirmado" },
   { value: "atendido", label: "Atendido" },
   { value: "cancelado", label: "Cancelado" },
+  { value: "remarcado", label: "Remarcado" },
   { value: "recusado", label: "Recusado" }
 ];
 
@@ -529,7 +530,7 @@ export function VisualCalendar({ onOpenSettings }) {
       </div>
       <div className="toolbar">
         <div className="segmented">
-          {[["mensal", "Mensal"], ["semanal", "Semanal"], ["diario", "Diário"], ["lista", "Lista"]].map(([mode, label]) => <button key={mode} className={filters.mode === mode ? "active" : ""} onClick={() => setFilters({ ...filters, mode })}>{mode === "lista" && <List size={15} />}{label}</button>)}
+          {[["mensal", "Mensal"], ["semanal", "Semanal"], ["diario", "Diário"], ["lista", "Lista"]].map(([mode, label]) => <button key={mode} className={filters.mode === mode ? "active" : ""} onClick={() => setFilters({ ...filters, mode })}>{label}</button>)}
         </div>
         <Select label="Profissional" value={filters.professional_id} onChange={(v) => setFilters({ ...filters, professional_id: v })}>
           <option value="">Todos</option>
@@ -537,7 +538,7 @@ export function VisualCalendar({ onOpenSettings }) {
         </Select>
         <Select label="Status" value={filters.status} onChange={(v) => setFilters({ ...filters, status: v })}>
           <option value="">Todos</option>
-          {statuses().map((status) => <option key={status}>{status}</option>)}
+          {APPOINTMENT_STATUS_OPTIONS.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
         </Select>
         {calendar && <div className="calendar-nav">
           <button aria-label="Período anterior" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, -1))}><ChevronLeft size={18} /></button>
@@ -639,9 +640,14 @@ export function CalendarEvent({ item, refresh, onSelect }) {
       <span>{item.procedure}</span>
       <small>{item.professional_name}</small>
       <div className="event-actions" onClick={(event) => event.stopPropagation()}>
-        <button onClick={() => updateAppointment(item.id, { status: "remarcado" }, refresh)}>Remarcar</button>
-        <button onClick={() => updateAppointment(item.id, { status: "cancelado" }, refresh)}>Cancelar</button>
-        <button onClick={() => onSelect?.(item)}>Revisar e finalizar</button>
+        <RowActions
+          menuOnly
+          actions={[
+            { label: "Remarcar", onClick: () => updateAppointment(item.id, { status: "remarcado" }, refresh) },
+            { label: "Cancelar", danger: true, onClick: () => updateAppointment(item.id, { status: "cancelado" }, refresh) },
+            { label: "Revisar e finalizar", onClick: () => onSelect?.(item) }
+          ]}
+        />
       </div>
     </div>
   );
@@ -857,7 +863,7 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
       open={!!appointment}
       title="Detalhes do Agendamento"
       subtitle={appointment ? `${personName(appointment)} · ${appointment.procedure || "Atendimento"}` : ""}
-      size="md"
+      size="lg"
       onClose={onClose}
       footer={(
         <>
@@ -867,7 +873,7 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
       )}
     >
       {appointment && (
-        <div className="stack">
+        <div className="stack appointment-details-content">
           <div className="soft-card">
             <strong>{personName(appointment)}</strong>
             <p>{appointment.whatsapp || "WhatsApp não informado"}</p>

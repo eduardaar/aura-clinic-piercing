@@ -139,6 +139,7 @@ export function CatalogCustomization() {
   const [publishChecklist, setPublishChecklist] = useState(null);
   const [checkingPublication, setCheckingPublication] = useState(false);
   const [utilitiesOpen, setUtilitiesOpen] = useState(false);
+  const [catalogDelete, setCatalogDelete] = useState(null);
   const formRef = useRef(form);
   const undoRef = useRef([]);
   const redoRef = useRef([]);
@@ -230,7 +231,7 @@ export function CatalogCustomization() {
     ...new Set(products.map((item) => item.category).filter(Boolean))
   ].filter((value, index, arr) => value && arr.indexOf(value) === index);
 
-  async function save(path = "/catalog-customization", success = "Alterações salvas.") {
+  async function save(path = "/catalog-customization", success = "Rascunho salvo. Ainda não está público.") {
     setError("");
     setMessage("");
     const payload = path.includes("reset")
@@ -293,11 +294,12 @@ export function CatalogCustomization() {
         <header className="customization-header">
           <div>
             <h2>Catálogo</h2>
-            <p>Personalize sua vitrine e publique quando estiver pronta.</p>
+            <p>Edite, salve o rascunho para não perder alterações e publique apenas quando quiser atualizar a vitrine pública.</p>
           </div>
           <div className="catalog-header-actions">
-            <Button variant="secondary" onClick={() => setPreviewOpen(true)}>Abrir prévia</Button>
-            <Button onClick={() => save("/catalog-customization/publish", "Catálogo publicado.")}>Publicar</Button>
+            <Button variant="secondary" onClick={() => { setPreviewDevice("desktop"); setPreviewOpen(true); }}>Abrir prévia</Button>
+            <Button variant="secondary" onClick={() => save()}>Salvar alterações</Button>
+            <Button onClick={() => save("/catalog-customization/publish", "Catálogo publicado.")}>Publicar catálogo</Button>
             <Button variant="secondary" onClick={() => setUtilitiesOpen((open) => !open)} aria-expanded={utilitiesOpen}>Mais opções</Button>
           </div>
         </header>
@@ -413,7 +415,7 @@ export function CatalogCustomization() {
                   <Input type="number" label="Ordem" value={banner.sort_order} onChange={(value) => setForm(updateList(form, "banners", index, { sort_order: value }))} />
                   <Toggle label="Banner ativo" checked={banner.is_active} onChange={(value) => setForm(updateList(form, "banners", index, { is_active: value }))} />
                 </div>
-                  <button type="button" className="danger-link" onClick={() => setForm(removeListItem(form, "banners", index))}>Remover banner</button>
+                  <button type="button" className="danger-link" onClick={() => setCatalogDelete({ message: `Excluir o banner ${Number(banner.sort_order || index + 1)}?`, run: () => setForm(removeListItem(form, "banners", index)) })}>Excluir banner</button>
                 </article>
               ))}
             </div>
@@ -421,17 +423,17 @@ export function CatalogCustomization() {
         )}
 
         {activeSection === "componentes" && (
-          <CustomizationCard title="Componentes do catálogo" action={<button type="button" onClick={() => setForm({ ...form, contentSections: [...form.contentSections, defaultContentSection(form.contentSections.length + 1)] })}>Novo componente</button>}>
-            <div className="custom-list">
+          <CustomizationCard title="Componentes do catálogo" subtitle="Use Detalhar para editar. As ações de ordem e exclusão ficam sempre visíveis." action={<button type="button" onClick={() => setForm({ ...form, contentSections: [...form.contentSections, defaultContentSection(form.contentSections.length + 1)] })}>Novo componente</button>}>
+            <div className="custom-list catalog-config-list">
               {form.contentSections.map((section, index) => (
-                <article key={index}>
-                  <div className="custom-item-toolbar">
-                    <strong>Componente {Number(section.order || index + 1)}</strong>
-                    <span>
-                      <button type="button" onClick={() => setForm({ ...form, contentSections: moveListItem(form.contentSections, index, -1) })}>Subir</button>
-                      <button type="button" onClick={() => setForm({ ...form, contentSections: moveListItem(form.contentSections, index, 1) })}>Descer</button>
-                    </span>
-                  </div>
+                <CatalogConfigItem
+                  key={index}
+                  title={section.title || `Componente ${Number(section.order || index + 1)}`}
+                  meta={`Componente ${Number(section.order || index + 1)} · ${section.active ? "Ativo" : "Oculto"}`}
+                  actions={<><Button variant="secondary" disabled={!index} onClick={() => setForm({ ...form, contentSections: moveListItem(form.contentSections, index, -1) })}>Subir</Button><Button variant="secondary" disabled={index === form.contentSections.length - 1} onClick={() => setForm({ ...form, contentSections: moveListItem(form.contentSections, index, 1) })}>Descer</Button><Button variant="secondary" onClick={() => setForm(duplicateListItem(form, "contentSections", index, "order", { title: `${section.title || "Componente"} (cópia)` }))}>Duplicar</Button></>}
+                  onDelete={() => setForm(removeListItem(form, "contentSections", index))}
+                  deleteLabel="Excluir componente"
+                >
                   <div className="form-grid">
                     <Input label="Etiqueta" value={section.kicker} onChange={(value) => setForm(updateList(form, "contentSections", index, { kicker: value }))} />
                     <Input label="Título" value={section.title} onChange={(value) => setForm(updateList(form, "contentSections", index, { title: value }))} />
@@ -450,22 +452,24 @@ export function CatalogCustomization() {
                   </div> : null}
                   <Textarea label="Texto" value={section.text} onChange={(text) => setForm(updateList(form, "contentSections", index, { text }))} />
                   <Toggle label="Componente ativo" checked={section.active} onChange={(value) => setForm(updateList(form, "contentSections", index, { active: value }))} />
-                  <button type="button" className="danger-link" onClick={() => setForm(removeListItem(form, "contentSections", index))}>Remover componente</button>
-                </article>
+                </CatalogConfigItem>
               ))}
             </div>
           </CustomizationCard>
         )}
 
         {activeSection === "categorias" && (
-          <CustomizationCard title="Categorias em destaque" action={<button type="button" onClick={() => setForm({ ...form, featuredCategories: [...form.featuredCategories, defaultFeaturedCategory(form.featuredCategories.length + 1)] })}>Nova categoria</button>}>
-            <div className="custom-list">
+          <CustomizationCard title="Categorias em destaque" subtitle="Use Detalhar para editar. As ações de ordem e exclusão ficam sempre visíveis." action={<button type="button" onClick={() => setForm({ ...form, featuredCategories: [...form.featuredCategories, defaultFeaturedCategory(form.featuredCategories.length + 1)] })}>Nova categoria</button>}>
+            <div className="custom-list catalog-config-list">
               {form.featuredCategories.map((category, index) => (
-                <article key={index}>
-                  <div className="customization-actions">
-                    <button type="button" disabled={!index} onClick={() => setForm({ ...form, featuredCategories: moveListItem(form.featuredCategories, index, -1) })}>Subir</button>
-                    <button type="button" disabled={index === form.featuredCategories.length - 1} onClick={() => setForm({ ...form, featuredCategories: moveListItem(form.featuredCategories, index, 1) })}>Descer</button>
-                  </div>
+                <CatalogConfigItem
+                  key={index}
+                  title={category.public_name || category.category_id || `Categoria ${index + 1}`}
+                  meta={`${category.is_active ? "Ativa" : "Oculta"} · posição ${Number(category.sort_order || index + 1)}`}
+                  actions={<><Button variant="secondary" disabled={!index} onClick={() => setForm({ ...form, featuredCategories: moveListItem(form.featuredCategories, index, -1) })}>Subir</Button><Button variant="secondary" disabled={index === form.featuredCategories.length - 1} onClick={() => setForm({ ...form, featuredCategories: moveListItem(form.featuredCategories, index, 1) })}>Descer</Button><Button variant="secondary" onClick={() => setForm(duplicateListItem(form, "featuredCategories", index, "sort_order", { public_name: `${category.public_name || category.category_id || "Categoria"} (cópia)` }))}>Duplicar</Button></>}
+                  onDelete={() => setForm(removeListItem(form, "featuredCategories", index))}
+                  deleteLabel="Excluir categoria"
+                >
                   <div className="form-grid">
                     <Select label="Categoria do estoque" value={category.category_id} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { category_id: value }))}>
                       <option value="">Selecione</option>
@@ -484,8 +488,7 @@ export function CatalogCustomization() {
                   <Textarea label="Descrição" value={category.description || ""} onChange={(description) => setForm(updateList(form, "featuredCategories", index, { description }))} />
                   <ImageUploadField label="Imagem da categoria" value={category.image_url} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { image_url: value }))} />
                   <ImageUploadField label="Banner da categoria" value={category.banner_url} onChange={(value) => setForm(updateList(form, "featuredCategories", index, { banner_url: value }))} />
-                  <button type="button" className="danger-link" onClick={() => setForm(removeListItem(form, "featuredCategories", index))}>Remover categoria</button>
-                </article>
+                </CatalogConfigItem>
               ))}
             </div>
           </CustomizationCard>
@@ -504,7 +507,7 @@ export function CatalogCustomization() {
                     <Input type="number" label="Ordem" value={product.sort_order} onChange={(value) => setForm(updateList(form, "featuredProducts", index, { sort_order: value }))} />
                     <Toggle label="Ativo no catálogo" checked={product.is_active} onChange={(value) => setForm(updateList(form, "featuredProducts", index, { is_active: value }))} />
                   </div>
-                  <button type="button" className="danger-link" onClick={() => setForm(removeListItem(form, "featuredProducts", index))}>Remover produto</button>
+                  <button type="button" className="danger-link" onClick={() => setCatalogDelete({ message: "Excluir este produto em destaque do rascunho?", run: () => setForm(removeListItem(form, "featuredProducts", index)) })}>Excluir produto</button>
                 </article>
               ))}
             </div>
@@ -531,7 +534,7 @@ export function CatalogCustomization() {
                     <Input label="Categorias" value={promotion.category_ids} onChange={(value) => setForm(updateList(form, "promotions", index, { category_ids: value }))} />
                     <Toggle label="Promoção ativa" checked={promotion.is_active} onChange={(value) => setForm(updateList(form, "promotions", index, { is_active: value }))} />
                   </div>
-                  <button type="button" className="danger-link" onClick={() => setForm(removeListItem(form, "promotions", index))}>Remover promoção</button>
+                  <button type="button" className="danger-link" onClick={() => setCatalogDelete({ message: `Excluir a promoção “${promotion.name || "sem nome"}” do rascunho?`, run: () => setForm(removeListItem(form, "promotions", index)) })}>Excluir promoção</button>
                 </article>
               ))}
             </div>
@@ -618,7 +621,6 @@ export function CatalogCustomization() {
 
         {error && <span className="form-error">{error}</span>}
         {message && <span className="form-success">{message}</span>}
-        <Button className="customization-save" onClick={() => save()}>Salvar rascunho</Button>
       </div>
 
       <Modal
@@ -641,7 +643,7 @@ export function CatalogCustomization() {
           <Button onClick={() => {
             setForm(applyCatalogTemplate(form, templateToApply));
             setTemplateToApply("");
-            setMessage("Template aplicado ao rascunho. Revise a prévia e salve quando terminar.");
+            setMessage("Template aplicado. Revise a prévia e use Salvar alterações quando terminar.");
           }}>Aplicar template</Button>
         </>}
       >
@@ -673,6 +675,12 @@ export function CatalogCustomization() {
       >
         <p>A versão {rollbackVersion} será clonada em uma nova revisão publicada. A vitrine voltará a esse conteúdo sem reescrever o passado.</p>
       </Modal>
+      <ConfirmDeleteModal
+        open={Boolean(catalogDelete)}
+        message={catalogDelete?.message}
+        onClose={() => setCatalogDelete(null)}
+        onConfirm={async () => { catalogDelete?.run?.(); setCatalogDelete(null); }}
+      />
     </section>
   );
 }
@@ -823,15 +831,51 @@ function bestTextColor(background) {
   return contrastRatio(background, "#ffffff") >= contrastRatio(background, "#111111") ? "#ffffff" : "#111111";
 }
 
-function CustomizationCard({ title, action, children }) {
+function CustomizationCard({ title, subtitle, action, children }) {
   return (
     <article className="panel customization-card">
       <div className="panel-heading">
-        <h2>{title}</h2>
+        <div><h2>{title}</h2>{subtitle && <p className="customization-card-subtitle">{subtitle}</p>}</div>
         {action}
       </div>
       {children}
     </article>
+  );
+}
+
+function CatalogConfigItem({ title, meta, children, actions, onDelete, deleteMessage, deleteLabel = "Excluir" }) {
+  const [open, setOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  return (
+    <>
+      <article className="catalog-config-item">
+        <div className="catalog-config-item-summary">
+          <span><strong>{title}</strong><small>{meta}</small></span>
+          <div className="catalog-config-item-actions">
+            <Button variant="secondary" onClick={() => setOpen(true)}>Detalhar</Button>
+            {actions}
+            {onDelete && <Button variant="danger" onClick={() => setDeleting(true)}>{deleteLabel}</Button>}
+          </div>
+        </div>
+      </article>
+      <Modal
+        open={open}
+        title={title}
+        subtitle={meta}
+        size="lg"
+        onClose={() => setOpen(false)}
+        footer={<Button onClick={() => setOpen(false)}>Concluir</Button>}
+      >
+        <div className="catalog-config-item-content">{children}</div>
+      </Modal>
+      <ConfirmDeleteModal
+        open={deleting}
+        title={deleteLabel}
+        message={deleteMessage || `Excluir “${title}”? Esta ação será aplicada ao rascunho atual.`}
+        onClose={() => setDeleting(false)}
+        onConfirm={async () => { onDelete?.(); setDeleting(false); }}
+      />
+    </>
   );
 }
 
@@ -887,56 +931,87 @@ function CatalogLayoutBuilder({ form, setForm }) {
       </div>
       <span className="sr-only" aria-live="polite">{dragAnnouncement}</span>
       <div className="custom-list catalog-layout-list" aria-label="Blocos do catálogo em ordem">
-        {sections.map((section, index) => (
-          <article
-            key={section.section_key}
-            className={`catalog-layout-card${draggedKey === section.section_key ? " is-dragging" : ""}${dropTargetKey === section.section_key && draggedKey !== section.section_key ? " is-drop-target" : ""}`}
-            draggable
-            onDragStart={(event) => {
-              // O cartão inteiro recebe o evento para manter o drop simples,
-              // mas só a alça inicia arraste — editar um campo não deve mover
-              // o bloco por acidente.
-              if (!event.target.closest?.(".catalog-drag-handle")) {
-                event.preventDefault();
-                return;
-              }
-              event.dataTransfer.effectAllowed = "move";
-              event.dataTransfer.setData("text/plain", section.section_key);
-              setDraggedKey(section.section_key);
-            }}
-            onDragEnd={() => { setDraggedKey(""); setDropTargetKey(""); }}
-            onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDropTargetKey(section.section_key); }}
-            onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDropTargetKey(""); }}
-            onDrop={(event) => { event.preventDefault(); dropOn(section.section_key); }}
-          >
-            <div className="panel-heading">
-              <div className="catalog-layout-heading">
-                <button type="button" className="catalog-drag-handle" tabIndex={-1} aria-hidden="true" title="Arraste o bloco para mudar a posição"><GripVertical size={18} /></button>
-                <div><strong>{CATALOG_SECTION_TYPES.find(([value]) => value === section.section_type)?.[1] || section.section_type}</strong><small>Posição {index + 1}</small></div>
-              </div>
-              <div className="customization-actions">
-                <button type="button" disabled={!index} onClick={() => setForm({ ...form, catalogSections: moveListItem(sections, index, -1) })}>Subir</button>
-                <button type="button" disabled={index === sections.length - 1} onClick={() => setForm({ ...form, catalogSections: moveListItem(sections, index, 1) })}>Descer</button>
-                <button type="button" onClick={() => duplicate(index)}>Duplicar</button>
-                <button type="button" className="danger-link" onClick={() => setForm({ ...form, catalogSections: sections.filter((_, itemIndex) => itemIndex !== index) })}>Excluir</button>
-              </div>
-            </div>
-            <div className="form-grid">
-              <Input label="Título" value={section.title} onChange={(value) => update(index, { title: value })} />
-              <Input label="Subtítulo" value={section.subtitle} onChange={(value) => update(index, { subtitle: value })} />
-              <Select label="Exibição" value={section.display_mode} onChange={(value) => update(index, { display_mode: value })}><option value="grid">Grade</option><option value="carousel">Carrossel</option><option value="list">Lista</option></Select>
-              <Select label="Largura" value={section.width_mode} onChange={(value) => update(index, { width_mode: value })}><option value="contained">Limitada</option><option value="full">Total</option></Select>
-              <Select label="Alinhamento" value={section.alignment} onChange={(value) => update(index, { alignment: value })}><option value="left">Esquerda</option><option value="center">Centro</option><option value="right">Direita</option></Select>
-              <Input type="number" label="Espaçamento" value={section.spacing} onChange={(value) => update(index, { spacing: value })} />
-              <Input label="Fundo" value={section.background} onChange={(value) => update(index, { background: value })} />
-              <Select label="Ordenação" value={section.product_sort} onChange={(value) => update(index, { product_sort: value })}><option value="recent">Recentes</option><option value="best_sellers">Mais vendidos</option><option value="price_asc">Menor preço</option><option value="price_desc">Maior preço</option><option value="stock">Estoque</option><option value="manual">Manual</option></Select>
-              <Input label="Filtro de categoria" value={section.category_filter} onChange={(value) => update(index, { category_filter: value })} />
-              <Toggle label="Seção ativa" checked={section.is_active} onChange={(value) => update(index, { is_active: value })} />
-            </div>
-          </article>
-        ))}
+        {sections.map((section, index) => <CatalogLayoutItem
+          key={section.section_key}
+          section={section}
+          index={index}
+          total={sections.length}
+          dragging={draggedKey === section.section_key}
+          dropTarget={dropTargetKey === section.section_key && draggedKey !== section.section_key}
+          onDragStart={(event) => {
+            if (!event.target.closest?.(".catalog-drag-handle")) { event.preventDefault(); return; }
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("text/plain", section.section_key);
+            setDraggedKey(section.section_key);
+          }}
+          onDragEnd={() => { setDraggedKey(""); setDropTargetKey(""); }}
+          onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDropTargetKey(section.section_key); }}
+          onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDropTargetKey(""); }}
+          onDrop={(event) => { event.preventDefault(); dropOn(section.section_key); }}
+          onMove={(direction) => move(index, index + direction)}
+          onDuplicate={() => duplicate(index)}
+          onDelete={() => setForm({ ...form, catalogSections: sections.filter((_, itemIndex) => itemIndex !== index) })}
+          onUpdate={(patch) => update(index, patch)}
+        />)}
       </div>
     </CustomizationCard>
+  );
+}
+
+function CatalogLayoutItem({ section, index, total, dragging, dropTarget, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop, onMove, onDuplicate, onDelete, onUpdate }) {
+  const [open, setOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const label = CATALOG_SECTION_TYPES.find(([value]) => value === section.section_type)?.[1] || section.section_type;
+  const meta = `Posição ${index + 1} · ${section.is_active ? "Ativo" : "Oculto"}`;
+  return (
+    <>
+      <article
+        className={`catalog-layout-card${dragging ? " is-dragging" : ""}${dropTarget ? " is-drop-target" : ""}`}
+        draggable
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+      >
+        <div className="catalog-config-item">
+          <div className="catalog-config-item-summary">
+            <span><strong>{label}</strong><small>{meta}</small></span>
+            <div className="catalog-config-item-actions">
+              <button type="button" className="catalog-drag-handle" tabIndex={-1} aria-hidden="true" title="Arraste o bloco para mudar a posição"><GripVertical size={18} /></button>
+              <Button variant="secondary" onClick={() => setOpen(true)}>Detalhar</Button>
+              <Button variant="secondary" disabled={!index} onClick={() => onMove(-1)}>Subir</Button>
+              <Button variant="secondary" disabled={index === total - 1} onClick={() => onMove(1)}>Descer</Button>
+              <Button variant="secondary" onClick={onDuplicate}>Duplicar</Button>
+              <Button variant="danger" onClick={() => setDeleting(true)}>Excluir</Button>
+            </div>
+          </div>
+        </div>
+      </article>
+      <Modal open={open} title={label} subtitle={meta} size="lg" onClose={() => setOpen(false)} footer={<Button onClick={() => setOpen(false)}>Concluir</Button>}>
+        <div className="catalog-config-item-content">
+          <div className="form-grid">
+            <Input label="Título" value={section.title} onChange={(value) => onUpdate({ title: value })} />
+            <Input label="Subtítulo" value={section.subtitle} onChange={(value) => onUpdate({ subtitle: value })} />
+            <Select label="Exibição" value={section.display_mode} onChange={(value) => onUpdate({ display_mode: value })}><option value="grid">Grade</option><option value="carousel">Carrossel</option><option value="list">Lista</option></Select>
+            <Select label="Largura" value={section.width_mode} onChange={(value) => onUpdate({ width_mode: value })}><option value="contained">Limitada</option><option value="full">Total</option></Select>
+            <Select label="Alinhamento" value={section.alignment} onChange={(value) => onUpdate({ alignment: value })}><option value="left">Esquerda</option><option value="center">Centro</option><option value="right">Direita</option></Select>
+            <Input type="number" label="Espaçamento" value={section.spacing} onChange={(value) => onUpdate({ spacing: value })} />
+            <Input label="Fundo" value={section.background} onChange={(value) => onUpdate({ background: value })} />
+            <Select label="Ordenação" value={section.product_sort} onChange={(value) => onUpdate({ product_sort: value })}><option value="recent">Recentes</option><option value="best_sellers">Mais vendidos</option><option value="price_asc">Menor preço</option><option value="price_desc">Maior preço</option><option value="stock">Estoque</option><option value="manual">Manual</option></Select>
+            <Input label="Filtro de categoria" value={section.category_filter} onChange={(value) => onUpdate({ category_filter: value })} />
+            <Toggle label="Seção ativa" checked={section.is_active} onChange={(value) => onUpdate({ is_active: value })} />
+          </div>
+        </div>
+      </Modal>
+      <ConfirmDeleteModal
+        open={deleting}
+        title="Excluir bloco do catálogo"
+        message={`Excluir o bloco “${section.title || label}”? Esta ação será aplicada ao rascunho atual.`}
+        onClose={() => setDeleting(false)}
+        onConfirm={async () => { onDelete(); setDeleting(false); }}
+      />
+    </>
   );
 }
 
@@ -1501,6 +1576,14 @@ function removeListItem(form, key, index) {
   return { ...form, [key]: asArray(form?.[key]).filter((_, itemIndex) => itemIndex !== index) };
 }
 
+function duplicateListItem(form, key, index, orderKey, patch = {}) {
+  const items = asArray(form?.[key]);
+  const copy = { ...items[index], ...patch };
+  const next = [...items];
+  next.splice(index + 1, 0, copy);
+  return { ...form, [key]: next.map((item, itemIndex) => ({ ...item, [orderKey]: itemIndex + 1 })) };
+}
+
 function moveListItem(list, index, direction) {
   const safeList = asArray(list);
   const nextIndex = index + direction;
@@ -1868,6 +1951,7 @@ export function ImageUploadField({ label, value, onChange, onTransformChange, tr
   const [warning, setWarning] = useState("");
   const [editor, setEditor] = useState(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [removeOpen, setRemoveOpen] = useState(false);
 
   async function selectImage(event) {
     const file = event.target.files?.[0];
@@ -1943,7 +2027,7 @@ export function ImageUploadField({ label, value, onChange, onTransformChange, tr
         <label className="secondary-button">Escolher arquivo<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={selectImage} /></label>
         <button type="button" className="secondary-button" onClick={() => setLibraryOpen(true)}>Biblioteca</button>
         {value && <button type="button" className="secondary-button" onClick={() => setEditor({ file: null, src: catalogImageUrl(value) })}>Editar enquadramento</button>}
-        {value && <button type="button" className="danger-link" onClick={() => updateExternalUrl("")}>Remover</button>}
+        {value && <button type="button" className="danger-link" onClick={() => setRemoveOpen(true)}>Remover</button>}
       </div>
       {uploading && <small>Enviando imagem...</small>}
       {warning && <small className="form-warning">{warning}</small>}
@@ -1956,6 +2040,13 @@ export function ImageUploadField({ label, value, onChange, onTransformChange, tr
           onTransformChange?.(normalizeImageTransform({}, aspectRatio), asset.url);
         }}
       />}
+      <ConfirmDeleteModal
+        open={removeOpen}
+        title="Remover imagem"
+        message="Remover esta imagem do rascunho? O arquivo continuará na biblioteca da clínica."
+        onClose={() => setRemoveOpen(false)}
+        onConfirm={async () => { updateExternalUrl(""); setRemoveOpen(false); }}
+      />
     </div>
   );
 }

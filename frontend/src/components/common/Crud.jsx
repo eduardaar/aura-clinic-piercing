@@ -44,7 +44,7 @@ export function Modal({ open, title, subtitle, onClose, children, footer, size =
 }
 
 // Modal de confirmação de exclusão: o usuário precisa DIGITAR a palavra de
-// confirmação (padrão "sim") para habilitar o botão Excluir. Use em TODA exclusão.
+// confirmação (padrão "SIM") para habilitar o botão Excluir. Use em TODA exclusão.
 // Uso típico:
 //   const [deleting, setDeleting] = useState(null); // { message, run }
 //   // no botão: onClick={() => setDeleting({ message: "Excluir X?", run: () => remove(x) })}
@@ -58,7 +58,7 @@ export function Modal({ open, title, subtitle, onClose, children, footer, size =
  * @param {() => void | Promise<void>} props.onConfirm
  * @param {string} [props.title]
  * @param {React.ReactNode} [props.message]
- * @param {string} [props.confirmWord] Palavra que o usuário precisa digitar. Padrão: "sim".
+ * @param {string} [props.confirmWord] Palavra que o usuário precisa digitar. Padrão: "SIM".
  * @param {boolean} [props.loading] Estado de carregamento controlado por fora.
  */
 export function ConfirmDeleteModal({
@@ -67,7 +67,7 @@ export function ConfirmDeleteModal({
   onConfirm,
   title = "Confirmar exclusão",
   message,
-  confirmWord = "sim",
+  confirmWord = "SIM",
   loading = false,
 }) {
   const [text, setText] = useState("");
@@ -152,7 +152,7 @@ export function CrudHeader({ title, subtitle, actionLabel = "Novo", onAction }) 
 //
 // Cada ação: { label, onClick, href, target, rel, danger, disabled, primary }.
 // Itens falsos são aceitos para simplificar ações condicionais no JSX.
-export function RowActions({ actions = [] }) {
+export function RowActions({ actions = [], menuOnly = false }) {
   const visible = actions.filter(Boolean);
   if (!visible.length) return null;
   const primaryIndex = visible.findIndex((action) => action.primary) >= 0
@@ -185,13 +185,13 @@ export function RowActions({ actions = [] }) {
 
   return (
     <div className="row-actions-menu">
-      {renderAction(primary, "row-action-primary")}
-      {secondary.length > 0 && (
+      {!menuOnly && renderAction(primary, "row-action-primary")}
+      {(menuOnly || secondary.length > 0) && (
         <DropdownMenu.Root>
           <DropdownMenu.Trigger className="row-actions-more" aria-label="Mais ações" title="Mais ações"><MoreHorizontal size={18} /></DropdownMenu.Trigger>
           <DropdownMenu.Portal>
             <DropdownMenu.Content className="row-actions-popover" align="end" sideOffset={6}>
-              {secondary.map(renderMenuAction)}
+              {(menuOnly ? visible : secondary).map(renderMenuAction)}
             </DropdownMenu.Content>
           </DropdownMenu.Portal>
         </DropdownMenu.Root>

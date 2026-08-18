@@ -195,6 +195,29 @@ function App() {
     }
   }
 
+  // O selo do sino precisa chegar antes do clique. Carregamos os alertas ao
+  // entrar no painel e mantemos a mesma carga para a central quando ela abre.
+  useEffect(() => {
+    if (!isAdminAuthenticated || isPlatform) {
+      setAlertsData({ count: 0, items: [] });
+      return undefined;
+    }
+    let active = true;
+    (async () => {
+      try {
+        const response = await apiFetch("/alerts");
+        const payload = await response.json().catch(() => ({}));
+        if (active) setAlertsData(response.ok ? {
+          count: asNumber(payload?.count),
+          items: asArray(payload?.items)
+        } : { count: 0, items: [] });
+      } catch {
+        if (active) setAlertsData({ count: 0, items: [] });
+      }
+    })();
+    return () => { active = false; };
+  }, [isAdminAuthenticated, isPlatform, normalizedSession?.user?.id]);
+
   const navigate = useCallback((nextPage, { replace = false } = {}) => {
     const destination = appPathForPage(nextPage);
     if (window.location.pathname !== destination) {
