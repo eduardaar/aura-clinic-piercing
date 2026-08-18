@@ -380,7 +380,7 @@ function App() {
             <strong>{activePage === "dashboard" ? "Visão geral" : pageTitle(activePage)}</strong>
           </div>
           <div className="topbar-actions">
-            <button className="notification-button" aria-label="Notificações" onClick={openAlerts}>
+            <button className="notification-button" aria-label="Pendências ativas" title="Pendências ativas" onClick={openAlerts}>
               <Bell size={19} />
               {asNumber(alertsData.count) > 0 && <span>{asNumber(alertsData.count)}</span>}
             </button>
@@ -423,7 +423,7 @@ function App() {
           {activePage === "dashboard" && <Dashboard user={normalizedSession.user} setPage={navigate} alertsOpen={alertsOpen} setAlertsOpen={setAlertsOpen} alertsData={alertsData} alertsLoading={alertsLoading} />}
           {activePage !== "dashboard" && alertsOpen && <AlertsPopup alerts={alertsData} loading={alertsLoading} onClose={() => setAlertsOpen(false)} onAction={(nextPage) => { setAlertsOpen(false); navigate(nextPage); }} />}
           {activePage === "agenda" && <AgendaWorkspace initialScreen={agendaTarget ? "settings" : "agenda"} initialSettingsTab={agendaTarget} onSettingsClosed={() => setAgendaTarget(null)} />}
-          {activePage === "onboarding" && <Onboarding onOpenAgendaSettings={(tab) => { setAgendaTarget(tab); navigate("agenda"); }} />}
+          {activePage === "onboarding" && <Onboarding onNavigate={navigate} onOpenAgendaSettings={(tab) => { setAgendaTarget(tab); navigate("agenda"); }} />}
           {activePage === "communications" && <Communications />}
           {activePage === "products" && <CatalogWorkspace area="produtos" />}
           {/* Compatibilidade com atalhos antigos: não há mais menu separado;
@@ -437,7 +437,7 @@ function App() {
           {activePage === "receivables" && <AccountsReceivable />}
           {activePage === "payables" && <PayablesAdmin />}
           {activePage === "reports" && <Reports />}
-          {activePage === "clients" && <ClientsMedical />}
+          {activePage === "clients" && <ClientsMedical onNavigate={navigate} />}
           {activePage === "terms" && <DigitalTerms onBack={() => navigate("client-center")} />}
           {activePage === "postcare" && <PostCare onBack={() => navigate("client-center")} />}
           {activePage === "admin" && <AccessAdmin />}

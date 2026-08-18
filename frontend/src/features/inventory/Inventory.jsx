@@ -1,6 +1,6 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useState } from "react";
-import { CheckCircle2, ChevronRight, Gem, ImageIcon, LayoutGrid, ListFilter, Pencil, Search, SlidersHorizontal, Table2, Trash2 } from "lucide-react";
+import { CheckCircle2, Gem, ImageIcon, LayoutGrid, ListFilter, Pencil, Search, SlidersHorizontal, Table2, Trash2 } from "lucide-react";
 import { Button, Input, Metric, Select, StatusBadge, Switch, Tabs, Textarea } from "../../components/common/Ui";
 import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
@@ -194,15 +194,10 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
     invested: allJewelry.reduce((sum, item) => sum + Number(item.cost_value || 0) * Number(item.quantity || 0), 0),
     potential: allJewelry.reduce((sum, item) => sum + Number(item.sale_value || 0) * Number(item.quantity || 0), 0)
   };
-  const allTabs = inventoryWorkspace
-    ? [
-      { id: "unidades", label: "Estoque", icon: Table2 },
-      { id: "inteligencia", label: "Inteligência", icon: SlidersHorizontal }
-    ]
-    : [
-      { id: "produtos", label: "Produtos", icon: LayoutGrid },
-      { id: "categorias", label: "Categorias", icon: ListFilter }
-    ];
+  const allTabs = [
+    { id: "unidades", label: "Estoque", icon: Table2 },
+    { id: "inteligencia", label: "Inteligência", icon: SlidersHorizontal }
+  ];
   useEffect(() => setSectionTab(initialTab), [initialTab]);
 
   useEffect(() => {
@@ -267,57 +262,38 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
   return (
     <section className="inventory-studio">
       <div className="inventory-main">
-        <div className="panel products-crud-header">
-          {inventoryWorkspace ? (
-            <CrudHeader title="Estoque" subtitle="Acompanhe o saldo das peças e os indicadores de reposição." />
-          ) : (
-            <CrudHeader title="Produtos" subtitle="Cadastre joias, preços e categorias do catálogo." actionLabel="Novo produto" onAction={openNewProduct} />
-          )}
-        </div>
+        {(inventoryWorkspace || sectionTab === "produtos") && (
+          <div className="panel products-crud-header">
+            {inventoryWorkspace ? (
+              <CrudHeader title="Estoque" subtitle="Acompanhe o saldo das peças e os indicadores de reposição." />
+            ) : (
+              <CrudHeader
+                title="Produtos"
+                subtitle="Cadastre joias, preços e categorias do catálogo."
+                actions={<Button variant="secondary" onClick={() => setSectionTab("categorias")}><ListFilter size={16} /> Categorias</Button>}
+                actionLabel="Novo produto"
+                onAction={openNewProduct}
+              />
+            )}
+          </div>
+        )}
 
-        <Tabs value={sectionTab} onValueChange={setSectionTab}>
-          <Tabs.List className="inventory-module-tabs" aria-label="Áreas de produtos e estoque">
-            {allTabs.map(({ id, label, icon: Icon }) => (
-            <Tabs.Trigger key={id} value={id}>
-              <Icon size={16} />
-              <span>{label}</span>
-            </Tabs.Trigger>
-            ))}
-          </Tabs.List>
-        </Tabs>
+        {inventoryWorkspace && (
+          <Tabs value={sectionTab} onValueChange={setSectionTab}>
+            <Tabs.List className="inventory-module-tabs" aria-label="Áreas de estoque">
+              {allTabs.map(({ id, label, icon: Icon }) => (
+                <Tabs.Trigger key={id} value={id}>
+                  <Icon size={16} />
+                  <span>{label}</span>
+                </Tabs.Trigger>
+              ))}
+            </Tabs.List>
+          </Tabs>
+        )}
 
         <div className="inventory-panel-shell">
           {sectionTab === "produtos" && (
             <>
-              <nav className="inventory-list-breadcrumb" aria-label="Navegação por categoria">
-                <button
-                  type="button"
-                  className={!filters.category ? "active" : ""}
-                  onClick={() => setFilters((current) => ({ ...current, category: "" }))}
-                >
-                  Estoque
-                </button>
-                {filters.category && (
-                  <>
-                    <ChevronRight size={14} />
-                    <strong>{filters.category}</strong>
-                  </>
-                )}
-              </nav>
-
-              <div className="inventory-category-strip" aria-label="Categorias principais">
-                {categoryOptions.map((category) => (
-                  <button
-                    key={category}
-                    type="button"
-                    className={filters.category === category ? "active" : ""}
-                    onClick={() => setFilters((current) => ({ ...current, category: current.category === category ? "" : category }))}
-                  >
-                    {category}
-                  </button>
-                ))}
-              </div>
-
               <div className="inventory-filter-row simplified">
                 <label className="search-field">
                   <Search size={17} />
@@ -359,6 +335,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
           {sectionTab === "categorias" && (
             <CategoryManager
               categories={categoryManagement}
+              headerActions={<Button variant="secondary" onClick={() => setSectionTab("produtos")}><LayoutGrid size={16} /> Produtos</Button>}
               onChanged={() => { refreshOptions(); refreshJewelry(); }}
             />
           )}
@@ -1336,7 +1313,7 @@ export function InventoryManagement({ options, categories = [], professionals, o
   );
 }
 
-export function CategoryManager({ categories = [], onChanged }) {
+export function CategoryManager({ categories = [], onChanged, headerActions }) {
   const [form, setForm] = useState({ name: "", description: "", is_active: true });
   const [editing, setEditing] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -1431,6 +1408,7 @@ export function CategoryManager({ categories = [], onChanged }) {
       <CrudHeader
         title="Categorias"
         subtitle="Organize os tipos de joia usados no cadastro e nos filtros de produtos."
+        actions={headerActions}
         actionLabel="Nova categoria"
         onAction={openNew}
       />
@@ -1763,6 +1741,7 @@ export function JewelryTable({ items, onOpen, onEdit, onMovement, onArchive }) {
         // que o backend já filtrou — e esconderia linhas que casaram por SKU de
         // variação, dado que não aparece em nenhuma coluna.
         searchable={false}
+        paginated={false}
         defaultSort={{ key: "name", dir: "asc" }}
         columns={[
           {

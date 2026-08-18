@@ -2,19 +2,23 @@ import React, { useState } from "react";
 import { ArrowDownToLine, ArrowUpFromLine, BarChart3, Calendar, Gem, Home, Lock, Package, Settings, ShieldCheck, ShoppingCart, Sparkles, Table2, UsersRound, LifeBuoy } from "lucide-react";
 import { canAccessPage, planAllowsPage } from "../../lib/permissions";
 import { Modal } from "../common/Crud";
+import { useFetch } from "../../lib/api";
 
 export function Sidebar({ page, role, user, brand, features, trialDays, setPage, open }) {
   // Marca do tenant logado (com fallback para a marca-mãe "Aura").
   const brandName = brand?.name || "Aura";
   const brandShort = brand?.short || (brand?.name ? "" : "Clinic Piercing");
   const brandLogo = brand?.logoUrl || "";
+  const { data: onboardingReadiness } = useFetch(user?.role === "admin" || role === "admin" ? "/booking/readiness" : "");
+  const onboardingAtBottom = Boolean(onboardingReadiness?.deprioritize);
+  const onboardingEntry = ["onboarding", Sparkles, "Onboarding"];
 
   // Estrutura original por área de trabalho. O visual do menu pode evoluir,
   // mas a organização funcional e os destinos permanecem estáveis.
   const groups = [
     ["", [
       ["dashboard", Home, "Dashboard"],
-      ["onboarding", Sparkles, "Onboarding"]
+      ...(!onboardingAtBottom ? [onboardingEntry] : [])
     ]],
     ["Atendimento", [
       ["agenda", Calendar, "Agenda"],
@@ -34,7 +38,8 @@ export function Sidebar({ page, role, user, brand, features, trialDays, setPage,
     ["Sistema", [
       ["settings", Settings, "Configurações"],
       ["admin", ShieldCheck, "Acessos"],
-      ["support", LifeBuoy, "Suporte"]
+      ["support", LifeBuoy, "Suporte"],
+      ...(onboardingAtBottom ? [onboardingEntry] : [])
     ]]
   ]
     .map(([label, entries]) => [label, entries.filter(([id]) => canAccessPage(user || role, id))])

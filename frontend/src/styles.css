@@ -8993,9 +8993,6 @@ body {
 .weekly-schedule-advanced[open] summary { grid-column: 1 / -1; padding: 5px 0 0; }
 .weekly-schedule-advanced[open] > label { padding: 2px 0 0; }
 
-.client-module-shortcuts { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 0 2px; }
-.client-module-shortcuts > span { margin-right: auto; color: var(--muted); font-size: 13px; font-weight: 700; }
-.client-module-shortcuts button { min-height: 38px; }
 .module-backbar { display: flex; justify-content: flex-end; }
 .module-heading-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 .term-form { display: grid; gap: 16px; }
@@ -9011,8 +9008,6 @@ body {
   .weekly-schedule-toolbar label, .weekly-schedule-toolbar button { width: 100%; }
   .weekly-schedule-row { grid-template-columns: minmax(130px, 1fr) repeat(2, minmax(95px, 1fr)); }
   .weekly-schedule-advanced { justify-self: end; }
-  .client-module-shortcuts { align-items: stretch; flex-wrap: wrap; }
-  .client-module-shortcuts > span { width: 100%; }
   .module-backbar { justify-content: flex-start; }
 }
 
@@ -9028,10 +9023,8 @@ body {
   .agenda-public-link { width: 100%; justify-content: space-between; }
   .agenda-public-link-actions { margin-left: auto; }
   .availability-header,
-  .client-module-shortcuts,
   .module-heading-actions { align-items: stretch; }
   .availability-header > *,
-  .client-module-shortcuts > button,
   .module-heading-actions > button { width: 100%; }
 }
 
@@ -10859,6 +10852,13 @@ body,
   align-items: center;
   justify-content: space-between;
   gap: 14px;
+}
+.crud-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .crud-new-button {
   display: inline-flex;

@@ -138,6 +138,17 @@ select,
     max-width: none;
   }
 
+  .crud-header-actions {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .crud-header-actions > * {
+    width: 100%;
+    justify-content: center;
+  }
+
   .panel-heading .primary-button,
   .crud-header .primary-button,
   .customization-header .primary-button,

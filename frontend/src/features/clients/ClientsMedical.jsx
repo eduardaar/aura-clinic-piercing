@@ -11,19 +11,10 @@ import { defaultMedicalRecord } from "../../lib/defaultForms";
 import { currency, personName, whatsappUrl } from "../../features/shared/helpers";
 
 export function ClientWorkspace({ onNavigate }) {
-  return (
-    <section className="stack client-workspace">
-      <div className="client-module-shortcuts" aria-label="Configurações relacionadas aos clientes">
-        <span>Configurações relacionadas</span>
-        <Button variant="secondary" onClick={() => onNavigate?.("terms")}><FileSignature size={16} /> Termos digitais</Button>
-        <Button variant="secondary" onClick={() => onNavigate?.("postcare")}><HeartPulse size={16} /> Pós-atendimento</Button>
-      </div>
-      <ClientsMedical />
-    </section>
-  );
+  return <ClientsMedical onNavigate={onNavigate} />;
 }
 
-export function ClientsMedical() {
+export function ClientsMedical({ onNavigate }) {
   const { data } = useFetch("/clients");
   // Uma invalidação de "/clients" cobre a listagem, os filtros e o detalhe
   // "/clients/:id"; o dashboard conta clientes, então acompanha.
@@ -86,6 +77,12 @@ export function ClientsMedical() {
         <CrudHeader
           title="Clientes"
           subtitle="Base de clientes da Aura Clinic"
+          actions={(
+            <>
+              <Button variant="secondary" onClick={() => onNavigate?.("terms")}><FileSignature size={16} /> Termos digitais</Button>
+              <Button variant="secondary" onClick={() => onNavigate?.("postcare")}><HeartPulse size={16} /> Pós-atendimento</Button>
+            </>
+          )}
           actionLabel="Novo cliente"
           onAction={openNew}
         />

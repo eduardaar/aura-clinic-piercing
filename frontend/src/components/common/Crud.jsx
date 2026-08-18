@@ -126,20 +126,27 @@ export function ConfirmDeleteModal({
  * @param {object} props
  * @param {React.ReactNode} [props.title]
  * @param {React.ReactNode} [props.subtitle]
+ * @param {React.ReactNode} [props.actions] Ações secundárias, antes do botão
+ *   principal. Use para atalhos relacionados à lista, como Termos e Pós-atendimento.
  * @param {string} [props.actionLabel] Padrão: "Novo".
  * @param {() => void} [props.onAction] Sem ele, o botão de ação não é renderizado.
  */
-export function CrudHeader({ title, subtitle, actionLabel = "Novo", onAction }) {
+export function CrudHeader({ title, subtitle, actions, actionLabel = "Novo", onAction }) {
   return (
     <div className="panel-heading crud-header">
       <div>
         <h2>{title}</h2>
         {subtitle && <span>{subtitle}</span>}
       </div>
-      {onAction && (
-        <button type="button" className="primary-button crud-new-button" onClick={onAction}>
-          <Plus size={16} /> {actionLabel}
-        </button>
+      {(actions || onAction) && (
+        <div className="crud-header-actions">
+          {actions}
+          {onAction && (
+            <button type="button" className="primary-button crud-new-button" onClick={onAction}>
+              <Plus size={16} /> {actionLabel}
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

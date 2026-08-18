@@ -285,18 +285,18 @@ export function AlertsPopup({ alerts, loading, onClose, onAction }) {
   const items = asArray(safeAlerts.items);
   const iconByCategory = {
     Estoque: Gem,
-    Clientes: Cake,
-    Relacionamento: Trophy
+    Agenda: Calendar,
+    Cobrança: CircleDollarSign
   };
   return (
     <div className="popup-backdrop" role="presentation" onClick={onClose}>
       <section className="alerts-popup" role="dialog" aria-modal="true" aria-label="Alertas da Aura Clinic" onClick={(event) => event.stopPropagation()}>
         <header>
           <div>
-            <span className="eyebrow">Central de alertas</span>
-            <h2>O que precisa de atenção hoje</h2>
+            <span className="eyebrow">Pendências ativas</span>
+            <h2>O que precisa de atenção</h2>
           </div>
-          <button className="icon-button" onClick={onClose} aria-label="Fechar alertas">X</button>
+          <button className="icon-button" onClick={onClose} aria-label="Fechar pendências">X</button>
         </header>
         {loading ? <Loading /> : items.length ? (
           <div className="alerts-grid real-alerts-grid">

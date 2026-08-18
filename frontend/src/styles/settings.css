@@ -37,6 +37,12 @@
 .onboarding-items article > div { display: grid; gap: 2px; min-width: 0; }
 .onboarding-items article span { color: var(--muted); font-size: 13px; }
 .onboarding-items article button { margin-left: auto; }
+.onboarding-percent { color: var(--gold-dark); font-family: var(--title-font); font-size: 22px; }
+.onboarding-progress { height: 8px; overflow: hidden; border-radius: 999px; background: var(--paper); }
+.onboarding-progress span { display: block; height: 100%; border-radius: inherit; background: var(--gold); transition: width .2s ease; }
+.onboarding-group { display: grid; gap: 8px; margin-top: 18px; }
+.onboarding-group h3 { margin: 0; color: var(--ink); font-size: 14px; }
+.onboarding-deprioritized { margin: 18px 0 0; color: var(--muted); font-size: 13px; }
 .agenda-settings-header { padding: 13px 18px; }
 .agenda-settings-header h2 { margin: 0; font-size: clamp(26px, 3vw, 34px); }
 

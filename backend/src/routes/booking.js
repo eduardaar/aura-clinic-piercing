@@ -50,36 +50,72 @@ function parseItems(value) {
 }
 
 async function bookingReadiness(db) {
-  const activeServices = await db.get("SELECT COUNT(*) AS count FROM services WHERE active_online_booking = 1");
-  const activeProcedures = await db.get(`
-    SELECT COUNT(*) AS count
-    FROM procedures p
-    JOIN services s ON s.id = p.service_id
-    WHERE p.is_active = 1 AND s.active_online_booking = 1
-  `);
-  const activeProfessionals = await db.get("SELECT COUNT(*) AS count FROM professionals WHERE active = 1");
-  const weeklyAvailability = await db.get(`
-    SELECT COUNT(*) AS count
-    FROM professional_availability a
-    JOIN professionals p ON p.id = a.professional_id
-    WHERE a.is_active = 1 AND p.active = 1
-  `);
-  const linkedProfessionals = await db.get(`
-    SELECT COUNT(*) AS count
-    FROM professional_services ps
-    JOIN professionals p ON p.id = ps.professional_id
-    JOIN services s ON s.id = ps.service_id
-    WHERE p.active = 1 AND s.active_online_booking = 1
-  `);
+  const [
+    activeServices,
+    activeProcedures,
+    activeProfessionals,
+    weeklyAvailability,
+    linkedProfessionals,
+    products,
+    clients,
+    terms,
+    profileSettings,
+    catalogTheme
+  ] = await Promise.all([
+    db.get("SELECT COUNT(*) AS count FROM services WHERE active_online_booking = 1"),
+    db.get(`
+      SELECT COUNT(*) AS count
+      FROM procedures p
+      JOIN services s ON s.id = p.service_id
+      WHERE p.is_active = 1 AND s.active_online_booking = 1
+    `),
+    db.get("SELECT COUNT(*) AS count FROM professionals WHERE active = 1"),
+    db.get(`
+      SELECT COUNT(*) AS count
+      FROM professional_availability a
+      JOIN professionals p ON p.id = a.professional_id
+      WHERE a.is_active = 1 AND p.active = 1
+    `),
+    db.get(`
+      SELECT COUNT(*) AS count
+      FROM professional_services ps
+      JOIN professionals p ON p.id = ps.professional_id
+      JOIN services s ON s.id = ps.service_id
+      WHERE p.active = 1 AND s.active_online_booking = 1
+    `),
+    db.get("SELECT COUNT(*) AS count FROM jewelry_inventory"),
+    db.get("SELECT COUNT(*) AS count FROM clients"),
+    db.get("SELECT COUNT(*) AS count FROM digital_terms"),
+    db.all("SELECT key, value FROM catalog_settings WHERE key IN ('whatsapp_phone', 'company_address', 'company_instagram')"),
+    db.get("SELECT logo_url, slogan FROM catalog_theme WHERE id = 1")
+  ]);
+  const settings = Object.fromEntries(profileSettings.map((item) => [item.key, String(item.value || "").trim()]));
+  const clinicProfileReady = Boolean(settings.whatsapp_phone || settings.company_address || settings.company_instagram);
+  const catalogCustomized = Boolean(String(catalogTheme?.logo_url || "").trim() || String(catalogTheme?.slogan || "").trim());
   const checklist = [
-    { key: "services", label: "Serviços cadastrados", done: Number(activeServices.count || 0) > 0 },
-    { key: "procedures", label: "Procedimentos cadastrados", done: Number(activeProcedures.count || 0) > 0 },
-    { key: "professionals", label: "Profissionais cadastrados", done: Number(activeProfessionals.count || 0) > 0 },
-    { key: "weeklySchedule", label: "Agenda semanal configurada", done: Number(weeklyAvailability.count || 0) > 0 },
-    { key: "links", label: "Profissionais vinculados aos serviços", done: Number(linkedProfessionals.count || 0) > 0 }
+    { key: "clinicProfile", label: "Completar dados da clínica", description: "Informe ao menos um canal de contato para seus clientes.", essential: true, done: clinicProfileReady },
+    { key: "services", label: "Cadastrar serviços", description: "Defina os serviços disponíveis para agendamento.", essential: true, done: Number(activeServices.count || 0) > 0 },
+    { key: "procedures", label: "Cadastrar procedimentos", description: "Organize os procedimentos oferecidos em cada serviço.", essential: true, done: Number(activeProcedures.count || 0) > 0 },
+    { key: "professionals", label: "Cadastrar profissionais", description: "Inclua quem realiza os atendimentos.", essential: true, done: Number(activeProfessionals.count || 0) > 0 },
+    { key: "links", label: "Vincular serviços aos profissionais", description: "Defina quem pode atender cada serviço.", essential: true, done: Number(linkedProfessionals.count || 0) > 0 },
+    { key: "weeklySchedule", label: "Configurar horários", description: "Abra a agenda semanal de quem atende.", essential: true, done: Number(weeklyAvailability.count || 0) > 0 },
+    { key: "products", label: "Cadastrar primeiro produto", description: "Monte o estoque inicial de joias.", essential: false, done: Number(products.count || 0) > 0 },
+    { key: "clients", label: "Cadastrar primeiro cliente", description: "Comece sua base de relacionamento.", essential: false, done: Number(clients.count || 0) > 0 },
+    { key: "terms", label: "Criar primeiro termo digital", description: "Registre o aceite de um atendimento.", essential: false, done: Number(terms.count || 0) > 0 },
+    { key: "catalog", label: "Personalizar catálogo", description: "Adicione logo ou mensagem à sua vitrine online.", essential: false, done: catalogCustomized }
   ];
+  const completed = checklist.filter((item) => item.done).length;
+  const essentialsReady = checklist.filter((item) => item.essential).every((item) => item.done);
+  const progress = Math.round((completed / checklist.length) * 100);
   return {
     ready: checklist.every((item) => item.done),
+    completed,
+    total: checklist.length,
+    progress,
+    essentials_ready: essentialsReady,
+    // Após concluir o essencial ou 70% da jornada, o Onboarding deixa de ser
+    // atalho principal e vai para o fim do menu lateral.
+    deprioritize: essentialsReady || progress >= 70,
     checklist,
     missing: checklist.filter((item) => !item.done).map((item) => item.label),
     counts: {
@@ -87,7 +123,10 @@ async function bookingReadiness(db) {
       activeProcedures: Number(activeProcedures.count || 0),
       activeProfessionals: Number(activeProfessionals.count || 0),
       weeklyAvailability: Number(weeklyAvailability.count || 0),
-      linkedProfessionals: Number(linkedProfessionals.count || 0)
+      linkedProfessionals: Number(linkedProfessionals.count || 0),
+      products: Number(products.count || 0),
+      clients: Number(clients.count || 0),
+      terms: Number(terms.count || 0)
     }
   };
 }
