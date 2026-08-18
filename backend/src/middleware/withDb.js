@@ -21,9 +21,37 @@ import { hydrateUserPermissions } from "../services/permissionService.js";
 // banco, mas validamos o formato antes de interpolar no SET search_path.
 const TENANT_SCHEMA_REGEX = /^tenant_\d+$/;
 
+// O caractere de substituição (�) significa que uma conversão anterior perdeu
+// o byte original. Depois de persistido não há como deduzir a letra com
+// segurança; recusamos a entrada para não espalhar uma corrupção irreversível.
+function findReplacementCharacter(value, path = "corpo") {
+  if (typeof value === "string") return value.includes("\uFFFD") ? path : null;
+  if (Array.isArray(value)) {
+    for (const [index, entry] of value.entries()) {
+      const found = findReplacementCharacter(entry, `${path}[${index}]`);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (value && typeof value === "object") {
+    for (const [key, entry] of Object.entries(value)) {
+      const found = findReplacementCharacter(entry, `${path}.${key}`);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 export const withDb = (handler) => async (req, res) => {
   const originalJson = res.json.bind(res);
   res.json = (payload) => originalJson(normalizeDbValue(payload));
+
+  const invalidTextPath = findReplacementCharacter(req.body);
+  if (invalidTextPath) {
+    return res.status(400).json({
+      error: `O texto recebido possui um caractere inválido em ${invalidTextPath}. Revise a origem do conteúdo e tente novamente.`
+    });
+  }
 
   // 1) Resolve a clínica. Falhas viram 400/403/404 (nunca tocam o banco do app).
   let tenant;

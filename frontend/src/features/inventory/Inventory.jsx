@@ -1,6 +1,6 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useState } from "react";
-import { CheckCircle2, Gem, ImageIcon, LayoutGrid, ListFilter, Pencil, Search, SlidersHorizontal, Table2, Trash2 } from "lucide-react";
+import { CheckCircle2, ChevronRight, Gem, ImageIcon, LayoutGrid, ListFilter, Pencil, Search, SlidersHorizontal, Table2, Trash2 } from "lucide-react";
 import { Button, Input, Metric, Select, StatusBadge, Switch, Tabs, Textarea } from "../../components/common/Ui";
 import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
