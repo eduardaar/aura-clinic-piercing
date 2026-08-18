@@ -52,7 +52,7 @@ export function Sidebar({ page, role, user, brand, features, trialDays, setPage,
       <div className="sidebar-brand">
         {brandLogo
           ? <img className="sidebar-logo" src={brandLogo} alt={brandName} />
-          : <span className="sidebar-logo sidebar-initial" aria-hidden="true">{brandName.trim().charAt(0) || "A"}</span>}
+          : <span className="sidebar-logo sidebar-initial" aria-hidden="true"><Gem size={22} /></span>}
         <strong>{brandName}</strong>
         {brandShort && <span>{brandShort}</span>}
         <small>Gestão por Aura · plataforma para studios de piercing.</small>

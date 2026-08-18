@@ -2,7 +2,7 @@ import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Bell, Calendar, ChevronDown, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Search, Settings as SettingsIcon } from "lucide-react";
+import { Bell, Calendar, ChevronDown, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Search, Settings as SettingsIcon, UserRound } from "lucide-react";
 import "./styles.css";
 import "./styles/topnav.css";
 import "./styles/landing.css";
@@ -22,7 +22,7 @@ import { Login } from "./components/auth/Login";
 import { Sidebar } from "./components/layout/Sidebar";
 import { Loading } from "./components/common/Feedback";
 import { AppErrorBoundary } from "./components/common/AppErrorBoundary";
-import { asArray, asNumber, firstName } from "./lib/utils";
+import { asArray, asNumber } from "./lib/utils";
 import { API_ORIGIN, apiFetch, readStoredSession } from "./lib/api";
 import { queryClient } from "./lib/queryClient";
 import { installGlobalErrorReporting } from "./lib/errorReporter";
@@ -387,7 +387,7 @@ function App() {
             <button type="button" className="topbar-icon-action" onClick={() => navigate("agenda")} aria-label="Abrir agenda" title="Agenda"><Calendar size={20} /></button>
             <DropdownMenu.Root>
               <DropdownMenu.Trigger className="user-chip" title={`${normalizedSession.user?.name || "Usuário"} · ${roleLabel(normalizedSession.user?.role)}`}>
-                <span className="user-avatar">{firstName(normalizedSession.user?.name || "U").charAt(0).toUpperCase()}</span>
+                <span className="user-avatar" aria-hidden="true"><UserRound size={18} /></span>
                 <span className="user-chip-copy"><strong>{normalizedSession.user?.name || "Usuário"}</strong><small>{roleLabel(normalizedSession.user?.role)}</small></span>
                 <ChevronDown size={16} aria-hidden="true" />
               </DropdownMenu.Trigger>

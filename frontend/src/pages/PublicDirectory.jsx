@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { MapPin, Search, SlidersHorizontal, X } from "lucide-react";
+import { Building2, MapPin, Search, SlidersHorizontal, X } from "lucide-react";
 import { API, API_ORIGIN } from "../lib/api";
-import { asArray, initials, removeAccents } from "../lib/utils";
+import { asArray, removeAccents } from "../lib/utils";
 import { PublicTopNav } from "../components/layout/PublicTopNav";
 import { Checkbox, Select } from "../components/common/Ui";
 
@@ -206,7 +206,7 @@ export function PublicDirectory({ mode = "catalog" }) {
                     <span className="au-dir-card-logo">
                       {logo
                         ? <img src={logo} alt="" loading="lazy" decoding="async" />
-                        : <span aria-hidden="true">{initials(clinic.name || clinic.slug)}</span>}
+                        : <Building2 size={22} aria-hidden="true" />}
                     </span>
                     <span className="au-dir-card-body">
                       <strong>{clinicLabel(clinic)}</strong>

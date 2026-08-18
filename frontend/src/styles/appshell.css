@@ -432,11 +432,9 @@
   flex: none;
   place-items: center;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--gold-light), var(--gold-dark));
-  color: #fff;
-  font-family: var(--title-font);
-  font-size: 14px;
-  font-weight: 750;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--gold-dark);
 }
 .user-chip-copy { display: grid; min-width: 0; gap: 1px; }
 .user-chip-copy strong { overflow: hidden; color: var(--ink); font-size: 13px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
@@ -526,9 +524,6 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--title-font);
-  font-size: 17px;
-  font-weight: 700;
   color: var(--gold-light);
 }
 

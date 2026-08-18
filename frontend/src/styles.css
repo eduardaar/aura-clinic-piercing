@@ -7353,9 +7353,12 @@ body {
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: linear-gradient(135deg, #eedec7, var(--nude-strong));
-  color: #fff;
-  font-weight: 800;
+}
+
+.avatar-circle {
+  border: 1px solid rgb(from var(--nude) r g b / .7);
+  background: var(--paper);
+  color: var(--gold-dark);
 }
 
 .jewel-thumb {

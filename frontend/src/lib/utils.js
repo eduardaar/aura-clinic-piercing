@@ -17,14 +17,6 @@ export function removeAccents(value) {
   return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
-export function firstName(name = "") {
-  return String(name).trim().split(" ")[0] || "Aura";
-}
-
-export function initials(name = "") {
-  return String(name).trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "A";
-}
-
 /**
  * Data curta pt-BR ("dd/mm"). Aceita "YYYY-MM-DD" ou ISO completo; devolve ""
  * para entrada vazia ou inválida.

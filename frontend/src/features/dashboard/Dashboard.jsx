@@ -1,9 +1,9 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useState } from "react";
-import { Bell, Cake, Calendar, ChevronRight, CircleDollarSign, Gem, Trophy, UsersRound, } from "lucide-react";
+import { Bell, Cake, Calendar, ChevronRight, CircleDollarSign, Gem, Trophy, UserRound, UsersRound, } from "lucide-react";
 import { Button, StatusBadge, Tabs } from "../../components/common/Ui";
 import { ApiError, Loading } from "../../components/common/Feedback";
-import { asArray, asNumber, asObject, formatDate, formatLongDate, initials } from "../../lib/utils";
+import { asArray, asNumber, asObject, formatDate, formatLongDate } from "../../lib/utils";
 import { useFetch } from "../../lib/api";
 import { currency, formatRevenueAxisLabel, formatRevenueLabel, personName, statusClass } from "../../features/shared/helpers";
 import "../../styles/agenda-admin-responsive.css";
@@ -129,7 +129,7 @@ export function PremiumDashboard({ data, user, setPage, period, setPeriod, alert
             {upcomingAppointments.slice(0, 4).map((item) => (
               <button type="button" className="premium-appointment-row" key={item.id} onClick={() => setPage("agenda")}>
                 <span className="dot-time"><i />{item.appointment_time}</span>
-                <div className="avatar-circle">{initials(personName(item))}</div>
+                <div className="avatar-circle" aria-hidden="true"><UserRound size={20} /></div>
                 <div>
                   <strong>{personName(item)}</strong>
                   <small>{item.procedure || "Procedimento"}<br />Prof. {item.professional_name || "—"}</small>
@@ -152,7 +152,7 @@ export function PremiumDashboard({ data, user, setPage, period, setPeriod, alert
           <div className="clean-list birthday-list">
             {birthdaysItems.slice(0, 3).map((item) => (
               <div key={item.id || `${personName(item)}-${item.birth_date}`}>
-                <div className="avatar-circle">{initials(personName(item))}</div>
+                <div className="avatar-circle" aria-hidden="true"><UserRound size={20} /></div>
                 <span><strong>{personName(item)}</strong><small>{formatLongDate(item.birth_date)}</small></span>
                 <Cake size={18} />
               </div>
