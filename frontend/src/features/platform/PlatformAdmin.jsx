@@ -59,17 +59,10 @@ const TAB_HEADINGS = {
   legal: { title: "Termos e privacidade", subtitle: "Textos legais e versões aceitas durante o cadastro." },
 };
 
-// Abas que guardam RASCUNHO não salvo continuam montadas (só ocultas) depois de
-// abertas: desmontar jogaria fora o que alguém digitou e foi conferir outra
-// coisa. As demais (contas, financeiro, suporte) podem desmontar — toda escrita
-// nelas é imediata e confirmada em modal, não há nada a perder.
-const ABAS_COM_RASCUNHO = ["landing", "planos"];
-
 export function PlatformAdmin() {
   const [session, setSession] = useState(readPlatformSession);
   const [tab, setTab] = useState(tabFromLocation);
   const [accountsRefresh, setAccountsRefresh] = useState(0);
-  const [visitadas, setVisitadas] = useState(() => new Set(ABAS_COM_RASCUNHO.includes(tabFromLocation()) ? [tabFromLocation()] : []));
   // Recarrega o contador de chamados abertos no selo da aba depois de o
   // super-admin responder algo.
   const [supportKey, setSupportKey] = useState(0);
@@ -136,9 +129,6 @@ export function PlatformAdmin() {
       window.history[replace ? "replaceState" : "pushState"](window.history.state, "", nextPath);
     }
     setTab(safeTab);
-    if (ABAS_COM_RASCUNHO.includes(safeTab)) {
-      setVisitadas((current) => new Set(current).add(safeTab));
-    }
   }, []);
 
   useEffect(() => {
@@ -151,9 +141,6 @@ export function PlatformAdmin() {
     const onPopState = () => {
       const nextTab = tabFromLocation();
       setTab(nextTab);
-      if (ABAS_COM_RASCUNHO.includes(nextTab)) {
-        setVisitadas((current) => new Set(current).add(nextTab));
-      }
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -350,30 +337,22 @@ export function PlatformAdmin() {
       <div className="content-scroll">
         <div className="stack">
 
-        {visitadas.has("landing") && (
-          <Tabs.Content value="landing" forceMount className="platform-tab-content">
-            <LandingEditor token={token} onUnauthorized={clearPlatformSession} />
-          </Tabs.Content>
-        )}
-
-        <Tabs.Content value="legal" className="platform-tab-content"><LegalEditor token={token} onUnauthorized={clearPlatformSession} /></Tabs.Content>
-
-        {visitadas.has("planos") && (
-          <Tabs.Content value="planos" forceMount className="platform-tab-content">
-            <PlansAdmin token={token} onUnauthorized={clearPlatformSession} />
-          </Tabs.Content>
-        )}
-
-        <Tabs.Content value="contas" className="platform-tab-content"><AccountsAdmin token={token} onUnauthorized={clearPlatformSession} onCreate={openCreate} refreshKey={accountsRefresh} /></Tabs.Content>
-
-        <Tabs.Content value="dashboard" className="platform-tab-content"><PlatformFinance token={token} onUnauthorized={clearPlatformSession} /></Tabs.Content>
-
-        <Tabs.Content value="suporte" className="platform-tab-content">
-          <SupportInbox
-            token={token}
-            onUnauthorized={clearPlatformSession}
-            onChanged={() => setSupportKey((k) => k + 1)}
-          />
+        {/* Uma rota, uma tela: trocar o menu desmonta a área anterior. Manter
+            painéis com `forceMount` fazia Planos/Landing continuarem visíveis e
+            se acumularem com Clínicas, bloqueando inclusive a rolagem. */}
+        <Tabs.Content key={tab} value={tab} className="platform-tab-content">
+          {tab === "landing" && <LandingEditor token={token} onUnauthorized={clearPlatformSession} />}
+          {tab === "legal" && <LegalEditor token={token} onUnauthorized={clearPlatformSession} />}
+          {tab === "planos" && <PlansAdmin token={token} onUnauthorized={clearPlatformSession} />}
+          {tab === "contas" && <AccountsAdmin token={token} onUnauthorized={clearPlatformSession} onCreate={openCreate} refreshKey={accountsRefresh} />}
+          {tab === "dashboard" && <PlatformFinance token={token} onUnauthorized={clearPlatformSession} />}
+          {tab === "suporte" && (
+            <SupportInbox
+              token={token}
+              onUnauthorized={clearPlatformSession}
+              onChanged={() => setSupportKey((k) => k + 1)}
+            />
+          )}
         </Tabs.Content>
 
         <Modal

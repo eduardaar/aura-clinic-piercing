@@ -76,3 +76,10 @@ test("folhas de estilo pertencem a uma camada da cascata", async () => {
 
   assert.deepEqual(violations, [], `Declare @layer no CSS:\n${violations.join("\n")}`);
 });
+
+test("painel da plataforma monta somente a tela ativa", async () => {
+  const source = withoutComments(await readFile(join(SRC_ROOT, "features/platform/PlatformAdmin.jsx"), "utf8"));
+
+  assert.doesNotMatch(source, /\bforceMount\b/, "Não mantenha telas inativas montadas no painel da plataforma.");
+  assert.match(source, /<Tabs\.Content key=\{tab\} value=\{tab\}/, "Use um único painel associado à rota ativa.");
+});
