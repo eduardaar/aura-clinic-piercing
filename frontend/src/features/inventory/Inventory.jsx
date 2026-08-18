@@ -210,39 +210,6 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
     setBadgeTab("todos");
   }, [inventoryMode]);
 
-  // Imprime as etiquetas da lista visível — por isso vive aqui, junto de
-  // `displayItems`, e não no painel de inteligência.
-  async function printLabels() {
-    const ids = displayItems.map((item) => item.id).slice(0, 100);
-    if (!ids.length) return;
-    const popup = window.open("", "_blank");
-    const response = await apiFetch(`/inventory/labels?ids=${ids.join(",")}`);
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !popup) return;
-    popup.opener = null;
-    popup.document.title = "Etiquetas de estoque";
-    const style = popup.document.createElement("style");
-    style.textContent = "body{font-family:Arial;display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.label{border:1px solid #bbb;padding:10px;text-align:center;break-inside:avoid}.label strong{display:block;font-size:13px}.barcode{width:100%;height:55px;object-fit:contain}.qr{width:72px;height:72px}@media print{body{margin:4mm}.label{page-break-inside:avoid}}";
-    popup.document.head.appendChild(style);
-    asArray(payload.labels).forEach((label) => {
-      const card = popup.document.createElement("article");
-      card.className = "label";
-      const title = popup.document.createElement("strong");
-      title.textContent = label.name;
-      const barcode = popup.document.createElement("img");
-      barcode.className = "barcode";
-      barcode.src = label.barcode_data_url;
-      barcode.alt = `Código de barras ${label.code}`;
-      const qr = popup.document.createElement("img");
-      qr.className = "qr";
-      qr.src = label.qr_data_url;
-      qr.alt = `QR Code ${label.code}`;
-      card.append(title, barcode, qr);
-      popup.document.body.appendChild(card);
-    });
-    window.setTimeout(() => { popup.focus(); popup.print(); }, 300);
-  }
-
   async function archiveJewelry(item) {
     const response = await apiFetch(`/jewelry/${item.id}`, {
       method: "PATCH",
@@ -304,12 +271,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
           {inventoryWorkspace ? (
             <CrudHeader title="Estoque" subtitle="Acompanhe o saldo das peças e os indicadores de reposição." />
           ) : (
-            <>
-              <CrudHeader title="Produtos" subtitle="Cadastre joias, preços e categorias do catálogo." actionLabel="Novo produto" onAction={openNewProduct} />
-              <div className="product-shortcuts">
-                <Button variant="secondary" onClick={printLabels}><Table2 size={16} /> Imprimir etiquetas</Button>
-              </div>
-            </>
+            <CrudHeader title="Produtos" subtitle="Cadastre joias, preços e categorias do catálogo." actionLabel="Novo produto" onAction={openNewProduct} />
           )}
         </div>
 
