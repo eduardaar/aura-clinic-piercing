@@ -77,12 +77,10 @@ export function ClientsMedical({ onNavigate }) {
         <CrudHeader
           title="Clientes"
           subtitle="Base de clientes da Aura Clinic"
-          actions={(
-            <>
-              <Button variant="secondary" onClick={() => onNavigate?.("terms")}><FileSignature size={16} /> Termos digitais</Button>
-              <Button variant="secondary" onClick={() => onNavigate?.("postcare")}><HeartPulse size={16} /> Pós-atendimento</Button>
-            </>
-          )}
+          actions={[
+            { label: "Termos digitais", icon: FileSignature, onClick: () => onNavigate?.("terms") },
+            { label: "Pós-atendimento", icon: HeartPulse, onClick: () => onNavigate?.("postcare") }
+          ]}
           actionLabel="Novo cliente"
           onAction={openNew}
         />

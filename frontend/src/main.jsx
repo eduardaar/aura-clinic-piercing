@@ -2,7 +2,7 @@ import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Bell, Calendar, ChevronDown, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Search, Settings as SettingsIcon, UserRound } from "lucide-react";
+import { Bell, Calendar, ChevronDown, LifeBuoy, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Search, Settings as SettingsIcon, Sparkles, UserRound } from "lucide-react";
 import "./styles.css";
 import "./styles/topnav.css";
 import "./styles/landing.css";
@@ -337,7 +337,6 @@ function App() {
           user={normalizedSession.user}
           brand={{ name: identity?.store_name || "", short: identity?.short_name || identity?.slogan || "", logoUrl: brandLogoUrl }}
           features={planFeatures}
-          trialDays={trialDays}
           setPage={(next) => {
             if (next !== "agenda") setAgendaTarget(null);
             navigate(next);
@@ -380,13 +379,13 @@ function App() {
             <strong>{activePage === "dashboard" ? "Visão geral" : pageTitle(activePage)}</strong>
           </div>
           <div className="topbar-actions">
-            <button className="notification-button" aria-label="Pendências ativas" title="Pendências ativas" onClick={openAlerts}>
-              <Bell size={19} />
+            <button type="button" className="topbar-quick-action topbar-calendar-action" onClick={() => navigate("agenda")} aria-label="Abrir agenda" title="Agenda"><Calendar size={20} /></button>
+            <button className="topbar-quick-action topbar-notification-action" aria-label="Pendências ativas" title="Pendências ativas" onClick={openAlerts}>
+              <Bell size={20} />
               {asNumber(alertsData.count) > 0 && <span>{asNumber(alertsData.count)}</span>}
             </button>
-            <button type="button" className="topbar-icon-action" onClick={() => navigate("agenda")} aria-label="Abrir agenda" title="Agenda"><Calendar size={20} /></button>
             <DropdownMenu.Root>
-              <DropdownMenu.Trigger className="user-chip" title={`${normalizedSession.user?.name || "Usuário"} · ${roleLabel(normalizedSession.user?.role)}`}>
+              <DropdownMenu.Trigger className="user-chip" title="Abrir menu da conta" aria-label="Abrir menu da conta">
                 <span className="user-avatar" aria-hidden="true"><UserRound size={18} /></span>
                 <span className="user-chip-copy"><strong>{normalizedSession.user?.name || "Usuário"}</strong><small>{roleLabel(normalizedSession.user?.role)}</small></span>
                 <ChevronDown size={16} aria-hidden="true" />
@@ -394,6 +393,8 @@ function App() {
               <DropdownMenu.Portal>
                 <DropdownMenu.Content className="user-menu-popover" align="end" sideOffset={8}>
                   <DropdownMenu.Item onSelect={() => navigate("settings")}><SettingsIcon size={16} /> Configurações</DropdownMenu.Item>
+                  {canAccessPage(normalizedSession.user, "support") && <DropdownMenu.Item onSelect={() => navigate("support")}><LifeBuoy size={16} /> Suporte</DropdownMenu.Item>}
+                  {canAccessPage(normalizedSession.user, "meu-plano") && <DropdownMenu.Item onSelect={() => navigate("meu-plano")}><Sparkles size={16} /> Meu plano</DropdownMenu.Item>}
                   <DropdownMenu.Separator />
                   <DropdownMenu.Item className="danger" onSelect={handleLogout}><LogOut size={16} /> Sair</DropdownMenu.Item>
                 </DropdownMenu.Content>

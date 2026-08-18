@@ -6617,10 +6617,20 @@ tbody tr:hover td {
 }
 .row-action-primary { border-color: rgba(164, 123, 47, .5); }
 .row-actions-more { padding: 7px; }
+.row-actions-more {
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-color: var(--ink);
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--white);
+}
 .row-actions-more:hover,
 .row-action-primary:hover,
 .row-actions-popover [role="menuitem"]:hover,
 .row-actions-popover [role="menuitem"][data-highlighted] { border-color: var(--gold); background: rgb(from var(--gold) r g b / .12); }
+.row-actions-more:hover { border-color: var(--gold-dark); background: var(--gold-dark); color: var(--white); }
 .row-actions-more:focus-visible,
 .row-action-primary:focus-visible,
 .row-actions-popover [role="menuitem"]:focus-visible { outline: 2px solid #a47b2f; outline-offset: 2px; }

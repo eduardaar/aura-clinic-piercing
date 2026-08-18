@@ -189,6 +189,9 @@
   transform: translateY(-50%);
   width: 44px;
   height: 44px;
+  /* `.ghost-button` legado aplica margin-top: 18px. Sem zerar a margem,
+     o centro visual do ícone fica abaixo do campo nas duas telas de login. */
+  margin: 0;
   display: grid;
   place-items: center;
   padding: 0;

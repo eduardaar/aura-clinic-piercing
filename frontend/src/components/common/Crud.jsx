@@ -126,21 +126,37 @@ export function ConfirmDeleteModal({
  * @param {object} props
  * @param {React.ReactNode} [props.title]
  * @param {React.ReactNode} [props.subtitle]
- * @param {React.ReactNode} [props.actions] Ações secundárias, antes do botão
- *   principal. Use para atalhos relacionados à lista, como Termos e Pós-atendimento.
+ * @param {{ label: string, icon?: React.ComponentType<{size?: number}>, onClick: () => void }[]} [props.actions]
+ *   Ações secundárias, agrupadas em "Mais opções" antes do botão principal.
  * @param {string} [props.actionLabel] Padrão: "Novo".
  * @param {() => void} [props.onAction] Sem ele, o botão de ação não é renderizado.
  */
 export function CrudHeader({ title, subtitle, actions, actionLabel = "Novo", onAction }) {
+  const extraActions = Array.isArray(actions) ? actions.filter(Boolean) : [];
   return (
     <div className="panel-heading crud-header">
       <div>
         <h2>{title}</h2>
         {subtitle && <span>{subtitle}</span>}
       </div>
-      {(actions || onAction) && (
+      {(extraActions.length > 0 || onAction) && (
         <div className="crud-header-actions">
-          {actions}
+          {extraActions.length > 0 && (
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger className="secondary-button crud-more-options" aria-label="Mais opções" title="Mais opções">
+                <MoreHorizontal size={17} /> Mais opções
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content className="crud-options-popover" align="end" sideOffset={6}>
+                  {extraActions.map(({ label, icon: Icon, onClick }) => (
+                    <DropdownMenu.Item key={label} onSelect={onClick}>
+                      {Icon && <Icon size={16} />} {label}
+                    </DropdownMenu.Item>
+                  ))}
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
+          )}
           {onAction && (
             <button type="button" className="primary-button crud-new-button" onClick={onAction}>
               <Plus size={16} /> {actionLabel}
@@ -154,26 +170,13 @@ export function CrudHeader({ title, subtitle, actions, actionLabel = "Novo", onA
 
 // Ações de uma linha de listagem. O padrão é sempre o menu de três pontos: a
 // célula final fica alinhada e todas as ações (editar, excluir e extras) estão
-// no mesmo lugar em qualquer tela. `menuOnly={false}` só existe para cenários
-// explicitamente excepcionais, como ações rápidas fora de uma lista.
+// no mesmo lugar em qualquer tela.
 //
 // Cada ação: { label, onClick, href, target, rel, danger, disabled, primary }.
 // Itens falsos são aceitos para simplificar ações condicionais no JSX.
-export function RowActions({ actions = [], menuOnly = true }) {
+export function RowActions({ actions = [] }) {
   const visible = actions.filter(Boolean);
   if (!visible.length) return null;
-  const primaryIndex = visible.findIndex((action) => action.primary) >= 0
-    ? visible.findIndex((action) => action.primary)
-    : visible.findIndex((action) => !action.danger);
-  const safePrimaryIndex = primaryIndex >= 0 ? primaryIndex : 0;
-  const primary = visible[safePrimaryIndex];
-  const secondary = visible.filter((_, index) => index !== safePrimaryIndex);
-
-  const renderAction = (action, className = "") => action.href ? (
-    <a key={action.label} className={className} href={action.href} target={action.target} rel={action.rel}>{action.label}</a>
-  ) : (
-    <button key={action.label} type="button" className={className} onClick={action.onClick} disabled={action.disabled}>{action.label}</button>
-  );
 
   const renderMenuAction = (action) => action.href ? (
     <DropdownMenu.Item key={action.label} className={action.danger ? "danger" : ""} asChild>
@@ -192,17 +195,14 @@ export function RowActions({ actions = [], menuOnly = true }) {
 
   return (
     <div className="row-actions-menu">
-      {!menuOnly && renderAction(primary, "row-action-primary")}
-      {(menuOnly || secondary.length > 0) && (
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger className="row-actions-more" aria-label="Mais ações" title="Mais ações"><MoreHorizontal size={18} /></DropdownMenu.Trigger>
-          <DropdownMenu.Portal>
-            <DropdownMenu.Content className="row-actions-popover" align="end" sideOffset={6}>
-              {(menuOnly ? visible : secondary).map(renderMenuAction)}
-            </DropdownMenu.Content>
-          </DropdownMenu.Portal>
-        </DropdownMenu.Root>
-      )}
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger className="row-actions-more" aria-label="Mais ações" title="Mais ações"><MoreHorizontal size={18} /></DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content className="row-actions-popover" align="end" sideOffset={6}>
+            {visible.map(renderMenuAction)}
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
     </div>
   );
 }

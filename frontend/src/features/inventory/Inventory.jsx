@@ -1,6 +1,6 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useState } from "react";
-import { CheckCircle2, Gem, ImageIcon, LayoutGrid, ListFilter, Pencil, Search, SlidersHorizontal, Table2, Trash2 } from "lucide-react";
+import { CheckCircle2, Gem, ImageIcon, LayoutGrid, ListFilter, Pencil, SlidersHorizontal, Table2, Trash2 } from "lucide-react";
 import { Button, Input, Metric, Select, StatusBadge, Switch, Tabs, Textarea } from "../../components/common/Ui";
 import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
@@ -82,11 +82,13 @@ export function JewelryCards({ items, onOpen, onEdit, onMovement, onArchive }) {
               <span className="inventory-visual-tag">{item.variant_count || item.variants?.length || 0} variações</span>
               <strong>A partir de {currency.format(item.sale_value || 0)}</strong>
             </div>
-            <div className="card-actions">
-              {onMovement && <Button variant="secondary" onClick={(event) => { event.stopPropagation(); onMovement(item, "Entrada"); }}>Entrada</Button>}
-              {onMovement && <Button variant="secondary" onClick={(event) => { event.stopPropagation(); onMovement(item, "Saída"); }}>Saída</Button>}
-              <Button variant="secondary" onClick={(event) => { event.stopPropagation(); onEdit(item); }}>Editar</Button>
-              {onArchive && <Button variant="secondary" className="danger" onClick={(event) => { event.stopPropagation(); onArchive(item); }}>Arquivar</Button>}
+            <div className="card-actions" onClick={(event) => event.stopPropagation()}>
+              <RowActions actions={[
+                onMovement ? { label: "Entrada", onClick: () => onMovement(item, "Entrada") } : null,
+                onMovement ? { label: "Saída", onClick: () => onMovement(item, "Saída") } : null,
+                { label: "Editar", onClick: () => onEdit(item) },
+                onArchive ? { label: "Arquivar", onClick: () => onArchive(item), danger: true } : null
+              ]} />
             </div>
           </div>
         </article>
@@ -106,8 +108,6 @@ export function Inventory2({ initialTab = "produtos" }) {
   const [statusTab, setStatusTab] = useState("todos");
   const [badgeTab, setBadgeTab] = useState("todos");
   const [showEditor, setShowEditor] = useState(false);
-  const [filterModalOpen, setFilterModalOpen] = useState(false);
-  const [filterDraft, setFilterDraft] = useState({});
   const { data: options } = useFetch("/options");
   const { data: intelligence } = useFetch("/inventory/intelligence?days=90");
   const { data: inventorySuggestions } = useFetch("/inventory/suggestions");
@@ -159,14 +159,18 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
   asArray(item?.variants)
 );
   const variantOptions = (field) => [...new Set(allVariants.map((variant) => variant[field]).filter(Boolean))].sort();
-  const inventoryFilterLabels = {
-    category: "Categoria", status: "Status", material: "Material", color: "Observação de cor",
-    thread_type: "Tipo de rosca", thickness: "Espessura", length: "Comprimento", diameter: "Diâmetro", supplier: "Fornecedor"
-  };
-  const activeInventoryFilters = Object.entries(filters).filter(([key, value]) => key !== "search" && Boolean(value));
-  const openFilterModal = () => { setFilterDraft({ ...filters }); setFilterModalOpen(true); };
-  const applyInventoryFilters = () => { setFilters((current) => ({ ...current, ...filterDraft, search: current.search })); setFilterModalOpen(false); };
-  const clearInventoryFilters = () => setFilters((current) => ({ ...current, category: "", subcategory: "", material: "", color: "", size: "", thickness: "", length: "", diameter: "", thread_type: "", supplier: "", physical_location: "", status: "" }));
+  const productFilters = [
+    { key: "category", label: "Categoria", type: "select", options: catalogFilterOptions(allJewelry).categories },
+    { key: "status", label: "Status do estoque", type: "select", options: [{ value: "ativos", label: "Ativos" }, { value: "critico", label: "Crítico" }, { value: "esgotados", label: "Esgotados" }] },
+    ...[["material", "Material"], ["color", "Observação de cor"], ["thread_type", "Tipo de rosca"], ["thickness", "Espessura"], ["length", "Comprimento"], ["diameter", "Diâmetro"], ["supplier", "Fornecedor"]].map(([key, label]) => ({ key, label, type: "select", options: variantOptions(key) }))
+  ];
+  const productFilterValues = Object.fromEntries(Object.entries(filters).filter(([key]) => key !== "search"));
+  const changeProductFilters = (nextFilters) => setFilters((current) => ({
+    ...current,
+    category: "", status: "", material: "", color: "", thread_type: "", thickness: "", length: "", diameter: "", supplier: "",
+    ...nextFilters,
+    search: current.search
+  }));
   const filteredItems = items.filter((item) => {
     if (inventoryMode === "virtual") {
       if (badgeTab === "todos") return true;
@@ -270,7 +274,11 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
               <CrudHeader
                 title="Produtos"
                 subtitle="Cadastre joias, preços e categorias do catálogo."
-                actions={<Button variant="secondary" onClick={() => setSectionTab("categorias")}><ListFilter size={16} /> Categorias</Button>}
+                actions={[
+                  { label: "Categorias", icon: ListFilter, onClick: () => setSectionTab("categorias") },
+                  { label: "Visualizar em cards", icon: LayoutGrid, onClick: () => setView("cards") },
+                  { label: "Visualizar em tabela", icon: Table2, onClick: () => setView("table") }
+                ]}
                 actionLabel="Novo produto"
                 onAction={openNewProduct}
               />
@@ -294,40 +302,21 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
         <div className="inventory-panel-shell">
           {sectionTab === "produtos" && (
             <>
-              <div className="inventory-filter-row simplified">
-                <label className="search-field">
-                  <Search size={17} />
-                  <input placeholder="Buscar joia, SKU ou variação..." value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} />
-                </label>
-                <button type="button" className={`advanced-filter-toggle ${activeInventoryFilters.length ? "active" : ""}`} onClick={openFilterModal} aria-haspopup="dialog">
-                  <SlidersHorizontal size={17} /> Filtros{activeInventoryFilters.length ? ` (${activeInventoryFilters.length})` : ""}
-                </button>
-                <div className="icon-toggle">
-                  <button className={view === "cards" ? "active" : ""} onClick={() => setView("cards")} aria-label="Cards"><LayoutGrid size={18} /></button>
-                  <button className={view === "table" ? "active" : ""} onClick={() => setView("table")} aria-label="Tabela"><Table2 size={18} /></button>
-                </div>
-              </div>
-
-              {activeInventoryFilters.length > 0 && <div className="inventory-applied-filters"><span>Filtros aplicados:</span>{activeInventoryFilters.map(([key, value]) => <button key={key} type="button" onClick={() => setFilters((current) => ({ ...current, [key]: "" }))}>{inventoryFilterLabels[key] || key}: {value} ×</button>)}<button type="button" className="link-button" onClick={clearInventoryFilters}>Limpar filtros</button></div>}
-
-              <Modal open={filterModalOpen} title="Filtros de produtos" subtitle="Escolha os filtros e aplique quando terminar." onClose={() => setFilterModalOpen(false)} footer={<><Button variant="secondary" onClick={() => setFilterModalOpen(false)}>Cancelar</Button><Button variant="secondary" onClick={() => setFilterDraft({})}>Limpar</Button><Button onClick={applyInventoryFilters}>Aplicar filtros</Button></>}>
-                <div className="form-grid">
-                  <Select label="Categoria" value={filterDraft.category ?? ""} onChange={(value) => setFilterDraft({ ...filterDraft, category: value })}><option value="">Todas</option>{catalogFilterOptions(allJewelry).categories.map((option) => <option key={option}>{option}</option>)}</Select>
-                  <Select label="Status" value={filterDraft.status ?? ""} onChange={(value) => setFilterDraft({ ...filterDraft, status: value })}><option value="">Todos</option><option value="ativos">Ativos</option><option value="critico">Crítico</option><option value="esgotados">Esgotados</option></Select>
-                  {[['material','Material'],['color','Observação de cor'],['thread_type','Tipo de rosca'],['thickness','Espessura'],['length','Comprimento'],['diameter','Diâmetro'],['supplier','Fornecedor']].map(([key, label]) => <Select key={key} label={label} value={filterDraft[key] ?? ""} onChange={(value) => setFilterDraft({ ...filterDraft, [key]: value })}><option value="">Todos</option>{variantOptions(key).map((option) => <option key={option}>{option}</option>)}</Select>)}
-                </div>
-              </Modal>
-
-              {!displayItems.length ? (
-                <div className="inventory-empty-state">
-                  <Gem size={28} />
-                  <strong>Nenhuma joia cadastrada ainda.</strong>
-                  <span>Cadastre uma nova joia ou ajuste os filtros para continuar.</span>
-                </div>
-              ) : view === "cards" ? (
+              {view === "cards" ? (
                 <JewelryCards items={displayItems} onOpen={openProduct} onEdit={openProduct} onMovement={openMovement} onArchive={archiveJewelry} />
               ) : (
-                <JewelryTable items={displayItems} onOpen={openProduct} onEdit={openProduct} onMovement={openMovement} onArchive={archiveJewelry} />
+                <JewelryTable
+                  items={displayItems}
+                  search={filters.search}
+                  onSearchChange={(search) => setFilters((current) => ({ ...current, search }))}
+                  filters={productFilters}
+                  filterValues={productFilterValues}
+                  onFilterChange={changeProductFilters}
+                  onOpen={openProduct}
+                  onEdit={openProduct}
+                  onMovement={openMovement}
+                  onArchive={archiveJewelry}
+                />
               )}
             </>
           )}
@@ -335,7 +324,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
           {sectionTab === "categorias" && (
             <CategoryManager
               categories={categoryManagement}
-              headerActions={<Button variant="secondary" onClick={() => setSectionTab("produtos")}><LayoutGrid size={16} /> Produtos</Button>}
+              headerActions={[{ label: "Produtos", icon: LayoutGrid, onClick: () => setSectionTab("produtos") }]}
               onChanged={() => { refreshOptions(); refreshJewelry(); }}
             />
           )}
@@ -1731,16 +1720,18 @@ export function ProfessionalManager({ professionals = [], onChanged }) {
   );
 }
 
-export function JewelryTable({ items, onOpen, onEdit, onMovement, onArchive }) {
+export function JewelryTable({ items, search, onSearchChange, filters, filterValues, onFilterChange, onOpen, onEdit, onMovement, onArchive }) {
   return (
     <div className="inventory-admin-table compact-inventory-table">
       <DataView
         rows={asArray(items)}
-        // A busca e os filtros desta tela são server-side (debounce + query na
-        // API). A barra do DataView filtraria de novo, em memória, um resultado
-        // que o backend já filtrou — e esconderia linhas que casaram por SKU de
-        // variação, dado que não aparece em nenhuma coluna.
-        searchable={false}
+        mode="server"
+        search={search}
+        onSearchChange={onSearchChange}
+        searchPlaceholder="Buscar por produto, SKU ou variação"
+        filters={filters}
+        filterValues={filterValues}
+        onFilterChange={onFilterChange}
         paginated={false}
         defaultSort={{ key: "name", dir: "asc" }}
         columns={[

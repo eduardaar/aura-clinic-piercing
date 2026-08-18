@@ -1,10 +1,10 @@
 import React, { useState } from "react";
-import { ArrowDownToLine, ArrowUpFromLine, BarChart3, Calendar, Gem, Home, Lock, Package, Settings, ShieldCheck, ShoppingCart, Sparkles, Table2, UsersRound, LifeBuoy } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, BarChart3, Calendar, Gem, Home, Lock, Package, ShieldCheck, ShoppingCart, Sparkles, Table2, UsersRound } from "lucide-react";
 import { canAccessPage, planAllowsPage } from "../../lib/permissions";
 import { Modal } from "../common/Crud";
 import { useFetch } from "../../lib/api";
 
-export function Sidebar({ page, role, user, brand, features, trialDays, setPage, open }) {
+export function Sidebar({ page, role, user, brand, features, setPage, open }) {
   // Marca do tenant logado (com fallback para a marca-mãe "Aura").
   const brandName = brand?.name || "Aura";
   const brandShort = brand?.short || (brand?.name ? "" : "Clinic Piercing");
@@ -36,9 +36,7 @@ export function Sidebar({ page, role, user, brand, features, trialDays, setPage,
       ["reports", BarChart3, "Relatórios"]
     ]],
     ["Sistema", [
-      ["settings", Settings, "Configurações"],
       ["admin", ShieldCheck, "Acessos"],
-      ["support", LifeBuoy, "Suporte"],
       ...(onboardingAtBottom ? [onboardingEntry] : [])
     ]]
   ]
@@ -91,15 +89,6 @@ export function Sidebar({ page, role, user, brand, features, trialDays, setPage,
           </React.Fragment>
         ))}
       </nav>
-      <div className="sidebar-foot">
-        {showPlan && (
-          <button className={`plan-link ${page === "meu-plano" ? "active" : ""}`} onClick={() => setPage("meu-plano")} title="Meu plano">
-            <Sparkles size={18} />
-            <span className="nav-label">Meu plano</span>
-            {typeof trialDays === "number" && <span className="trial-badge">{trialDays}d</span>}
-          </button>
-        )}
-      </div>
     </aside>
     {/* Fora do <aside> de propósito: dentro dele o modal herdaria as cores e o
         contexto de empilhamento do menu escuro. */}

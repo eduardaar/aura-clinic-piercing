@@ -366,8 +366,7 @@
   flex-wrap: nowrap;
 }
 
-.topbar-actions .notification-button,
-.topbar-icon-action {
+.topbar-quick-action {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -382,9 +381,8 @@
   cursor: pointer;
   transition: background-color .15s ease, border-color .15s ease;
 }
-.topbar-actions .notification-button:hover,
-.topbar-icon-action:hover { background: var(--paper); border-color: var(--nude); }
-.topbar-actions .notification-button span {
+.topbar-quick-action:hover { background: var(--paper); border-color: var(--nude); }
+.topbar-notification-action span {
   position: absolute;
   top: -5px;
   right: -5px;
@@ -425,6 +423,12 @@
   text-overflow: ellipsis;
 }
 .topbar-actions .user-chip > svg { flex: none; margin-left: auto; color: var(--muted); }
+.topbar-actions .user-chip[data-state="open"] .user-avatar,
+.topbar-actions .user-chip:hover .user-avatar {
+  border-color: var(--gold);
+  background: var(--gold-soft);
+}
+.topbar-actions .user-chip[data-state="open"] > svg { color: var(--gold-dark); transform: rotate(180deg); }
 .user-avatar {
   display: grid;
   width: 36px;
@@ -553,7 +557,8 @@
 
 @media (max-width: 1040px) {
   .topbar-actions .user-chip { min-width: 52px; margin-left: 4px; padding-left: 8px; }
-  .user-chip-copy, .topbar-actions .user-chip > svg { display: none; }
+  .user-chip-copy { display: none; }
+  .topbar-actions .user-chip > svg { display: block; margin-left: 0; }
 }
 
 @media (max-width: 900px) {
@@ -579,7 +584,7 @@
     justify-content: flex-end;
     width: auto;
   }
-  .topbar-actions .notification-button,
+  .topbar-notification-action,
   .topbar-actions .user-chip {
     width: auto;
     min-height: 0;
@@ -646,8 +651,8 @@
 @media (max-width: 560px) {
   .topbar { gap: 8px; padding: 0 16px; }
   .topbar-actions { gap: 2px; }
-  .topbar-icon-action { display: none; }
-  .topbar-actions .notification-button { width: 36px; height: 36px; }
+  .topbar-calendar-action { display: none; }
+  .topbar-notification-action { width: 36px; height: 36px; }
   .content-scroll { padding-top: 20px; }
   .content-scroll { padding-right: max(14px, env(safe-area-inset-right)); padding-left: max(14px, env(safe-area-inset-left)); padding-bottom: calc(36px + env(safe-area-inset-bottom)); }
   .panel { border-radius: 13px; }
@@ -1446,6 +1451,67 @@
   padding-top: 8px;
   padding-bottom: 8px;
   font-size: 10.5px;
+}
+
+/* Ação única de todas as linhas: nenhuma tela pode redesenhar o botão de
+   três pontos. A camada `app` vence os estilos legados de cada módulo. */
+.row-actions-menu .row-actions-more {
+  width: 36px;
+  min-height: 36px;
+  height: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--brown-dark);
+  border-radius: 999px;
+  background: var(--brown-dark);
+  color: var(--white);
+}
+.row-actions-menu .row-actions-more:hover,
+.row-actions-menu .row-actions-more[data-state="open"] {
+  border-color: var(--gold-dark);
+  background: var(--gold-dark);
+  color: var(--white);
+}
+
+/* Atalhos secundários de cabeçalho: ficam sempre dentro de "Mais opções",
+   antes do botão Novo, seguindo o mesmo menu das ações de linha. */
+.crud-more-options { white-space: nowrap; }
+.crud-options-popover {
+  z-index: 10020;
+  display: grid;
+  min-width: 190px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--white);
+  box-shadow: 0 14px 30px rgba(26, 29, 35, .16);
+}
+.crud-options-popover [role="menuitem"] {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+  outline: none;
+  cursor: pointer;
+}
+.crud-options-popover [role="menuitem"][data-highlighted] {
+  background: color-mix(in srgb, var(--gold) 15%, var(--white));
+}
+
+/* Visualização em cards de Produtos: duas colunas enquanto houver espaço; no
+   celular a leitura volta para uma coluna inteira. */
+.inventory-product-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (max-width: 700px) {
+  .inventory-product-list { grid-template-columns: 1fr; }
 }
 
 } /* fim de @layer app */
