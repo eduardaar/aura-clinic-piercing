@@ -51,6 +51,15 @@ export function isUniqueViolation(error) {
   return error?.code === "23505";
 }
 
+// Alguns imports antigos serializaram ausência de imagem como a palavra
+// "null". Como ela é uma string não vazia, o navegador tenta resolvê-la como
+// rota relativa (`/app/null`) e a galeria fica quebrada. Centralizar a limpeza
+// impede que importação, API e edição voltem a gravar esse valor.
+export function cleanImageUrl(value) {
+  const url = String(value ?? "").trim();
+  return ["", "null", "undefined", "none"].includes(url.toLowerCase()) ? "" : url;
+}
+
 export async function jewelrySkuExists(db, sku, excludeId = null) {
   const value = String(sku || "").trim();
   if (!value) return false;
@@ -182,14 +191,14 @@ export async function attachVariants(db, products = []) {
     return map;
   }, new Map());
   return products.map((product) => {
-    const productImages = imagesByProduct.get(product.id) || [];
+    const productImages = (imagesByProduct.get(product.id) || []).filter((image) => cleanImageUrl(image.image_url));
     const primaryImage = productImages.find((image) => Number(image.is_primary)) || productImages[0] || null;
     const productVariants = (byProduct.get(product.id) || []).map((variant) => {
       const variantImages = imagesByVariant.get(variant.id) || [];
       return {
         ...variant,
-        images: variantImages,
-        image_url: variantImages.find((image) => Number(image.is_primary))?.image_url || variantImages[0]?.image_url || primaryImage?.image_url || product.image_url || product.photo_url
+        images: variantImages.filter((image) => cleanImageUrl(image.image_url)),
+        image_url: cleanImageUrl(variantImages.find((image) => Number(image.is_primary))?.image_url) || cleanImageUrl(variantImages[0]?.image_url) || cleanImageUrl(primaryImage?.image_url) || cleanImageUrl(product.image_url) || cleanImageUrl(product.photo_url)
       };
     });
     const quantity = productVariants.reduce((sum, variant) => sum + Number(variant.quantity || 0), 0);
@@ -199,8 +208,8 @@ export async function attachVariants(db, products = []) {
     return {
       ...product,
       images: productImages,
-      image_url: primaryImage?.image_url || product.image_url || product.photo_url,
-      photo_url: primaryImage?.image_url || product.photo_url || product.image_url,
+      image_url: cleanImageUrl(primaryImage?.image_url) || cleanImageUrl(product.image_url) || cleanImageUrl(product.photo_url),
+      photo_url: cleanImageUrl(primaryImage?.image_url) || cleanImageUrl(product.photo_url) || cleanImageUrl(product.image_url),
       gallery_urls: productImages.length ? JSON.stringify(productImages.map((image) => image.image_url)) : product.gallery_urls,
       variants: productVariants,
       variant_count: productVariants.length,
@@ -244,13 +253,13 @@ export async function syncProductImages(db, productId, imagesInput = [], { varia
   const images = normalizeImageInput(imagesInput)
     .map((item, index) => typeof item === "string" ? { image_url: item, sort_order: index + 1, is_primary: index === 0 } : item)
     .filter((item) => {
-      const url = String(item?.image_url || item?.url || "").trim();
+      const url = cleanImageUrl(item?.image_url || item?.url);
       if (!url || seen.has(url)) return false;
       seen.add(url);
       return true;
     })
     .map((item, index) => ({
-      image_url: String(item.image_url || item.url).trim(),
+      image_url: cleanImageUrl(item.image_url || item.url),
       storage_key: item.storage_key || "",
       alt_text: item.alt_text || "",
       sort_order: Number(item.sort_order || index + 1),

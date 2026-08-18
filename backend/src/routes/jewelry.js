@@ -15,6 +15,7 @@ import {
   replaceJewelryVariants,
   assertNonNegativeStockQuantity,
   syncProductImages,
+  cleanImageUrl,
   syncProductInventory,
   redactInventoryCosts,
   SkuConflictError,
@@ -306,8 +307,8 @@ function jewelryPayload(body, sku, pricing) {
   return [
     elegantProductName(body.name),
     body.description || "",
-    body.photo_url,
-    JSON.stringify(body.gallery_urls || []),
+    cleanImageUrl(body.photo_url) || null,
+    JSON.stringify(normalizeImageUrls(body.gallery_urls)),
     body.category,
     body.category_id,
     body.subcategory || "",
@@ -359,7 +360,7 @@ function jewelryPayload(body, sku, pricing) {
     body.status || "disponível",
     Number(body.low_stock_threshold || 5),
     Number(body.critical_stock_threshold || 3),
-    body.image_url || "",
+    cleanImageUrl(body.image_url) || null,
     boolNumber(body.is_published ?? 1)
   ];
 }
@@ -369,9 +370,19 @@ function updateValue(field, body) {
     return Number(body[field] || 0);
   }
   if (field === "gallery_urls") {
-    return typeof body.gallery_urls === "string" ? body.gallery_urls : JSON.stringify(body.gallery_urls || []);
+    return JSON.stringify(normalizeImageUrls(body.gallery_urls));
   }
+  if (field === "image_url" || field === "photo_url") return cleanImageUrl(body[field]) || null;
   return field === "name" ? elegantProductName(body[field]) : body[field];
+}
+
+function normalizeImageUrls(value) {
+  const list = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? (() => { try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed : [value]; } catch { return value.split(/\n|,/); } })()
+      : [];
+  return [...new Set(list.map((item) => cleanImageUrl(typeof item === "string" ? item : item?.image_url || item?.url)).filter(Boolean))];
 }
 
 router.get("/api/jewelry", withDb(async (req, res, db) => {

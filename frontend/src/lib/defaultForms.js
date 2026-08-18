@@ -507,17 +507,21 @@ export function normalizeJewelryForm(item = {}) {
 }
 
 function normalizeJewelryImages(item = {}) {
+  const cleanUrl = (value) => {
+    const url = String(value ?? "").trim();
+    return ["", "null", "undefined", "none"].includes(url.toLowerCase()) ? "" : url;
+  };
   const images = Array.isArray(item.images) ? item.images : [];
   if (images.length) {
     return images.map((image, index) => ({
-      image_url: image.image_url || image.url || "",
+      image_url: cleanUrl(image.image_url || image.url),
       alt_text: image.alt_text || "",
       sort_order: Number(image.sort_order || index + 1),
       is_primary: Boolean(Number(image.is_primary ?? index === 0))
     })).filter((image) => image.image_url);
   }
   const urls = parseGalleryUrls(item.gallery_urls);
-  const fallback = [item.image_url || item.photo_url, ...urls].filter(Boolean);
+  const fallback = [item.image_url, item.photo_url, ...urls].map(cleanUrl).filter(Boolean);
   return [...new Set(fallback)].map((url, index) => ({
     image_url: url,
     alt_text: item.name || "",
@@ -530,7 +534,7 @@ export function parseGalleryUrls(value = "") {
   return String(value)
     .split(/\n+/)
     .map((item) => item.trim())
-    .filter(Boolean);
+    .filter((item) => item && !["null", "undefined", "none"].includes(item.toLowerCase()));
 }
 
 export function defaultCatalogSettings() {

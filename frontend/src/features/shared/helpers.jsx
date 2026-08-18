@@ -86,8 +86,9 @@ export function whatsappCatalogUrl(message, phone) {
 }
 
 export function catalogImageUrl(url) {
-  if (!url) return "/placeholder-jewel-neutral.svg";
-  return url.startsWith("/uploads") ? `${API_ORIGIN}${url}` : url;
+  const cleanUrl = String(url ?? "").trim();
+  if (["", "null", "undefined", "none"].includes(cleanUrl.toLowerCase())) return "/placeholder-jewel-neutral.svg";
+  return cleanUrl.startsWith("/uploads") ? `${API_ORIGIN}${cleanUrl}` : cleanUrl;
 }
 
 export function catalogCategories(names = []) {

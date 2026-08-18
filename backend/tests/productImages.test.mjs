@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { syncProductImages } from "../src/services/inventory.js";
+import { cleanImageUrl, syncProductImages } from "../src/services/inventory.js";
 
 function fakeDb({ product = true, variation = true } = {}) {
   const calls = [];
@@ -35,4 +35,11 @@ test("remove duplicadas e mantém somente a primeira imagem como principal", asy
   ]);
   assert.deepEqual(images.map((image) => image.is_primary), [1, 0]);
   assert.equal(db.calls.filter((call) => call.sql.includes("INSERT INTO")).length, 2);
+});
+
+test("descarta URLs sentinela que quebrariam a galeria", async () => {
+  const db = fakeDb();
+  const images = await syncProductImages(db, 10, ["null", "undefined", " /uploads/valida.png "]);
+  assert.deepEqual(images.map((image) => image.image_url), ["/uploads/valida.png"]);
+  assert.equal(cleanImageUrl("null"), "");
 });

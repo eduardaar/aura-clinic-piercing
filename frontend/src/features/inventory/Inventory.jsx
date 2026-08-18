@@ -971,9 +971,17 @@ export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTI
         <div className="editor-section">
           <div className="form-grid">
             <Input label="Nome do Produto" value={form.name} onChange={(value) => setForm({ ...form, name: value })} required />
-            <Select label="Categoria" value={form.category} onChange={(value) => setForm({ ...form, category: value })} required>
+            <Select
+              label="Categoria"
+              value={form.category}
+              onChange={(value) => {
+                const selectedCategory = asArray(categories).find((category) => category.name === value);
+                setForm({ ...form, category: value, category_id: selectedCategory?.id || "" });
+              }}
+              required
+            >
               <option value="">Selecione</option>
-              {categoryOptions.map((item) => <option key={item}>{item}</option>)}
+              {categoryOptions.map((item) => <option key={item} value={item}>{item}</option>)}
             </Select>
             {form.category === "Argolas" && (
               <Select label="Subcategoria" value={form.subcategory} onChange={(value) => setForm({ ...form, subcategory: value })}>
