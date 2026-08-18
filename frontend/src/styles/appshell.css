@@ -566,6 +566,30 @@
 
   .app-shell { grid-template-columns: 1fr; }
 
+  /* O CSS legado tratava a topbar como cabeçalho de página e a empilhava no
+     mobile. No shell autenticado ela é uma barra de aplicação: ícones e menu
+     precisam continuar na mesma faixa, sem cair para baixo. */
+  .topbar {
+    align-items: center;
+    flex-direction: row !important;
+    flex-wrap: nowrap;
+    min-width: 0;
+    margin-bottom: 0;
+  }
+  .topbar-actions {
+    align-items: center;
+    flex: none;
+    flex-direction: row !important;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    width: auto;
+  }
+  .topbar-actions .notification-button,
+  .topbar-actions .user-chip {
+    width: auto;
+    min-height: 0;
+  }
+
   .sidebar {
     position: fixed;
     top: 0;
@@ -600,6 +624,28 @@
 
   .global-search { flex: 1; width: auto; }
   .global-search kbd { display: none; }
+}
+
+@media (max-width: 680px) {
+  .topbar {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+  }
+  .global-search { display: none; }
+  .topbar-page-context {
+    display: grid;
+    min-width: 0;
+    gap: 1px;
+  }
+  .topbar-page-context span,
+  .topbar-page-context strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .topbar-page-context span { color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+  .topbar-page-context strong { color: var(--ink); font-size: 15px; }
+  .topbar-actions { margin-left: 0; }
 }
 
 @media (max-width: 560px) {
@@ -971,10 +1017,88 @@
 
 .dataview-table tbody td {
   border-bottom-color: var(--line);
+  vertical-align: middle;
+}
+
+/* Toda lista administrativa alterna linhas para leitura rápida. O tom é
+   discreto para não disputar atenção com status, alertas e ações. */
+.data-table tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--paper) 56%, white);
 }
 
 .dataview-table tbody tr:hover td {
   background: color-mix(in srgb, var(--gold-soft) 26%, white);
+}
+
+/* A última coluna nunca deve herdar margens de ações de cards. Um único menu
+   de três pontos mantém a tabela visualmente estável, inclusive quando a
+   linha possui mais funções. */
+@media (min-width: 721px) {
+  /* Entre desktop e celular a tabela não força uma largura mínima fixa: as
+     colunas encolhem, o texto quebra em mais linhas e a altura cresce antes
+     de adotarmos os cartões mobile. */
+  .data-table-wrap {
+    /* Lista operacional não deve ganhar uma segunda navegação horizontal: ela
+       comprime as colunas antes. Isso também garante que as ações nunca sejam
+       levadas para fora da área visível. */
+    overflow-x: hidden;
+  }
+  .data-table {
+    width: 100%;
+    min-width: 0;
+    table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  .data-table th,
+  .data-table td {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+  .data-table th:not(.data-table-actions-head) {
+    white-space: normal;
+  }
+  .data-table-actions-head,
+  .data-table td.table-actions {
+    /* Em `table-layout: fixed`, 1% pode resultar em 5px numa tela estreita.
+       Uma largura concreta preserva o alvo de toque dos três pontos. */
+    width: 72px;
+    min-width: 72px;
+    max-width: 72px;
+    white-space: nowrap;
+    text-align: center;
+  }
+  .data-table-actions-head {
+    position: static;
+    background: color-mix(in srgb, var(--paper) 72%, white);
+  }
+  .data-table td.table-actions {
+    display: table-cell;
+    margin: 0;
+    padding-right: 12px;
+    vertical-align: middle;
+    position: static !important;
+    z-index: auto;
+    box-shadow: none;
+  }
+  .data-table tbody tr:nth-child(odd) td.table-actions { background: var(--white); }
+  .data-table tbody tr:nth-child(even) td.table-actions { background: color-mix(in srgb, var(--paper) 56%, white); }
+  .data-table tbody tr:hover td.table-actions { background: color-mix(in srgb, var(--gold-soft) 26%, white); }
+  .data-table td.table-actions .row-actions-menu {
+    display: inline-flex;
+    margin: 0 auto;
+    vertical-align: middle;
+  }
+}
+
+@media (max-width: 720px) {
+  /* No ponto em que a leitura horizontal deixa de ser útil, o padrão já troca
+     para cartões; a ação volta a participar do fluxo normal do cartão. */
+  .data-table td.table-actions {
+    position: static;
+    box-shadow: none;
+  }
 }
 
 .dataview-pagination {

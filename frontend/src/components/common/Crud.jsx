@@ -145,14 +145,14 @@ export function CrudHeader({ title, subtitle, actionLabel = "Novo", onAction }) 
   );
 }
 
-// Ações de uma linha de listagem. A primeira ação marcada como `primary` (ou a
-// primeira não destrutiva) fica visível; o restante fica no mesmo menu em todas
-// as telas. Isso evita quatro botões espremidos na tabela, especialmente no
-// celular, e preserva a hierarquia: editar/operar antes de excluir.
+// Ações de uma linha de listagem. O padrão é sempre o menu de três pontos: a
+// célula final fica alinhada e todas as ações (editar, excluir e extras) estão
+// no mesmo lugar em qualquer tela. `menuOnly={false}` só existe para cenários
+// explicitamente excepcionais, como ações rápidas fora de uma lista.
 //
 // Cada ação: { label, onClick, href, target, rel, danger, disabled, primary }.
 // Itens falsos são aceitos para simplificar ações condicionais no JSX.
-export function RowActions({ actions = [], menuOnly = false }) {
+export function RowActions({ actions = [], menuOnly = true }) {
   const visible = actions.filter(Boolean);
   if (!visible.length) return null;
   const primaryIndex = visible.findIndex((action) => action.primary) >= 0
