@@ -14,7 +14,7 @@
 #
 # Variáveis (todas com default para produção):
 #   SERVER_HOST, SERVER_USER, API_URL, SITE_URL,
-#   REMOTE_COMPOSE_DIR, REMOTE_BACKEND, REMOTE_FRONT, SSH_OPTS
+#   REMOTE_COMPOSE_DIR, REMOTE_BACKEND, REMOTE_FRONT, SSH_OPTS, SSH_COMMAND
 #
 set -euo pipefail
 
@@ -27,6 +27,10 @@ REMOTE_BACKEND="${REMOTE_BACKEND:-/home/auraclinic/backend}"
 REMOTE_FRONT="${REMOTE_FRONT:-/home/nginx/front/auraclinic}"
 REMOTE_FRONT_NEXT="${REMOTE_FRONT}.next"
 SSH_OPTS="${SSH_OPTS:-}"
+# Mantém `ssh` como padrão, mas permite um wrapper local (por exemplo, um
+# agente corporativo) sem reescrever o script. O valor é deliberadamente uma
+# string de comando porque também é passado a `rsync -e`.
+SSH_COMMAND="${SSH_COMMAND:-ssh}"
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -38,8 +42,8 @@ target="${SERVER_USER}@${SERVER_HOST}"
 # tropeça no rate-limit (ufw LIMIT) e no fail2ban do servidor — o que bania o
 # runner do GitHub Actions no meio do deploy (timeout na porta 22).
 CONTROL="$(mktemp -u "${TMPDIR:-/tmp}/aura-deploy-ctl-XXXXXX")"
-rsh="ssh ${SSH_OPTS} -o ConnectTimeout=20 -o ControlMaster=auto -o ControlPath=${CONTROL} -o ControlPersist=180"
-cleanup() { ssh -o ControlPath="${CONTROL}" -O exit "${target}" 2>/dev/null || true; }
+rsh="${SSH_COMMAND} ${SSH_OPTS} -o ConnectTimeout=20 -o ControlMaster=auto -o ControlPath=${CONTROL} -o ControlPersist=180"
+cleanup() { ${SSH_COMMAND} -o ControlPath="${CONTROL}" -O exit "${target}" 2>/dev/null || true; }
 trap cleanup EXIT
 
 # Retry APENAS para falha de conexão. A rota entre o runner do GitHub (Azure) e
