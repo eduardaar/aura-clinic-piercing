@@ -23,6 +23,24 @@
  */
 
 @layer telas {
+  /* O Radix Tabs envolve o cabeçalho e a área rolável. Este wrapper precisa
+   * continuar a cadeia de altura da `.main-content`; sem flex + min-height: 0,
+   * `.content-scroll` cresce com o conteúdo, é cortado pelo shell e nunca cria
+   * a própria barra de rolagem. Esta é a regra única para todas as áreas do
+   * painel da plataforma. */
+  .platform-tabs-root {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    width: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .platform-tabs-root > .content-scroll {
+    min-height: 0;
+  }
+
   /* ---------------------------------------------------------------------
    * Menu superior
    * ------------------------------------------------------------------- */

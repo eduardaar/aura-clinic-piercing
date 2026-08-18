@@ -83,3 +83,13 @@ test("painel da plataforma monta somente a tela ativa", async () => {
   assert.doesNotMatch(source, /\bforceMount\b/, "Não mantenha telas inativas montadas no painel da plataforma.");
   assert.match(source, /<Tabs\.Content key=\{tab\} value=\{tab\}/, "Use um único painel associado à rota ativa.");
 });
+
+test("painel da plataforma preserva a cadeia de altura do scroll", async () => {
+  const source = withoutComments(await readFile(join(SRC_ROOT, "styles/platform-panel.css"), "utf8"));
+  const wrapperRule = source.match(/\.platform-tabs-root\s*\{([^}]*)\}/)?.[1] || "";
+
+  assert.match(wrapperRule, /display:\s*flex/, "O wrapper das telas precisa distribuir a altura disponível.");
+  assert.match(wrapperRule, /flex-direction:\s*column/, "Cabeçalho e conteúdo devem permanecer em coluna.");
+  assert.match(wrapperRule, /min-height:\s*0/, "O conteúdo precisa poder encolher para habilitar a rolagem interna.");
+  assert.match(wrapperRule, /overflow:\s*hidden/, "A rolagem deve pertencer somente a .content-scroll.");
+});
