@@ -93,3 +93,10 @@ test("painel da plataforma preserva a cadeia de altura do scroll", async () => {
   assert.match(wrapperRule, /min-height:\s*0/, "O conteúdo precisa poder encolher para habilitar a rolagem interna.");
   assert.match(wrapperRule, /overflow:\s*hidden/, "A rolagem deve pertencer somente a .content-scroll.");
 });
+
+test("API de produção usa o mesmo domínio e nunca depende de localhost", async () => {
+  const source = withoutComments(await readFile(join(SRC_ROOT, "lib/api.js"), "utf8"));
+
+  assert.match(source, /import\.meta\.env\.PROD\s*\?\s*["']\/api["']\s*:\s*\(import\.meta\.env\.VITE_API_URL\s*\|\|\s*["']http:\/\/localhost:4000\/api["']\)/,
+    "Produção deve escolher /api antes de considerar qualquer variável local.");
+});

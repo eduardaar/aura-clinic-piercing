@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-export const API = import.meta.env.VITE_API_URL || "http://localhost:4000/api";
+// Produção usa sempre a API no mesmo domínio, servida pelo nginx em `/api`.
+// Localhost é fallback exclusivo do Vite em desenvolvimento — deixar esse
+// valor como fallback geral faz o navegador do cliente tentar acessar a
+// própria máquina em builds que não receberam VITE_API_URL.
+export const API = import.meta.env.PROD
+  ? "/api"
+  : (import.meta.env.VITE_API_URL || "http://localhost:4000/api");
 export const API_ORIGIN = API.replace(/\/api$/, "");
 
 // --- Contratos da camada de dados -------------------------------------------
