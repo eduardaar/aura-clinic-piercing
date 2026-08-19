@@ -633,15 +633,15 @@
   width: 100%;
   max-width: var(--au-l-max);
   margin: 0 auto;
-  padding: 12px var(--au-l-pad) 32px;
+  padding: 8px var(--au-l-pad) 24px;
   min-width: 0;
 }
 
 .au-l-root .au-l-close-inner {
   display: grid;
-  gap: 24px;
+  gap: 16px;
   align-items: center;
-  padding: 30px 22px;
+  padding: 20px 18px;
   border: 1px solid var(--line);
   border-radius: 24px;
   background: linear-gradient(140deg, #fff, rgba(230, 201, 140, .16));
@@ -674,11 +674,11 @@
 .au-l-root .au-l-close-copy { min-width: 0; }
 
 .au-l-root .au-l-close-copy h2 {
-  margin-bottom: 20px;
-  font-size: clamp(25px, 5vw, 38px);
+  margin-bottom: 12px;
+  font-size: clamp(23px, 4vw, 32px);
 }
 
-.au-l-root .au-l-close-copy .au-l-note { margin-top: 12px; }
+.au-l-root .au-l-close-copy .au-l-note { margin-top: 8px; }
 
 .au-l-root .au-l-shots {
   display: grid;
@@ -701,9 +701,9 @@
    enquadramento vertical em vez de ficar espremida em meia coluna. */
 .au-l-root .au-l-shots img:only-child {
   grid-column: 1 / -1;
-  width: min(100%, 260px);
+  width: min(100%, 180px);
   justify-self: end;
-  aspect-ratio: 3 / 4;
+  aspect-ratio: 4 / 5;
   object-position: center;
 }
 
@@ -752,7 +752,7 @@
   .au-l-root .au-l-btn { width: 100%; }
   .au-l-root .au-l-hero-actions { width: 100%; }
   .au-l-root .au-l-plan-compare-scroll { margin-inline: -4px; padding-inline: 4px; overflow-x: auto; }
-  .au-l-root .au-l-close-inner { padding: 28px 20px; }
+  .au-l-root .au-l-close-inner { padding: 20px 18px; }
   .au-l-whatsapp-float { width: 50px; height: 50px; right: 14px; bottom: 14px; }
 }
 
@@ -807,7 +807,7 @@
   .au-l-root .au-l-hero:not(.au-l-hero-benefits-section) .au-l-hero-inner { padding-bottom: 14px; }
   .au-l-root #recursos { padding-top: 12px; }
 
-  .au-l-root .au-l-close-inner { padding: 36px 32px; }
+  .au-l-root .au-l-close-inner { padding: 24px 28px; }
 
   .au-l-root .au-l-foot {
     flex-direction: row;
@@ -861,8 +861,8 @@
 
   .au-l-root .au-l-close-inner {
     grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr);
-    gap: 40px;
-    padding: 44px 44px;
+    gap: 24px;
+    padding: 26px 32px;
   }
 
   /* leve escalonamento vertical: dá movimento sem custar espaço */
