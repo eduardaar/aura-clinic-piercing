@@ -46,7 +46,7 @@ describe("Landing", () => {
     render(<Landing />);
 
     await waitFor(() => {
-      expect(screen.getByText(LANDING_DEFAULTS.features.title)).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: LANDING_DEFAULTS.features.items[0].title })).toBeInTheDocument();
     });
 
     const cards = LANDING_DEFAULTS.features.items.map((item) => screen.getByRole("heading", { name: item.title }).closest("article"));
@@ -66,7 +66,7 @@ describe("Landing", () => {
     });
 
     const intro = screen.getByRole("heading", { name: LANDING_DEFAULTS.hero.title });
-    const features = screen.getByRole("heading", { name: LANDING_DEFAULTS.features.title });
+    const features = screen.getByRole("heading", { name: LANDING_DEFAULTS.features.items[0].title });
     const plans = screen.getByRole("heading", { name: LANDING_DEFAULTS.plans.title });
     const closing = screen.getByRole("heading", { name: LANDING_DEFAULTS.closing.title });
     const faq = screen.getByRole("heading", { name: "Perguntas frequentes" });
@@ -88,8 +88,9 @@ describe("Landing", () => {
 
     const markup = container.innerHTML;
     expect(markup.indexOf(LANDING_DEFAULTS.hero.subtitle)).toBeLessThan(markup.indexOf("Criar minha clínica"));
-    expect(markup.indexOf("Criar minha clínica")).toBeLessThan(markup.indexOf(LANDING_DEFAULTS.features.title));
-    expect(markup.indexOf(LANDING_DEFAULTS.hero.note)).toBeLessThan(markup.indexOf(LANDING_DEFAULTS.features.title));
+    expect(markup.indexOf("Criar minha clínica")).toBeLessThan(markup.indexOf(LANDING_DEFAULTS.features.items[0].title));
+    expect(markup.indexOf(LANDING_DEFAULTS.hero.note)).toBeLessThan(markup.indexOf(LANDING_DEFAULTS.features.items[0].title));
+    expect(screen.queryByText(LANDING_DEFAULTS.features.title)).not.toBeInTheDocument();
   });
 
   it("mantém o conteúdo embutido quando a API devolve lista vazia", async () => {

@@ -176,10 +176,6 @@ function FeaturesSection({ content }) {
   if (!items.length) return null;
   return (
     <section className="au-l-sec" id="recursos">
-      <div className="au-l-sec-head">
-        <h2>{content.title}</h2>
-        {content.subtitle && <p>{content.subtitle}</p>}
-      </div>
       <div className="au-l-features">
         {items.map((item, index) => (
           <article key={item.key} className={`au-l-feature${index % 2 ? " is-reversed" : ""}`}>
