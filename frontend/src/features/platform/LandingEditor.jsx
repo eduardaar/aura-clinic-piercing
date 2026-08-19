@@ -645,7 +645,6 @@ function SectionFields({ sectionKey, content, onChange, upload }) {
         <Input label="Título da seção" value={content.title || ""} onChange={(value) => set({ title: value })} />
       </div>
       <Textarea label="Texto" hint="Separe os parágrafos com uma linha em branco." value={content.body || ""} onChange={(value) => set({ body: value })} />
-      <Input label="Frase de encerramento" value={content.signature || ""} onChange={(value) => set({ signature: value })} />
       <ImageField
         label="Foto da idealizadora"
         value={content.image || ""}
