@@ -180,6 +180,10 @@
   border-top: 1px solid var(--line);
 }
 
+/* Abertura e recursos são uma mesma sequência visual: não deixe a soma dos
+   * paddings criar uma faixa vazia entre o CTA e o título seguinte. */
+.au-l-root .au-l-hero:not(.au-l-hero-benefits-section) .au-l-hero-inner { padding-bottom: 8px; }
+
 .au-l-root .au-l-hero-inner {
   width: 100%;
   max-width: var(--au-l-max);
@@ -361,7 +365,7 @@
 
 /* Recursos começa logo depois do hero e o título é uma chamada única — não
    * precisa reservar a área larga das seções com subtítulo. */
-.au-l-root #recursos { padding-top: 20px; }
+.au-l-root #recursos { padding-top: 4px; }
 .au-l-root #recursos .au-l-sec-head { max-width: none; margin-bottom: 16px; }
 .au-l-root #recursos .au-l-sec-head h2 {
   font-size: clamp(21px, 5vw, 40px);
@@ -798,7 +802,8 @@
   .au-l-root .au-l-value-inner { padding: 64px var(--au-l-pad); }
 
   .au-l-root .au-l-sec { padding: 56px var(--au-l-pad); }
-  .au-l-root #recursos { padding-top: 28px; }
+  .au-l-root .au-l-hero:not(.au-l-hero-benefits-section) .au-l-hero-inner { padding-bottom: 14px; }
+  .au-l-root #recursos { padding-top: 12px; }
 
   .au-l-root .au-l-close-inner { padding: 36px 32px; }
 
@@ -829,7 +834,8 @@
   .au-l-root .au-l-value-inner { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 64px; align-items: center; }
 
   .au-l-root .au-l-sec { padding: 72px var(--au-l-pad); }
-  .au-l-root #recursos { padding-top: 32px; }
+  .au-l-root .au-l-hero:not(.au-l-hero-benefits-section) .au-l-hero-inner { padding-bottom: 16px; }
+  .au-l-root #recursos { padding-top: 16px; }
   .au-l-root .au-l-sec-head { margin-bottom: 30px; }
   .au-l-root .au-l-feature,
   .au-l-root .au-l-feature-media { min-height: 250px; }
