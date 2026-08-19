@@ -359,6 +359,16 @@
 
 .au-l-root .au-l-sec-head h2 { font-size: clamp(26px, 5.2vw, 40px); }
 
+/* Recursos começa logo depois do hero e o título é uma chamada única — não
+   * precisa reservar a área larga das seções com subtítulo. */
+.au-l-root #recursos { padding-top: 20px; }
+.au-l-root #recursos .au-l-sec-head { max-width: none; margin-bottom: 16px; }
+.au-l-root #recursos .au-l-sec-head h2 {
+  font-size: clamp(21px, 5vw, 40px);
+  letter-spacing: -.03em;
+  white-space: nowrap;
+}
+
 .au-l-root .au-l-sec-head p {
   margin-top: 10px;
   color: var(--au-l-body);
@@ -769,18 +779,18 @@
   .au-l-root .au-l-feature {
     display: grid;
     grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr);
-    min-height: 260px;
+    min-height: 210px;
   }
   .au-l-root .au-l-feature-media {
     grid-column: 1;
     grid-row: 1;
-    min-height: 260px;
+    min-height: 210px;
     aspect-ratio: auto;
   }
   .au-l-root .au-l-feature-body {
     grid-column: 2;
     grid-row: 1;
-    padding: clamp(28px, 5vw, 52px);
+    padding: clamp(24px, 4vw, 40px);
   }
   .au-l-root .au-l-feature.is-reversed .au-l-feature-media { grid-column: 2; }
   .au-l-root .au-l-feature.is-reversed .au-l-feature-body { grid-column: 1; }
@@ -788,6 +798,7 @@
   .au-l-root .au-l-value-inner { padding: 64px var(--au-l-pad); }
 
   .au-l-root .au-l-sec { padding: 56px var(--au-l-pad); }
+  .au-l-root #recursos { padding-top: 28px; }
 
   .au-l-root .au-l-close-inner { padding: 36px 32px; }
 
@@ -818,9 +829,10 @@
   .au-l-root .au-l-value-inner { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 64px; align-items: center; }
 
   .au-l-root .au-l-sec { padding: 72px var(--au-l-pad); }
+  .au-l-root #recursos { padding-top: 32px; }
   .au-l-root .au-l-sec-head { margin-bottom: 30px; }
   .au-l-root .au-l-feature,
-  .au-l-root .au-l-feature-media { min-height: 320px; }
+  .au-l-root .au-l-feature-media { min-height: 250px; }
 
   /* planos: sai do modo carrossel */
   .au-l-root .au-l-plan-scroller {
