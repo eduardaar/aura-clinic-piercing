@@ -244,8 +244,8 @@
 .au-l-root .au-l-faq-section { background: var(--paper); }
 
 .au-l-root .au-l-faq {
-  width: min(100%, 900px);
-  margin: 0 auto;
+  width: 100%;
+  margin: 0;
   border-top: 0;
 }
 
