@@ -132,8 +132,8 @@ function FeaturesSection({ content }) {
         {content.subtitle && <p>{content.subtitle}</p>}
       </div>
       <div className="au-l-features">
-        {items.map((item) => (
-          <article key={item.key} className="au-l-feature">
+        {items.map((item, index) => (
+          <article key={item.key} className={`au-l-feature${index % 2 ? " is-reversed" : ""}`}>
             <div className="au-l-feature-media">
               <img
                 src={imageUrl(item.image)}

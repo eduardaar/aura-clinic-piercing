@@ -375,12 +375,12 @@
   cursor: pointer;
 }
 
-/* ---------- recursos (4 cards com foto) ------------------------------ */
+/* ---------- recursos (4 faixas alternadas com foto) ------------------ */
 
 .au-l-root .au-l-features {
   display: grid;
   grid-template-columns: 1fr;
-  gap: var(--au-l-gap);
+  gap: clamp(18px, 3vw, 28px);
 }
 
 .au-l-root .au-l-feature {
@@ -412,7 +412,11 @@
   object-fit: cover;
 }
 
-.au-l-root .au-l-feature-body { padding: 16px 18px 20px; }
+.au-l-root .au-l-feature-body {
+  display: grid;
+  align-content: center;
+  padding: 20px 20px 24px;
+}
 
 .au-l-root .au-l-feature-body h3 {
   display: flex;
@@ -757,7 +761,25 @@
     font-size: 14px;
   }
 
-  .au-l-root .au-l-features { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .au-l-root .au-l-features { grid-template-columns: minmax(0, 1fr); }
+  .au-l-root .au-l-feature {
+    display: grid;
+    grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr);
+    min-height: 260px;
+  }
+  .au-l-root .au-l-feature-media {
+    grid-column: 1;
+    grid-row: 1;
+    min-height: 260px;
+    aspect-ratio: auto;
+  }
+  .au-l-root .au-l-feature-body {
+    grid-column: 2;
+    grid-row: 1;
+    padding: clamp(28px, 5vw, 52px);
+  }
+  .au-l-root .au-l-feature.is-reversed .au-l-feature-media { grid-column: 2; }
+  .au-l-root .au-l-feature.is-reversed .au-l-feature-body { grid-column: 1; }
   .au-l-root .au-l-about-layout { grid-template-columns:minmax(220px, .75fr) minmax(0, 1.25fr); gap:32px; }
   .au-l-root .au-l-value-inner { padding: 64px var(--au-l-pad); }
 
@@ -793,6 +815,8 @@
 
   .au-l-root .au-l-sec { padding: 72px var(--au-l-pad); }
   .au-l-root .au-l-sec-head { margin-bottom: 30px; }
+  .au-l-root .au-l-feature,
+  .au-l-root .au-l-feature-media { min-height: 320px; }
 
   /* planos: sai do modo carrossel */
   .au-l-root .au-l-plan-scroller {
@@ -828,8 +852,8 @@
 @media (min-width: 1200px) {
   .au-l-root { --au-l-pad: 40px; }
 
-  .au-l-root .au-l-features { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .au-l-root .au-l-feature-media { aspect-ratio: 4 / 3; }
+  .au-l-root .au-l-features { grid-template-columns: minmax(0, 1fr); }
+  .au-l-root .au-l-feature-media { aspect-ratio: auto; }
 
   .au-l-root .au-l-sec-head { max-width: 40ch; }
 }

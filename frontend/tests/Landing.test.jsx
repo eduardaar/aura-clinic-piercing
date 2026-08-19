@@ -40,6 +40,23 @@ describe("Landing", () => {
     });
   });
 
+  it("alterna os quatro recursos em faixas de imagem e texto", async () => {
+    mockFetch((url) => (String(url).includes("/landing") ? Promise.reject(new Error("rede fora")) : semPlanos()));
+
+    render(<Landing />);
+
+    await waitFor(() => {
+      expect(screen.getByText(LANDING_DEFAULTS.features.title)).toBeInTheDocument();
+    });
+
+    const cards = LANDING_DEFAULTS.features.items.map((item) => screen.getByRole("heading", { name: item.title }).closest("article"));
+    expect(cards).toHaveLength(4);
+    expect(cards[0]).not.toHaveClass("is-reversed");
+    expect(cards[1]).toHaveClass("is-reversed");
+    expect(cards[2]).not.toHaveClass("is-reversed");
+    expect(cards[3]).toHaveClass("is-reversed");
+  });
+
   it("mantém o conteúdo embutido quando a API devolve lista vazia", async () => {
     mockFetch((url) =>
       String(url).includes("/landing")
