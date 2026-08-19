@@ -390,7 +390,7 @@
 .au-l-root .au-l-features {
   display: grid;
   grid-template-columns: 1fr;
-  gap: var(--au-l-stack-gap);
+  gap: 18px;
 }
 
 .au-l-root .au-l-feature {
@@ -400,6 +400,7 @@
   border: 1px solid var(--line);
   border-radius: var(--au-l-radius);
   background: #fff;
+  box-shadow: 0 6px 18px rgb(from var(--brown-dark) r g b / .05);
   overflow: hidden;
   transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
 }
@@ -631,6 +632,7 @@
 
 .au-l-root .au-l-close-inner {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
   gap: 16px;
   align-items: center;
   padding: 20px 18px;
@@ -693,7 +695,7 @@
    enquadramento vertical em vez de ficar espremida em meia coluna. */
 .au-l-root .au-l-shots img:only-child {
   grid-column: 1 / -1;
-  width: min(100%, 180px);
+  width: min(100%, 96px);
   justify-self: end;
   aspect-ratio: 4 / 5;
   object-position: center;
@@ -743,6 +745,7 @@
   .au-l-root .au-l-sec { padding-inline: var(--au-l-pad); }
   .au-l-root .au-l-btn { width: 100%; }
   .au-l-root .au-l-hero-actions { width: 100%; }
+  .au-l-root .au-l-hero-actions .au-l-btn { flex: 1 1 100%; }
   .au-l-root .au-l-plan-compare-scroll { margin-inline: -4px; padding-inline: 4px; overflow-x: auto; }
   .au-l-root .au-l-close-inner { padding: 20px 18px; }
   .au-l-whatsapp-float { width: 50px; height: 50px; right: 14px; bottom: 14px; }
@@ -799,6 +802,7 @@
   .au-l-root #recursos { padding-top: 12px; }
 
   .au-l-root .au-l-close-inner { padding: 24px 28px; }
+  .au-l-root .au-l-shots img:only-child { width: min(100%, 140px); }
 
   .au-l-root .au-l-foot {
     flex-direction: row;
@@ -856,6 +860,7 @@
     gap: 24px;
     padding: 26px 32px;
   }
+  .au-l-root .au-l-shots img:only-child { width: min(100%, 180px); }
 
   /* leve escalonamento vertical: dá movimento sem custar espaço */
   .au-l-root .au-l-shots img:last-child { transform: translateY(18px); }
@@ -874,50 +879,54 @@
   .au-l-root .au-l-sec-head { max-width: 40ch; }
 }
 
-/* Recursos e planos formam uma sequência única. As regras ficam depois dos
-   breakpoints genéricos para que o padding amplo das demais seções não volte
-   a abrir um vazio entre o último recurso e a tabela de planos. */
+/* Ritmo final da landing. Todas as seções de conteúdo compartilham o mesmo
+   quadro externo; isso alinha bordas, sombras e conteúdo em qualquer largura. */
+.au-l-root #recursos,
+.au-l-root .au-l-sec-plans,
+.au-l-root .au-l-close,
+.au-l-root .au-l-faq-section {
+  width: min(calc(100% - var(--au-l-pad) - var(--au-l-pad)), var(--au-l-max));
+  margin-right: auto;
+  margin-left: auto;
+}
+
 .au-l-root #recursos {
-  padding-top: 12px;
-  padding-bottom: 12px;
+  padding-top: clamp(20px, 3vw, 28px);
+  padding-bottom: clamp(20px, 3vw, 28px);
+  border: 1px solid rgb(from var(--brown-dark) r g b / .10);
+  border-radius: 26px;
+  background: rgb(255 255 255 / .64);
+  box-shadow: 0 12px 30px rgb(from var(--brown-dark) r g b / .05);
 }
 
 .au-l-root .au-l-sec-plans {
-  padding-top: 16px;
-  padding-bottom: 32px;
+  padding-top: clamp(22px, 3vw, 32px);
+  padding-bottom: clamp(24px, 3vw, 36px);
   border: 1px solid rgb(from var(--brown-dark) r g b / .10);
   box-shadow: 0 12px 30px rgb(from var(--brown-dark) r g b / .06);
 }
 
 .au-l-root .au-l-faq-section {
-  padding-top: 24px;
-  padding-bottom: var(--au-l-section-space);
+  padding-top: clamp(22px, 3vw, 32px);
+  padding-bottom: clamp(24px, 3vw, 36px);
   border: 1px solid rgb(from var(--brown-dark) r g b / .10);
   border-radius: 24px;
   background: linear-gradient(180deg, rgba(230, 201, 140, .10), rgba(255, 255, 255, .42));
   box-shadow: 0 12px 30px rgb(from var(--brown-dark) r g b / .05);
 }
 
-/* Cada seção começa em um novo plano visual. O divisor usa a mesma largura
-   interna do conteúdo e o espaço é curto para manter o ritmo compacto. */
+/* Um único intervalo entre grupos. As próprias superfícies fazem a separação;
+   linhas soltas entre elas criavam ruído e pareciam espaçamento quebrado. */
 .au-l-root > section:not(:first-child) {
   position: relative;
-  margin-top: 12px;
+  margin-top: 28px;
 }
 
-.au-l-root > section:not(:first-child)::before {
-  content: "";
-  position: absolute;
-  top: -7px;
-  right: var(--au-l-pad);
-  left: var(--au-l-pad);
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--line) 12%, var(--line) 88%, transparent);
-}
-
+.au-l-root .au-l-close { padding: 0; }
 .au-l-root .au-l-close-inner {
   box-shadow: 0 14px 34px rgb(from var(--ink) r g b / .13);
 }
+.au-l-root .au-l-close-inner:not(:has(.au-l-shots)) { grid-template-columns: 1fr; }
 
 .au-l-root .au-l-sec-plans .au-l-sec-head,
 .au-l-root .au-l-faq-section .au-l-sec-head {
