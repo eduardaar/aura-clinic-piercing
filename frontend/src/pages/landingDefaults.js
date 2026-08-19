@@ -90,6 +90,7 @@ export const LANDING_DEFAULTS = {
     kicker: "",
     title: "Sobre a Aura Clinic",
     body: "A Aura Clinic nasceu com o propósito de transformar o body piercing em uma experiência que une estética, segurança e cuidado.\n\nCada atendimento é realizado de forma individualizada, respeitando a anatomia, o estilo e as necessidades de cada cliente. Trabalhamos com protocolos rigorosos de biossegurança e esterilização, priorizando materiais de alta qualidade, como titânio grau implante ASTM F136 e ouro sólido 14k e 18k.\n\nMais do que realizar uma perfuração, buscamos acompanhar cada etapa da experiência — desde a escolha da joia e planejamento da composição até as orientações de cuidados e acompanhamento da cicatrização.\n\nNa Aura Clinic, acreditamos que cada joia pode representar uma escolha, um momento ou uma parte da sua identidade.",
+    signature: "Aura Clinic — técnica, cuidado e joalheria para valorizar a sua essência.",
     image: "/assets/landing/aura-portfolio/sobre-nos-eduarda.jpeg",
     image_alt: "Eduarda, idealizadora e proprietária da Aura Clinic",
     image_caption: "Eduarda Santos · idealizadora do projeto"

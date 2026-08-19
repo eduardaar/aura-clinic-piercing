@@ -219,6 +219,7 @@ export function AboutSection({ content }) {
             <p>{content.aura_text}</p>
             <p>{content.monitence_text}</p>
           </>}
+          {content.signature && <p className="au-l-about-signature"><em>{content.signature}</em></p>}
         </div>
       </div>
     </div>

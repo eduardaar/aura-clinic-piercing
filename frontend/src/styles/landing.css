@@ -460,6 +460,8 @@
 .au-l-root .au-l-about-copy { display:grid; gap:18px; align-content:start; padding:2px 0; }
 .au-l-root .au-l-about-copy p { color:var(--au-l-body); font-size:16px; line-height:1.72; }
 .au-l-root .au-l-about-copy p:first-child { color:var(--ink); font-size:19px; font-weight:650; line-height:1.55; }
+.au-l-root .au-l-about-copy .au-l-about-signature { margin-top:2px; color:var(--ink); font-size:17px; line-height:1.55; }
+.au-l-root .au-l-about-signature em { font-family:Georgia, "Times New Roman", serif; font-weight:500; }
 
 /* Faixa escura deliberada entre seções claras: cria uma pausa de leitura e
    apresenta as integrações que dão escala ao estúdio sem trocar a paleta Aura. */
