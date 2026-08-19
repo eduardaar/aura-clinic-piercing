@@ -17,6 +17,9 @@
   --au-l-pad: 20px;
   --au-l-max: 1160px;
   --au-l-gap: 14px;
+  --au-l-section-space: 36px;
+  --au-l-section-head-gap: 20px;
+  --au-l-stack-gap: 14px;
   --au-l-radius: 18px;
   --au-l-radius-sm: 12px;
   --au-l-body: var(--muted);
@@ -341,13 +344,13 @@
   width: 100%;
   max-width: var(--au-l-max);
   margin: 0 auto;
-  padding: 44px var(--au-l-pad);
+  padding: var(--au-l-section-space) var(--au-l-pad);
   min-width: 0;
 }
 
 .au-l-root .au-l-sec-head {
   max-width: 34ch;
-  margin: 0 0 24px;
+  margin: 0 0 var(--au-l-section-head-gap);
 }
 
 .au-l-root .au-l-sec-head h2 { font-size: clamp(26px, 5.2vw, 40px); }
@@ -363,7 +366,7 @@
 }
 
 .au-l-root .au-l-sec-head p {
-  margin-top: 10px;
+  margin-top: 8px;
   color: var(--au-l-body);
   font-size: 16px;
   line-height: 1.5;
@@ -387,7 +390,7 @@
 .au-l-root .au-l-features {
   display: grid;
   grid-template-columns: 1fr;
-  gap: clamp(18px, 3vw, 28px);
+  gap: var(--au-l-stack-gap);
 }
 
 .au-l-root .au-l-feature {
@@ -753,6 +756,7 @@
   .au-l-root {
     --au-l-pad: 28px;
     --au-l-gap: 18px;
+    --au-l-section-space: 44px;
   }
 
 
@@ -791,7 +795,6 @@
   .au-l-root .au-l-about-layout { grid-template-columns:minmax(220px, .75fr) minmax(0, 1.25fr); gap:32px; }
   .au-l-root .au-l-value-inner { padding: 64px var(--au-l-pad); }
 
-  .au-l-root .au-l-sec { padding: 56px var(--au-l-pad); }
   .au-l-root .au-l-hero .au-l-hero-inner { padding-bottom: 14px; }
   .au-l-root #recursos { padding-top: 12px; }
 
@@ -811,7 +814,10 @@
    ========================================================================= */
 
 @media (min-width: 900px) {
-  .au-l-root { --au-l-pad: 32px; }
+  .au-l-root {
+    --au-l-pad: 32px;
+    --au-l-section-space: 48px;
+  }
 
   .au-l-root .au-l-hero-inner {
     grid-template-columns: minmax(0, 1fr);
@@ -823,10 +829,8 @@
 
   .au-l-root .au-l-value-inner { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 64px; align-items: center; }
 
-  .au-l-root .au-l-sec { padding: 72px var(--au-l-pad); }
   .au-l-root .au-l-hero .au-l-hero-inner { padding-bottom: 16px; }
   .au-l-root #recursos { padding-top: 16px; }
-  .au-l-root .au-l-sec-head { margin-bottom: 30px; }
   .au-l-root .au-l-feature,
   .au-l-root .au-l-feature-media { height: 140px; }
 
@@ -873,13 +877,33 @@
 /* Recursos e planos formam uma sequência única. As regras ficam depois dos
    breakpoints genéricos para que o padding amplo das demais seções não volte
    a abrir um vazio entre o último recurso e a tabela de planos. */
-.au-l-root #recursos { padding-bottom: 10px; }
-.au-l-root .au-l-sec-plans { padding-top: 16px; }
-.au-l-root .au-l-sec-plans .au-l-sec-head { max-width: none; }
-.au-l-root .au-l-sec-plans .au-l-sec-head h2 {
-  font-size: clamp(22px, 6vw, 40px);
+.au-l-root #recursos {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.au-l-root .au-l-sec-plans {
+  padding-top: 16px;
+  padding-bottom: 32px;
+}
+
+.au-l-root .au-l-faq-section {
+  padding-top: 24px;
+  padding-bottom: var(--au-l-section-space);
+}
+
+.au-l-root .au-l-sec-plans .au-l-sec-head,
+.au-l-root .au-l-faq-section .au-l-sec-head {
+  max-width: none;
+  margin-bottom: var(--au-l-section-head-gap);
+}
+
+.au-l-root .au-l-sec-plans .au-l-sec-head h2,
+.au-l-root .au-l-faq-section .au-l-sec-head h2 {
+  font-size: clamp(21px, 5vw, 36px);
   letter-spacing: -.03em;
   white-space: nowrap;
+  text-wrap: nowrap;
 }
 
 /* =========================================================================
