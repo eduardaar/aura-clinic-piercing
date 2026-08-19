@@ -68,12 +68,14 @@ describe("Landing", () => {
     const intro = screen.getByRole("heading", { name: LANDING_DEFAULTS.hero.title });
     const features = screen.getByRole("heading", { name: LANDING_DEFAULTS.features.title });
     const plans = screen.getByRole("heading", { name: LANDING_DEFAULTS.plans.title });
+    const closing = screen.getByRole("heading", { name: LANDING_DEFAULTS.closing.title });
     const faq = screen.getByRole("heading", { name: "Perguntas frequentes" });
     const markup = container.innerHTML;
 
     expect(markup.indexOf(intro.textContent)).toBeLessThan(markup.indexOf(features.textContent));
     expect(markup.indexOf(features.textContent)).toBeLessThan(markup.indexOf(plans.textContent));
-    expect(markup.indexOf(plans.textContent)).toBeLessThan(markup.indexOf(faq.textContent));
+    expect(markup.indexOf(plans.textContent)).toBeLessThan(markup.indexOf(closing.textContent));
+    expect(markup.indexOf(closing.textContent)).toBeLessThan(markup.indexOf(faq.textContent));
     expect(screen.queryByText("Agenda sem atrito")).not.toBeInTheDocument();
     expect(screen.getByText("Como funciona o teste grátis?")).toBeInTheDocument();
   });

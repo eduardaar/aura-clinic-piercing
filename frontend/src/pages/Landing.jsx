@@ -293,7 +293,7 @@ function ClosingSection({ content }) {
   // ela passa a contar como conteúdo.
   const decorative = shots.every((shot) => !String(shot.image_alt || "").trim());
 
-  return <>
+  return (
     <section className="au-l-close">
       <div className="au-l-close-inner au-l-close-dark">
         <div className="au-l-close-copy">
@@ -320,8 +320,7 @@ function ClosingSection({ content }) {
         )}
       </div>
     </section>
-    <PublicFooter content={content} />
-  </>;
+  );
 }
 
 // Um componente por tipo de bloco. Chave fora desta tabela é ignorada em
@@ -442,7 +441,6 @@ export function Landing() {
         {heroContent && <HeroSection content={heroContent} />}
         {featuresContent && <FeaturesSection content={featuresContent} />}
         {plansContent && <PlansSection content={plansContent} plans={orderedPlans} />}
-        <FaqSection />
 
         {/* Os blocos institucionais restantes respeitam a ordem da API. Hero,
             recursos e planos têm uma sequência comercial fixa definida acima. */}
@@ -458,7 +456,9 @@ export function Landing() {
           );
           return rendered;
         })}
+        <FaqSection />
       </main>
+      <PublicFooter content={closingContent} />
       <FloatingWhatsApp phone={closingContent.contact_whatsapp} />
     </div>
   );
