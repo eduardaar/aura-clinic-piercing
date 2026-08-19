@@ -176,13 +176,9 @@
     var(--paper);
 }
 
-.au-l-root .au-l-hero-benefits-section {
-  border-top: 1px solid var(--line);
-}
-
 /* Abertura e recursos são uma mesma sequência visual: não deixe a soma dos
    * paddings criar uma faixa vazia entre o CTA e o título seguinte. */
-.au-l-root .au-l-hero:not(.au-l-hero-benefits-section) .au-l-hero-inner { padding-bottom: 8px; }
+.au-l-root .au-l-hero .au-l-hero-inner { padding-bottom: 8px; }
 
 .au-l-root .au-l-hero-inner {
   width: 100%;
@@ -230,45 +226,6 @@
   line-height: 1.55;
 }
 
-.au-l-root .au-l-hero-benefits {
-  display: grid;
-  width: 100%;
-  gap: 8px;
-  margin: 16px 0 2px;
-  padding: 0;
-  list-style: none;
-}
-
-.au-l-root .au-l-hero-benefits li {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 9px;
-  align-items: start;
-  padding: 11px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: rgb(255 255 255 / .58);
-  text-align: left;
-}
-
-.au-l-root .au-l-hero-benefits > li > span {
-  display: grid;
-  width: 27px;
-  height: 27px;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--ink);
-  color: var(--gold-light);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: .04em;
-}
-
-.au-l-root .au-l-hero-benefits strong,
-.au-l-root .au-l-hero-benefits small { display: block; }
-.au-l-root .au-l-hero-benefits strong { color: var(--ink); font-size: 14px; }
-.au-l-root .au-l-hero-benefits small { margin-top: 3px; color: var(--au-l-body); font-size: 12px; line-height: 1.45; }
-
 .au-l-root .au-l-hero-actions {
   display: flex;
   flex-wrap: wrap;
@@ -278,6 +235,38 @@
 }
 
 .au-l-root .au-l-hero-actions .au-l-btn { flex: 1 1 auto; min-width: 0; }
+
+/* ---------- perguntas frequentes ----------------------------------- */
+
+.au-l-root .au-l-faq-section { background: var(--paper); }
+
+.au-l-root .au-l-faq {
+  width: min(100%, 900px);
+  margin: 0 auto;
+  border-top: 0;
+}
+
+.au-l-root .au-l-faq .ui-accordion-item {
+  margin-bottom: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--white);
+}
+
+.au-l-root .au-l-faq .ui-accordion-trigger {
+  min-height: 56px;
+  padding: 14px 16px;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.au-l-root .au-l-faq .ui-accordion-trigger[data-state="open"] {
+  color: var(--brown-dark);
+}
+
+.au-l-root .au-l-faq .ui-accordion-content-inner { padding: 0 16px 16px; }
+.au-l-root .au-l-faq p { margin: 0; color: var(--au-l-body); line-height: 1.6; }
 .au-l-root .au-l-hero-actions .au-l-hero-primary {
   border-color: #25d366;
   background: #25d366;
@@ -768,7 +757,6 @@
 
 
   .au-l-root .au-l-hero-inner { padding: 30px var(--au-l-pad) 34px; }
-  .au-l-root .au-l-hero-benefits { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
   .au-l-root .au-l-hero-actions .au-l-btn { flex: 0 0 auto; }
   .au-l-root .au-l-hero-media { aspect-ratio: 16 / 10; }
   .au-l-root .au-l-hero-strip {
@@ -804,7 +792,7 @@
   .au-l-root .au-l-value-inner { padding: 64px var(--au-l-pad); }
 
   .au-l-root .au-l-sec { padding: 56px var(--au-l-pad); }
-  .au-l-root .au-l-hero:not(.au-l-hero-benefits-section) .au-l-hero-inner { padding-bottom: 14px; }
+  .au-l-root .au-l-hero .au-l-hero-inner { padding-bottom: 14px; }
   .au-l-root #recursos { padding-top: 12px; }
 
   .au-l-root .au-l-close-inner { padding: 24px 28px; }
@@ -836,7 +824,7 @@
   .au-l-root .au-l-value-inner { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 64px; align-items: center; }
 
   .au-l-root .au-l-sec { padding: 72px var(--au-l-pad); }
-  .au-l-root .au-l-hero:not(.au-l-hero-benefits-section) .au-l-hero-inner { padding-bottom: 16px; }
+  .au-l-root .au-l-hero .au-l-hero-inner { padding-bottom: 16px; }
   .au-l-root #recursos { padding-top: 16px; }
   .au-l-root .au-l-sec-head { margin-bottom: 30px; }
   .au-l-root .au-l-feature,

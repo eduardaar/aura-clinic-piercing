@@ -5,6 +5,7 @@ import { asArray, asObject } from "../lib/utils";
 import { featureLabel } from "../lib/planFeatures";
 import { PublicTopNav } from "../components/layout/PublicTopNav";
 import { PublicFooter } from "../components/layout/PublicFooter";
+import { Accordion } from "../components/common/Ui";
 import { DEFAULT_LANDING_SECTIONS, LANDING_DEFAULTS } from "./landingDefaults";
 import "../styles/landing-carousel.css";
 
@@ -114,23 +115,58 @@ function HeroSection({ content }) {
   );
 }
 
-// A prova de valor vem depois dos recursos visuais: primeiro a pessoa entende
-// o produto, depois vê os módulos e, por fim, encontra os benefícios e o CTA.
-function HeroBenefitsSection({ content }) {
+const FAQ_ITEMS = [
+  {
+    question: "Como funciona o teste grátis?",
+    answer: "Você cria sua clínica e usa o sistema gratuitamente por 7 dias, sem cadastrar cartão. Durante o teste, pode configurar o estúdio e conhecer os recursos do plano escolhido."
+  },
+  {
+    question: "Como meus clientes fazem agendamentos?",
+    answer: "A clínica recebe um link próprio de agendamento. O cliente escolhe o serviço, o profissional e um horário disponível; o compromisso entra automaticamente na agenda."
+  },
+  {
+    question: "Consigo guardar fichas e termos assinados?",
+    answer: "Sim. O histórico do cliente, anamnese, autorizações e termos digitais ficam organizados no cadastro dele para consulta nos próximos atendimentos."
+  },
+  {
+    question: "O sistema controla joias, produtos e estoque?",
+    answer: "Sim. Você cadastra produtos e variações, acompanha entradas e saídas, recebe alertas de reposição e pode montar um catálogo online para compartilhar com clientes."
+  },
+  {
+    question: "Também posso controlar o financeiro?",
+    answer: "Sim. A Aura reúne vendas, contas a pagar e receber, movimentações de caixa e relatórios para acompanhar os resultados do estúdio."
+  },
+  {
+    question: "Posso trocar de plano depois?",
+    answer: "Sim. Você pode mudar de plano conforme o estúdio cresce. Os valores e recursos de cada opção ficam disponíveis nesta mesma página."
+  },
+  {
+    question: "Meus dados ficam seguros?",
+    answer: "O acesso é protegido por login e cada clínica possui seu próprio ambiente. As informações ficam separadas e só usuários autorizados conseguem acessar o painel."
+  },
+  {
+    question: "Tenho suporte para começar?",
+    answer: "Sim. Você conta com suporte para configurar a clínica, entender os recursos e tirar dúvidas durante o uso do sistema."
+  }
+];
+
+function FaqSection() {
   return (
-    <section className="au-l-hero au-l-hero-benefits-section">
-      <div className="au-l-hero-inner">
-        <div className="au-l-hero-copy">
-          <ol className="au-l-hero-benefits">
-            <li><span>01</span><div><strong>Agenda sem atrito</strong><small>Um link próprio para seus clientes agendarem sozinhos.</small></div></li>
-            <li><span>02</span><div><strong>Clientes e fichas digitais</strong><small>Histórico, anamnese e termos assinados sem papel.</small></div></li>
-            <li><span>03</span><div><strong>Catálogo de joias</strong><small>Uma vitrine online pronta para compartilhar e vender.</small></div></li>
-            <li><span>04</span><div><strong>Financeiro e estoque</strong><small>Caixa, vendas e alertas de reposição sob controle.</small></div></li>
-            <li><span>05</span><div><strong>Comunicação automatizada</strong><small>Lembretes e pós-atendimento para manter o vínculo.</small></div></li>
-            <li><span>06</span><div><strong>Equipe e resultados</strong><small>Relatórios para acompanhar o crescimento do estúdio.</small></div></li>
-          </ol>
-        </div>
+    <section className="au-l-sec au-l-faq-section" id="perguntas-frequentes">
+      <div className="au-l-sec-head">
+        <h2>Perguntas frequentes</h2>
+        <p>Entenda como a Aura funciona no dia a dia do seu estúdio.</p>
       </div>
+      <Accordion className="au-l-faq" type="single" defaultValue="faq-0" collapsible>
+        {FAQ_ITEMS.map((item, index) => (
+          <Accordion.Item key={item.question} value={`faq-${index}`}>
+            <Accordion.Header>
+              <Accordion.Trigger>{item.question}</Accordion.Trigger>
+            </Accordion.Header>
+            <Accordion.Content><p>{item.answer}</p></Accordion.Content>
+          </Accordion.Item>
+        ))}
+      </Accordion>
     </section>
   );
 }
@@ -406,7 +442,7 @@ export function Landing() {
         {heroContent && <HeroSection content={heroContent} />}
         {featuresContent && <FeaturesSection content={featuresContent} />}
         {plansContent && <PlansSection content={plansContent} plans={orderedPlans} />}
-        {heroContent && <HeroBenefitsSection content={heroContent} />}
+        <FaqSection />
 
         {/* Os blocos institucionais restantes respeitam a ordem da API. Hero,
             recursos e planos têm uma sequência comercial fixa definida acima. */}
