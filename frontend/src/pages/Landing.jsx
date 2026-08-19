@@ -202,11 +202,26 @@ function FeaturesSection({ content }) {
 
 export function AboutSection({ content }) {
   const paragraphs = String(content.body || "").split(/\n\s*\n/).filter(Boolean);
+  const emphasis = /(estética, segurança e cuidado|forma individualizada|biossegurança e esterilização|titânio grau implante ASTM F136|ouro sólido 14k e 18k|acompanhar cada etapa da experiência|cada joia pode representar uma escolha, um momento ou uma parte da sua identidade)/gi;
+  const emphasizedParts = new Set([
+    "estética, segurança e cuidado",
+    "forma individualizada",
+    "biossegurança e esterilização",
+    "titânio grau implante astm f136",
+    "ouro sólido 14k e 18k",
+    "acompanhar cada etapa da experiência",
+    "cada joia pode representar uma escolha, um momento ou uma parte da sua identidade"
+  ]);
+  const highlight = (paragraph) => paragraph.split(emphasis).map((part, index) =>
+    emphasizedParts.has(part.toLocaleLowerCase("pt-BR"))
+      ? <strong key={`${part}-${index}`}>{part}</strong>
+      : part
+  );
 
   return <section className="au-l-about" id="sobre">
     <div className="au-l-about-inner">
       <div className="au-l-sec-head">
-        {content.kicker && <span className="au-l-kicker">{content.kicker}</span>}
+        <span className="au-l-kicker">{content.kicker || "Nossa história"}</span>
         <h2>{content.title}</h2>
       </div>
       <div className="au-l-about-layout">
@@ -215,7 +230,7 @@ export function AboutSection({ content }) {
           {content.image_caption && <figcaption>{content.image_caption}</figcaption>}
         </figure>}
         <div className="au-l-about-copy">
-          {paragraphs.length > 0 ? paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>) : <>
+          {paragraphs.length > 0 ? paragraphs.map((paragraph) => <p key={paragraph}>{highlight(paragraph)}</p>) : <>
             <p>{content.aura_text}</p>
             <p>{content.monitence_text}</p>
           </>}
@@ -344,7 +359,7 @@ export function AboutPage() {
   }, []);
   return <div className="au-shell">
     <PublicTopNav current="about" />
-    <main className="au-l-root"><AboutSection content={content} /></main>
+    <main className="au-l-root au-l-about-page"><AboutSection content={content} /></main>
     <PublicFooter />
   </div>;
 }
