@@ -868,9 +868,14 @@
   .au-l-root .au-l-plan.is-featured { transform: translateY(-8px); }
 
   .au-l-root .au-l-close-inner {
-    grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr);
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 24px;
     padding: 26px 32px;
+  }
+  .au-l-root .au-l-close-copy h2 {
+    font-size: clamp(24px, 2.4vw, 30px);
+    white-space: nowrap;
+    text-wrap: nowrap;
   }
   .au-l-root .au-l-shots img:only-child { width: min(100%, 180px); }
 
