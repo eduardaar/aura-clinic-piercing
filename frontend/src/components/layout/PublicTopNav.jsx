@@ -10,9 +10,9 @@ export function PublicTopNav({ current }) {
   return (
     <header className="au-nav au-nav-dark">
       <div className="au-nav-inner">
-        <a className="au-nav-brand" href="/" aria-label="Aura — página inicial">
+        <a className="au-nav-brand" href="/" aria-label="Aura Clinic — página inicial">
           <BrandMark size={34} className="au-nav-mark" />
-          <strong>Aura</strong>
+          <strong>Aura Clinic</strong>
         </a>
 
         {/* Âncoras absolutas ("/#..."): a partir de /login e /cadastro elas
