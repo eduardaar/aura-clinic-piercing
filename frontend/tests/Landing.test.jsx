@@ -57,6 +57,23 @@ describe("Landing", () => {
     expect(cards[3]).toHaveClass("is-reversed");
   });
 
+  it("apresenta a introdução, os recursos e os benefícios nessa ordem", async () => {
+    mockFetch((url) => (String(url).includes("/landing") ? Promise.reject(new Error("rede fora")) : semPlanos()));
+
+    const { container } = render(<Landing />);
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: LANDING_DEFAULTS.hero.title })).toBeInTheDocument();
+    });
+
+    const intro = screen.getByRole("heading", { name: LANDING_DEFAULTS.hero.title });
+    const features = screen.getByRole("heading", { name: LANDING_DEFAULTS.features.title });
+    const benefits = screen.getByText("Agenda sem atrito");
+    const markup = container.innerHTML;
+
+    expect(markup.indexOf(intro.textContent)).toBeLessThan(markup.indexOf(features.textContent));
+    expect(markup.indexOf(features.textContent)).toBeLessThan(markup.indexOf(benefits.textContent));
+  });
+
   it("mantém o conteúdo embutido quando a API devolve lista vazia", async () => {
     mockFetch((url) =>
       String(url).includes("/landing")

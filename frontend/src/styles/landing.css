@@ -176,6 +176,10 @@
     var(--paper);
 }
 
+.au-l-root .au-l-hero-benefits-section {
+  border-top: 1px solid var(--line);
+}
+
 .au-l-root .au-l-hero-inner {
   width: 100%;
   max-width: var(--au-l-max);

@@ -103,6 +103,19 @@ function HeroSection({ content }) {
           {content.kicker && <span className="au-l-kicker">{content.kicker}</span>}
           <h1>{content.title}</h1>
           <p>{content.subtitle}</p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// A prova de valor vem depois dos recursos visuais: primeiro a pessoa entende
+// o produto, depois vê os módulos e, por fim, encontra os benefícios e o CTA.
+function HeroBenefitsSection({ content }) {
+  return (
+    <section className="au-l-hero au-l-hero-benefits-section">
+      <div className="au-l-hero-inner">
+        <div className="au-l-hero-copy">
           <ol className="au-l-hero-benefits">
             <li><span>01</span><div><strong>Agenda sem atrito</strong><small>Um link próprio para seus clientes agendarem sozinhos.</small></div></li>
             <li><span>02</span><div><strong>Clientes e fichas digitais</strong><small>Histórico, anamnese e termos assinados sem papel.</small></div></li>
@@ -370,14 +383,27 @@ export function Landing() {
     const closing = sections.find((section) => section.section_key === "closing");
     return mergeContent("closing", closing?.content);
   }, [sections]);
+  const heroContent = useMemo(() => {
+    const hero = sections.find((section) => section.section_key === "hero");
+    return hero ? mergeContent("hero", hero.content) : null;
+  }, [sections]);
+  const featuresContent = useMemo(() => {
+    const features = sections.find((section) => section.section_key === "features");
+    return features ? mergeContent("features", features.content) : null;
+  }, [sections]);
 
   return (
     <div className="au-shell">
       <PublicTopNav current="landing" />
 
       <main className="au-l-root">
-        {/* Ordem da API (já vem ordenada); sem ela, a ordem do embutido. */}
-        {sections.filter((section) => section.section_key !== "plans" && section.section_key !== "carousel").map((section) => {
+        {heroContent && <HeroSection content={heroContent} />}
+        {featuresContent && <FeaturesSection content={featuresContent} />}
+        {heroContent && <HeroBenefitsSection content={heroContent} />}
+
+        {/* Os blocos institucionais restantes respeitam a ordem da API. Hero e
+            recursos têm uma sequência comercial fixa definida acima. */}
+        {sections.filter((section) => !["hero", "features", "plans", "carousel"].includes(section.section_key)).map((section) => {
           const Section = SECTION_COMPONENTS[section.section_key];
           if (!Section) return null;
           const rendered = (
