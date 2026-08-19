@@ -74,6 +74,18 @@ describe("Landing", () => {
     expect(markup.indexOf(features.textContent)).toBeLessThan(markup.indexOf(benefits.textContent));
   });
 
+  it("mantém as ações e a nota logo após o subtítulo inicial", async () => {
+    mockFetch((url) => (String(url).includes("/landing") ? Promise.reject(new Error("rede fora")) : semPlanos()));
+
+    const { container } = render(<Landing />);
+    await waitFor(() => expect(screen.getByText(LANDING_DEFAULTS.hero.subtitle)).toBeInTheDocument());
+
+    const markup = container.innerHTML;
+    expect(markup.indexOf(LANDING_DEFAULTS.hero.subtitle)).toBeLessThan(markup.indexOf("Criar minha clínica"));
+    expect(markup.indexOf("Criar minha clínica")).toBeLessThan(markup.indexOf(LANDING_DEFAULTS.features.title));
+    expect(markup.indexOf(LANDING_DEFAULTS.hero.note)).toBeLessThan(markup.indexOf(LANDING_DEFAULTS.features.title));
+  });
+
   it("mantém o conteúdo embutido quando a API devolve lista vazia", async () => {
     mockFetch((url) =>
       String(url).includes("/landing")

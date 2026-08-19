@@ -103,6 +103,11 @@ function HeroSection({ content }) {
           {content.kicker && <span className="au-l-kicker">{content.kicker}</span>}
           <h1>{content.title}</h1>
           <p>{content.subtitle}</p>
+          <div className="au-l-hero-actions">
+            <a className="au-l-btn au-l-hero-primary" href="/cadastro">Criar minha clínica</a>
+            <a className="au-l-btn au-l-btn-ghost" href="/planos">Ver planos e recursos</a>
+          </div>
+          {content.note && <span className="au-l-note">{content.note}</span>}
         </div>
       </div>
     </section>
@@ -124,11 +129,6 @@ function HeroBenefitsSection({ content }) {
             <li><span>05</span><div><strong>Comunicação automatizada</strong><small>Lembretes e pós-atendimento para manter o vínculo.</small></div></li>
             <li><span>06</span><div><strong>Equipe e resultados</strong><small>Relatórios para acompanhar o crescimento do estúdio.</small></div></li>
           </ol>
-          <div className="au-l-hero-actions">
-            <a className="au-l-btn au-l-hero-primary" href="/cadastro">Criar minha clínica</a>
-            <a className="au-l-btn au-l-btn-ghost" href="/planos">Ver planos e recursos</a>
-          </div>
-          {content.note && <span className="au-l-note">{content.note}</span>}
         </div>
       </div>
     </section>
