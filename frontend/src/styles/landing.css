@@ -885,11 +885,38 @@
 .au-l-root .au-l-sec-plans {
   padding-top: 16px;
   padding-bottom: 32px;
+  border: 1px solid rgb(from var(--brown-dark) r g b / .10);
+  box-shadow: 0 12px 30px rgb(from var(--brown-dark) r g b / .06);
 }
 
 .au-l-root .au-l-faq-section {
   padding-top: 24px;
   padding-bottom: var(--au-l-section-space);
+  border: 1px solid rgb(from var(--brown-dark) r g b / .10);
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(230, 201, 140, .10), rgba(255, 255, 255, .42));
+  box-shadow: 0 12px 30px rgb(from var(--brown-dark) r g b / .05);
+}
+
+/* Cada seção começa em um novo plano visual. O divisor usa a mesma largura
+   interna do conteúdo e o espaço é curto para manter o ritmo compacto. */
+.au-l-root > section:not(:first-child) {
+  position: relative;
+  margin-top: 12px;
+}
+
+.au-l-root > section:not(:first-child)::before {
+  content: "";
+  position: absolute;
+  top: -7px;
+  right: var(--au-l-pad);
+  left: var(--au-l-pad);
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--line) 12%, var(--line) 88%, transparent);
+}
+
+.au-l-root .au-l-close-inner {
+  box-shadow: 0 14px 34px rgb(from var(--ink) r g b / .13);
 }
 
 .au-l-root .au-l-sec-plans .au-l-sec-head,
