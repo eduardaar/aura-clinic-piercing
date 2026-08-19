@@ -456,7 +456,7 @@
 .au-l-root .au-l-about-layout { display:grid; gap:26px; align-items:start; }
 .au-l-root .au-l-about-media { margin:0; overflow:hidden; border:1px solid var(--line); border-radius:18px; background:#d7d0c4; }
 .au-l-root .au-l-about-media img { display:block; width:100%; aspect-ratio:4 / 4.5; object-fit:cover; object-position:center 61%; }
-.au-l-root .au-l-about-media figcaption { padding:11px 14px; color:var(--au-l-body); font-size:13px; background:#fff; }
+.au-l-root .au-l-about-media figcaption { padding:11px 14px; color:var(--au-l-body); font-size:13px; text-align:center; background:#fff; }
 .au-l-root .au-l-about-copy { display:grid; gap:18px; align-content:start; padding:2px 0; }
 .au-l-root .au-l-about-copy p { color:var(--au-l-body); font-size:16px; line-height:1.72; }
 .au-l-root .au-l-about-copy p:first-child { color:var(--ink); font-size:19px; font-weight:650; line-height:1.55; }
