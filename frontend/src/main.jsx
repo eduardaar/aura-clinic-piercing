@@ -63,7 +63,6 @@ const PlatformAdmin = lazy(() => import("./features/platform/PlatformAdmin").the
 const MyPlan = lazy(() => import("./features/platform/MyPlan").then((m) => ({ default: m.MyPlan })));
 const Landing = lazy(() => import("./pages/Landing").then((m) => ({ default: m.Landing })));
 const AboutPage = lazy(() => import("./pages/Landing").then((m) => ({ default: m.AboutPage })));
-const PlansPage = lazy(() => import("./pages/Landing").then((m) => ({ default: m.PlansPage })));
 const LegalDocument = lazy(() => import("./pages/LegalDocument").then((m) => ({ default: m.LegalDocument })));
 const CatalogDirectory = lazy(() => import("./pages/PublicDirectory").then((m) => ({ default: m.CatalogDirectory })));
 const BookingDirectory = lazy(() => import("./pages/PublicDirectory").then((m) => ({ default: m.BookingDirectory })));
@@ -291,7 +290,12 @@ function App() {
     return <Suspense fallback={<Loading />}><Landing /></Suspense>;
   }
   if (isAbout) return <Suspense fallback={<Loading />}><AboutPage /></Suspense>;
-  if (isPlansPage) return <Suspense fallback={<Loading />}><PlansPage /></Suspense>;
+  // Planos faz parte da landing. Mantemos a URL antiga apenas como atalho para
+  // não quebrar links já compartilhados, sem sustentar uma tela separada.
+  if (isPlansPage) {
+    window.location.replace("/#planos");
+    return <Loading />;
+  }
 
   // Se está em /login, renderizar APENAS login (sem app shell)
   if (isLoginPath) {

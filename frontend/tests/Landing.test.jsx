@@ -57,7 +57,7 @@ describe("Landing", () => {
     expect(cards[3]).toHaveClass("is-reversed");
   });
 
-  it("apresenta a introdução, os recursos e os benefícios nessa ordem", async () => {
+  it("apresenta a introdução, recursos, planos e benefícios nessa ordem", async () => {
     mockFetch((url) => (String(url).includes("/landing") ? Promise.reject(new Error("rede fora")) : semPlanos()));
 
     const { container } = render(<Landing />);
@@ -67,11 +67,13 @@ describe("Landing", () => {
 
     const intro = screen.getByRole("heading", { name: LANDING_DEFAULTS.hero.title });
     const features = screen.getByRole("heading", { name: LANDING_DEFAULTS.features.title });
+    const plans = screen.getByRole("heading", { name: LANDING_DEFAULTS.plans.title });
     const benefits = screen.getByText("Agenda sem atrito");
     const markup = container.innerHTML;
 
     expect(markup.indexOf(intro.textContent)).toBeLessThan(markup.indexOf(features.textContent));
-    expect(markup.indexOf(features.textContent)).toBeLessThan(markup.indexOf(benefits.textContent));
+    expect(markup.indexOf(features.textContent)).toBeLessThan(markup.indexOf(plans.textContent));
+    expect(markup.indexOf(plans.textContent)).toBeLessThan(markup.indexOf(benefits.textContent));
   });
 
   it("mantém as ações e a nota logo após o subtítulo inicial", async () => {

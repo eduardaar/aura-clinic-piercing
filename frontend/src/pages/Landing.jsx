@@ -105,7 +105,7 @@ function HeroSection({ content }) {
           <p>{content.subtitle}</p>
           <div className="au-l-hero-actions">
             <a className="au-l-btn au-l-hero-primary" href="/cadastro">Criar minha clínica</a>
-            <a className="au-l-btn au-l-btn-ghost" href="/planos">Ver planos e recursos</a>
+            <a className="au-l-btn au-l-btn-ghost" href="#planos">Ver planos e recursos</a>
           </div>
           {content.note && <span className="au-l-note">{content.note}</span>}
         </div>
@@ -391,6 +391,12 @@ export function Landing() {
     const features = sections.find((section) => section.section_key === "features");
     return features ? mergeContent("features", features.content) : null;
   }, [sections]);
+  const plansContent = useMemo(() => {
+    const plansSection = sections.find((section) => section.section_key === "plans");
+    // A vitrine de planos agora é parte fixa da landing. Instâncias criadas
+    // antes deste bloco existir ainda a recebem com o conteúdo padrão.
+    return mergeContent("plans", plansSection?.content);
+  }, [sections]);
 
   return (
     <div className="au-shell">
@@ -399,10 +405,11 @@ export function Landing() {
       <main className="au-l-root">
         {heroContent && <HeroSection content={heroContent} />}
         {featuresContent && <FeaturesSection content={featuresContent} />}
+        {plansContent && <PlansSection content={plansContent} plans={orderedPlans} />}
         {heroContent && <HeroBenefitsSection content={heroContent} />}
 
-        {/* Os blocos institucionais restantes respeitam a ordem da API. Hero e
-            recursos têm uma sequência comercial fixa definida acima. */}
+        {/* Os blocos institucionais restantes respeitam a ordem da API. Hero,
+            recursos e planos têm uma sequência comercial fixa definida acima. */}
         {sections.filter((section) => !["hero", "features", "plans", "carousel"].includes(section.section_key)).map((section) => {
           const Section = SECTION_COMPONENTS[section.section_key];
           if (!Section) return null;
