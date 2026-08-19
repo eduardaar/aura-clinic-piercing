@@ -862,8 +862,6 @@
   }
   .au-l-root .au-l-shots img:only-child { width: min(100%, 180px); }
 
-  /* leve escalonamento vertical: dá movimento sem custar espaço */
-  .au-l-root .au-l-shots img:last-child { transform: translateY(18px); }
 }
 
 /* =========================================================================
