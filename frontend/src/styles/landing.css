@@ -783,12 +783,14 @@
   .au-l-root .au-l-feature {
     display: grid;
     grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr);
-    min-height: 120px;
+    height: 120px;
+    min-height: 0;
   }
   .au-l-root .au-l-feature-media {
     grid-column: 1;
     grid-row: 1;
-    min-height: 120px;
+    height: 100%;
+    min-height: 0;
     aspect-ratio: auto;
   }
   .au-l-root .au-l-feature-body {
@@ -838,7 +840,7 @@
   .au-l-root #recursos { padding-top: 16px; }
   .au-l-root .au-l-sec-head { margin-bottom: 30px; }
   .au-l-root .au-l-feature,
-  .au-l-root .au-l-feature-media { min-height: 140px; }
+  .au-l-root .au-l-feature-media { height: 140px; }
 
   /* planos: sai do modo carrossel */
   .au-l-root .au-l-plan-scroller {
