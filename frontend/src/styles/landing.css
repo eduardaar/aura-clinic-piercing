@@ -501,30 +501,20 @@
   border-radius: 26px;
 }
 
-/* mobile: carrossel horizontal com scroll-snap; o scroll fica preso ao
-   próprio scroller (nunca vaza pra página) */
+/* mobile: lista vertical simples, um plano abaixo do outro (sem carrossel) */
 .au-l-root .au-l-plan-scroller {
-  margin-inline: calc(var(--au-l-pad) * -1);
-  padding-inline: var(--au-l-pad);
-  overflow-x: auto;
-  overflow-y: hidden;
-  scroll-snap-type: x mandatory;
-  overscroll-behavior-x: contain;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
+  overflow: visible;
 }
 
 .au-l-root .au-l-plan-grid {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(230px, 76vw);
+  grid-template-columns: 1fr;
   gap: var(--au-l-gap);
   align-items: stretch;
   padding-block: 6px 16px;
 }
 
 .au-l-root .au-l-plan {
-  scroll-snap-align: center;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -846,17 +836,8 @@
   .au-l-root .au-l-feature,
   .au-l-root .au-l-feature-media { height: 140px; }
 
-  /* planos: sai do modo carrossel */
-  .au-l-root .au-l-plan-scroller {
-    margin-inline: 0;
-    padding-inline: 0;
-    overflow: visible;
-    scroll-snap-type: none;
-  }
-
+  /* planos: lista vertical vira grade lado a lado */
   .au-l-root .au-l-plan-grid {
-    grid-auto-flow: row;
-    grid-auto-columns: auto;
     grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
     padding-block: 0;
   }
@@ -977,8 +958,6 @@
 
   .au-l-root .au-l-feature:hover,
   .au-l-root .au-l-btn-primary:hover { transform: none; }
-
-  .au-l-root .au-l-plan-scroller { scroll-snap-type: none; }
 }
 
 /* ---------- vitrines públicas (catálogo / agendamento) --------------- */
