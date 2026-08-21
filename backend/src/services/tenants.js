@@ -37,6 +37,22 @@ export class TenantServiceError extends Error {
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+function normalizeAdminEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+// Nome do schema Postgres da clínica: "tenant_" + slug com "_" no lugar de
+// "-" (schema não aceita hífen sem aspas, e "_" mantém o nome legível de
+// relance — "tenant_aura_clinic" em vez de "tenant_2"). Calculado UMA VEZ no
+// provisionamento e gravado em platform.tenants.schema_name: nunca
+// recalculado depois. O slug hoje não tem rota de edição, mas se um dia
+// ganhar uma, o schema não pode sair andando atrás dele — mesmo motivo já
+// documentado em services/storage/keys.js para as chaves do storage usarem o
+// id, não o slug.
+export function schemaNameForSlug(slug) {
+  return `tenant_${String(slug || "").trim().toLowerCase().replace(/-/g, "_")}`;
+}
+
 // Gera um slug "url-safe" a partir de um texto livre (nome da clínica):
 // remove acentos, troca não-alfanuméricos por hífen e limita a 30 chars.
 export function slugify(value) {
@@ -67,6 +83,46 @@ export async function generateUniqueSlug(name) {
   throw new TenantServiceError(409, "Não foi possível gerar um identificador único. Tente outro nome.");
 }
 
+// O nome comercial não é exclusivo: dois estúdios podem ter o mesmo nome em
+// cidades diferentes. O endereço derivado (slug), sim, precisa ser único. A
+// consulta pública dá feedback antes do envio, mas o provisionamento abaixo é
+// a garantia final contra corrida entre duas abas ou dois usuários.
+export async function signupAvailability({ name = "", adminEmail = "" } = {}) {
+  const normalizedName = String(name || "").trim();
+  const normalizedEmail = normalizeAdminEmail(adminEmail);
+  const result = { name: null, email: null };
+
+  if (normalizedName) {
+    const [sameName, suggestedSlug] = await Promise.all([
+      query(
+        "SELECT id FROM platform.tenants WHERE lower(name) = lower($1) LIMIT 1",
+        [normalizedName]
+      ),
+      generateUniqueSlug(normalizedName)
+    ]);
+    result.name = {
+      valid: slugify(normalizedName).length >= 3,
+      exists: Boolean(sameName.rows[0]),
+      suggested_slug: suggestedSlug
+    };
+  }
+
+  if (normalizedEmail) {
+    const valid = EMAIL_REGEX.test(normalizedEmail);
+    let exists = false;
+    if (valid) {
+      const found = await query(
+        "SELECT id FROM platform.tenants WHERE lower(signup_admin_email) = $1 LIMIT 1",
+        [normalizedEmail]
+      );
+      exists = Boolean(found.rows[0]);
+    }
+    result.email = { valid, exists, available: valid && !exists };
+  }
+
+  return result;
+}
+
 // Valida os dados de criação de uma clínica. Lança TenantServiceError (400/409).
 function validateProvisionInput({ name, slug, adminEmail, adminPassword }) {
   if (!name || !String(name).trim()) {
@@ -89,27 +145,47 @@ function validateProvisionInput({ name, slug, adminEmail, adminPassword }) {
   }
 }
 
-// Cria a clínica: registro em platform.tenants + schema "tenant_<id>" com as
-// tabelas do app, o admin inicial e o tema padrão do catálogo.
+// Cria a clínica: registro em platform.tenants + schema "tenant_<slug>" com
+// as tabelas do app, o admin inicial e o tema padrão do catálogo.
 // Em erro, desfaz tudo (DROP SCHEMA + DELETE do registro) e propaga.
 export async function provisionTenant({ name, slug, adminName, adminEmail, adminPassword, phone = "", city = "", state = "", logoUrl = "", plan = "profissional" }) {
   const normalizedSlug = String(slug || "").trim().toLowerCase();
+  const normalizedAdminEmail = normalizeAdminEmail(adminEmail);
   validateProvisionInput({ name, slug: normalizedSlug, adminEmail, adminPassword });
   const planCode = normalizePlanCode(plan);
+  const schemaName = schemaNameForSlug(normalizedSlug);
 
   const existing = await query("SELECT id FROM platform.tenants WHERE slug = $1", [normalizedSlug]);
   if (existing.rows[0]) {
     throw new TenantServiceError(409, "Já existe uma clínica com este identificador.");
   }
 
-  const inserted = await query(
-    `INSERT INTO platform.tenants (name, slug, plan, store_short_name, responsible_name, phone, city, state, logo_url)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-     RETURNING id, name, slug, status, plan, created_at`,
-    [String(name).trim(), normalizedSlug, planCode, String(name).trim(), String(adminName || "").trim().toUpperCase(), String(phone || "").trim(), String(city || "").trim(), String(state || "").trim(), String(logoUrl || "").trim()]
+  const existingEmail = await query(
+    "SELECT id FROM platform.tenants WHERE lower(signup_admin_email) = $1 LIMIT 1",
+    [normalizedAdminEmail]
   );
+  if (existingEmail.rows[0]) {
+    throw new TenantServiceError(409, "Este e-mail já possui uma clínica cadastrada. Faça login ou use outro e-mail.");
+  }
+
+  let inserted;
+  try {
+    inserted = await query(
+      `INSERT INTO platform.tenants (name, slug, plan, store_short_name, responsible_name, phone, city, state, logo_url, signup_admin_email, schema_name)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       RETURNING id, name, slug, status, plan, created_at`,
+      [String(name).trim(), normalizedSlug, planCode, String(name).trim(), String(adminName || "").trim().toUpperCase(), String(phone || "").trim(), String(city || "").trim(), String(state || "").trim(), String(logoUrl || "").trim(), normalizedAdminEmail, schemaName]
+    );
+  } catch (error) {
+    // A consulta acima melhora a UX; o índice único é quem fecha a corrida
+    // entre duas requisições simultâneas com o mesmo e-mail.
+    if (error?.code === "23505" && error?.constraint === "ux_tenants_signup_admin_email") {
+      throw new TenantServiceError(409, "Este e-mail já possui uma clínica cadastrada. Faça login ou use outro e-mail.");
+    }
+    throw error;
+  }
   const tenant = inserted.rows[0];
-  const schema = `tenant_${tenant.id}`;
+  const schema = schemaName;
   const selectedPlan = planByCode(planCode);
   const trial = trialWindow(selectedPlan.trial_days);
   let admin = null;
@@ -126,7 +202,7 @@ export async function provisionTenant({ name, slug, adminName, adminEmail, admin
     const passwordHash = await bcrypt.hash(String(adminPassword), 12);
     const adminInsert = await client.query(
       "INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, 'admin') RETURNING id, name, email, role",
-      [String(adminName || "Administrador").trim().toUpperCase() || "ADMINISTRADOR", String(adminEmail).trim().toLowerCase(), passwordHash]
+      [String(adminName || "Administrador").trim().toUpperCase() || "ADMINISTRADOR", normalizedAdminEmail, passwordHash]
     );
     admin = adminInsert.rows[0];
     // Tema padrão do catálogo (linha única id=1) para o catálogo não quebrar.
@@ -173,21 +249,44 @@ export async function provisionTenant({ name, slug, adminName, adminEmail, admin
   invalidateTenantCache(normalizedSlug);
   // Devolve o admin recém-criado para que o cadastro público possa emitir um
   // token e logar automaticamente (sem obrigar re-login digitando o slug).
-  return { ...tenant, admin };
+  return { ...tenant, schema_name: schemaName, admin };
 }
 
-// Remove a clínica por completo: schema (com todos os dados) + registro.
+// Remove a clínica por completo: schema (com todos os dados), registro e o
+// ledger de migrations do schema — sem isso, a versão do schema dropado ficava
+// para trás em platform.schema_migrations, um resíduo que colidiria se o
+// mesmo id de tenant fosse reaproveitado. As três exclusões rodam na mesma
+// transação: uma falha no meio não pode deixar o tenant "meio-excluído".
 export async function deprovisionTenant(id) {
   const tenantId = Number(id);
   if (!Number.isInteger(tenantId) || tenantId <= 0) {
     throw new TenantServiceError(400, "Id de clínica inválido.");
   }
-  const result = await query("SELECT id, slug FROM platform.tenants WHERE id = $1", [tenantId]);
+  const result = await query("SELECT id, slug, schema_name FROM platform.tenants WHERE id = $1", [tenantId]);
   const tenant = result.rows[0];
   if (!tenant) throw new TenantServiceError(404, "Clínica não encontrada.");
 
-  await query(`DROP SCHEMA IF EXISTS "tenant_${tenantId}" CASCADE`);
-  await query("DELETE FROM platform.tenants WHERE id = $1", [tenantId]);
+  // Fallback para o formato antigo: cobre a clínica provisionada antes da
+  // migration 0005 preencher schema_name (nunca deveria acontecer em produção
+  // depois do deploy da migration, mas um DROP SCHEMA do schema errado não tem
+  // volta — não vale a pena arriscar).
+  const schema = tenant.schema_name || `tenant_${tenantId}`;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+    await client.query(
+      "DELETE FROM platform.schema_migrations WHERE scope = 'tenant' AND target_schema = $1",
+      [schema]
+    );
+    await client.query("DELETE FROM platform.tenants WHERE id = $1", [tenantId]);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
   invalidateTenantCache(tenant.slug);
   return tenant;
 }
@@ -250,9 +349,14 @@ export async function applyPlatformMigrations() {
 // cada boot. O runner incremental só entra aqui quando a flag explícita está
 // ligada; no deploy, prefira `npm run migrations:apply` antes de subir a API.
 export async function applySchemaToAllTenants() {
-  const tenants = await query("SELECT id, slug FROM platform.tenants ORDER BY id");
+  const tenants = await query("SELECT id, slug, schema_name FROM platform.tenants ORDER BY id");
   for (const tenant of tenants.rows) {
-    const schema = `tenant_${tenant.id}`;
+    // Fallback ao formato antigo: no boot logo após o deploy deste código mas
+    // antes de "migrations:apply" rodar (que preenche schema_name), o schema
+    // físico ainda se chama "tenant_<id>" — usar isso agora e o nome novo
+    // depois que a migration 0005 aplicar é o que evita apontar para um schema
+    // que não existe.
+    const schema = tenant.schema_name || `tenant_${tenant.id}`;
     const client = await pool.connect();
     try {
       await client.query(`CREATE SCHEMA IF NOT EXISTS "${schema}"`);

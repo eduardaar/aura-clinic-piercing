@@ -7,8 +7,9 @@
 //   4. Sem tenant → 400.
 //
 // O slug é validado por regex, buscado em platform.tenants (com cache em
-// memória de 60s) e o schema retornado é SEMPRE derivado do id do banco
-// ("tenant_<id>"), nunca de input do usuário.
+// memória de 60s) e o schema retornado é SEMPRE lido de schema_name (com
+// fallback para "tenant_<id>" — ver comentário abaixo), nunca de input do
+// usuário.
 import { query } from "../database/connection.js";
 import { decodeToken, extractBearerToken } from "./auth.js";
 
@@ -39,12 +40,19 @@ async function findTenantBySlug(slug) {
   const cached = tenantCache.get(slug);
   if (cached && cached.expiresAt > Date.now()) return cached.tenant;
   const result = await query(
-    "SELECT id, name, slug, status FROM platform.tenants WHERE slug = $1",
+    "SELECT id, name, slug, status, schema_name FROM platform.tenants WHERE slug = $1",
     [slug]
   );
   const tenant = result.rows[0] || null;
   tenantCache.set(slug, { tenant, expiresAt: Date.now() + TENANT_CACHE_TTL_MS });
   return tenant;
+}
+
+// Fallback para o formato antigo ("tenant_<id>"): cobre a janela entre o
+// deploy deste código e a migration 0005 rodar (ver services/tenants.js),
+// quando schema_name ainda está NULL para clínicas provisionadas antes dela.
+function resolvedSchema(tenant) {
+  return tenant.schema_name || `tenant_${tenant.id}`;
 }
 
 // Busca por slug para quem NÃO vem do ciclo normal de requisição — hoje, o
@@ -65,7 +73,7 @@ export async function tenantBySlug(slug) {
     name: tenant.name,
     slug: tenant.slug,
     status: tenant.status,
-    schema: `tenant_${tenant.id}`
+    schema: resolvedSchema(tenant)
   };
 }
 
@@ -123,7 +131,7 @@ export async function resolveTenant(req) {
     name: tenant.name,
     slug: tenant.slug,
     status: tenant.status,
-    schema: `tenant_${tenant.id}`
+    schema: resolvedSchema(tenant)
   };
   req.tenant = resolved;
   return resolved;

@@ -17,6 +17,7 @@ import {
   deleteTenant,
   testSlug
 } from "./helpers.mjs";
+import { query } from "../src/database/connection.js";
 
 const ctx = {
   platformToken: null,
@@ -201,6 +202,15 @@ test("DELETE com confirmation correta (slug) → 200 e clínica some da listagem
   const list = await platformReq("/platform/tenants");
   const ids = list.json.map((t) => t.id);
   assert.ok(!ids.includes(l.id), "clínica excluída ainda aparece na listagem");
+
+  // O DROP SCHEMA some com as tabelas, mas o ledger de migrations é uma
+  // tabela à parte (platform.schema_migrations) — se a exclusão não limpar
+  // essa linha, fica um resíduo que colide se o id do tenant for reaproveitado.
+  const ledger = await query(
+    "SELECT 1 FROM platform.schema_migrations WHERE scope = 'tenant' AND target_schema = $1",
+    [`tenant_${l.id}`]
+  );
+  assert.equal(ledger.rows.length, 0, "ledger de migrations do tenant excluído não foi limpo");
 });
 
 test("DELETE em tenant inexistente → 404", async () => {

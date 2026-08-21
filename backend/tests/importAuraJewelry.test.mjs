@@ -1,6 +1,6 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { pool } from "../src/database/connection.js";
+import { pool, query } from "../src/database/connection.js";
 import { createDb } from "../src/db/postgres.js";
 import { importAuraJewelry } from "../src/services/auraJewelryImport.js";
 import { req, createTenant, loginTenant, platformLogin, deleteTenant } from "./helpers.mjs";
@@ -9,7 +9,10 @@ const ctx = { platformToken: null, tenant: null, otherTenant: null, token: null 
 
 async function tenantDb(tenant) {
   const client = await pool.connect();
-  await client.query(`SET search_path TO "tenant_${tenant.tenant.id}", public`);
+  const schema = (
+    await query("SELECT schema_name FROM platform.tenants WHERE id = $1", [tenant.tenant.id])
+  ).rows[0].schema_name;
+  await client.query(`SET search_path TO "${schema}", public`);
   return {
     db: createDb(client),
     release: async () => {

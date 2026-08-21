@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Check, CheckCircle2, ChevronRight } from "lucide-react";
+import { ArrowLeft, Check, CheckCircle2, ChevronRight, CircleAlert, Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { API, setTenantSlug } from "../../lib/api";
 import { asArray } from "../../lib/utils";
 import { featureLabel } from "../../lib/planFeatures";
@@ -40,9 +40,38 @@ const PLAN_HIGHLIGHTS = {
 };
 
 const STEP_LABELS = ["Sua clínica", "Plano"];
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function selectedPlanFromUrl() {
   try { return new URLSearchParams(window.location.search).get("plano") || "profissional"; } catch { return "profissional"; }
+}
+
+function FieldStatusIcon({ status }) {
+  if (status === "checking") return <LoaderCircle className="au-a-status-spinner" size={17} aria-hidden="true" />;
+  if (status === "available" || status === "strong" || status === "matches") return <CheckCircle2 size={17} aria-hidden="true" />;
+  if (["existing", "taken", "error", "invalid", "mismatch"].includes(status)) return <CircleAlert size={17} aria-hidden="true" />;
+  return null;
+}
+
+function FieldFeedback({ status = "idle", children }) {
+  if (!children) return null;
+  return (
+    <p className={`au-a-field-feedback is-${status}`} role={status === "taken" || status === "mismatch" ? "alert" : "status"}>
+      <FieldStatusIcon status={status} />
+      <span>{children}</span>
+    </p>
+  );
+}
+
+function passwordFeedback(password) {
+  if (!password) return { status: "idle", text: "" };
+  if (password.length < 8) {
+    const missing = 8 - password.length;
+    return { status: "invalid", text: `Use pelo menos 8 caracteres — faltam ${missing}.` };
+  }
+  const variety = [/[a-z]/.test(password), /[A-Z]/.test(password), /\d/.test(password), /[^A-Za-z0-9]/.test(password)].filter(Boolean).length;
+  if (password.length >= 12 && variety >= 3) return { status: "strong", text: "Senha forte." };
+  return { status: "available", text: "Senha válida. Uma combinação maior e variada é ainda mais segura." };
 }
 
 export function Signup() {
@@ -61,11 +90,25 @@ export function Signup() {
   const [legalDocuments, setLegalDocuments] = useState([]);
   const [legalAccepted, setLegalAccepted] = useState({ terms_of_use: false, privacy_policy: false });
   const [openLegalDocument, setOpenLegalDocument] = useState(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showPasswordConfirmation, setShowPasswordConfirmation] = useState(false);
+  const [availability, setAvailability] = useState({
+    name: { status: "idle", suggestedSlug: "" },
+    email: { status: "idle" }
+  });
   const selectedPlan = useMemo(
     () => plans.find((plan) => plan.code === form.plan_code) || plans.find((plan) => plan.code === "profissional") || plans[0],
     [plans, form.plan_code]
   );
   const slug = useMemo(() => slugPreview(form.name), [form.name]);
+  const expectedSlug = availability.name.suggestedSlug || slug;
+  const passwordState = useMemo(() => passwordFeedback(form.admin_password), [form.admin_password]);
+  const passwordConfirmationState = useMemo(() => {
+    if (!form.admin_password_confirmation) return { status: "idle", text: "" };
+    return form.admin_password === form.admin_password_confirmation
+      ? { status: "matches", text: "As senhas conferem." }
+      : { status: "mismatch", text: "As senhas não conferem." };
+  }, [form.admin_password, form.admin_password_confirmation]);
   const legalDocument = useMemo(
     () => legalDocuments.find((document) => document.key === openLegalDocument) || null,
     [legalDocuments, openLegalDocument]
@@ -90,11 +133,64 @@ export function Signup() {
       .catch(() => setLegalDocuments([]));
   }, []);
 
+  useEffect(() => {
+    const name = form.name.trim();
+    const email = form.admin_email.trim();
+    const shouldCheckName = slug.length >= 3;
+    const shouldCheckEmail = EMAIL_REGEX.test(email);
+
+    if (!shouldCheckName && !shouldCheckEmail) {
+      setAvailability({ name: { status: "idle", suggestedSlug: "" }, email: { status: "idle" } });
+      return undefined;
+    }
+
+    setAvailability({
+      name: shouldCheckName ? { status: "checking", suggestedSlug: slug } : { status: "idle", suggestedSlug: "" },
+      email: shouldCheckEmail ? { status: "checking" } : { status: "idle" }
+    });
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      try {
+        const params = new URLSearchParams();
+        if (shouldCheckName) params.set("name", name);
+        if (shouldCheckEmail) params.set("email", email);
+        const response = await fetch(`${API}/signup/availability?${params.toString()}`, { signal: controller.signal });
+        if (!response.ok) throw new Error("availability_unavailable");
+        const payload = await response.json();
+        setAvailability({
+          name: shouldCheckName
+            ? {
+                status: payload?.name?.exists ? "existing" : "available",
+                suggestedSlug: payload?.name?.suggested_slug || slug
+              }
+            : { status: "idle", suggestedSlug: "" },
+          email: shouldCheckEmail
+            ? { status: payload?.email?.available ? "available" : "taken" }
+            : { status: "idle" }
+        });
+      } catch (error) {
+        if (error?.name === "AbortError") return;
+        setAvailability({
+          name: shouldCheckName ? { status: "error", suggestedSlug: slug } : { status: "idle", suggestedSlug: "" },
+          email: shouldCheckEmail ? { status: "error" } : { status: "idle" }
+        });
+      }
+    }, 450);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [form.name, form.admin_email, slug]);
+
   function next() {
     setError("");
     if (step === 1) {
       if (!form.name.trim()) return setError("Informe o nome da sua clínica ou studio.");
       if (!form.admin_email.trim()) return setError("Informe um e-mail para acesso.");
+      if (availability.email.status === "checking") return setError("Aguarde a verificação do e-mail.");
+      if (availability.email.status === "taken") return setError("Este e-mail já possui uma clínica cadastrada. Faça login ou use outro e-mail.");
       if (form.admin_password.length < 8) return setError("Crie uma senha com no mínimo 8 caracteres.");
       if (form.admin_password !== form.admin_password_confirmation) return setError("As senhas não conferem.");
       if (slug.length < 3) return setError("Use um nome com pelo menos 3 letras para gerar o endereço da loja.");
@@ -219,25 +315,75 @@ export function Signup() {
 
                 <div className="au-a-field">
                   <label htmlFor="au-a-name">Nome da clínica ou studio</label>
-                  <Input
-                    label={null}
-                    fieldClassName="au-a-signup-name-control"
-                    id="au-a-name"
-                    className="au-a-input"
-                    required
-                    autoFocus
-                    value={form.name}
-                    onChange={(name) => setForm({ ...form, name })}
-                    placeholder="ex.: Studio Lua Piercing"
-                  />
-                  {slug.length >= 3 && <small className="au-a-hint">Endereço da sua loja: <strong>/{slug}</strong></small>}
+                  <div className="au-a-input-with-status">
+                    <Input
+                      label={null}
+                      fieldClassName="au-a-signup-name-control"
+                      id="au-a-name"
+                      className="au-a-input"
+                      required
+                      autoFocus
+                      value={form.name}
+                      onChange={(name) => setForm({ ...form, name })}
+                      placeholder="ex.: Studio Lua Piercing"
+                    />
+                    <span className={`au-a-input-status is-${availability.name.status}`} aria-hidden="true"><FieldStatusIcon status={availability.name.status} /></span>
+                  </div>
+                  {slug.length >= 3 && (
+                    <FieldFeedback status={availability.name.status}>
+                      {availability.name.status === "checking"
+                        ? "Verificando nome e endereço…"
+                        : availability.name.status === "existing"
+                          ? <>Já existe uma clínica com esse nome. Seu endereço será <strong>/{expectedSlug}</strong>.</>
+                          : availability.name.status === "available"
+                            ? <>Nome disponível. Endereço da sua loja: <strong>/{expectedSlug}</strong>.</>
+                            : availability.name.status === "error"
+                              ? <>Não foi possível confirmar agora. O endereço previsto é <strong>/{expectedSlug}</strong>.</>
+                              : <>Endereço da sua loja: <strong>/{expectedSlug}</strong>.</>}
+                    </FieldFeedback>
+                  )}
                 </div>
 
-                <Input fieldClassName="au-a-field" label="E-mail de acesso" id="au-a-admin-email" className="au-a-input" type="email" required value={form.admin_email} onChange={(admin_email) => setForm({ ...form, admin_email })} placeholder="seu@email.com" />
+                <div className="au-a-field">
+                  <label htmlFor="au-a-admin-email">E-mail de acesso</label>
+                  <div className="au-a-input-with-status">
+                    <Input label={null} fieldClassName="au-a-status-control" id="au-a-admin-email" className="au-a-input" type="email" autoComplete="email" required value={form.admin_email} onChange={(admin_email) => setForm({ ...form, admin_email })} placeholder="seu@email.com" />
+                    <span className={`au-a-input-status is-${availability.email.status}`} aria-hidden="true"><FieldStatusIcon status={availability.email.status} /></span>
+                  </div>
+                  <FieldFeedback status={availability.email.status}>
+                    {availability.email.status === "checking"
+                      ? "Verificando e-mail…"
+                      : availability.email.status === "available"
+                        ? "E-mail disponível."
+                        : availability.email.status === "taken"
+                          ? <>Este e-mail já possui cadastro. <a href="/login">Fazer login</a> ou use outro e-mail.</>
+                          : availability.email.status === "error"
+                            ? "Não foi possível confirmar agora. Verificaremos ao criar a conta."
+                            : ""}
+                  </FieldFeedback>
+                </div>
 
-                <Input fieldClassName="au-a-field" label="Senha" id="au-a-admin-password" className="au-a-input" type="password" minLength={8} required value={form.admin_password} onChange={(admin_password) => setForm({ ...form, admin_password })} placeholder="Mínimo 8 caracteres" />
+                <div className="au-a-field">
+                  <label htmlFor="au-a-admin-password">Senha</label>
+                  <div className="au-a-pass">
+                    <Input label={null} fieldClassName="au-a-pass-control" id="au-a-admin-password" className="au-a-input" type={showPassword ? "text" : "password"} autoComplete="new-password" minLength={8} required value={form.admin_password} onChange={(admin_password) => setForm({ ...form, admin_password })} placeholder="Mínimo 8 caracteres" />
+                    <Button type="button" variant="ghost" className="au-a-eye" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"} aria-pressed={showPassword}>
+                      {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                    </Button>
+                  </div>
+                  <FieldFeedback status={passwordState.status}>{passwordState.text}</FieldFeedback>
+                </div>
 
-                <Input fieldClassName="au-a-field" label="Confirme a senha" id="au-a-admin-password-confirmation" className="au-a-input" type="password" minLength={8} required value={form.admin_password_confirmation} onChange={(admin_password_confirmation) => setForm({ ...form, admin_password_confirmation })} placeholder="Digite a mesma senha novamente" />
+                <div className="au-a-field">
+                  <label htmlFor="au-a-admin-password-confirmation">Confirme a senha</label>
+                  <div className="au-a-pass">
+                    <Input label={null} fieldClassName="au-a-pass-control" id="au-a-admin-password-confirmation" className="au-a-input" type={showPasswordConfirmation ? "text" : "password"} autoComplete="new-password" minLength={8} required value={form.admin_password_confirmation} onChange={(admin_password_confirmation) => setForm({ ...form, admin_password_confirmation })} placeholder="Digite a mesma senha novamente" />
+                    <Button type="button" variant="ghost" className="au-a-eye" onClick={() => setShowPasswordConfirmation((current) => !current)} aria-label={showPasswordConfirmation ? "Ocultar confirmação de senha" : "Mostrar confirmação de senha"} aria-pressed={showPasswordConfirmation}>
+                      {showPasswordConfirmation ? <EyeOff size={19} /> : <Eye size={19} />}
+                    </Button>
+                  </div>
+                  <FieldFeedback status={passwordConfirmationState.status}>{passwordConfirmationState.text}</FieldFeedback>
+                </div>
               </>
             )}
 

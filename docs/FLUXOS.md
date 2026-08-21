@@ -21,7 +21,7 @@ Observação: em **desenvolvimento local** (`localhost`, `NODE_ENV != production
 Fluxo de onboarding de um novo estúdio (novo tenant).
 
 1. **Acesso à página de cadastro** — o interessado abre `/cadastro` (componente `Signup`). Requer que o cadastro público esteja habilitado (`ALLOW_PUBLIC_SIGNUP` diferente de `false`). Alternativamente, o super-admin cria a clínica pelo painel (ver fluxo (e)).
-2. **Preenchimento** — nome da clínica, **identificador (slug)** único (minúsculas, números e hífens, 3–30 caracteres, ex.: `aura`), e os dados do administrador inicial (nome, e-mail, senha ≥ 8 caracteres).
+2. **Preenchimento** — nome da clínica e os dados do administrador inicial (e-mail e senha ≥ 8 caracteres, com confirmação). O identificador (slug) é derivado automaticamente do nome; a tela mostra o endereço previsto e, se já houver colisão, sugere o próximo disponível. O e-mail do administrador é verificado antes de avançar e não pode abrir uma segunda clínica.
 3. **Envio** — o frontend chama `POST /api/signup` com `{ name, slug, admin_name, admin_email, admin_password }`.
 4. **Provisionamento** (backend, `services/tenants.js → provisionTenant`):
    - Valida os dados; rejeita slugs reservados (ex.: `platform`, `public`, `admin`) e slugs já usados (`409`).

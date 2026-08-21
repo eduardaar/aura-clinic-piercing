@@ -12,7 +12,10 @@ before(async () => {
   context.legacy = await createTenant("qa-category-legacy");
   context.tokenA = (await loginTenant(context.a.slug, context.a.adminEmail, context.a.adminPassword)).token;
   context.tokenLegacy = (await loginTenant(context.legacy.slug, context.legacy.adminEmail, context.legacy.adminPassword)).token;
-  await query(`ALTER TABLE tenant_${context.legacy.tenant.id}.jewelry_inventory DROP COLUMN IF EXISTS category_id`);
+  const legacySchema = (
+    await query("SELECT schema_name FROM platform.tenants WHERE id = $1", [context.legacy.tenant.id])
+  ).rows[0].schema_name;
+  await query(`ALTER TABLE "${legacySchema}".jewelry_inventory DROP COLUMN IF EXISTS category_id`);
 });
 
 after(async () => {

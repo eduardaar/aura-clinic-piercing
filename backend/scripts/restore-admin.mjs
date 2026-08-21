@@ -20,8 +20,8 @@ if (!email) {
 
 const tenantsResult = await query(
   tenantSlug
-    ? "SELECT id, slug, name FROM platform.tenants WHERE slug = $1"
-    : "SELECT id, slug, name FROM platform.tenants ORDER BY id",
+    ? "SELECT id, slug, name, schema_name FROM platform.tenants WHERE slug = $1"
+    : "SELECT id, slug, name, schema_name FROM platform.tenants ORDER BY id",
   tenantSlug ? [tenantSlug] : []
 );
 
@@ -73,7 +73,7 @@ async function invalidateStoredSessions(client, userId, userEmail) {
 let restored = null;
 
 for (const tenant of tenantsResult.rows) {
-  const schema = `tenant_${tenant.id}`;
+  const schema = tenant.schema_name || `tenant_${tenant.id}`;
   const client = await pool.connect();
 
   try {

@@ -28,6 +28,7 @@ regras de negócio implementadas em cada rota.
 | --- | --- | --- |
 | `POST` | `/api/login` | Login da clínica (envie `X-Tenant`). |
 | `POST` | `/api/signup` | Cadastro de clínica, sujeito a `ALLOW_PUBLIC_SIGNUP`. |
+| `GET` | `/api/signup/availability?name=&email=` | Disponibilidade do nome/endereço sugerido e do e-mail de administrador durante o cadastro. |
 | `POST` | `/api/platform/login` | Login do super-admin. |
 | `GET` | `/api/health`, `/api/health/db` | Saúde da API e do banco. |
 | `GET` | `/api/plans`, `/api/clinics` | Vitrine de planos e diretório público de clínicas. |

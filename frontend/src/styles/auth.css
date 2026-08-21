@@ -166,6 +166,71 @@
 
 .au-a-root .au-a-signup-name-control { display: block; }
 
+/* Estado de validação do cadastro. O ícone fica dentro do campo para a
+   resposta ser percebida sem aumentar demais a altura do formulário. */
+.au-a-root .au-a-input-with-status {
+  position: relative;
+  min-width: 0;
+}
+
+.au-a-root .au-a-status-control { display: block; }
+
+.au-a-root .au-a-input-with-status .au-a-input {
+  padding-right: 48px;
+}
+
+.au-a-root .au-a-input-status {
+  position: absolute;
+  top: 50%;
+  right: 15px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.au-a-root .au-a-input-status.is-available { color: #2f7a59; }
+.au-a-root .au-a-input-status.is-existing { color: #9a6c23; }
+.au-a-root .au-a-input-status.is-taken,
+.au-a-root .au-a-input-status.is-error { color: #a34a4a; }
+
+.au-a-root .au-a-status-spinner {
+  animation: au-a-spin .8s linear infinite;
+}
+
+.au-a-root .au-a-field-feedback {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.au-a-root .au-a-field-feedback svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.au-a-root .au-a-field-feedback strong { color: currentColor; }
+.au-a-root .au-a-field-feedback a { color: inherit; font-weight: 700; }
+.au-a-root .au-a-field-feedback.is-available,
+.au-a-root .au-a-field-feedback.is-strong,
+.au-a-root .au-a-field-feedback.is-matches { color: #2f7a59; }
+.au-a-root .au-a-field-feedback.is-existing { color: #9a6c23; }
+.au-a-root .au-a-field-feedback.is-taken,
+.au-a-root .au-a-field-feedback.is-error,
+.au-a-root .au-a-field-feedback.is-invalid,
+.au-a-root .au-a-field-feedback.is-mismatch { color: #a34a4a; }
+
+@keyframes au-a-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* Campo de senha com botão mostrar/ocultar */
 
 .au-a-root .au-a-pass {

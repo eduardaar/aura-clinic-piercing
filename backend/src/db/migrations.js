@@ -10,7 +10,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = path.join(__dirname, "migrations");
 const SCOPES = new Set(["platform", "tenant"]);
 const FILE_PATTERN = /^(\d{4,})_([a-z0-9][a-z0-9_-]*)\.sql$/;
-const TENANT_SCHEMA_PATTERN = /^tenant_[1-9]\d*$/;
+// Aceita o nome novo, derivado do slug ("tenant_aura_clinic") e o formato
+// legado ("tenant_2") — clínicas provisionadas antes da migration
+// platform/0005 (que preenche platform.tenants.schema_name) só ganham o nome
+// novo quando essa migration roda; até lá, o schema físico continua com o
+// nome antigo.
+const TENANT_SCHEMA_PATTERN = /^tenant_([1-9]\d*|[a-z0-9][a-z0-9_]{1,58})$/;
 
 export class MigrationError extends Error {
   constructor(message, { code = "migration_error", details } = {}) {
@@ -53,6 +58,13 @@ function compatibleLineEndingChecksums(sql) {
   return [...new Set([lf, crlf].map((value) => crypto.createHash("sha256").update(value, "utf8").digest("hex")))];
 }
 
+// `DO $$ ... BEGIN ... END $$` é um bloco PL/pgSQL perfeitamente seguro dentro
+// da transação do runner. Removemos blocos dollar-quoted antes de procurar
+// comandos de controle transacional, para não confundi-lo com `BEGIN;` real.
+function sqlOutsideDollarQuotedBlocks(sql) {
+  return String(sql).replace(/\$([A-Za-z_][A-Za-z0-9_]*)?\$[\s\S]*?\$\1\$/g, "");
+}
+
 // Carrega e valida os arquivos antes de abrir uma transação. Isso evita que
 // um deploy parcialmente empacotado escreva qualquer coisa no banco.
 export function loadMigrations(scope, { root = DEFAULT_ROOT } = {}) {
@@ -83,8 +95,9 @@ export function loadMigrations(scope, { root = DEFAULT_ROOT } = {}) {
       if (!sql.trim()) {
         throw new MigrationError(`Migration vazia: ${scope}/${entry.name}.`, { code: "empty_migration" });
       }
-      if (/\b(?:COMMIT|ROLLBACK|START\s+TRANSACTION)\b/i.test(sql)
-        || /(?:^|;)\s*BEGIN\s*(?:;|$)/im.test(sql)) {
+    const transactionControlSql = sqlOutsideDollarQuotedBlocks(sql);
+    if (/\b(?:COMMIT|ROLLBACK|START\s+TRANSACTION)\b/i.test(transactionControlSql)
+        || /(?:^|;)\s*BEGIN\s*(?:;|$)/im.test(transactionControlSql)) {
         throw new MigrationError(
           `Migration ${scope}/${entry.name} controla transação. O runner já executa tudo atomicamente.`,
           { code: "transaction_control" }

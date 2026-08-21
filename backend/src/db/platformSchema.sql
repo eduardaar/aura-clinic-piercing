@@ -1,12 +1,14 @@
 -- Schema de controle da plataforma (multi-tenant).
 -- Guarda o cadastro das clínicas (tenants) e os usuários do painel de
 -- plataforma (super-admins). Cada clínica vive num schema próprio
--- ("tenant_<id>") criado no provisionamento. Idempotente.
+-- (`schema_name`, ex.: "tenant_aura_clinic") criado no provisionamento.
+-- Idempotente.
 
 CREATE SCHEMA IF NOT EXISTS platform;
 
--- Clínicas cadastradas na plataforma. O schema Postgres de cada uma é
--- derivado do id ("tenant_" || id) e nunca de input do usuário.
+-- Clínicas cadastradas na plataforma. O nome do schema Postgres de cada uma
+-- é calculado uma única vez, no provisionamento, a partir do slug — nunca de
+-- input livre do usuário (ver services/tenants.js:schemaNameForSlug).
 CREATE TABLE IF NOT EXISTS platform.tenants (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
@@ -19,6 +21,7 @@ CREATE TABLE IF NOT EXISTS platform.tenants (
   city TEXT,
   state TEXT,
   logo_url TEXT,
+  signup_admin_email TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -70,8 +73,21 @@ ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS phone TEXT;
 ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS city TEXT;
 ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS state TEXT;
 ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS logo_url TEXT;
+-- E-mail do administrador que criou a clínica. Não é o e-mail financeiro
+-- (`email` abaixo), que pode mudar no checkout e não define acesso.
+ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS signup_admin_email TEXT;
 -- Listar (ou não) a clínica no diretório público de catálogos (/catalogo sem ?t).
 ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS listed BOOLEAN NOT NULL DEFAULT true;
+-- Nome do schema Postgres da clínica (ex.: "tenant_aura_clinic"). Calculado uma
+-- vez no provisionamento; ver migrations/platform/0005 para o backfill de
+-- clínicas criadas antes desta coluna existir.
+ALTER TABLE platform.tenants ADD COLUMN IF NOT EXISTS schema_name TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_tenants_signup_admin_email
+  ON platform.tenants (lower(signup_admin_email))
+  WHERE signup_admin_email IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_tenants_schema_name ON platform.tenants (schema_name);
 
 INSERT INTO platform.subscription_plans (code, name, price_cents, audience, trial_days, features, is_recommended)
 VALUES

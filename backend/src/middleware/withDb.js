@@ -17,9 +17,11 @@ import { recordError } from "../services/errorLogs.js";
 import { requireFeature } from "../services/subscriptions.js";
 import { hydrateUserPermissions } from "../services/permissionService.js";
 
-// Defesa em profundidade: o schema vem sempre de "tenant_" + id inteiro do
-// banco, mas validamos o formato antes de interpolar no SET search_path.
-const TENANT_SCHEMA_REGEX = /^tenant_\d+$/;
+// Defesa em profundidade: o schema vem sempre de platform.tenants.schema_name
+// (ou do fallback "tenant_" + id enquanto essa coluna não foi preenchida —
+// ver middleware/tenant.js), mas validamos o formato antes de interpolar no
+// SET search_path.
+const TENANT_SCHEMA_REGEX = /^tenant_[a-z0-9_]{1,58}$/;
 
 // O caractere de substituição (�) significa que uma conversão anterior perdeu
 // o byte original. Depois de persistido não há como deduzir a letra com

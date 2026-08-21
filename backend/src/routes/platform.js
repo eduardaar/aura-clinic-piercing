@@ -18,6 +18,7 @@ import {
   provisionTenant,
   deprovisionTenant,
   generateUniqueSlug,
+  signupAvailability,
   TenantServiceError
 } from "../services/tenants.js";
 import { validateBody } from "../middleware/validate.js";
@@ -57,6 +58,18 @@ const signupLimiter = rateLimit({
   message: { error: "Muitos cadastros deste endereço. Tente novamente em uma hora." }
 });
 
+// A disponibilidade é consultada no blur/digitação e por isso tem uma janela
+// própria, mais generosa que a criação de clínica. Ainda assim é limitada para
+// não transformar a rota pública em ferramenta de enumeração de cadastros.
+const signupAvailabilityLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: skipRateLimit,
+  message: { error: "Muitas verificações deste endereço. Tente novamente em alguns minutos." }
+});
+
 // Rate limit do login de plataforma (mesma política do login de clínica:
 // 10 tentativas / 15 min por IP), mas com contador próprio.
 const platformLoginLimiter = rateLimit({
@@ -81,6 +94,19 @@ function handleServiceError(res, error) {
 
 // Auth do painel de plataforma. SEM bypass de dev: plataforma SEMPRE exige login.
 // ---------- Signup público ----------
+router.get("/api/signup/availability", signupAvailabilityLimiter, async (req, res) => {
+  try {
+    const name = String(req.query?.name || "").trim();
+    const adminEmail = String(req.query?.email || "").trim();
+    if (!name && !adminEmail) {
+      return res.status(400).json({ error: "Informe o nome da clínica ou o e-mail para verificar." });
+    }
+    res.json(await signupAvailability({ name, adminEmail }));
+  } catch (error) {
+    handleServiceError(res, error);
+  }
+});
+
 router.post("/api/signup", signupLimiter, async (req, res) => {
   try {
     if (process.env.ALLOW_PUBLIC_SIGNUP === "false") {
@@ -139,7 +165,7 @@ router.post("/api/signup", signupLimiter, async (req, res) => {
       // protegida, pois todo token de clínica precisa de uma sessão ativa.
       const client = await pool.connect();
       try {
-        await client.query(`SET search_path TO "tenant_${Number(tenant.id)}", public`);
+        await client.query(`SET search_path TO "${tenant.schema_name}", public`);
         const session = await createClinicSession(createDb(client), tenant.admin, req);
         setRefreshCookie(res, session.refreshToken);
         token = createToken(tenant.admin, tenant, { sessionId: session.id });
@@ -395,13 +421,14 @@ router.delete("/api/platform/tenants/:id", requirePlatform, async (req, res) => 
 router.get("/api/platform/metrics", requirePlatform, async (_req, res) => {
   try {
     const tenants = await query(
-      "SELECT id, name, slug, status FROM platform.tenants WHERE status = 'ativo' ORDER BY id"
+      "SELECT id, name, slug, status, schema_name FROM platform.tenants WHERE status = 'ativo' ORDER BY id"
     );
     const metrics = [];
     for (const tenant of tenants.rows) {
       const client = await pool.connect();
       try {
-        await client.query(`SET search_path TO "tenant_${tenant.id}", public`);
+        const schema = tenant.schema_name || `tenant_${tenant.id}`;
+        await client.query(`SET search_path TO "${schema}", public`);
         const clients = await client.query("SELECT COUNT(*)::int AS total FROM clients");
         const appointments = await client.query("SELECT COUNT(*)::int AS total FROM appointments");
         metrics.push({

@@ -64,7 +64,9 @@ const JANELA_INTENTS_DIAS = 7;
 // consultada no gateway antes de ter chance de ser confirmada sozinha.
 const CARENCIA_MIN = 10;
 
-const TENANT_SCHEMA_REGEX = /^tenant_\d+$/;
+// Aceita o nome novo (derivado do slug) e o formato legado "tenant_<id>"
+// usado no fallback de clinicasCandidatas() enquanto schema_name for NULL.
+const TENANT_SCHEMA_REGEX = /^tenant_[a-z0-9_]{1,58}$/;
 
 let timer = null;
 // Trava de sobreposição. Um booleano de módulo basta: o laço vive num processo
@@ -152,15 +154,20 @@ async function conciliarPlataforma() {
  * direto ali derrubaria a rodada inteira com "relation does not exist".
  */
 async function clinicasCandidatas() {
+  // COALESCE cobre a janela entre o deploy do schema_name e a migration 0005
+  // rodar (ver services/tenants.js) — sem isso, uma clínica provisionada
+  // antes dela ficaria fora da conciliação até a migration aplicar.
   const result = await query(
-    `SELECT id
+    `SELECT id, COALESCE(schema_name, 'tenant_' || id) AS schema_name
        FROM platform.tenants
       WHERE status = 'ativo'
-        AND to_regclass('tenant_' || id || '.payment_intents') IS NOT NULL
-        AND to_regclass('tenant_' || id || '.tenant_integrations') IS NOT NULL
+        AND to_regclass(COALESCE(schema_name, 'tenant_' || id) || '.payment_intents') IS NOT NULL
+        AND to_regclass(COALESCE(schema_name, 'tenant_' || id) || '.tenant_integrations') IS NOT NULL
       ORDER BY id`
   );
-  return result.rows.map((row) => Number(row.id)).filter((id) => Number.isInteger(id) && id > 0);
+  return result.rows
+    .map((row) => ({ id: Number(row.id), schema: row.schema_name }))
+    .filter((tenant) => Number.isInteger(tenant.id) && tenant.id > 0);
 }
 
 /**
@@ -185,12 +192,11 @@ async function clinicasCandidatas() {
  * eliminando a varredura. Enquanto a base couber em dezenas/centenas de
  * clínicas, o custo de uma query longa é menor que o de N conexões.
  */
-async function intentsPendentes(tenantIds) {
-  if (!tenantIds.length) return { itens: [], total: 0 };
+async function intentsPendentes(tenants) {
+  if (!tenants.length) return { itens: [], total: 0 };
 
   const ramos = [];
-  for (const id of tenantIds) {
-    const schema = `tenant_${id}`;
+  for (const { id, schema } of tenants) {
     if (!TENANT_SCHEMA_REGEX.test(schema)) continue;
     ramos.push(
       `SELECT ${id} AS tenant_id, i.id AS intent_id, i.created_at
@@ -220,8 +226,8 @@ async function intentsPendentes(tenantIds) {
 }
 
 async function conciliarClinicas() {
-  const tenantIds = await clinicasCandidatas();
-  const { itens, total } = await intentsPendentes(tenantIds);
+  const candidatas = await clinicasCandidatas();
+  const { itens, total } = await intentsPendentes(candidatas);
   if (!itens.length) return 0;
 
   // Agrupa por clínica para abrir UMA sessão de tenant por clínica em vez de

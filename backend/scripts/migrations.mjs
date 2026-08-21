@@ -76,7 +76,7 @@ if (!new Set(["status", "verify", "apply"]).has(command)) {
       throw new Error("Use apply --tenant=<id|slug> --target=<versão> --adopt-existing.");
     }
     const targets = selectedTenant ? [] : [{ scope: "platform", targetSchema: "platform", migrations: platformMigrations }];
-    const tenants = await query("SELECT id, slug FROM platform.tenants ORDER BY id");
+    const tenants = await query("SELECT id, slug, schema_name FROM platform.tenants ORDER BY id");
     const chosen = selectedTenant
       ? tenants.rows.filter((tenant) => String(tenant.id) === selectedTenant || tenant.slug === selectedTenant)
       : tenants.rows;
@@ -84,7 +84,9 @@ if (!new Set(["status", "verify", "apply"]).has(command)) {
     for (const tenant of chosen) {
       targets.push({
         scope: "tenant",
-        targetSchema: `tenant_${tenant.id}`,
+        // Fallback ao formato antigo: cobre rodar este CLI antes da migration
+        // 0005 (que preenche schema_name) ter sido aplicada.
+        targetSchema: tenant.schema_name || `tenant_${tenant.id}`,
         migrations: tenantMigrations,
         tenant: tenant.slug
       });

@@ -5,7 +5,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { req, platformLogin, deleteTenant } from "./helpers.mjs";
 
-const ctx = { platformToken: null, tenantId: null, slug: null };
+const ctx = { platformToken: null, tenantId: null, slug: null, email: null, name: null };
 
 before(async () => {
   ctx.platformToken = await platformLogin();
@@ -31,6 +31,8 @@ test("signup sem slug deriva o código do nome e retorna token que autentica", a
   const { tenant, token, user } = signup.json;
   ctx.tenantId = tenant.id;
   ctx.slug = tenant.slug;
+  ctx.email = adminEmail;
+  ctx.name = name;
 
   // Slug derivado do nome (começa com "studio-lua").
   assert.match(tenant.slug, /^studio-lua/, `slug derivado inesperado: ${tenant.slug}`);
@@ -41,6 +43,31 @@ test("signup sem slug deriva o código do nome e retorna token que autentica", a
   // O token retornado deve autenticar uma rota protegida da clínica, sem re-login.
   const me = await req("/clients", { token, tenant: tenant.slug });
   assert.equal(me.status, 200, `token do signup deveria acessar /clients, veio ${me.status}`);
+});
+
+test("consulta de disponibilidade mostra nome existente, novo endereço e e-mail ocupado", async () => {
+  const availability = await req(
+    `/signup/availability?name=${encodeURIComponent(ctx.name)}&email=${encodeURIComponent(ctx.email)}`
+  );
+  assert.equal(availability.status, 200, JSON.stringify(availability.json));
+  assert.equal(availability.json.name.exists, true);
+  assert.match(availability.json.name.suggested_slug, /^studio-lua-piercing/);
+  assert.equal(availability.json.email.available, false);
+});
+
+test("o mesmo e-mail não cria uma segunda clínica", async () => {
+  const duplicate = await req("/signup", {
+    method: "POST",
+    body: {
+      name: `Outra Clinica ${Math.floor(performance.now() * 1000) % 1000000}`,
+      admin_email: ctx.email,
+      admin_password: "SenhaForte123",
+      plan_code: "start",
+      legal_acceptances: { terms_of_use: 1, privacy_policy: 1 }
+    }
+  });
+  assert.equal(duplicate.status, 409, JSON.stringify(duplicate.json));
+  assert.match(duplicate.json.error, /e-mail já possui uma clínica/i);
 });
 
 test("dois cadastros com o mesmo nome geram slugs distintos", async () => {
