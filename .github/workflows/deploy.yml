@@ -131,11 +131,8 @@ jobs:
   guard:
     name: Pré-requisitos do deploy
     needs: validate
-    # DEPLOY AUTOMÁTICO TEMPORARIAMENTE DESATIVADO.
-    # A main continua validando testes/tipos/build, mas nenhum evento publica
-    # no servidor. Remova este `if: false` somente após liberar a main e revisar
-    # novamente os pré-requisitos de produção.
-    if: ${{ false }}
+    # PR nunca publica: valida e para.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
