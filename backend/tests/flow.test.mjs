@@ -211,8 +211,8 @@ test("3e. readiness exige vinculo e agenda semanal; depois fica pronto", async (
   const initial = await api("/booking/readiness");
   assert.equal(initial.status, 200);
   assert.equal(initial.json.ready, false);
-  assert.ok(initial.json.missing.includes("Agenda semanal configurada"));
-  assert.ok(initial.json.missing.includes("Profissionais vinculados aos serviços"));
+  assert.ok(initial.json.missing.includes("Configurar horários"));
+  assert.ok(initial.json.missing.includes("Vincular serviços aos profissionais"));
 
   const linkProfessional = await api(`/professionals/${ctx.professionalId}`, {
     method: "PATCH",
@@ -255,7 +255,11 @@ test("3e. readiness exige vinculo e agenda semanal; depois fica pronto", async (
 
   const ready = await api("/booking/readiness");
   assert.equal(ready.status, 200);
-  assert.equal(ready.json.ready, true, JSON.stringify(ready.json));
+  // `ready` exige o checklist inteiro, inclusive itens opcionais (primeiro
+  // produto, primeiro termo) que este fluxo não configura. O que a etapa
+  // essencial (serviço, profissional, vínculo, agenda semanal) garante é
+  // `essentials_ready`.
+  assert.equal(ready.json.essentials_ready, true, JSON.stringify(ready.json));
 
   const config = await api("/booking/config");
   assert.equal(config.status, 200, JSON.stringify(config.json));
