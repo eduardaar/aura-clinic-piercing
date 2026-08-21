@@ -1045,7 +1045,7 @@ function PublicCatalogBanner({ banner, banners, activeIndex, layout, style, clas
         <button type="button" className="catalog-carousel-arrow next" aria-label="Próximo banner" onClick={() => go(1)}><ChevronRight /></button>
         <div className="catalog-carousel-dots" aria-label="Selecionar banner">
           {banners.map((item, index) => (
-            <button key={`${item.title}-${index}`} className={index === activeIndex ? "active" : ""} aria-label={`Banner ${index + 1}`} aria-current={index === activeIndex ? "true" : undefined} onClick={() => onChange(index)} />
+            <button key={item.id || item.banner_id || item.sort_order || item.image_url || item.title} className={index === activeIndex ? "active" : ""} aria-label={`Banner ${index + 1}`} aria-current={index === activeIndex ? "true" : undefined} onClick={() => onChange(index)} />
           ))}
         </div>
       </>}
@@ -1186,8 +1186,8 @@ function CatalogContentSections({ sections, style, className = "catalog-content-
   if (!active.length) return null;
   return (
     <section className={className} style={style}>
-      {active.sort((a, b) => Number(a.order || 0) - Number(b.order || 0)).map((section, index) => (
-        <article className={`catalog-content-card ${section.media_type || "image"}`} key={`${section.title}-${index}`}>
+      {active.sort((a, b) => Number(a.order || 0) - Number(b.order || 0)).map((section) => (
+        <article className={`catalog-content-card ${section.media_type || "image"}`} key={section.id || section.order || section.title}>
           <div>
             <span className="eyebrow">{section.kicker || "Conteúdo especial"}</span>
             <h2>{section.title}</h2>
