@@ -704,7 +704,12 @@
 .au-a-root .au-a-legal .au-a-legal-checkbox .ui-checkbox { flex:0 0 16px; width:16px; height:16px; min-height:16px; margin:2px 0 0; padding:0; border-color:var(--muted); border-radius:4px; color:var(--black); }
 .au-a-root .au-a-legal .au-a-legal-checkbox .ui-checkbox[data-state="checked"] { border-color: var(--gold-dark); background: var(--gold); }
 .au-a-root .au-a-legal .au-a-legal-checkbox .ui-checkbox svg { display: block; }
-.au-a-root .au-a-legal-link { padding: 0; border: 0; background: none; color:var(--brown-dark); font: inherit; font-weight:700; text-decoration: underline; cursor: pointer; }
+/* `<button>` é sempre um "atomic inline-level box": `display:inline` sozinho
+   não escapa de `min-height` (o spec resolve para inline-block por trás).
+   Zera explicitamente aqui — sem isso o link herdava a altura mínima de toque
+   de .ghost-button (var(--responsive-control-height), ~42px), pensada para
+   um botão avulso, não para um link dentro de uma frase. */
+.au-a-root .au-a-legal-link { display: inline; min-height: auto; height: auto; margin: 0; padding: 0; border: 0; background: none; color:var(--brown-dark); font: inherit; font-weight:700; text-decoration: underline; cursor: pointer; }
 .au-a-root .au-a-legal-link:focus-visible { outline: 2px solid var(--gold-dark); outline-offset: 2px; border-radius: 2px; }
 
 .au-a-root .au-a-plan-heading { display: flex; align-items: center; gap: 10px; }

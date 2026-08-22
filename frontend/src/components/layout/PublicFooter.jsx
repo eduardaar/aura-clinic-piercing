@@ -3,6 +3,7 @@ import { Instagram, Mail, MessageCircle } from "lucide-react";
 import { API } from "../../lib/api";
 import { asArray } from "../../lib/utils";
 import { BrandMark } from "../common/BrandMark";
+import { LegalDocumentModal, useLegalDocuments } from "../common/LegalDocumentModal";
 
 const FALLBACK = {
   footer_text: "Plataforma de gestão para estúdios de piercing.",
@@ -18,6 +19,8 @@ const whatsappUrl = (phone) => {
 
 export function PublicFooter({ content }) {
   const [remote, setRemote] = useState(null);
+  const [openLegalDocument, setOpenLegalDocument] = useState(null);
+  const legalDocuments = useLegalDocuments();
   useEffect(() => {
     if (content) return undefined;
     let active = true;
@@ -40,7 +43,11 @@ export function PublicFooter({ content }) {
         {data.contact_email && <a href={`mailto:${data.contact_email}`}><Mail size={18} aria-hidden="true" /> E-mail</a>}
         {data.contact_instagram && <a href={data.contact_instagram} target="_blank" rel="noreferrer"><Instagram size={18} aria-hidden="true" /> Instagram</a>}
       </div>
-      <div className="au-public-footer-group au-public-footer-links"><span>Legal</span><a href="/termos-de-uso">Termos de uso</a><a href="/politica-de-privacidade">Privacidade</a></div>
+      <div className="au-public-footer-group au-public-footer-links"><span>Legal</span>
+        <a href="/termos-de-uso" onClick={(event) => { event.preventDefault(); setOpenLegalDocument("terms_of_use"); }}>Termos de uso</a>
+        <a href="/politica-de-privacidade" onClick={(event) => { event.preventDefault(); setOpenLegalDocument("privacy_policy"); }}>Privacidade</a>
+      </div>
     </div>
+    <LegalDocumentModal documentKey={openLegalDocument} documents={legalDocuments} onClose={() => setOpenLegalDocument(null)} />
   </footer>;
 }

@@ -5,8 +5,8 @@ import { asArray } from "../../lib/utils";
 import { featureLabel } from "../../lib/planFeatures";
 import { PublicTopNav } from "../../components/layout/PublicTopNav";
 import { PublicFooter } from "../../components/layout/PublicFooter";
-import { Modal } from "../../components/common/Crud";
 import { Button, Checkbox, Input } from "../../components/common/Ui";
+import { LegalDocumentModal, useLegalDocuments } from "../../components/common/LegalDocumentModal";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -87,7 +87,7 @@ export function Signup() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [createdTenant, setCreatedTenant] = useState(null);
-  const [legalDocuments, setLegalDocuments] = useState([]);
+  const legalDocuments = useLegalDocuments();
   const [legalAccepted, setLegalAccepted] = useState({ terms_of_use: false, privacy_policy: false });
   const [openLegalDocument, setOpenLegalDocument] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -109,10 +109,6 @@ export function Signup() {
       ? { status: "matches", text: "As senhas conferem." }
       : { status: "mismatch", text: "As senhas não conferem." };
   }, [form.admin_password, form.admin_password_confirmation]);
-  const legalDocument = useMemo(
-    () => legalDocuments.find((document) => document.key === openLegalDocument) || null,
-    [legalDocuments, openLegalDocument]
-  );
 
   useEffect(() => {
     fetch(`${API}/plans`)
@@ -125,13 +121,6 @@ export function Signup() {
     if (plans.some((plan) => plan.code === form.plan_code)) return;
     setForm((current) => ({ ...current, plan_code: plans.find((plan) => plan.code === "profissional")?.code || plans[0]?.code || "profissional" }));
   }, [plans, form.plan_code]);
-
-  useEffect(() => {
-    fetch(`${API}/legal-documents`)
-      .then((response) => response.ok ? response.json() : Promise.reject())
-      .then((payload) => setLegalDocuments(asArray(payload.documents)))
-      .catch(() => setLegalDocuments([]));
-  }, []);
 
   useEffect(() => {
     const name = form.name.trim();
@@ -472,17 +461,7 @@ export function Signup() {
         </section>
       </main>
       <PublicFooter />
-      <Modal
-        open={Boolean(openLegalDocument)}
-        title={legalDocument?.title || "Documento legal"}
-        subtitle={legalDocument?.version ? `Versão ${legalDocument.version}` : undefined}
-        size="lg"
-        onClose={() => setOpenLegalDocument(null)}
-      >
-        <div className="au-a-legal-modal-content">
-          {String(legalDocument?.content || "Este documento está sendo carregado. Tente novamente em instantes.").split(/\n\s*\n/).filter(Boolean).map((paragraph, index) => <p key={index}>{paragraph}</p>)}
-        </div>
-      </Modal>
+      <LegalDocumentModal documentKey={openLegalDocument} documents={legalDocuments} onClose={() => setOpenLegalDocument(null)} />
     </div>
   );
 }
