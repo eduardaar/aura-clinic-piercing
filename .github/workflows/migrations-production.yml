@@ -58,10 +58,12 @@ jobs:
           gzip -dc "${dump}" | tail -n 20 | grep -q 'PostgreSQL database dump complete'
           echo "Restore point validado: ${dump}"
 
-          docker compose exec -T aura-api node scripts/migrations.mjs status
+          # Sem redirecionar stdin, o primeiro `docker compose exec` consome o
+          # restante do heredoc SSH e o job termina verde sem aplicar nada.
+          docker compose exec -T aura-api node scripts/migrations.mjs status </dev/null
           docker compose exec -T -e ALLOW_GLOBAL_MIGRATIONS=true aura-api \
-            node scripts/migrations.mjs apply --all
-          docker compose exec -T aura-api node scripts/migrations.mjs verify
+            node scripts/migrations.mjs apply --all </dev/null
+          docker compose exec -T aura-api node scripts/migrations.mjs verify </dev/null
 
           docker compose up -d redis
           docker compose up -d --force-recreate aura-api
