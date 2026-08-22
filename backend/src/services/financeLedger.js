@@ -29,6 +29,7 @@ export function normalizeEntry(body = {}, current = {}) {
     payment_account: body.payment_account ?? current.payment_account ?? "",
     paid_at: computedStatus === "paid" || computedStatus === "partially_paid" ? (body.paid_at ?? current.paid_at ?? new Date().toISOString()) : null,
     cost_center_id: body.cost_center_id || current.cost_center_id || null,
+    supplier_id: body.supplier_id || current.supplier_id || null,
     attachment_url: body.attachment_url ?? current.attachment_url ?? "",
     notes: body.notes ?? current.notes ?? "",
     recurrence: body.recurrence ?? current.recurrence ?? "",
@@ -67,7 +68,7 @@ export async function syncFinanceSources(db) {
   `);
 }
 
-const LEDGER_FROM = "financial_entries e LEFT JOIN financial_cost_centers c ON c.id=e.cost_center_id";
+const LEDGER_FROM = "financial_entries e LEFT JOIN financial_cost_centers c ON c.id=e.cost_center_id LEFT JOIN suppliers sup ON sup.id=e.supplier_id";
 const LEDGER_ORDER_BY = "ORDER BY e.due_date DESC, e.id DESC";
 
 // Os indicadores (caixa, DRE, inadimplência) somados PELO POSTGRES, não por
@@ -136,7 +137,7 @@ export async function ledgerReport(db, { from, to, filters = [], filterParams = 
   const orderBy = paging?.orderBy || LEDGER_ORDER_BY;
   const page = limitOffset(paging);
   const entries = await db.all(
-    `SELECT e.*, c.name AS cost_center_name FROM ${LEDGER_FROM} ${where} ${orderBy}${page.clause}`,
+    `SELECT e.*, c.name AS cost_center_name, sup.name AS supplier_name FROM ${LEDGER_FROM} ${where} ${orderBy}${page.clause}`,
     [...params, ...page.params]
   );
   // Os indicadores somam TODO o período filtrado, nunca só a página — por isso

@@ -5,6 +5,7 @@ import { Button, Input, Metric, PaymentSelect, Select, StatusBadge, Textarea } f
 import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
+import { SelectWithCreate } from "../../components/common/SelectWithCreate";
 import { asArray, asNumber, asObject } from "../../lib/utils";
 import { apiFetch, downloadApiFile, useApiInvalidate, useFetch } from "../../lib/api";
 import { defaultExpense } from "../../lib/defaultForms";
@@ -257,8 +258,23 @@ export function AccountsReceivable() {
   const query = new URLSearchParams(period).toString();
   const { data } = useFetch(`/finance/ledger?${query}`);
   const { data: centers } = useFetch("/finance/cost-centers");
+  const { data: categoryList } = useFetch("/finance/categories");
   const invalidate = useApiInvalidate();
   const refresh = () => invalidate("/finance", "/finance/ledger", "/dashboard");
+  async function createCategory(name) {
+    const response = await apiFetch("/finance/categories", { method: "POST", body: JSON.stringify({ name }) });
+    const created = await response.json().catch(() => null);
+    invalidate("/finance/categories");
+    // `category` é texto livre no lançamento (não FK) — o valor do select é
+    // o nome, igual ao mapeamento usado em `options` logo abaixo.
+    return created?.name ? { id: created.name, name: created.name } : created;
+  }
+  async function createCenter(name) {
+    const response = await apiFetch("/finance/cost-centers", { method: "POST", body: JSON.stringify({ name }) });
+    const created = await response.json().catch(() => null);
+    invalidate("/finance/cost-centers");
+    return created;
+  }
   const initialForm = () => ({
     entry_type: "receivable", description: "", category: "", amount: "", paid_amount: 0,
     due_date: today, status: "pending", payment_method: "Pix", payment_account: "",
@@ -374,13 +390,18 @@ export function AccountsReceivable() {
         <form id="receivable-form" onSubmit={save} className="stack">
           <div className="form-grid">
             <Input label="Descrição" value={form.description} onChange={(value) => setForm({ ...form, description: value })} required />
-            <Input label="Categoria" value={form.category} onChange={(value) => setForm({ ...form, category: value })} />
+            <SelectWithCreate
+              label="Categoria" value={form.category} onChange={(value) => setForm({ ...form, category: value })}
+              options={asArray(categoryList).map((item) => ({ id: item.name, name: item.name }))}
+              emptyLabel="Sem categoria" createTitle="Nova categoria" createLabel="Nome da categoria" onCreate={createCategory}
+            />
             <Input type="number" label="Valor total" value={form.amount} onChange={(value) => setForm({ ...form, amount: value })} required />
             <Input type="date" label="Primeiro vencimento" value={form.due_date} onChange={(value) => setForm({ ...form, due_date: value })} required />
             {!editing && <Input type="number" label="Parcelas" value={form.installment_count} onChange={(value) => setForm({ ...form, installment_count: value })} />}
-            <Select label="Centro de custo" value={form.cost_center_id} onChange={(value) => setForm({ ...form, cost_center_id: value })}>
-              <option value="">Sem centro</option>{asArray(centers).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}
-            </Select>
+            <SelectWithCreate
+              label="Centro de custo" value={form.cost_center_id} onChange={(value) => setForm({ ...form, cost_center_id: value })}
+              options={asArray(centers)} emptyLabel="Sem centro" createTitle="Novo centro de custo" createLabel="Nome do centro de custo" onCreate={createCenter}
+            />
             <PaymentSelect label="Forma de recebimento" value={form.payment_method} onChange={(value) => setForm({ ...form, payment_method: value })} />
             <Input label="Conta ou caixa" value={form.payment_account} onChange={(value) => setForm({ ...form, payment_account: value })} />
           </div>

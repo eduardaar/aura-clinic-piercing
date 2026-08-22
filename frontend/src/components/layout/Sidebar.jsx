@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ArrowDownToLine, ArrowUpFromLine, BarChart3, Calendar, Gem, Home, Lock, Package, ShieldCheck, ShoppingCart, Sparkles, Table2, UsersRound } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, BarChart3, Calendar, Gem, Home, Lock, Package, ShieldCheck, ShoppingCart, Sparkles, Table2, UsersRound, Wallet } from "lucide-react";
 import { canAccessPage, planAllowsPage } from "../../lib/permissions";
 import { Modal } from "../common/Crud";
 import { useFetch } from "../../lib/api";
@@ -31,6 +31,7 @@ export function Sidebar({ page, role, user, brand, features, setPage, open }) {
       ["sales", ShoppingCart, "Vendas"]
     ]],
     ["Gestão", [
+      ["finance", Wallet, "Financeiro"],
       ["receivables", ArrowDownToLine, "Contas a receber"],
       ["payables", ArrowUpFromLine, "Contas a pagar"],
       ["reports", BarChart3, "Relatórios"]

@@ -572,6 +572,11 @@ CREATE TABLE IF NOT EXISTS sales_orders (
   created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
 
+-- Vínculo entre a baixa (payments) e o título que ela quita (sales_orders).
+-- Vem depois de sales_orders de propósito: a FK exige a tabela já existir.
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS sales_order_id INTEGER REFERENCES sales_orders(id);
+CREATE INDEX IF NOT EXISTS idx_payments_sales_order_id ON payments (sales_order_id);
+
 CREATE TABLE IF NOT EXISTS sales_order_items (
   id SERIAL PRIMARY KEY,
   sales_order_id INTEGER NOT NULL REFERENCES sales_orders(id),
@@ -803,6 +808,29 @@ ALTER TABLE financial_entries ADD COLUMN IF NOT EXISTS lifecycle_changed_by INTE
 ALTER TABLE financial_entries ADD COLUMN IF NOT EXISTS original_status TEXT;
 ALTER TABLE financial_entries ADD COLUMN IF NOT EXISTS original_paid_amount NUMERIC(12,2);
 CREATE INDEX IF NOT EXISTS idx_financial_entries_lifecycle ON financial_entries(lifecycle_status, competence_date);
+
+-- Cadastro de categoria (mesma estrutura de financial_cost_centers) e de
+-- fornecedor — ver migrations/tenant/0007 para o backfill de instalações
+-- existentes.
+CREATE TABLE IF NOT EXISTS financial_categories (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE TABLE IF NOT EXISTS suppliers (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  document TEXT,
+  phone TEXT,
+  email TEXT,
+  notes TEXT,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
+ALTER TABLE financial_entries ADD COLUMN IF NOT EXISTS supplier_id INTEGER REFERENCES suppliers(id);
 
 CREATE TABLE IF NOT EXISTS financial_goals (
   id SERIAL PRIMARY KEY,

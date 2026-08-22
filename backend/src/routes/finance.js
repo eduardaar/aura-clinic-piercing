@@ -142,8 +142,9 @@ router.get("/api/finance/ledger", withFeature("advanced_finance", async (req, re
 
 router.get("/api/finance/entries/:id/details", withFeature("advanced_finance", async (req, res, db) => {
   if (!financeLifecyclePermission(req, res, P.FINANCE_VIEW)) return;
-  const entry = await db.get(`SELECT e.*, c.name AS cost_center_name, u.name AS responsible_user_name
+  const entry = await db.get(`SELECT e.*, c.name AS cost_center_name, sup.name AS supplier_name, u.name AS responsible_user_name
     FROM financial_entries e LEFT JOIN financial_cost_centers c ON c.id=e.cost_center_id
+    LEFT JOIN suppliers sup ON sup.id=e.supplier_id
     LEFT JOIN users u ON u.id=e.responsible_user_id WHERE e.id=?`, [req.params.id]);
   if (!entry) return res.status(404).json({ error: "Lançamento não encontrado." });
   const audit = await db.all(`SELECT a.*, u.name AS user_name FROM financial_entry_audit a
@@ -203,14 +204,14 @@ router.post("/api/finance/entries", withFeature("advanced_finance", async (req, 
       const result = await db.run(`
         INSERT INTO financial_entries
           (entry_type, description, category, amount, paid_amount, due_date, competence_date, status,
-           payment_method, payment_account, paid_at, cost_center_id, responsible_user_id, attachment_url,
+           payment_method, payment_account, paid_at, cost_center_id, supplier_id, responsible_user_id, attachment_url,
            notes, recurrence, recurrence_end_date, installment_number, installment_count, parent_entry_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
       `, [
         entry.entry_type, entry.description, entry.category, amount, installment === 1 ? entry.paid_amount : 0,
         date.toISOString().slice(0, 10), installment === 1 ? entry.competence_date : date.toISOString().slice(0, 10),
         installment === 1 ? entry.status : "pending", entry.payment_method, entry.payment_account,
-        installment === 1 ? entry.paid_at : null, entry.cost_center_id, req.user?.id || null, entry.attachment_url,
+        installment === 1 ? entry.paid_at : null, entry.cost_center_id, entry.supplier_id, req.user?.id || null, entry.attachment_url,
         entry.notes, entry.recurrence, entry.recurrence_end_date, installment, installmentCount, parentId
       ]);
       if (!parentId) parentId = result.returnedId;
@@ -237,12 +238,12 @@ router.patch("/api/finance/entries/:id", withFeature("advanced_finance", async (
   try {
     await db.run(`
       UPDATE financial_entries SET entry_type=?, description=?, category=?, amount=?, paid_amount=?, due_date=?,
-        competence_date=?, status=?, payment_method=?, payment_account=?, paid_at=?, cost_center_id=?,
+        competence_date=?, status=?, payment_method=?, payment_account=?, paid_at=?, cost_center_id=?, supplier_id=?,
         attachment_url=?, notes=?, recurrence=?, recurrence_end_date=?, updated_at=CURRENT_TIMESTAMP WHERE id=?
     `, [
       entry.entry_type, entry.description, entry.category, entry.amount, entry.paid_amount, entry.due_date,
       entry.competence_date, entry.status, entry.payment_method, entry.payment_account, entry.paid_at,
-      entry.cost_center_id, entry.attachment_url, entry.notes, entry.recurrence, entry.recurrence_end_date, current.id
+      entry.cost_center_id, entry.supplier_id, entry.attachment_url, entry.notes, entry.recurrence, entry.recurrence_end_date, current.id
     ]);
     const updated = await db.get("SELECT * FROM financial_entries WHERE id=?", [current.id]);
     await db.run("INSERT INTO financial_entry_audit (entry_id, user_id, action, before_data, after_data) VALUES (?, ?, 'update', ?, ?)", [
@@ -268,6 +269,52 @@ router.post("/api/finance/cost-centers", withFeature("advanced_finance", async (
   // Devolve o próprio centro de custo (antes vazava o resultado cru do driver).
   const result = await db.run("INSERT INTO financial_cost_centers (name, description) VALUES (?, ?) ON CONFLICT (name) DO UPDATE SET description=EXCLUDED.description RETURNING id", [name, req.body?.description || ""]);
   res.status(201).json(await db.get("SELECT * FROM financial_cost_centers WHERE id = ?", [result.returnedId]));
+}));
+
+router.get("/api/finance/categories", withFeature("advanced_finance", async (req, res, db) => {
+  if (!authorizePermission(req, res, P.FINANCE_VIEW)) return;
+  res.json(await db.all("SELECT * FROM financial_categories WHERE is_active = 1 ORDER BY name"));
+}));
+
+router.post("/api/finance/categories", withFeature("advanced_finance", async (req, res, db) => {
+  if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
+  const name = String(req.body?.name || "").trim();
+  if (!name) return res.status(400).json({ error: "Informe a categoria." });
+  const result = await db.run("INSERT INTO financial_categories (name) VALUES (?) ON CONFLICT (name) DO UPDATE SET is_active = 1 RETURNING id", [name]);
+  res.status(201).json(await db.get("SELECT * FROM financial_categories WHERE id = ?", [result.returnedId]));
+}));
+
+router.get("/api/finance/suppliers", withFeature("advanced_finance", async (req, res, db) => {
+  if (!authorizePermission(req, res, P.FINANCE_VIEW)) return;
+  const search = String(req.query?.search || "").trim();
+  if (search) {
+    return res.json(await db.all("SELECT * FROM suppliers WHERE is_active = 1 AND name ILIKE ? ORDER BY name", [`%${search}%`]));
+  }
+  res.json(await db.all("SELECT * FROM suppliers WHERE is_active = 1 ORDER BY name"));
+}));
+
+router.post("/api/finance/suppliers", withFeature("advanced_finance", async (req, res, db) => {
+  if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
+  const name = String(req.body?.name || "").trim();
+  if (!name) return res.status(400).json({ error: "Informe o nome do fornecedor." });
+  const result = await db.run(
+    "INSERT INTO suppliers (name, document, phone, email, notes) VALUES (?, ?, ?, ?, ?) RETURNING id",
+    [name, req.body?.document || "", req.body?.phone || "", req.body?.email || "", req.body?.notes || ""]
+  );
+  res.status(201).json(await db.get("SELECT * FROM suppliers WHERE id = ?", [result.returnedId]));
+}));
+
+router.patch("/api/finance/suppliers/:id", withFeature("advanced_finance", async (req, res, db) => {
+  if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
+  const current = await db.get("SELECT * FROM suppliers WHERE id = ?", [req.params.id]);
+  if (!current) return res.status(404).json({ error: "Fornecedor não encontrado." });
+  const name = String(req.body?.name ?? current.name).trim();
+  if (!name) return res.status(400).json({ error: "Informe o nome do fornecedor." });
+  await db.run(
+    "UPDATE suppliers SET name=?, document=?, phone=?, email=?, notes=?, is_active=? WHERE id=?",
+    [name, req.body?.document ?? current.document, req.body?.phone ?? current.phone, req.body?.email ?? current.email, req.body?.notes ?? current.notes, req.body?.is_active ?? current.is_active, current.id]
+  );
+  res.json(await db.get("SELECT * FROM suppliers WHERE id = ?", [current.id]));
 }));
 
 router.post("/api/finance/entries/:id/reconcile", withFeature("advanced_finance", async (req, res, db) => {

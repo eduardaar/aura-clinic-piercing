@@ -2474,6 +2474,13 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 0 0 3px rgba(185, 147, 90, .13);
 }
 
+/* Select alimentado por um cadastro (categoria, centro de custo, fornecedor)
+   com atalho de criar sem sair do formulário — ver SelectWithCreate.jsx. */
+.select-with-create { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.select-with-create-row { display: flex; align-items: stretch; gap: 6px; min-width: 0; }
+.select-with-create-row .ui-select-field { flex: 1 1 auto; min-width: 0; }
+.select-with-create-add { flex: 0 0 auto; padding: 0 10px; display: grid; place-items: center; }
+
 /* Primitivos Radix: os controles mantêm a identidade Aura, mas ganham
    navegação por teclado, foco e sobreposição consistentes em toda a aplicação. */
 .ui-select-field { min-width: 0; }

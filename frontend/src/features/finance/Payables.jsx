@@ -3,6 +3,7 @@ import { Button, Input, Metric, PaymentSelect, Select, StatusBadge, Textarea } f
 import { CrudHeader, Modal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
+import { SelectWithCreate } from "../../components/common/SelectWithCreate";
 import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
 import { asArray, asNumber, asObject } from "../../lib/utils";
 import { currency } from "../shared/helpers";
@@ -14,15 +15,10 @@ const dateWithYear = (value) => {
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString("pt-BR");
 };
 
-const categoryOptions = [
-  "Aluguel", "Água", "Energia elétrica", "Internet e telefone", "Fornecedores",
-  "Empréstimo", "Impostos e taxas", "Marketing", "Manutenção", "Salários", "Outros"
-];
-
 function emptyPayable() {
   return {
-    entry_type: "payable", description: "", category: "Outros", amount: "", due_date: today(),
-    payment_method: "Pix", payment_account: "", cost_center_id: "", installment_count: "1",
+    entry_type: "payable", description: "", category: "", amount: "", due_date: today(),
+    payment_method: "Pix", payment_account: "", cost_center_id: "", supplier_id: "", installment_count: "1",
     recurrence: "", notes: ""
   };
 }
@@ -35,8 +31,12 @@ export function PayablesAdmin() {
   const query = new URLSearchParams(period).toString();
   const { data } = useFetch(`/finance/ledger?${query}`);
   const { data: centers } = useFetch("/finance/cost-centers");
+  const { data: categoryList } = useFetch("/finance/categories");
+  const { data: supplierList } = useFetch("/finance/suppliers");
   const invalidate = useApiInvalidate();
   const refresh = () => invalidate("/finance", "/finance/ledger", "/dashboard");
+  const refreshCategories = () => invalidate("/finance/categories");
+  const refreshSuppliers = () => invalidate("/finance/suppliers");
   const [form, setForm] = useState(emptyPayable());
   const [editing, setEditing] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -50,8 +50,36 @@ export function PayablesAdmin() {
   const entries = asArray(ledger.entries).filter((entry) => ["payable", "expense"].includes(entry.entry_type));
   const statusOptions = useMemo(() => [...new Set(entries.map((entry) => entry.status).filter(Boolean))]
     .map((value) => ({ value, label: financeLabel(value) })), [entries]);
-  const categories = useMemo(() => [...new Set([...categoryOptions, ...entries.map((entry) => entry.category).filter(Boolean)])]
-    .sort(), [entries]);
+  // O filtro aceita tanto o cadastro quanto categoria usada em lançamento
+  // antigo que não tenha migrado para o cadastro (não deveria acontecer após
+  // o backfill, mas a lista não pode simplesmente esconder o que já existe).
+  const categories = useMemo(() => [...new Set([
+    ...asArray(categoryList).map((item) => item.name),
+    ...entries.map((entry) => entry.category).filter(Boolean)
+  ])].sort(), [categoryList, entries]);
+
+  async function createCategory(name) {
+    const response = await apiFetch("/finance/categories", { method: "POST", body: JSON.stringify({ name }) });
+    const created = await response.json().catch(() => null);
+    refreshCategories();
+    // `category` é texto livre no lançamento (não FK) — o valor do select é
+    // o nome, igual ao mapeamento usado em `options` logo abaixo.
+    return created?.name ? { id: created.name, name: created.name } : created;
+  }
+
+  async function createSupplier(name) {
+    const response = await apiFetch("/finance/suppliers", { method: "POST", body: JSON.stringify({ name }) });
+    const created = await response.json().catch(() => null);
+    refreshSuppliers();
+    return created;
+  }
+
+  async function createCenter(name) {
+    const response = await apiFetch("/finance/cost-centers", { method: "POST", body: JSON.stringify({ name }) });
+    const created = await response.json().catch(() => null);
+    invalidate("/finance/cost-centers");
+    return created;
+  }
 
   if (!data) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
@@ -129,6 +157,7 @@ export function PayablesAdmin() {
         columns={[
           { key: "description", label: "Conta" },
           { key: "category", label: "Categoria", render: (item) => item.category || "—" },
+          { key: "supplier_name", label: "Fornecedor", render: (item) => item.supplier_name || "—" },
           { key: "installment_number", label: "Parcela", render: (item) => Number(item.installment_count || 1) > 1 ? `${item.installment_number}/${item.installment_count}` : "À vista" },
           { key: "due_date", label: "Vencimento", value: (item) => String(item.due_date || ""), render: (item) => dateWithYear(item.due_date) },
           { key: "amount", label: "Valor", align: "right", value: (item) => asNumber(item.amount), render: (item) => currency.format(item.amount) },
@@ -149,16 +178,27 @@ export function PayablesAdmin() {
       <form id="payable-form" onSubmit={save} className="stack">
         <div className="form-grid">
           <Input label="Descrição" value={form.description} onChange={(value) => setForm({ ...form, description: value })} required />
-          <Select label="Categoria" value={form.category} onChange={(value) => setForm({ ...form, category: value })}>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</Select>
+          <SelectWithCreate
+            label="Categoria" value={form.category} onChange={(value) => setForm({ ...form, category: value })}
+            options={asArray(categoryList).map((item) => ({ id: item.name, name: item.name }))}
+            emptyLabel="Sem categoria" createTitle="Nova categoria" createLabel="Nome da categoria" onCreate={createCategory}
+          />
           <Input type="number" label="Valor total" value={form.amount} onChange={(value) => setForm({ ...form, amount: value })} required />
           <Input type="date" label="Primeiro vencimento" value={String(form.due_date || "").slice(0, 10)} onChange={(value) => setForm({ ...form, due_date: value })} required />
           {!editing && <Input type="number" label="Parcelas" value={form.installment_count} onChange={(value) => setForm({ ...form, installment_count: value })} required />}
           {!editing && <Select label="Recorrência" value={form.recurrence} onChange={(value) => setForm({ ...form, recurrence: value })}><option value="">Sem recorrência</option><option value="monthly">Mensal</option><option value="yearly">Anual</option></Select>}
-          <Select label="Centro de custo" value={form.cost_center_id || ""} onChange={(value) => setForm({ ...form, cost_center_id: value })}><option value="">Sem centro</option>{asArray(centers).map((center) => <option key={center.id} value={center.id}>{center.name}</option>)}</Select>
+          <SelectWithCreate
+            label="Centro de custo" value={form.cost_center_id || ""} onChange={(value) => setForm({ ...form, cost_center_id: value })}
+            options={asArray(centers)} emptyLabel="Sem centro" createTitle="Novo centro de custo" createLabel="Nome do centro de custo" onCreate={createCenter}
+          />
+          <SelectWithCreate
+            label="Fornecedor" value={form.supplier_id || ""} onChange={(value) => setForm({ ...form, supplier_id: value })}
+            options={asArray(supplierList)} emptyLabel="Sem fornecedor" createTitle="Novo fornecedor" createLabel="Nome do fornecedor" onCreate={createSupplier}
+          />
           <PaymentSelect label="Forma de pagamento" value={form.payment_method} onChange={(value) => setForm({ ...form, payment_method: value })} />
           <Input label="Conta ou caixa" value={form.payment_account || ""} onChange={(value) => setForm({ ...form, payment_account: value })} />
         </div>
-        <Textarea label="Observações (ex.: juros, número do contrato ou fornecedor)" value={form.notes || ""} onChange={(notes) => setForm({ ...form, notes })} />
+        <Textarea label="Observações (ex.: juros, número do contrato)" value={form.notes || ""} onChange={(notes) => setForm({ ...form, notes })} />
         {error && <span className="form-error">{error}</span>}
       </form>
     </Modal>

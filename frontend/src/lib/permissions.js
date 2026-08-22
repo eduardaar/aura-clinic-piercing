@@ -39,9 +39,9 @@
 export function allowedPagesForRole(role) {
   /** @type {Record<Role, Page[]>} */
   const byRole = {
-    admin: ["dashboard", "agenda", "communications", "products", "inventory", "catalog", "catalog-customization", "sales", "receivables", "payables", "reports", "client-center", "clients", "terms", "postcare", "admin", "integrations", "onboarding", "support", "meu-plano", "settings"],
+    admin: ["dashboard", "agenda", "communications", "products", "inventory", "catalog", "catalog-customization", "sales", "finance", "receivables", "payables", "reports", "client-center", "clients", "terms", "postcare", "admin", "integrations", "onboarding", "support", "meu-plano", "settings"],
     reception: ["agenda", "communications", "sales", "reports", "client-center", "clients", "settings"],
-    finance: ["receivables", "payables", "reports", "sales", "settings"],
+    finance: ["finance", "receivables", "payables", "reports", "sales", "settings"],
     piercer: ["agenda", "communications", "sales", "client-center", "clients", "terms", "postcare", "settings"]
   };
   // Fallback SEGURO para papéis desconhecidos: acesso mínimo, sem áreas
