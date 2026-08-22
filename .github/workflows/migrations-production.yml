@@ -1,0 +1,83 @@
+name: Aplicar migrations em produção
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Digite APLICAR para confirmar o rollout global"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migrations-producao
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Backup, migrations e verificação
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: https://auraclinic.monitence.com
+    steps:
+      - name: Validar confirmação
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          if [ "${CONFIRMATION}" != "APLICAR" ]; then
+            echo "Confirmação inválida. Digite APLICAR para autorizar o rollout global." >&2
+            exit 1
+          fi
+
+      - name: Configurar chave SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          test -n "${DEPLOY_SSH_KEY}"
+          install -m 600 /dev/null "$GITHUB_WORKSPACE/.deploy_key"
+          printf '%s\n' "${DEPLOY_SSH_KEY}" > "$GITHUB_WORKSPACE/.deploy_key"
+
+      - name: Aplicar migrations com restore point
+        env:
+          SSH_OPTS: -i ${{ github.workspace }}/.deploy_key -o UserKnownHostsFile=${{ github.workspace }}/.known_hosts -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20
+        run: |
+          set -euo pipefail
+          ssh ${SSH_OPTS} root@187.77.225.233 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd /home/auraclinic
+
+          ts="$(date +%Y%m%d-%H%M%S)"
+          dump="/root/pg-backups/aura-clinic-migrations-${ts}.sql.gz"
+          mkdir -p /root/pg-backups
+          docker exec monitence-postgres pg_dump -U aura -d aura_clinic | gzip > "${dump}"
+          gzip -t "${dump}"
+          gzip -dc "${dump}" | tail -n 20 | grep -q 'PostgreSQL database dump complete'
+          echo "Restore point validado: ${dump}"
+
+          docker compose exec -T aura-api node scripts/migrations.mjs status
+          docker compose exec -T -e ALLOW_GLOBAL_MIGRATIONS=true aura-api \
+            node scripts/migrations.mjs apply --all
+          docker compose exec -T aura-api node scripts/migrations.mjs verify
+
+          docker compose up -d redis
+          docker compose up -d --force-recreate aura-api
+
+          ok=0
+          for attempt in 1 2 3 4 5 6; do
+            sleep 3
+            health="$(docker exec aura-api wget -qO- http://127.0.0.1:4000/api/health/db 2>/dev/null || true)"
+            echo "Health ${attempt}: ${health:-vazio}"
+            case "${health}" in
+              *'"database":"connected"'*) ok=1; break ;;
+            esac
+          done
+          test "${ok}" = "1"
+          REMOTE
+
+      - name: Limpar chave
+        if: always()
+        run: rm -f "$GITHUB_WORKSPACE/.deploy_key" "$GITHUB_WORKSPACE/.known_hosts"
