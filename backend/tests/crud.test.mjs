@@ -229,6 +229,23 @@ test("venda sem dados do cliente → 400", async () => {
   assert.equal(res.status, 400, JSON.stringify(res.json));
 });
 
+// "ordem_servico" é reservado ao título que a agenda gera sozinha ao concluir
+// um atendimento — criar um manualmente pelo balcão duplicaria a origem do
+// mesmo tipo de documento (ver services/sales.js).
+test("venda com order_type 'ordem_servico' → 400 (reservado à agenda)", async () => {
+  const res = await api("/sales-orders", {
+    method: "POST",
+    body: {
+      full_name: "Cliente Ordem",
+      whatsapp: "11933332222",
+      order_type: "ordem_servico",
+      items: [{ item_name: "Item", quantity: 1, unit_price: 10 }],
+    },
+  });
+  assert.equal(res.status, 400, JSON.stringify(res.json));
+  assert.match(res.json.error, /gerada automaticamente/i);
+});
+
 // ---------- Termo digital ----------
 
 test("termo digital sem assinatura → 400", async () => {

@@ -238,6 +238,16 @@ export function saleOrderTypeLabel(type = "") {
   }[type] || "Venda";
 }
 
+// De onde a venda veio — sempre visível na lista, para nunca confundir uma
+// ordem de serviço gerada sozinha pela agenda com uma venda lançada à mão.
+export function saleSourceLabel(source = "") {
+  return {
+    interno: "Balcão",
+    site: "Catálogo",
+    agenda: "Agenda"
+  }[source] || "Balcão";
+}
+
 export function saleItemLabel(type = "") {
   return {
     produto: "Produto",

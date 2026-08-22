@@ -6,7 +6,7 @@ import { DataView } from "../../components/common/DataView";
 import { asArray, formatDate } from "../../lib/utils";
 import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
 import { defaultSalesLine, defaultSalesOrderForm } from "../../lib/defaultForms";
-import { currency, personName, saleItemLabel, saleOrderTypeLabel } from "../../features/shared/helpers";
+import { currency, personName, saleItemLabel, saleOrderTypeLabel, saleSourceLabel } from "../../features/shared/helpers";
 import { SmartCombobox } from "../../components/common/SmartCombobox";
 
 // `formatDate` de lib/utils devolve dd/MM sem ano: numa lista com histórico de
@@ -50,6 +50,7 @@ export function SalesWorkspace() {
   const safeAppointments = asArray(appointments);
   const statusOptions = distinctOptions(safeOrders, (order) => order.status, (value) => ORDER_STATUS_LABELS[value] || value);
   const typeOptions = distinctOptions(safeOrders, (order) => order.order_type, saleOrderTypeLabel);
+  const sourceOptions = distinctOptions(safeOrders, (order) => order.source, saleSourceLabel);
   const paymentOptions = [...new Set(safeOrders.map((order) => order.payment_method || "Pix"))].sort();
   const selectedProduct = safeJewelry.find((item) => String(item.id) === String(line.product_id));
   const selectedVariants = asArray(selectedProduct?.variants).filter((variant) => Number(variant.is_active ?? 1));
@@ -134,7 +135,11 @@ export function SalesWorkspace() {
     total: monthOrders.reduce((sum, order) => sum + Number(order.total_value || 0), 0),
     products: monthOrders.filter((order) => order.order_type === "produto").reduce((sum, order) => sum + Number(order.total_value || 0), 0),
     services: monthOrders.filter((order) => order.order_type === "servico").reduce((sum, order) => sum + Number(order.total_value || 0), 0),
-    mixed: monthOrders.filter((order) => order.order_type === "ordem_servico").reduce((sum, order) => sum + Number(order.total_value || 0), 0)
+    // "mista" é a venda de balcão com produto e serviço no mesmo pedido — não
+    // confundir com "ordem_servico" (agenda), que aparece no total mas tem
+    // card próprio abaixo.
+    mixed: monthOrders.filter((order) => order.order_type === "mista").reduce((sum, order) => sum + Number(order.total_value || 0), 0),
+    agenda: monthOrders.filter((order) => order.order_type === "ordem_servico").reduce((sum, order) => sum + Number(order.total_value || 0), 0)
   };
 
   function openNew() {
@@ -213,7 +218,7 @@ export function SalesWorkspace() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...form,
-        order_type: tab === "ordem" ? "ordem_servico" : tab,
+        order_type: tab,
         source: "interno",
         items
       })
@@ -245,7 +250,8 @@ export function SalesWorkspace() {
         <Metric label="Vendas no mês" value={currency.format(summary.total)} />
         <Metric label="Produtos" value={currency.format(summary.products)} />
         <Metric label="Serviços" value={currency.format(summary.services)} />
-        <Metric label="Ordens de serviço" value={currency.format(summary.mixed)} />
+        <Metric label="Vendas mistas" value={currency.format(summary.mixed)} />
+        <Metric label="Atendimentos da agenda" value={currency.format(summary.agenda)} />
       </div>
 
       <div className="panel">
@@ -264,6 +270,13 @@ export function SalesWorkspace() {
           filters={[
             { key: "status", label: "Status", type: "select", options: statusOptions },
             { key: "order_type", label: "Tipo de pedido", type: "select", options: typeOptions },
+            {
+              key: "source",
+              label: "Origem",
+              type: "select",
+              options: sourceOptions,
+              match: (order, value) => saleSourceLabel(order.source) === value
+            },
             {
               key: "payment_method",
               label: "Forma de pagamento",
@@ -299,6 +312,17 @@ export function SalesWorkspace() {
               )
             },
             { key: "order_type", label: "Tipo", value: (order) => saleOrderTypeLabel(order.order_type), render: (order) => saleOrderTypeLabel(order.order_type) },
+            {
+              key: "source",
+              label: "Origem",
+              value: (order) => saleSourceLabel(order.source),
+              render: (order) => (
+                <StatusBadge
+                  status={saleSourceLabel(order.source)}
+                  tone={order.source === "agenda" ? "info" : order.source === "site" ? "ok" : "neutral"}
+                />
+              )
+            },
             { key: "total_value", label: "Valor", align: "right", value: (order) => Number(order.total_value || 0), render: (order) => currency.format(order.total_value || 0) },
             { key: "payment_method", label: "Pagamento", value: (order) => order.payment_method || "Pix", render: (order) => order.payment_method || "Pix" },
             {
@@ -328,7 +352,7 @@ export function SalesWorkspace() {
 
       <Modal
         open={modalOpen}
-        title={tab === "ordem" ? "Nova ordem de serviço" : tab === "servico" ? "Venda de serviço" : "Venda de produto"}
+        title={tab === "mista" ? "Venda mista" : tab === "servico" ? "Venda de serviço" : "Venda de produto"}
         subtitle="Cadastro interno com baixa financeira"
         size="lg"
         onClose={closeModal}
@@ -344,7 +368,7 @@ export function SalesWorkspace() {
             {[
               ["produto", "Venda de produto"],
               ["servico", "Venda de serviço"],
-              ["ordem", "Ordem de serviço"]
+              ["mista", "Venda mista"]
             ].map(([id, label]) => <Tabs.Trigger key={id} value={id}>{label}</Tabs.Trigger>)}
           </Tabs.List>
         </Tabs>

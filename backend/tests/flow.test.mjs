@@ -5,6 +5,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { req, createTenant, loginTenant, platformLogin, deleteTenant } from "./helpers.mjs";
+import { withTenantSchema } from "../src/db/tenantSession.js";
 
 // Estado compartilhado entre os passos do fluxo (montado no before).
 const ctx = {
@@ -796,6 +797,18 @@ test("5c. muda status do agendamento até 'atendido'", async () => {
   const serviceOrders = orders.json.filter((order) => Number(order.appointment_id) === Number(ctx.appointmentId) && order.order_type === "ordem_servico");
   assert.equal(serviceOrders.length, 1, "agendamento atendido deve gerar uma unica ordem de servico");
   assert.ok(serviceOrders[0].items.some((item) => item.item_type === "servico"), "ordem deve conter item de servico");
+
+  // O sinal (pago na reserva) e o restante (pago aqui, ao concluir) existiam
+  // em `payments` antes deste título existir — o vínculo retroativo feito por
+  // ensureSalesOrderForAppointment precisa alcançar os dois.
+  const payments = await withTenantSchema(ctx.tenant.id, (db) =>
+    db.all("SELECT payment_type, sales_order_id FROM payments WHERE appointment_id = ?", [ctx.appointmentId])
+  );
+  assert.ok(payments.length >= 1, "deveria haver ao menos um pagamento vinculado ao atendimento");
+  assert.ok(
+    payments.every((payment) => Number(payment.sales_order_id) === Number(serviceOrders[0].id)),
+    `todo pagamento do atendimento deve apontar para o título gerado: ${JSON.stringify(payments)}`
+  );
 });
 
 // 6) Financeiro: o sinal + o restante (registrado ao atender) devem aparecer.
@@ -848,6 +861,73 @@ test("7. cria venda com itens e confere em sales-orders", async () => {
   const list = await api("/sales-orders");
   assert.equal(list.status, 200);
   assert.ok(list.json.some((o) => o.id === create.json.id), "venda deve aparecer na listagem");
+
+  // Venda de balcão já nasce paga (status concluida): a baixa em `payments`
+  // precisa existir e já vir vinculada ao título, sem depender de backfill.
+  const payments = await withTenantSchema(ctx.tenant.id, (db) =>
+    db.all("SELECT amount, sales_order_id FROM payments WHERE sales_order_id = ?", [create.json.id])
+  );
+  assert.equal(payments.length, 1, "venda de balcão paga deve gerar exatamente uma baixa");
+  assert.equal(Number(payments[0].amount), 120, "valor da baixa deve bater com o total da venda");
+});
+
+// 7b) Venda que nasce pendente (ex.: catálogo aguardando pagamento) e é
+// confirmada depois — cenário que antes desta correção nunca gerava baixa
+// (nem pelo webhook do Asaas, nem pela confirmação manual daqui).
+test("7b. venda pendente confirmada manualmente gera a baixa que faltava", async () => {
+  const create = await api("/sales-orders", {
+    method: "POST",
+    body: {
+      full_name: "Maria Teste",
+      whatsapp: "11999990001",
+      client_id: ctx.clientId,
+      order_type: "produto",
+      payment_method: "Pix",
+      status: "aberta",
+      items: [
+        { item_name: "Argola Titânio", quantity: 1, unit_price: 90, product_id: ctx.jewelryId },
+      ],
+    },
+  });
+  assert.equal(create.status, 201, JSON.stringify(create.json));
+  assert.equal(create.json.status, "aberta");
+
+  const beforeConfirm = await withTenantSchema(ctx.tenant.id, (db) =>
+    db.all("SELECT id FROM payments WHERE sales_order_id = ?", [create.json.id])
+  );
+  assert.equal(beforeConfirm.length, 0, "venda ainda aberta não deve ter baixa nenhuma");
+
+  // "A receber" unificado: uma venda de balcão/catálogo pendente precisa
+  // aparecer no forecast — antes desta correção, só agendamento entrava aqui.
+  const financeWhilePending = await api("/finance");
+  assert.ok(
+    Number(financeWhilePending.json.forecast.pending) >= 90,
+    `forecast.pending deveria incluir a venda aberta de 90: ${JSON.stringify(financeWhilePending.json.forecast)}`
+  );
+
+  const confirm = await api(`/sales-orders/${create.json.id}`, {
+    method: "PATCH",
+    body: { status: "concluida" },
+  });
+  assert.equal(confirm.status, 200, JSON.stringify(confirm.json));
+
+  const afterConfirm = await withTenantSchema(ctx.tenant.id, (db) =>
+    db.all("SELECT amount, status, sales_order_id FROM payments WHERE sales_order_id = ?", [create.json.id])
+  );
+  assert.equal(afterConfirm.length, 1, "confirmar manualmente deve gerar exatamente uma baixa");
+  assert.equal(Number(afterConfirm[0].amount), 90);
+  assert.equal(afterConfirm[0].status, "pago");
+
+  // Confirmar de novo (ex.: staff clicou duas vezes) não pode duplicar a baixa.
+  const confirmAgain = await api(`/sales-orders/${create.json.id}`, {
+    method: "PATCH",
+    body: { status: "concluida" },
+  });
+  assert.equal(confirmAgain.status, 200, JSON.stringify(confirmAgain.json));
+  const afterSecondConfirm = await withTenantSchema(ctx.tenant.id, (db) =>
+    db.all("SELECT id FROM payments WHERE sales_order_id = ?", [create.json.id])
+  );
+  assert.equal(afterSecondConfirm.length, 1, "confirmar duas vezes não deve duplicar a baixa");
 });
 
 // 8a) Prontuário médico.
@@ -957,6 +1037,6 @@ test("9b. erp responde 200 com métricas coerentes", async () => {
   assert.equal(Number(erp.json.metrics.appointments), 4, "deve haver 4 agendamentos: interno, horario ocupado do teste de slots e as duas solicitacoes publicas (sem e com CPF)");
   const expectedJewelryCount = [ctx.publicJewelryId, ctx.jewelryId, ctx.extraJewelryId, ctx.pricingJewelryId].filter(Boolean).length;
   assert.equal(Number(erp.json.metrics.jewelry), expectedJewelryCount, "quantidade de joias coerente com o que foi criado");
-  // Receita paga = 40 sinal interno + 140 restante + 120 da venda.
-  assert.equal(Number(erp.json.metrics.revenue), 300, "receita paga deve ser 300 (40 de sinal + 140 restante + 120 da venda)");
+  // Receita paga = 40 sinal interno + 140 restante + 120 da venda (7) + 90 da venda confirmada depois (7b).
+  assert.equal(Number(erp.json.metrics.revenue), 390, "receita paga deve ser 390 (40 sinal + 140 restante + 120 venda + 90 venda confirmada depois)");
 });

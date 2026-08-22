@@ -633,8 +633,10 @@ function isChargebackLike(...values) {
 //
 // Por isso a venda tem transição própria aqui, replicando só o que faz sentido
 // para ela (intent + evento idempotente + paid_at + reservas + status do
-// pedido). `payments.js` fica intocado de propósito: ele é o caminho do
-// agendamento e não deve aprender sobre venda por um efeito colateral.
+// pedido) — sem chamar `transitionPaymentIntent`, que é o caminho do
+// agendamento. A baixa em `payments` (abaixo, vinculada por sales_order_id)
+// é a mesma independentemente de qual dos dois caminhos confirma o dinheiro;
+// só a lógica de reserva/estoque é que precisa ser diferente.
 async function transitionSaleIntent(db, { intent, status, providerEventId, payload, paidAt }) {
   return db.transaction(async (tx) => {
     // Mesmo cadeado do serviço original: sem o FOR UPDATE dois webhooks do
@@ -693,6 +695,16 @@ async function transitionSaleIntent(db, { intent, status, providerEventId, paylo
       // evento para sempre — o mesmo raciocínio já escrito no bloco de `paid`
       // logo abaixo. O pedido fica pago e o aviso pede a conferência humana.
       if (marcou.changes) {
+        // A baixa que faltava: até aqui a venda só existia como
+        // `sales_orders.status='pago'`, invisível para o dashboard financeiro
+        // e para o CSV/PDF de faturamento, que só somam `payments`.
+        const order = await tx.get("SELECT client_id, order_type, total_value FROM sales_orders WHERE id=?", [orderId]);
+        if (order && Number(order.total_value) > 0) {
+          await tx.run(
+            "INSERT INTO payments (client_id, sales_order_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, ?, 'Pix', 'pago', ?)",
+            [order.client_id, orderId, order.total_value, order.order_type, paidAt || localTimestamp()]
+          );
+        }
         const itens = await tx.all("SELECT * FROM sales_order_items WHERE sales_order_id=?", [orderId]);
         for (const item of itens) {
           try {

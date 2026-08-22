@@ -114,11 +114,26 @@ export async function buildFinanceReport(db) {
       SUM(CASE WHEN paid_at LIKE ? THEN amount ELSE 0 END) AS month_total
     FROM payments WHERE status = 'pago'
   `, [today, today, `${month}%`]);
-  // `payments` já é a fonte completa do dinheiro recebido: createSalesOrder
-  // (services/sales.js) grava uma linha de pagamento para cada venda de balcão.
-  // Somar `sales_orders` aqui contaria a mesma venda duas vezes.
+  // `payments` é a fonte completa do dinheiro recebido — balcão, catálogo e
+  // agenda gravam uma linha aqui na confirmação (ver services/sales.js e
+  // services/tenantCharges.js), cada uma ligada ao seu título por
+  // `sales_order_id`. Somar `sales_orders.total_value` aqui contaria a mesma
+  // venda duas vezes.
   const deposits = await db.get("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE payment_type = 'sinal' AND status = 'pago' AND paid_at LIKE ?", [`${month}%`]);
-  const forecast = await db.get("SELECT COALESCE(SUM(total_value), 0) AS total, COALESCE(SUM(remaining_value), 0) AS pending FROM appointments WHERE status IN ('pendente', 'awaiting_deposit_proof', 'confirmado')");
+  // "A receber" soma as duas frentes que ainda não têm baixa: agendamentos
+  // não concluídos (o valor nasce e vive em `appointments` até a agenda
+  // fechar o atendimento) e vendas de balcão/catálogo que ainda estão
+  // pendente/aberta. Vendas de origem 'agenda' ficam de fora do segundo termo
+  // de propósito — nascem sempre já concluídas (ensureSalesOrderForAppointment
+  // em services/sales.js), então contá-las aqui seria dobrar o que o primeiro
+  // termo já cobre.
+  const forecast = await db.get(`
+    SELECT
+      COALESCE((SELECT SUM(total_value) FROM appointments WHERE status IN ('pendente', 'awaiting_deposit_proof', 'confirmado')), 0)
+        + COALESCE((SELECT SUM(total_value) FROM sales_orders WHERE status IN ('pendente', 'aberta') AND source != 'agenda'), 0) AS total,
+      COALESCE((SELECT SUM(remaining_value) FROM appointments WHERE status IN ('pendente', 'awaiting_deposit_proof', 'confirmado')), 0)
+        + COALESCE((SELECT SUM(total_value) FROM sales_orders WHERE status IN ('pendente', 'aberta') AND source != 'agenda'), 0) AS pending
+  `);
   const methods = await db.all("SELECT method, COUNT(*) AS total, COALESCE(SUM(amount), 0) AS amount FROM payments GROUP BY method ORDER BY total DESC");
   const expensesSummary = await db.get(`
     SELECT

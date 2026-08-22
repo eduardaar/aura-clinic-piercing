@@ -189,6 +189,15 @@ export async function createSalesOrder(db, body, user) {
   const discount = Number(couponQuote?.discount_amount || 0);
   const total = Number(Math.max(subtotal - discount, 0).toFixed(2));
   const orderType = String(body.order_type || "produto");
+  // "ordem_servico" é reservado ao título gerado sozinho por
+  // ensureSalesOrderForAppointment ao concluir um atendimento da agenda —
+  // essa função nunca passa por createSalesOrder, então nenhuma chamada
+  // legítima chega aqui com este tipo. Bloquear evita que balcão/catálogo
+  // criem manualmente um "atendimento" que na verdade não existiu na agenda,
+  // a origem de duplicidade de baixa que este pacote corrige.
+  if (orderType === "ordem_servico") {
+    throw new SalesOrderValidationError("Ordem de serviço é gerada automaticamente pela agenda ao concluir um atendimento — não pode ser criada manualmente.");
+  }
   const source = String(body.source || "site");
   // Chamadas públicas nunca podem escolher um estado financeiro conclusivo.
   // Pagamento só é confirmado por um usuário autenticado (ou, futuramente,
@@ -296,11 +305,15 @@ export async function createSalesOrder(db, body, user) {
     }
 
     if (total > 0 && (status === "concluida" || status === "pago")) {
+      // `sales_order_id` é o que faz este pagamento ser reconhecido como a
+      // baixa do título — sem ele, `payments` e `sales_orders` só se
+      // encontrariam por acaso (mesmo cliente, mesmo valor).
       await tx.run(
-        "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO payments (appointment_id, client_id, sales_order_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         [
           body.appointment_id ? Number(body.appointment_id) : null,
           client.id,
+          result.returnedId,
           total,
           orderType,
           body.payment_method || "Pix",
@@ -382,6 +395,14 @@ export async function ensureSalesOrderForAppointment(db, appointmentId, user) {
       `Ordem gerada automaticamente ao finalizar o atendimento #${appointment.id}`,
       user?.id || null
     ]
+  );
+
+  // O sinal (pago na reserva) e o restante (pago aqui, na finalização) já
+  // existem em `payments` antes deste título existir — o vínculo só pode ser
+  // feito agora, retroativo, pelo appointment_id que os dois compartilham.
+  await db.run(
+    "UPDATE payments SET sales_order_id = ? WHERE appointment_id = ? AND sales_order_id IS NULL",
+    [result.returnedId, appointmentId]
   );
 
   if (appointmentItems.length) {

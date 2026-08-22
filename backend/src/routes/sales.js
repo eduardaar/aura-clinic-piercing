@@ -2,6 +2,7 @@
 import { Router } from "express";
 import { withDb } from "../middleware/withDb.js";
 import { createSalesOrder, listSalesOrders, countSalesOrders, getSalesOrder, SalesOrderValidationError } from "../services/sales.js";
+import { localTimestamp } from "../services/utils.js";
 import { parsePaging, pageResponse } from "../services/pagination.js";
 import { tenantClient } from "../services/asaas/credentials.js";
 import { createSalesOrderCharge } from "../services/tenantCharges.js";
@@ -122,10 +123,27 @@ router.patch("/api/sales-orders/:id", withDb(async (req, res, db) => {
   const closed = !["pendente", "aberta"].includes(String(current.status));
   const permission = req.body.status === "cancelado" ? P.SALES_CANCEL : closed ? P.SALES_EDIT_CLOSED : P.SALES_EDIT_OPEN;
   if (!authorizePermission(req, res, permission)) return;
+  const nextStatus = req.body.status || current.status;
+  const nextPaymentMethod = req.body.payment_method || current.payment_method;
   await db.run(
     "UPDATE sales_orders SET status = ?, payment_method = ?, notes = ? WHERE id = ?",
-    [req.body.status || current.status, req.body.payment_method || current.payment_method, req.body.notes || current.notes, req.params.id]
+    [nextStatus, nextPaymentMethod, req.body.notes || current.notes, req.params.id]
   );
+  // Confirmar manualmente aqui é o mesmo evento financeiro que o webhook do
+  // gateway confirma sozinho (ver services/asaas/tenantCharges.js): dinheiro
+  // que passou a existir precisa de uma baixa em `payments`, senão o pedido
+  // fica "pago" na tela de vendas e invisível em todo total financeiro.
+  const wasOpen = ["pendente", "aberta"].includes(String(current.status));
+  const nowSettled = ["concluida", "pago"].includes(String(nextStatus));
+  if (wasOpen && nowSettled && Number(current.total_value) > 0) {
+    const alreadyLinked = await db.get("SELECT id FROM payments WHERE sales_order_id = ?", [req.params.id]);
+    if (!alreadyLinked) {
+      await db.run(
+        "INSERT INTO payments (appointment_id, client_id, sales_order_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, ?, ?, ?, 'pago', ?)",
+        [current.appointment_id, current.client_id, current.id, current.total_value, current.order_type, nextPaymentMethod || "Pix", localTimestamp()]
+      );
+    }
+  }
   res.json(await getSalesOrder(db, req.params.id));
 }));
 
