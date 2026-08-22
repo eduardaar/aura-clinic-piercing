@@ -10954,17 +10954,25 @@ body,
 }
 
 @media (max-width: 620px) {
-  /* Modais como "bottom sheet": ocupam a largura toda e sobem do rodapé. */
+  /* Tela cheia: sem borda arredondada, sem espaço sobrando em volta — o
+     modal VIRA a tela no mobile, não flutua por cima dela. `100dvh` (com
+     fallback `100vh`, mesmo padrão de auth.css) acompanha a barra de
+     endereço do navegador aparecendo/sumindo, em vez de deixar sobra ou
+     cortar o rodapé como `100vh` sozinho faria. */
   .modal-backdrop {
     padding: 0;
-    align-items: flex-end;
+    align-items: stretch;
+    justify-content: stretch;
   }
   .modal-card,
   .modal-card.modal-sm,
   .modal-card.modal-lg {
     width: 100%;
-    max-height: 94vh;
-    border-radius: 20px 20px 0 0;
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100vh;
+    max-height: 100dvh;
+    border-radius: 0;
     padding: 0;
   }
   .modal-header { padding: 18px 16px 12px; }
