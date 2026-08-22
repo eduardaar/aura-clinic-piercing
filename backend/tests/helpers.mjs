@@ -31,6 +31,15 @@ export async function createTenant(prefix = "qa") {
   const slug = testSlug(prefix);
   const adminEmail = `admin@${slug}.test`;
   const adminPassword = "SenhaForte123";
+  // As versões jurídicas são administráveis. Fixar `1` fazia toda suíte de
+  // integração parar no setup assim que um documento novo era publicado.
+  const legal = await req("/legal-documents");
+  if (legal.status !== 200) throw new Error(`Falha ao carregar documentos legais: ${legal.status}`);
+  const legalAcceptances = Object.fromEntries(
+    (legal.json?.documents || [])
+      .filter((item) => ["terms_of_use", "privacy_policy"].includes(item.key))
+      .map((item) => [item.key, item.version])
+  );
   const { status, json } = await req("/signup", {
     method: "POST",
     body: {
@@ -44,7 +53,7 @@ export async function createTenant(prefix = "qa") {
       state: "SP",
       logo_url: "/uploads/logo-qa.png",
       plan: "profissional",
-      legal_acceptances: { terms_of_use: 1, privacy_policy: 1 },
+      legal_acceptances: legalAcceptances,
     },
   });
   if (status !== 201) throw new Error(`Falha ao criar tenant ${slug}: ${status} ${JSON.stringify(json)}`);

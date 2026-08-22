@@ -17,7 +17,7 @@
 /**
  * Páginas do app autenticado.
  * @typedef {"dashboard" | "agenda" | "communications" | "catalog" | "products" | "inventory"
- *   | "catalog-customization" | "sales" | "finance" | "receivables" | "payables" | "reports" | "client-center"
+ *   | "catalog-customization" | "sales" | "purchases" | "receivables" | "payables" | "suppliers" | "finance-categories" | "cost-centers" | "reports" | "client-center"
  *   | "clients" | "terms" | "postcare" | "admin" | "integrations" | "support"
  *   | "meu-plano" | "settings" | "onboarding"} Page
  */
@@ -39,9 +39,9 @@
 export function allowedPagesForRole(role) {
   /** @type {Record<Role, Page[]>} */
   const byRole = {
-    admin: ["dashboard", "agenda", "communications", "products", "inventory", "catalog", "catalog-customization", "sales", "finance", "receivables", "payables", "reports", "client-center", "clients", "terms", "postcare", "admin", "integrations", "onboarding", "support", "meu-plano", "settings"],
+    admin: ["dashboard", "agenda", "communications", "products", "purchases", "inventory", "catalog", "catalog-customization", "sales", "receivables", "payables", "suppliers", "finance-categories", "cost-centers", "reports", "client-center", "clients", "terms", "postcare", "admin", "integrations", "onboarding", "support", "meu-plano", "settings"],
     reception: ["agenda", "communications", "sales", "reports", "client-center", "clients", "settings"],
-    finance: ["finance", "receivables", "payables", "reports", "sales", "settings"],
+    finance: ["receivables", "payables", "purchases", "suppliers", "finance-categories", "cost-centers", "reports", "sales", "settings"],
     piercer: ["agenda", "communications", "sales", "client-center", "clients", "terms", "postcare", "settings"]
   };
   // Fallback SEGURO para papéis desconhecidos: acesso mínimo, sem áreas
@@ -61,19 +61,31 @@ export function allowedPagesForRole(role) {
 // `withFeature`, pelo mesmo motivo).
 /** @type {Partial<Record<Page, Feature>>} */
 export const PAGE_FEATURE = {
-  finance: "basic_finance",
-  receivables: "advanced_finance",
-  payables: "advanced_finance",
+  receivables: "basic_finance",
+  payables: "basic_finance",
+  purchases: "basic_finance",
+  suppliers: "basic_finance",
+  "finance-categories": "basic_finance",
+  "cost-centers": "basic_finance",
   terms: "digital_terms",
   postcare: "automatic_followup",
   communications: "message_templates",
-  products: "basic_catalog",
-  inventory: "basic_catalog",
+  products: "basic_inventory",
+  inventory: "basic_inventory",
   reports: "basic_reports",
-  catalog: "public_catalog_customization",
+  catalog: "basic_catalog",
   "catalog-customization": "public_catalog_customization",
   sales: "basic_catalog"
 };
+
+// Algumas telas são úteis em planos mais simples, mas uma ação dentro delas
+// produz dados de um módulo contratado separadamente. A venda continua
+// disponível no Start; somente a geração de títulos financeiros exige o
+// Financeiro básico do Profissional.
+export const ACTION_FEATURE = Object.freeze({
+  "sales.generate_receivables": "basic_finance",
+  "appointments.generate_receivables": "basic_finance"
+});
 
 // A página está incluída no plano atual? (features = subscription.features)
 /**
@@ -88,7 +100,18 @@ export function planAllowsPage(features, page) {
 }
 
 /**
- * @param {Role | string | undefined} role
+ * @param {Feature[] | unknown} features Lista de features da assinatura.
+ * @param {keyof typeof ACTION_FEATURE | string} action
+ * @returns {boolean}
+ */
+export function planAllowsAction(features, action) {
+  const required = ACTION_FEATURE[action];
+  if (!required) return true;
+  return Array.isArray(features) && features.includes(required);
+}
+
+/**
+ * @param {Role | string | undefined | { role?: Role | string, granted_permissions?: string[], denied_permissions?: string[] }} role
  * @param {Page | string} page
  * @returns {boolean}
  */
@@ -102,8 +125,9 @@ export function canAccessPage(role, page) {
 
 export const PAGE_PERMISSION = Object.freeze({
   dashboard: "dashboard.view", agenda: "appointments.view", communications: "communication.view",
-  products: "inventory.view", inventory: "inventory.view", sales: "sales.view", finance: "finance.view",
-  receivables: "finance.view", payables: "finance.expenses",
+  products: "inventory.view", inventory: "inventory.view", sales: "sales.view", purchases: "finance.create",
+  receivables: "finance.view", payables: "finance.expenses", suppliers: "finance.edit",
+  "finance-categories": "finance.edit", "cost-centers": "finance.edit",
   "client-center": "clients.view", clients: "clients.view", terms: "anamnesis.view", postcare: "clinical_files.view",
   admin: "users.view", settings: "settings.view"
 });
@@ -123,13 +147,54 @@ export function can(userOrRole, permission) {
 }
 
 /**
- * @param {Role | string | undefined} role
+ * @param {Role | string | undefined | { role?: Role | string, granted_permissions?: string[], denied_permissions?: string[] }} role
  * @returns {Page} Página de entrada após o login.
  */
 export function defaultPageForRole(role) {
   const value = /** @type {any} */ (role);
   const actualRole = value && typeof value === "object" ? value.role : value;
   return allowedPagesForRole(actualRole).find((page) => canAccessPage(role, page)) || "dashboard";
+}
+
+/**
+ * Página segura quando a rota pedida existe para o papel, mas não para o plano.
+ * Preserva a ordem de entrada de cada papel e usa o dashboard como saída
+ * neutra quando todos os módulos prioritários estiverem bloqueados.
+ * @param {Role | string | undefined | { role?: Role | string }} userOrRole
+ * @param {Feature[] | unknown} features
+ * @returns {Page}
+ */
+export function defaultPageForPlan(userOrRole, features) {
+  const value = /** @type {any} */ (userOrRole);
+  const actualRole = value && typeof value === "object" ? value.role : value;
+  const candidates = [...allowedPagesForRole(actualRole), "dashboard", "settings"];
+  return /** @type {Page} */ (
+    candidates.find((page, index) =>
+      candidates.indexOf(page) === index &&
+      canAccessPage(userOrRole, page) &&
+      planAllowsPage(features, page)
+    ) || "dashboard"
+  );
+}
+
+/**
+ * Resolve a rota autenticada considerando papel e plano. Uma página conhecida
+ * mas fora da assinatura leva administradores para Meu plano; outros papéis
+ * recebem uma página operacional permitida.
+ * @param {Role | string | undefined | { role?: Role | string }} userOrRole
+ * @param {Page | string} requestedPage
+ * @param {Feature[] | unknown} features
+ * @param {boolean} planResolved
+ * @returns {Page | string}
+ */
+export function resolveAccessiblePage(userOrRole, requestedPage, features, planResolved = true) {
+  const roleAllowed = canAccessPage(userOrRole, requestedPage);
+  const planAllowed = !planResolved || planAllowsPage(features, requestedPage);
+  if (roleAllowed && planAllowed) return requestedPage;
+  if (roleAllowed && !planAllowed && canAccessPage(userOrRole, "meu-plano")) return "meu-plano";
+  return planResolved
+    ? defaultPageForPlan(userOrRole, features)
+    : defaultPageForRole(userOrRole);
 }
 
 /**
@@ -148,9 +213,12 @@ export function pageTitle(page) {
     inventory: "Estoque",
     "catalog-customization": "Personalização do Catálogo",
     sales: "Vendas e ordens",
-    finance: "Administrativo Financeiro",
+    purchases: "Compras",
     receivables: "Contas a receber",
     payables: "Contas a pagar",
+    suppliers: "Fornecedores",
+    "finance-categories": "Categorias financeiras",
+    "cost-centers": "Centros de custo",
     reports: "Relatórios",
     "client-center": "Clientes",
     clients: "Clientes",

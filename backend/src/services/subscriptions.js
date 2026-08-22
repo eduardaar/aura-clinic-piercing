@@ -3,7 +3,7 @@
 // no código — para nunca dependerem de um seed desatualizado em
 // platform.subscription_plans. Só status e datas vêm da linha do banco.
 import { query } from "../database/connection.js";
-import { planByCode } from "./plans.js";
+import { normalizeFeatureKey, planByCode } from "./plans.js";
 
 const SUB_CACHE_TTL_MS = 30 * 1000;
 const subCache = new Map();
@@ -64,7 +64,8 @@ export async function tenantSubscription(tenantId) {
 export function hasFeature(subscription, feature) {
   if (!feature) return true;
   const features = Array.isArray(subscription?.features) ? subscription.features : [];
-  return features.includes(feature);
+  const required = normalizeFeatureKey(feature);
+  return features.some((item) => normalizeFeatureKey(item) === required);
 }
 
 // Assinatura "ativa": paga (active) ou em trial dentro do prazo. Qualquer outro
@@ -91,12 +92,13 @@ export async function requireFeature(req, res, feature) {
     });
     return false;
   }
-  if (feature && !hasFeature(subscription, feature)) {
+  const requiredFeature = normalizeFeatureKey(feature);
+  if (requiredFeature && !hasFeature(subscription, requiredFeature)) {
     const plan = planByCode(subscription?.plan_code);
     res.status(403).json({
       error: `Este recurso não está incluído no seu plano (${plan.name}). Faça upgrade para liberá-lo.`,
       code: "plan_upgrade_required",
-      feature
+      feature: requiredFeature
     });
     return false;
   }

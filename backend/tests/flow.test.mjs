@@ -907,7 +907,10 @@ test("7b. venda pendente confirmada manualmente gera a baixa que faltava", async
 
   const confirm = await api(`/sales-orders/${create.json.id}`, {
     method: "PATCH",
-    body: { status: "concluida" },
+    // Concluir a operação e baixar o recebimento são decisões distintas. Aqui
+    // a confirmação manual representa pagamento efetivo, então o modo precisa
+    // ser informado explicitamente.
+    body: { status: "concluida", receivable_mode: "paid" },
   });
   assert.equal(confirm.status, 200, JSON.stringify(confirm.json));
 
@@ -921,7 +924,7 @@ test("7b. venda pendente confirmada manualmente gera a baixa que faltava", async
   // Confirmar de novo (ex.: staff clicou duas vezes) não pode duplicar a baixa.
   const confirmAgain = await api(`/sales-orders/${create.json.id}`, {
     method: "PATCH",
-    body: { status: "concluida" },
+    body: { status: "concluida", receivable_mode: "paid" },
   });
   assert.equal(confirmAgain.status, 200, JSON.stringify(confirmAgain.json));
   const afterSecondConfirm = await withTenantSchema(ctx.tenant.id, (db) =>

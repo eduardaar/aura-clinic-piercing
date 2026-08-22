@@ -80,8 +80,7 @@ function percentual(valor) {
 
 // `formatDate` de lib/utils devolve dd/MM sem ano, e esta tela lista vencimentos
 // de anos diferentes lado a lado (a fatura mais antiga em aberto pode ser do ano
-// passado) — sem o ano as linhas ficam indistinguíveis. Mesmo motivo do
-// `formatDateWithYear` em features/finance/Finance.jsx.
+// passado) — sem o ano as linhas ficam indistinguíveis.
 function dataCompleta(valor) {
   const texto = String(valor || "").slice(0, 10);
   const parsed = new Date(`${texto}T12:00:00`);

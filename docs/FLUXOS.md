@@ -14,6 +14,18 @@ Todos os valores abaixo são **defaults de desenvolvimento** — troque-os em pr
 
 Observação: em **desenvolvimento local** (`localhost`, `NODE_ENV != production`), a API dispensa o token nas rotas protegidas e assume o admin do tenant resolvido — útil para testar rapidamente sem login. Em produção o token é sempre obrigatório.
 
+## Escolha do plano e liberação de recursos
+
+Start (R$ 39,90) cobre a operação essencial; Profissional (R$ 69,90) é a
+oferta recomendada para a operação completa; Studio (R$ 119,90) adiciona
+equipe, crescimento e capacidades avançadas. A matriz é cumulativa.
+
+Após login, a assinatura fornece features e cotas. A navegação usa essa lista
+para orientar o usuário, enquanto o backend é a barreira autoritativa nas rotas
+que usam `withFeature`. A [matriz comercial e técnica](./PLANOS-E-FUNCIONALIDADES.md)
+é o contrato para publicar a oferta, testar upgrade/downgrade e interpretar um
+`403 plan_upgrade_required`.
+
 ---
 
 ## (a) Cadastro de uma nova clínica
@@ -44,7 +56,7 @@ Perfil `reception` (ou `admin`). Páginas típicas: agenda, clientes, vendas.
    - Alternativamente, o agendamento pode chegar pelo **booking público** (`POST /api/booking/requests`), aparecendo como solicitação `pendente` para a recepção confirmar.
 4. **Receber o sinal (depósito)** — informar o valor e a forma de pagamento do sinal no agendamento; o comprovante pode ser anexado (`payment_proof_url`). O saldo restante fica registrado para cobrança no atendimento.
 5. **Acompanhar a agenda** — visualizar/filtrar agendamentos (`GET /api/appointments?status=&professional_id=`), remarcar/atualizar status (`PATCH /api/appointments/:id`) e consultar disponibilidade/bloqueios.
-6. **Vendas de balcão** (opcional) — registrar venda de produtos/serviços em `POST /api/sales-orders`.
+6. **Vendas de balcão e serviços avulsos** — registrar em `POST /api/sales-orders`, usando as abas Produto, Serviço ou Mista. Quando o recebimento for futuro, a tela gera automaticamente a grade de parcelas e permite editar valor, vencimento e método de cada linha antes de salvar. Uma venda concluída baixa os produtos do estoque e transforma essa grade em títulos individuais de Contas a receber. O estado operacional da venda é independente do estado financeiro: uma venda concluída pode continuar com parcelas em aberto.
 
 ---
 
@@ -54,7 +66,8 @@ Perfil `piercer` (ou `admin`). Páginas típicas: agenda, clientes/prontuário, 
 
 1. **Atendimento** — ao realizar o procedimento, atualizar o agendamento para `status:"atendido"` (`PATCH /api/appointments/:id`). Isso dispara automaticamente:
    - **Baixa de estoque** da joia/variação usada (se houver).
-   - Registro do **pagamento do saldo** restante.
+   - Criação/atualização de uma única **ordem de serviço** ligada ao agendamento.
+   - Registro dos valores pagos e geração de **contas a receber** para o saldo pendente, com forma e parcelas configuráveis.
    - Criação dos **lembretes de pós-atendimento** (`post_care_followups`).
    - Crédito de **pontos de fidelidade** (10 pts pelo procedimento + 5 pts se houve compra de joia).
 2. **Prontuário do cliente** — registrar o prontuário (`POST /api/clients/:id/medical-records`): histórico, joia usada, ocorrências, orientações, alergias, evolução de cicatrização, e fotos antes/depois (multipart).
@@ -63,17 +76,21 @@ Perfil `piercer` (ou `admin`). Páginas típicas: agenda, clientes/prontuário, 
 
 ---
 
-## (d) Financeiro
+## (d) Compras e financeiro
 
-Perfil `finance` (ou `admin`). Página: Financeiro.
+Perfil `finance` (ou `admin`). Páginas: Compras, Fornecedores, Contas a pagar e Contas a receber.
 
-1. **Relatório financeiro** — abrir a tela de Financeiro (`GET /api/finance`): receita por período, formas de pagamento, resumo de despesas e previsão de lucro.
-2. **Lançar despesas** — cadastrar despesas (`POST /api/expenses`) informando descrição, tipo (`fixa`/`variavel`), vencimento (obrigatórios), categoria, valor, status e forma de pagamento. Remover com `DELETE /api/expenses/:id`.
-3. **Exportar relatórios** — baixar os relatórios em três formatos:
+1. **Preparar os cadastros** — manter fornecedores PF/PJ na tela Fornecedores. Categorias ficam disponíveis por atalho em Compras, Contas a pagar e Contas a receber; centros de custo aparecem somente em Compras e Contas a pagar.
+2. **Registrar uma compra** — `POST /api/purchases` recebe fornecedor, produtos/variações, quantidades, custos e uma grade de parcelas. O modo automático distribui os centavos e vencimentos mensalmente; cada linha pode ter valor, data e método de pagamento alterados antes da confirmação. A confirmação ocorre em uma transação única: atualiza estoque e custo médio, registra movimentos de entrada e gera exatamente essas linhas em Contas a pagar. Reenvios com a mesma `Idempotency-Key` não duplicam efeitos.
+3. **Controlar contas a pagar** — a tela reúne parcelas originadas por compras e lançamentos manuais do razão (`financial_entries`). Empréstimos e outras obrigações parceladas usam a mesma grade editável e cada parcela recebe sua própria baixa. Uma compra confirmada não pode ser apagada diretamente, pois já movimentou estoque e financeiro.
+4. **Controlar contas a receber** — a tela reúne títulos gerados por vendas/serviços e lançamentos manuais. A baixa registra o valor efetivamente recebido sem duplicar o pagamento da origem.
+5. **Exportar relatórios** — baixar os relatórios em três formatos:
    - CSV: `GET /api/finance/export.csv`
    - PDF: `GET /api/finance/export.pdf`
    - Excel (XLSX): `GET /api/finance/export.xlsx`
    O frontend usa `downloadApiFile` para baixar o arquivo autenticado.
+
+A antiga tela agregadora “Financeiro 2.0” não faz mais parte da aplicação da clínica. A rota antiga `/app/financeiro` redireciona para Contas a receber; as rotas históricas de despesas permanecem apenas para compatibilidade dos dados existentes.
 
 ---
 

@@ -192,7 +192,8 @@ CREATE TABLE IF NOT EXISTS jewelry_inventory (
   is_most_wanted INTEGER NOT NULL DEFAULT 0,
   is_promotion INTEGER NOT NULL DEFAULT 0,
   is_last_units INTEGER NOT NULL DEFAULT 0,
-  is_published INTEGER NOT NULL DEFAULT 0
+  is_published INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
 
   CREATE TABLE IF NOT EXISTS jewelry_variants (
@@ -520,6 +521,8 @@ ALTER TABLE payments ADD COLUMN IF NOT EXISTS net_amount NUMERIC(12,2);
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS expected_receipt_date TEXT;
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS notes TEXT;
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER REFERENCES users(id);
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS idempotency_key TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_payments_idempotency_key ON payments(idempotency_key) WHERE idempotency_key IS NOT NULL;
 
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS service_value NUMERIC(12,2) NOT NULL DEFAULT 0;
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS jewelry_value NUMERIC(12,2) NOT NULL DEFAULT 0;
@@ -566,6 +569,11 @@ CREATE TABLE IF NOT EXISTS sales_orders (
   source TEXT NOT NULL DEFAULT 'site',
   status TEXT NOT NULL DEFAULT 'aberta',
   payment_method TEXT,
+  receivable_mode TEXT NOT NULL DEFAULT 'paid' CHECK (receivable_mode IN ('paid', 'pending')),
+  installment_count INTEGER NOT NULL DEFAULT 1 CHECK (installment_count BETWEEN 1 AND 120),
+  first_due_date TEXT,
+  installments_json JSONB,
+  stock_deducted INTEGER NOT NULL DEFAULT 0,
   total_value NUMERIC(12,2) NOT NULL DEFAULT 0,
   notes TEXT,
   created_by_user_id INTEGER REFERENCES users(id),
@@ -589,6 +597,15 @@ CREATE TABLE IF NOT EXISTS sales_order_items (
   unit_price NUMERIC(12,2) NOT NULL DEFAULT 0,
   notes TEXT
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_sales_orders_appointment_service
+  ON sales_orders(appointment_id)
+  WHERE appointment_id IS NOT NULL AND order_type = 'ordem_servico';
+ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS sales_order_id INTEGER REFERENCES sales_orders(id);
+ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS sales_order_item_id INTEGER REFERENCES sales_order_items(id);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_stock_movements_sales_order_item
+  ON stock_movements(sales_order_id, sales_order_item_id, movement_type)
+  WHERE sales_order_id IS NOT NULL AND sales_order_item_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS expenses (
   id SERIAL PRIMARY KEY,
@@ -815,6 +832,7 @@ CREATE INDEX IF NOT EXISTS idx_financial_entries_lifecycle ON financial_entries(
 CREATE TABLE IF NOT EXISTS financial_categories (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
+  description TEXT,
   is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
@@ -822,6 +840,7 @@ CREATE TABLE IF NOT EXISTS financial_categories (
 CREATE TABLE IF NOT EXISTS suppliers (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
+  person_type TEXT NOT NULL DEFAULT 'PJ' CHECK (person_type IN ('PJ', 'PF')),
   document TEXT,
   phone TEXT,
   email TEXT,
@@ -831,6 +850,45 @@ CREATE TABLE IF NOT EXISTS suppliers (
 );
 
 ALTER TABLE financial_entries ADD COLUMN IF NOT EXISTS supplier_id INTEGER REFERENCES suppliers(id);
+
+CREATE TABLE IF NOT EXISTS purchase_orders (
+  id SERIAL PRIMARY KEY,
+  supplier_id INTEGER NOT NULL REFERENCES suppliers(id) ON DELETE RESTRICT,
+  purchase_date TEXT NOT NULL,
+  first_due_date TEXT NOT NULL,
+  installment_count INTEGER NOT NULL DEFAULT 1 CHECK (installment_count BETWEEN 1 AND 120),
+  payment_method TEXT,
+  installments_json JSONB,
+  category TEXT,
+  cost_center_id INTEGER REFERENCES financial_cost_centers(id) ON DELETE SET NULL,
+  total_value NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (total_value >= 0),
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'confirmed', 'cancelled')),
+  idempotency_key TEXT NOT NULL CONSTRAINT ux_purchase_orders_idempotency UNIQUE,
+  notes TEXT,
+  created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  confirmed_at TEXT,
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS'),
+  updated_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE TABLE IF NOT EXISTS purchase_order_items (
+  id SERIAL PRIMARY KEY,
+  purchase_order_id INTEGER NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+  product_id INTEGER NOT NULL REFERENCES jewelry_inventory(id) ON DELETE RESTRICT,
+  product_variant_id INTEGER REFERENCES jewelry_variants(id) ON DELETE RESTRICT,
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  unit_cost NUMERIC(12,2) NOT NULL CHECK (unit_cost >= 0),
+  line_total NUMERIC(12,2) NOT NULL CHECK (line_total >= 0),
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+
+ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS purchase_order_id INTEGER REFERENCES purchase_orders(id) ON DELETE RESTRICT;
+ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS purchase_order_item_id INTEGER REFERENCES purchase_order_items(id) ON DELETE RESTRICT;
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_supplier_date ON purchase_orders(supplier_id, purchase_date DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_status_date ON purchase_orders(status, purchase_date DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_purchase_order_items_order ON purchase_order_items(purchase_order_id, id);
+CREATE INDEX IF NOT EXISTS idx_stock_movements_purchase ON stock_movements(purchase_order_id, purchase_order_item_id);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_financial_entries_purchase_source ON financial_entries(source_key) WHERE source_type = 'purchase_order';
 
 CREATE TABLE IF NOT EXISTS financial_goals (
   id SERIAL PRIMARY KEY,
@@ -857,6 +915,9 @@ CREATE TABLE IF NOT EXISTS financial_reconciliations (
 CREATE INDEX IF NOT EXISTS idx_financial_entries_due ON financial_entries(status, due_date, entry_type);
 CREATE INDEX IF NOT EXISTS idx_financial_entries_period ON financial_entries(competence_date, entry_type, status);
 CREATE INDEX IF NOT EXISTS idx_financial_entries_source ON financial_entries(source_type, source_id);
+CREATE INDEX IF NOT EXISTS idx_financial_entries_sales_order_receivable
+  ON financial_entries(source_id, installment_number, status)
+  WHERE source_type = 'sales_order' AND entry_type = 'receivable';
 CREATE INDEX IF NOT EXISTS idx_financial_audit_entry ON financial_entry_audit(entry_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_financial_goals_period ON financial_goals(period_start, period_end);
 
@@ -1381,6 +1442,7 @@ ALTER TABLE schedule_blocks ADD COLUMN IF NOT EXISTS buffer_minutes INTEGER;
 ALTER TABLE payments ALTER COLUMN appointment_id DROP NOT NULL;
 ALTER TABLE digital_terms ALTER COLUMN appointment_id DROP NOT NULL;
 ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS purchase_cost_cents INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS updated_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS');
 ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS allocated_freight_cents INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS additional_cost_cents INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE jewelry_inventory ADD COLUMN IF NOT EXISTS total_cost_cents INTEGER NOT NULL DEFAULT 0;

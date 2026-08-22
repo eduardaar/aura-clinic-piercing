@@ -3,8 +3,9 @@ import { Router } from "express";
 import multer from "multer";
 import bwipjs from "bwip-js";
 import QRCode from "qrcode";
-import { withDb, withFeature } from "../middleware/withDb.js";
+import { withFeature } from "../middleware/withDb.js";
 import { authorizePermission } from "../middleware/requirePermission.js";
+import { requireFeature } from "../services/subscriptions.js";
 import { P } from "../config/permissions.js";
 import { boolNumber, elegantProductName, variantStatus, variantFromLegacy } from "../services/utils.js";
 import {
@@ -95,7 +96,7 @@ const visualUpload = multer({
   fileFilter: (_req, file, callback) => callback(null, ["image/jpeg", "image/png", "image/webp"].includes(file.mimetype))
 });
 
-router.get("/api/inventory/intelligence", withDb(async (req, res, db) => {
+router.get("/api/inventory/intelligence", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_VIEW)) return;
   const days = Math.min(Math.max(Number(req.query.days || 90), 30), 365);
   const items = await inventoryIntelligence(db, days);
@@ -111,7 +112,7 @@ router.get("/api/inventory/intelligence", withDb(async (req, res, db) => {
   });
 }));
 
-router.post("/api/inventory/suggestions/refresh", withDb(async (req, res, db) => {
+router.post("/api/inventory/suggestions/refresh", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_ADJUST)) return;
   await refreshInventorySuggestions(db, req.user?.id);
   res.json(await db.all(`
@@ -121,7 +122,7 @@ router.post("/api/inventory/suggestions/refresh", withDb(async (req, res, db) =>
   `));
 }));
 
-router.get("/api/inventory/suggestions", withDb(async (req, res, db) => {
+router.get("/api/inventory/suggestions", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_VIEW)) return;
   const status = ["pending", "accepted", "rejected"].includes(req.query.status) ? req.query.status : "pending";
   res.json(await db.all(`
@@ -131,7 +132,7 @@ router.get("/api/inventory/suggestions", withDb(async (req, res, db) => {
   `, [status]));
 }));
 
-router.patch("/api/inventory/suggestions/:id", withDb(async (req, res, db) => {
+router.patch("/api/inventory/suggestions/:id", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_ADJUST)) return;
   const status = String(req.body?.status || "");
   if (!["accepted", "rejected"].includes(status)) return res.status(400).json({ error: "Decisão inválida." });
@@ -149,7 +150,7 @@ router.patch("/api/inventory/suggestions/:id", withDb(async (req, res, db) => {
   res.json(await db.get("SELECT * FROM inventory_suggestions WHERE id=?", [suggestion.id]));
 }));
 
-router.get("/api/inventory/counts", withDb(async (req, res, db) => {
+router.get("/api/inventory/counts", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_VIEW)) return;
   res.json(await db.all(`
     SELECT c.*, COUNT(i.id) AS item_count,
@@ -159,7 +160,7 @@ router.get("/api/inventory/counts", withDb(async (req, res, db) => {
   `));
 }));
 
-router.post("/api/inventory/counts", withDb(async (req, res, db) => {
+router.post("/api/inventory/counts", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_ADJUST)) return;
   await db.run("BEGIN");
   try {
@@ -184,7 +185,7 @@ router.post("/api/inventory/counts", withDb(async (req, res, db) => {
   }
 }));
 
-router.get("/api/inventory/counts/:id", withDb(async (req, res, db) => {
+router.get("/api/inventory/counts/:id", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_VIEW)) return;
   const count = await db.get("SELECT * FROM inventory_counts WHERE id=?", [req.params.id]);
   if (!count) return res.status(404).json({ error: "Inventário não encontrado." });
@@ -197,7 +198,7 @@ router.get("/api/inventory/counts/:id", withDb(async (req, res, db) => {
   res.json(count);
 }));
 
-router.patch("/api/inventory/counts/:id/items", withDb(async (req, res, db) => {
+router.patch("/api/inventory/counts/:id/items", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_ADJUST)) return;
   const count = await db.get("SELECT * FROM inventory_counts WHERE id=? AND status='draft'", [req.params.id]);
   if (!count) return res.status(404).json({ error: "Inventário em aberto não encontrado." });
@@ -220,7 +221,7 @@ router.patch("/api/inventory/counts/:id/items", withDb(async (req, res, db) => {
   }
 }));
 
-router.post("/api/inventory/counts/:id/complete", withDb(async (req, res, db) => {
+router.post("/api/inventory/counts/:id/complete", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_ADJUST)) return;
   const count = await db.get("SELECT * FROM inventory_counts WHERE id=? AND status='draft'", [req.params.id]);
   if (!count) return res.status(404).json({ error: "Inventário em aberto não encontrado." });
@@ -264,7 +265,7 @@ router.post("/api/inventory/counts/:id/complete", withDb(async (req, res, db) =>
   }
 }));
 
-router.get("/api/inventory/labels", withDb(async (req, res, db) => {
+router.get("/api/inventory/labels", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_VIEW)) return;
   const ids = String(req.query.ids || "").split(",").map(Number).filter((id) => Number.isInteger(id) && id > 0).slice(0, 100);
   if (!ids.length) return res.status(400).json({ error: "Selecione ao menos um produto." });
@@ -285,6 +286,7 @@ router.get("/api/inventory/labels", withDb(async (req, res, db) => {
 }));
 
 router.post("/api/jewelry/visual-search", visualUpload.single("image"), withFeature("visual_search", async (req, res, db) => {
+  if (!(await requireFeature(req, res, "basic_inventory"))) return;
   if (!authorizePermission(req, res, P.INVENTORY_VIEW)) return;
   if (!req.file?.buffer) return res.status(400).json({ error: "Envie uma imagem JPEG, PNG ou WebP de até 5 MB." });
   try {
@@ -385,7 +387,7 @@ function normalizeImageUrls(value) {
   return [...new Set(list.map((item) => cleanImageUrl(typeof item === "string" ? item : item?.image_url || item?.url)).filter(Boolean))];
 }
 
-router.get("/api/jewelry", withDb(async (req, res, db) => {
+router.get("/api/jewelry", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_VIEW)) return;
   const clauses = [];
   const params = [];
@@ -439,7 +441,7 @@ router.get("/api/jewelry", withDb(async (req, res, db) => {
   res.json(pageResponse(visibleItems, total, paging));
 }));
 
-router.post("/api/jewelry", withDb(async (req, res, db) => {
+router.post("/api/jewelry", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_CREATE)) return;
   if (!validateBody(jewelryCreateSchema, req, res)) return;
   const category = await resolveActiveCategory(db, req.body);
@@ -490,7 +492,7 @@ router.post("/api/jewelry", withDb(async (req, res, db) => {
   }
 }));
 
-router.patch("/api/jewelry/:id", withDb(async (req, res, db) => {
+router.patch("/api/jewelry/:id", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_EDIT)) return;
   if (!validateBody(jewelryUpdateSchema, req, res)) return;
   if (req.body.category !== undefined || req.body.category_id !== undefined) {
@@ -545,7 +547,7 @@ router.patch("/api/jewelry/:id", withDb(async (req, res, db) => {
   }
 }));
 
-router.post("/api/jewelry/:id/variants/:variantId/movements", withDb(async (req, res, db) => {
+router.post("/api/jewelry/:id/variants/:variantId/movements", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_ADJUST)) return;
   const variant = await db.get(
     "SELECT * FROM jewelry_variants WHERE id = ? AND jewelry_id = ?",
@@ -569,7 +571,7 @@ router.post("/api/jewelry/:id/variants/:variantId/movements", withDb(async (req,
   res.json({ ok: true, product: (await attachVariants(db, [await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [req.params.id])]))[0] });
 }));
 
-router.get("/api/jewelry/:id/movements", withDb(async (req, res, db) => {
+router.get("/api/jewelry/:id/movements", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_VIEW)) return;
   const movements = await db.all(
     "SELECT * FROM stock_movements WHERE jewelry_id = ? ORDER BY movement_date DESC, id DESC LIMIT 20",
@@ -578,7 +580,7 @@ router.get("/api/jewelry/:id/movements", withDb(async (req, res, db) => {
   res.json(movements);
 }));
 
-router.post("/api/jewelry/:id/movements", withDb(async (req, res, db) => {
+router.post("/api/jewelry/:id/movements", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_ADJUST)) return;
   const jewelry = await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [req.params.id]);
   if (!jewelry) return res.status(404).json({ error: "Joia nao encontrada." });
@@ -606,7 +608,7 @@ router.post("/api/jewelry/:id/movements", withDb(async (req, res, db) => {
   });
 }));
 
-router.delete("/api/jewelry/:id", withDb(async (req, res, db) => {
+router.delete("/api/jewelry/:id", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_DELETE)) return;
   const linked = await db.get(`
     SELECT

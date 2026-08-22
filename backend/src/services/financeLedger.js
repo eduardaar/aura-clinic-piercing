@@ -48,6 +48,14 @@ export async function syncFinanceSources(db) {
       CASE WHEN p.status='pago' THEN 'paid' WHEN p.status='cancelado' THEN 'canceled' ELSE 'pending' END,
       p.method, CASE WHEN p.status='pago' THEN p.paid_at ELSE NULL END, 'payment', p.id, 'payment:' || p.id
     FROM payments p
+    LEFT JOIN sales_orders so ON so.id=p.sales_order_id
+    WHERE NOT (
+      COALESCE(so.source, '') <> 'agenda'
+      AND EXISTS (
+        SELECT 1 FROM financial_entries title
+        WHERE title.source_type='sales_order' AND title.source_id=so.id AND title.entry_type='receivable'
+      )
+    )
     ON CONFLICT (source_key) DO UPDATE SET
       amount=EXCLUDED.amount, paid_amount=EXCLUDED.paid_amount, status=EXCLUDED.status,
       payment_method=EXCLUDED.payment_method, paid_at=EXCLUDED.paid_at, updated_at=CURRENT_TIMESTAMP

@@ -12,6 +12,8 @@ import { defaultAppointment, defaultProcedureForm, defaultProfessionalForm, defa
 import { appointmentWhatsAppMessage, calcRemaining, currency, personName, statusClass, weekdayLabel, whatsappUrl } from "../../features/shared/helpers";
 import { SmartCombobox } from "../../components/common/SmartCombobox";
 import { publicLinkForTenant } from "../../lib/publicRoutes";
+import { PlanUpgradeNotice } from "../../components/common/PlanUpgradeNotice";
+import { planAllowsAction } from "../../lib/permissions";
 import "../../styles/agenda-admin-responsive.css";
 
 // formatDate() de lib/utils devolve dd/MM sem ano, e a agenda lista atendimentos
@@ -53,11 +55,11 @@ function distinctOptions(values) {
   return [...new Set(values.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), "pt-BR"));
 }
 
-export function AgendaWorkspace({ initialScreen = "agenda", initialSettingsTab, onSettingsClosed }) {
+export function AgendaWorkspace({ initialScreen = "agenda", initialSettingsTab, onSettingsClosed, features = [], onUpgrade }) {
   const [screen, setScreen] = useState(initialScreen);
   return screen === "settings"
     ? <BookingAdmin initialTab={initialSettingsTab} onBack={() => { setScreen("agenda"); onSettingsClosed?.(); }} />
-    : <VisualCalendar onOpenSettings={() => setScreen("settings")} />;
+    : <VisualCalendar features={features} onUpgrade={onUpgrade} onOpenSettings={() => setScreen("settings")} />;
 }
 
 function PublicBookingLink() {
@@ -86,199 +88,6 @@ function PublicBookingLink() {
         <a className="agenda-link-open" href={url} target="_blank" rel="noreferrer" title="Abrir agendamento público" aria-label="Abrir agendamento público"><ExternalLink size={16} /></a>
       </> : <span className="form-error">Defina o código público da clínica.</span>}
     </div>
-  );
-}
-
-export function Appointments() {
-  const { data: options } = useFetch("/options");
-  const { data: clients } = useFetch("/clients");
-  const { data: appointments } = useFetch("/appointments");
-  const { data: services } = useFetch("/services");
-  const { data: procedures } = useFetch("/procedures");
-  // Um agendamento pode criar cliente novo, ocupar horário e mexer nos números
-  // do painel — as três rotas caem juntas.
-  const invalidate = useApiInvalidate();
-  const refresh = () => invalidate("/appointments", "/clients", "/dashboard");
-  const refreshClients = refresh;
-  const [form, setForm] = useState(defaultAppointment());
-  const [error, setError] = useState("");
-  const [modalOpen, setModalOpen] = useState(false);
-  const [slots, setSlots] = useState([]);
-  const [loadingSlots, setLoadingSlots] = useState(false);
-  const safeOptions = asObject(options);
-  const safeClients = asArray(clients);
-  const safeAppointments = asArray(appointments);
-  const safeServices = asArray(services);
-  const safeProcedures = asArray(procedures);
-  const safeJewelry = asArray(safeOptions.jewelry);
-  const safeProfessionals = asArray(safeOptions.professionals);
-
-  function updatePricedForm(nextForm) {
-    setForm(priceAppointmentDraft(nextForm, safeServices, safeJewelry));
-  }
-
-  useEffect(() => {
-    async function loadSlots() {
-      if (!form.service_id || !form.professional_id || !form.appointment_date) return setSlots([]);
-      setLoadingSlots(true);
-      const response = await apiFetch(`/booking/slots?service_id=${form.service_id}&professional_id=${form.professional_id}&date=${form.appointment_date}`);
-      const json = await response.json().catch(() => ({}));
-      setLoadingSlots(false);
-      setSlots(response.ok ? asArray(json.slots) : []);
-      if (!response.ok) setError(json.error || "Não foi possível carregar os horários.");
-    }
-    loadSlots();
-  }, [form.service_id, form.professional_id, form.appointment_date]);
-
-  function selectClient(clientId) {
-    if (!clientId) {
-      setForm({ ...form, client_id: "", full_name: "", whatsapp: "", instagram: "", birth_date: "" });
-      return;
-    }
-    const client = safeClients.find((item) => String(item.id) === String(clientId));
-    if (!client) return;
-    setForm({
-      ...form,
-      client_id: client.id,
-      full_name: personName(client),
-      whatsapp: client.whatsapp || "",
-      instagram: client.instagram || "",
-      birth_date: client.birth_date || ""
-    });
-  }
-
-  function openNew() {
-    setForm(defaultAppointment());
-    setSlots([]);
-    setError("");
-    setModalOpen(true);
-  }
-
-  async function submit(event) {
-    event.preventDefault();
-    setError("");
-    const body = new FormData();
-    Object.entries(form).forEach(([key, value]) => {
-      if (key === "appointment_items") {
-        body.append(key, JSON.stringify(normalizeAppointmentFormItems(form, safeServices, safeJewelry)));
-        return;
-      }
-      if (value !== "" && value !== null && value !== undefined) body.append(key, value);
-    });
-    const response = await apiFetch(`/appointments`, {
-      method: "POST",
-      body
-    });
-    if (!response.ok) {
-      const data = await response.json();
-      setError(data.error || "Não foi possível salvar o agendamento.");
-      return;
-    }
-    setForm(defaultAppointment());
-    setModalOpen(false);
-    refresh();
-    refreshClients();
-  }
-
-  return (
-    <section className="stack appointments-admin">
-      <div className="panel appointments-toolbar">
-        <CrudHeader
-          title="Agendamentos"
-          subtitle="Cadastre e acompanhe os próximos atendimentos."
-          actionLabel="Novo agendamento"
-          onAction={openNew}
-        />
-      </div>
-      <Modal
-        open={modalOpen}
-        title="Novo Agendamento"
-        subtitle="Profissional, serviço, cliente, data e horário."
-        size="lg"
-        onClose={() => setModalOpen(false)}
-        footer={(
-          <>
-            <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>
-            <Button type="submit" form="appointment-form" disabled={!form.appointment_time}>Salvar agendamento</Button>
-          </>
-        )}
-      >
-      <form id="appointment-form" onSubmit={submit}>
-        <div className="form-section">
-          <h3>Cliente</h3>
-          <div className="form-grid">
-            <Select label="Cliente cadastrado" value={form.client_id} onChange={selectClient}>
-              <option value="">Novo cliente</option>
-              {safeClients.map((client) => (
-                <option key={client.id} value={client.id}>
-                  {personName(client)} - {client.whatsapp}
-                </option>
-              ))}
-            </Select>
-            <Input label="Nome completo" value={form.full_name} onChange={(v) => setForm({ ...form, full_name: v })} required />
-            <Input label="WhatsApp" value={form.whatsapp} onChange={(v) => setForm({ ...form, whatsapp: v })} required />
-            <Input label="Instagram" value={form.instagram} onChange={(v) => setForm({ ...form, instagram: v })} />
-            <Input type="date" label="Aniversário" value={form.birth_date} onChange={(v) => setForm({ ...form, birth_date: v })} />
-          </div>
-        </div>
-        <div className="form-section">
-          <h3>Procedimento</h3>
-          <AppointmentItemsEditor
-            form={form}
-            services={safeServices}
-            procedures={safeProcedures}
-            jewelry={safeJewelry}
-            onChange={updatePricedForm}
-          />
-          <div className="form-grid">
-            <Select label="Profissional" value={form.professional_id} onChange={(v) => setForm({ ...form, professional_id: v })} required>
-              <option value="">Selecione</option>
-              {safeProfessionals.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </Select>
-            <Input type="date" label="Data" value={form.appointment_date} onChange={(v) => setForm({ ...form, appointment_date: v, appointment_time: "" })} required />
-          </div>
-          <AppointmentValueSummary form={form} services={safeServices} jewelry={safeJewelry} />
-          <div className="manual-slot-field">
-            <span>Horários Disponíveis</span>
-            <div className="manual-slot-grid">
-              {loadingSlots && <small>Carregando horários...</small>}
-              {asArray(slots).map((slot) => <button key={slot.time} type="button" className={form.appointment_time === slot.time ? "active" : ""} onClick={() => setForm({ ...form, appointment_time: slot.time })}>{slot.time}</button>)}
-              {!loadingSlots && form.appointment_date && form.service_id && form.professional_id && !asArray(slots).length && <small>Nenhum horário livre neste dia.</small>}
-            </div>
-          </div>
-          <Textarea label="Descrição do atendimento" value={form.description} onChange={(value) => setForm({ ...form, description: value })} />
-        </div>
-        <div className="form-section">
-          <h3>Financeiro</h3>
-          <div className="form-grid">
-            <Input type="number" label="Valor total" value={form.total_value} onChange={(v) => setForm(calcRemaining({ ...form, total_value: v }))} />
-            <Input type="number" label="Valor do sinal" value={form.deposit_value} onChange={(v) => setForm(calcRemaining({ ...form, deposit_value: v }))} />
-            <Input type="number" label="Valor restante" value={form.remaining_value} onChange={(v) => setForm({ ...form, remaining_value: v })} />
-            <Input label="Cupom" value={form.coupon_code || ""} onChange={(v) => setForm({ ...form, coupon_code: v.toUpperCase() })} />
-            <PaymentSelect label="Forma de pagamento do sinal" value={form.deposit_payment_method} onChange={(v) => setForm({ ...form, deposit_payment_method: v })} />
-            <Select label="Status do sinal" value={form.deposit_status || "pendente"} onChange={(v) => setForm({ ...form, deposit_status: v })}><option value="pendente">Pendente</option><option value="pago">Pago</option><option value="nao_aplicavel">Não aplicável</option></Select>
-            <Input type="date" label="Data do sinal" value={form.deposit_paid_at || ""} onChange={(v) => setForm({ ...form, deposit_paid_at: v })} />
-            <PaymentSelect label="Forma de pagamento restante" value={form.remaining_payment_method} onChange={(v) => setForm({ ...form, remaining_payment_method: v })} />
-            <StatusSelect value={form.status} onChange={(v) => setForm({ ...form, status: v })} />
-          </div>
-          <Textarea label="Observações financeiras" value={form.financial_notes || ""} onChange={(value) => setForm({ ...form, financial_notes: value })} />
-          <Textarea label="Observações importantes" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} />
-          <label>Foto de referência
-            <input type="file" accept="image/*" onChange={(event) => setForm({ ...form, reference_photo: event.target.files?.[0] || null })} />
-            <small>Opcional. Use uma foto nítida da referência enviada pela cliente.</small>
-          </label>
-        </div>
-        {error && <span className="form-error">{error}</span>}
-      </form>
-      </Modal>
-      <div className="panel">
-        <div className="panel-heading">
-          <h2>Próximos Atendimentos</h2>
-          <span>Com Ações Rápidas</span>
-        </div>
-        <AppointmentList appointments={safeAppointments} onChanged={refresh} />
-      </div>
-    </section>
   );
 }
 
@@ -497,7 +306,7 @@ function AppointmentValueSummary({ form, services, jewelry }) {
   );
 }
 
-export function VisualCalendar({ onOpenSettings }) {
+export function VisualCalendar({ onOpenSettings, features = [], onUpgrade }) {
   const { data: options } = useFetch("/options");
   const { data: clients } = useFetch("/clients");
   const { data: services } = useFetch("/services");
@@ -572,6 +381,8 @@ export function VisualCalendar({ onOpenSettings }) {
         options={safeOptions}
         services={services}
         procedures={procedures}
+        features={features}
+        onUpgrade={onUpgrade}
         onClose={() => setSelectedAppointment(null)}
         onSaved={() => {
           setSelectedAppointment(null);
@@ -756,12 +567,13 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
   );
 }
 
-export function AppointmentQuickModal({ appointment, options, services, procedures, onClose, onSaved }) {
+export function AppointmentQuickModal({ appointment, options, services, procedures, onClose, onSaved, features = [], onUpgrade }) {
   const [form, setForm] = useState({ appointment_date: "", appointment_time: "", status: "pendente", notes: "" });
   const [payments, setPayments] = useState([{ method: "Pix", amount: 0, status: "pago", installments: 1, fee_amount: 0, expected_receipt_date: "" }]);
   const [financialNotes, setFinancialNotes] = useState("");
   const [error, setError] = useState("");
   const [deletion, setDeletion] = useState(null);
+  const canGenerateReceivables = planAllowsAction(features, "appointments.generate_receivables");
   const safeServices = asArray(services);
   const safeProcedures = asArray(procedures);
   const safeJewelry = asArray(asObject(options).jewelry);
@@ -839,6 +651,10 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
 
   async function completeAppointment() {
     setError("");
+    if (!canGenerateReceivables && payments.some((payment) => payment.status === "pendente")) {
+      setError("Deixar saldo pendente e gerar contas a receber exige o plano Profissional.");
+      return;
+    }
     const pricedForm = priceAppointmentDraft(form, safeServices, safeJewelry);
     const updateResponse = await apiFetch(`/appointments/${appointment.id}`, {
       method: "PATCH",
@@ -899,10 +715,15 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
             {payments.map((payment, index) => <div className="form-grid" key={`${index}-${payment.method}`}>
               <PaymentSelect label={`Forma ${index + 1}`} value={payment.method} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, method: value } : item))} />
               <Input type="number" label="Valor" value={payment.amount} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, amount: value } : item))} />
-              <Select label="Status" value={payment.status} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, status: value } : item))}><option value="pago">Pago</option><option value="pendente">Pendente</option></Select>
+              <Select label="Status" value={payment.status} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, status: value } : item))}><option value="pago">Pago</option><option value="pendente" disabled={!canGenerateReceivables}>Pendente{canGenerateReceivables ? "" : " — Profissional"}</option></Select>
               {String(payment.method).toLowerCase().includes("crédito") && <><Input type="number" label="Parcelas" value={payment.installments} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, installments: value } : item))} /><Input type="number" label="Taxa" value={payment.fee_amount} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, fee_amount: value } : item))} /><Input type="date" label="Previsão de recebimento" value={payment.expected_receipt_date} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, expected_receipt_date: value } : item))} /></>}
               {payments.length > 1 && <Button variant="secondary" className="danger" onClick={() => setPayments(payments.filter((_, itemIndex) => itemIndex !== index))}>Remover</Button>}
             </div>)}
+            {!canGenerateReceivables && (
+              <PlanUpgradeNotice title="Saldo pendente no plano Profissional" onUpgrade={onUpgrade}>
+                No Start, o atendimento pode ser finalizado com pagamentos recebidos. Gerar saldo a receber exige o Financeiro básico.
+              </PlanUpgradeNotice>
+            )}
             <Textarea label="Observações financeiras" value={financialNotes} onChange={setFinancialNotes} />
             <small>Sinal preservado: {currency.format(Number(appointment.deposit_value || 0))} · saldo atual: {currency.format(Number(appointment.remaining_value || 0))}</small>
           </section>}

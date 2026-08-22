@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, ChevronRight, X } from "lucide-react";
 import { API, API_ORIGIN } from "../lib/api";
 import { asArray, asObject } from "../lib/utils";
-import { featureLabel } from "../lib/planFeatures";
+import { featureLabel, highlightedPlanFeatures } from "../lib/planFeatures";
 import { PublicTopNav } from "../components/layout/PublicTopNav";
 import { PublicFooter } from "../components/layout/PublicFooter";
 import { Accordion } from "../components/common/Ui";
@@ -231,7 +231,7 @@ export function AboutSection({ content }) {
 // título, o subtítulo e o rótulo/destino do botão.
 export function PlansSection({ content, plans }) {
   const [comparisonOpen, setComparisonOpen] = useState(false);
-  const visibleFeatures = (plan) => asArray(plan.features).slice(0, 5);
+  const visibleFeatures = (plan) => highlightedPlanFeatures(plan, 5);
   const allFeatures = [...new Set(plans.flatMap((plan) => asArray(plan.features)))];
   return (
     <section className="au-l-sec au-l-sec-plans" id="planos">

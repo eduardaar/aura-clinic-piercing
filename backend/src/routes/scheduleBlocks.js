@@ -1,6 +1,6 @@
 // Rotas de bloqueios de agenda dos profissionais.
 import { Router } from "express";
-import { withDb } from "../middleware/withDb.js";
+import { withFeature } from "../middleware/withDb.js";
 import { authorizePermission } from "../middleware/requirePermission.js";
 import { P } from "../config/permissions.js";
 import { boolNumber } from "../services/utils.js";
@@ -38,7 +38,7 @@ function normalizeBlock(body = {}, current = {}) {
   };
 }
 
-router.get("/api/schedule-blocks", withDb(async (req, res, db) => {
+router.get("/api/schedule-blocks", withFeature("agenda", async (req, res, db) => {
   if (!authorizePermission(req, res, P.APPOINTMENTS_VIEW)) return;
   const clauses = [];
   const params = [];
@@ -80,7 +80,7 @@ router.get("/api/schedule-blocks", withDb(async (req, res, db) => {
   res.json(pageResponse(rows, total, paging));
 }));
 
-router.post("/api/schedule-blocks", withDb(async (req, res, db) => {
+router.post("/api/schedule-blocks", withFeature("agenda", async (req, res, db) => {
   if (!authorizePermission(req, res, P.APPOINTMENTS_EDIT)) return;
   const next = normalizeBlock(req.body);
   if (!next.professional_id || !next.start_datetime || !next.end_datetime) {
@@ -97,7 +97,7 @@ router.post("/api/schedule-blocks", withDb(async (req, res, db) => {
   res.status(201).json(await db.get("SELECT * FROM schedule_blocks WHERE id = ?", [result.returnedId]));
 }));
 
-router.patch("/api/schedule-blocks/:id", withDb(async (req, res, db) => {
+router.patch("/api/schedule-blocks/:id", withFeature("agenda", async (req, res, db) => {
   if (!authorizePermission(req, res, P.APPOINTMENTS_EDIT)) return;
   const current = await db.get("SELECT * FROM schedule_blocks WHERE id = ?", [req.params.id]);
   if (!current) return res.status(404).json({ error: "Regra de disponibilidade nao encontrada." });
@@ -112,7 +112,7 @@ router.patch("/api/schedule-blocks/:id", withDb(async (req, res, db) => {
   res.json(await db.get("SELECT * FROM schedule_blocks WHERE id = ?", [req.params.id]));
 }));
 
-router.delete("/api/schedule-blocks/:id", withDb(async (req, res, db) => {
+router.delete("/api/schedule-blocks/:id", withFeature("agenda", async (req, res, db) => {
   if (!authorizePermission(req, res, P.APPOINTMENTS_EDIT)) return;
   await db.run("DELETE FROM schedule_blocks WHERE id = ?", [req.params.id]);
   res.json({ ok: true });

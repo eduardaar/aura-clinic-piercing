@@ -23,6 +23,7 @@ import { AsaasError, onlyDigits, toAsaasValue, minimumDueDate } from "./asaas/cl
 import { isPaidStatus, isCanceledStatus } from "./asaas/events.js";
 import { deductSoldProductStock } from "./sales.js";
 import { localTimestamp } from "./utils.js";
+import { settleSalesOrderReceivables } from "./receivables.js";
 
 // Janela de vida do intent. O default de `createPaymentIntent` são 30 minutos,
 // herdados do PIX manual; com `billingType: UNDEFINED` o pagador pode escolher
@@ -700,15 +701,20 @@ async function transitionSaleIntent(db, { intent, status, providerEventId, paylo
         // e para o CSV/PDF de faturamento, que só somam `payments`.
         const order = await tx.get("SELECT client_id, order_type, total_value FROM sales_orders WHERE id=?", [orderId]);
         if (order && Number(order.total_value) > 0) {
+          const method = locked.billing_type || payload?.payment?.billingType || payload?.payment?.billing_type || "Pix";
           await tx.run(
-            "INSERT INTO payments (client_id, sales_order_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, ?, 'Pix', 'pago', ?)",
-            [order.client_id, orderId, order.total_value, order.order_type, paidAt || localTimestamp()]
+            `INSERT INTO payments
+              (client_id, sales_order_id, amount, payment_type, method, status, paid_at, idempotency_key)
+             VALUES (?, ?, ?, ?, ?, 'pago', ?, ?) ON CONFLICT DO NOTHING`,
+            [order.client_id, orderId, order.total_value, order.order_type, method, paidAt || localTimestamp(), `sales-order:${orderId}:paid`]
           );
+          await settleSalesOrderReceivables(tx, orderId, { paymentMethod: method, paidAt: paidAt || localTimestamp() });
         }
         const itens = await tx.all("SELECT * FROM sales_order_items WHERE sales_order_id=?", [orderId]);
+        let stockTouched = false;
         for (const item of itens) {
           try {
-            await deductSoldProductStock(tx, item, orderId);
+            stockTouched = Boolean(await deductSoldProductStock(tx, item, orderId)) || stockTouched;
           } catch (error) {
             console.warn(
               `[Asaas] pedido ${orderId} foi pago, mas a baixa de "${item.item_name}" falhou: ${error.message} ` +
@@ -716,6 +722,7 @@ async function transitionSaleIntent(db, { intent, status, providerEventId, paylo
             );
           }
         }
+        if (stockTouched) await tx.run("UPDATE sales_orders SET stock_deducted=1 WHERE id=?", [orderId]);
       }
     }
 

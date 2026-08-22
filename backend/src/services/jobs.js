@@ -29,9 +29,11 @@ function json(value, fallback = {}) {
 
 function publicJob(row) {
   if (!row) return null;
+  const payload = row.type === "report_export" ? json(row.payload) : null;
   return {
     id: row.id,
     type: row.type,
+    report_type: payload?.type || null,
     requested_by: row.requested_by == null ? null : Number(row.requested_by),
     status: row.status,
     result: json(row.result, null),

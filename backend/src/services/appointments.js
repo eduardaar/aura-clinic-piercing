@@ -400,8 +400,9 @@ async function deductLegacyJewelryStock(db, appointmentId) {
     variantId = firstAvailable?.id;
   }
   if (variantId) {
-    const variant = await db.get("SELECT * FROM jewelry_variants WHERE id = ?", [variantId]);
-    const nextQuantity = Math.max(0, Number(variant.quantity || 0) - 1);
+    const variant = await db.get("SELECT * FROM jewelry_variants WHERE id = ? FOR UPDATE", [variantId]);
+    const nextQuantity = Number(variant.quantity || 0) - 1;
+    if (nextQuantity < 0) throw new Error(`Estoque insuficiente para concluir o atendimento #${appointmentId}.`);
     await db.run(
       "UPDATE jewelry_variants SET quantity = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
       [nextQuantity, variantStatus(nextQuantity, variant.low_stock_threshold), variantId]
@@ -412,6 +413,15 @@ async function deductLegacyJewelryStock(db, appointmentId) {
     );
     await db.run("UPDATE appointments SET jewelry_variant_id = ? WHERE id = ?", [variantId, appointmentId]);
     await syncProductInventory(db, appointment.jewelry_id);
+  } else {
+    const product = await db.get("SELECT * FROM jewelry_inventory WHERE id = ? FOR UPDATE", [appointment.jewelry_id]);
+    if (!product || Number(product.quantity || 0) < 1) throw new Error(`Estoque insuficiente para concluir o atendimento #${appointmentId}.`);
+    const nextQuantity = Number(product.quantity) - 1;
+    await db.run("UPDATE jewelry_inventory SET quantity=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", [nextQuantity, variantStatus(nextQuantity, product.low_stock_threshold), product.id]);
+    await db.run(
+      "INSERT INTO stock_movements (jewelry_id, movement_type, quantity, notes) VALUES (?, 'Saida', 1, ?)",
+      [product.id, `Baixa automatica do atendimento #${appointmentId}`]
+    );
   }
   await db.run("UPDATE appointments SET stock_deducted = 1 WHERE id = ?", [appointmentId]);
 }
@@ -448,10 +458,13 @@ export async function deductJewelryStock(db, appointmentId) {
       await deductLegacyJewelryStock(db, appointmentId);
       continue;
     }
-    const variant = await db.get("SELECT * FROM jewelry_variants WHERE id = ?", [variantId]);
+    const variant = await db.get("SELECT * FROM jewelry_variants WHERE id = ? FOR UPDATE", [variantId]);
     if (!variant) continue;
     const quantity = Math.max(1, Number(item.quantity || 1));
-    const nextQuantity = Math.max(0, Number(variant.quantity || 0) - quantity);
+    const nextQuantity = Number(variant.quantity || 0) - quantity;
+    if (nextQuantity < 0) {
+      throw new Error(`Estoque insuficiente para concluir o atendimento #${appointmentId}: ${quantity} un. solicitada(s), ${Number(variant.quantity || 0)} disponível(is).`);
+    }
     await db.run(
       "UPDATE jewelry_variants SET quantity = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
       [nextQuantity, variantStatus(nextQuantity, variant.low_stock_threshold), variantId]
@@ -469,24 +482,38 @@ export async function deductJewelryStock(db, appointmentId) {
 }
 
 export async function restoreJewelryStock(db, appointmentId) {
-  const appointment = await db.get("SELECT * FROM appointments WHERE id = ?", [appointmentId]);
+  const appointment = await db.get("SELECT * FROM appointments WHERE id = ? FOR UPDATE", [appointmentId]);
   if (!appointment || !appointment.stock_deducted) return;
   const items = await appointmentStockItems(db, appointment);
   for (const item of items) {
-    if (!item.jewelry_variant_id) continue;
-    const variant = await db.get("SELECT * FROM jewelry_variants WHERE id = ?", [item.jewelry_variant_id]);
-    if (!variant) continue;
     const quantity = Math.max(1, Number(item.quantity || 1));
-    const nextQuantity = Number(variant.quantity || 0) + quantity;
+    if (item.jewelry_variant_id) {
+      const variant = await db.get("SELECT * FROM jewelry_variants WHERE id = ? FOR UPDATE", [item.jewelry_variant_id]);
+      if (!variant) continue;
+      const nextQuantity = Number(variant.quantity || 0) + quantity;
+      await db.run(
+        "UPDATE jewelry_variants SET quantity = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        [nextQuantity, variantStatus(nextQuantity, variant.low_stock_threshold), item.jewelry_variant_id]
+      );
+      await db.run(
+        "INSERT INTO stock_movements (jewelry_id, variant_id, movement_type, quantity, notes) VALUES (?, ?, 'Entrada', ?, ?)",
+        [item.jewelry_id, item.jewelry_variant_id, quantity, `Estorno da baixa do atendimento #${appointmentId}`]
+      );
+      await syncProductInventory(db, item.jewelry_id);
+      continue;
+    }
+
+    const product = await db.get("SELECT * FROM jewelry_inventory WHERE id = ? FOR UPDATE", [item.jewelry_id]);
+    if (!product) continue;
+    const nextQuantity = Number(product.quantity || 0) + quantity;
     await db.run(
-      "UPDATE jewelry_variants SET quantity = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-      [nextQuantity, variantStatus(nextQuantity, variant.low_stock_threshold), item.jewelry_variant_id]
+      "UPDATE jewelry_inventory SET quantity = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+      [nextQuantity, variantStatus(nextQuantity, product.low_stock_threshold), item.jewelry_id]
     );
     await db.run(
-      "INSERT INTO stock_movements (jewelry_id, variant_id, movement_type, quantity, notes) VALUES (?, ?, 'Entrada', ?, ?)",
-      [item.jewelry_id, item.jewelry_variant_id, quantity, `Estorno do atendimento cancelado #${appointmentId}`]
+      "INSERT INTO stock_movements (jewelry_id, movement_type, quantity, notes) VALUES (?, 'Entrada', ?, ?)",
+      [item.jewelry_id, quantity, `Estorno da baixa do atendimento #${appointmentId}`]
     );
-    await syncProductInventory(db, item.jewelry_id);
   }
   await db.run("UPDATE appointments SET stock_deducted = 0 WHERE id = ?", [appointmentId]);
 }
@@ -499,18 +526,25 @@ export async function registerRemainingPayment(db, appointmentId) {
     "SELECT id FROM payments WHERE appointment_id = ? AND payment_type = 'restante'",
     [appointmentId]
   );
-  if (existing) return;
+  if (existing) {
+    await db.run("UPDATE appointments SET remaining_value=0, updated_at=? WHERE id=?", [localTimestamp(), appointmentId]);
+    return;
+  }
 
   await db.run(
-    "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, 'restante', ?, 'pago', ?)",
+    `INSERT INTO payments
+      (appointment_id, client_id, amount, payment_type, method, status, paid_at, idempotency_key)
+     VALUES (?, ?, ?, 'restante', ?, 'pago', ?, ?) ON CONFLICT DO NOTHING`,
     [
       appointment.id,
       appointment.client_id,
       Number(appointment.remaining_value || 0),
       appointment.remaining_payment_method || "Pix",
-      localTimestamp()
+      localTimestamp(),
+      `appointment:${appointmentId}:remaining`
     ]
   );
+  await db.run("UPDATE appointments SET remaining_value=0, updated_at=? WHERE id=?", [localTimestamp(), appointmentId]);
 }
 
 export async function registerCompletionPayments(db, appointmentId, rawPayments = [], userId = null) {
@@ -530,13 +564,39 @@ export async function registerCompletionPayments(db, appointmentId, rawPayments 
   })).filter((item) => item.amount > 0);
   const paid = payments.filter((item) => item.status === "pago" || item.status === "confirmado").reduce((sum, item) => sum + item.amount, 0);
   if (paid > maximum + 0.009) throw new Error("A soma dos pagamentos não pode superar o saldo do atendimento.");
-  await db.run("DELETE FROM payments WHERE appointment_id = ? AND payment_type IN ('restante', 'final', 'complementar')", [appointmentId]);
-  for (const item of payments) {
-    await db.run(
-      `INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at, installments, fee_amount, net_amount, expected_receipt_date, notes, created_by_user_id)
-       VALUES (?, ?, ?, 'restante', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [appointmentId, appointment.client_id, item.amount, item.method, item.status, localTimestamp(), item.installments, item.fee_amount, Math.max(0, item.amount - item.fee_amount), item.expected_receipt_date, item.notes, userId]
-    );
+  // Preserva os ids das baixas ao refazer o fechamento. Apagar e reinserir
+  // deixava para trás lançamentos espelhados no ledger e perdia sales_order_id.
+  const existing = await db.all(
+    "SELECT * FROM payments WHERE appointment_id=? AND payment_type IN ('restante','final','complementar') ORDER BY id FOR UPDATE",
+    [appointmentId]
+  );
+  for (let index = 0; index < payments.length; index += 1) {
+    const item = payments[index];
+    const current = existing[index];
+    if (current) {
+      await db.run(
+        `UPDATE payments SET amount=?, payment_type='restante', method=?, status=?, paid_at=?, installments=?,
+           fee_amount=?, net_amount=?, expected_receipt_date=?, notes=?, created_by_user_id=? WHERE id=?`,
+        [item.amount, item.method, item.status, current.paid_at || localTimestamp(),
+          item.installments, item.fee_amount, Math.max(0, item.amount - item.fee_amount), item.expected_receipt_date,
+          item.notes, userId, current.id]
+      );
+    } else {
+      await db.run(
+        `INSERT INTO payments
+          (appointment_id, client_id, amount, payment_type, method, status, paid_at, installments,
+           fee_amount, net_amount, expected_receipt_date, notes, created_by_user_id, idempotency_key)
+         VALUES (?, ?, ?, 'restante', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT DO NOTHING`,
+        [appointmentId, appointment.client_id, item.amount, item.method, item.status,
+          localTimestamp(), item.installments, item.fee_amount,
+          Math.max(0, item.amount - item.fee_amount), item.expected_receipt_date, item.notes, userId,
+          `appointment:${appointmentId}:completion:${index + 1}`]
+      );
+    }
+  }
+  for (const stale of existing.slice(payments.length)) {
+    await db.run("UPDATE payments SET status='cancelado' WHERE id=? AND status!='cancelado'", [stale.id]);
   }
   await db.run("UPDATE appointments SET remaining_value = ?, remaining_payment_method = ?, financial_closed_at = ?, financial_closed_by = ?, updated_at = ? WHERE id = ?", [Math.max(0, maximum - paid), payments[0]?.method || appointment.remaining_payment_method || "Pix", localTimestamp(), userId, localTimestamp(), appointmentId]);
   return { paid, remaining: Math.max(0, maximum - paid) };

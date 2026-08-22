@@ -372,7 +372,7 @@ test("forçar status inválido → 400; 'canceled' corta o gating e carimba a da
   assert.equal(gating.json.code, "subscription_inactive");
 });
 
-test("cancelar a assinatura não derruba a clínica (são decisões diferentes)", async () => {
+test("cancelar a assinatura preserva a clínica, mas bloqueia os módulos contratados", async () => {
   const cancelamento = await platformApi(`/platform/accounts/${ctx.account.id}/cancel-subscription`, {
     method: "POST",
     body: { reason: "Encerramento a pedido do cliente" }
@@ -386,9 +386,12 @@ test("cancelar a assinatura não derruba a clínica (são decisões diferentes)"
   const visao = await platformApi(`/platform/accounts/${ctx.account.id}`);
   assert.equal(visao.json.tenant.status, "ativo", "cancelar cobrança não pode suspender a conta");
 
-  // E a clínica continua entrando e vendo o que tem.
+  // A clínica continua cadastrada/ativa, mas a assinatura cancelada corta os
+  // módulos contratados até a renovação. Suspender o tenant continua sendo uma
+  // decisão administrativa distinta.
   const clientes = await clinicApi(ctx.account)("/clients");
-  assert.equal(clientes.status, 200, JSON.stringify(clientes.json));
+  assert.equal(clientes.status, 402, JSON.stringify(clientes.json));
+  assert.equal(clientes.json.code, "subscription_inactive");
 
   const auditoria = await query(
     `SELECT detail FROM platform.admin_audit

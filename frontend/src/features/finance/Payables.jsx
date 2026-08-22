@@ -1,10 +1,13 @@
 import { useMemo, useState } from "react";
+import { Landmark, Tags } from "lucide-react";
 import { Button, Input, Metric, PaymentSelect, Select, StatusBadge, Textarea } from "../../components/common/Ui";
 import { CrudHeader, Modal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
+import { InstallmentGrid } from "../../components/common/InstallmentGrid";
 import { SelectWithCreate } from "../../components/common/SelectWithCreate";
 import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
+import { installmentSummary, installmentsForPayload } from "../../lib/installments";
 import { asArray, asNumber, asObject } from "../../lib/utils";
 import { currency } from "../shared/helpers";
 import { financeLabel } from "../../lib/financeLabels";
@@ -19,12 +22,15 @@ function emptyPayable() {
   return {
     entry_type: "payable", description: "", category: "", amount: "", due_date: today(),
     payment_method: "Pix", payment_account: "", cost_center_id: "", supplier_id: "", installment_count: "1",
-    recurrence: "", notes: ""
+    recurrence: "", notes: "",
+    idempotency_key: typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `payable-${Date.now()}-${Math.random()}`
   };
 }
 
 /** Lista operacional de obrigações manuais da clínica (não mistura recebíveis). */
-export function PayablesAdmin() {
+export function PayablesAdmin({ onNavigate }) {
   const initialFrom = `${new Date().getFullYear() - 1}-01-01`;
   const initialTo = `${new Date().getFullYear() + 1}-12-31`;
   const [period, setPeriod] = useState({ from: initialFrom, to: initialTo });
@@ -38,6 +44,8 @@ export function PayablesAdmin() {
   const refreshCategories = () => invalidate("/finance/categories");
   const refreshSuppliers = () => invalidate("/finance/suppliers");
   const [form, setForm] = useState(emptyPayable());
+  const [installments, setInstallments] = useState([]);
+  const [automaticInstallments, setAutomaticInstallments] = useState(true);
   const [editing, setEditing] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [payment, setPayment] = useState(null);
@@ -86,6 +94,8 @@ export function PayablesAdmin() {
 
   const openNew = () => {
     setForm(emptyPayable());
+    setInstallments([]);
+    setAutomaticInstallments(true);
     setEditing(null);
     setError("");
     setModalOpen(true);
@@ -99,7 +109,20 @@ export function PayablesAdmin() {
   const save = async (event) => {
     event.preventDefault();
     setError("");
-    const payload = { ...form, amount: Number(form.amount), installment_count: Number(form.installment_count || 1) };
+    const installmentCount = Number(form.installment_count || 1);
+    if (!editing) {
+      const schedule = installmentSummary(form.amount, installments, installmentCount);
+      if (!schedule.isValid) {
+        return setError("Revise as parcelas: a soma deve coincidir com o valor total e todos os campos são obrigatórios.");
+      }
+    }
+    const payload = {
+      ...form,
+      amount: Number(form.amount),
+      installment_count: installmentCount,
+      recurrence: installmentCount > 1 ? "" : form.recurrence,
+      ...(!editing ? { installments: installmentsForPayload(installments) } : {})
+    };
     const response = await apiFetch(editing ? `/finance/entries/${editing.id}` : "/finance/entries", {
       method: editing ? "PATCH" : "POST", body: JSON.stringify(payload)
     });
@@ -140,6 +163,10 @@ export function PayablesAdmin() {
     </div>
     <section className="panel stack">
       <CrudHeader title="Contas a pagar" subtitle="Despesas, empréstimos, parcelas e contas operacionais." actionLabel="Nova conta a pagar" onAction={openNew} />
+      <div className="toolbar compact-actions">
+        <Button variant="secondary" type="button" onClick={() => onNavigate?.("finance-categories")}><Tags size={16} /> Categorias</Button>
+        <Button variant="secondary" type="button" onClick={() => onNavigate?.("cost-centers")}><Landmark size={16} /> Centros de custo</Button>
+      </div>
       <div className="form-grid finance-period-filter">
         <Input type="date" label="De" value={period.from} onChange={(from) => setPeriod((current) => ({ ...current, from }))} />
         <Input type="date" label="Até" value={period.to} onChange={(to) => setPeriod((current) => ({ ...current, to }))} />
@@ -173,7 +200,7 @@ export function PayablesAdmin() {
       />
     </section>
 
-    <Modal open={modalOpen} title={editing ? "Editar conta a pagar" : "Nova conta a pagar"} subtitle="Parcelas são distribuídas automaticamente a cada mês." onClose={() => setModalOpen(false)}
+    <Modal open={modalOpen} title={editing ? "Editar conta a pagar" : "Nova conta a pagar"} subtitle={editing ? "Altere somente esta parcela." : "Empréstimos e outras obrigações podem ser distribuídos automaticamente e ajustados linha a linha."} size="lg" onClose={() => setModalOpen(false)}
       footer={<><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button><Button type="submit" form="payable-form">Salvar conta</Button></>}>
       <form id="payable-form" onSubmit={save} className="stack">
         <div className="form-grid">
@@ -186,7 +213,7 @@ export function PayablesAdmin() {
           <Input type="number" label="Valor total" value={form.amount} onChange={(value) => setForm({ ...form, amount: value })} required />
           <Input type="date" label="Primeiro vencimento" value={String(form.due_date || "").slice(0, 10)} onChange={(value) => setForm({ ...form, due_date: value })} required />
           {!editing && <Input type="number" label="Parcelas" value={form.installment_count} onChange={(value) => setForm({ ...form, installment_count: value })} required />}
-          {!editing && <Select label="Recorrência" value={form.recurrence} onChange={(value) => setForm({ ...form, recurrence: value })}><option value="">Sem recorrência</option><option value="monthly">Mensal</option><option value="yearly">Anual</option></Select>}
+          {!editing && Number(form.installment_count || 1) === 1 && <Select label="Recorrência" value={form.recurrence} onChange={(value) => setForm({ ...form, recurrence: value })}><option value="">Sem recorrência</option><option value="monthly">Mensal</option><option value="yearly">Anual</option></Select>}
           <SelectWithCreate
             label="Centro de custo" value={form.cost_center_id || ""} onChange={(value) => setForm({ ...form, cost_center_id: value })}
             options={asArray(centers)} emptyLabel="Sem centro" createTitle="Novo centro de custo" createLabel="Nome do centro de custo" onCreate={createCenter}
@@ -198,6 +225,19 @@ export function PayablesAdmin() {
           <PaymentSelect label="Forma de pagamento" value={form.payment_method} onChange={(value) => setForm({ ...form, payment_method: value })} />
           <Input label="Conta ou caixa" value={form.payment_account || ""} onChange={(value) => setForm({ ...form, payment_account: value })} />
         </div>
+        {!editing && (
+          <InstallmentGrid
+            total={form.amount}
+            count={form.installment_count}
+            firstDueDate={String(form.due_date || "").slice(0, 10)}
+            paymentMethod={form.payment_method}
+            installments={installments}
+            onChange={setInstallments}
+            automatic={automaticInstallments}
+            onAutomaticChange={setAutomaticInstallments}
+            title="Parcelas da conta a pagar"
+          />
+        )}
         <Textarea label="Observações (ex.: juros, número do contrato)" value={form.notes || ""} onChange={(notes) => setForm({ ...form, notes })} />
         {error && <span className="form-error">{error}</span>}
       </form>

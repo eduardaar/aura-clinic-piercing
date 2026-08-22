@@ -3,6 +3,7 @@ import { CheckCircle2, Copy, CreditCard, QrCode, ReceiptText, Sparkles } from "l
 import { Button, Input } from "../../components/common/Ui";
 import { Modal } from "../../components/common/Crud";
 import { apiFetch } from "../../lib/api";
+import { featureLabel, highlightedPlanFeatures } from "../../lib/planFeatures";
 import { asArray } from "../../lib/utils";
 import "../../styles/myplan.css";
 
@@ -15,21 +16,6 @@ function displayDate(value) {
   const parsed = new Date(`${String(value).slice(0, 10)}T12:00:00Z`);
   return Number.isNaN(parsed.getTime()) ? "—" : date.format(parsed);
 }
-
-const featureLabels = {
-  clients: "Clientes", agenda: "Agenda", procedures: "Procedimentos", manual_reminders: "Lembretes manuais",
-  basic_inventory: "Estoque simples", basic_catalog: "Catálogo simples", whatsapp_link: "Link WhatsApp",
-  basic_reports: "Relatórios básicos", online_booking: "Agendamento online", anamnesis: "Anamnese digital",
-  digital_terms: "Termo digital", basic_finance: "Financeiro básico", deposits: "Sinais/entradas",
-  stock_alerts: "Alertas de estoque", automatic_followup: "Pós-atendimento automático",
-  message_templates: "Modelos de mensagem", public_catalog_customization: "Catálogo personalizado",
-  multi_user: "Multiusuários", commissions: "Comissões", monthly_reports: "Relatórios mensais",
-  coupons: "Cupons", returns: "Trocas e devoluções", full_client_history: "Histórico completo do cliente",
-  jewelry_sales_report: "Relatório de vendas de joias", advanced_catalog: "Catálogo avançado",
-  catalog_analytics: "Google Analytics no catálogo", featured_products: "Produtos em destaque", promotional_banner: "Banner promocional", campaigns: "Campanhas",
-  advanced_finance: "Financeiro avançado", variation_inventory: "Estoque por variação",
-  alert_center: "Central de alertas", courses: "Cursos", priority_support: "Suporte prioritário"
-};
 
 // Tela "Meu plano": durante o trial permite experimentar outro pacote. Depois
 // de contratada a assinatura, o backend exige suporte/fluxo de cobrança para
@@ -266,8 +252,8 @@ export function MyPlan({ subscription, plans, onChanged }) {
                 <strong>{plan.name}</strong>
                 <b>{currency.format(Number(plan.price_cents || 0) / 100)}<small>/mês</small></b>
                 <em>{plan.audience}</em>
-                <ul>{asArray(plan.features).slice(0, 8).map((feature) => (
-                  <li key={feature}><CheckCircle2 size={13} /> {featureLabels[feature] || feature}</li>
+                <ul>{highlightedPlanFeatures(plan, 5).map((feature) => (
+                  <li key={feature}><CheckCircle2 size={13} /> {featureLabel(feature)}</li>
                 ))}</ul>
                 {checkoutAvailable ? (
                   <Button disabled={checkingOut === plan.code} onClick={() => startCheckout(plan.code)}>

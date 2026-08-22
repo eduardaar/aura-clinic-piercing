@@ -10,9 +10,8 @@ import { LegalEditor } from "./LegalEditor";
 import { PlansAdmin } from "./PlansAdmin";
 import { AccountsAdmin } from "./AccountsAdmin";
 import { SupportInbox, SupportOpenBadge } from "./SupportInbox";
-// `PlatformFinance`, e não `FinanceAdmin`: features/finance/Finance.jsx já
-// exporta um `FinanceAdmin` (o financeiro da CLÍNICA). Dois nomes iguais no
-// mesmo grafo de imports é convite a montar a tela errada.
+// Nome explícito para não confundir o financeiro da plataforma com os módulos
+// operacionais de contas a pagar e receber de cada clínica.
 import { PlatformFinance } from "./FinanceAdmin";
 
 // Painel do super-admin da plataforma (/plataforma).

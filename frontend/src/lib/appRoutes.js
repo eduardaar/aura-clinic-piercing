@@ -14,9 +14,12 @@ const ROUTES = {
   "catalog-customization": "/app/catalogo/personalizar",
   sales: "/app/vendas",
   communications: "/app/comunicacoes",
-  finance: "/app/financeiro",
+  purchases: "/app/compras",
   receivables: "/app/financeiro/receber",
   payables: "/app/financeiro/pagar",
+  suppliers: "/app/fornecedores",
+  "finance-categories": "/app/financeiro/categorias",
+  "cost-centers": "/app/financeiro/centros-de-custo",
   reports: "/app/relatorios",
   admin: "/app/acessos",
   integrations: "/app/integracoes",
@@ -35,6 +38,9 @@ export function appPathForPage(page) {
 export function pageForAppPath(pathname = window.location.pathname) {
   const normalized = String(pathname || "/").replace(/\/+$/, "") || "/";
   if (normalized === "/" || normalized === "/app") return "dashboard";
+  // Compatibilidade com favoritos anteriores à separação do financeiro.
+  if (normalized === "/app/financeiro") return "receivables";
+  if (normalized === "/app/financeiro/cadastros") return "suppliers";
   return PATH_TO_PAGE[normalized] || null;
 }
 

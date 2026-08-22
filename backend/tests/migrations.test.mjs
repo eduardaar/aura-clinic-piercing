@@ -30,9 +30,32 @@ function clientWith({ ledger = [], failOn } = {}) {
 test("migrations versionadas têm baseline válido por escopo", () => {
   const platform = loadMigrations("platform");
   const tenant = loadMigrations("tenant");
-  assert.deepEqual(platform.map((item) => item.version), ["0001", "0002", "0003", "0004", "0005"]);
-  assert.deepEqual(tenant.map((item) => item.version), ["0001", "0002", "0003", "0004", "0005", "0006", "0007"]);
+  assert.deepEqual(platform.map((item) => item.version), ["0001", "0002", "0003", "0004", "0005", "0006"]);
+  assert.deepEqual(tenant.map((item) => item.version), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011"]);
   assert.ok(platform.every((item) => /^[a-f0-9]{64}$/.test(item.checksum)));
+});
+
+test("migration platform 0006 consolida matriz e aliases sem reofertar legado", () => {
+  const planMatrix = loadMigrations("platform").find((item) => item.version === "0006");
+  assert.ok(planMatrix, "a migration platform 0006 é obrigatória");
+  assert.match(planMatrix.sql, /price_cents\s*=\s*3990/i);
+  assert.match(planMatrix.sql, /price_cents\s*=\s*6990/i);
+  assert.match(planMatrix.sql, /price_cents\s*=\s*11990/i);
+  assert.match(planMatrix.sql, /anamnese[^;]*anamnesis[^;]*digital_terms/is);
+  assert.doesNotMatch(planMatrix.sql, /features\s*=\s*'[^']*advanced_finance/i);
+});
+
+test("migration 0011 persiste a configuração explícita de parcelas nas origens", () => {
+  const explicitInstallments = loadMigrations("tenant").find((item) => item.version === "0011");
+  assert.ok(explicitInstallments, "a migration tenant 0011 é obrigatória");
+  assert.match(
+    explicitInstallments.sql,
+    /ALTER\s+TABLE\s+purchase_orders[^;]*\bADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?installments_json/i
+  );
+  assert.match(
+    explicitInstallments.sql,
+    /ALTER\s+TABLE\s+sales_orders[^;]*\bADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?installments_json/i
+  );
 });
 
 test("checksum é estável entre checkout LF e CRLF", () => {

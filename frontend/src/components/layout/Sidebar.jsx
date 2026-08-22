@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ArrowDownToLine, ArrowUpFromLine, BarChart3, Calendar, Gem, Home, Lock, Package, ShieldCheck, ShoppingCart, Sparkles, Table2, UsersRound, Wallet } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, BarChart3, Calendar, ContactRound, Gem, Home, Lock, Package, PackagePlus, ShieldCheck, ShoppingCart, Sparkles, Table2, UsersRound } from "lucide-react";
 import { canAccessPage, planAllowsPage } from "../../lib/permissions";
 import { Modal } from "../common/Crud";
 import { useFetch } from "../../lib/api";
@@ -13,10 +13,10 @@ export function Sidebar({ page, role, user, brand, features, setPage, open }) {
   const onboardingAtBottom = Boolean(onboardingReadiness?.deprioritize);
   const onboardingEntry = ["onboarding", Sparkles, "Onboarding"];
 
-  // Estrutura original por área de trabalho. O visual do menu pode evoluir,
-  // mas a organização funcional e os destinos permanecem estáveis.
+  // Módulos do produto. Cadastros auxiliares do financeiro permanecem como
+  // atalhos contextuais em Compras/Pagar/Receber, sem poluir a navegação.
   const groups = [
-    ["", [
+    ["Início", [
       ["dashboard", Home, "Dashboard"],
       ...(!onboardingAtBottom ? [onboardingEntry] : [])
     ]],
@@ -25,15 +25,20 @@ export function Sidebar({ page, role, user, brand, features, setPage, open }) {
       ["client-center", UsersRound, "Clientes"]
     ]],
     ["Comercial", [
-      ["products", Package, "Produtos"],
-      ["inventory", Table2, "Estoque"],
       ["catalog", Gem, "Catálogo"],
       ["sales", ShoppingCart, "Vendas"]
     ]],
-    ["Gestão", [
-      ["finance", Wallet, "Financeiro"],
+    ["Estoque e compras", [
+      ["products", Package, "Produtos"],
+      ["inventory", Table2, "Estoque"],
+      ["purchases", PackagePlus, "Compras"],
+      ["suppliers", ContactRound, "Fornecedores"]
+    ]],
+    ["Financeiro", [
       ["receivables", ArrowDownToLine, "Contas a receber"],
-      ["payables", ArrowUpFromLine, "Contas a pagar"],
+      ["payables", ArrowUpFromLine, "Contas a pagar"]
+    ]],
+    ["Gestão", [
       ["reports", BarChart3, "Relatórios"]
     ]],
     ["Sistema", [

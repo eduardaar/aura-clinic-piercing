@@ -26,7 +26,7 @@ import { asArray, asNumber } from "./lib/utils";
 import { API_ORIGIN, apiFetch, readStoredSession } from "./lib/api";
 import { queryClient } from "./lib/queryClient";
 import { installGlobalErrorReporting } from "./lib/errorReporter";
-import { canAccessPage, defaultPageForRole, pageTitle } from "./lib/permissions";
+import { canAccessPage, defaultPageForRole, pageTitle, resolveAccessiblePage } from "./lib/permissions";
 import { roleLabel } from "./features/shared/helpers";
 import { applyUiTheme, readUiTheme, saveUiTheme } from "./lib/uiTheme";
 import { appPathForPage, isAppPath, pageForAppPath } from "./lib/appRoutes";
@@ -43,9 +43,10 @@ const AgendaWorkspace = lazy(() => import("./features/agenda/Agenda").then((m) =
 const Communications = lazy(() => import("./features/communications/Communications").then((m) => ({ default: m.Communications })));
 const CatalogWorkspace = lazy(() => import("./features/inventory/Inventory").then((m) => ({ default: m.CatalogWorkspace })));
 const SalesWorkspace = lazy(() => import("./features/sales/Sales").then((m) => ({ default: m.SalesWorkspace })));
-const FinanceAdmin = lazy(() => import("./features/finance/Finance").then((m) => ({ default: m.FinanceAdmin })));
-const AccountsReceivable = lazy(() => import("./features/finance/Finance").then((m) => ({ default: m.AccountsReceivable })));
+const Purchases = lazy(() => import("./features/purchases/Purchases").then((m) => ({ default: m.Purchases })));
+const AccountsReceivable = lazy(() => import("./features/finance/Receivables").then((m) => ({ default: m.AccountsReceivable })));
 const PayablesAdmin = lazy(() => import("./features/finance/Payables").then((m) => ({ default: m.PayablesAdmin })));
+const FinanceRegistries = lazy(() => import("./features/finance/FinanceRegistries").then((m) => ({ default: m.FinanceRegistries })));
 const Reports = lazy(() => import("./features/reports/Reports").then((m) => ({ default: m.Reports })));
 const AccessAdmin = lazy(() => import("./features/access/AccessAdmin").then((m) => ({ default: m.AccessAdmin })));
 const Integrations = lazy(() => import("./features/integrations/Integrations").then((m) => ({ default: m.Integrations })));
@@ -235,18 +236,23 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (normalizedSession && !canAccessPage(normalizedSession.user, page)) {
-      navigate(defaultPageForRole(normalizedSession.user), { replace: true });
-    }
-  }, [normalizedSession, navigate, page]);
+    if (!normalizedSession) return;
+    // Enquanto a assinatura ainda carrega, não expulsamos o usuário da rota:
+    // isso evita um redirecionamento falso causado pelo array inicial vazio.
+    const destination = resolveAccessiblePage(normalizedSession.user, page, planFeatures, subscription !== null);
+    if (destination === page) return;
+    navigate(destination, { replace: true });
+  }, [normalizedSession, navigate, page, subscription]);
 
   // Sessões antigas ainda podiam cair em `/`; quem abre um deep link inválido
   // também recebe uma tela válida, sem criar uma entrada extra no histórico.
   useEffect(() => {
     if (!normalizedSession || (!isLanding && !isInternalApp)) return;
+    const accessiblePage = resolveAccessiblePage(normalizedSession.user, page, planFeatures, subscription !== null);
     const pageDaUrl = pageForAppPath();
-    if (!pageDaUrl || pageDaUrl !== page) navigate(page, { replace: true });
-  }, [isInternalApp, isLanding, navigate, normalizedSession, page]);
+    const canonicalPath = appPathForPage(accessiblePage);
+    if (!pageDaUrl || pageDaUrl !== accessiblePage || window.location.pathname !== canonicalPath) navigate(accessiblePage, { replace: true });
+  }, [isInternalApp, isLanding, navigate, normalizedSession, page, subscription]);
 
   // Carrega identidade (nome/logo) + assinatura (plano/trial) + catálogo de
   // planos da clínica logada. Reutilizável para recarregar após troca de plano.
@@ -330,7 +336,10 @@ function App() {
     return null;
   }
   
-  const activePage = canAccessPage(normalizedSession.user, page) ? page : defaultPageForRole(normalizedSession.user);
+  const activePage = resolveAccessiblePage(normalizedSession.user, page, planFeatures, subscription !== null);
+  const openProfessionalPlan = canAccessPage(normalizedSession.user, "meu-plano")
+    ? () => navigate("meu-plano")
+    : undefined;
   return (
     <div className={`app-shell ${navCollapsed ? "nav-collapsed" : ""}`}>
       {/* Sidebar apenas renderizado se autenticado */}
@@ -427,7 +436,7 @@ function App() {
           {activePage === "meu-plano" && <MyPlan subscription={subscription} plans={plans} onChanged={loadStoreIdentity} />}
           {activePage === "dashboard" && <Dashboard user={normalizedSession.user} setPage={navigate} alertsOpen={alertsOpen} setAlertsOpen={setAlertsOpen} alertsData={alertsData} alertsLoading={alertsLoading} />}
           {activePage !== "dashboard" && alertsOpen && <AlertsPopup alerts={alertsData} loading={alertsLoading} onClose={() => setAlertsOpen(false)} onAction={(nextPage) => { setAlertsOpen(false); navigate(nextPage); }} />}
-          {activePage === "agenda" && <AgendaWorkspace initialScreen={agendaTarget ? "settings" : "agenda"} initialSettingsTab={agendaTarget} onSettingsClosed={() => setAgendaTarget(null)} />}
+          {activePage === "agenda" && <AgendaWorkspace initialScreen={agendaTarget ? "settings" : "agenda"} initialSettingsTab={agendaTarget} onSettingsClosed={() => setAgendaTarget(null)} features={planFeatures} onUpgrade={openProfessionalPlan} />}
           {activePage === "onboarding" && <Onboarding onNavigate={navigate} onOpenAgendaSettings={(tab) => { setAgendaTarget(tab); navigate("agenda"); }} />}
           {activePage === "communications" && <Communications />}
           {activePage === "products" && <CatalogWorkspace area="produtos" />}
@@ -437,10 +446,13 @@ function App() {
           {activePage === "catalog" && <CatalogWorkspace area="catalogo" />}
           {activePage === "client-center" && <ClientWorkspace onNavigate={navigate} />}
           {activePage === "catalog-customization" && <CatalogCustomization />}
-          {activePage === "sales" && <SalesWorkspace />}
-          {activePage === "finance" && <FinanceAdmin />}
-          {activePage === "receivables" && <AccountsReceivable />}
-          {activePage === "payables" && <PayablesAdmin />}
+          {activePage === "sales" && <SalesWorkspace features={planFeatures} onUpgrade={openProfessionalPlan} />}
+          {activePage === "purchases" && <Purchases onNavigate={navigate} />}
+          {activePage === "receivables" && <AccountsReceivable onNavigate={navigate} />}
+          {activePage === "payables" && <PayablesAdmin onNavigate={navigate} />}
+          {activePage === "suppliers" && <FinanceRegistries key="suppliers" registry="suppliers" />}
+          {activePage === "finance-categories" && <FinanceRegistries key="categories" registry="categories" />}
+          {activePage === "cost-centers" && <FinanceRegistries key="centers" registry="centers" />}
           {activePage === "reports" && <Reports />}
           {activePage === "clients" && <ClientsMedical onNavigate={navigate} />}
           {activePage === "terms" && <DigitalTerms onBack={() => navigate("client-center")} />}

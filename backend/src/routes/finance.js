@@ -7,7 +7,8 @@ import { authorizePermission } from "../middleware/requirePermission.js";
 import { P } from "../config/permissions.js";
 import { csvEscape, writePdfMetric, formatCurrency } from "../services/utils.js";
 import { buildFinanceReport } from "../services/finance.js";
-import { ledgerReport, normalizeEntry, processRecurringEntries } from "../services/financeLedger.js";
+import { ledgerReport, normalizeEntry } from "../services/financeLedger.js";
+import { installmentMoneyCents, resolveInstallmentSchedule } from "../services/receivables.js";
 import { parsePaging } from "../services/pagination.js";
 import { recordPrivacyAudit } from "../services/privacy.js";
 
@@ -101,7 +102,7 @@ router.delete("/api/expenses/:id", withFeature("basic_finance", async (req, res,
 // caixa, DRE e inadimplência. Por isso a paginação recorta só `entries` e
 // acrescenta total/limit/offset ao objeto — sem limit/offset a resposta é
 // byte a byte a de antes. Os indicadores seguem somando o período inteiro.
-router.get("/api/finance/ledger", withFeature("advanced_finance", async (req, res, db) => {
+router.get("/api/finance/ledger", withFeature("basic_finance", async (req, res, db) => {
   if (!authorizePermission(req, res, P.FINANCE_VIEW)) return;
   const filters = [];
   const filterParams = [];
@@ -140,7 +141,7 @@ router.get("/api/finance/ledger", withFeature("advanced_finance", async (req, re
   res.json(paging.paginated ? { ...report, total, limit: paging.limit, offset: paging.offset } : report);
 }));
 
-router.get("/api/finance/entries/:id/details", withFeature("advanced_finance", async (req, res, db) => {
+router.get("/api/finance/entries/:id/details", withFeature("basic_finance", async (req, res, db) => {
   if (!financeLifecyclePermission(req, res, P.FINANCE_VIEW)) return;
   const entry = await db.get(`SELECT e.*, c.name AS cost_center_name, sup.name AS supplier_name, u.name AS responsible_user_name
     FROM financial_entries e LEFT JOIN financial_cost_centers c ON c.id=e.cost_center_id
@@ -152,7 +153,7 @@ router.get("/api/finance/entries/:id/details", withFeature("advanced_finance", a
   res.json({ ...entry, audit });
 }));
 
-router.post("/api/finance/entries/:id/lifecycle", withFeature("advanced_finance", async (req, res, db) => {
+router.post("/api/finance/entries/:id/lifecycle", withFeature("basic_finance", async (req, res, db) => {
   const permission = req.body?.action === "test" ? P.FINANCE_MARK_TEST : P.FINANCE_CANCEL;
   if (!financeLifecyclePermission(req, res, permission)) return;
   const entry = await db.get("SELECT * FROM financial_entries WHERE id=?", [req.params.id]);
@@ -168,7 +169,7 @@ router.post("/api/finance/entries/:id/lifecycle", withFeature("advanced_finance"
   }
 }));
 
-router.post("/api/finance/entries/bulk-lifecycle", withFeature("advanced_finance", async (req, res, db) => {
+router.post("/api/finance/entries/bulk-lifecycle", withFeature("basic_finance", async (req, res, db) => {
   const permission = req.body?.action === "test" ? P.FINANCE_MARK_TEST : P.FINANCE_CANCEL;
   if (!financeLifecyclePermission(req, res, permission)) return;
   const ids = [...new Set((Array.isArray(req.body?.ids) ? req.body.ids : []).map(Number).filter(Number.isInteger))];
@@ -188,48 +189,118 @@ router.post("/api/finance/entries/bulk-lifecycle", withFeature("advanced_finance
   }
 }));
 
-router.post("/api/finance/entries", withFeature("advanced_finance", async (req, res, db) => {
+router.post("/api/finance/entries", withFeature("basic_finance", async (req, res, db) => {
   if (!authorizePermission(req, res, P.FINANCE_CREATE)) return;
   let entry;
   try { entry = normalizeEntry(req.body); } catch (error) { return res.status(400).json({ error: error.message }); }
-  const installmentCount = Math.min(Math.max(Number(req.body?.installment_count || 1), 1), 120);
+  let schedule;
+  try {
+    schedule = resolveInstallmentSchedule({
+      total: entry.amount,
+      installments: req.body?.installments,
+      installmentCount: req.body?.installment_count ?? 1,
+      firstDueDate: entry.due_date,
+      paymentMethod: entry.payment_method || "Pix"
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+  const installmentCount = schedule.length;
+  const idempotencyKey = String(req.get("Idempotency-Key") || req.body?.idempotency_key || "").trim();
+  if (idempotencyKey.length > 120) return res.status(400).json({ error: "Idempotency-Key deve ter no máximo 120 caracteres." });
+  const firstSourceKey = idempotencyKey ? `manual-entry:${idempotencyKey}:1` : null;
+  const getExistingGroup = async () => {
+    if (!firstSourceKey) return [];
+    const first = await db.get(
+      "SELECT id, source_id FROM financial_entries WHERE source_type='manual_entry' AND source_key=?",
+      [firstSourceKey]
+    );
+    if (!first) return [];
+    return db.all(
+      "SELECT * FROM financial_entries WHERE source_type='manual_entry' AND source_id=? ORDER BY installment_number, id",
+      [first.source_id || first.id]
+    );
+  };
+  const sameIdempotentRequest = (rows) => rows.length === schedule.length && rows.every((row, index) => {
+    const installment = schedule[index];
+    return Number(row.installment_number) === installment.number &&
+      Number(row.installment_count) === installment.count &&
+      installmentMoneyCents(row.amount, "Valor armazenado") === installment.amountCents &&
+      row.due_date === installment.dueDate && row.payment_method === installment.paymentMethod &&
+      row.entry_type === entry.entry_type && row.description === entry.description &&
+      String(row.category || "") === String(entry.category || "") &&
+      String(row.payment_account || "") === String(entry.payment_account || "") &&
+      Number(row.cost_center_id || 0) === Number(entry.cost_center_id || 0) &&
+      Number(row.supplier_id || 0) === Number(entry.supplier_id || 0) &&
+      String(row.attachment_url || "") === String(entry.attachment_url || "") &&
+      String(row.notes || "") === String(entry.notes || "") &&
+      String(row.recurrence || "") === String(entry.recurrence || "") &&
+      String(row.recurrence_end_date || "") === String(entry.recurrence_end_date || "");
+  });
+  const existing = await getExistingGroup();
+  if (existing.length) {
+    if (!sameIdempotentRequest(existing)) {
+      return res.status(409).json({ error: "Idempotency-Key já foi usada com outro lançamento." });
+    }
+    return res.status(200).json(existing);
+  }
+
   await db.run("BEGIN");
   try {
     let parentId = null;
     const created = [];
-    for (let installment = 1; installment <= installmentCount; installment += 1) {
-      const date = new Date(`${entry.due_date}T12:00:00`);
-      date.setMonth(date.getMonth() + installment - 1);
-      const amount = installmentCount === 1 ? entry.amount : Number((entry.amount / installmentCount).toFixed(2));
+    let remainingPaidCents = installmentMoneyCents(entry.paid_amount, "Valor pago");
+    for (const installment of schedule) {
+      const paidCents = Math.min(installment.amountCents, remainingPaidCents);
+      remainingPaidCents -= paidCents;
+      const installmentStatus = ["canceled", "refunded"].includes(entry.status)
+        ? entry.status
+        : paidCents >= installment.amountCents
+          ? "paid"
+          : paidCents > 0
+            ? "partially_paid"
+            : entry.status === "overdue" ? "overdue" : "pending";
+      const sourceKey = idempotencyKey ? `manual-entry:${idempotencyKey}:${installment.number}` : null;
       const result = await db.run(`
         INSERT INTO financial_entries
           (entry_type, description, category, amount, paid_amount, due_date, competence_date, status,
            payment_method, payment_account, paid_at, cost_center_id, supplier_id, responsible_user_id, attachment_url,
-           notes, recurrence, recurrence_end_date, installment_number, installment_count, parent_entry_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
+           notes, recurrence, recurrence_end_date, installment_number, installment_count, parent_entry_id,
+           source_type, source_id, source_key)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
       `, [
-        entry.entry_type, entry.description, entry.category, amount, installment === 1 ? entry.paid_amount : 0,
-        date.toISOString().slice(0, 10), installment === 1 ? entry.competence_date : date.toISOString().slice(0, 10),
-        installment === 1 ? entry.status : "pending", entry.payment_method, entry.payment_account,
-        installment === 1 ? entry.paid_at : null, entry.cost_center_id, entry.supplier_id, req.user?.id || null, entry.attachment_url,
-        entry.notes, entry.recurrence, entry.recurrence_end_date, installment, installmentCount, parentId
+        entry.entry_type, entry.description, entry.category, installment.amount, paidCents / 100,
+        installment.dueDate, installment.number === 1 ? entry.competence_date : installment.dueDate,
+        installmentStatus, installment.paymentMethod, entry.payment_account,
+        paidCents > 0 ? entry.paid_at : null, entry.cost_center_id, entry.supplier_id, req.user?.id || null, entry.attachment_url,
+        entry.notes, entry.recurrence, entry.recurrence_end_date, installment.number, installmentCount, parentId,
+        idempotencyKey ? "manual_entry" : null, parentId, sourceKey
       ]);
-      if (!parentId) parentId = result.returnedId;
+      if (!parentId) {
+        parentId = result.returnedId;
+        if (idempotencyKey) {
+          await db.run("UPDATE financial_entries SET source_id=? WHERE id=?", [parentId, parentId]);
+        }
+      }
       created.push(result.returnedId);
     }
     await db.run("COMMIT");
     res.status(201).json(await db.all(`SELECT * FROM financial_entries WHERE id IN (${created.map(() => "?").join(",")}) ORDER BY id`, created));
   } catch (error) {
     await db.run("ROLLBACK").catch(() => {});
+    if (idempotencyKey && error?.code === "23505") {
+      const repeated = await getExistingGroup();
+      if (repeated.length && sameIdempotentRequest(repeated)) return res.status(200).json(repeated);
+    }
     throw error;
   }
 }));
 
-router.patch("/api/finance/entries/:id", withFeature("advanced_finance", async (req, res, db) => {
+router.patch("/api/finance/entries/:id", withFeature("basic_finance", async (req, res, db) => {
   if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
   const current = await db.get("SELECT * FROM financial_entries WHERE id=?", [req.params.id]);
   if (!current) return res.status(404).json({ error: "Lançamento não encontrado." });
-  if (current.source_key && !["paid_amount", "status", "payment_method", "payment_account", "notes", "attachment_url"].some((key) => req.body?.[key] !== undefined)) {
+  if (current.source_key && current.source_type !== "manual_entry" && !["paid_amount", "status", "payment_method", "payment_account", "notes", "attachment_url"].some((key) => req.body?.[key] !== undefined)) {
     return res.status(400).json({ error: "Lançamentos integrados devem ser alterados no módulo de origem." });
   }
   let entry;
@@ -257,102 +328,113 @@ router.patch("/api/finance/entries/:id", withFeature("advanced_finance", async (
   }
 }));
 
-router.get("/api/finance/cost-centers", withFeature("advanced_finance", async (req, res, db) => {
+router.get("/api/finance/cost-centers", withFeature("basic_finance", async (req, res, db) => {
   if (!authorizePermission(req, res, P.FINANCE_VIEW)) return;
-  res.json(await db.all("SELECT * FROM financial_cost_centers ORDER BY name"));
+  const includeInactive = String(req.query?.include_inactive || "") === "1";
+  res.json(await db.all(`SELECT * FROM financial_cost_centers ${includeInactive ? "" : "WHERE is_active = 1"} ORDER BY name`));
 }));
 
-router.post("/api/finance/cost-centers", withFeature("advanced_finance", async (req, res, db) => {
+router.post("/api/finance/cost-centers", withFeature("basic_finance", async (req, res, db) => {
   if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
   const name = String(req.body?.name || "").trim();
   if (!name) return res.status(400).json({ error: "Informe o centro de custo." });
   // Devolve o próprio centro de custo (antes vazava o resultado cru do driver).
-  const result = await db.run("INSERT INTO financial_cost_centers (name, description) VALUES (?, ?) ON CONFLICT (name) DO UPDATE SET description=EXCLUDED.description RETURNING id", [name, req.body?.description || ""]);
+  const result = await db.run(
+    `INSERT INTO financial_cost_centers (name, description) VALUES (?, ?)
+     ON CONFLICT (name) DO UPDATE
+       SET description=COALESCE(EXCLUDED.description, financial_cost_centers.description), is_active=1
+     RETURNING id`,
+    [name, req.body?.description ?? null]
+  );
   res.status(201).json(await db.get("SELECT * FROM financial_cost_centers WHERE id = ?", [result.returnedId]));
 }));
 
-router.get("/api/finance/categories", withFeature("advanced_finance", async (req, res, db) => {
-  if (!authorizePermission(req, res, P.FINANCE_VIEW)) return;
-  res.json(await db.all("SELECT * FROM financial_categories WHERE is_active = 1 ORDER BY name"));
+router.patch("/api/finance/cost-centers/:id", withFeature("basic_finance", async (req, res, db) => {
+  if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
+  const current = await db.get("SELECT * FROM financial_cost_centers WHERE id = ?", [req.params.id]);
+  if (!current) return res.status(404).json({ error: "Centro de custo não encontrado." });
+  const name = String(req.body?.name ?? current.name).trim();
+  if (!name) return res.status(400).json({ error: "Informe o centro de custo." });
+  await db.run(
+    "UPDATE financial_cost_centers SET name=?, description=?, is_active=? WHERE id=?",
+    [name, req.body?.description ?? current.description, req.body?.is_active ?? current.is_active, current.id]
+  );
+  res.json(await db.get("SELECT * FROM financial_cost_centers WHERE id = ?", [current.id]));
 }));
 
-router.post("/api/finance/categories", withFeature("advanced_finance", async (req, res, db) => {
+router.get("/api/finance/categories", withFeature("basic_finance", async (req, res, db) => {
+  if (!authorizePermission(req, res, P.FINANCE_VIEW)) return;
+  const includeInactive = String(req.query?.include_inactive || "") === "1";
+  res.json(await db.all(`SELECT * FROM financial_categories ${includeInactive ? "" : "WHERE is_active = 1"} ORDER BY name`));
+}));
+
+router.post("/api/finance/categories", withFeature("basic_finance", async (req, res, db) => {
   if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
   const name = String(req.body?.name || "").trim();
   if (!name) return res.status(400).json({ error: "Informe a categoria." });
-  const result = await db.run("INSERT INTO financial_categories (name) VALUES (?) ON CONFLICT (name) DO UPDATE SET is_active = 1 RETURNING id", [name]);
+  const result = await db.run(
+    `INSERT INTO financial_categories (name, description) VALUES (?, ?)
+     ON CONFLICT (name) DO UPDATE
+       SET description=COALESCE(EXCLUDED.description, financial_categories.description), is_active=1
+     RETURNING id`,
+    [name, req.body?.description ?? null]
+  );
   res.status(201).json(await db.get("SELECT * FROM financial_categories WHERE id = ?", [result.returnedId]));
 }));
 
-router.get("/api/finance/suppliers", withFeature("advanced_finance", async (req, res, db) => {
-  if (!authorizePermission(req, res, P.FINANCE_VIEW)) return;
-  const search = String(req.query?.search || "").trim();
-  if (search) {
-    return res.json(await db.all("SELECT * FROM suppliers WHERE is_active = 1 AND name ILIKE ? ORDER BY name", [`%${search}%`]));
-  }
-  res.json(await db.all("SELECT * FROM suppliers WHERE is_active = 1 ORDER BY name"));
+router.patch("/api/finance/categories/:id", withFeature("basic_finance", async (req, res, db) => {
+  if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
+  const current = await db.get("SELECT * FROM financial_categories WHERE id = ?", [req.params.id]);
+  if (!current) return res.status(404).json({ error: "Categoria não encontrada." });
+  const name = String(req.body?.name ?? current.name).trim();
+  if (!name) return res.status(400).json({ error: "Informe a categoria." });
+  await db.run(
+    "UPDATE financial_categories SET name=?, description=?, is_active=? WHERE id=?",
+    [name, req.body?.description ?? current.description, req.body?.is_active ?? current.is_active, current.id]
+  );
+  res.json(await db.get("SELECT * FROM financial_categories WHERE id = ?", [current.id]));
 }));
 
-router.post("/api/finance/suppliers", withFeature("advanced_finance", async (req, res, db) => {
+router.get("/api/finance/suppliers", withFeature("basic_finance", async (req, res, db) => {
+  if (!authorizePermission(req, res, P.FINANCE_VIEW)) return;
+  const search = String(req.query?.search || "").trim();
+  const includeInactive = String(req.query?.include_inactive || "") === "1";
+  const clauses = [];
+  const params = [];
+  if (!includeInactive) clauses.push("is_active = 1");
+  if (search) {
+    clauses.push("name ILIKE ?");
+    params.push(`%${search}%`);
+  }
+  res.json(await db.all(`SELECT * FROM suppliers ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""} ORDER BY name`, params));
+}));
+
+router.post("/api/finance/suppliers", withFeature("basic_finance", async (req, res, db) => {
   if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
   const name = String(req.body?.name || "").trim();
   if (!name) return res.status(400).json({ error: "Informe o nome do fornecedor." });
+  const personType = String(req.body?.person_type || "PJ").toUpperCase();
+  if (!new Set(["PJ", "PF"]).has(personType)) return res.status(400).json({ error: "Tipo de pessoa inválido." });
   const result = await db.run(
-    "INSERT INTO suppliers (name, document, phone, email, notes) VALUES (?, ?, ?, ?, ?) RETURNING id",
-    [name, req.body?.document || "", req.body?.phone || "", req.body?.email || "", req.body?.notes || ""]
+    "INSERT INTO suppliers (name, person_type, document, phone, email, notes) VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
+    [name, personType, req.body?.document || "", req.body?.phone || "", req.body?.email || "", req.body?.notes || ""]
   );
   res.status(201).json(await db.get("SELECT * FROM suppliers WHERE id = ?", [result.returnedId]));
 }));
 
-router.patch("/api/finance/suppliers/:id", withFeature("advanced_finance", async (req, res, db) => {
+router.patch("/api/finance/suppliers/:id", withFeature("basic_finance", async (req, res, db) => {
   if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
   const current = await db.get("SELECT * FROM suppliers WHERE id = ?", [req.params.id]);
   if (!current) return res.status(404).json({ error: "Fornecedor não encontrado." });
   const name = String(req.body?.name ?? current.name).trim();
   if (!name) return res.status(400).json({ error: "Informe o nome do fornecedor." });
+  const personType = String(req.body?.person_type ?? current.person_type ?? "PJ").toUpperCase();
+  if (!new Set(["PJ", "PF"]).has(personType)) return res.status(400).json({ error: "Tipo de pessoa inválido." });
   await db.run(
-    "UPDATE suppliers SET name=?, document=?, phone=?, email=?, notes=?, is_active=? WHERE id=?",
-    [name, req.body?.document ?? current.document, req.body?.phone ?? current.phone, req.body?.email ?? current.email, req.body?.notes ?? current.notes, req.body?.is_active ?? current.is_active, current.id]
+    "UPDATE suppliers SET name=?, person_type=?, document=?, phone=?, email=?, notes=?, is_active=? WHERE id=?",
+    [name, personType, req.body?.document ?? current.document, req.body?.phone ?? current.phone, req.body?.email ?? current.email, req.body?.notes ?? current.notes, req.body?.is_active ?? current.is_active, current.id]
   );
   res.json(await db.get("SELECT * FROM suppliers WHERE id = ?", [current.id]));
-}));
-
-router.post("/api/finance/entries/:id/reconcile", withFeature("advanced_finance", async (req, res, db) => {
-  if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
-  const entry = await db.get("SELECT * FROM financial_entries WHERE id=?", [req.params.id]);
-  if (!entry) return res.status(404).json({ error: "Lançamento não encontrado." });
-  const statementAmount = Number(req.body?.statement_amount);
-  const status = Math.abs(statementAmount - Number(entry.paid_amount || entry.amount)) < 0.01 ? "matched" : "divergent";
-  await db.run(`
-    INSERT INTO financial_reconciliations (entry_id, external_reference, statement_amount, statement_date, status, reconciled_by)
-    VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT (entry_id, external_reference) DO UPDATE SET statement_amount=EXCLUDED.statement_amount,
-      statement_date=EXCLUDED.statement_date, status=EXCLUDED.status, reconciled_by=EXCLUDED.reconciled_by, reconciled_at=CURRENT_TIMESTAMP
-  `, [entry.id, req.body?.external_reference || "", statementAmount, req.body?.statement_date || new Date().toISOString().slice(0, 10), status, req.user?.id || null]);
-  res.json({ ok: true, status });
-}));
-
-router.post("/api/finance/recurrences/process", withFeature("advanced_finance", async (req, res, db) => {
-  if (!authorizePermission(req, res, P.FINANCE_CREATE)) return;
-  res.json({ ok: true, created: await processRecurringEntries(db, req.body?.horizon_days) });
-}));
-
-router.get("/api/finance/goals", withFeature("advanced_finance", async (req, res, db) => {
-  if (!authorizePermission(req, res, P.FINANCE_VIEW)) return;
-  res.json(await db.all("SELECT * FROM financial_goals ORDER BY period_start DESC, id DESC"));
-}));
-
-router.post("/api/finance/goals", withFeature("advanced_finance", async (req, res, db) => {
-  if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
-  const name = String(req.body?.name || "").trim();
-  if (!name || !req.body?.period_start || !req.body?.period_end || Number(req.body?.target_amount) < 0) {
-    return res.status(400).json({ error: "Dados da meta inválidos." });
-  }
-  const result = await db.run(
-    "INSERT INTO financial_goals (name, period_start, period_end, target_amount, goal_type) VALUES (?, ?, ?, ?, ?) RETURNING id",
-    [name, req.body.period_start, req.body.period_end, Number(req.body.target_amount), req.body.goal_type || "revenue"]
-  );
-  res.status(201).json(await db.get("SELECT * FROM financial_goals WHERE id=?", [result.returnedId]));
 }));
 
 router.get("/api/finance/export.csv", withFeature("basic_finance", async (req, res, db) => {

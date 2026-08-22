@@ -1,6 +1,6 @@
 // Rotas de opções gerais e opções de inventário (categorias, tamanhos, espessuras).
 import { Router } from "express";
-import { withDb } from "../middleware/withDb.js";
+import { withFeature } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { JEWELRY_CATEGORIES, ARGOLA_SUBCATEGORIES } from "../config/index.js";
 import { groupInventoryOptions } from "../services/utils.js";
@@ -13,7 +13,7 @@ import { P } from "../config/permissions.js";
 
 const router = Router();
 
-router.get("/api/options", withDb(async (_req, res, db) => {
+router.get("/api/options", withFeature("basic_inventory", async (_req, res, db) => {
   if (!authorizePermission(_req, res, P.INVENTORY_VIEW)) return;
   const professionals = await db.all("SELECT * FROM professionals WHERE active = 1 ORDER BY name");
   const jewelry = await attachVariants(db, await db.all("SELECT * FROM jewelry_inventory ORDER BY name"));
@@ -112,12 +112,12 @@ async function moveCategoryProducts(db, fromName, toName) {
   return result.changes || 0;
 }
 
-router.get("/api/inventory-categories", withDb(async (_req, res, db) => {
+router.get("/api/inventory-categories", withFeature("basic_inventory", async (_req, res, db) => {
   if (!authorizePermission(_req, res, P.INVENTORY_VIEW)) return;
   res.json(await listInventoryCategories(db));
 }));
 
-router.post("/api/inventory-categories", withDb(async (req, res, db) => {
+router.post("/api/inventory-categories", withFeature("basic_inventory", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   const name = String(req.body.name || "").trim();
   if (!name) return res.status(400).json({ error: "Nome da categoria é obrigatório." });
@@ -130,7 +130,7 @@ router.post("/api/inventory-categories", withDb(async (req, res, db) => {
   res.status(201).json(await db.get("SELECT * FROM inventory_options WHERE id = ?", [result.returnedId]));
 }));
 
-router.patch("/api/inventory-categories/:id", withDb(async (req, res, db) => {
+router.patch("/api/inventory-categories/:id", withFeature("basic_inventory", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   const category = await categoryById(db, req.params.id);
   if (!category) return res.status(404).json({ error: "Categoria não encontrada." });
@@ -163,7 +163,7 @@ router.patch("/api/inventory-categories/:id", withDb(async (req, res, db) => {
   }
 }));
 
-router.post("/api/inventory-categories/:id/move-products", withDb(async (req, res, db) => {
+router.post("/api/inventory-categories/:id/move-products", withFeature("basic_inventory", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   const source = await categoryById(db, req.params.id);
   if (!source) return res.status(404).json({ error: "Categoria de origem não encontrada." });
@@ -181,7 +181,7 @@ router.post("/api/inventory-categories/:id/move-products", withDb(async (req, re
   }
 }));
 
-router.post("/api/inventory-categories/merge", withDb(async (req, res, db) => {
+router.post("/api/inventory-categories/merge", withFeature("basic_inventory", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   const source = await ensureCategoryExists(db, String(req.body.source_category || "").trim());
   const target = await ensureCategoryExists(db, String(req.body.target_category || "").trim(), { activeOnly: true });
@@ -203,7 +203,7 @@ router.post("/api/inventory-categories/merge", withDb(async (req, res, db) => {
   }
 }));
 
-router.post("/api/jewelry/move-category", withDb(async (req, res, db) => {
+router.post("/api/jewelry/move-category", withFeature("basic_inventory", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   const ids = Array.isArray(req.body.product_ids) ? req.body.product_ids.map(Number).filter(Boolean) : [];
   const target = await ensureCategoryExists(db, String(req.body.target_category || "").trim(), { activeOnly: true });
@@ -221,7 +221,7 @@ router.post("/api/jewelry/move-category", withDb(async (req, res, db) => {
   }
 }));
 
-router.delete("/api/inventory-categories/:id", withDb(async (req, res, db) => {
+router.delete("/api/inventory-categories/:id", withFeature("basic_inventory", async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   const category = await categoryById(db, req.params.id);
   if (!category) return res.status(404).json({ error: "Categoria não encontrada." });
@@ -249,12 +249,12 @@ router.delete("/api/inventory-categories/:id", withDb(async (req, res, db) => {
   res.json({ ok: true, deleted: true, product_count: 0, variant_count: 0 });
 }));
 
-router.patch("/api/pricing-settings", withDb(async (req, res, db) => {
+router.patch("/api/pricing-settings", withFeature("basic_inventory", async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   res.json(await savePricingSettings(db, req.body));
 }));
 
-router.post("/api/inventory-options", withDb(async (req, res, db) => {
+router.post("/api/inventory-options", withFeature("basic_inventory", async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   const { type, name } = req.body;
   if (!["category", "size", "thickness"].includes(type) || !name?.trim()) {
@@ -267,7 +267,7 @@ router.post("/api/inventory-options", withDb(async (req, res, db) => {
   res.status(201).json(await db.get("SELECT * FROM inventory_options WHERE id = ?", [result.returnedId]));
 }));
 
-router.patch("/api/inventory-options/:id", withDb(async (req, res, db) => {
+router.patch("/api/inventory-options/:id", withFeature("basic_inventory", async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   const option = await db.get("SELECT * FROM inventory_options WHERE id = ?", [req.params.id]);
   if (!option) return res.status(404).json({ error: "Opção não encontrada." });
@@ -283,7 +283,7 @@ router.patch("/api/inventory-options/:id", withDb(async (req, res, db) => {
   res.json(await db.get("SELECT * FROM inventory_options WHERE id = ?", [req.params.id]));
 }));
 
-router.delete("/api/inventory-options/:id", withDb(async (req, res, db) => {
+router.delete("/api/inventory-options/:id", withFeature("basic_inventory", async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   const option = await db.get("SELECT * FROM inventory_options WHERE id = ?", [req.params.id]);
   if (!option) return res.status(404).json({ error: "Opção não encontrada." });

@@ -3,11 +3,16 @@ import { useEffect, useState } from "react";
 import { Button, FinancialSummary, Input, Metric, Select, StatusBadge, Tabs, Textarea } from "../../components/common/Ui";
 import { Modal, CrudHeader, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
+import { InstallmentGrid } from "../../components/common/InstallmentGrid";
+import { Loading } from "../../components/common/Feedback";
 import { asArray, formatDate } from "../../lib/utils";
 import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
 import { defaultSalesLine, defaultSalesOrderForm } from "../../lib/defaultForms";
+import { installmentSummary, installmentsForPayload } from "../../lib/installments";
 import { currency, personName, saleItemLabel, saleOrderTypeLabel, saleSourceLabel } from "../../features/shared/helpers";
 import { SmartCombobox } from "../../components/common/SmartCombobox";
+import { PlanUpgradeNotice } from "../../components/common/PlanUpgradeNotice";
+import { planAllowsAction } from "../../lib/permissions";
 
 // `formatDate` de lib/utils devolve dd/MM sem ano: numa lista com histórico de
 // vários anos duas vendas distantes ficariam idênticas na coluna.
@@ -18,7 +23,13 @@ function formatDateWithYear(date) {
   return parsed.toLocaleDateString("pt-BR");
 }
 
-const ORDER_STATUS_LABELS = { concluida: "concluída", aberta: "aberta", cancelada: "cancelada" };
+const ORDER_STATUS_LABELS = {
+  concluida: "concluída",
+  aberta: "aberta",
+  cancelado: "cancelada",
+  // Compatibilidade visual com vendas antigas gravadas antes da padronização.
+  cancelada: "cancelada"
+};
 
 // Opções vindas dos próprios pedidos: nenhum filtro oferecido devolve lista vazia.
 const distinctOptions = (rows, pick, label = (value) => value) =>
@@ -27,7 +38,7 @@ const distinctOptions = (rows, pick, label = (value) => value) =>
 const orderItemsLabel = (order) =>
   asArray(order.items).map((item) => `${item.quantity}x ${item.item_name}`).join(" · ");
 
-export function SalesWorkspace() {
+export function SalesWorkspace({ features = [], onUpgrade }) {
   const { data: orders, loading: ordersLoading, error: ordersError } = useFetch("/sales-orders");
   const { data: services } = useFetch("/services");
   const { data: jewelry } = useFetch("/jewelry");
@@ -41,9 +52,13 @@ export function SalesWorkspace() {
   const [form, setForm] = useState(defaultSalesOrderForm());
   const [line, setLine] = useState(defaultSalesLine());
   const [items, setItems] = useState([]);
+  const [installments, setInstallments] = useState([]);
+  const [automaticInstallments, setAutomaticInstallments] = useState(true);
   const [error, setError] = useState("");
   const [priceQuote, setPriceQuote] = useState(null);
   const [couponMessage, setCouponMessage] = useState("");
+  const [details, setDetails] = useState(null);
+  const canGenerateReceivables = planAllowsAction(features, "sales.generate_receivables");
   const safeOrders = asArray(orders);
   const safeServices = asArray(services);
   const safeJewelry = asArray(jewelry);
@@ -87,6 +102,8 @@ export function SalesWorkspace() {
   function handleTabChange(nextTab) {
     setTab(nextTab);
     setItems([]);
+    setInstallments([]);
+    setAutomaticInstallments(true);
     setError("");
 
     if (nextTab === "servico") {
@@ -130,7 +147,11 @@ export function SalesWorkspace() {
   // A lista carrega sozinha: só a tabela espera pelos pedidos, o resto da tela
   // (métricas e modal de cadastro) não fica bloqueado pelos outros fetches.
   const currentMonth = new Date().toISOString().slice(0, 7);
-  const monthOrders = safeOrders.filter((order) => String(order?.created_at || "").startsWith(currentMonth) && order?.status !== "cancelada");
+  const monthOrders = safeOrders.filter(
+    (order) =>
+      String(order?.created_at || "").startsWith(currentMonth) &&
+      !["cancelado", "cancelada"].includes(order?.status)
+  );
   const summary = {
     total: monthOrders.reduce((sum, order) => sum + Number(order.total_value || 0), 0),
     products: monthOrders.filter((order) => order.order_type === "produto").reduce((sum, order) => sum + Number(order.total_value || 0), 0),
@@ -145,6 +166,8 @@ export function SalesWorkspace() {
   function openNew() {
     setForm(defaultSalesOrderForm());
     setItems([]);
+    setInstallments([]);
+    setAutomaticInstallments(true);
     setLine(defaultSalesLine());
     setTab("produto");
     setError("");
@@ -213,6 +236,17 @@ export function SalesWorkspace() {
       setError("Adicione ao menos um item à venda.");
       return;
     }
+    if (form.receivable_mode === "pending" && !canGenerateReceivables) {
+      setError("Gerar contas a receber exige o plano Profissional. Registre a venda como recebida agora ou faça o upgrade.");
+      return;
+    }
+    if (form.receivable_mode === "pending") {
+      const schedule = installmentSummary(saleTotal, installments, form.installment_count);
+      if (!schedule.isValid) {
+        setError("Revise as parcelas: a soma deve coincidir com o total da venda e todos os campos são obrigatórios.");
+        return;
+      }
+    }
     const response = await apiFetch("/sales-orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -220,6 +254,7 @@ export function SalesWorkspace() {
         ...form,
         order_type: tab,
         source: "interno",
+        installments: form.receivable_mode === "pending" ? installmentsForPayload(installments) : [],
         items
       })
     });
@@ -229,19 +264,42 @@ export function SalesWorkspace() {
     }
     setForm(defaultSalesOrderForm());
     setItems([]);
+    setInstallments([]);
+    setAutomaticInstallments(true);
     setLine(defaultSalesLine());
     setTab("produto");
     setModalOpen(false);
     refreshOrders();
   }
 
-  async function updateStatus(id, status) {
-    await apiFetch(`/sales-orders/${id}`, {
+  async function updateStatus(order, status) {
+    setError("");
+    const orderInstallments = asArray(order.installments);
+    const response = await apiFetch(`/sales-orders/${order.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status })
+      body: JSON.stringify({
+        status,
+        payment_method: order.payment_method || "Pix",
+        receivable_mode: order.receivable_mode || "paid",
+        installment_count: Number(order.installment_count || 1),
+        first_due_date: order.first_due_date || String(order.created_at || new Date().toISOString()).slice(0, 10),
+        ...(orderInstallments.length ? { installments: installmentsForPayload(orderInstallments) } : {})
+      })
     });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      setError(payload.error || "Não foi possível atualizar a venda.");
+      return;
+    }
     refreshOrders();
+  }
+
+  async function openDetails(order) {
+    setDetails({ ...order, loading: true });
+    const response = await apiFetch(`/sales-orders/${order.id}`);
+    const payload = await response.json().catch(() => ({}));
+    setDetails(response.ok ? payload : { ...order, error: payload.error || "Não foi possível abrir a venda." });
   }
 
   return (
@@ -326,11 +384,20 @@ export function SalesWorkspace() {
             { key: "total_value", label: "Valor", align: "right", value: (order) => Number(order.total_value || 0), render: (order) => currency.format(order.total_value || 0) },
             { key: "payment_method", label: "Pagamento", value: (order) => order.payment_method || "Pix", render: (order) => order.payment_method || "Pix" },
             {
+              key: "installment_count",
+              label: "Recebimento",
+              value: (order) => Number(order.installment_count || asArray(order.receivables).length || 1),
+              render: (order) =>
+                order.receivable_mode === "pending"
+                  ? `${Number(order.installment_count || asArray(order.receivables).length || 1)} parcela(s)`
+                  : "Recebido agora"
+            },
+            {
               key: "status",
               label: "Status",
               value: (order) => order.status || "",
               render: (order) => (
-                <StatusBadge status={order.status} tone={order.status === "cancelada" ? "danger" : order.status === "aberta" ? "warn" : "ok"} />
+                <StatusBadge status={order.status} tone={["cancelado", "cancelada"].includes(order.status) ? "danger" : order.status === "aberta" ? "warn" : "ok"} />
               )
             },
             {
@@ -342,9 +409,15 @@ export function SalesWorkspace() {
           ]}
           actions={(order) => (
             <RowActions actions={[
-              { label: "Concluir", onClick: () => updateStatus(order.id, "concluida") },
-              { label: "Cancelar", onClick: () => updateStatus(order.id, "cancelada"), danger: true }
-            ]} />
+              { label: "Detalhes", onClick: () => openDetails(order) },
+              ["pendente", "aberta"].includes(order.status) && order.source !== "agenda" && {
+                label: "Concluir", onClick: () => updateStatus(order, "concluida")
+              },
+              !["cancelado", "cancelada"].includes(order.status) && order.source !== "agenda" &&
+                !Number(order.stock_deducted || 0) && !Number(order.paid_value || 0) && {
+                label: "Cancelar", onClick: () => updateStatus(order, "cancelado"), danger: true
+              }
+            ].filter(Boolean)} />
           )}
           empty="Nenhuma venda registrada ainda."
         />
@@ -401,12 +474,26 @@ export function SalesWorkspace() {
               <option>Cartão de crédito</option>
               <option>Cartão de débito</option>
             </Select>
+            <Select label="Recebimento" value={form.receivable_mode} onChange={(value) => setForm({ ...form, receivable_mode: value })}>
+              <option value="paid">Recebido agora</option>
+              <option value="pending" disabled={!canGenerateReceivables}>Gerar contas a receber{canGenerateReceivables ? "" : " — Profissional"}</option>
+            </Select>
+            {form.receivable_mode === "pending" && <>
+              <Input type="number" min="1" max="120" label="Parcelas" value={form.installment_count} onChange={(value) => setForm({ ...form, installment_count: value })} required />
+              <Input type="date" label="Primeiro vencimento" value={form.first_due_date} onChange={(value) => setForm({ ...form, first_due_date: value })} required />
+            </>}
             <Select label="Status" value={form.status} onChange={(value) => setForm({ ...form, status: value })}>
               <option value="concluida">concluída</option>
               <option value="aberta">aberta</option>
-              <option value="cancelada">cancelada</option>
+              <option value="cancelado">cancelada</option>
             </Select>
           </div>
+
+          {!canGenerateReceivables && (
+            <PlanUpgradeNotice title="Contas a receber no plano Profissional" onUpgrade={onUpgrade}>
+              A venda e o pagamento imediato continuam disponíveis no Start. O upgrade libera vencimentos e parcelamento em contas a receber.
+            </PlanUpgradeNotice>
+          )}
 
           <div className="sales-line-builder">
             <div className="sales-line-header">
@@ -480,7 +567,7 @@ export function SalesWorkspace() {
               </article>
             )) : <p className="empty-state">Nenhum item adicionado ainda.</p>}
           </div>
-          <FinancialSummary summary={{ grossTotal: saleSubtotal, serviceSubtotal, productSubtotal, discountTotal: Number(priceQuote?.promotion_discount || 0) + Number(priceQuote?.coupon_discount || 0), netTotal: saleTotal, depositPaid: 0, otherPayments: 0, totalPaid: 0, outstandingBalance: saleTotal, paymentStatus: "pendente", couponCode: priceQuote?.coupon?.code || form.coupon_code || "" }} />
+          <FinancialSummary summary={{ grossTotal: saleSubtotal, serviceSubtotal, productSubtotal, discountTotal: Number(priceQuote?.promotion_discount || 0) + Number(priceQuote?.coupon_discount || 0), netTotal: saleTotal, depositPaid: 0, otherPayments: form.receivable_mode === "paid" ? saleTotal : 0, totalPaid: form.receivable_mode === "paid" ? saleTotal : 0, outstandingBalance: form.receivable_mode === "paid" ? 0 : saleTotal, paymentStatus: form.receivable_mode === "paid" ? "pago" : "pendente", couponCode: priceQuote?.coupon?.code || form.coupon_code || "" }} />
           <div className="catalog-coupon-field">
             <Input label="Cupom" value={form.coupon_code || ""} onChange={(value) => { setForm({ ...form, coupon_code: value.toUpperCase() }); setPriceQuote(null); setCouponMessage(""); }} />
             <Button type="button" variant="secondary" onClick={applyCoupon} disabled={!form.coupon_code?.trim() || !items.length}>Aplicar cupom</Button>
@@ -488,9 +575,90 @@ export function SalesWorkspace() {
           </div>
           {couponMessage && <span className="form-success">{couponMessage}</span>}
 
+          {form.receivable_mode === "pending" && canGenerateReceivables && (
+            <InstallmentGrid
+              total={saleTotal}
+              count={form.installment_count}
+              firstDueDate={form.first_due_date}
+              paymentMethod={form.payment_method}
+              installments={installments}
+              onChange={setInstallments}
+              automatic={automaticInstallments}
+              onAutomaticChange={setAutomaticInstallments}
+              title={tab === "servico" ? "Parcelas do serviço" : "Parcelas da venda"}
+            />
+          )}
+
           <Textarea label="Observações da venda" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} />
           {error && <span className="form-error">{error}</span>}
         </form>
+      </Modal>
+
+      <Modal
+        open={!!details}
+        title={`Venda #${details?.id || ""}`}
+        subtitle={details?.full_name || "Cliente não informado"}
+        size="lg"
+        onClose={() => setDetails(null)}
+      >
+        {details?.loading ? (
+          <Loading />
+        ) : (
+          <div className="stack">
+            {details?.error && <span className="form-error">{details.error}</span>}
+            <div className="form-grid">
+              <div>
+                <small>Total</small>
+                <strong>{currency.format(Number(details?.total_value || 0))}</strong>
+              </div>
+              <div>
+                <small>Forma padrão</small>
+                <strong>{details?.payment_method || "Pix"}</strong>
+              </div>
+              <div>
+                <small>Recebimento</small>
+                <strong>{details?.receivable_mode === "pending" ? "Contas a receber" : "Recebido agora"}</strong>
+              </div>
+              <div>
+                <small>Status</small>
+                <StatusBadge status={details?.status} />
+              </div>
+            </div>
+            <section className="soft-card stack">
+              <div className="section-inline-header">
+                <strong>Cronograma de recebimento</strong>
+                <span>{asArray(details?.receivables).length} parcela(s)</span>
+              </div>
+              {asArray(details?.receivables).length ? (
+                <div className="clean-list">
+                  {asArray(details.receivables).map((receivable, index) => (
+                    <div key={receivable.id || receivable.source_key || receivable.installment_number || receivable.due_date}>
+                      <span>
+                        <strong>
+                          Parcela {receivable.installment_number || index + 1}/
+                          {receivable.installment_count || details.installment_count || asArray(details.receivables).length}
+                        </strong>
+                        <small>
+                          {formatDateWithYear(receivable.due_date)} · {receivable.payment_method || details.payment_method || "Pix"}
+                        </small>
+                      </span>
+                      <span>
+                        <strong>{currency.format(Number(receivable.amount || 0))}</strong>
+                        <StatusBadge status={receivable.status} />
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="empty-state">
+                  {details?.receivable_mode === "pending"
+                    ? "Nenhuma parcela retornada pelo financeiro."
+                    : "Esta venda foi registrada como recebida no ato."}
+                </p>
+              )}
+            </section>
+          </div>
+        )}
       </Modal>
     </section>
   );

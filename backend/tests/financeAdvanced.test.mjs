@@ -20,7 +20,7 @@ function api(path, options = {}) {
   return req(path, { tenant: context.slug, token: context.token, ...options });
 }
 
-test("Financeiro 2.0 cria parcelas, baixa parcialmente e evita recorrência duplicada", async () => {
+test("financeiro cria parcelas e permite baixa parcial", async () => {
   const created = await api("/finance/entries", {
     method: "POST",
     body: {
@@ -35,12 +35,6 @@ test("Financeiro 2.0 cria parcelas, baixa parcialmente e evita recorrência dupl
   const partial = await api(`/finance/entries/${created.json[0].id}`, { method: "PATCH", body: { paid_amount: 40 } });
   assert.equal(partial.status, 200, JSON.stringify(partial.json));
   assert.equal(partial.json.status, "partially_paid");
-
-  const firstRun = await api("/finance/recurrences/process", { method: "POST", body: { horizon_days: 120 } });
-  const secondRun = await api("/finance/recurrences/process", { method: "POST", body: { horizon_days: 120 } });
-  assert.equal(firstRun.status, 200, JSON.stringify(firstRun.json));
-  assert.equal(secondRun.status, 200, JSON.stringify(secondRun.json));
-  assert.equal(secondRun.json.created, 0);
 
   const ledger = await api("/finance/ledger?from=2026-08-01&to=2027-12-31");
   assert.equal(ledger.status, 200, JSON.stringify(ledger.json));

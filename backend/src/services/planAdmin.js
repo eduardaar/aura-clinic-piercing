@@ -23,7 +23,15 @@
 //     restart — e a edição pareceria não ter funcionado.
 import { pool, query } from "../database/connection.js";
 import { isPlatformEnabled, platformClient } from "./asaas/credentials.js";
-import { FEATURE_CATALOG, FEATURE_KEYS, LIMIT_CATALOG, LIMIT_KEYS, loadPlansFromDb } from "./plans.js";
+import {
+  FEATURE_CATALOG,
+  FEATURE_KEYS,
+  LIMIT_CATALOG,
+  LIMIT_KEYS,
+  loadPlansFromDb,
+  normalizeFeatureKey,
+  normalizeFeatureList
+} from "./plans.js";
 
 // Erro de regra de negócio desta camada, com o status HTTP já decidido aqui —
 // a rota não deveria ter de adivinhar se "plano com assinante" é 400 ou 409.
@@ -116,16 +124,17 @@ function normalizarTrialDays(valor) {
 // (`{ clients: true, agenda: false }`), que é o formato natural de um
 // formulário com checkbox.
 function normalizarFeatures(valor) {
-  let chaves;
+  let chavesBrutas;
   if (Array.isArray(valor)) {
-    chaves = valor.map((item) => String(item ?? "").trim()).filter(Boolean);
+    chavesBrutas = valor.map((item) => String(item ?? "").trim()).filter(Boolean);
   } else if (valor && typeof valor === "object") {
-    chaves = Object.entries(valor)
+    chavesBrutas = Object.entries(valor)
       .filter(([, marcado]) => Boolean(marcado))
       .map(([chave]) => chave.trim());
   } else {
     throw new PlanAdminError('O campo "features" deve ser uma lista de chaves.');
   }
+  const chaves = [...new Set(chavesBrutas.map(normalizeFeatureKey))];
 
   // Chave desconhecida é ERRO, não ruído a ser filtrado: nenhuma rota é
   // protegida por ela, então o super-admin sairia da tela convencido de ter
@@ -199,7 +208,7 @@ function paraPainel(row) {
     audience: row.audience || "",
     description: row.description || "",
     trial_days: Number(row.trial_days ?? 7),
-    features: Array.isArray(row.features) ? row.features : [],
+    features: normalizeFeatureList(row.features),
     limits: row.limits && typeof row.limits === "object" ? row.limits : {},
     is_recommended: Boolean(row.is_recommended),
     is_active: row.is_active !== false,

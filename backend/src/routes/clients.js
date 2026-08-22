@@ -1,6 +1,6 @@
 // Rotas de clientes, prontuarios medicos e resgates de fidelidade.
 import { Router } from "express";
-import { withDb } from "../middleware/withDb.js";
+import { withFeature } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { parseUpload, privateUpload, registerPrivateFiles } from "../middleware/upload.js";
 import { getMedicalRecord } from "../services/appointments.js";
@@ -43,7 +43,7 @@ function clientResponse(client) {
   return client ? { ...client, name: client.full_name } : client;
 }
 
-router.post("/api/clients", withDb(async (req, res, db) => {
+router.post("/api/clients", withFeature("clients", async (req, res, db) => {
   if (!authorizePermission(req, res, P.CLIENTS_CREATE)) return;
   const b = normalizeClientBody(req.body);
   req.body = { ...req.body, full_name: b.full_name, whatsapp: b.whatsapp };
@@ -75,10 +75,10 @@ async function updateClient(req, res, db) {
   res.json(clientResponse(await db.get("SELECT * FROM clients WHERE id = ?", [req.params.id])));
 }
 
-router.put("/api/clients/:id", withDb(updateClient));
-router.patch("/api/clients/:id", withDb(updateClient));
+router.put("/api/clients/:id", withFeature("clients", updateClient));
+router.patch("/api/clients/:id", withFeature("clients", updateClient));
 
-router.delete("/api/clients/:id", withDb(async (req, res, db) => {
+router.delete("/api/clients/:id", withFeature("clients", async (req, res, db) => {
   if (!authorizePermission(req, res, P.CLIENTS_DELETE)) return;
   const id = req.params.id;
   if (req.body?.confirmation !== "EXCLUIR CLIENTE") return res.status(400).json({ error: "Digite EXCLUIR CLIENTE para confirmar." });
@@ -121,7 +121,7 @@ async function clientDeletionImpact(db, id) {
   return Object.fromEntries(Object.entries(row || {}).map(([key, value]) => [key, Number(value || 0)]));
 }
 
-router.get("/api/clients/:id/deletion-impact", withDb(async (req, res, db) => {
+router.get("/api/clients/:id/deletion-impact", withFeature("clients", async (req, res, db) => {
   if (!authorizePermission(req, res, P.CLIENTS_DELETE)) return;
   const client = await db.get("SELECT id FROM clients WHERE id = ? AND deleted_at IS NULL", [req.params.id]);
   if (!client) return res.status(404).json({ error: "Cliente não encontrado." });
@@ -133,7 +133,7 @@ router.get("/api/clients/:id/deletion-impact", withDb(async (req, res, db) => {
 // tela de listagem/busca exibe. O enriquecimento (timeline, prontuários,
 // fidelidade...) saiu daqui e virou GET /api/clients/:id — antes esta rota
 // carregava onze tabelas inteiras em memória para montar a timeline de todos.
-router.get("/api/clients", withDb(async (req, res, db) => {
+router.get("/api/clients", withFeature("clients", async (req, res, db) => {
   if (!authorizePermission(req, res, P.CLIENTS_VIEW)) return;
   const clauses = [];
   const params = [];
@@ -163,7 +163,7 @@ router.get("/api/clients", withDb(async (req, res, db) => {
   res.json(pageResponse(rows.map(clientResponse), total, paging));
 }));
 
-router.get("/api/clients/:id", withDb(async (req, res, db) => {
+router.get("/api/clients/:id", withFeature("clients", async (req, res, db) => {
   if (!authorizePermission(req, res, P.CLIENTS_VIEW)) return;
   const client = await getClientWithDetails(db, req.params.id);
   if (client?.deleted_at) return res.status(404).json({ error: "Cliente nao encontrado." });
@@ -183,7 +183,7 @@ router.get("/api/clients/:id", withDb(async (req, res, db) => {
   res.json(clientResponse(visible));
 }));
 
-router.post("/api/clients/:id/loyalty-redemptions", withDb(async (req, res, db) => {
+router.post("/api/clients/:id/loyalty-redemptions", withFeature("clients", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   const client = await db.get("SELECT id FROM clients WHERE id = ?", [req.params.id]);
   if (!client) return res.status(404).json({ error: "Cliente nao encontrado." });
@@ -200,7 +200,7 @@ router.post("/api/clients/:id/loyalty-redemptions", withDb(async (req, res, db) 
   res.status(201).json(await getClientLoyalty(db, req.params.id));
 }));
 
-router.post("/api/clients/:id/medical-records", withDb(async (req, res, db) => {
+router.post("/api/clients/:id/medical-records", withFeature("clients", async (req, res, db) => {
   if (!authorizePermission(req, res, P.CLINICAL_FILES_EDIT)) return;
   await parseUpload(privateUpload.fields([{ name: "before_photo", maxCount: 1 }, { name: "after_photo", maxCount: 1 }]), req, res, { imagesOnly: true });
   await registerPrivateFiles(db, Object.values(req.files || {}).flat(), "medical_record", req.user?.id);
@@ -231,7 +231,7 @@ router.post("/api/clients/:id/medical-records", withDb(async (req, res, db) => {
   res.status(201).json(await getMedicalRecord(db, result.returnedId));
 }));
 
-router.delete("/api/clients/:clientId/medical-records/:recordId", withDb(async (req, res, db) => {
+router.delete("/api/clients/:clientId/medical-records/:recordId", withFeature("clients", async (req, res, db) => {
   if (!authorizePermission(req, res, P.CLINICAL_FILES_EDIT)) return;
   await db.run("DELETE FROM client_medical_records WHERE id = ? AND client_id = ?", [req.params.recordId, req.params.clientId]);
   res.json({ ok: true });

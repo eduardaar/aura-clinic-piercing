@@ -84,15 +84,22 @@ O produto pai mantém os dados compartilhados e o resumo de estoque.
 
 | Tabelas | Responsabilidade |
 | --- | --- |
-| `sales_orders`, `sales_order_items` | Pedidos internos ou do checkout público e suas linhas. |
+| `sales_orders`, `sales_order_items` | Pedidos internos ou do checkout público e suas linhas. `installments_json` preserva o cronograma editável enquanto a venda está aberta; ao concluir, ele é materializado no razão. |
+| `purchase_orders`, `purchase_order_items`, `suppliers` | Compras, itens recebidos e fornecedores PF/PJ. `installments_json` preserva o cronograma no rascunho; a confirmação é a origem da entrada de estoque e das parcelas a pagar. |
 | `coupons`, `coupon_usages`, `catalog_promotions`, `promotion_usages`, `promotion_audit_logs` | Regras comerciais, aplicação e auditoria de cupons/promoções. |
 | `expenses`, `expense_audit_logs` | Despesas e alterações relevantes. |
-| `financial_cost_centers`, `financial_entries`, `financial_entry_audit` | Plano de contas, razão e trilha do lançamento. |
+| `financial_categories`, `financial_cost_centers`, `financial_entries`, `financial_entry_audit` | Categorias, centros de custo, razão de contas a pagar/receber e trilha do lançamento. |
 | `financial_goals`, `financial_reconciliations` | Metas e conciliação de extratos. |
 
 Pedidos podem referenciar cliente e agendamento. Os itens podem apontar para
 produto, variação ou serviço; cupons registram o snapshot aplicado para que o
 histórico não dependa de uma regra que foi editada depois.
+
+`financial_entries.source_type/source_id/source_key` liga cada título à sua
+origem e garante idempotência. Compras confirmadas usam `purchase_order` para
+as contas a pagar; vendas e ordens de serviço usam `sales_order` para contas a
+receber. `stock_movements` guarda também os ids do item de compra ou venda que
+originou a movimentação, impedindo uma segunda baixa/entrada por reenvio.
 
 ### Comunicações
 
@@ -125,6 +132,7 @@ estoque e vencimento de despesas. Algumas colunas históricas de variação e
 serviço são mantidas como inteiros sem FK formal; as rotas de estoque, vendas e
 agenda validam seus vínculos antes de gravar.
 
-Para mudanças de tipo, coluna ou índice, altere o SQL idempotente em vez de
-criar migrations paralelas: o boot aplica `schema.sql` a todos os tenants antes
-de aceitar tráfego.
+Mudanças de tipo, coluna ou índice entram primeiro nas migrations versionadas
+de `backend/src/db/migrations/tenant/`. O `schema.sql` deve espelhar o estado
+final para novos tenants, enquanto o ledger de migrations atualiza instalações
+existentes de forma ordenada e verificável.

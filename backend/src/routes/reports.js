@@ -2,11 +2,12 @@ import { Router } from "express";
 import PDFDocument from "pdfkit";
 import ExcelJS from "exceljs";
 import { withFeature } from "../middleware/withDb.js";
-import { buildReport } from "../services/reports.js";
+import { buildReport, REPORT_FEATURE_REQUIREMENTS } from "../services/reports.js";
 import { csvEscape } from "../services/utils.js";
 import { P } from "../config/permissions.js";
 import { authorizePermission } from "../middleware/requirePermission.js";
 import { hasPermission } from "../services/permissionService.js";
+import { requireFeature } from "../services/subscriptions.js";
 
 const router = Router();
 
@@ -16,6 +17,9 @@ function title(type) {
 
 router.get("/api/reports/:type", withFeature("basic_reports", async (req, res, db) => {
   const financialTypes = new Set(["financial", "payments", "commissions"]);
+  for (const feature of REPORT_FEATURE_REQUIREMENTS[req.params.type] || []) {
+    if (!(await requireFeature(req, res, feature))) return;
+  }
   const permission = financialTypes.has(req.params.type) ? P.REPORTS_VIEW_FINANCIAL : (hasPermission(req.user, P.REPORTS_VIEW_ALL) ? P.REPORTS_VIEW_ALL : P.REPORTS_VIEW_OWN);
   if (!authorizePermission(req, res, permission)) return;
   if (permission === P.REPORTS_VIEW_OWN) {

@@ -1,6 +1,6 @@
 // Rotas do catálogo online e sua personalização/administração.
 import { Router } from "express";
-import { withDb, withFeature } from "../middleware/withDb.js";
+import { withFeature } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { authorizePermission } from "../middleware/requirePermission.js";
 import { P } from "../config/permissions.js";
@@ -10,7 +10,7 @@ import { validateCoupon } from "../services/discounts.js";
 import { quotePromotions } from "../services/promotions.js";
 import { parsePaging, fetchPage, pageResponse } from "../services/pagination.js";
 import { planLimit } from "../services/plans.js";
-import { tenantSubscription } from "../services/subscriptions.js";
+import { requireFeature, tenantSubscription } from "../services/subscriptions.js";
 import { upload, parseUpload } from "../middleware/upload.js";
 import {
   CatalogCustomizationError,
@@ -25,6 +25,14 @@ import {
 } from "../services/catalog.js";
 
 const router = Router();
+
+// Diferenciais do catálogo só fazem sentido quando o plano também conserva
+// o catálogo base. Isso continua verdadeiro mesmo para matrizes personalizadas
+// editadas pelo super-admin.
+const withCatalogFeature = (feature, handler) => withFeature("basic_catalog", async (req, res, db) => {
+  if (!(await requireFeature(req, res, feature))) return;
+  return handler(req, res, db);
+});
 
 // Whitelists de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
 const COUPON_SORTABLE = {
@@ -46,7 +54,7 @@ const PROMOTION_SORTABLE = {
   end_date: "p.end_date"
 };
 
-router.post("/api/catalog/events", withDb(async (req, res, db) => {
+router.post("/api/catalog/events", withFeature("basic_catalog", async (req, res, db) => {
   const eventType = String(req.body?.event_type || "");
   const allowed = new Set(["catalog_view", "product_view", "product_selected", "checkout_started", "booking_created"]);
   if (!allowed.has(eventType)) return res.status(400).json({ error: "Evento inválido." });
@@ -85,7 +93,7 @@ async function catalogPluginAccess(req) {
   };
 }
 
-router.get("/api/catalog", withDb(async (_req, res, db) => {
+router.get("/api/catalog", withFeature("basic_catalog", async (_req, res, db) => {
   const customization = await getCatalogCustomization(db, { published: true });
   const featuredByProduct = new Map(
     asArray(customization.featuredProducts)
@@ -189,7 +197,7 @@ router.get("/api/catalog", withDb(async (_req, res, db) => {
   });
 }));
 
-router.get("/api/catalog-customization", withFeature("public_catalog_customization", async (req, res, db) => {
+router.get("/api/catalog-customization", withCatalogFeature("public_catalog_customization", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   const customization = await getCatalogCustomization(db);
   const products = await attachVariants(db, await db.all("SELECT * FROM jewelry_inventory ORDER BY name"));
@@ -203,7 +211,7 @@ router.get("/api/catalog-customization", withFeature("public_catalog_customizati
 // Biblioteca de imagens do editor. `withFeature` resolve o tenant e fixa o
 // schema antes de acessar a tabela; a chave do objeto também leva o tenant,
 // via `parseUpload(..., { category: 'catalog' })`.
-router.get("/api/catalog-media", withFeature("public_catalog_customization", async (req, res, db) => {
+router.get("/api/catalog-media", withCatalogFeature("public_catalog_customization", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   const items = await db.all(
     "SELECT id, url, storage_key, original_name, mime_type, alt_text, created_at, updated_at FROM catalog_media_assets ORDER BY created_at DESC, id DESC"
@@ -211,7 +219,7 @@ router.get("/api/catalog-media", withFeature("public_catalog_customization", asy
   res.json({ items });
 }));
 
-router.post("/api/catalog-media", withFeature("public_catalog_customization", async (req, res, db) => {
+router.post("/api/catalog-media", withCatalogFeature("public_catalog_customization", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   await parseUpload(upload.single("file"), req, res, { category: "catalog", imagesOnly: true });
   if (!req.file?.publicUrl || !req.file?.storageKey) return res.status(400).json({ error: "Nenhum arquivo enviado." });
@@ -230,7 +238,7 @@ router.post("/api/catalog-media", withFeature("public_catalog_customization", as
   res.status(201).json({ item: created.rows[0] });
 }));
 
-router.patch("/api/catalog-media/:id", withFeature("public_catalog_customization", async (req, res, db) => {
+router.patch("/api/catalog-media/:id", withCatalogFeature("public_catalog_customization", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: "Mídia inválida." });
@@ -252,7 +260,7 @@ router.patch("/api/catalog-media/:id", withFeature("public_catalog_customization
 
 // O checklist lê apenas o draft. Ele é útil para a interface avisar antes do
 // clique em "Publicar" e não expõe nenhuma revisão ou asset de outro tenant.
-router.get("/api/catalog-customization/checklist", withFeature("public_catalog_customization", async (req, res, db) => {
+router.get("/api/catalog-customization/checklist", withCatalogFeature("public_catalog_customization", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   try {
     res.json({ checklist: await getCatalogCustomizationChecklist(db) });
@@ -261,7 +269,7 @@ router.get("/api/catalog-customization/checklist", withFeature("public_catalog_c
   }
 }));
 
-router.patch("/api/catalog-customization", withFeature("public_catalog_customization", async (req, res, db) => {
+router.patch("/api/catalog-customization", withCatalogFeature("public_catalog_customization", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   try {
     await saveCatalogCustomization(db, req.body || {}, { userId: req.user?.id, ...await catalogPluginAccess(req) });
@@ -271,7 +279,7 @@ router.patch("/api/catalog-customization", withFeature("public_catalog_customiza
   }
 }));
 
-router.post("/api/catalog-customization/publish", withFeature("public_catalog_customization", async (req, res, db) => {
+router.post("/api/catalog-customization/publish", withCatalogFeature("public_catalog_customization", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   try {
     const published = await publishCatalogCustomization(db, req.body || {}, { userId: req.user?.id, ...await catalogPluginAccess(req) });
@@ -288,7 +296,7 @@ router.post("/api/catalog-customization/publish", withFeature("public_catalog_cu
   }
 }));
 
-router.post("/api/catalog-customization/reset", withFeature("public_catalog_customization", async (req, res, db) => {
+router.post("/api/catalog-customization/reset", withCatalogFeature("public_catalog_customization", async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   try {
     await resetCatalogCustomization(db, req.body || {}, { userId: req.user?.id });
@@ -298,7 +306,7 @@ router.post("/api/catalog-customization/reset", withFeature("public_catalog_cust
   }
 }));
 
-router.get("/api/catalog-customization/history", withFeature("public_catalog_customization", async (req, res, db) => {
+router.get("/api/catalog-customization/history", withCatalogFeature("public_catalog_customization", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   try {
     res.json(await listCatalogCustomizationHistory(db, { limit: req.query.limit }));
@@ -307,7 +315,7 @@ router.get("/api/catalog-customization/history", withFeature("public_catalog_cus
   }
 }));
 
-router.get("/api/catalog-customization/history/:version", withFeature("public_catalog_customization", async (req, res, db) => {
+router.get("/api/catalog-customization/history/:version", withCatalogFeature("public_catalog_customization", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   try {
     res.json({ revision: await getCatalogCustomizationRevision(db, req.params.version) });
@@ -316,7 +324,7 @@ router.get("/api/catalog-customization/history/:version", withFeature("public_ca
   }
 }));
 
-router.post("/api/catalog-customization/rollback/:version", withFeature("public_catalog_customization", async (req, res, db) => {
+router.post("/api/catalog-customization/rollback/:version", withCatalogFeature("public_catalog_customization", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   try {
     const rolledBack = await rollbackCatalogCustomization(db, req.params.version, req.body || {}, { userId: req.user?.id, ...await catalogPluginAccess(req) });
@@ -333,7 +341,7 @@ router.post("/api/catalog-customization/rollback/:version", withFeature("public_
   }
 }));
 
-router.get("/api/catalog-settings", withDb(async (req, res, db) => {
+router.get("/api/catalog-settings", withCatalogFeature("public_catalog_customization", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   const customization = await getCatalogCustomization(db);
   res.json({
@@ -343,7 +351,7 @@ router.get("/api/catalog-settings", withDb(async (req, res, db) => {
   });
 }));
 
-router.get("/api/coupons", withFeature("coupons", async (req, res, db) => {
+router.get("/api/coupons", withCatalogFeature("coupons", async (req, res, db) => {
   if (!authorizePermission(req, res, P.COUPONS_VIEW)) return;
   // O cupom "apagado" continua fora da lista: é o filtro base, não um opcional.
   const clauses = ["c.deleted_at IS NULL"];
@@ -383,7 +391,7 @@ router.get("/api/coupons", withFeature("coupons", async (req, res, db) => {
   res.json(pageResponse(rows, total, paging));
 }));
 
-router.post("/api/coupons", withFeature("coupons", async (req, res, db) => {
+router.post("/api/coupons", withCatalogFeature("coupons", async (req, res, db) => {
   if (!authorizePermission(req, res, P.COUPONS_CREATE)) return;
   const body = req.body || {};
   const code = String(body.code || "").trim().toUpperCase();
@@ -412,7 +420,7 @@ router.post("/api/coupons", withFeature("coupons", async (req, res, db) => {
   res.status(201).json(await db.get("SELECT * FROM coupons WHERE id = ?", [result.returnedId]));
 }));
 
-router.patch("/api/coupons/:id", withFeature("coupons", async (req, res, db) => {
+router.patch("/api/coupons/:id", withCatalogFeature("coupons", async (req, res, db) => {
   if (!authorizePermission(req, res, P.COUPONS_EDIT)) return;
   const current = await db.get("SELECT * FROM coupons WHERE id = ? AND deleted_at IS NULL", [req.params.id]);
   if (!current) return res.status(404).json({ error: "Cupom não encontrado." });
@@ -441,7 +449,7 @@ router.patch("/api/coupons/:id", withFeature("coupons", async (req, res, db) => 
   res.json(await db.get("SELECT * FROM coupons WHERE id = ?", [req.params.id]));
 }));
 
-router.delete("/api/coupons/:id", withFeature("coupons", async (req, res, db) => {
+router.delete("/api/coupons/:id", withCatalogFeature("coupons", async (req, res, db) => {
   if (!authorizePermission(req, res, P.COUPONS_DELETE)) return;
   const usage = await db.get("SELECT COUNT(*) AS count FROM coupon_usages WHERE coupon_id = ?", [req.params.id]);
   if (Number(usage?.count || 0) > 0) {
@@ -452,16 +460,16 @@ router.delete("/api/coupons/:id", withFeature("coupons", async (req, res, db) =>
   res.json({ ok: true });
 }));
 
-router.post("/api/catalog/coupon-quote", withDb(async (req, res, db) => {
+router.post("/api/catalog/coupon-quote", withFeature("basic_catalog", async (req, res, db) => {
   const result = await validateCoupon(db, req.body?.code, req.body || {});
   res.status(result.valid ? 200 : 400).json(result);
 }));
 
-router.post("/api/catalog/promotion-quote", withDb(async (req, res, db) => {
+router.post("/api/catalog/promotion-quote", withFeature("basic_catalog", async (req, res, db) => {
   res.json(await quotePromotions(db, req.body || {}));
 }));
 
-router.post("/api/catalog/price-quote", withDb(async (req, res, db) => {
+router.post("/api/catalog/price-quote", withFeature("basic_catalog", async (req, res, db) => {
   const body = req.body || {};
   const promotionQuote = await quotePromotions(db, body);
   let couponQuote = null;
@@ -492,7 +500,7 @@ router.post("/api/catalog/price-quote", withDb(async (req, res, db) => {
   });
 }));
 
-router.get("/api/promotions", withFeature("campaigns", async (req, res, db) => {
+router.get("/api/promotions", withCatalogFeature("campaigns", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   const clauses = ["p.deleted_at IS NULL"];
   const params = [];
@@ -532,7 +540,7 @@ router.get("/api/promotions", withFeature("campaigns", async (req, res, db) => {
   res.json(pageResponse(rows, total, paging));
 }));
 
-router.post("/api/promotions", withFeature("campaigns", async (req, res, db) => {
+router.post("/api/promotions", withCatalogFeature("campaigns", async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   const body = req.body || {};
   const name = String(body.name || "").trim();
@@ -557,7 +565,7 @@ router.post("/api/promotions", withFeature("campaigns", async (req, res, db) => 
   res.status(201).json(created);
 }));
 
-router.patch("/api/promotions/:id", withFeature("campaigns", async (req, res, db) => {
+router.patch("/api/promotions/:id", withCatalogFeature("campaigns", async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   const current = await db.get("SELECT * FROM catalog_promotions WHERE id = ? AND deleted_at IS NULL", [req.params.id]);
   if (!current) return res.status(404).json({ error: "Promoção não encontrada." });
@@ -577,7 +585,7 @@ router.patch("/api/promotions/:id", withFeature("campaigns", async (req, res, db
   res.json(updated);
 }));
 
-router.post("/api/promotions/:id/duplicate", withFeature("campaigns", async (req, res, db) => {
+router.post("/api/promotions/:id/duplicate", withCatalogFeature("campaigns", async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   const current = await db.get("SELECT * FROM catalog_promotions WHERE id = ? AND deleted_at IS NULL", [req.params.id]);
   if (!current) return res.status(404).json({ error: "Promoção não encontrada." });
@@ -594,7 +602,7 @@ router.post("/api/promotions/:id/duplicate", withFeature("campaigns", async (req
   res.status(201).json(await db.get("SELECT * FROM catalog_promotions WHERE id = ?", [result.returnedId]));
 }));
 
-router.delete("/api/promotions/:id", withFeature("campaigns", async (req, res, db) => {
+router.delete("/api/promotions/:id", withCatalogFeature("campaigns", async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   const current = await db.get("SELECT * FROM catalog_promotions WHERE id = ? AND deleted_at IS NULL", [req.params.id]);
   if (!current) return res.status(404).json({ error: "Promoção não encontrada." });
@@ -618,7 +626,7 @@ function promotionValues(body) {
   ];
 }
 
-router.patch("/api/catalog-settings", withDb(async (req, res, db) => {
+router.patch("/api/catalog-settings", withCatalogFeature("public_catalog_customization", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   const allowed = ["title", "subtitle", "hero_title", "hero_subtitle", "hero_image_url", "categories", "whatsapp_phone", "whatsapp_message", "company_instagram", "company_email", "company_address", "company_hours", "layout_style"];
   const entries = Object.entries(req.body).filter(([key]) => allowed.includes(key));

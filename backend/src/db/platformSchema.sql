@@ -91,9 +91,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_tenants_schema_name ON platform.tenants (sc
 
 INSERT INTO platform.subscription_plans (code, name, price_cents, audience, trial_days, features, is_recommended)
 VALUES
-  ('start', 'Pacote Start', 3990, 'Para quem está organizando a operação solo', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports"]'::jsonb, false),
-  ('profissional', 'Pacote Profissional', 6990, 'Para transformar atendimento em uma operação profissional', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","anamnesis","digital_terms","basic_finance","deposits","stock_alerts","automatic_followup","message_templates","public_catalog_customization"]'::jsonb, true),
-  ('studio', 'Pacote Studio', 11990, 'Para estúdios com equipe, vendas e crescimento', 7, '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","anamnesis","digital_terms","basic_finance","deposits","stock_alerts","automatic_followup","message_templates","public_catalog_customization","multi_user","commissions","monthly_reports","coupons","returns","full_client_history","jewelry_sales_report","advanced_catalog","catalog_analytics","featured_products","promotional_banner","campaigns","advanced_finance","variation_inventory","visual_search","alert_center","courses","priority_support"]'::jsonb, false)
+  ('start', 'Start', 3990, 'Para quem está organizando a operação solo', 7, '["clients","agenda","procedures","basic_inventory","basic_catalog","whatsapp_link","basic_reports"]'::jsonb, false),
+  ('profissional', 'Profissional', 6990, 'Para transformar atendimento em uma operação profissional', 7, '["clients","agenda","procedures","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","digital_terms","basic_finance","deposits","automatic_followup","message_templates","public_catalog_customization"]'::jsonb, true),
+  ('studio', 'Studio', 11990, 'Para estúdios com equipe, vendas e crescimento', 7, '["clients","agenda","procedures","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","digital_terms","basic_finance","deposits","automatic_followup","message_templates","public_catalog_customization","commissions","coupons","campaigns","catalog_analytics","visual_search"]'::jsonb, false)
 -- DO NOTHING, e não DO UPDATE.
 --
 -- Este INSERT é SEMENTE: popula os planos no primeiro boot e nunca mais toca
@@ -579,11 +579,11 @@ BEGIN
     DELETE FROM platform.subscription_plans WHERE code = 'premium';
 
     UPDATE platform.subscription_plans
-       SET name = 'Pacote Start',
+       SET name = 'Start',
            price_cents = 3990,
            audience = 'Para quem está organizando a operação solo',
-           description = 'Agenda, clientes, estoque e catálogo para começar com controle.',
-           features = '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports"]'::jsonb,
+           description = 'Agenda, clientes, vendas à vista, estoque, catálogo e relatórios essenciais.',
+           features = '["clients","agenda","procedures","basic_inventory","basic_catalog","whatsapp_link","basic_reports"]'::jsonb,
            limits = '{"users":1,"clients":300,"appointments_month":100,"jewelry_items":100,"storage_mb":1024,"catalog_plugins":0}'::jsonb,
            is_recommended = false,
            badge = '',
@@ -593,25 +593,25 @@ BEGIN
      WHERE code = 'start';
 
     UPDATE platform.subscription_plans
-       SET name = 'Pacote Profissional',
+       SET name = 'Profissional',
            price_cents = 6990,
            audience = 'Para transformar atendimento em uma operação profissional',
-           description = 'Agendamento online, financeiro, documentos digitais e catálogo personalizado.',
-           features = '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","anamnesis","digital_terms","basic_finance","deposits","stock_alerts","automatic_followup","message_templates","public_catalog_customization"]'::jsonb,
+           description = 'Compras, contas a pagar e receber, parcelas, sinais, agendamento online e catálogo personalizado.',
+           features = '["clients","agenda","procedures","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","digital_terms","basic_finance","deposits","automatic_followup","message_templates","public_catalog_customization"]'::jsonb,
            limits = '{"users":3,"jewelry_items":500,"storage_mb":5120,"catalog_plugins":3}'::jsonb,
            is_recommended = true,
-           badge = 'Mais recomendado',
+           badge = 'Melhor custo-benefício',
            is_active = true,
            sort_order = 20,
            updated_at = now()
      WHERE code = 'profissional';
 
     UPDATE platform.subscription_plans
-       SET name = 'Pacote Studio',
+       SET name = 'Studio',
            price_cents = 11990,
            audience = 'Para estúdios com equipe, vendas e crescimento',
-           description = 'Automação, campanhas, catálogo avançado, Analytics e gestão completa da equipe.',
-           features = '["clients","agenda","procedures","manual_reminders","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","anamnesis","digital_terms","basic_finance","deposits","stock_alerts","automatic_followup","message_templates","public_catalog_customization","multi_user","commissions","monthly_reports","coupons","returns","full_client_history","jewelry_sales_report","advanced_catalog","catalog_analytics","featured_products","promotional_banner","campaigns","advanced_finance","variation_inventory","visual_search","alert_center","courses","priority_support"]'::jsonb,
+           description = 'Comissões, campanhas, cupons, Analytics e busca visual para crescer com controle.',
+           features = '["clients","agenda","procedures","basic_inventory","basic_catalog","whatsapp_link","basic_reports","online_booking","digital_terms","basic_finance","deposits","automatic_followup","message_templates","public_catalog_customization","commissions","coupons","campaigns","catalog_analytics","visual_search"]'::jsonb,
            limits = '{"users":10,"storage_mb":20480,"catalog_plugins":12}'::jsonb,
            is_recommended = false,
            badge = '',

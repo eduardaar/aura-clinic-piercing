@@ -28,9 +28,11 @@ A troca preservou a garantia antiga através de três decisões:
    "nenhuma clínica tem feature nenhuma" — todas trancadas fora do sistema de
    uma vez, por uma indisponibilidade momentânea.
 3. **O catálogo continua sendo código.** `FEATURE_CATALOG` e `LIMIT_CATALOG` só
-   existem em `plans.js`, porque cada feature corresponde a uma rota realmente
-   protegida por `withFeature`. Uma feature inventada no painel não protegeria
-   nada e daria a impressão falsa de ter liberado algo.
+   existem em `plans.js`. A chave só vira controle de acesso quando uma rota
+   usa `withFeature` ou um serviço aplica validação equivalente. Chaves
+   históricas e capacidades sem produto definido foram retiradas da oferta; a
+   matriz válida está em
+   [PLANOS-E-FUNCIONALIDADES.md](./PLANOS-E-FUNCIONALIDADES.md).
 
 ### Dois problemas que a inversão revelou
 

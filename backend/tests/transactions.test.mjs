@@ -7,7 +7,9 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createDb } from "../src/db/postgres.js";
-import { req, createTenant, loginTenant, platformLogin, deleteTenant } from "./helpers.mjs";
+import { req, createTenant, loginTenant } from "./helpers.mjs";
+import { withTenantSchema } from "../src/db/tenantSession.js";
+import { deprovisionTenant } from "../src/services/tenants.js";
 
 // ---------------------------------------------------------------- parte 1 ---
 
@@ -152,7 +154,7 @@ test("abortOpenTransaction desfaz transação deixada aberta (rede de segurança
 
 // ---------------------------------------------------------------- parte 2 ---
 
-const ctx = { slug: null, token: null, tenant: null, platformToken: null, serviceId: null, professionalId: null, jewelryId: null, variantId: null };
+const ctx = { slug: null, token: null, tenant: null, serviceId: null, professionalId: null, jewelryId: null, variantId: null };
 const HOJE = new Date().toISOString().slice(0, 10);
 const api = (path, opts = {}) => req(path, { token: ctx.token, tenant: ctx.slug, ...opts });
 
@@ -169,7 +171,6 @@ before(async () => {
   ctx.slug = created.slug;
   ctx.tenant = created.tenant;
   ctx.token = (await loginTenant(created.slug, created.adminEmail, created.adminPassword)).token;
-  ctx.platformToken = await platformLogin();
 
   const service = await api("/services", { method: "POST", body: { name: "Servico TX", duration_minutes: 30, price: 120, deposit_value: 40 } });
   ctx.serviceId = service.json.id;
@@ -196,7 +197,7 @@ before(async () => {
 });
 
 after(async () => {
-  if (ctx.platformToken && ctx.tenant?.id) await deleteTenant(ctx.platformToken, ctx.tenant.id, ctx.slug);
+  if (ctx.tenant?.id) await deprovisionTenant(ctx.tenant.id);
 });
 
 async function estoqueDaJoia() {
@@ -244,6 +245,51 @@ test("venda válida continua gravando pedido, item, pagamento e baixa de estoque
   assert.equal(venda.json.items.length, 1, "o pedido criado devolve seus itens");
   assert.equal((await api("/sales-orders")).json.length, pedidosAntes + 1);
   assert.equal(await estoqueDaJoia(), estoqueAntes - 2, "estoque deve cair 2 unidades");
+});
+
+test("venda pending concluída baixa estoque e cria parcelas exatas uma única vez", async () => {
+  const estoqueAntes = await estoqueDaJoia();
+  const venda = await api("/sales-orders", {
+    method: "POST",
+    body: {
+      full_name: "Cliente Parcelado TX", whatsapp: "11900008887", status: "aberta",
+      receivable_mode: "pending", installment_count: 3, first_due_date: "2026-01-31",
+      payment_method: "Cartão de crédito",
+      items: [{ item_name: "Joia TX", product_id: ctx.jewelryId, product_variant_id: ctx.variantId, quantity: 1, unit_price: 100 }]
+    }
+  });
+  assert.equal(venda.status, 201, JSON.stringify(venda.json));
+  assert.equal(await estoqueDaJoia(), estoqueAntes, "venda explicitamente aberta ainda não baixa estoque");
+  const titlesBeforeClose = await withTenantSchema(ctx.tenant.id, (db) => db.all(
+    "SELECT id FROM financial_entries WHERE source_type='sales_order' AND source_id=? AND entry_type='receivable' AND status!='canceled'",
+    [venda.json.id]
+  ));
+  assert.equal(titlesBeforeClose.length, 0, "venda aberta ainda não constitui conta a receber");
+
+  const [first, repeated] = await Promise.all([
+    api(`/sales-orders/${venda.json.id}`, { method: "PATCH", body: { status: "concluida" } }),
+    api(`/sales-orders/${venda.json.id}`, { method: "PATCH", body: { status: "concluida" } })
+  ]);
+  assert.equal(first.status, 200, JSON.stringify(first.json));
+  assert.equal(repeated.status, 200, JSON.stringify(repeated.json));
+  assert.equal(await estoqueDaJoia(), estoqueAntes - 1, "confirmações concorrentes baixam uma unidade");
+
+  const state = await withTenantSchema(ctx.tenant.id, async (db) => ({
+    payments: await db.all("SELECT id FROM payments WHERE sales_order_id=?", [venda.json.id]),
+    movements: await db.all("SELECT id FROM stock_movements WHERE sales_order_id=?", [venda.json.id]),
+    receivables: await db.all(
+      "SELECT amount,due_date,source_key FROM financial_entries WHERE source_type='sales_order' AND source_id=? AND entry_type='receivable' AND status!='canceled' ORDER BY installment_number",
+      [venda.json.id]
+    )
+  }));
+  assert.equal(state.payments.length, 0, "pending não é dinheiro recebido");
+  assert.equal(state.movements.length, 1, "movimento de saída é estruturalmente idempotente");
+  assert.deepEqual(state.receivables.map((item) => Number(item.amount)), [33.34, 33.33, 33.33]);
+  assert.deepEqual(state.receivables.map((item) => item.due_date), ["2026-01-31", "2026-02-28", "2026-03-31"]);
+  assert.equal(new Set(state.receivables.map((item) => item.source_key)).size, 3);
+
+  const cancel = await api(`/sales-orders/${venda.json.id}`, { method: "PATCH", body: { status: "cancelado" } });
+  assert.equal(cancel.status, 409, "venda com estoque baixado exige fluxo explícito de devolução/estorno");
 });
 
 test("checkout público não pode se autodeclarar pago nem baixar estoque", async () => {
@@ -311,6 +357,143 @@ test("atendimento marcado 'atendido' que falha no meio não deixa nenhuma das 5 
   assert.equal((await api("/sales-orders")).json.length, pedidosAntes + 1, "ordem de serviço gerada");
   const postCareDepois = await api("/post-care");
   assert.equal(postCareDepois.json.filter((item) => Number(item.appointment_id) === Number(appointmentId)).length, 3);
+});
+
+test("refechamento da agenda preserva ordem/pagamento e recalcula apenas o saldo a receber", async () => {
+  const criado = await api("/appointments", {
+    method: "POST",
+    body: {
+      full_name: "Cliente Refechamento TX", whatsapp: "11900007776", professional_id: ctx.professionalId,
+      service_id: ctx.serviceId, procedure: "Servico TX", piercing_region: "Orelha",
+      appointment_date: HOJE, appointment_time: "16:00", total_value: 120, deposit_value: 0,
+      remaining_payment_method: "Cartão de crédito", status: "confirmado"
+    }
+  });
+  assert.equal(criado.status, 201, JSON.stringify(criado.json));
+
+  const first = await api(`/appointments/${criado.json.id}/complete`, {
+    method: "POST",
+    body: {
+      payments: [{ amount: 40, method: "Pix", status: "pago" }],
+      installment_count: 3, first_due_date: "2026-01-31", payment_method: "Cartão de crédito"
+    }
+  });
+  assert.equal(first.status, 200, JSON.stringify(first.json));
+
+  const before = await withTenantSchema(ctx.tenant.id, async (db) => ({
+    orders: await db.all("SELECT id FROM sales_orders WHERE appointment_id=? AND order_type='ordem_servico'", [criado.json.id]),
+    payments: await db.all("SELECT id,sales_order_id,amount FROM payments WHERE appointment_id=? AND payment_type='restante' ORDER BY id", [criado.json.id]),
+    receivables: await db.all("SELECT amount FROM financial_entries WHERE source_type='sales_order' AND entry_type='receivable' AND source_id=(SELECT id FROM sales_orders WHERE appointment_id=? AND order_type='ordem_servico') AND status!='canceled' ORDER BY installment_number", [criado.json.id])
+  }));
+  assert.equal(before.orders.length, 1);
+  assert.equal(before.payments.length, 1);
+  assert.equal(Number(before.payments[0].sales_order_id), Number(before.orders[0].id));
+  assert.equal(before.receivables.reduce((sum, item) => sum + Number(item.amount), 0), 80);
+
+  const second = await api(`/appointments/${criado.json.id}/complete`, {
+    method: "POST",
+    body: {
+      reason: "Correção do fechamento QA",
+      payments: [{ amount: 60, method: "Pix", status: "pago" }],
+      installment_count: 2, first_due_date: "2026-02-01", payment_method: "Cartão de crédito"
+    }
+  });
+  assert.equal(second.status, 200, JSON.stringify(second.json));
+
+  const afterState = await withTenantSchema(ctx.tenant.id, async (db) => ({
+    orders: await db.all("SELECT id FROM sales_orders WHERE appointment_id=? AND order_type='ordem_servico'", [criado.json.id]),
+    payments: await db.all("SELECT id,sales_order_id,amount FROM payments WHERE appointment_id=? AND payment_type='restante' ORDER BY id", [criado.json.id]),
+    receivables: await db.all("SELECT amount FROM financial_entries WHERE source_type='sales_order' AND entry_type='receivable' AND source_id=(SELECT id FROM sales_orders WHERE appointment_id=? AND order_type='ordem_servico') AND status!='canceled' ORDER BY installment_number", [criado.json.id])
+  }));
+  assert.equal(afterState.orders.length, 1, "índice e upsert mantêm uma ordem de serviço");
+  assert.equal(afterState.payments.length, 1, "refechamento atualiza a baixa em vez de recriá-la");
+  assert.equal(afterState.payments[0].id, before.payments[0].id);
+  assert.equal(Number(afterState.payments[0].sales_order_id), Number(afterState.orders[0].id));
+  assert.equal(afterState.receivables.length, 2);
+  assert.equal(afterState.receivables.reduce((sum, item) => sum + Number(item.amount), 0), 60);
+
+  const reopened = await api(`/appointments/${criado.json.id}`, {
+    method: "PATCH",
+    body: { status: "confirmado", reason: "Reabertura QA" }
+  });
+  assert.equal(reopened.status, 200, JSON.stringify(reopened.json));
+  const reopenedState = await withTenantSchema(ctx.tenant.id, async (db) => ({
+    order: await db.get("SELECT status FROM sales_orders WHERE appointment_id=? AND order_type='ordem_servico'", [criado.json.id]),
+    activeReceivables: await db.all("SELECT id FROM financial_entries WHERE source_type='sales_order' AND source_id=? AND entry_type='receivable' AND status NOT IN ('canceled','refunded')", [afterState.orders[0].id])
+  }));
+  assert.equal(reopenedState.order.status, "aberta");
+  assert.equal(reopenedState.activeReceivables.length, 0, "reabrir atendimento cancela os títulos da conclusão anterior");
+});
+
+test("reabrir atendimento estorna estoque com e sem variação uma única vez", async () => {
+  const productOnly = await withTenantSchema(ctx.tenant.id, async (db) => {
+    const result = await db.run(
+      `INSERT INTO jewelry_inventory
+        (name, category, material, color, quantity, cost_value, sale_value, status)
+       VALUES (?, 'Labret', 'Titânio', 'Prata', 2, 10, 50, 'disponível') RETURNING id`,
+      ["Joia Agenda Sem Variação"]
+    );
+    return result.returnedId;
+  });
+  const cases = [
+    { label: "com variação", jewelryId: ctx.jewelryId, variantId: ctx.variantId, time: "17:00" },
+    { label: "sem variação", jewelryId: productOnly, variantId: null, time: "17:50" }
+  ];
+
+  for (const item of cases) {
+    const stock = () => withTenantSchema(ctx.tenant.id, async (db) => {
+      if (item.variantId) {
+        return Number((await db.get("SELECT quantity FROM jewelry_variants WHERE id=?", [item.variantId])).quantity);
+      }
+      return Number((await db.get("SELECT quantity FROM jewelry_inventory WHERE id=?", [item.jewelryId])).quantity);
+    });
+    const before = await stock();
+    const created = await api("/appointments", {
+      method: "POST",
+      body: {
+        full_name: `Cliente Estorno ${item.label}`, whatsapp: item.variantId ? "11900005551" : "11900005552",
+        professional_id: ctx.professionalId, service_id: ctx.serviceId, procedure: "Servico TX",
+        piercing_region: "Orelha", appointment_date: HOJE, appointment_time: item.time,
+        jewelry_id: item.jewelryId, jewelry_variant_id: item.variantId,
+        total_value: 170, deposit_value: 0, status: "confirmado"
+      }
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.json));
+
+    const completed = await api(`/appointments/${created.json.id}/complete`, { method: "POST", body: { payments: [] } });
+    assert.equal(completed.status, 200, JSON.stringify(completed.json));
+    assert.equal(await stock(), before - 1, `${item.label}: conclusão baixa uma unidade`);
+
+    const reopened = await api(`/appointments/${created.json.id}`, {
+      method: "PATCH",
+      body: { status: "confirmado", reason: `Reabertura ${item.label}` }
+    });
+    assert.equal(reopened.status, 200, JSON.stringify(reopened.json));
+    assert.equal(await stock(), before, `${item.label}: reabertura devolve a unidade`);
+
+    const reopenedState = await withTenantSchema(ctx.tenant.id, async (db) => ({
+      appointment: await db.get("SELECT stock_deducted FROM appointments WHERE id=?", [created.json.id]),
+      order: await db.get(
+        "SELECT status,stock_deducted FROM sales_orders WHERE appointment_id=? AND order_type='ordem_servico'",
+        [created.json.id]
+      ),
+      reversals: await db.all(
+        "SELECT id FROM stock_movements WHERE jewelry_id=? AND movement_type='Entrada' AND notes LIKE ?",
+        [item.jewelryId, `%#${created.json.id}`]
+      )
+    }));
+    assert.equal(Number(reopenedState.appointment.stock_deducted), 0, `${item.label}: agenda permite nova baixa`);
+    assert.equal(reopenedState.order.status, "aberta");
+    assert.equal(Number(reopenedState.order.stock_deducted), 0, `${item.label}: ordem permite nova baixa`);
+    assert.equal(reopenedState.reversals.length, 1, `${item.label}: existe um único movimento de estorno`);
+
+    const repeated = await api(`/appointments/${created.json.id}`, {
+      method: "PATCH",
+      body: { status: "confirmado" }
+    });
+    assert.equal(repeated.status, 200, JSON.stringify(repeated.json));
+    assert.equal(await stock(), before, `${item.label}: repetir o estado não duplica o estorno`);
+  }
 });
 
 // --------------------------------------------------- estoque x quantidade ---

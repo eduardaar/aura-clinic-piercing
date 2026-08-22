@@ -25,18 +25,18 @@ function slugPreview(value) {
 }
 
 const fallbackPlans = [
-  { code: "start", name: "Pacote Start", price_cents: 3990, audience: "Para quem está organizando a operação solo", features: ["clients", "agenda", "basic_catalog", "basic_reports"] },
-  { code: "profissional", name: "Pacote Profissional", price_cents: 6990, audience: "Para transformar atendimento em uma operação profissional", badge: "Mais recomendado", highlight: true, features: ["online_booking", "basic_finance", "digital_terms", "public_catalog_customization"] },
-  { code: "studio", name: "Pacote Studio", price_cents: 11990, audience: "Para estúdios com equipe, vendas e crescimento", features: ["multi_user", "advanced_catalog", "campaigns", "catalog_analytics"] }
+  { code: "start", name: "Start", price_cents: 3990, audience: "Para quem está organizando a operação solo", features: ["clients", "agenda", "procedures", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports"] },
+  { code: "profissional", name: "Profissional", price_cents: 6990, audience: "Para transformar atendimento em uma operação profissional", badge: "Melhor custo-benefício", highlight: true, features: ["clients", "agenda", "procedures", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports", "online_booking", "digital_terms", "basic_finance", "deposits", "automatic_followup", "message_templates", "public_catalog_customization"] },
+  { code: "studio", name: "Studio", price_cents: 11990, audience: "Para estúdios com equipe, vendas e crescimento", features: ["clients", "agenda", "procedures", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports", "online_booking", "digital_terms", "basic_finance", "deposits", "automatic_followup", "message_templates", "public_catalog_customization", "commissions", "coupons", "campaigns", "catalog_analytics", "visual_search"] }
 ];
 
 // A tela de contratação deve responder "o que eu levo?" antes de a pessoa
 // criar a conta. As features vêm da API; estes pontos traduzem limites e valor
 // comercial em linguagem direta, sem expor códigos internos ao cliente.
 const PLAN_HIGHLIGHTS = {
-  start: ["1 usuário", "300 clientes", "100 agendamentos/mês", "1 GB de armazenamento", "Estoque e catálogo básicos"],
-  profissional: ["Até 3 usuários", "Clientes e agendamentos ilimitados", "Financeiro, termos e agendamento online", "5 GB + 3 integrações de catálogo", "Catálogo personalizável"],
-  studio: ["Até 10 usuários", "Clientes e agendamentos ilimitados", "Financeiro avançado e comissões", "20 GB + 12 integrações de catálogo", "Campanhas, Analytics e suporte prioritário"]
+  start: ["1 usuário", "300 clientes", "100 agendamentos/mês", "Vendas à vista, estoque e catálogo", "Relatórios essenciais"],
+  profissional: ["Até 3 usuários", "Clientes e agendamentos ilimitados", "Compras, contas a pagar e receber", "Parcelas, sinais e agendamento online", "Catálogo personalizado e automações"],
+  studio: ["Até 10 usuários", "Clientes, agendamentos e itens ilimitados", "Comissões, cupons e campanhas", "Analytics e busca visual", "20 GB + 12 integrações de catálogo"]
 };
 
 const STEP_LABELS = ["Sua clínica", "Plano"];

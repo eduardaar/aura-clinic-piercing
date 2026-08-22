@@ -23,6 +23,26 @@
 //      super-admin a falsa impressão de ter liberado algo.
 export const SUBSCRIPTION_STATUSES = ["trial_active", "trial_expired", "active", "overdue", "canceled", "suspended"];
 
+// `anamnese` e `anamnesis` apareceram em versões antigas do painel como duas
+// ofertas distintas. Hoje a ficha e os termos digitais formam um único
+// recurso. Os aliases preservam planos já gravados sem voltar a expor as
+// chaves removidas no catálogo comercial.
+export const FEATURE_ALIASES = Object.freeze({
+  anamnese: "digital_terms",
+  anamnesis: "digital_terms"
+});
+
+export function normalizeFeatureKey(value) {
+  const key = String(value || "").trim();
+  return FEATURE_ALIASES[key] || key;
+}
+
+export function normalizeFeatureList(values) {
+  if (!Array.isArray(values)) return [];
+  return [...new Set(values.map(normalizeFeatureKey))]
+    .filter((key) => FEATURE_KEYS.includes(key));
+}
+
 // Tudo que pode ser marcado num plano. `key` é o que `withFeature("...")` exige
 // nas rotas; `label` é o que o painel mostra. Agrupado para a tela de edição
 // não virar uma lista de 35 caixinhas sem hierarquia.
@@ -33,44 +53,25 @@ export const FEATURE_CATALOG = [
   { key: "clients", label: "Clientes", group: "Essencial" },
   { key: "agenda", label: "Agenda", group: "Essencial" },
   { key: "procedures", label: "Procedimentos", group: "Essencial" },
-  { key: "manual_reminders", label: "Lembretes manuais", group: "Essencial" },
   { key: "basic_inventory", label: "Estoque básico", group: "Essencial" },
+  { key: "basic_reports", label: "Relatórios básicos", group: "Essencial" },
 
   { key: "basic_catalog", label: "Catálogo básico", group: "Catálogo e vendas" },
   { key: "whatsapp_link", label: "Link de WhatsApp", group: "Catálogo e vendas" },
   { key: "public_catalog_customization", label: "Personalizar catálogo público", group: "Catálogo e vendas" },
-  { key: "advanced_catalog", label: "Catálogo avançado", group: "Catálogo e vendas" },
   { key: "catalog_analytics", label: "Google Analytics no catálogo", group: "Catálogo e vendas" },
-  { key: "featured_products", label: "Produtos em destaque", group: "Catálogo e vendas" },
-  { key: "promotional_banner", label: "Banner promocional", group: "Catálogo e vendas" },
   { key: "coupons", label: "Cupons", group: "Catálogo e vendas" },
-  { key: "returns", label: "Devoluções", group: "Catálogo e vendas" },
   { key: "visual_search", label: "Busca visual", group: "Catálogo e vendas" },
 
   { key: "online_booking", label: "Agendamento online", group: "Atendimento" },
-  { key: "anamnese", label: "Anamnese", group: "Atendimento" },
-  { key: "anamnesis", label: "Ficha de anamnese", group: "Atendimento" },
-  { key: "digital_terms", label: "Termos digitais", group: "Atendimento" },
+  { key: "digital_terms", label: "Anamnese e termos digitais", group: "Atendimento" },
   { key: "automatic_followup", label: "Pós-atendimento automático", group: "Atendimento" },
   { key: "message_templates", label: "Modelos de mensagem", group: "Atendimento" },
   { key: "campaigns", label: "Campanhas", group: "Atendimento" },
-  { key: "full_client_history", label: "Histórico completo do cliente", group: "Atendimento" },
 
-  { key: "basic_finance", label: "Financeiro básico", group: "Financeiro" },
-  { key: "advanced_finance", label: "Financeiro avançado", group: "Financeiro" },
+  { key: "basic_finance", label: "Gestão financeira", group: "Financeiro" },
   { key: "deposits", label: "Sinal de agendamento", group: "Financeiro" },
-  { key: "commissions", label: "Comissões", group: "Financeiro" },
-
-  { key: "basic_reports", label: "Relatórios básicos", group: "Relatórios" },
-  { key: "monthly_reports", label: "Relatórios mensais", group: "Relatórios" },
-  { key: "jewelry_sales_report", label: "Relatório de venda de joias", group: "Relatórios" },
-
-  { key: "stock_alerts", label: "Alertas de estoque", group: "Operação" },
-  { key: "variation_inventory", label: "Estoque por variação", group: "Operação" },
-  { key: "alert_center", label: "Central de alertas", group: "Operação" },
-  { key: "multi_user", label: "Vários usuários", group: "Operação" },
-  { key: "courses", label: "Cursos", group: "Operação" },
-  { key: "priority_support", label: "Suporte prioritário", group: "Operação" }
+  { key: "commissions", label: "Comissões", group: "Financeiro" }
 ];
 
 export const FEATURE_KEYS = FEATURE_CATALOG.map((item) => item.key);
@@ -90,18 +91,18 @@ export const LIMIT_CATALOG = [
 export const LIMIT_KEYS = LIMIT_CATALOG.map((item) => item.key);
 
 export const PLAN_FEATURES = {
-  start: ["clients", "agenda", "procedures", "manual_reminders", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports"],
-  profissional: ["clients", "agenda", "procedures", "manual_reminders", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports", "online_booking", "anamnesis", "digital_terms", "basic_finance", "deposits", "stock_alerts", "automatic_followup", "message_templates", "public_catalog_customization"],
-  studio: ["clients", "agenda", "procedures", "manual_reminders", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports", "online_booking", "anamnesis", "digital_terms", "basic_finance", "deposits", "stock_alerts", "automatic_followup", "message_templates", "public_catalog_customization", "multi_user", "commissions", "monthly_reports", "coupons", "returns", "full_client_history", "jewelry_sales_report", "advanced_catalog", "catalog_analytics", "featured_products", "promotional_banner", "campaigns", "advanced_finance", "variation_inventory", "visual_search", "alert_center", "courses", "priority_support"]
+  start: ["clients", "agenda", "procedures", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports"],
+  profissional: ["clients", "agenda", "procedures", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports", "online_booking", "digital_terms", "basic_finance", "deposits", "automatic_followup", "message_templates", "public_catalog_customization"],
+  studio: ["clients", "agenda", "procedures", "basic_inventory", "basic_catalog", "whatsapp_link", "basic_reports", "online_booking", "digital_terms", "basic_finance", "deposits", "automatic_followup", "message_templates", "public_catalog_customization", "commissions", "coupons", "campaigns", "catalog_analytics", "visual_search"]
 };
 
 const DEFAULT_PLANS = [
   {
     code: "start",
-    name: "Pacote Start",
+    name: "Start",
     price_cents: 3990,
     audience: "Para quem está organizando a operação solo",
-    description: "Agenda, clientes, estoque e catálogo para começar com controle.",
+    description: "Agenda, clientes, vendas à vista, estoque, catálogo e relatórios essenciais.",
     trial_days: 7,
     highlight: false,
     features: PLAN_FEATURES.start,
@@ -109,22 +110,22 @@ const DEFAULT_PLANS = [
   },
   {
     code: "profissional",
-    name: "Pacote Profissional",
+    name: "Profissional",
     price_cents: 6990,
     audience: "Para transformar atendimento em uma operação profissional",
-    description: "Agendamento online, financeiro, documentos digitais e catálogo personalizado.",
+    description: "Compras, contas a pagar e receber, parcelas, sinais, agendamento online e catálogo personalizado.",
     trial_days: 7,
     highlight: true,
-    badge: "Mais recomendado",
+    badge: "Melhor custo-benefício",
     features: PLAN_FEATURES.profissional,
     limits: { users: 3, jewelry_items: 500, storage_mb: 5120, catalog_plugins: 3 }
   },
   {
     code: "studio",
-    name: "Pacote Studio",
+    name: "Studio",
     price_cents: 11990,
     audience: "Para estúdios com equipe, vendas e crescimento",
-    description: "Automação, campanhas, catálogo avançado, Analytics e gestão completa da equipe.",
+    description: "Comissões, campanhas, cupons, Analytics e busca visual para crescer com controle.",
     trial_days: 7,
     highlight: false,
     features: PLAN_FEATURES.studio,
@@ -146,7 +147,7 @@ export const SUBSCRIPTION_PLANS = DEFAULT_PLANS.map((plan) => ({ ...plan }));
 
 // Converte a linha do banco para o formato que o app já consome.
 function fromRow(row) {
-  const features = Array.isArray(row.features) ? row.features : [];
+  const features = normalizeFeatureList(row.features);
   return {
     code: row.code,
     name: row.name,
@@ -158,12 +159,12 @@ function fromRow(row) {
     // Mantidos os dois para não quebrar o frontend existente.
     highlight: Boolean(row.is_recommended),
     is_recommended: Boolean(row.is_recommended),
-    badge: row.badge || (row.is_recommended ? "Mais recomendado" : ""),
+    badge: row.badge || (row.is_recommended ? "Melhor custo-benefício" : ""),
     is_active: row.is_active !== false,
     sort_order: Number(row.sort_order || 0),
     // Só features do catálogo entram. Uma chave órfã no banco (feature removida
     // do código, plano não atualizado) não pode virar acesso a coisa nenhuma.
-    features: features.filter((key) => FEATURE_KEYS.includes(key)),
+    features,
     limits: row.limits && typeof row.limits === "object" ? row.limits : {}
   };
 }
@@ -231,11 +232,21 @@ export function planLimit(planCode, limitKey) {
 // liberadas (base de todo plano: dashboard, agenda, clientes, catálogo/estoque).
 // Usado tanto pelo gating de menu no frontend quanto como referência do backend.
 export const PAGE_FEATURE = {
+  // `finance` é o alias de favoritos anteriores à separação Pagar/Receber.
   finance: "basic_finance",
+  receivables: "basic_finance",
+  payables: "basic_finance",
+  purchases: "basic_finance",
+  suppliers: "basic_finance",
+  "finance-categories": "basic_finance",
+  "cost-centers": "basic_finance",
   terms: "digital_terms",
   postcare: "automatic_followup",
   communications: "message_templates",
+  products: "basic_inventory",
+  inventory: "basic_inventory",
   reports: "basic_reports",
+  catalog: "basic_catalog",
   "catalog-customization": "public_catalog_customization",
   sales: "basic_catalog"
 };

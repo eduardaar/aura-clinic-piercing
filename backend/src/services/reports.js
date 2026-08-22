@@ -3,6 +3,18 @@ const REPORT_TYPES = new Set([
   "appointments", "cancellations", "promotions", "coupons", "commissions", "payments", "catalog_conversion"
 ]);
 
+// O relatório básico abre a central; alguns tipos revelam dados ou ações de
+// módulos vendidos separadamente e precisam conservar esses gates também em
+// exportações assíncronas.
+export const REPORT_FEATURE_REQUIREMENTS = Object.freeze({
+  financial: ["basic_finance"],
+  payments: ["basic_finance"],
+  commissions: ["commissions", "basic_finance"],
+  promotions: ["campaigns"],
+  coupons: ["coupons"],
+  catalog_conversion: ["catalog_analytics"]
+});
+
 export function validReportType(type) {
   return REPORT_TYPES.has(type);
 }

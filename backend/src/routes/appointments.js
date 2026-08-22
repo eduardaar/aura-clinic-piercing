@@ -1,6 +1,6 @@
 // Rotas de agendamentos.
 import { Router } from "express";
-import { withDb } from "../middleware/withDb.js";
+import { withFeature } from "../middleware/withDb.js";
 import { parseUpload, privateUpload, registerPrivateFiles } from "../middleware/upload.js";
 import { normalizeAppointment, addMinutesToTime, localTimestamp } from "../services/utils.js";
 import { parsePaging, pageResponse } from "../services/pagination.js";
@@ -29,6 +29,8 @@ import { invalidateUsageCache, requireWithinLimit } from "../services/planLimits
 import { P } from "../config/permissions.js";
 import { authorizePermission } from "../middleware/requirePermission.js";
 import { hasPermission } from "../services/permissionService.js";
+import { cancelSalesOrderReceivables, configuresReceivableSchedule } from "../services/receivables.js";
+import { requireFeature } from "../services/subscriptions.js";
 
 const router = Router();
 
@@ -51,19 +53,29 @@ async function validateAppointmentItemsStock(db, items = []) {
     if (!item.jewelry_id) continue;
     const quantity = Math.max(1, Number(item.quantity || 1));
     if (item.jewelry_variant_id) {
-      const variant = await db.get("SELECT quantity FROM jewelry_variants WHERE id = ?", [item.jewelry_variant_id]);
-      if (variant && Number(variant.quantity || 0) < quantity) {
+      const variant = await db.get(
+        "SELECT quantity FROM jewelry_variants WHERE id = ? AND jewelry_id = ? AND is_active = 1",
+        [item.jewelry_variant_id, item.jewelry_id]
+      );
+      if (!variant || Number(variant.quantity || 0) < quantity) {
         return "Quantidade indisponível para a variação de joia selecionada.";
       }
       continue;
     }
-    const stock = await db.get("SELECT COALESCE(SUM(quantity), 0) AS quantity FROM jewelry_variants WHERE jewelry_id = ? AND is_active = 1", [item.jewelry_id]);
+    const stock = await db.get(
+      `SELECT CASE
+         WHEN EXISTS (SELECT 1 FROM jewelry_variants WHERE jewelry_id = ? AND is_active = 1)
+           THEN (SELECT COALESCE(SUM(quantity), 0) FROM jewelry_variants WHERE jewelry_id = ? AND is_active = 1)
+         ELSE (SELECT quantity FROM jewelry_inventory WHERE id = ? AND status != 'arquivado')
+       END AS quantity`,
+      [item.jewelry_id, item.jewelry_id, item.jewelry_id]
+    );
     if (Number(stock?.quantity || 0) < quantity) return "Quantidade indisponível para a joia selecionada.";
   }
   return "";
 }
 
-router.get("/api/appointments", withDb(async (req, res, db) => {
+router.get("/api/appointments", withFeature("agenda", async (req, res, db) => {
   if (!authorizePermission(req, res, P.APPOINTMENTS_VIEW)) return;
   const clauses = [];
   const params = [];
@@ -106,7 +118,7 @@ router.get("/api/appointments", withDb(async (req, res, db) => {
   res.json(pageResponse(items, total, paging));
 }));
 
-router.post("/api/appointments", withDb(async (req, res, db) => {
+router.post("/api/appointments", withFeature("agenda", async (req, res, db) => {
   if (!authorizePermission(req, res, P.APPOINTMENTS_CREATE)) return;
   await parseUpload(privateUpload.single("reference_photo"), req, res, { imagesOnly: true });
   await registerPrivateFiles(db, req.file, "appointment_reference", req.user?.id);
@@ -189,12 +201,20 @@ router.post("/api/appointments", withDb(async (req, res, db) => {
   res.status(201).json(created);
 }));
 
-router.post("/api/appointments/:id/complete", withDb(async (req, res, db) => {
+router.post("/api/appointments/:id/complete", withFeature("agenda", async (req, res, db) => {
   if (!authorizePermission(req, res, P.APPOINTMENTS_FINALIZE)) return;
   const before = await db.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
   if (!before) return res.status(404).json({ error: "Agendamento não encontrado." });
   if (before.status === "atendido" && !hasPermission(req.user, P.FINANCE_EDIT)) return res.status(403).json({ error: "Você não tem permissão para alterar um fechamento concluído." });
   if (before.status === "atendido" && !String(req.body.reason || "").trim()) return res.status(400).json({ error: "Informe o motivo da alteração financeira." });
+  const financialSnapshot = await getAppointmentFinancialSnapshot(db, req.params.id);
+  const maximumAtCompletion = Math.max(0, Number(financialSnapshot?.netTotal || before.total_value || 0) - Number(financialSnapshot?.depositPaid || 0));
+  const paidAtCompletion = (Array.isArray(req.body?.payments) ? req.body.payments : [])
+    .filter((item) => ["pago", "confirmado"].includes(String(item?.status || "pago")))
+    .reduce((sum, item) => sum + Math.max(0, Number(item?.amount || 0)), 0);
+  const willCreateReceivable = maximumAtCompletion - paidAtCompletion > 0.009;
+  if ((configuresReceivableSchedule(req.body) || willCreateReceivable) &&
+      !(await requireFeature(req, res, "basic_finance"))) return;
   try {
     await db.transaction(async (tx) => {
       await registerCompletionPayments(tx, req.params.id, req.body.payments, req.user?.id);
@@ -202,7 +222,7 @@ router.post("/api/appointments/:id/complete", withDb(async (req, res, db) => {
       const after = await tx.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
       await tx.run("INSERT INTO appointment_financial_audit (appointment_id, user_id, action, reason, before_snapshot, after_snapshot) VALUES (?, ?, ?, ?, ?, ?)", [req.params.id, req.user?.id, before.status === "atendido" ? "reopen_financial_close" : "financial_close", req.body.reason || null, JSON.stringify(before), JSON.stringify(after)]);
       await deductJewelryStock(tx, req.params.id);
-      await ensureSalesOrderForAppointment(tx, req.params.id, req.user);
+      await ensureSalesOrderForAppointment(tx, req.params.id, req.user, req.body);
       await ensurePostCareFollowups(tx, req.params.id);
       await awardLoyaltyForAppointment(tx, req.params.id);
     });
@@ -213,18 +233,23 @@ router.post("/api/appointments/:id/complete", withDb(async (req, res, db) => {
   res.json(updated);
 }));
 
-router.patch("/api/appointments/:id", withDb(async (req, res, db) => {
+router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db) => {
   if (!authorizePermission(req, res, req.body.status === "cancelado" ? P.APPOINTMENTS_CANCEL : P.APPOINTMENTS_EDIT)) return;
   const appointment = await db.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
   const financialFields = ["total_value", "discount_value", "deposit_value", "remaining_value", "deposit_payment_method", "remaining_payment_method", "deposit_status", "deposit_paid_at", "coupon_code", "coupon_id"];
+  const leavingFinalized = appointment?.status === "atendido" && req.body.status && req.body.status !== "atendido";
   const finalizedFinancialChange = appointment?.status === "atendido" && (
-    financialFields.some((field) => req.body[field] !== undefined) || appointmentItemsFromBody(req.body).length > 0
+    leavingFinalized || financialFields.some((field) => req.body[field] !== undefined) || appointmentItemsFromBody(req.body).length > 0
   );
   if (finalizedFinancialChange) {
     if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
     if (!String(req.body.reason || "").trim()) return res.status(400).json({ error: "Informe o motivo da alteração financeira." });
   }
   if (!appointment) return res.status(404).json({ error: "Agendamento não encontrado." });
+  const willRecalculateReceivable = finalizedFinancialChange && !leavingFinalized &&
+    String(req.body.status || appointment.status) === "atendido";
+  if ((configuresReceivableSchedule(req.body) || willRecalculateReceivable) &&
+      !(await requireFeature(req, res, "basic_finance"))) return;
 
   if (req.body.status === "cancelado") {
     req.body.remaining_value = 0;
@@ -329,14 +354,37 @@ router.patch("/api/appointments/:id", withDb(async (req, res, db) => {
 
     if (req.body.status === "atendido") {
       await deductJewelryStock(tx, req.params.id);
-      await registerRemainingPayment(tx, req.params.id);
-      await ensureSalesOrderForAppointment(tx, req.params.id, req.user);
+      const configuredReceivable = configuresReceivableSchedule(req.body);
+      if (!configuredReceivable) await registerRemainingPayment(tx, req.params.id);
+      await ensureSalesOrderForAppointment(tx, req.params.id, req.user, req.body);
       await ensurePostCareFollowups(tx, req.params.id);
       await awardLoyaltyForAppointment(tx, req.params.id);
     }
-    if (req.body.status === "cancelado") {
+    if (leavingFinalized) {
       await restoreJewelryStock(tx, req.params.id);
+    }
+    if (req.body.status === "cancelado") {
       await tx.run("UPDATE payments SET status = 'cancelado' WHERE appointment_id = ? AND status != 'pago'", [req.params.id]);
+    }
+    if (finalizedFinancialChange && req.body.status !== "atendido") {
+      const after = await tx.get("SELECT * FROM appointments WHERE id=?", [req.params.id]);
+      if (after?.status === "atendido") {
+        await ensureSalesOrderForAppointment(tx, req.params.id, req.user, req.body);
+      } else {
+        const serviceOrder = await tx.get(
+          "SELECT id FROM sales_orders WHERE appointment_id=? AND order_type='ordem_servico' FOR UPDATE",
+          [req.params.id]
+        );
+        if (serviceOrder) {
+          // A baixa física já foi desfeita por restoreJewelryStock. Manter o
+          // marcador como 1 faria uma conclusão futura pular a nova baixa.
+          await tx.run(
+            "UPDATE sales_orders SET status=?, stock_deducted=0 WHERE id=?",
+            [after?.status === "cancelado" ? "cancelado" : "aberta", serviceOrder.id]
+          );
+          await cancelSalesOrderReceivables(tx, serviceOrder.id);
+        }
+      }
     }
     if (finalizedFinancialChange) {
       const after = await tx.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
@@ -367,7 +415,7 @@ async function appointmentDeletionImpact(db, id) {
   return Object.fromEntries(Object.entries(row || {}).map(([key, value]) => [key, Number(value || 0)]));
 }
 
-router.get("/api/appointments/:id/deletion-impact", withDb(async (req, res, db) => {
+router.get("/api/appointments/:id/deletion-impact", withFeature("agenda", async (req, res, db) => {
   if (!authorizePermission(req, res, P.APPOINTMENTS_EDIT)) return;
   const appointment = await db.get("SELECT id FROM appointments WHERE id = ?", [req.params.id]);
   if (!appointment) return res.status(404).json({ error: "Agendamento não encontrado." });
@@ -375,7 +423,7 @@ router.get("/api/appointments/:id/deletion-impact", withDb(async (req, res, db) 
   res.json({ impact, can_delete: !Object.values(impact).some(Number) });
 }));
 
-router.delete("/api/appointments/:id", withDb(async (req, res, db) => {
+router.delete("/api/appointments/:id", withFeature("agenda", async (req, res, db) => {
   if (!authorizePermission(req, res, P.CLIENTS_DELETE)) return;
   if (req.body?.confirmation !== "EXCLUIR AGENDAMENTO") return res.status(400).json({ error: "Digite EXCLUIR AGENDAMENTO para confirmar." });
   const reason = String(req.body?.reason || "").trim();

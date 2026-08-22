@@ -14,6 +14,7 @@ O projeto é um **monorepo** com backend (Node/Express + PostgreSQL, multi-tenan
 | [FLUXOS.md](./FLUXOS.md) | Fluxos de uso passo a passo (cadastro de clínica, recepção, piercer, financeiro, super-admin da plataforma) e logins de teste locais. |
 | [GUIA-DEV.md](./GUIA-DEV.md) | Pré-requisitos, configuração (.env), como rodar, testes, scripts úteis (backup, migração multi-tenant, teste de isolamento), estrutura de pastas e convenções. |
 | [PAINEL-PLATAFORMA.md](./PAINEL-PLATAFORMA.md) | O que o super-admin controla: planos editáveis (e por que o banco virou a fonte da verdade), cotas por plano, poder sobre contas, financeiro e suporte. |
+| [PLANOS-E-FUNCIONALIDADES.md](./PLANOS-E-FUNCIONALIDADES.md) | Matriz final dos planos Start, Profissional e Studio, com preços, limites, contrato de acesso e registro dos recursos retirados ou reservados para evolução futura. |
 | [LANDING.md](./LANDING.md) | Conteúdo editável da página pública da plataforma: modelo de dados, a garantia de que a landing nunca fica em branco, as guardas contra XSS armazenado e os endpoints do editor. |
 | [CATALOGO-BUILDER.md](./CATALOGO-BUILDER.md) | Personalização da vitrine: templates, rascunho isolado, publicação atômica, histórico, rollback, contrato da API e limites de segurança para conteúdo configurável. |
 | [ASAAS.md](./ASAAS.md) | Integração com o gateway de pagamento: os dois níveis de credencial (plataforma e clínica), cofre cifrado, webhook multi-tenant (autenticidade, idempotência e o contrato de status HTTP), armadilhas do Asaas e configuração em produção. |
@@ -30,6 +31,7 @@ O projeto é um **monorepo** com backend (Node/Express + PostgreSQL, multi-tenan
 - **Integrando com a API?** Vá direto para [API.md](./API.md).
 - **Entendendo o banco?** Veja [MODELO-DE-DADOS.md](./MODELO-DE-DADOS.md).
 - **Entendendo o produto?** Percorra [FLUXOS.md](./FLUXOS.md).
+- **Comparando planos ou criando uma feature paga?** Consulte [PLANOS-E-FUNCIONALIDADES.md](./PLANOS-E-FUNCIONALIDADES.md) antes de alterar a vitrine ou o catálogo de features.
 - **Mexendo em pagamento?** Leia [ASAAS.md](./ASAAS.md) **antes** — o contrato de status HTTP do webhook e a idempotência têm armadilhas que custam dinheiro.
 - **Escrevendo tela nova?** Leia [PADRAO-VISUAL.md](./PADRAO-VISUAL.md) **antes** de criar um `.css` — o projeto já tem o componente e a classe, e CSS sem `@layer` quebra o layout do sistema inteiro.
 - **Preparando lançamento ou auditando riscos?** Use [PRONTIDAO-PRODUCAO-LGPD-SEGURANCA.md](./PRONTIDAO-PRODUCAO-LGPD-SEGURANCA.md) como checklist de liberação e registro das evidências.

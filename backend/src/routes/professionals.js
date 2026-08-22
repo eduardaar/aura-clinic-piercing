@@ -1,6 +1,6 @@
 // Rotas de profissionais.
 import { Router } from "express";
-import { withDb } from "../middleware/withDb.js";
+import { withFeature } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { boolNumber } from "../services/utils.js";
 import { normalizeWhatsappNumber } from "../services/notifications.js";
@@ -50,7 +50,7 @@ async function getProfessional(db, id) {
   return { ...professional, service_ids: rows.map((row) => row.service_id) };
 }
 
-router.get("/api/professionals", withDb(async (req, res, db) => {
+router.get("/api/professionals", withFeature("procedures", async (req, res, db) => {
   const clauses = [];
   const params = [];
   // `status` aqui é "active"/"inactive" (a coluna é o booleano active).
@@ -79,7 +79,7 @@ router.get("/api/professionals", withDb(async (req, res, db) => {
   res.json(pageResponse(await attachServiceIds(db, rows), total, paging));
 }));
 
-router.post("/api/professionals", withDb(async (req, res, db) => {
+router.post("/api/professionals", withFeature("procedures", async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   const { name, specialty, phone, email, calendar_color } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: "Nome do profissional e obrigatorio." });
@@ -92,7 +92,7 @@ router.post("/api/professionals", withDb(async (req, res, db) => {
   res.status(201).json(await getProfessional(db, result.returnedId));
 }));
 
-router.patch("/api/professionals/:id", withDb(async (req, res, db) => {
+router.patch("/api/professionals/:id", withFeature("procedures", async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   const professional = await db.get("SELECT * FROM professionals WHERE id = ?", [req.params.id]);
   if (!professional) return res.status(404).json({ error: "Profissional nao encontrado." });
@@ -114,7 +114,7 @@ router.patch("/api/professionals/:id", withDb(async (req, res, db) => {
   res.json(await getProfessional(db, req.params.id));
 }));
 
-router.delete("/api/professionals/:id", withDb(async (req, res, db) => {
+router.delete("/api/professionals/:id", withFeature("procedures", async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   const linked = await db.get("SELECT COUNT(*) AS count FROM appointments WHERE professional_id = ?", [req.params.id]);
   if (linked.count > 0) {

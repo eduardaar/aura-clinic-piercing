@@ -288,12 +288,16 @@ export function defaultProfessionalForm() {
 }
 
 export function defaultSalesOrderForm() {
+  const today = localDateValue(new Date());
   return {
     full_name: "",
     whatsapp: "",
     instagram: "",
     appointment_id: "",
     payment_method: "Pix",
+    receivable_mode: "paid",
+    installment_count: 1,
+    first_due_date: today,
     coupon_code: "",
     status: "concluida",
     notes: ""
@@ -552,21 +556,6 @@ export function defaultCatalogSettings() {
     company_address: "",
     company_hours: "",
     layout_style: "premium"
-  };
-}
-
-export function defaultExpense() {
-  return {
-    description: "",
-    expense_type: "fixa",
-    category: "",
-    amount: 0,
-    due_date: new Date().toISOString().slice(0, 10),
-    status: "pendente",
-    payment_method: "Pix",
-    payment_account: "",
-    paid_at: "",
-    notes: ""
   };
 }
 

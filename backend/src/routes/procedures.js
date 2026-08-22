@@ -1,6 +1,6 @@
 // Rotas de procedimentos.
 import { Router } from "express";
-import { withDb } from "../middleware/withDb.js";
+import { withFeature } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { boolNumber } from "../services/utils.js";
 import { validateBody } from "../middleware/validate.js";
@@ -19,7 +19,7 @@ const PROCEDURE_SORTABLE = {
   created_at: "p.created_at"
 };
 
-router.get("/api/procedures", withDb(async (req, res, db) => {
+router.get("/api/procedures", withFeature("procedures", async (req, res, db) => {
   const clauses = [];
   const params = [];
   if (req.query.service_id) {
@@ -53,7 +53,7 @@ router.get("/api/procedures", withDb(async (req, res, db) => {
   res.json(pageResponse(rows, total, paging));
 }));
 
-router.get("/api/procedures/:id", withDb(async (req, res, db) => {
+router.get("/api/procedures/:id", withFeature("procedures", async (req, res, db) => {
   const procedure = await db.get(`
     SELECT p.*, s.name AS service_name
     FROM procedures p LEFT JOIN services s ON s.id = p.service_id
@@ -63,7 +63,7 @@ router.get("/api/procedures/:id", withDb(async (req, res, db) => {
   res.json(procedure);
 }));
 
-router.post("/api/procedures", withDb(async (req, res, db) => {
+router.post("/api/procedures", withFeature("procedures", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   if (!validateBody(procedureCreateSchema, req, res)) return;
   const b = req.body || {};
@@ -75,7 +75,7 @@ router.post("/api/procedures", withDb(async (req, res, db) => {
   res.status(201).json(await db.get("SELECT * FROM procedures WHERE id = ?", [result.returnedId]));
 }));
 
-router.put("/api/procedures/:id", withDb(async (req, res, db) => {
+router.put("/api/procedures/:id", withFeature("procedures", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   if (!validateBody(procedureUpdateSchema, req, res)) return;
   const existing = await db.get("SELECT * FROM procedures WHERE id = ?", [req.params.id]);
@@ -90,7 +90,7 @@ router.put("/api/procedures/:id", withDb(async (req, res, db) => {
   res.json(await db.get("SELECT * FROM procedures WHERE id = ?", [req.params.id]));
 }));
 
-router.delete("/api/procedures/:id", withDb(async (req, res, db) => {
+router.delete("/api/procedures/:id", withFeature("procedures", async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   await db.run("DELETE FROM procedures WHERE id = ?", [req.params.id]);
   res.json({ ok: true });

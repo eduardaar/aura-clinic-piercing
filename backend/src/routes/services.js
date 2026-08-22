@@ -1,6 +1,6 @@
 // Rotas de servicos oferecidos pela clinica.
 import { Router } from "express";
-import { withDb } from "../middleware/withDb.js";
+import { withFeature } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { boolNumber } from "../services/utils.js";
 import { listServices, countServices, getService, replaceProfessionalServices } from "../services/appointments.js";
@@ -19,7 +19,7 @@ const SERVICE_SORTABLE = {
   created_at: "created_at"
 };
 
-router.get("/api/services", withDb(async (req, res, db) => {
+router.get("/api/services", withFeature("procedures", async (req, res, db) => {
   const clauses = [];
   const params = [];
   // `status` aqui é "active"/"inactive" (a coluna é active_online_booking).
@@ -42,7 +42,7 @@ router.get("/api/services", withDb(async (req, res, db) => {
   res.json(pageResponse(items, total, paging));
 }));
 
-router.post("/api/services", withDb(async (req, res, db) => {
+router.post("/api/services", withFeature("procedures", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
   if (!validateBody(serviceCreateSchema, req, res)) return;
   const result = await db.run(
@@ -83,10 +83,10 @@ async function updateService(req, res, db) {
   res.json(await getService(db, req.params.id));
 }
 
-router.put("/api/services/:id", withDb(updateService));
-router.patch("/api/services/:id", withDb(updateService));
+router.put("/api/services/:id", withFeature("procedures", updateService));
+router.patch("/api/services/:id", withFeature("procedures", updateService));
 
-router.delete("/api/services/:id", withDb(async (req, res, db) => {
+router.delete("/api/services/:id", withFeature("procedures", async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
   const linked = await db.get(`
     SELECT

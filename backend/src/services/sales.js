@@ -5,6 +5,14 @@ import { syncProductInventory } from "./inventory.js";
 import { limitOffset, countRows } from "./pagination.js";
 import { validateCoupon } from "./discounts.js";
 import { availableStock, releaseExpiredReservations } from "./reservations.js";
+import {
+  normalizeExplicitInstallments,
+  normalizeInstallmentCount,
+  normalizeReceivableMode,
+  parseStoredInstallments,
+  serializeInstallments,
+  syncSalesOrderReceivables
+} from "./receivables.js";
 
 export class SalesOrderValidationError extends Error {
   constructor(message, status = 400) {
@@ -133,38 +141,53 @@ export async function deductSoldProductStock(db, item, orderId) {
     variantId = firstAvailable?.id;
   }
   if (variantId) {
-    const variant = await db.get("SELECT * FROM jewelry_variants WHERE id = ?", [variantId]);
+    const variant = await db.get("SELECT * FROM jewelry_variants WHERE id = ? FOR UPDATE", [variantId]);
     if (!variant) return;
     const nextQuantity = Number(variant.quantity || 0) - quantity;
     if (nextQuantity < 0) {
       throw insufficientStockError(item.item_name || variant.variation_name || variant.sku, quantity, Number(variant.quantity || 0));
     }
+    const movement = item.id ? await db.run(
+      `INSERT INTO stock_movements
+        (jewelry_id, variant_id, movement_type, quantity, notes, sales_order_id, sales_order_item_id)
+       VALUES (?, ?, 'Saida', ?, ?, ?, ?)
+       ON CONFLICT DO NOTHING RETURNING id`,
+      [item.product_id, variantId, quantity, `Baixa automatica da venda #${orderId}`, orderId, item.id]
+    ) : await db.run(
+      "INSERT INTO stock_movements (jewelry_id, variant_id, movement_type, quantity, notes) VALUES (?, ?, 'Saida', ?, ?) RETURNING id",
+      [item.product_id, variantId, quantity, `Baixa automatica da venda #${orderId}`]
+    );
+    if (!movement.returnedId) return false;
     await db.run(
       "UPDATE jewelry_variants SET quantity = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
       [nextQuantity, variantStatus(nextQuantity, variant.low_stock_threshold), variantId]
     );
-    await db.run(
-      "INSERT INTO stock_movements (jewelry_id, variant_id, movement_type, quantity, notes) VALUES (?, ?, 'Saida', ?, ?)",
-      [item.product_id, variantId, quantity, `Baixa automatica da venda #${orderId}`]
-    );
     await syncProductInventory(db, item.product_id);
-    return;
+    return true;
   }
 
-  const product = await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [item.product_id]);
+  const product = await db.get("SELECT * FROM jewelry_inventory WHERE id = ? FOR UPDATE", [item.product_id]);
   if (!product) return;
   const nextQuantity = Number(product.quantity || 0) - quantity;
   if (nextQuantity < 0) {
     throw insufficientStockError(item.item_name || product.name, quantity, Number(product.quantity || 0));
   }
+  const movement = item.id ? await db.run(
+    `INSERT INTO stock_movements
+      (jewelry_id, movement_type, quantity, notes, sales_order_id, sales_order_item_id)
+     VALUES (?, 'Saida', ?, ?, ?, ?)
+     ON CONFLICT DO NOTHING RETURNING id`,
+    [item.product_id, quantity, `Baixa automatica da venda #${orderId}`, orderId, item.id]
+  ) : await db.run(
+    "INSERT INTO stock_movements (jewelry_id, movement_type, quantity, notes) VALUES (?, 'Saida', ?, ?) RETURNING id",
+    [item.product_id, quantity, `Baixa automatica da venda #${orderId}`]
+  );
+  if (!movement.returnedId) return false;
   await db.run(
     "UPDATE jewelry_inventory SET quantity = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
     [nextQuantity, variantStatus(nextQuantity, product.low_stock_threshold), item.product_id]
   );
-  await db.run(
-    "INSERT INTO stock_movements (jewelry_id, movement_type, quantity, notes) VALUES (?, 'Saida', ?, ?)",
-    [item.product_id, quantity, `Baixa automatica da venda #${orderId}`]
-  );
+  return true;
 }
 
 export async function createSalesOrder(db, body, user) {
@@ -199,6 +222,29 @@ export async function createSalesOrder(db, body, user) {
     throw new SalesOrderValidationError("Ordem de serviço é gerada automaticamente pela agenda ao concluir um atendimento — não pode ser criada manualmente.");
   }
   const source = String(body.source || "site");
+  const requestedOpenStatus = ["pendente", "aberta"].includes(String(body.status || ""));
+  let receivableMode;
+  let installmentCount;
+  let explicitInstallments;
+  try {
+    explicitInstallments = normalizeExplicitInstallments(body.installments, {
+      total,
+      defaultPaymentMethod: body.payment_method || "Pix"
+    });
+    receivableMode = normalizeReceivableMode(
+      body.receivable_mode,
+      explicitInstallments || publicOrder || requestedOpenStatus ? "pending" : "paid"
+    );
+    if (explicitInstallments && receivableMode !== "pending") {
+      throw new Error("Parcelas explícitas exigem recebimento pendente.");
+    }
+    installmentCount = explicitInstallments?.length || normalizeInstallmentCount(body.installment_count ?? 1);
+  } catch (error) {
+    throw new SalesOrderValidationError(error.message);
+  }
+  const firstDueDate = explicitInstallments?.[0]?.dueDate || String(body.first_due_date || localTimestamp().slice(0, 10));
+  const paymentMethod = String(body.payment_method || explicitInstallments?.[0]?.paymentMethod || "Pix");
+  const installmentsJson = explicitInstallments ? JSON.stringify(serializeInstallments(explicitInstallments)) : null;
   // Chamadas públicas nunca podem escolher um estado financeiro conclusivo.
   // Pagamento só é confirmado por um usuário autenticado (ou, futuramente,
   // pelo webhook autenticado do gateway).
@@ -242,17 +288,22 @@ export async function createSalesOrder(db, body, user) {
 
     const result = await tx.run(
       `INSERT INTO sales_orders
-      (client_id, appointment_id, order_type, source, status, payment_method, subtotal_value, discount_value,
+      (client_id, appointment_id, order_type, source, status, payment_method, receivable_mode, installment_count,
+       first_due_date, installments_json, subtotal_value, discount_value,
        total_value, coupon_id, coupon_code, coupon_snapshot, fulfillment_method, delivery_address,
        customer_email, customer_cpf, accepted_policies_at, idempotency_key, notes, created_by_user_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       [
         client.id,
         body.appointment_id ? Number(body.appointment_id) : null,
         orderType,
         source,
         status,
-        body.payment_method || "Pix",
+        paymentMethod,
+        receivableMode,
+        installmentCount,
+        firstDueDate,
+        installmentsJson,
         subtotal,
         discount,
         total,
@@ -270,10 +321,11 @@ export async function createSalesOrder(db, body, user) {
       ]
     );
 
+    let stockTouched = false;
     for (const item of items) {
-      await tx.run(
+      const itemResult = await tx.run(
         `INSERT INTO sales_order_items (sales_order_id, item_type, product_id, product_variant_id, service_id, item_name, quantity, unit_price, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [
           result.returnedId,
           item.item_type || "produto",
@@ -300,27 +352,43 @@ export async function createSalesOrder(db, body, user) {
         );
       }
       if (status === "concluida" || status === "pago") {
-        await deductSoldProductStock(tx, item, result.returnedId);
+        stockTouched = Boolean(await deductSoldProductStock(tx, { ...item, id: itemResult.returnedId }, result.returnedId)) || stockTouched;
       }
     }
 
-    if (total > 0 && (status === "concluida" || status === "pago")) {
+    if (stockTouched) {
+      await tx.run("UPDATE sales_orders SET stock_deducted=1 WHERE id=?", [result.returnedId]);
+    }
+
+    if (total > 0 && (status === "concluida" || status === "pago") && receivableMode === "paid") {
       // `sales_order_id` é o que faz este pagamento ser reconhecido como a
       // baixa do título — sem ele, `payments` e `sales_orders` só se
       // encontrariam por acaso (mesmo cliente, mesmo valor).
       await tx.run(
-        "INSERT INTO payments (appointment_id, client_id, sales_order_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        `INSERT INTO payments
+          (appointment_id, client_id, sales_order_id, amount, payment_type, method, status, paid_at, idempotency_key)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
         [
           body.appointment_id ? Number(body.appointment_id) : null,
           client.id,
           result.returnedId,
           total,
           orderType,
-          body.payment_method || "Pix",
+          paymentMethod,
           "pago",
-          localTimestamp()
+          localTimestamp(),
+          `sales-order:${result.returnedId}:paid`
         ]
       );
+    } else if (total > 0 && (status === "concluida" || status === "pago") && receivableMode === "pending") {
+      await syncSalesOrderReceivables(tx, {
+        salesOrderId: result.returnedId,
+        amount: total,
+        installmentCount,
+        firstDueDate,
+        paymentMethod,
+        installments: explicitInstallments
+      });
     }
     return result.returnedId;
   });
@@ -329,13 +397,7 @@ export async function createSalesOrder(db, body, user) {
   return getSalesOrder(db, orderId);
 }
 
-export async function ensureSalesOrderForAppointment(db, appointmentId, user) {
-  const existing = await db.get(
-    "SELECT id FROM sales_orders WHERE appointment_id = ? AND order_type = 'ordem_servico' LIMIT 1",
-    [appointmentId]
-  );
-  if (existing) return getSalesOrder(db, existing.id);
-
+export async function ensureSalesOrderForAppointment(db, appointmentId, user, options = {}) {
   const appointment = await db.get(`
     SELECT
       a.*,
@@ -354,8 +416,13 @@ export async function ensureSalesOrderForAppointment(db, appointmentId, user) {
     LEFT JOIN jewelry_inventory j ON j.id = a.jewelry_id
     LEFT JOIN jewelry_variants v ON v.id = a.jewelry_variant_id
     WHERE a.id = ?
+    FOR UPDATE OF a
   `, [appointmentId]);
   if (!appointment) return null;
+  const existing = await db.get(
+    "SELECT * FROM sales_orders WHERE appointment_id = ? AND order_type = 'ordem_servico' LIMIT 1 FOR UPDATE",
+    [appointmentId]
+  );
 
   const appointmentItems = await db.all(`
     SELECT ai.*, s.name AS service_name, p.name AS procedure_name,
@@ -377,42 +444,84 @@ export async function ensureSalesOrderForAppointment(db, appointmentId, user) {
   // receita. Seu total precisa preservar o líquido realizado do agendamento;
   // os itens continuam registrando o bruto para explicar o desconto.
   const total = Number(appointment.total_value || Math.max(0, grossTotal - Number(appointment.discount_value || 0)));
-  const result = await db.run(
-    `INSERT INTO sales_orders
-    (client_id, appointment_id, order_type, source, status, payment_method, subtotal_value, discount_value,
-     total_value, coupon_id, coupon_code, coupon_snapshot, notes, created_by_user_id)
-    VALUES (?, ?, 'ordem_servico', 'agenda', 'concluida', ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-    [
-      appointment.client_id,
-      appointment.id,
-      appointment.remaining_payment_method || appointment.deposit_payment_method || "Pix",
-      grossTotal,
-      Number(appointment.discount_value || 0),
-      total,
-      appointment.coupon_id || null,
-      appointment.coupon_code || null,
-      appointment.coupon_snapshot || null,
-      `Ordem gerada automaticamente ao finalizar o atendimento #${appointment.id}`,
-      user?.id || null
-    ]
-  );
+  const outstanding = Math.max(0, Number(appointment.remaining_value || 0));
+  const explicitConfigProvided = Array.isArray(options.installments)
+    ? options.installments.length > 0
+    : options.installments !== undefined && options.installments !== null;
+  const automaticConfigProvided = ["installmentCount", "installment_count", "firstDueDate", "first_due_date", "paymentMethod", "payment_method"]
+    .some((key) => options[key] !== undefined);
+  const storedInstallments = existing && !explicitConfigProvided && !automaticConfigProvided
+    ? parseStoredInstallments(existing.installments_json)
+    : null;
+  const rawInstallments = explicitConfigProvided ? options.installments : storedInstallments;
+  const fallbackPaymentMethod = String(options.paymentMethod || options.payment_method || appointment.remaining_payment_method || appointment.deposit_payment_method || "Pix");
+  const explicitInstallments = normalizeExplicitInstallments(rawInstallments, {
+    total: outstanding,
+    defaultPaymentMethod: fallbackPaymentMethod
+  });
+  const paymentMethod = String(explicitInstallments?.[0]?.paymentMethod || fallbackPaymentMethod);
+  const installmentCount = explicitInstallments?.length || normalizeInstallmentCount(options.installmentCount ?? options.installment_count ?? existing?.installment_count ?? 1);
+  const firstDueDate = explicitInstallments?.[0]?.dueDate || String(options.firstDueDate || options.first_due_date || existing?.first_due_date || localTimestamp().slice(0, 10));
+  const installmentsJson = explicitInstallments ? JSON.stringify(serializeInstallments(explicitInstallments)) : null;
+  let orderId = existing?.id || null;
+  if (existing) {
+    await db.run(
+      `UPDATE sales_orders SET client_id=?, status='concluida', payment_method=?, receivable_mode=?,
+         installment_count=?, first_due_date=?, installments_json=?, subtotal_value=?, discount_value=?, total_value=?,
+         coupon_id=?, coupon_code=?, coupon_snapshot=?, stock_deducted=?, notes=? WHERE id=?`,
+      [
+        appointment.client_id, paymentMethod, outstanding > 0 ? "pending" : "paid", installmentCount,
+        firstDueDate, installmentsJson, grossTotal, Number(appointment.discount_value || 0), total,
+        appointment.coupon_id || null, appointment.coupon_code || null, appointment.coupon_snapshot || null,
+        Number(appointment.stock_deducted || 0),
+        `Ordem atualizada automaticamente ao finalizar o atendimento #${appointment.id}`, existing.id
+      ]
+    );
+  } else {
+    const result = await db.run(
+      `INSERT INTO sales_orders
+      (client_id, appointment_id, order_type, source, status, payment_method, receivable_mode,
+       installment_count, first_due_date, installments_json, stock_deducted, subtotal_value, discount_value,
+       total_value, coupon_id, coupon_code, coupon_snapshot, notes, created_by_user_id)
+      VALUES (?, ?, 'ordem_servico', 'agenda', 'concluida', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      [
+        appointment.client_id,
+        appointment.id,
+        paymentMethod,
+        outstanding > 0 ? "pending" : "paid",
+        installmentCount,
+        firstDueDate,
+        installmentsJson,
+        Number(appointment.stock_deducted || 0),
+        grossTotal,
+        Number(appointment.discount_value || 0),
+        total,
+        appointment.coupon_id || null,
+        appointment.coupon_code || null,
+        appointment.coupon_snapshot || null,
+        `Ordem gerada automaticamente ao finalizar o atendimento #${appointment.id}`,
+        user?.id || null
+      ]
+    );
+    orderId = result.returnedId;
+  }
 
   // O sinal (pago na reserva) e o restante (pago aqui, na finalização) já
   // existem em `payments` antes deste título existir — o vínculo só pode ser
   // feito agora, retroativo, pelo appointment_id que os dois compartilham.
   await db.run(
     "UPDATE payments SET sales_order_id = ? WHERE appointment_id = ? AND sales_order_id IS NULL",
-    [result.returnedId, appointmentId]
+    [orderId, appointmentId]
   );
 
-  if (appointmentItems.length) {
+  if (!existing && appointmentItems.length) {
     for (const item of appointmentItems) {
       if (Number(item.procedure_price || 0) > 0 || item.service_id || item.procedure_id) {
         await db.run(
           `INSERT INTO sales_order_items (sales_order_id, item_type, service_id, item_name, quantity, unit_price, notes)
            VALUES (?, 'servico', ?, ?, 1, ?, ?)`,
           [
-            result.returnedId,
+            orderId,
             item.service_id || null,
             item.procedure_name || item.service_name || appointment.procedure || "Atendimento",
             Number(item.procedure_price || 0),
@@ -425,7 +534,7 @@ export async function ensureSalesOrderForAppointment(db, appointmentId, user) {
           `INSERT INTO sales_order_items (sales_order_id, item_type, product_id, product_variant_id, item_name, quantity, unit_price, notes)
            VALUES (?, 'produto', ?, ?, ?, ?, ?, ?)`,
           [
-            result.returnedId,
+            orderId,
             item.jewelry_id,
             item.jewelry_variant_id || null,
             item.variant_name ? `${item.jewelry_name} - ${item.variant_name}` : item.jewelry_name,
@@ -436,12 +545,12 @@ export async function ensureSalesOrderForAppointment(db, appointmentId, user) {
         );
       }
     }
-  } else {
+  } else if (!existing) {
     await db.run(
       `INSERT INTO sales_order_items (sales_order_id, item_type, service_id, item_name, quantity, unit_price, notes)
        VALUES (?, 'servico', ?, ?, 1, ?, ?)`,
       [
-        result.returnedId,
+        orderId,
         appointment.service_id || null,
         appointment.service_name || appointment.procedure || "Atendimento",
         fallbackServiceValue,
@@ -454,7 +563,7 @@ export async function ensureSalesOrderForAppointment(db, appointmentId, user) {
       `INSERT INTO sales_order_items (sales_order_id, item_type, product_id, product_variant_id, item_name, quantity, unit_price, notes)
        VALUES (?, 'produto', ?, ?, ?, 1, ?, ?)`,
         [
-          result.returnedId,
+          orderId,
           appointment.jewelry_id,
           appointment.jewelry_variant_id || null,
           appointment.variant_name ? `${appointment.jewelry_name} - ${appointment.variant_name}` : appointment.jewelry_name,
@@ -465,7 +574,16 @@ export async function ensureSalesOrderForAppointment(db, appointmentId, user) {
     }
   }
 
-  return getSalesOrder(db, result.returnedId);
+  await syncSalesOrderReceivables(db, {
+    salesOrderId: orderId,
+    amount: outstanding,
+    installmentCount,
+    firstDueDate,
+    paymentMethod,
+    installments: explicitInstallments,
+    description: `Atendimento #${appointment.id}`
+  });
+  return getSalesOrder(db, orderId);
 }
 
 const SALES_ORDER_COLUMNS = `
@@ -475,7 +593,9 @@ const SALES_ORDER_COLUMNS = `
   c.instagram,
   a.procedure AS appointment_procedure,
   a.appointment_date,
-  a.appointment_time
+  a.appointment_time,
+  (SELECT COALESCE(SUM(p.amount), 0) FROM payments p
+   WHERE p.sales_order_id=so.id AND p.status IN ('pago','confirmado')) AS paid_value
 `;
 
 const SALES_ORDER_FROM = `
@@ -498,7 +618,14 @@ async function attachSalesOrderItems(db, orders) {
     acc[item.sales_order_id].push(item);
     return acc;
   }, {});
-  return orders.map((order) => ({ ...order, items: grouped[order.id] || [] }));
+  return orders.map((order) => {
+    const { installments_json: installmentsJson, ...orderData } = order;
+    return {
+      ...orderData,
+      installments: parseStoredInstallments(installmentsJson),
+      items: grouped[order.id] || []
+    };
+  });
 }
 
 // Busca DIRETA por id. Existe para não depender de "listar tudo e procurar":
@@ -509,7 +636,16 @@ export async function getSalesOrder(db, id) {
     [id]
   );
   if (!order) return null;
-  return (await attachSalesOrderItems(db, [order]))[0];
+  const withItems = (await attachSalesOrderItems(db, [order]))[0];
+  const receivables = await db.all(
+    `SELECT id, amount, paid_amount, due_date, competence_date, status, payment_method,
+      installment_number, installment_count, source_key
+     FROM financial_entries
+     WHERE source_type='sales_order' AND source_id=? AND entry_type='receivable' AND status!='canceled'
+     ORDER BY installment_number, id`,
+    [id]
+  );
+  return { ...withItems, receivables };
 }
 
 export async function listSalesOrders(db, { where = "", params = [], paging = null } = {}) {
