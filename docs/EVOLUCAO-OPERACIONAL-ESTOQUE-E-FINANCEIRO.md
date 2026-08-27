@@ -18,7 +18,7 @@ Serviço configurado -> ficha técnica (materiais, nunca produtos vendidos)
 Agenda concluída -> joia + materiais + ordem de serviço + receber/pagamentos
 Agenda reaberta/cancelada -> estorno físico auditável; financeiro exige escolha explícita
 Venda avulsa concluída -> estoque + pagamento/recebível
-Devolução -> futuro fluxo próprio; não usar cancelar venda
+Devolução -> retorno físico por item + redução de títulos/crédito/reembolso
 ~~~
 
 ## Fluxos entregues de cancelamento e devolução
@@ -50,18 +50,18 @@ Use `POST /api/sales-orders/:id/returns` com `items`, `reason` e `financial_acti
 
 Cada item declara `return_to_stock` e `condition`. Somente item `sellable` retorna automaticamente ao estoque; item danificado/descartado continua registrado, mas não volta a ficar disponível. A API impede devolver mais do que foi vendido e preserva cada devolução anterior.
 
-## Ações que ainda precisam de tela e política final
+## Complementos ainda planejados
 
 | Tema | Decisão assumida por segurança | Próxima entrega |
 | --- | --- | --- |
-| Cancelamento de agenda | API já exige resolução explícita | Tela com: reter sinal, crédito do cliente, reembolso presencial e solicitação de estorno online |
-| Devolução/troca de venda | API já registra retorno físico e financeiro | Tela com histórico de devoluções por venda e crédito disponível no cliente |
+| Cancelamento de agenda | API e tela já exigem resolução explícita | Integrar solicitação de estorno online ao gateway e confirmar por webhook |
+| Devolução/troca de venda | API e modal já registram retorno físico e financeiro | Exibir histórico consolidado das devoluções na ficha da venda |
 | WhatsApp como produto Aura | Configuração Cloud API hoje é por clínica e sem expor token | Cofre central Aura, vínculo do número do cliente, saldo de créditos, reserva/baixa por envio e conciliação do provedor |
 | Taxonomia | Categorias de joias atuais continuam compatíveis | Separar na UI: joia de venda, material operacional e serviço; não criar categorias duplicadas |
 
 ## Critérios de aceite para a próxima rodada
 
-- Uma devolução parcial nunca devolve mais unidades ou dinheiro do que a venda original.
+- Manter regressão automática garantindo que devolução parcial nunca devolva mais unidades ou dinheiro do que foi solicitado/vendido.
 - Estorno de gateway fica `solicitado` até confirmação do webhook; não marca como pago/devolvido por clique.
 - Crédito de cliente vira um título rastreável e não saldo solto em observações.
 - O custo de mensagens é debitado por tenant com idempotência e auditoria, sem armazenar chave de cliente em texto claro.

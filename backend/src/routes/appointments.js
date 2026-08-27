@@ -51,6 +51,17 @@ function optionalId(value) {
   return Number.isInteger(number) && number > 0 ? number : null;
 }
 
+function validIsoDate(value) {
+  const text = String(value || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
+  const date = new Date(`${text}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === text;
+}
+
+function validTime(value) {
+  return /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(String(value || ""));
+}
+
 async function validateAppointmentItemsStock(db, items = []) {
   for (const item of Array.isArray(items) ? items : []) {
     if (!item.jewelry_id) continue;
@@ -262,6 +273,14 @@ router.post("/api/appointments/:id/apply-client-credit", withFeature("agenda", a
 
 router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db) => {
   if (!authorizePermission(req, res, req.body.status === "cancelado" ? P.APPOINTMENTS_CANCEL : P.APPOINTMENTS_EDIT)) return;
+  if (req.body.appointment_date !== undefined && !validIsoDate(req.body.appointment_date)) {
+    return res.status(400).json({ error: "Data do agendamento inválida. Use o formato AAAA-MM-DD." });
+  }
+  for (const field of ["appointment_time", "end_time"]) {
+    if (req.body[field] !== undefined && req.body[field] !== null && req.body[field] !== "" && !validTime(req.body[field])) {
+      return res.status(400).json({ error: "Horário do agendamento inválido. Use o formato HH:MM." });
+    }
+  }
   if (req.body.status === "cancelado") {
     return res.status(409).json({ error: "Use o fluxo de cancelamento para registrar retenção, crédito, reembolso ou ausência de pagamento." });
   }

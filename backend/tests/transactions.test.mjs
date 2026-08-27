@@ -178,7 +178,7 @@ before(async () => {
   ctx.professionalId = professional.json.id;
   const jewelry = await api("/jewelry", {
     method: "POST",
-    body: { name: "Joia TX", category: "Labret", material: "Titânio", color: "Prata", quantity: 10, cost_value: 15, sale_value: 60 },
+    body: { name: "Joia TX", category: "Labret", material: "Titânio", color: "Prata", quantity: 10, cost_value: 15, sale_value: 60, virtual_store_active: true, is_catalog_active: true, is_published: true },
   });
   ctx.jewelryId = jewelry.json.id;
   ctx.variantId = jewelry.json.variants[0].id;
@@ -210,8 +210,7 @@ test("venda que falha no meio não deixa cliente, pedido, item, pagamento nem ba
   const clientesAntes = (await api("/clients")).json.length;
   const estoqueAntes = await estoqueDaJoia();
 
-  // O 2o item referencia um serviço inexistente: a violação de chave estrangeira
-  // acontece DEPOIS do cliente, do pedido, do 1o item e da baixa de estoque.
+  // Serviço em venda avulsa é recusado antes de criar cliente, pedido ou baixa.
   const falha = await api("/sales-orders", {
     method: "POST",
     body: {
@@ -222,7 +221,7 @@ test("venda que falha no meio não deixa cliente, pedido, item, pagamento nem ba
       ],
     },
   });
-  assert.equal(falha.status, 500, JSON.stringify(falha.json));
+  assert.equal(falha.status, 400, JSON.stringify(falha.json));
 
   assert.equal((await api("/sales-orders")).json.length, pedidosAntes, "nenhum pedido pode ter sobrado");
   assert.equal((await api("/clients")).json.length, clientesAntes, "nenhum cliente pode ter sobrado");
@@ -332,12 +331,11 @@ test("atendimento marcado 'atendido' que falha no meio não deixa nenhuma das 5 
   assert.equal(criado.status, 201, JSON.stringify(criado.json));
   const appointmentId = criado.json.id;
   const estoqueAntes = await estoqueDaJoia();
-  const pedidosAntes = (await api("/sales-orders")).json.length;
+  const pedidosAntes = (await api("/sales-orders?include_agenda=true")).json.length;
 
-  // appointment_date inválida quebra a geração do pós-atendimento (4a escrita),
-  // depois da baixa de estoque, do pagamento do restante e da ordem de serviço.
+  // A data inválida é recusada antes de qualquer escrita operacional.
   const falha = await api(`/appointments/${appointmentId}`, { method: "PATCH", body: { status: "atendido", appointment_date: "data-invalida" } });
-  assert.equal(falha.status, 500, JSON.stringify(falha.json));
+  assert.equal(falha.status, 400, JSON.stringify(falha.json));
 
   const depois = await api(`/appointments?client_id=${criado.json.client_id}`);
   const agendamento = depois.json.find((item) => Number(item.id) === Number(appointmentId));
@@ -345,7 +343,7 @@ test("atendimento marcado 'atendido' que falha no meio não deixa nenhuma das 5 
   assert.equal(agendamento.appointment_date, HOJE, "a data inválida não pode ter sido gravada");
   assert.equal(Number(agendamento.stock_deducted || 0), 0, "a baixa de estoque tem de ter sido desfeita");
   assert.equal(await estoqueDaJoia(), estoqueAntes, "o estoque não pode ter caído");
-  assert.equal((await api("/sales-orders")).json.length, pedidosAntes, "a ordem de serviço tem de ter sido desfeita");
+  assert.equal((await api("/sales-orders?include_agenda=true")).json.length, pedidosAntes, "nenhuma ordem de serviço pode ser criada");
   const postCare = await api("/post-care");
   assert.equal(postCare.json.filter((item) => Number(item.appointment_id) === Number(appointmentId)).length, 0);
 
@@ -354,7 +352,7 @@ test("atendimento marcado 'atendido' que falha no meio não deixa nenhuma das 5 
   assert.equal(sucesso.status, 200, JSON.stringify(sucesso.json));
   assert.equal(sucesso.json.status, "atendido");
   assert.equal(await estoqueDaJoia(), estoqueAntes - 1, "agora sim o estoque cai");
-  assert.equal((await api("/sales-orders")).json.length, pedidosAntes + 1, "ordem de serviço gerada");
+  assert.equal((await api("/sales-orders?include_agenda=true")).json.length, pedidosAntes + 1, "ordem de serviço gerada");
   const postCareDepois = await api("/post-care");
   assert.equal(postCareDepois.json.filter((item) => Number(item.appointment_id) === Number(appointmentId)).length, 3);
 });

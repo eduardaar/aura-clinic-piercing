@@ -84,14 +84,15 @@ test("rota protegida sem token (mas com X-Tenant válido) → 401", async () => 
   assert.equal(status, 401, JSON.stringify(json));
 });
 
-test("rota protegida SEM token e SEM X-Tenant → nega acesso (401 ou 400)", async () => {
+test("rota protegida SEM token e SEM X-Tenant → nega acesso", async () => {
   // resolveTenant roda antes da auth. Comportamento depende de DEFAULT_TENANT:
   //  - SEM DEFAULT_TENANT → não há como resolver a clínica → 400.
   //  - COM DEFAULT_TENANT (o .env deste projeto define DEFAULT_TENANT=aura) →
   //    a clínica-padrão resolve, mas sem token a auth falha → 401.
-  // O invariante testado é: NUNCA autoriza (nunca 2xx). Aceitamos 401 ou 400.
+  // Se o DEFAULT_TENANT configurado não existir nesta base, a resolução pode
+  // terminar em 404. O invariante é: nunca autorizar sem credenciais.
   const { status } = await req("/appointments");
-  assert.ok(status === 401 || status === 400, `esperava 401 ou 400, veio ${status}`);
+  assert.ok([400, 401, 404].includes(status), `esperava 400, 401 ou 404, veio ${status}`);
   assert.ok(status < 500);
 });
 

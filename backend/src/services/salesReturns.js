@@ -96,7 +96,9 @@ export async function createSalesReturn(db, orderId, body = {}, userId = null) {
         WHERE ri.sales_order_item_id=?`, [item.id]);
       const available = Number(item.quantity || 0) - Number(returned?.quantity || 0);
       if (requested.quantity > available) throw new Error(`A devolução de ${item.item_name} supera a quantidade ainda devolvível (${available}).`);
-      resolved.push({ ...requested, ...item, unit_price: Number(item.unit_price || 0) });
+      // Preserve the requested partial quantity and return decisions. The sale
+      // item carries the original sold quantity and must not overwrite them.
+      resolved.push({ ...item, ...requested, quantity: requested.quantity, unit_price: Number(item.unit_price || 0) });
     }
     const totalValue = Number(resolved.reduce((sum, item) => sum + item.quantity * item.unit_price, 0).toFixed(2));
     const pendingReduction = await reducePendingReceivables(tx, order.id, totalValue, `Redução pela devolução de venda #${order.id}`);

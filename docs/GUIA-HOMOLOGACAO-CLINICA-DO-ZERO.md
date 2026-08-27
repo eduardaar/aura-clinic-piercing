@@ -260,7 +260,9 @@ Luva nitrílica: saída 1 caixa — abertura de rotina
 Gaze estéril: ajuste com motivo "contagem física QA"
 ~~~
 
-**Lacuna M-01:** materiais ainda são baixados manualmente; a finalização do procedimento não consome automaticamente luva, agulha ou antisséptico.
+**Automação entregue:** configure a ficha técnica do serviço antes deste teste. Ao concluir o atendimento, o sistema deve baixar automaticamente luva, agulha e demais materiais da receita, congelar o consumo no atendimento e consumir os lotes por FEFO. A saída manual acima continua útil para perdas, uso administrativo e contagem física.
+
+Cadastre dois lotes sem aumentar o saldo e tente cadastrar um terceiro cuja soma ultrapasse a quantidade do material. O terceiro lote deve ser recusado. Em seguida, faça uma saída e confirme que o lote com validade mais próxima diminuiu primeiro.
 
 ## 8. Clientes, agenda e atendimento
 
@@ -342,9 +344,10 @@ Para QA Carla Mendes, crie perfuração nostril com sinal de R$ 50,00:
 
 1. Remarque para horário livre.
 2. Tente remarcar para o bloqueio H-01.
-3. Cancele antes de atender e procure regra para sinal.
+3. Cancele antes de atender e escolha explicitamente entre retenção do sinal, crédito do cliente ou reembolso manual.
+4. Repita com uma agenda sem pagamento e use “Sem pagamento recebido”.
 
-**Lacuna M-02:** se não houver regra/tela clara para reter, devolver, converter em crédito ou transferir o sinal, abrir evolução de cancelamento e reembolso de agenda.
+**Esperado:** cancelamento direto por simples troca de status é recusado; cada resolução fica auditada. Crédito passa a aparecer na ficha do cliente e reembolso manual gera despesa financeira rastreável.
 
 ## 9. Venda avulsa
 
@@ -377,11 +380,12 @@ Parcela 2: R$ 25,00 em 30 dias via cartão
 
 1. Tente vender acima do estoque.
 2. Tente concluir com variação esgotada.
-3. Após venda concluída, procure devolução/estorno que reverta financeiro e estoque.
+3. Após venda concluída, faça uma devolução parcial vendável e gere crédito do cliente.
+4. Faça devolução de item danificado, sem retorno ao estoque, com reembolso manual.
 
 **Esperado nos itens 1 e 2:** recusa sem saldo negativo ou gravação parcial.
 
-**Lacuna M-03:** venda já baixada não pode ser apagada/cancelada sem trilha. Se não houver tela de devolução/troca/estorno, ela deve ser criada.
+**Esperado nas devoluções:** somente a quantidade selecionada retorna; itens danificados não voltam ao saldo; a soma devolvida nunca supera a venda; títulos pendentes são reduzidos antes de gerar crédito ou reembolso sobre valores já recebidos.
 
 ## 10. Público, financeiro e relatórios
 

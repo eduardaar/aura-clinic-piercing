@@ -34,6 +34,26 @@ import { hasPermission } from "../services/permissionService.js";
 
 const router = Router();
 
+class InsufficientStockError extends Error {
+  constructor(available) {
+    super(`Estoque insuficiente. Saldo disponivel: ${available}.`);
+    this.statusCode = 409;
+  }
+}
+
+function movementQuantity(value) {
+  const quantity = Number(value);
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    throw new InvalidStockQuantityError("A quantidade da movimentacao deve ser um numero inteiro positivo.");
+  }
+  return quantity;
+}
+
+function isOutgoingMovement(value) {
+  const normalized = String(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return ["saida", "venda", "perda"].includes(normalized);
+}
+
 function validateStockPayload(body) {
   if (body.quantity !== undefined) assertNonNegativeStockQuantity(body.quantity);
   if (Array.isArray(body.variants)) {
@@ -581,26 +601,40 @@ router.patch("/api/jewelry/:id", withFeature("basic_inventory", async (req, res,
 
 router.post("/api/jewelry/:id/variants/:variantId/movements", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_ADJUST)) return;
-  const variant = await db.get(
-    "SELECT * FROM jewelry_variants WHERE id = ? AND jewelry_id = ?",
-    [req.params.variantId, req.params.id]
-  );
-  if (!variant) return res.status(404).json({ error: "Variacao nao encontrada." });
-  const quantity = Math.max(0, Number(req.body.quantity || 0));
-  const movementType = req.body.movement_type || "Ajuste";
-  const normalizedMovement = String(movementType).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  const nextQuantity = Math.max(0, Number(variant.quantity || 0) + (["saida", "venda", "perda"].includes(normalizedMovement) ? -quantity : quantity));
-  const status = variantStatus(nextQuantity, variant.low_stock_threshold);
-  await db.run(
-    "INSERT INTO stock_movements (jewelry_id, variant_id, movement_type, quantity, notes, movement_date) VALUES (?, ?, ?, ?, ?, ?)",
-    [req.params.id, variant.id, movementType, quantity, req.body.notes || "", req.body.movement_date || new Date().toISOString().slice(0, 10)]
-  );
-  await db.run(
-    "UPDATE jewelry_variants SET quantity = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-    [nextQuantity, status, variant.id]
-  );
-  await syncProductInventory(db, req.params.id);
-  res.json({ ok: true, product: (await attachVariants(db, [await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [req.params.id])]))[0] });
+  try {
+    const quantity = movementQuantity(req.body.quantity);
+    const movementType = req.body.movement_type || "Ajuste";
+    await db.transaction(async (tx) => {
+      const variant = await tx.get(
+        "SELECT * FROM jewelry_variants WHERE id = ? AND jewelry_id = ? FOR UPDATE",
+        [req.params.variantId, req.params.id]
+      );
+      if (!variant) {
+        const error = new Error("Variacao nao encontrada.");
+        error.statusCode = 404;
+        throw error;
+      }
+      const outgoing = isOutgoingMovement(movementType);
+      const currentQuantity = Number(variant.quantity || 0);
+      if (outgoing && quantity > currentQuantity) throw new InsufficientStockError(currentQuantity);
+      const nextQuantity = currentQuantity + (outgoing ? -quantity : quantity);
+      await tx.run(
+        "INSERT INTO stock_movements (jewelry_id, variant_id, movement_type, quantity, notes, movement_date) VALUES (?, ?, ?, ?, ?, ?)",
+        [req.params.id, variant.id, movementType, quantity, req.body.notes || "", req.body.movement_date || new Date().toISOString().slice(0, 10)]
+      );
+      await tx.run(
+        "UPDATE jewelry_variants SET quantity = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        [nextQuantity, variantStatus(nextQuantity, variant.low_stock_threshold), variant.id]
+      );
+      await syncProductInventory(tx, req.params.id);
+    });
+    res.json({ ok: true, product: (await attachVariants(db, [await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [req.params.id])]))[0] });
+  } catch (error) {
+    if (error instanceof InvalidStockQuantityError || error instanceof InsufficientStockError || error.statusCode === 404) {
+      return res.status(error.statusCode || 400).json({ error: error.message });
+    }
+    throw error;
+  }
 }));
 
 router.get("/api/jewelry/:id/movements", withFeature("basic_inventory", async (req, res, db) => {
@@ -614,30 +648,56 @@ router.get("/api/jewelry/:id/movements", withFeature("basic_inventory", async (r
 
 router.post("/api/jewelry/:id/movements", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_ADJUST)) return;
-  const jewelry = await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [req.params.id]);
-  if (!jewelry) return res.status(404).json({ error: "Joia nao encontrada." });
-  const quantity = Math.max(0, Number(req.body.quantity || 0));
-  const movementType = req.body.movement_type || "Ajuste";
-  const notes = req.body.notes || "";
-  const normalizedMovement = String(movementType).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  const delta = ["saida", "venda", "perda"].includes(normalizedMovement) ? -quantity : quantity;
-  const nextQuantity = Math.max(0, Number(jewelry.quantity || 0) + delta);
-  const criticalThreshold = Number(jewelry.critical_stock_threshold || 3);
-  const lowThreshold = Number(jewelry.low_stock_threshold || 5);
-  const status = nextQuantity <= 0 ? "esgotado" : nextQuantity <= criticalThreshold ? "crítico" : nextQuantity <= lowThreshold ? "baixo estoque" : "disponível";
-  await db.run("INSERT INTO stock_movements (jewelry_id, movement_type, quantity, notes, movement_date) VALUES (?, ?, ?, ?, ?)", [
-    jewelry.id,
-    movementType,
-    quantity,
-    notes,
-    req.body.movement_date || new Date().toISOString().slice(0, 10)
-  ]);
-  await db.run("UPDATE jewelry_inventory SET quantity = ?, status = ? WHERE id = ?", [nextQuantity, status, req.params.id]);
-  res.json({
-    ok: true,
-    jewelry: await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [req.params.id]),
-    movements: await db.all("SELECT * FROM stock_movements WHERE jewelry_id = ? ORDER BY movement_date DESC, id DESC LIMIT 20", [req.params.id])
-  });
+  try {
+    const quantity = movementQuantity(req.body.quantity);
+    const movementType = req.body.movement_type || "Ajuste";
+    await db.transaction(async (tx) => {
+      const jewelry = await tx.get("SELECT * FROM jewelry_inventory WHERE id = ? FOR UPDATE", [req.params.id]);
+      if (!jewelry) {
+        const error = new Error("Joia nao encontrada.");
+        error.statusCode = 404;
+        throw error;
+      }
+      const variants = await tx.all("SELECT * FROM jewelry_variants WHERE jewelry_id = ? AND is_active = 1 ORDER BY id FOR UPDATE", [req.params.id]);
+      if (variants.length > 1) {
+        const error = new Error("Selecione a variacao que sera movimentada.");
+        error.statusCode = 409;
+        throw error;
+      }
+      const stockTarget = variants[0] || jewelry;
+      const outgoing = isOutgoingMovement(movementType);
+      const currentQuantity = Number(stockTarget.quantity || 0);
+      if (outgoing && quantity > currentQuantity) throw new InsufficientStockError(currentQuantity);
+      const nextQuantity = currentQuantity + (outgoing ? -quantity : quantity);
+      const criticalThreshold = Number(jewelry.critical_stock_threshold || 3);
+      const lowThreshold = Number(jewelry.low_stock_threshold || 5);
+      const status = nextQuantity <= 0 ? "esgotado" : nextQuantity <= criticalThreshold ? "crítico" : nextQuantity <= lowThreshold ? "baixo estoque" : "disponível";
+      await tx.run("INSERT INTO stock_movements (jewelry_id, variant_id, movement_type, quantity, notes, movement_date) VALUES (?, ?, ?, ?, ?, ?)", [
+        jewelry.id,
+        variants[0]?.id || null,
+        movementType,
+        quantity,
+        req.body.notes || "",
+        req.body.movement_date || new Date().toISOString().slice(0, 10)
+      ]);
+      if (variants[0]) {
+        await tx.run("UPDATE jewelry_variants SET quantity = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [nextQuantity, variantStatus(nextQuantity, variants[0].low_stock_threshold), variants[0].id]);
+        await syncProductInventory(tx, jewelry.id);
+      } else {
+        await tx.run("UPDATE jewelry_inventory SET quantity = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [nextQuantity, status, req.params.id]);
+      }
+    });
+    res.json({
+      ok: true,
+      jewelry: await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [req.params.id]),
+      movements: await db.all("SELECT * FROM stock_movements WHERE jewelry_id = ? ORDER BY movement_date DESC, id DESC LIMIT 20", [req.params.id])
+    });
+  } catch (error) {
+    if (error instanceof InvalidStockQuantityError || error instanceof InsufficientStockError || [404, 409].includes(error.statusCode)) {
+      return res.status(error.statusCode || 400).json({ error: error.message });
+    }
+    throw error;
+  }
 }));
 
 router.delete("/api/jewelry/:id", withFeature("basic_inventory", async (req, res, db) => {

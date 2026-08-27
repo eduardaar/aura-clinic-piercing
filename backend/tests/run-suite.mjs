@@ -21,6 +21,8 @@ dotenv.config({ path: path.join(process.cwd(), "../.env") });
 
 const PORT = process.env.TEST_PORT || 4199;
 const target = process.argv[2];
+const runnerPlatformEmail = `qa.runner.${process.pid}@aura.local`;
+const runnerPlatformPassword = `AuraRunner-${process.pid}-4495`;
 const env = {
   ...process.env,
   NODE_ENV: "production",
@@ -32,16 +34,19 @@ const env = {
   ALLOW_LEGACY_GLOBAL_BOOTSTRAP: "true",
   PORT: String(PORT),
   AUTH_SECRET: process.env.AUTH_SECRET || "aura-test-secret-only-for-isolated-suite-2026",
-  // Garante superadmin previsível nos testes, sem depender do que estiver no .env.
-  PLATFORM_ADMIN_EMAIL: process.env.PLATFORM_ADMIN_EMAIL || "superadmin@aura.local",
-  PLATFORM_ADMIN_PASSWORD: process.env.PLATFORM_ADMIN_PASSWORD || "superadmin123",
+  // O usuário efêmero correspondente é criado após o healthcheck e removido
+  // no encerramento. Assim a suíte não depende da senha da instalação local.
+  PLATFORM_ADMIN_EMAIL: runnerPlatformEmail,
+  PLATFORM_ADMIN_PASSWORD: runnerPlatformPassword,
   ALLOW_PUBLIC_SIGNUP: "true",
   // A suíte faz muitas requisições/logins do mesmo IP em paralelo; desliga o
   // rate limit SÓ no servidor de teste (nunca em produção).
   DISABLE_RATE_LIMIT: "true",
 };
 
-const server = spawn("node", ["src/index.js"], { env, stdio: ["ignore", "inherit", "inherit"] });
+const server = spawn(process.execPath, ["src/index.js"], { env, stdio: ["ignore", "inherit", "inherit"] });
+let testDatabase = null;
+let shuttingDown = false;
 
 async function waitForHealth() {
   for (let i = 0; i < 60; i++) {
@@ -54,16 +59,38 @@ async function waitForHealth() {
   return false;
 }
 
-function shutdown(code) {
+async function preparePlatformUser() {
+  const [{ default: bcrypt }, database] = await Promise.all([
+    import("bcryptjs"),
+    import("../src/database/connection.js"),
+  ]);
+  const passwordHash = await bcrypt.hash(runnerPlatformPassword, 10);
+  await database.query(`
+    INSERT INTO platform.platform_users (name, email, password_hash, role, session_version, mfa_enabled)
+    VALUES ($1, $2, $3, 'superadmin', 1, false)
+    ON CONFLICT (email) DO UPDATE SET password_hash=EXCLUDED.password_hash, role='superadmin',
+      session_version=platform.platform_users.session_version+1, mfa_enabled=false, mfa_totp_secret_encrypted=NULL
+  `, ["QA Runner", runnerPlatformEmail, passwordHash]);
+  testDatabase = database;
+}
+
+async function shutdown(code) {
+  if (shuttingDown) return;
+  shuttingDown = true;
   try { server.kill("SIGTERM"); } catch { /* já morreu */ }
+  if (testDatabase) {
+    await testDatabase.query("DELETE FROM platform.platform_users WHERE email=$1", [runnerPlatformEmail]).catch(() => {});
+    await testDatabase.pool.end().catch(() => {});
+  }
   process.exit(code ?? 1);
 }
 
 const ok = await waitForHealth();
 if (!ok) {
   console.error("Servidor de teste não subiu em tempo hábil.");
-  shutdown(1);
+  await shutdown(1);
 }
+await preparePlatformUser();
 
 const testTargets = target
   ? [target]
@@ -71,11 +98,11 @@ const testTargets = target
     .filter((file) => file.endsWith(".test.mjs"))
     .map((file) => path.join("tests", file));
 
-const tests = spawn("node", ["--test", "--test-concurrency=1", ...testTargets], {
+const tests = spawn(process.execPath, ["--test", "--test-force-exit", "--test-concurrency=1", ...testTargets], {
   env: { ...env, TEST_API_URL: `http://localhost:${PORT}/api` },
   stdio: ["ignore", "inherit", "inherit"],
 });
-tests.on("exit", (code) => shutdown(code ?? 1));
+tests.on("exit", (code) => { void shutdown(code ?? 1); });
 
-process.on("SIGINT", () => shutdown(130));
-process.on("SIGTERM", () => shutdown(143));
+process.on("SIGINT", () => { void shutdown(130); });
+process.on("SIGTERM", () => { void shutdown(143); });

@@ -5,6 +5,7 @@ import { SalesWorkspace } from "../src/features/sales/Sales";
 
 vi.mock("../src/lib/api", () => ({
   apiFetch: vi.fn(),
+  readStoredSession: () => ({ user: { role: "admin" } }),
   useApiInvalidate: () => vi.fn(),
   useFetch: () => ({ data: [], loading: false, error: "" })
 }));

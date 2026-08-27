@@ -38,12 +38,13 @@ test("sem token → 401", async () => {
   assert.equal(res.status, 401, JSON.stringify(res.json));
 });
 
-test("sem header de clínica e sem token → rejeitado (400 sem DEFAULT_TENANT, 401 com)", async () => {
+test("sem header de clínica e sem token → rejeitado antes de acessar dados", async () => {
   // Se DEFAULT_TENANT estiver no ambiente, a clínica é resolvida e a rejeição
-  // vem do auth (401). Sem ele, a resolução de tenant falha antes (400).
+  // vem do auth (401). Sem ele, a resolução de tenant falha antes (400). Se
+  // o slug padrão não existe nesta base, a resolução retorna 404.
   // O essencial: a rota NUNCA responde 200 sem credenciais.
   const res = await req("/clients");
-  assert.ok([400, 401].includes(res.status), `esperado 400 ou 401, recebeu ${res.status} ${JSON.stringify(res.json)}`);
+  assert.ok([400, 401, 404].includes(res.status), `esperado 400, 401 ou 404, recebeu ${res.status} ${JSON.stringify(res.json)}`);
 });
 
 // ---------- Clientes ----------

@@ -6,13 +6,13 @@ import { DataView } from "../../components/common/DataView";
 import { InstallmentGrid } from "../../components/common/InstallmentGrid";
 import { Loading } from "../../components/common/Feedback";
 import { asArray, formatDate } from "../../lib/utils";
-import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
+import { apiFetch, readStoredSession, useApiInvalidate, useFetch } from "../../lib/api";
 import { defaultSalesLine, defaultSalesOrderForm } from "../../lib/defaultForms";
 import { installmentSummary, installmentsForPayload } from "../../lib/installments";
 import { currency, personName, saleItemLabel, saleOrderTypeLabel, saleSourceLabel } from "../../features/shared/helpers";
 import { SmartCombobox } from "../../components/common/SmartCombobox";
 import { PlanUpgradeNotice } from "../../components/common/PlanUpgradeNotice";
-import { planAllowsAction } from "../../lib/permissions";
+import { can, planAllowsAction } from "../../lib/permissions";
 
 // `formatDate` de lib/utils devolve dd/MM sem ano: numa lista com histórico de
 // vários anos duas vendas distantes ficariam idênticas na coluna.
@@ -58,6 +58,11 @@ export function SalesWorkspace({ features = [], onUpgrade }) {
   const [returnOrder, setReturnOrder] = useState(null);
   const [returnForm, setReturnForm] = useState(null);
   const canGenerateReceivables = planAllowsAction(features, "sales.generate_receivables");
+  const currentUser = readStoredSession()?.user || {};
+  const canCancelSales = can(currentUser, "sales.cancel");
+  const canReturnSales = can(currentUser, "sales.edit_closed");
+  const canRefundSales = can(currentUser, "finance.refund");
+  const canApplyCredit = can(currentUser, "finance.edit");
   const safeOrders = asArray(orders);
   const safeJewelry = asArray(jewelry);
   const statusOptions = distinctOptions(safeOrders, (order) => order.status, (value) => ORDER_STATUS_LABELS[value] || value);
@@ -261,7 +266,7 @@ export function SalesWorkspace({ features = [], onUpgrade }) {
   function openReturn(order) {
     setError("");
     setReturnOrder(order);
-    setReturnForm({ financial_action: Number(order.paid_value || 0) > 0 ? "manual_refund" : "none", refund_method: "Pix", reason: "", items: asArray(order.items).map((item) => ({ sales_order_item_id: item.id, quantity: item.quantity || 1, return_to_stock: true, condition: "sellable", notes: "" })) });
+    setReturnForm({ financial_action: Number(order.paid_value || 0) > 0 && canRefundSales ? "manual_refund" : "none", refund_method: "Pix", reason: "", items: asArray(order.items).map((item) => ({ sales_order_item_id: item.id, quantity: item.quantity || 1, return_to_stock: true, condition: "sellable", notes: "" })) });
   }
 
   async function saveReturn() {
@@ -390,11 +395,11 @@ export function SalesWorkspace({ features = [], onUpgrade }) {
               ["pendente", "aberta"].includes(order.status) && order.source !== "agenda" && {
                 label: "Concluir", onClick: () => updateStatus(order, "concluida")
               },
-              !["cancelado", "cancelada"].includes(order.status) && order.source !== "agenda" &&
+              canCancelSales && !["cancelado", "cancelada"].includes(order.status) && order.source !== "agenda" &&
                 !Number(order.stock_deducted || 0) && !Number(order.paid_value || 0) && {
                 label: "Cancelar", onClick: () => updateStatus(order, "cancelado"), danger: true
               },
-              Number(order.stock_deducted || 0) && order.source !== "agenda" && order.status !== "devolvida" && {
+              canReturnSales && Number(order.stock_deducted || 0) && order.source !== "agenda" && order.status !== "devolvida" && {
                 label: "Devolução / troca", onClick: () => openReturn(order), danger: true
               }
             ].filter(Boolean)} />
@@ -530,7 +535,7 @@ export function SalesWorkspace({ features = [], onUpgrade }) {
       </Modal>
 
       <Modal open={!!returnOrder} title={`Devolução da venda #${returnOrder?.id || ""}`} subtitle="Selecione itens, condição e destino financeiro" size="lg" onClose={() => { setReturnOrder(null); setReturnForm(null); }} footer={<><Button variant="secondary" onClick={() => { setReturnOrder(null); setReturnForm(null); }}>Voltar</Button><Button variant="danger" disabled={!returnForm?.reason?.trim()} onClick={saveReturn}>Confirmar devolução</Button></>}>
-        {returnForm && <div className="stack"><Select label="Destino do valor já recebido" value={returnForm.financial_action} onChange={(financial_action) => setReturnForm({ ...returnForm, financial_action })}><option value="none">Abater somente contas pendentes</option><option value="client_credit">Gerar crédito para o cliente</option><option value="manual_refund">Reembolso manual</option></Select>{returnForm.financial_action === "manual_refund" && <Select label="Forma do reembolso" value={returnForm.refund_method} onChange={(refund_method) => setReturnForm({ ...returnForm, refund_method })}><option>Pix</option><option>Dinheiro</option><option>Cartão</option></Select>}<div className="clean-list">{returnForm.items.map((item, index) => { const original = asArray(returnOrder.items)[index]; return <div key={item.sales_order_item_id} className="stack"><strong>{original?.item_name || `Item #${item.sales_order_item_id}`}</strong><div className="form-grid"><Input type="number" min="0" max={original?.quantity || 1} label="Quantidade" value={item.quantity} onChange={(quantity) => setReturnForm({ ...returnForm, items: returnForm.items.map((row, rowIndex) => rowIndex === index ? { ...row, quantity } : row) })} /><Select label="Condição" value={item.condition} onChange={(condition) => setReturnForm({ ...returnForm, items: returnForm.items.map((row, rowIndex) => rowIndex === index ? { ...row, condition, return_to_stock: condition === "sellable" } : row) })}><option value="sellable">Vendável — retornar ao estoque</option><option value="damaged">Danificado — não retornar</option><option value="discarded">Descartado — não retornar</option></Select></div></div>; })}</div><Textarea label="Motivo obrigatório" value={returnForm.reason} onChange={(reason) => setReturnForm({ ...returnForm, reason })} />{error && <span className="form-error">{error}</span>}</div>}
+        {returnForm && <div className="stack"><Select label="Destino do valor já recebido" value={returnForm.financial_action} onChange={(financial_action) => setReturnForm({ ...returnForm, financial_action })}><option value="none">Abater somente contas pendentes</option>{canRefundSales && <option value="client_credit">Gerar crédito para o cliente</option>}{canRefundSales && <option value="manual_refund">Reembolso manual</option>}</Select>{returnForm.financial_action === "manual_refund" && <Select label="Forma do reembolso" value={returnForm.refund_method} onChange={(refund_method) => setReturnForm({ ...returnForm, refund_method })}><option>Pix</option><option>Dinheiro</option><option>Cartão</option></Select>}<div className="clean-list">{returnForm.items.map((item, index) => { const original = asArray(returnOrder.items)[index]; return <div key={item.sales_order_item_id} className="stack"><strong>{original?.item_name || `Item #${item.sales_order_item_id}`}</strong><div className="form-grid"><Input type="number" min="0" max={original?.quantity || 1} label="Quantidade" value={item.quantity} onChange={(quantity) => setReturnForm({ ...returnForm, items: returnForm.items.map((row, rowIndex) => rowIndex === index ? { ...row, quantity } : row) })} /><Select label="Condição" value={item.condition} onChange={(condition) => setReturnForm({ ...returnForm, items: returnForm.items.map((row, rowIndex) => rowIndex === index ? { ...row, condition, return_to_stock: condition === "sellable" } : row) })}><option value="sellable">Vendável — retornar ao estoque</option><option value="damaged">Danificado — não retornar</option><option value="discarded">Descartado — não retornar</option></Select></div></div>; })}</div><Textarea label="Motivo obrigatório" value={returnForm.reason} onChange={(reason) => setReturnForm({ ...returnForm, reason })} />{error && <span className="form-error">{error}</span>}</div>}
       </Modal>
 
       <Modal
@@ -596,7 +601,7 @@ export function SalesWorkspace({ features = [], onUpgrade }) {
                 </p>
               )}
             </section>
-            {details?.receivable_mode === "pending" && <Button variant="secondary" onClick={() => applyCredit(details)}>Aplicar crédito disponível</Button>}
+            {canApplyCredit && details?.receivable_mode === "pending" && <Button variant="secondary" onClick={() => applyCredit(details)}>Aplicar crédito disponível</Button>}
           </div>
         )}
       </Modal>

@@ -350,13 +350,13 @@ test("3g. agenda publica gera slots reais, respeita almoco, domingo, bloqueios e
   assert.equal(busySlots.status, 200, JSON.stringify(busySlots.json));
   assert.ok(!busySlots.json.slots.some((slot) => slot.time === "09:00"), "horario ocupado nao deve aparecer");
 
-  const canceled = await api(`/appointments/${ctx.busyAppointmentId}`, {
-    method: "PATCH",
-    body: { status: "cancelado" },
+  const canceled = await api(`/appointments/${ctx.busyAppointmentId}/cancel`, {
+    method: "POST",
+    body: { resolution: "no_payment", reason: "Cancelamento QA para liberar horário" },
   });
   assert.equal(canceled.status, 200, JSON.stringify(canceled.json));
-  assert.equal(canceled.json.status, "cancelado");
-  assert.equal(Number(canceled.json.remaining_value), 0);
+  assert.equal(canceled.json.appointment?.status, "cancelado");
+  assert.equal(Number(canceled.json.appointment?.remaining_value), 0);
   const releasedSlots = await api(`/booking/slots?service_id=${ctx.serviceId}&professional_id=${ctx.professionalId}&date=${busyDate}`);
   assert.equal(releasedSlots.status, 200, JSON.stringify(releasedSlots.json));
   assert.ok(releasedSlots.json.slots.some((slot) => slot.time === "09:00"), "cancelamento deve liberar o horario publico");
@@ -374,6 +374,8 @@ test("3h. agendamento publico cria solicitacao aguardando sinal, evita duplicida
       quantity: 3,
       sale_value: 90,
       is_catalog_active: true,
+      is_published: true,
+      virtual_store_active: true,
     },
   });
   assert.equal(publicJewelry.status, 201, JSON.stringify(publicJewelry.json));
@@ -644,6 +646,9 @@ test("4c. calcula preços de variações em centavos e normaliza comprimento", a
       category: "Labret",
       material: "Titânio",
       color: "Natural",
+      is_catalog_active: true,
+      is_published: true,
+      virtual_store_active: true,
       images: [
         { image_url: "/uploads/labret-principal.png", alt_text: "Labret principal", is_primary: true, sort_order: 1 },
         { image_url: "/uploads/labret-detalhe.png", alt_text: "Labret detalhe", sort_order: 2 }
@@ -727,6 +732,13 @@ test("4d. dashboard e central de alertas usam a mesma regra de estoque crítico"
   const stockAlert = alerts.json.items.find((item) => item.id === `stock-${ctx.jewelryId}`);
   assert.ok(stockAlert, "central de alertas deve exibir a mesma joia crítica");
   assert.equal(stockAlert.priority, "high");
+
+  const restored = await api(`/jewelry/${ctx.jewelryId}/movements`, {
+    method: "POST",
+    body: { movement_type: "Entrada", quantity: 14, notes: "Reposição após teste de alerta" },
+  });
+  assert.equal(restored.status, 200, JSON.stringify(restored.json));
+  assert.equal(Number(restored.json.jewelry.quantity), 15, "teste de alerta deve restaurar o saldo para os fluxos seguintes");
 });
 
 test("5a. cria agendamento (com sinal) e ele aparece na listagem", async () => {
@@ -792,7 +804,7 @@ test("5c. muda status do agendamento até 'atendido'", async () => {
   assert.equal(patch.status, 200, JSON.stringify(patch.json));
   assert.equal(patch.json.status, "atendido");
 
-  const orders = await api("/sales-orders");
+  const orders = await api("/sales-orders?include_agenda=true");
   assert.equal(orders.status, 200, JSON.stringify(orders.json));
   const serviceOrders = orders.json.filter((order) => Number(order.appointment_id) === Number(ctx.appointmentId) && order.order_type === "ordem_servico");
   assert.equal(serviceOrders.length, 1, "agendamento atendido deve gerar uma unica ordem de servico");

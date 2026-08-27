@@ -34,6 +34,25 @@ function optionalDate(value, label = "Data de validade") {
   return text;
 }
 
+async function consumeTrackedLots(db, consumableId, quantity) {
+  let remaining = Number(quantity || 0);
+  if (remaining <= 0) return;
+  const lots = await db.all(`
+    SELECT id, remaining_quantity
+      FROM consumable_lots
+     WHERE consumable_id=? AND remaining_quantity > 0
+     ORDER BY CASE WHEN expiry_date IS NULL THEN 1 ELSE 0 END, expiry_date NULLS LAST, id
+     FOR UPDATE
+  `, [consumableId]);
+  for (const lot of lots) {
+    if (remaining <= 0) break;
+    const consumed = Math.min(remaining, Number(lot.remaining_quantity || 0));
+    if (consumed <= 0) continue;
+    await db.run("UPDATE consumable_lots SET remaining_quantity=remaining_quantity-?, updated_at=CURRENT_TIMESTAMP WHERE id=?", [consumed, lot.id]);
+    remaining -= consumed;
+  }
+}
+
 router.get("/api/consumables", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_VIEW)) return;
   const status = String(req.query.status || "").trim();
@@ -76,7 +95,11 @@ router.post("/api/consumables/:id/lots", withFeature("basic_inventory", async (r
     await db.transaction(async (tx) => {
       const material = await tx.get("SELECT * FROM consumables WHERE id=? FOR UPDATE", [req.params.id]);
       if (!material || material.status !== "active") throw new Error("Material ativo não encontrado.");
-      if (!increaseStock && quantity > Number(material.quantity || 0)) throw new Error("O lote informado supera o saldo atual. Marque entrada de estoque ou informe uma quantidade menor.");
+      if (!increaseStock) {
+        const tracked = await tx.get("SELECT COALESCE(SUM(remaining_quantity), 0) AS quantity FROM consumable_lots WHERE consumable_id=?", [material.id]);
+        const availableUntracked = Number(material.quantity || 0) - Number(tracked?.quantity || 0);
+        if (quantity > availableUntracked) throw new Error(`O lote informado supera o saldo ainda sem lote (${Math.max(0, availableUntracked)}). Marque entrada de estoque ou informe uma quantidade menor.`);
+      }
       await tx.run(`
         INSERT INTO consumable_lots (consumable_id, batch_code, expiry_date, received_quantity, remaining_quantity, unit_cost, notes)
         VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -146,6 +169,7 @@ router.post("/api/consumables/:id/movements", withFeature("basic_inventory", asy
       if (!current || current.status === "archived") throw new Error("Material ativo não encontrado.");
       const nextQuantity = movementType === "Saida" ? Number(current.quantity) - quantity : movementType === "Ajuste" ? quantity : Number(current.quantity) + quantity;
       if (nextQuantity < 0) throw new Error("A saída não pode deixar o estoque negativo.");
+      await consumeTrackedLots(tx, current.id, Math.max(0, Number(current.quantity) - nextQuantity));
       await tx.run("UPDATE consumables SET quantity=?, updated_at=to_char(now(), 'YYYY-MM-DD HH24:MI:SS') WHERE id=?", [nextQuantity, current.id]);
       await tx.run("INSERT INTO consumable_stock_movements (consumable_id, movement_type, quantity, notes) VALUES (?, ?, ?, ?)", [current.id, movementType, quantity, String(req.body?.notes || "").trim()]);
     });
