@@ -22,6 +22,8 @@ import {
   syncSalesOrderReceivables
 } from "../services/receivables.js";
 import { requireFeature } from "../services/subscriptions.js";
+import { createSalesReturn, listSalesReturns } from "../services/salesReturns.js";
+import { applyCreditToSalesOrder } from "../services/clientCredits.js";
 
 const router = Router();
 
@@ -76,6 +78,36 @@ router.get("/api/sales-orders/:id", withFeature("basic_catalog", async (req, res
   const order = await getSalesOrder(db, req.params.id);
   if (!order) return res.status(404).json({ error: "Venda não encontrada." });
   res.json(order);
+}));
+
+router.get("/api/sales-orders/:id/returns", withFeature("basic_catalog", async (req, res, db) => {
+  if (!authorizePermission(req, res, P.SALES_VIEW)) return;
+  const order = await db.get("SELECT id FROM sales_orders WHERE id=?", [req.params.id]);
+  if (!order) return res.status(404).json({ error: "Venda não encontrada." });
+  res.json(await listSalesReturns(db, req.params.id));
+}));
+
+// Devolução é uma operação própria: valida o limite já devolvido por item,
+// devolve estoque apenas quando o item está vendável e reduz primeiro títulos
+// ainda abertos. Valor já recebido precisa virar crédito ou reembolso explícito.
+router.post("/api/sales-orders/:id/returns", withFeature("basic_catalog", async (req, res, db) => {
+  if (!authorizePermission(req, res, P.SALES_EDIT_CLOSED)) return;
+  if (["client_credit", "manual_refund"].includes(String(req.body?.financial_action || "")) && !authorizePermission(req, res, P.FINANCE_REFUND)) return;
+  try {
+    res.status(201).json(await createSalesReturn(db, req.params.id, req.body || {}, req.user?.id || null));
+  } catch (error) {
+    const message = error.message || "Não foi possível registrar a devolução.";
+    res.status(/não encontrada|não encontrado/i.test(message) ? 404 : /supera|já recebido|só pode|usam o cancelamento/i.test(message) ? 409 : 400).json({ error: message });
+  }
+}));
+
+router.post("/api/sales-orders/:id/apply-client-credit", withFeature("basic_catalog", async (req, res, db) => {
+  if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
+  try {
+    res.json(await applyCreditToSalesOrder(db, req.params.id, req.body || {}, req.user?.id || null));
+  } catch (error) {
+    res.status(/não encontrada|não encontrado/i.test(error.message) ? 404 : 400).json({ error: error.message || "Não foi possível aplicar o crédito." });
+  }
 }));
 
 router.post("/api/sales-orders", withFeature("basic_catalog", async (req, res, db) => {

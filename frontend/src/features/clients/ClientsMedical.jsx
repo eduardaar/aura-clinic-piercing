@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { FileSignature, HeartPulse } from "lucide-react";
 import { Button, Input, SecureImage, Select, StatusBadge, Textarea } from "../../components/common/Ui";
-import { Modal, CrudHeader, RowActions } from "../../components/common/Crud";
+import { ConfirmDeleteModal, Modal, CrudHeader, RowActions } from "../../components/common/Crud";
 import { DataView, MONTH_OPTIONS } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray, dateInputValue, formatDate, formatLongDate } from "../../lib/utils";
@@ -198,6 +198,8 @@ function ClientProfileLoader({ clientId, fallback, onChanged }) {
 function ClientProfile({ client, onChanged }) {
   const timeline = asArray(client.timeline);
   const paid = asArray(client.payments).filter((item) => item.status === "pago").reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const { data: creditsData } = useFetch(`/clients/${client.id}/credits`);
+  const availableCredit = Number(creditsData?.open_amount || 0);
   return (
     <div className="stack">
       <div className="metric-grid">
@@ -206,12 +208,14 @@ function ClientProfile({ client, onChanged }) {
         <article className="metric-card"><span>Termos</span><strong>{asArray(client.terms).length}</strong></article>
         <article className="metric-card"><span>Retornos</span><strong>{asArray(client.followups).length}</strong></article>
         <article className="metric-card"><span>Fidelidade</span><strong>{client.loyalty?.availablePoints || 0} pts</strong></article>
+        <article className="metric-card"><span>Crédito disponível</span><strong>{currency.format(availableCredit)}</strong></article>
       </div>
       <section className="detail-card">
         <h3>Preferências e observações</h3>
         <p>{client.notes || "Nenhuma observação cadastrada."}</p>
         <small>{client.whatsapp} · {client.email || "sem e-mail"} · {client.instagram || "sem Instagram"}</small>
       </section>
+      {availableCredit > 0 && <section className="detail-card"><h3>Crédito do cliente</h3><p>{currency.format(availableCredit)} disponível para aplicar em um novo atendimento ou venda.</p></section>}
       <section className="detail-card">
         <h3>Timeline completa</h3>
         <div className="medical-timeline">

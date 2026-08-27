@@ -7,6 +7,7 @@ import { listServices, countServices, getService, replaceProfessionalServices } 
 import { validateBody } from "../middleware/validate.js";
 import { serviceCreateSchema, serviceUpdateSchema } from "../schemas/index.js";
 import { parsePaging, pageResponse } from "../services/pagination.js";
+import { replaceServiceRecipe, serviceRecipe } from "../services/consumableUsage.js";
 
 const router = Router();
 
@@ -85,6 +86,24 @@ async function updateService(req, res, db) {
 
 router.put("/api/services/:id", withFeature("procedures", updateService));
 router.patch("/api/services/:id", withFeature("procedures", updateService));
+
+// Ficha técnica: materiais operacionais, separados dos produtos vendidos. A
+// baixa só acontece quando o atendimento é concluído, nunca ao agendar.
+router.get("/api/services/:id/consumables", withFeature("basic_inventory", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
+  const service = await db.get("SELECT id FROM services WHERE id=?", [req.params.id]);
+  if (!service) return res.status(404).json({ error: "Serviço não encontrado." });
+  res.json(await serviceRecipe(db, req.params.id));
+}));
+
+router.put("/api/services/:id/consumables", withFeature("basic_inventory", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
+  try {
+    res.json(await replaceServiceRecipe(db, req.params.id, req.body?.items));
+  } catch (error) {
+    res.status(/não encontrado/i.test(error.message) ? 404 : 400).json({ error: error.message || "Não foi possível salvar a ficha técnica." });
+  }
+}));
 
 router.delete("/api/services/:id", withFeature("procedures", async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;

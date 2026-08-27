@@ -27,6 +27,13 @@ function activeStatus(value) {
   return value === "archived" ? "archived" : "active";
 }
 
+function optionalDate(value, label = "Data de validade") {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text) || Number.isNaN(new Date(`${text}T12:00:00Z`).getTime())) throw new Error(`${label} inválida.`);
+  return text;
+}
+
 router.get("/api/consumables", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_VIEW)) return;
   const status = String(req.query.status || "").trim();
@@ -43,6 +50,47 @@ router.get("/api/consumables", withFeature("basic_inventory", async (req, res, d
   }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   res.json(await db.all(`SELECT * FROM consumables ${where} ORDER BY status, name, id`, params));
+}));
+
+router.get("/api/consumables/:id/lots", withFeature("basic_inventory", async (req, res, db) => {
+  if (!authorizePermission(req, res, P.INVENTORY_VIEW)) return;
+  const material = await db.get("SELECT id FROM consumables WHERE id=?", [req.params.id]);
+  if (!material) return res.status(404).json({ error: "Material não encontrado." });
+  res.json(await db.all(`
+    SELECT l.*, po.purchase_date, s.name AS supplier_name
+      FROM consumable_lots l
+      LEFT JOIN purchase_orders po ON po.id=l.purchase_order_id
+      LEFT JOIN suppliers s ON s.id=po.supplier_id
+     WHERE l.consumable_id=?
+     ORDER BY CASE WHEN l.expiry_date IS NULL THEN 1 ELSE 0 END, l.expiry_date NULLS LAST, l.id
+  `, [req.params.id]));
+}));
+
+// Lotes são cadastrados para o saldo que já existe ou para entradas novas. A
+// primeira opção não altera saldo; a segunda deixa uma movimentação auditável.
+router.post("/api/consumables/:id/lots", withFeature("basic_inventory", async (req, res, db) => {
+  if (!authorizePermission(req, res, P.INVENTORY_ADJUST)) return;
+  try {
+    const quantity = positiveInteger(req.body?.quantity, "Quantidade do lote");
+    const increaseStock = req.body?.increase_stock === true || req.body?.increase_stock === "true";
+    await db.transaction(async (tx) => {
+      const material = await tx.get("SELECT * FROM consumables WHERE id=? FOR UPDATE", [req.params.id]);
+      if (!material || material.status !== "active") throw new Error("Material ativo não encontrado.");
+      if (!increaseStock && quantity > Number(material.quantity || 0)) throw new Error("O lote informado supera o saldo atual. Marque entrada de estoque ou informe uma quantidade menor.");
+      await tx.run(`
+        INSERT INTO consumable_lots (consumable_id, batch_code, expiry_date, received_quantity, remaining_quantity, unit_cost, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, [material.id, String(req.body?.batch_code || "").trim(), optionalDate(req.body?.expiry_date), quantity, quantity,
+        money(req.body?.unit_cost ?? material.cost_value, "Custo do lote"), String(req.body?.notes || "").trim()]);
+      if (increaseStock) {
+        await tx.run("UPDATE consumables SET quantity=quantity+?, updated_at=to_char(now(), 'YYYY-MM-DD HH24:MI:SS') WHERE id=?", [quantity, material.id]);
+        await tx.run("INSERT INTO consumable_stock_movements (consumable_id, movement_type, quantity, notes) VALUES (?, 'Entrada', ?, ?)", [material.id, quantity, `Entrada em lote: ${String(req.body?.batch_code || "sem código").trim()}`]);
+      }
+    });
+    res.status(201).json((await db.all("SELECT * FROM consumable_lots WHERE consumable_id=? ORDER BY id DESC LIMIT 1", [req.params.id]))[0]);
+  } catch (error) {
+    res.status(400).json({ error: error.message || "Não foi possível registrar o lote." });
+  }
 }));
 
 router.post("/api/consumables", withFeature("basic_inventory", async (req, res, db) => {

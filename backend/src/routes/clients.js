@@ -78,6 +78,17 @@ async function updateClient(req, res, db) {
 router.put("/api/clients/:id", withFeature("clients", updateClient));
 router.patch("/api/clients/:id", withFeature("clients", updateClient));
 
+// Crédito é exibido separado de pagamentos: ele representa uma obrigação da
+// clínica com o cliente e nunca deve desaparecer em uma observação livre.
+router.get("/api/clients/:id/credits", withFeature("clients", async (req, res, db) => {
+  if (!authorizePermission(req, res, P.CLIENTS_VIEW)) return;
+  const client = await db.get("SELECT id FROM clients WHERE id=?", [req.params.id]);
+  if (!client) return res.status(404).json({ error: "Cliente não encontrado." });
+  const credits = await db.all(`SELECT * FROM client_credits WHERE client_id=? ORDER BY created_at DESC, id DESC`, [client.id]);
+  const openAmount = credits.filter((item) => ["open", "partially_used"].includes(item.status)).reduce((sum, item) => sum + Number(item.remaining_amount || 0), 0);
+  res.json({ credits, open_amount: Number(openAmount.toFixed(2)) });
+}));
+
 router.delete("/api/clients/:id", withFeature("clients", async (req, res, db) => {
   if (!authorizePermission(req, res, P.CLIENTS_DELETE)) return;
   const id = req.params.id;

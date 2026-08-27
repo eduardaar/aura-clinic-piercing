@@ -173,16 +173,48 @@ export function Signup() {
     };
   }, [form.name, form.admin_email, slug]);
 
-  function next() {
+  async function next() {
     setError("");
     if (step === 1) {
       if (!form.name.trim()) return setError("Informe o nome da sua clínica ou studio.");
       if (!form.admin_email.trim()) return setError("Informe um e-mail para acesso.");
-      if (availability.email.status === "checking") return setError("Aguarde a verificação do e-mail.");
-      if (availability.email.status === "taken") return setError("Este e-mail já possui uma clínica cadastrada. Faça login ou use outro e-mail.");
+      if (!EMAIL_REGEX.test(form.admin_email.trim())) return setError("Informe um e-mail válido para acesso.");
       if (form.admin_password.length < 8) return setError("Crie uma senha com no mínimo 8 caracteres.");
       if (form.admin_password !== form.admin_password_confirmation) return setError("As senhas não conferem.");
       if (slug.length < 3) return setError("Use um nome com pelo menos 3 letras para gerar o endereço da loja.");
+
+      // A checagem em segundo plano é apenas um atalho visual. Ao avançar,
+      // consultamos de novo e aguardamos a resposta: assim ninguém chega aos
+      // termos enquanto o e-mail ou o código previsto ainda estão pendentes.
+      const name = form.name.trim();
+      const email = form.admin_email.trim();
+      setAvailability({
+        name: { status: "checking", suggestedSlug: slug },
+        email: { status: "checking" }
+      });
+      try {
+        const params = new URLSearchParams({ name, email });
+        const response = await fetch(`${API}/signup/availability?${params.toString()}`);
+        if (!response.ok) throw new Error("availability_unavailable");
+        const payload = await response.json();
+        const nextAvailability = {
+          name: {
+            status: payload?.name?.exists ? "existing" : "available",
+            suggestedSlug: payload?.name?.suggested_slug || slug
+          },
+          email: { status: payload?.email?.available ? "available" : "taken" }
+        };
+        setAvailability(nextAvailability);
+        if (nextAvailability.email.status === "taken") {
+          return setError("Este e-mail já possui uma clínica cadastrada. Faça login ou use outro e-mail.");
+        }
+      } catch {
+        setAvailability({
+          name: { status: "error", suggestedSlug: slug },
+          email: { status: "error" }
+        });
+        return setError("Não foi possível confirmar o e-mail e o código da clínica. Tente novamente antes de continuar.");
+      }
     }
     setStep((current) => Math.min(current + 1, 2));
   }

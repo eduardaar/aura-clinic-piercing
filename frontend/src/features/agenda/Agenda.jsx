@@ -455,7 +455,7 @@ export function CalendarEvent({ item, refresh, onSelect }) {
           menuOnly
           actions={[
             { label: "Remarcar", onClick: () => updateAppointment(item.id, { status: "remarcado" }, refresh) },
-            { label: "Cancelar", danger: true, onClick: () => updateAppointment(item.id, { status: "cancelado" }, refresh) },
+            { label: "Cancelar com resolução", danger: true, onClick: () => onSelect?.(item) },
             { label: "Revisar e finalizar", onClick: () => onSelect?.(item) }
           ]}
         />
@@ -573,6 +573,7 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
   const [financialNotes, setFinancialNotes] = useState("");
   const [error, setError] = useState("");
   const [deletion, setDeletion] = useState(null);
+  const [cancellation, setCancellation] = useState(null);
   const canGenerateReceivables = planAllowsAction(features, "appointments.generate_receivables");
   const safeServices = asArray(services);
   const safeProcedures = asArray(procedures);
@@ -602,6 +603,7 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
     setFinancialNotes(appointment.financial_notes || "");
     setError("");
     setDeletion(null);
+    setCancellation(null);
   }, [appointment, services, options]);
 
   function updatePricedForm(nextForm) {
@@ -674,6 +676,24 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
     onSaved?.();
   }
 
+  async function applyClientCredit() {
+    const response = await apiFetch(`/appointments/${appointment.id}/apply-client-credit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return setError(payload.error || "Não foi possível aplicar o crédito disponível.");
+    setPayments([{ method: "Crédito do cliente", amount: 0, status: "pago", installments: 1, fee_amount: 0, expected_receipt_date: "" }]);
+    onSaved?.();
+  }
+
+  async function cancelWithResolution() {
+    if (!cancellation?.reason?.trim()) return setError("Informe o motivo do cancelamento.");
+    if (cancellation.resolution === "manual_refund" && !cancellation.refund_method) return setError("Informe a forma do reembolso.");
+    const response = await apiFetch(`/appointments/${appointment.id}/cancel`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cancellation) });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return setError(payload.error || "Não foi possível cancelar o agendamento.");
+    setCancellation(null);
+    onSaved?.();
+  }
+
   return (
     <Modal
       open={!!appointment}
@@ -730,13 +750,17 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
           <div className="toolbar compact-actions">
             <Button variant="secondary" onClick={() => saveAppointment({ status: "confirmado" })}>Confirmar</Button>
             <Button variant="secondary" onClick={() => saveAppointment({ status: "remarcado" })}>Reagendar</Button>
-            <Button variant="secondary" className="danger" onClick={() => saveAppointment({ status: "cancelado" })}>Cancelar</Button>
+            <Button variant="secondary" className="danger" onClick={() => setCancellation({ resolution: Number(appointment.deposit_value || 0) > 0 ? "retain_deposit" : "no_payment", refund_method: "Pix", reason: "" })}>Cancelar</Button>
             <Button onClick={completeAppointment}>Revisar e finalizar</Button>
           </div>
+          {form.status !== "atendido" && form.status !== "cancelado" && <Button variant="secondary" onClick={applyClientCredit}>Aplicar crédito disponível</Button>}
           {readStoredSession()?.user?.role === "admin" && <Button variant="secondary" className="danger" onClick={openDeletion}>Excluir definitivamente</Button>}
           {error && <span className="form-error">{error}</span>}
           <Modal open={!!deletion} title="Excluir definitivamente" subtitle="Esta ação exige análise e confirmação" onClose={() => !deletion?.busy && setDeletion(null)} footer={<><Button variant="secondary" onClick={() => setDeletion(null)}>Voltar</Button><Button variant="danger" disabled={!deletion?.canDelete || deletion?.busy || deletion?.confirmation !== "EXCLUIR AGENDAMENTO" || !deletion?.reason?.trim()} onClick={deleteAppointment}>{deletion?.busy ? "Excluindo…" : "Excluir agendamento"}</Button></>}>
             {deletion && <div className="stack"><div className="soft-card"><strong>{deletion.canDelete ? "Agendamento de teste sem vínculos" : "Exclusão bloqueada"}</strong><p>{deletion.canDelete ? "A exclusão é irreversível e ficará registrada na auditoria." : "Existem vínculos financeiros, clínicos ou de estoque. Cancele o agendamento para preservar o histórico."}</p></div><div className="summary-grid">{Object.entries(deletion.impact).map(([key, value]) => <span key={key}>{key.replaceAll("_", " ")}: <strong>{value}</strong></span>)}</div><Input label="Motivo obrigatório" value={deletion.reason} onChange={(reason) => setDeletion({ ...deletion, reason })} /><Input label="Digite EXCLUIR AGENDAMENTO" value={deletion.confirmation} onChange={(confirmation) => setDeletion({ ...deletion, confirmation })} /></div>}
+          </Modal>
+          <Modal open={!!cancellation} title="Cancelar agendamento" subtitle="Defina o destino do sinal; a decisão ficará auditada." onClose={() => setCancellation(null)} footer={<><Button variant="secondary" onClick={() => setCancellation(null)}>Voltar</Button><Button variant="danger" disabled={!cancellation?.reason?.trim()} onClick={cancelWithResolution}>Confirmar cancelamento</Button></>}>
+            {cancellation && <div className="stack"><Select label="Resolução financeira" value={cancellation.resolution} onChange={(resolution) => setCancellation({ ...cancellation, resolution })}><option value="no_payment">Sem pagamento recebido</option><option value="retain_deposit">Reter sinal</option><option value="client_credit">Converter sinal em crédito</option><option value="manual_refund">Reembolso manual</option></Select>{cancellation.resolution === "manual_refund" && <PaymentSelect label="Forma do reembolso" value={cancellation.refund_method} onChange={(refund_method) => setCancellation({ ...cancellation, refund_method })} />}<Textarea label="Motivo obrigatório" value={cancellation.reason} onChange={(reason) => setCancellation({ ...cancellation, reason })} /></div>}
           </Modal>
         </div>
       )}

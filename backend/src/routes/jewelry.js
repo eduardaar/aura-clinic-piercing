@@ -112,6 +112,38 @@ router.get("/api/inventory/intelligence", withFeature("basic_inventory", async (
   });
 }));
 
+// Painel compacto de qualidade do cadastro e riscos imediatos. Ele não tenta
+// corrigir nada sozinho: cada pendência é uma decisão da clínica.
+router.get("/api/inventory/health", withFeature("basic_inventory", async (req, res, db) => {
+  if (!authorizePermission(req, res, P.INVENTORY_VIEW)) return;
+  const [products, consumables, lots, recipes] = await Promise.all([
+    db.all(`SELECT id, name, sku, quantity, low_stock_threshold, category, photo_url, sale_value
+              FROM jewelry_inventory WHERE status != 'arquivado' ORDER BY name`),
+    db.all("SELECT id, name, quantity, minimum_quantity, supplier, cost_value FROM consumables WHERE status='active' ORDER BY name"),
+    db.all(`SELECT l.*, c.name AS consumable_name FROM consumable_lots l JOIN consumables c ON c.id=l.consumable_id
+              WHERE l.active=true AND l.remaining_quantity>0 ORDER BY l.expiry_date NULLS LAST, l.id`),
+    db.all(`SELECT r.service_id, s.name AS service_name, COUNT(*)::int AS ingredient_count
+              FROM service_consumable_recipes r JOIN services s ON s.id=r.service_id GROUP BY r.service_id, s.name`)
+  ]);
+  const today = new Date().toISOString().slice(0, 10);
+  const inThirtyDays = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+  const missing = products.filter((item) => !String(item.sku || "").trim() || !String(item.category || "").trim() || !String(item.photo_url || "").trim() || Number(item.sale_value || 0) <= 0);
+  const lowStock = [...products.filter((item) => Number(item.quantity) <= Number(item.low_stock_threshold || 0)).map((item) => ({ ...item, kind: "product" })),
+    ...consumables.filter((item) => Number(item.quantity) <= Number(item.minimum_quantity || 0)).map((item) => ({ ...item, kind: "consumable" }))];
+  res.json({
+    generated_at: new Date().toISOString(),
+    summary: { products: products.length, consumables: consumables.length, low_stock: lowStock.length, incomplete_products: missing.length,
+      expired_lots: lots.filter((lot) => lot.expiry_date && lot.expiry_date < today).length,
+      expiring_lots: lots.filter((lot) => lot.expiry_date && lot.expiry_date >= today && lot.expiry_date <= inThirtyDays).length,
+      services_with_recipe: recipes.length },
+    low_stock: lowStock,
+    incomplete_products: missing,
+    expired_lots: lots.filter((lot) => lot.expiry_date && lot.expiry_date < today),
+    expiring_lots: lots.filter((lot) => lot.expiry_date && lot.expiry_date >= today && lot.expiry_date <= inThirtyDays),
+    service_recipes: recipes
+  });
+}));
+
 router.post("/api/inventory/suggestions/refresh", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_ADJUST)) return;
   await refreshInventorySuggestions(db, req.user?.id);

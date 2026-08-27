@@ -31,6 +31,9 @@ import { authorizePermission } from "../middleware/requirePermission.js";
 import { hasPermission } from "../services/permissionService.js";
 import { cancelSalesOrderReceivables, configuresReceivableSchedule } from "../services/receivables.js";
 import { requireFeature } from "../services/subscriptions.js";
+import { consumeAppointmentRecipe, restoreAppointmentConsumptions } from "../services/consumableUsage.js";
+import { cancelAppointmentWithResolution } from "../services/appointmentCancellations.js";
+import { applyCreditToAppointment } from "../services/clientCredits.js";
 
 const router = Router();
 
@@ -222,6 +225,7 @@ router.post("/api/appointments/:id/complete", withFeature("agenda", async (req, 
       const after = await tx.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
       await tx.run("INSERT INTO appointment_financial_audit (appointment_id, user_id, action, reason, before_snapshot, after_snapshot) VALUES (?, ?, ?, ?, ?, ?)", [req.params.id, req.user?.id, before.status === "atendido" ? "reopen_financial_close" : "financial_close", req.body.reason || null, JSON.stringify(before), JSON.stringify(after)]);
       await deductJewelryStock(tx, req.params.id);
+      await consumeAppointmentRecipe(tx, req.params.id, req.user?.id || null);
       await ensureSalesOrderForAppointment(tx, req.params.id, req.user, req.body);
       await ensurePostCareFollowups(tx, req.params.id);
       await awardLoyaltyForAppointment(tx, req.params.id);
@@ -233,8 +237,34 @@ router.post("/api/appointments/:id/complete", withFeature("agenda", async (req, 
   res.json(updated);
 }));
 
+// Cancelar é uma decisão financeira, não apenas uma troca de status. A rota
+// obriga a registrar se o sinal foi retido, virou crédito ou saiu como reembolso.
+router.post("/api/appointments/:id/cancel", withFeature("agenda", async (req, res, db) => {
+  if (!authorizePermission(req, res, P.APPOINTMENTS_CANCEL)) return;
+  const resolution = String(req.body?.resolution || "");
+  if (["client_credit", "manual_refund"].includes(resolution) && !authorizePermission(req, res, P.FINANCE_EDIT)) return;
+  try {
+    res.json(await cancelAppointmentWithResolution(db, req.params.id, req.body || {}, req.user?.id || null));
+  } catch (error) {
+    const message = error.message || "Não foi possível cancelar o agendamento.";
+    res.status(/não encontrado/i.test(message) ? 404 : /já |deve ser resolvido|Não há sinal|Há sinal/i.test(message) ? 409 : 400).json({ error: message });
+  }
+}));
+
+router.post("/api/appointments/:id/apply-client-credit", withFeature("agenda", async (req, res, db) => {
+  if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
+  try {
+    res.json(await applyCreditToAppointment(db, req.params.id, req.body || {}, req.user?.id || null));
+  } catch (error) {
+    res.status(/não encontrado/i.test(error.message) ? 404 : 400).json({ error: error.message || "Não foi possível aplicar o crédito." });
+  }
+}));
+
 router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db) => {
   if (!authorizePermission(req, res, req.body.status === "cancelado" ? P.APPOINTMENTS_CANCEL : P.APPOINTMENTS_EDIT)) return;
+  if (req.body.status === "cancelado") {
+    return res.status(409).json({ error: "Use o fluxo de cancelamento para registrar retenção, crédito, reembolso ou ausência de pagamento." });
+  }
   const appointment = await db.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
   const financialFields = ["total_value", "discount_value", "deposit_value", "remaining_value", "deposit_payment_method", "remaining_payment_method", "deposit_status", "deposit_paid_at", "coupon_code", "coupon_id"];
   const leavingFinalized = appointment?.status === "atendido" && req.body.status && req.body.status !== "atendido";
@@ -338,7 +368,7 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
       const current = await tx.get("SELECT * FROM appointments WHERE id = ? FOR UPDATE", [req.params.id]);
       const expected = Math.max(0, Number(current.deposit_value || 0));
       const status = expected > 0 ? String(current.deposit_status || "pendente").toLowerCase() : "nao_aplicavel";
-      if (!["pendente", "pago", "confirmado", "parcial", "isento", "cancelado", "estornado", "nao_aplicavel"].includes(status)) {
+      if (!["pendente", "pago", "confirmado", "parcial", "isento", "cancelado", "estornado", "retido", "creditado", "nao_aplicavel"].includes(status)) {
         throw new Error("Status do sinal inválido.");
       }
       await tx.run("DELETE FROM payments WHERE appointment_id = ? AND payment_type = 'sinal'", [req.params.id]);
@@ -354,6 +384,7 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
 
     if (req.body.status === "atendido") {
       await deductJewelryStock(tx, req.params.id);
+      await consumeAppointmentRecipe(tx, req.params.id, req.user?.id || null);
       const configuredReceivable = configuresReceivableSchedule(req.body);
       if (!configuredReceivable) await registerRemainingPayment(tx, req.params.id);
       await ensureSalesOrderForAppointment(tx, req.params.id, req.user, req.body);
@@ -362,6 +393,7 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
     }
     if (leavingFinalized) {
       await restoreJewelryStock(tx, req.params.id);
+      await restoreAppointmentConsumptions(tx, req.params.id, req.user?.id || null, req.body.reason || "Atendimento reaberto ou cancelado");
     }
     if (req.body.status === "cancelado") {
       await tx.run("UPDATE payments SET status = 'cancelado' WHERE appointment_id = ? AND status != 'pago'", [req.params.id]);

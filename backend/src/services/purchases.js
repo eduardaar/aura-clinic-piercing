@@ -82,7 +82,9 @@ function normalizePurchase(body = {}, idempotencyKey = "") {
       product_variant_id: productVariantId,
       quantity,
       unit_cost_cents: unitCostCents,
-      line_total_cents: lineTotalCents
+      line_total_cents: lineTotalCents,
+      batch_code: itemType === "consumable" ? String(item.batch_code || "").trim() : null,
+      expiry_date: itemType === "consumable" && item.expiry_date ? requiredDate(item.expiry_date, `Validade do item ${index + 1}`) : null
     };
   });
   const totalCents = normalizedItems.reduce((sum, item) => sum + item.line_total_cents, 0);
@@ -214,6 +216,14 @@ async function confirmPurchaseLocked(tx, purchase, userId) {
          VALUES (?, 'Entrada', ?, ?, ?, ?, ?)`,
         [consumable.id, item.quantity, `Entrada automática da compra #${purchase.id}`, purchase.purchase_date, purchase.id, item.id]
       );
+      if (item.batch_code || item.expiry_date) {
+        await tx.run(`
+          INSERT INTO consumable_lots
+            (consumable_id, purchase_order_id, purchase_order_item_id, batch_code, expiry_date, received_quantity, remaining_quantity, unit_cost, notes)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [consumable.id, purchase.id, item.id, item.batch_code || "", item.expiry_date || null, item.quantity, item.quantity, item.unit_cost || 0,
+          `Lote criado automaticamente pela compra #${purchase.id}`]);
+      }
       continue;
     }
     const product = await tx.get("SELECT * FROM jewelry_inventory WHERE id = ? FOR UPDATE", [item.product_id]);
@@ -359,9 +369,9 @@ export async function createPurchase(db, body, { idempotencyKey = "", userId = n
       for (const item of purchase.items) {
         await tx.run(`
           INSERT INTO purchase_order_items
-          (purchase_order_id, item_type, product_id, consumable_id, product_variant_id, quantity, unit_cost, line_total)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `, [inserted.returnedId, item.item_type, item.product_id, item.consumable_id, item.product_variant_id, item.quantity, item.unit_cost_cents / 100, item.line_total_cents / 100]);
+          (purchase_order_id, item_type, product_id, consumable_id, product_variant_id, quantity, unit_cost, line_total, batch_code, expiry_date)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [inserted.returnedId, item.item_type, item.product_id, item.consumable_id, item.product_variant_id, item.quantity, item.unit_cost_cents / 100, item.line_total_cents / 100, item.batch_code, item.expiry_date]);
       }
       if (purchase.status === "draft") return { purchaseId: inserted.returnedId, idempotent: false };
       const locked = await tx.get("SELECT * FROM purchase_orders WHERE id = ? FOR UPDATE", [inserted.returnedId]);

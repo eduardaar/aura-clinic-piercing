@@ -27,7 +27,7 @@ export function calculateOperationTotals(input = {}) {
   const netCents = grossCents - discountCents;
 
   const payments = Array.isArray(input.payments) ? input.payments : [];
-  const confirmedPayments = payments.filter((payment) => String(payment?.status || "").toLowerCase() === "pago" || String(payment?.status || "").toLowerCase() === "confirmado");
+  const confirmedPayments = payments.filter((payment) => ["pago", "confirmado", "credito_aplicado"].includes(String(payment?.status || "").toLowerCase()));
   const depositRows = confirmedPayments.filter((payment) => String(payment?.payment_type || payment?.type || "").toLowerCase() === "sinal" || String(payment?.payment_type || payment?.type || "").toLowerCase() === "deposit");
   const otherRows = confirmedPayments.filter((payment) => !depositRows.includes(payment));
   const depositCents = depositRows.reduce((sum, item) => sum + Math.max(0, toCents(item.amount ?? item.value)), 0);
@@ -62,7 +62,7 @@ export function calculateOperationTotals(input = {}) {
 export async function getAppointmentFinancialSnapshot(db, appointmentId) {
   const appointment = await db.get("SELECT * FROM appointments WHERE id = ?", [appointmentId]);
   if (!appointment) return null;
-  const payments = await db.all("SELECT * FROM payments WHERE appointment_id = ? AND status IN ('pago', 'confirmado')", [appointmentId]);
+  const payments = await db.all("SELECT * FROM payments WHERE appointment_id = ? AND status IN ('pago', 'confirmado', 'credito_aplicado')", [appointmentId]);
   const items = await db.all("SELECT * FROM appointment_items WHERE appointment_id = ?", [appointmentId]);
   const itemServiceSubtotal = items.reduce((sum, item) => sum + Number(item.procedure_price || 0), 0);
   const itemProductSubtotal = items.reduce((sum, item) => sum + Number(item.jewelry_unit_price || 0) * Number(item.quantity || 1), 0);
