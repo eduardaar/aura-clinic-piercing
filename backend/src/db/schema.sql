@@ -160,7 +160,7 @@ CREATE TABLE IF NOT EXISTS jewelry_inventory (
   package_width_cm DOUBLE PRECISION NOT NULL DEFAULT 0,
   package_height_cm DOUBLE PRECISION NOT NULL DEFAULT 0,
   package_type TEXT,
-  virtual_store_active INTEGER NOT NULL DEFAULT 1,
+  virtual_store_active INTEGER NOT NULL DEFAULT 0,
   preparation_days INTEGER NOT NULL DEFAULT 1,
   shipping_info TEXT,
   seo_title TEXT,
@@ -186,7 +186,7 @@ CREATE TABLE IF NOT EXISTS jewelry_inventory (
   status TEXT NOT NULL DEFAULT 'disponível',
   low_stock_threshold INTEGER NOT NULL DEFAULT 3,
   critical_stock_threshold INTEGER NOT NULL DEFAULT 3,
-  is_catalog_active INTEGER NOT NULL DEFAULT 1,
+  is_catalog_active INTEGER NOT NULL DEFAULT 0,
   is_featured INTEGER NOT NULL DEFAULT 0,
   is_new INTEGER NOT NULL DEFAULT 0,
   is_most_wanted INTEGER NOT NULL DEFAULT 0,
@@ -1459,6 +1459,39 @@ ALTER TABLE expenses ADD COLUMN IF NOT EXISTS paid_by_user_id INTEGER REFERENCES
 ALTER TABLE expenses ADD COLUMN IF NOT EXISTS payment_account TEXT;
 CREATE INDEX IF NOT EXISTS idx_expenses_status_due ON expenses(status, due_date);
 CREATE INDEX IF NOT EXISTS idx_jewelry_top_size ON jewelry_inventory(top_size_mm);
+
+-- Materiais de consumo são separados das joias/produtos: controlam estoque e
+-- custo de operação, mas nunca entram no catálogo nem em Vendas.
+CREATE TABLE IF NOT EXISTS consumables (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  unit TEXT NOT NULL DEFAULT 'unidade',
+  quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
+  minimum_quantity INTEGER NOT NULL DEFAULT 0 CHECK (minimum_quantity >= 0),
+  cost_value NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (cost_value >= 0),
+  supplier TEXT,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS'),
+  updated_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS item_type TEXT NOT NULL DEFAULT 'product';
+ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS consumable_id INTEGER REFERENCES consumables(id) ON DELETE RESTRICT;
+ALTER TABLE purchase_order_items ALTER COLUMN product_id DROP NOT NULL;
+CREATE TABLE IF NOT EXISTS consumable_stock_movements (
+  id SERIAL PRIMARY KEY,
+  consumable_id INTEGER NOT NULL REFERENCES consumables(id) ON DELETE RESTRICT,
+  movement_type TEXT NOT NULL CHECK (movement_type IN ('Entrada', 'Saida', 'Ajuste')),
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  notes TEXT,
+  movement_date TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS'),
+  purchase_order_id INTEGER REFERENCES purchase_orders(id) ON DELETE RESTRICT,
+  purchase_order_item_id INTEGER REFERENCES purchase_order_items(id) ON DELETE RESTRICT,
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+CREATE INDEX IF NOT EXISTS idx_consumables_status_name ON consumables(status, name);
+CREATE INDEX IF NOT EXISTS idx_consumable_stock_movements_item_date ON consumable_stock_movements(consumable_id, movement_date DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_purchase_order_items_consumable ON purchase_order_items(consumable_id) WHERE consumable_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_jewelry_variants_top_size ON jewelry_variants(top_size_mm);
 ALTER TABLE jewelry_variants ADD COLUMN IF NOT EXISTS purchase_cost_cents INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE jewelry_variants ADD COLUMN IF NOT EXISTS allocated_freight_cents INTEGER NOT NULL DEFAULT 0;

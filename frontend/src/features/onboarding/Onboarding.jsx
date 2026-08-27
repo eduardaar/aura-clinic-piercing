@@ -6,8 +6,8 @@ import { useFetch } from "../../lib/api";
 
 const ACTIONS = {
   clinicProfile: { label: "Abrir configurações", page: "settings" },
-  services: { label: "Cadastrar serviços", tab: "servicos" },
-  procedures: { label: "Cadastrar procedimentos", tab: "servicos" },
+  services: { label: "Cadastrar serviços", page: "services" },
+  procedures: { label: "Cadastrar procedimentos", page: "services" },
   professionals: { label: "Cadastrar profissionais", tab: "profissionais" },
   weeklySchedule: { label: "Configurar horários", tab: "horarios" },
   links: { label: "Vincular serviços", tab: "profissionais" },

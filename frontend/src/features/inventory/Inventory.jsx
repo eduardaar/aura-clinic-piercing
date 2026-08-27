@@ -188,7 +188,9 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
     if (effectiveStatus === "esgotados" || effectiveStatus === "esgotado") return inventoryStockState(item) === "sold-out";
     return true;
   });
-  const displayItems = filteredItems.filter((item) => inventoryMode === "virtual" ? Boolean(Number(item.is_catalog_active)) : true);
+  const displayItems = filteredItems.filter((item) => inventoryMode === "virtual" ? (
+    Boolean(Number(item.is_catalog_active)) && Boolean(Number(item.is_published)) && Boolean(Number(item.virtual_store_active))
+  ) : true);
   const stockSummary = {
     totalProducts: allJewelry.length,
     totalPieces: allJewelry.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
@@ -347,7 +349,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
                 <Metric label="Lucro potencial" value={currency.format(stockSummary.potential - stockSummary.invested)} />
               </div>
               <div className="inventory-quick-flags">
-                <span><strong>Ativos no Catálogo</strong><small>{allJewelry.filter((item) => Boolean(Number(item.is_catalog_active))).length} peças visíveis na vitrine</small></span>
+                <span><strong>Visíveis no Catálogo</strong><small>{allJewelry.filter((item) => Boolean(Number(item.is_catalog_active)) && Boolean(Number(item.is_published)) && Boolean(Number(item.virtual_store_active))).length} peças visíveis na vitrine</small></span>
                 <span><strong>Destaques Comerciais</strong><small>Lançamentos, promoções e últimas unidades ficam na Loja Virtual</small></span>
                 <span><strong>Alertas</strong><small>Criticidade e reposição continuam no fluxo interno</small></span>
               </div>
@@ -1021,7 +1023,12 @@ export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTI
             <div><span>Lucro Potencial</span><strong>{currency.format(potentialProfit)}</strong></div>
           </div>
           <div className="chip-toggle-grid">
-            <Switch className="toggle-chip" label="Ativo no catálogo" checked={form.is_catalog_active} onChange={(value) => setForm({ ...form, is_catalog_active: value })} />
+            <Switch
+              className="toggle-chip"
+              label="Visível no catálogo público"
+              checked={Boolean(form.is_catalog_active && form.is_published && form.virtual_store_active)}
+              onChange={(value) => setForm({ ...form, is_catalog_active: value, is_published: value, virtual_store_active: value })}
+            />
             <Switch className="toggle-chip" label="Destaque" checked={form.is_featured} onChange={(value) => setForm({ ...form, is_featured: value })} />
             <Switch className="toggle-chip" label="Promoção" checked={form.is_promotion} onChange={(value) => setForm({ ...form, is_promotion: value })} />
             <Switch className="toggle-chip" label="Lançamento" checked={form.is_new} onChange={(value) => setForm({ ...form, is_new: value })} />
@@ -1033,29 +1040,22 @@ export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTI
 
       {editorTab === "virtual" && (
         <div className="editor-section">
+          <p className="field-hint">A visibilidade é definida na aba Comercial. Os dados desta aba são preparados antes da publicação.</p>
           <div className="form-grid">
-            <Switch label="Loja virtual ativa" checked={form.virtual_store_active} onChange={(value) => setForm({ ...form, virtual_store_active: value })} />
-            <Switch label="Publicar no catálogo público" checked={form.is_published} onChange={(value) => setForm({ ...form, is_published: value })} />
+            <HintedInput label="URL da imagem (para catálogo)" value={form.image_url} onChange={(value) => setForm({ ...form, image_url: value })} placeholder="https://..." />
+            <Input type="number" label="Peso para envio (g)" value={form.weight_grams} onChange={(value) => setForm({ ...form, weight_grams: value })} />
+            <Input type="number" label="Comprimento da embalagem (cm)" value={form.package_length_cm} onChange={(value) => setForm({ ...form, package_length_cm: value })} />
+            <Input type="number" label="Largura da embalagem (cm)" value={form.package_width_cm} onChange={(value) => setForm({ ...form, package_width_cm: value })} />
+            <Input type="number" label="Altura da embalagem (cm)" value={form.package_height_cm} onChange={(value) => setForm({ ...form, package_height_cm: value })} />
+            <Input label="Tipo de embalagem" value={form.package_type} onChange={(value) => setForm({ ...form, package_type: value })} />
+            <Input type="number" label="Prazo de preparação (dias)" value={form.preparation_days} onChange={(value) => setForm({ ...form, preparation_days: value })} />
           </div>
-          {Boolean(form.virtual_store_active) && (
-            <>
-              <div className="form-grid">
-                <HintedInput label="URL da imagem (para catálogo)" value={form.image_url} onChange={(value) => setForm({ ...form, image_url: value })} placeholder="https://..." />
-                <Input type="number" label="Peso para envio (g)" value={form.weight_grams} onChange={(value) => setForm({ ...form, weight_grams: value })} />
-                <Input type="number" label="Comprimento da embalagem (cm)" value={form.package_length_cm} onChange={(value) => setForm({ ...form, package_length_cm: value })} />
-                <Input type="number" label="Largura da embalagem (cm)" value={form.package_width_cm} onChange={(value) => setForm({ ...form, package_width_cm: value })} />
-                <Input type="number" label="Altura da embalagem (cm)" value={form.package_height_cm} onChange={(value) => setForm({ ...form, package_height_cm: value })} />
-                <Input label="Tipo de embalagem" value={form.package_type} onChange={(value) => setForm({ ...form, package_type: value })} />
-                <Input type="number" label="Prazo de preparação (dias)" value={form.preparation_days} onChange={(value) => setForm({ ...form, preparation_days: value })} />
-              </div>
-              <Textarea label="Informações de frete / envio" value={form.shipping_info} onChange={(value) => setForm({ ...form, shipping_info: value })} placeholder="Ex.: Envio para todo o Brasil, cálculo por Correios ou transportadora, embalagem protegida." />
-              <Textarea label="Observações de frete e envio" value={form.freight_notes} onChange={(value) => setForm({ ...form, freight_notes: value })} placeholder="Ex.: proteger pedra ou opala, usar caixa pequena, separar por variações." />
-              <div className="form-grid">
-                <Input label="SEO título" value={form.seo_title} onChange={(value) => setForm({ ...form, seo_title: value })} />
-                <Input label="SEO descrição" value={form.seo_description} onChange={(value) => setForm({ ...form, seo_description: value })} />
-              </div>
-            </>
-          )}
+          <Textarea label="Informações de frete / envio" value={form.shipping_info} onChange={(value) => setForm({ ...form, shipping_info: value })} placeholder="Ex.: Envio para todo o Brasil, cálculo por Correios ou transportadora, embalagem protegida." />
+          <Textarea label="Observações de frete e envio" value={form.freight_notes} onChange={(value) => setForm({ ...form, freight_notes: value })} placeholder="Ex.: proteger pedra ou opala, usar caixa pequena, separar por variações." />
+          <div className="form-grid">
+            <Input label="SEO título" value={form.seo_title} onChange={(value) => setForm({ ...form, seo_title: value })} />
+            <Input label="SEO descrição" value={form.seo_description} onChange={(value) => setForm({ ...form, seo_description: value })} />
+          </div>
         </div>
       )}
 

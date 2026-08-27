@@ -133,6 +133,11 @@ export function inventoryStatusClass(item) {
 }
 
 export function inventoryStockState(item) {
+  const stored = removeAccents(String(item.status || "").toLowerCase());
+  if (stored === "esgotado") return "sold-out";
+  // O backend calcula estes estados a partir de cada variação. Preservá-los
+  // evita que um total alto esconda uma medida/cor já crítica.
+  if (["critico", "baixo", "baixo estoque"].includes(stored)) return "critical";
   const quantity = Number(item.quantity || 0);
   const minimum = Number(item.low_stock_threshold || 5);
   if (quantity <= 0) return "sold-out";

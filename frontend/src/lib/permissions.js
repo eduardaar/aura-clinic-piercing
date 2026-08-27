@@ -16,7 +16,7 @@
 
 /**
  * Páginas do app autenticado.
- * @typedef {"dashboard" | "agenda" | "communications" | "catalog" | "products" | "inventory"
+ * @typedef {"dashboard" | "agenda" | "services" | "communications" | "catalog" | "products" | "inventory" | "consumables"
  *   | "catalog-customization" | "sales" | "purchases" | "receivables" | "payables" | "suppliers" | "finance-categories" | "cost-centers" | "reports" | "client-center"
  *   | "clients" | "terms" | "postcare" | "admin" | "integrations" | "support"
  *   | "meu-plano" | "settings" | "onboarding"} Page
@@ -39,10 +39,10 @@
 export function allowedPagesForRole(role) {
   /** @type {Record<Role, Page[]>} */
   const byRole = {
-    admin: ["dashboard", "agenda", "communications", "products", "purchases", "inventory", "catalog", "catalog-customization", "sales", "receivables", "payables", "suppliers", "finance-categories", "cost-centers", "reports", "client-center", "clients", "terms", "postcare", "admin", "integrations", "onboarding", "support", "meu-plano", "settings"],
-    reception: ["agenda", "communications", "sales", "reports", "client-center", "clients", "settings"],
+    admin: ["dashboard", "agenda", "services", "communications", "products", "purchases", "inventory", "consumables", "catalog", "catalog-customization", "sales", "receivables", "payables", "suppliers", "finance-categories", "cost-centers", "reports", "client-center", "clients", "terms", "postcare", "admin", "integrations", "onboarding", "support", "meu-plano", "settings"],
+    reception: ["agenda", "services", "communications", "products", "inventory", "consumables", "sales", "reports", "client-center", "clients", "settings"],
     finance: ["receivables", "payables", "purchases", "suppliers", "finance-categories", "cost-centers", "reports", "sales", "settings"],
-    piercer: ["agenda", "communications", "sales", "client-center", "clients", "terms", "postcare", "settings"]
+    piercer: ["agenda", "services", "communications", "products", "inventory", "consumables", "sales", "client-center", "clients", "terms", "postcare", "settings"]
   };
   // Fallback SEGURO para papéis desconhecidos: acesso mínimo, sem áreas
   // administrativas (admin/finance).
@@ -61,6 +61,7 @@ export function allowedPagesForRole(role) {
 // `withFeature`, pelo mesmo motivo).
 /** @type {Partial<Record<Page, Feature>>} */
 export const PAGE_FEATURE = {
+  services: "procedures",
   receivables: "basic_finance",
   payables: "basic_finance",
   purchases: "basic_finance",
@@ -72,6 +73,7 @@ export const PAGE_FEATURE = {
   communications: "message_templates",
   products: "basic_inventory",
   inventory: "basic_inventory",
+  consumables: "basic_inventory",
   reports: "basic_reports",
   catalog: "basic_catalog",
   "catalog-customization": "public_catalog_customization",
@@ -207,10 +209,12 @@ export function pageTitle(page) {
   const titles = {
     dashboard: "Dashboard",
     agenda: "Agenda",
+    services: "Serviços",
     communications: "Comunicações",
     catalog: "Catálogo",
     products: "Produtos",
     inventory: "Estoque",
+    consumables: "Materiais de consumo",
     "catalog-customization": "Personalização do Catálogo",
     sales: "Vendas e ordens",
     purchases: "Compras",

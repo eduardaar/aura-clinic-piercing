@@ -14,20 +14,6 @@ Todos os valores abaixo são **defaults de desenvolvimento** — troque-os em pr
 
 Observação: em **desenvolvimento local** (`localhost`, `NODE_ENV != production`), a API dispensa o token nas rotas protegidas e assume o admin do tenant resolvido — útil para testar rapidamente sem login. Em produção o token é sempre obrigatório.
 
-## Escolha do plano e liberação de recursos
-
-Start (R$ 39,90) cobre a operação essencial; Profissional (R$ 69,90) é a
-oferta recomendada para a operação completa; Studio (R$ 119,90) adiciona
-equipe, crescimento e capacidades avançadas. A matriz é cumulativa.
-
-Após login, a assinatura fornece features e cotas. A navegação usa essa lista
-para orientar o usuário, enquanto o backend é a barreira autoritativa nas rotas
-que usam `withFeature`. A [matriz comercial e técnica](./PLANOS-E-FUNCIONALIDADES.md)
-é o contrato para publicar a oferta, testar upgrade/downgrade e interpretar um
-`403 plan_upgrade_required`.
-
----
-
 ## (a) Cadastro de uma nova clínica
 
 Fluxo de onboarding de um novo estúdio (novo tenant).

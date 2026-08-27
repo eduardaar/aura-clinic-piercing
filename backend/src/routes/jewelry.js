@@ -330,7 +330,7 @@ function jewelryPayload(body, sku, pricing) {
     Number(body.package_width_cm || 0),
     Number(body.package_height_cm || 0),
     body.package_type || "",
-    boolNumber(body.virtual_store_active ?? 1),
+    boolNumber(body.virtual_store_active ?? 0),
     Number(body.preparation_days || 1),
     body.shipping_info || "",
     body.seo_title || "",
@@ -352,7 +352,7 @@ function jewelryPayload(body, sku, pricing) {
     body.supplier,
     body.physical_location || "",
     sku,
-    boolNumber(body.is_catalog_active ?? 1),
+    boolNumber(body.is_catalog_active ?? 0),
     boolNumber(body.is_featured ?? 0),
     boolNumber(body.is_new ?? 0),
     boolNumber(body.is_most_wanted ?? 0),
@@ -363,7 +363,7 @@ function jewelryPayload(body, sku, pricing) {
     Number(body.low_stock_threshold || 5),
     Number(body.critical_stock_threshold || 3),
     cleanImageUrl(body.image_url) || null,
-    boolNumber(body.is_published ?? 1)
+    boolNumber(body.is_published ?? 0)
   ];
 }
 

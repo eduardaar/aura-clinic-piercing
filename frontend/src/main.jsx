@@ -40,8 +40,10 @@ if (typeof __AURA_BUILD__ !== "undefined") {
 const Dashboard = lazy(() => import("./features/dashboard/Dashboard").then((m) => ({ default: m.Dashboard })));
 const AlertsPopup = lazy(() => import("./features/dashboard/Dashboard").then((m) => ({ default: m.AlertsPopup })));
 const AgendaWorkspace = lazy(() => import("./features/agenda/Agenda").then((m) => ({ default: m.AgendaWorkspace })));
+const ServicesWorkspace = lazy(() => import("./features/services/Services").then((m) => ({ default: m.ServicesWorkspace })));
 const Communications = lazy(() => import("./features/communications/Communications").then((m) => ({ default: m.Communications })));
 const CatalogWorkspace = lazy(() => import("./features/inventory/Inventory").then((m) => ({ default: m.CatalogWorkspace })));
+const ConsumablesWorkspace = lazy(() => import("./features/consumables/Consumables").then((m) => ({ default: m.ConsumablesWorkspace })));
 const SalesWorkspace = lazy(() => import("./features/sales/Sales").then((m) => ({ default: m.SalesWorkspace })));
 const Purchases = lazy(() => import("./features/purchases/Purchases").then((m) => ({ default: m.Purchases })));
 const AccountsReceivable = lazy(() => import("./features/finance/Receivables").then((m) => ({ default: m.AccountsReceivable })));
@@ -437,12 +439,14 @@ function App() {
           {activePage === "dashboard" && <Dashboard user={normalizedSession.user} setPage={navigate} alertsOpen={alertsOpen} setAlertsOpen={setAlertsOpen} alertsData={alertsData} alertsLoading={alertsLoading} />}
           {activePage !== "dashboard" && alertsOpen && <AlertsPopup alerts={alertsData} loading={alertsLoading} onClose={() => setAlertsOpen(false)} onAction={(nextPage) => { setAlertsOpen(false); navigate(nextPage); }} />}
           {activePage === "agenda" && <AgendaWorkspace initialScreen={agendaTarget ? "settings" : "agenda"} initialSettingsTab={agendaTarget} onSettingsClosed={() => setAgendaTarget(null)} features={planFeatures} onUpgrade={openProfessionalPlan} />}
+          {activePage === "services" && <ServicesWorkspace onNavigate={navigate} />}
           {activePage === "onboarding" && <Onboarding onNavigate={navigate} onOpenAgendaSettings={(tab) => { setAgendaTarget(tab); navigate("agenda"); }} />}
           {activePage === "communications" && <Communications />}
           {activePage === "products" && <CatalogWorkspace area="produtos" />}
           {/* Compatibilidade com atalhos antigos: não há mais menu separado;
               quem ainda chegar em "inventory" abre a aba Estoque da mesma área. */}
           {activePage === "inventory" && <CatalogWorkspace area="produtos" initialTab="unidades" />}
+          {activePage === "consumables" && <ConsumablesWorkspace />}
           {activePage === "catalog" && <CatalogWorkspace area="catalogo" />}
           {activePage === "client-center" && <ClientWorkspace onNavigate={navigate} />}
           {activePage === "catalog-customization" && <CatalogCustomization />}

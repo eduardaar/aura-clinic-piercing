@@ -22,12 +22,12 @@ regras de negócio implementadas em cada rota.
 - Erros usam `{ error, code? }`. Conflitos de versão, idempotência ou estoque
   retornam `409`; recurso do plano indisponível retorna `402` ou `403`.
 
-### Autorização por plano
+### Autorização por assinatura
 
 Uma feature só é barreira técnica quando a rota usa `withFeature` ou o serviço
-faz validação equivalente. Ocultar menu não protege a API. A matriz completa e
-a lista de chaves retiradas da oferta estão em
-[PLANOS-E-FUNCIONALIDADES.md](./PLANOS-E-FUNCIONALIDADES.md).
+faz validação equivalente. Ocultar menu não protege a API. As chaves e cotas
+existentes refletem o estado atual do código e não constituem, por si só, uma
+oferta comercial definitiva.
 
 `402 subscription_inactive` indica assinatura sem acesso. `403
 plan_upgrade_required` informa a chave ausente no campo `feature`. Recursos

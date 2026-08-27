@@ -257,8 +257,13 @@ export function PublicCatalog() {
   const activeBanner = banners[bannerIndex % banners.length] || fallbackBanner;
   const categories = asArray(catalogCategoriesFromCatalog(safeData));
   const catalogItems = asArray(safeData.items);
-  // A vitrine pública respeita o controle "Ativo no catálogo" do estoque.
-  const publishedItems = catalogItems.filter((item) => Boolean(Number(item.is_catalog_active ?? item.is_published ?? 1)));
+  // Durante a transição dos campos legados, a vitrine só recebe produto cuja
+  // publicação esteja completa. O backend aplica a mesma regra.
+  const publishedItems = catalogItems.filter((item) => (
+    Boolean(Number(item.is_catalog_active)) &&
+    Boolean(Number(item.is_published)) &&
+    Boolean(Number(item.virtual_store_active))
+  ));
   const selectedProduct = publishedItems.find((item) => asNumber(item?.id) === selectedProductId) || null;
   const filteredItems = publishedItems.filter((item) => {
     const variants = asArray(item.variants);

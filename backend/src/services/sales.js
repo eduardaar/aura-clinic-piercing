@@ -221,6 +221,9 @@ export async function createSalesOrder(db, body, user) {
   if (orderType === "ordem_servico") {
     throw new SalesOrderValidationError("Ordem de serviço é gerada automaticamente pela agenda ao concluir um atendimento — não pode ser criada manualmente.");
   }
+  if (orderType !== "produto" || items.some((item) => item.item_type !== "produto" || item.service_id)) {
+    throw new SalesOrderValidationError("Vendas registram apenas produtos. Serviços são criados automaticamente ao finalizar um agendamento.");
+  }
   const source = String(body.source || "site");
   const requestedOpenStatus = ["pendente", "aberta"].includes(String(body.status || ""));
   let receivableMode;

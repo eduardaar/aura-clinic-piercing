@@ -761,7 +761,7 @@ export function BookingAdmin({ onBack, initialTab }) {
   const refreshAvailability = () => invalidate("/availability", "/booking/readiness");
   const refreshBlocks = () => invalidate("/schedule-blocks", "/availability");
   const refreshAppointments = () => invalidate("/appointments", "/dashboard");
-  const [tab, setTab] = useState(initialTab || "servicos");
+  const [tab, setTab] = useState(initialTab === "servicos" ? "profissionais" : (initialTab || "profissionais"));
   const [serviceForm, setServiceForm] = useState(defaultServiceForm());
   const [editingServiceId, setEditingServiceId] = useState(null);
   const [serviceModalOpen, setServiceModalOpen] = useState(false);
@@ -1145,7 +1145,6 @@ export function BookingAdmin({ onBack, initialTab }) {
         <Tabs.List className="customization-tabs" aria-label="Configurações da agenda">
           {[
             ["profissionais", "Profissionais"],
-            ["servicos", "Serviços"],
             ["horarios", "Agenda semanal"],
             ["bloqueios", "Disponibilidade avançada"],
             ["solicitacoes", "Solicitações pendentes"]

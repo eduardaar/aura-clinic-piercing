@@ -37,6 +37,9 @@ router.get("/api/sales-orders", withFeature("basic_catalog", async (req, res, db
   if (!authorizePermission(req, res, P.SALES_VIEW)) return;
   const clauses = [];
   const params = [];
+  // Ordens geradas pela Agenda pertencem ao módulo de Serviços. Mantemos o
+  // registro técnico para o financeiro, mas ele não aparece como venda avulsa.
+  if (req.query.include_agenda !== "true") clauses.push("so.source <> 'agenda'");
   if (req.query.status) {
     clauses.push("so.status = ?");
     params.push(req.query.status);
@@ -77,6 +80,7 @@ router.get("/api/sales-orders/:id", withFeature("basic_catalog", async (req, res
 
 router.post("/api/sales-orders", withFeature("basic_catalog", async (req, res, db) => {
   if (!authorizePermission(req, res, P.SALES_CREATE)) return;
+  if (req.body?.appointment_id) return res.status(409).json({ error: "Atendimentos são criados e finalizados pela Agenda, não por Vendas." });
   if (configuresReceivableSchedule(req.body) && !(await requireFeature(req, res, "basic_finance"))) return;
   let order;
   try {

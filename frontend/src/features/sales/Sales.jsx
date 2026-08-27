@@ -1,6 +1,6 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
-import { useEffect, useState } from "react";
-import { Button, FinancialSummary, Input, Metric, Select, StatusBadge, Tabs, Textarea } from "../../components/common/Ui";
+import { useState } from "react";
+import { Button, FinancialSummary, Input, Metric, Select, StatusBadge, Textarea } from "../../components/common/Ui";
 import { Modal, CrudHeader, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { InstallmentGrid } from "../../components/common/InstallmentGrid";
@@ -40,15 +40,12 @@ const orderItemsLabel = (order) =>
 
 export function SalesWorkspace({ features = [], onUpgrade }) {
   const { data: orders, loading: ordersLoading, error: ordersError } = useFetch("/sales-orders");
-  const { data: services } = useFetch("/services");
   const { data: jewelry } = useFetch("/jewelry");
-  const { data: appointments } = useFetch("/appointments");
   // Uma venda dá baixa no estoque e lança no financeiro: invalidar só a lista
   // de pedidos deixaria as outras telas mostrando o saldo anterior.
   const invalidate = useApiInvalidate();
   const refreshOrders = () => invalidate("/sales-orders", "/jewelry", "/finance", "/dashboard");
   const [modalOpen, setModalOpen] = useState(false);
-  const [tab, setTab] = useState("produto");
   const [form, setForm] = useState(defaultSalesOrderForm());
   const [line, setLine] = useState(defaultSalesLine());
   const [items, setItems] = useState([]);
@@ -60,9 +57,7 @@ export function SalesWorkspace({ features = [], onUpgrade }) {
   const [details, setDetails] = useState(null);
   const canGenerateReceivables = planAllowsAction(features, "sales.generate_receivables");
   const safeOrders = asArray(orders);
-  const safeServices = asArray(services);
   const safeJewelry = asArray(jewelry);
-  const safeAppointments = asArray(appointments);
   const statusOptions = distinctOptions(safeOrders, (order) => order.status, (value) => ORDER_STATUS_LABELS[value] || value);
   const typeOptions = distinctOptions(safeOrders, (order) => order.order_type, saleOrderTypeLabel);
   const sourceOptions = distinctOptions(safeOrders, (order) => order.source, saleSourceLabel);
@@ -91,42 +86,6 @@ export function SalesWorkspace({ features = [], onUpgrade }) {
     : null;
   const requestedQuantity = Math.max(1, Number(line.quantity || 1));
   const exceedsStock = availableQuantity !== null && requestedQuantity > availableQuantity;
-  const defaultService = safeServices[0];
-
-  useEffect(() => {
-    if (defaultService && tab === "servico" && !line.service_id) {
-      setLine((current) => ({ ...current, service_id: String(defaultService.id), item_name: defaultService.name, unit_price: defaultService.base_price || defaultService.price || 0 }));
-    }
-  }, [defaultService, tab, line.service_id]);
-
-  function handleTabChange(nextTab) {
-    setTab(nextTab);
-    setItems([]);
-    setInstallments([]);
-    setAutomaticInstallments(true);
-    setError("");
-
-    if (nextTab === "servico") {
-      setLine({
-        ...defaultSalesLine(),
-        item_type: "servico",
-        service_id: defaultService?.id ? String(defaultService.id) : "",
-        item_name: defaultService?.name || "",
-        unit_price: defaultService?.base_price || defaultService?.price || 0
-      });
-      return;
-    }
-
-    setLine({
-      ...defaultSalesLine(),
-      item_type: "produto",
-      product_id: "",
-      product_variant_id: "",
-      item_name: "",
-      unit_price: 0
-    });
-  }
-
   function addSelectedJewelry(product) {
     const variant = asArray(product?.variants).find((option) => Number(option.quantity || 0) > 0) || asArray(product?.variants)[0];
     const unitPrice = Number(variant?.sale_value || product?.sale_value || 0);
@@ -155,12 +114,11 @@ export function SalesWorkspace({ features = [], onUpgrade }) {
   const summary = {
     total: monthOrders.reduce((sum, order) => sum + Number(order.total_value || 0), 0),
     products: monthOrders.filter((order) => order.order_type === "produto").reduce((sum, order) => sum + Number(order.total_value || 0), 0),
-    services: monthOrders.filter((order) => order.order_type === "servico").reduce((sum, order) => sum + Number(order.total_value || 0), 0),
     // "mista" é a venda de balcão com produto e serviço no mesmo pedido — não
     // confundir com "ordem_servico" (agenda), que aparece no total mas tem
     // card próprio abaixo.
-    mixed: monthOrders.filter((order) => order.order_type === "mista").reduce((sum, order) => sum + Number(order.total_value || 0), 0),
-    agenda: monthOrders.filter((order) => order.order_type === "ordem_servico").reduce((sum, order) => sum + Number(order.total_value || 0), 0)
+    legacyMixed: monthOrders.filter((order) => order.order_type === "mista").reduce((sum, order) => sum + Number(order.total_value || 0), 0),
+    legacyAgenda: monthOrders.filter((order) => order.order_type === "ordem_servico").reduce((sum, order) => sum + Number(order.total_value || 0), 0)
   };
 
   function openNew() {
@@ -169,7 +127,6 @@ export function SalesWorkspace({ features = [], onUpgrade }) {
     setInstallments([]);
     setAutomaticInstallments(true);
     setLine(defaultSalesLine());
-    setTab("produto");
     setError("");
     setModalOpen(true);
   }
@@ -180,32 +137,30 @@ export function SalesWorkspace({ features = [], onUpgrade }) {
 
   function addLineItem() {
     const quantity = Math.max(1, Number(line.quantity || 1));
-    const entry = line.item_type === "servico" ?
-       safeServices.find((item) => String(item.id) === String(line.service_id))
-      : safeJewelry.find((item) => String(item.id) === String(line.product_id));
+    const entry = safeJewelry.find((item) => String(item.id) === String(line.product_id));
     if (!entry) return;
     // A variação usada é a MESMA que o backend vai debitar (inclusive quando o
     // caixa deixou "Sem variação"): é o que faz o aviso da tela e a recusa do
     // servidor falarem do mesmo saldo.
-    const variant = line.item_type === "produto" ? stockVariant : null;
+    const variant = stockVariant;
     // Produto sem variação nenhuma nunca passava por checagem: era exatamente
     // por aí que 50 unidades de um estoque de 3 entravam na venda.
-    if (line.item_type === "produto" && availableQuantity !== null && quantity > availableQuantity) {
+    if (availableQuantity !== null && quantity > availableQuantity) {
       setError(`Estoque insuficiente para ${entry.name}: ${availableQuantity} un. disponível(is)${reservedInCart ? ` (${reservedInCart} un. já nesta venda)` : ""}.`);
       return;
     }
     setError("");
     setItems((current) => [...current, {
-      item_type: line.item_type,
-      product_id: line.item_type === "produto" ? Number(entry.id) : null,
-      service_id: line.item_type === "servico" ? Number(entry.id) : null,
+      item_type: "produto",
+      product_id: Number(entry.id),
+      service_id: null,
       item_name: variant ? `${entry.name} - ${variant.variation_name || variant.sku}` : entry.name,
       quantity,
       product_variant_id: variant ? Number(variant.id) : null,
       // Só para a tela somar o que já foi adicionado contra o mesmo saldo; o
       // backend ignora campos que não conhece.
-      stock_key: line.item_type === "produto" ? stockKey : null,
-      unit_price: Number(line.unit_price || variant?.sale_value || entry.sale_value || entry.base_price || entry.price || 0),
+      stock_key: stockKey,
+      unit_price: Number(line.unit_price || variant?.sale_value || entry.sale_value || 0),
       notes: line.notes || ""
     }]);
     setLine((current) => ({ ...current, quantity: 1, notes: "" }));
@@ -217,8 +172,8 @@ export function SalesWorkspace({ features = [], onUpgrade }) {
   }
 
   const productSubtotal = items.filter((item) => item.item_type === "produto").reduce((sum, item) => sum + Number(item.unit_price) * Number(item.quantity), 0);
-  const serviceSubtotal = items.filter((item) => item.item_type === "servico").reduce((sum, item) => sum + Number(item.unit_price) * Number(item.quantity), 0);
-  const saleSubtotal = productSubtotal + serviceSubtotal;
+  const serviceSubtotal = 0;
+  const saleSubtotal = productSubtotal;
   const saleTotal = priceQuote?.valid ? Number(priceQuote.final_amount) : saleSubtotal;
 
   async function applyCoupon() {
@@ -252,7 +207,7 @@ export function SalesWorkspace({ features = [], onUpgrade }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...form,
-        order_type: tab,
+        order_type: "produto",
         source: "interno",
         installments: form.receivable_mode === "pending" ? installmentsForPayload(installments) : [],
         items
@@ -267,7 +222,6 @@ export function SalesWorkspace({ features = [], onUpgrade }) {
     setInstallments([]);
     setAutomaticInstallments(true);
     setLine(defaultSalesLine());
-    setTab("produto");
     setModalOpen(false);
     refreshOrders();
   }
@@ -307,9 +261,6 @@ export function SalesWorkspace({ features = [], onUpgrade }) {
       <div className="metric-grid">
         <Metric label="Vendas no mês" value={currency.format(summary.total)} />
         <Metric label="Produtos" value={currency.format(summary.products)} />
-        <Metric label="Serviços" value={currency.format(summary.services)} />
-        <Metric label="Vendas mistas" value={currency.format(summary.mixed)} />
-        <Metric label="Atendimentos da agenda" value={currency.format(summary.agenda)} />
       </div>
 
       <div className="panel">
@@ -425,7 +376,7 @@ export function SalesWorkspace({ features = [], onUpgrade }) {
 
       <Modal
         open={modalOpen}
-        title={tab === "mista" ? "Venda mista" : tab === "servico" ? "Venda de serviço" : "Venda de produto"}
+        title="Venda de produto"
         subtitle="Cadastro interno com baixa financeira"
         size="lg"
         onClose={closeModal}
@@ -436,38 +387,11 @@ export function SalesWorkspace({ features = [], onUpgrade }) {
           </>
         )}
       >
-        <Tabs value={tab} onValueChange={handleTabChange}>
-          <Tabs.List className="customization-tabs sales-tabs" aria-label="Tipo de venda">
-            {[
-              ["produto", "Venda de produto"],
-              ["servico", "Venda de serviço"],
-              ["mista", "Venda mista"]
-            ].map(([id, label]) => <Tabs.Trigger key={id} value={id}>{label}</Tabs.Trigger>)}
-          </Tabs.List>
-        </Tabs>
-
         <form id="sales-order-form" onSubmit={saveOrder}>
           <div className="form-grid">
             <Input label="Cliente" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} required />
             <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => setForm({ ...form, whatsapp: value })} required />
             <Input label="Instagram" value={form.instagram} onChange={(value) => setForm({ ...form, instagram: value })} />
-            <Select label="Agendamento vinculado" value={form.appointment_id} onChange={(value) => {
-              const appointment = safeAppointments.find((item) => String(item.id) === String(value));
-              setForm({
-                ...form,
-                appointment_id: value,
-                full_name: appointment ? personName(appointment) : form.full_name,
-                whatsapp: appointment?.whatsapp || form.whatsapp,
-                instagram: appointment?.instagram || form.instagram
-              });
-            }}>
-              <option value="">Sem vínculo</option>
-              {safeAppointments.map((appointment) => (
-                <option key={appointment.id} value={appointment.id}>
-                  {personName(appointment)} · {formatDate(appointment.appointment_date)} · {appointment.appointment_time}
-                </option>
-              ))}
-            </Select>
             <Select label="Forma de pagamento" value={form.payment_method} onChange={(value) => setForm({ ...form, payment_method: value })}>
               <option>Pix</option>
               <option>Dinheiro</option>
@@ -497,30 +421,12 @@ export function SalesWorkspace({ features = [], onUpgrade }) {
 
           <div className="sales-line-builder">
             <div className="sales-line-header">
-              <strong>{tab === "servico" ? "Selecionar serviço" : "Selecionar joia"}</strong>
+              <strong>Selecionar joia</strong>
               <span>Adicione os itens da venda.</span>
             </div>
             <div className="form-grid">
-              <Select label="Tipo do item" value={line.item_type} onChange={(value) => setLine({ ...line, item_type: value })}>
-                <option value="produto">produto</option>
-                <option value="servico">serviço</option>
-              </Select>
-              {line.item_type === "servico" ? (
-                <Select label="Serviço" value={line.service_id} onChange={(value) => {
-                  const selected = safeServices.find((item) => String(item.id) === String(value));
-                  setLine({
-                    ...line,
-                    service_id: value,
-                    item_name: selected?.name || "",
-                    unit_price: selected?.base_price || selected?.price || 0
-                  });
-                }}>
-                  {safeServices.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
-                </Select>
-              ) : (
-                <SmartCombobox label="Joia" value={line.product_id} options={safeJewelry} onChange={(value) => { if (!value) setLine({ ...defaultSalesLine(), item_type: "produto" }); }} onSelect={addSelectedJewelry} getMeta={(item) => [item.category, item.material, item.sku].filter(Boolean).join(" · ")} isDisabled={(item) => asArray(item.variants).length ? !asArray(item.variants).some((variant) => Number(variant.quantity || 0) > 0) : Number(item.inventory_quantity ?? item.quantity ?? 0) <= 0} />
-              )}
-              {line.item_type === "produto" && (
+              <SmartCombobox label="Joia" value={line.product_id} options={safeJewelry} onChange={(value) => { if (!value) setLine({ ...defaultSalesLine(), item_type: "produto" }); }} onSelect={addSelectedJewelry} getMeta={(item) => [item.category, item.material, item.sku].filter(Boolean).join(" · ")} isDisabled={(item) => asArray(item.variants).length ? !asArray(item.variants).some((variant) => Number(variant.quantity || 0) > 0) : Number(item.inventory_quantity ?? item.quantity ?? 0) <= 0} />
+              {(
                 <Select label="Variação" value={line.product_variant_id} onChange={(value) => {
                   const variant = selectedVariants.find((item) => String(item.id) === String(value));
                   setLine({
@@ -585,7 +491,7 @@ export function SalesWorkspace({ features = [], onUpgrade }) {
               onChange={setInstallments}
               automatic={automaticInstallments}
               onAutomaticChange={setAutomaticInstallments}
-              title={tab === "servico" ? "Parcelas do serviço" : "Parcelas da venda"}
+              title="Parcelas da venda"
             />
           )}
 

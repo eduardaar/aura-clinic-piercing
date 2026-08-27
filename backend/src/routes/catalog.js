@@ -61,7 +61,10 @@ router.post("/api/catalog/events", withFeature("basic_catalog", async (req, res,
   const sessionKey = String(req.body?.session_key || "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80);
   if (sessionKey.length < 8) return res.status(400).json({ error: "Sessão inválida." });
   const productId = req.body?.product_id ? Number(req.body.product_id) : null;
-  if (productId && !(await db.get("SELECT id FROM jewelry_inventory WHERE id=? AND is_catalog_active=1", [productId]))) {
+  if (productId && !(await db.get(
+    "SELECT id FROM jewelry_inventory WHERE id=? AND is_catalog_active=1 AND is_published=1 AND virtual_store_active=1 AND status!='arquivado'",
+    [productId]
+  ))) {
     return res.status(404).json({ error: "Produto não encontrado." });
   }
   await db.run(
@@ -104,7 +107,10 @@ router.get("/api/catalog", withFeature("basic_catalog", async (_req, res, db) =>
     SELECT
       j.*
     FROM jewelry_inventory j
-    WHERE j.is_catalog_active = 1 AND j.status != 'arquivado'
+    WHERE j.is_catalog_active = 1
+      AND j.is_published = 1
+      AND j.virtual_store_active = 1
+      AND j.status != 'arquivado'
     ORDER BY j.category, j.name
   `);
   const items = (await attachVariants(db, productRows))
@@ -137,6 +143,7 @@ router.get("/api/catalog", withFeature("basic_catalog", async (_req, res, db) =>
       status: item.status,
       is_catalog_active: item.is_catalog_active,
       is_published: item.is_published,
+      virtual_store_active: item.virtual_store_active,
       variants: asArray(item.variants).filter((v) => Number(v.is_active ?? 1) === 1).map((v) => ({
         id: v.id,
         variation_name: v.variation_name,
@@ -159,7 +166,8 @@ router.get("/api/catalog", withFeature("basic_catalog", async (_req, res, db) =>
         })),
         thread_type: v.thread_type,
         sale_value: v.sale_value || item.sale_value,
-        quantity: v.quantity || item.quantity,
+        // Zero é um saldo válido e não pode herdar o estoque do produto pai.
+        quantity: v.quantity ?? item.quantity,
         status: v.status,
         is_active: v.is_active
       })),

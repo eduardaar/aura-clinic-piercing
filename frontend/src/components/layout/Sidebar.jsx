@@ -22,6 +22,7 @@ export function Sidebar({ page, role, user, brand, features, setPage, open }) {
     ]],
     ["Atendimento", [
       ["agenda", Calendar, "Agenda"],
+      ["services", Sparkles, "Serviços"],
       ["client-center", UsersRound, "Clientes"]
     ]],
     ["Comercial", [
@@ -31,6 +32,7 @@ export function Sidebar({ page, role, user, brand, features, setPage, open }) {
     ["Estoque e compras", [
       ["products", Package, "Produtos"],
       ["inventory", Table2, "Estoque"],
+      ["consumables", Package, "Materiais"],
       ["purchases", PackagePlus, "Compras"],
       ["suppliers", ContactRound, "Fornecedores"]
     ]],
