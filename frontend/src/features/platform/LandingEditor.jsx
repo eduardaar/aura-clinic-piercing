@@ -452,6 +452,14 @@ function ImageField({ label, value, alt, onChange, onAltChange, upload }) {
     // Zera o input para permitir reenviar o MESMO arquivo depois de um erro.
     event.target.value = "";
     if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setError("Use uma imagem JPEG, PNG ou WebP.");
+      return;
+    }
+    if (file.size > 6 * 1024 * 1024) {
+      setError("A imagem deve ter no máximo 6 MB.");
+      return;
+    }
     setError("");
     setUploading(true);
     try {
@@ -485,7 +493,7 @@ function ImageField({ label, value, alt, onChange, onAltChange, upload }) {
           <div className="header-actions">
             <label className="secondary-button le-arquivo">
               {uploading ? "Enviando…" : value ? "Substituir imagem" : "Anexar imagem"}
-              <input type="file" accept="image/*" disabled={uploading} onChange={pick} />
+              <input type="file" accept="image/jpeg,image/png,image/webp" disabled={uploading} onChange={pick} />
             </label>
             {value && (
               <Button variant="ghost" onClick={() => onChange("")}>

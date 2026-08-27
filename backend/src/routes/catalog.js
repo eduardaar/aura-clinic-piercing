@@ -229,7 +229,7 @@ router.get("/api/catalog-media", withCatalogFeature("public_catalog_customizatio
 
 router.post("/api/catalog-media", withCatalogFeature("public_catalog_customization", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
-  await parseUpload(upload.single("file"), req, res, { category: "catalog", imagesOnly: true });
+  await parseUpload(upload.single("file"), req, res, { category: "catalog", imagesOnly: true, imageProfile: "catalog" });
   if (!req.file?.publicUrl || !req.file?.storageKey) return res.status(400).json({ error: "Nenhum arquivo enviado." });
   const created = await db.run(
     `INSERT INTO catalog_media_assets (url, storage_key, original_name, mime_type, alt_text, created_by)

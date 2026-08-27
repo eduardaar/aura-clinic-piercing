@@ -579,6 +579,7 @@ function ProductGalleryManager({ images = [], productName = "", onChange }) {
   const [preview, setPreview] = useState(null);
   const [url, setUrl] = useState("");
   const [removingIndex, setRemovingIndex] = useState(null);
+  const [uploadError, setUploadError] = useState("");
   const safeImages = asArray(images);
 
   function normalizeList(list) {
@@ -608,17 +609,25 @@ function ProductGalleryManager({ images = [], productName = "", onChange }) {
   async function uploadFiles(event) {
     const files = Array.from(event.target.files || []);
     if (!files.length) return;
+    setUploadError("");
     setUploading(true);
     try {
       const uploaded = [];
       for (const file of files) {
-        if (!file.type.startsWith("image/")) continue;
-        if (file.size > 6 * 1024 * 1024) continue;
+        if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+          setUploadError("Use imagens JPEG, PNG ou WebP.");
+          continue;
+        }
+        if (file.size > 6 * 1024 * 1024) {
+          setUploadError("Cada imagem deve ter no máximo 6 MB.");
+          continue;
+        }
         const body = new FormData();
         body.append("file", file);
         const response = await apiFetch("/uploads", { method: "POST", body });
         const payload = await response.json().catch(() => ({}));
         if (response.ok && payload.url) uploaded.push({ image_url: payload.url, alt_text: productName });
+        else setUploadError(payload.error || "Não foi possível enviar uma das imagens.");
       }
       emit([...safeImages, ...uploaded]);
     } finally {
@@ -662,7 +671,7 @@ function ProductGalleryManager({ images = [], productName = "", onChange }) {
         <label className="secondary-button gallery-upload-button">
           <ImageIcon size={16} />
           Enviar imagens
-          <input type="file" accept="image/*" multiple onChange={uploadFiles} />
+          <input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={uploadFiles} />
         </label>
       </div>
       <div className="gallery-url-row">
@@ -670,6 +679,7 @@ function ProductGalleryManager({ images = [], productName = "", onChange }) {
         <Button variant="secondary" onClick={addUrl}>Adicionar URL</Button>
       </div>
       {uploading && <small className="form-success">Enviando imagens...</small>}
+      {uploadError && <small className="form-error">{uploadError}</small>}
       <div className="product-gallery-grid">
         {safeImages.map((image, index) => (
           <article key={image.id || image.image_url} className={image.is_primary ? "primary" : ""}>

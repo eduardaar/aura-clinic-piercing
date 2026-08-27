@@ -28,7 +28,7 @@ router.post("/api/uploads", withDb(async (req, res) => {
 router.get("/api/private-files/:filename", withDb(async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
   const filename = String(req.params.filename || "");
-  if (!/^[a-zA-Z0-9_-]+(?:\.pdf)?$/.test(filename)) return res.status(400).json({ error: "Arquivo inválido." });
+  if (!/^[a-zA-Z0-9_-]+(?:\.(?:pdf|webp))?$/.test(filename)) return res.status(400).json({ error: "Arquivo inválido." });
   // O registro vive no schema DA clínica: arquivo de outro tenant simplesmente
   // não é encontrado aqui, e é isso que impede a leitura cruzada.
   const file = await db.get("SELECT id, purpose, original_name, mime_type FROM private_files WHERE filename=?", [filename]);

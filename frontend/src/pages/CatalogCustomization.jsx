@@ -2211,12 +2211,16 @@ export function ImageUploadField({ label, value, onChange, onTransformChange, tr
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type)) {
-      setError("Use uma imagem JPEG, PNG, WebP ou GIF.");
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setError("Use uma imagem JPEG, PNG ou WebP.");
+      return;
+    }
+    if (file.size > 6 * 1024 * 1024) {
+      setError("A imagem deve ter no máximo 6 MB.");
       return;
     }
     setError("");
-    setWarning(file.type === "image/gif" ? "GIFs animados são preservados, mas o enquadramento não altera os quadros do arquivo." : "");
+    setWarning("");
     const source = URL.createObjectURL(file);
     const image = new Image();
     image.onload = () => {
@@ -2278,7 +2282,7 @@ export function ImageUploadField({ label, value, onChange, onTransformChange, tr
       {!internalUpload && <input value={value || ""} onChange={(event) => updateExternalUrl(event.target.value)} placeholder="Cole uma URL externa ou envie um arquivo" />}
       {internalUpload && <small>Arquivo enviado e armazenado com segurança.</small>}
       <div className="image-upload-actions">
-        <label className="secondary-button">Escolher arquivo<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={selectImage} /></label>
+        <label className="secondary-button">Escolher arquivo<input type="file" accept="image/jpeg,image/png,image/webp" onChange={selectImage} /></label>
         <button type="button" className="secondary-button" onClick={() => setLibraryOpen(true)}>Biblioteca</button>
         {value && <button type="button" className="secondary-button" onClick={() => setEditor({ file: null, src: catalogImageUrl(value) })}>Editar enquadramento</button>}
         {value && <button type="button" className="danger-link" onClick={() => setRemoveOpen(true)}>Remover</button>}

@@ -30,6 +30,7 @@ backlog herdado.
 | [ESTUDO-SERVICOS-AGENDA-FINANCEIRO.md](./ESTUDO-SERVICOS-AGENDA-FINANCEIRO.md) | Diagnóstico e proposta para separar serviços executados pela agenda de vendas de produtos. |
 | [ESTUDO-MATERIAIS-CONSUMO-AURA.md](./ESTUDO-MATERIAIS-CONSUMO-AURA.md) | Leitura da base local e fluxo aplicado para materiais operacionais. |
 | [ROADMAP-ESTOQUE-CATALOGO-AURA.md](./ROADMAP-ESTOQUE-CATALOGO-AURA.md) | Diagnóstico seguro e etapas para consolidar estoque, variações e catálogo. |
+| [GUIA-HOMOLOGACAO-CLINICA-DO-ZERO.md](./GUIA-HOMOLOGACAO-CLINICA-DO-ZERO.md) | Roteiro ponta a ponta com dados fictícios para validar uma clínica nova. |
 
 ## Como usar esta documentação
 

@@ -25,6 +25,15 @@ const allowedMimeTypes = new Set([
   "application/pdf"
 ]);
 
+// A regra roda antes de persistir, portanto é idêntica no disco local e no R2.
+const optimizableImageMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_IMAGE_PIXELS = 24_000_000;
+const imageProfiles = {
+  standard: { maxDimension: 1600, quality: 82 },
+  catalog: { maxDimension: 2400, quality: 84 },
+  private: { maxDimension: 2048, quality: 85 }
+};
+
 const fileFilter = (_req, file, cb) => {
   if (!allowedMimeTypes.has(file.mimetype)) {
     return cb(new Error("Tipo de arquivo não permitido."));
@@ -93,17 +102,40 @@ export async function validateFileContents(file) {
     if (!["GIF87a", "GIF89a"].includes(buffer.subarray(0, 6).toString("ascii"))) {
       throw new Error("Conteúdo de arquivo inválido.");
     }
-    await sharp(buffer, { limitInputPixels: 40_000_000, animated: true }).metadata();
+    await sharp(buffer, { limitInputPixels: MAX_IMAGE_PIXELS, animated: true }).metadata();
     return;
   }
-  await sharp(buffer, { limitInputPixels: 40_000_000 }).metadata();
+  await sharp(buffer, { limitInputPixels: MAX_IMAGE_PIXELS }).metadata();
 }
 
-// Nome do arquivo: 32 hex, sem extensão — o mesmo formato que o multer em
-// disco gerava. Mantido de propósito: é o que já está gravado nas colunas de
-// URL do banco e o que o regex de `GET /api/private-files/:filename` aceita.
-function generateFilename() {
-  return crypto.randomBytes(16).toString("hex");
+// Os arquivos legados permanecem sem extensão. Imagens novas usam `.webp`,
+// para que inclusive o servidor estático local entregue o Content-Type correto.
+export async function optimizeUploadedImage(file, profileName = "standard") {
+  if (!optimizableImageMimeTypes.has(file?.mimetype)) return false;
+  const profile = imageProfiles[profileName] || imageProfiles.standard;
+  const originalSize = file.buffer.length;
+  const { data, info } = await sharp(file.buffer, { limitInputPixels: MAX_IMAGE_PIXELS, failOn: "error" })
+    .rotate()
+    .resize({ width: profile.maxDimension, height: profile.maxDimension, fit: "inside", withoutEnlargement: true })
+    .webp({ quality: profile.quality, effort: 4, smartSubsample: true })
+    .toBuffer({ resolveWithObject: true });
+
+  // Sharp descarta EXIF por padrão. Isso remove GPS e dados da câmera, enquanto
+  // rotate() já aplicou a orientação correta dos celulares.
+  file.buffer = data;
+  file.mimetype = "image/webp";
+  file.optimization = {
+    profile: profileName in imageProfiles ? profileName : "standard",
+    originalSize,
+    outputSize: data.length,
+    width: info.width,
+    height: info.height
+  };
+  return true;
+}
+
+function generateFilename(extension = "") {
+  return `${crypto.randomBytes(16).toString("hex")}${extension}`;
 }
 
 /**
@@ -120,15 +152,16 @@ function generateFilename() {
  * @param {object} [options]
  * @param {string} [options.category] categoria do bucket público (ver keys.js)
  */
-export function parseUpload(middleware, req, res, { category = "geral", imagesOnly = false } = {}) {
+export function parseUpload(middleware, req, res, { category = "geral", imagesOnly = false, imageProfile } = {}) {
   const scope = middleware?.storageScope === "private" ? "private" : "public";
+  const effectiveImageProfile = imageProfile || (scope === "private" ? "private" : "standard");
   return new Promise((resolve, reject) => middleware(req, res, async (error) => {
     if (error) return reject(error);
     const files = uploadedFiles(req);
+    if (imagesOnly && files.some((file) => !optimizableImageMimeTypes.has(file.mimetype))) {
+      return reject(new Error("Envie imagens JPEG, PNG ou WebP."));
+    }
     try {
-      if (imagesOnly && files.some((file) => !String(file.mimetype || "").startsWith("image/"))) {
-        throw new Error("Envie somente imagens.");
-      }
       // Valida TUDO antes de gravar QUALQUER coisa: numa requisição com dois
       // arquivos, subir o primeiro e recusar o segundo deixaria lixo no bucket.
       await Promise.all(files.map(validateFileContents));
@@ -136,8 +169,10 @@ export function parseUpload(middleware, req, res, { category = "geral", imagesOn
       return reject(new Error("Conteúdo de arquivo inválido."));
     }
     try {
+      // Nada é gravado antes de todas as imagens terem sido normalizadas.
+      await Promise.all(files.map((file) => optimizeUploadedImage(file, effectiveImageProfile)));
       for (const file of files) {
-        file.filename = file.filename || generateFilename();
+        file.filename = file.filename || generateFilename(file.mimetype === "image/webp" ? ".webp" : "");
         file.tenantId = req.tenant?.id ?? null;
         if (scope !== "public") continue;
         const key = buildKey({ scope: "public", tenantId: file.tenantId, category, filename: file.filename });

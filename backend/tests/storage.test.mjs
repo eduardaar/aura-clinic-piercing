@@ -21,7 +21,7 @@ import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { buildKey, createStorage, folderForPurpose } from "../src/services/storage/index.js";
-import { validateFileContents } from "../src/middleware/upload.js";
+import { optimizeUploadedImage, validateFileContents } from "../src/middleware/upload.js";
 
 // PNG 1x1 de verdade (o mesmo que a suíte usa como assinatura digital).
 const PNG_VALIDO = Buffer.from(
@@ -232,6 +232,36 @@ test("Upload: conteúdo que mente sobre o que é continua sendo recusado", async
 
   await t.test("imagem de verdade passa", async () => {
     await validateFileContents({ mimetype: "image/png", buffer: PNG_VALIDO });
+  });
+});
+
+test("Upload: imagens novas sao normalizadas antes de persistir", async (t) => {
+  await t.test("PNG grande vira WebP dentro do perfil padrao", async () => {
+    const sharp = (await import("sharp")).default;
+    const original = await sharp({
+      create: { width: 2200, height: 1200, channels: 3, background: "#c7a07a" }
+    }).png().toBuffer();
+    const arquivo = { mimetype: "image/png", buffer: original };
+
+    const optimized = await optimizeUploadedImage(arquivo, "standard");
+    const metadata = await sharp(arquivo.buffer).metadata();
+
+    assert.equal(optimized, true);
+    assert.equal(arquivo.mimetype, "image/webp");
+    assert.equal(metadata.format, "webp");
+    assert.equal(metadata.width, 1600);
+    assert.equal(metadata.height, 873);
+    assert.equal(arquivo.optimization.originalSize, original.length);
+    assert.equal(arquivo.optimization.outputSize, arquivo.buffer.length);
+  });
+
+  await t.test("PDF e GIF nao sao convertidos", async () => {
+    const pdf = { mimetype: "application/pdf", buffer: PDF_MINIMO_VALIDO };
+    const gif = { mimetype: "image/gif", buffer: GIF_VALIDO };
+    assert.equal(await optimizeUploadedImage(pdf), false);
+    assert.equal(await optimizeUploadedImage(gif), false);
+    assert.equal(pdf.mimetype, "application/pdf");
+    assert.equal(gif.mimetype, "image/gif");
   });
 });
 
