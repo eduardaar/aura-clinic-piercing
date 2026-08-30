@@ -8,7 +8,7 @@ import { Loading } from "../../components/common/Feedback";
 import { asArray, asNumber, asObject, formatDate } from "../../lib/utils";
 import { apiFetch, readStoredSession, tenantSlug, useApiInvalidate, useFetch } from "../../lib/api";
 import { buildCalendar, buildTimeSlots, dateKey, movePeriod } from "../../lib/calendarUtils";
-import { defaultAppointment, defaultProcedureForm, defaultProfessionalForm, defaultScheduleBlock, defaultServiceForm } from "../../lib/defaultForms";
+import { defaultAppointment, defaultProfessionalForm, defaultScheduleBlock } from "../../lib/defaultForms";
 import { appointmentWhatsAppMessage, calcRemaining, currency, personName, statusClass, weekdayLabel, whatsappUrl } from "../../features/shared/helpers";
 import { SmartCombobox } from "../../components/common/SmartCombobox";
 import { publicLinkForTenant } from "../../lib/publicRoutes";
@@ -316,14 +316,14 @@ export function VisualCalendar({ onOpenSettings, features = [], onUpgrade }) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [createSeed, setCreateSeed] = useState(null);
-  const { data } = useFetch(`/appointments?${new URLSearchParams(Object.fromEntries(Object.entries(filters).filter(([, v]) => v && !["mensal", "semanal", "diario", "lista"].includes(v))))}`);
+  const { data } = useFetch(`/appointments?${new URLSearchParams(Object.fromEntries(Object.entries(filters).filter(([, v]) => v && !["mensal", "semanal", "diario", "lista", "realizados"].includes(v))))}`);
   // Invalidar "/appointments" alcança o calendário sob qualquer combinação de
   // filtros, não só a consulta que está montada agora.
   const invalidate = useApiInvalidate();
-  const refresh = () => invalidate("/appointments", "/clients", "/dashboard");
+  const refresh = () => invalidate("/appointments", "/service-executions", "/clients", "/dashboard");
   const refreshClients = refresh;
   const safeOptions = asObject(options);
-  const calendar = useMemo(() => filters.mode === "lista" ? null : buildCalendar(asArray(data), filters.mode, currentDate), [data, filters.mode, currentDate]);
+  const calendar = useMemo(() => ["lista", "realizados"].includes(filters.mode) ? null : buildCalendar(asArray(data), filters.mode, currentDate), [data, filters.mode, currentDate]);
 
   return (
     <section className="stack">
@@ -340,16 +340,18 @@ export function VisualCalendar({ onOpenSettings, features = [], onUpgrade }) {
       </div>
       <div className="toolbar">
         <div className="segmented">
-          {[["mensal", "Mensal"], ["semanal", "Semanal"], ["diario", "Diário"], ["lista", "Lista"]].map(([mode, label]) => <button key={mode} className={filters.mode === mode ? "active" : ""} onClick={() => setFilters({ ...filters, mode })}>{label}</button>)}
+          {[["mensal", "Mensal"], ["semanal", "Semanal"], ["diario", "Diário"], ["lista", "Agendamentos"], ["realizados", "Atendimentos realizados"]].map(([mode, label]) => <button key={mode} className={filters.mode === mode ? "active" : ""} onClick={() => setFilters({ ...filters, mode })}>{label}</button>)}
         </div>
-        <Select label="Profissional" value={filters.professional_id} onChange={(v) => setFilters({ ...filters, professional_id: v })}>
-          <option value="">Todos</option>
-          {asArray(safeOptions.professionals).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-        </Select>
-        <Select label="Status" value={filters.status} onChange={(v) => setFilters({ ...filters, status: v })}>
-          <option value="">Todos</option>
-          {APPOINTMENT_STATUS_OPTIONS.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
-        </Select>
+        {filters.mode !== "realizados" && <>
+          <Select label="Profissional" value={filters.professional_id} onChange={(v) => setFilters({ ...filters, professional_id: v })}>
+            <option value="">Todos</option>
+            {asArray(safeOptions.professionals).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </Select>
+          <Select label="Status" value={filters.status} onChange={(v) => setFilters({ ...filters, status: v })}>
+            <option value="">Todos</option>
+            {APPOINTMENT_STATUS_OPTIONS.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+          </Select>
+        </>}
         {calendar && <div className="calendar-nav">
           <button aria-label="Período anterior" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, -1))}><ChevronLeft size={18} /></button>
           <strong>{calendar.title}</strong>
@@ -357,7 +359,9 @@ export function VisualCalendar({ onOpenSettings, features = [], onUpgrade }) {
           <button onClick={() => setCurrentDate(new Date())}>Hoje</button>
         </div>}
       </div>
-      {filters.mode === "lista" ? (
+      {filters.mode === "realizados" ? (
+        <ServiceExecutionHistory />
+      ) : filters.mode === "lista" ? (
         <div className="panel"><AppointmentList appointments={asArray(data)} onChanged={refresh} /></div>
       ) : filters.mode === "diario" ? (
         <DailyAgenda day={calendar.days[0]} refresh={refresh} onSelect={setSelectedAppointment} onEmptySlot={setCreateSeed} />
@@ -391,6 +395,76 @@ export function VisualCalendar({ onOpenSettings, features = [], onUpgrade }) {
         }}
       />
     </section>
+  );
+}
+
+function serviceExecutionRows(payload) {
+  return asArray(payload).length ? asArray(payload) : asArray(asObject(payload).items);
+}
+
+function ServiceExecutionHistory() {
+  const { data } = useFetch("/service-executions?limit=200");
+  const [selectedId, setSelectedId] = useState(null);
+  if (data == null) return <Loading />;
+  const rows = serviceExecutionRows(data);
+  return (
+    <div className="panel">
+      <CrudHeader title="Atendimentos realizados" subtitle="Histórico gerado automaticamente quando um agendamento é finalizado." />
+      <DataView
+        rows={rows}
+        defaultSort={{ key: "completed_at", dir: "desc" }}
+        searchPlaceholder="Buscar por cliente, serviço ou profissional"
+        filters={[
+          { key: "professional_name", label: "Profissional", type: "select", options: distinctOptions(rows.map((item) => item.professional_name)).map((value) => ({ value, label: value })) },
+          { key: "status", label: "Status", type: "select", options: [{ value: "completed", label: "Concluído" }, { value: "cancelled", label: "Cancelado" }] }
+        ]}
+        columns={[
+          { key: "completed_at", label: "Conclusão", render: (item) => formatDateWithYear(item.completed_at) },
+          { key: "client_name", label: "Cliente" },
+          { key: "service_name", label: "Serviço", render: (item) => item.service_name || "Atendimento" },
+          { key: "professional_name", label: "Profissional" },
+          { key: "total_value", label: "Valor", value: (item) => asNumber(item.total_value), render: (item) => currency.format(item.total_value || 0) },
+          { key: "status", label: "Status", render: (item) => <StatusBadge status={item.status === "completed" ? "Concluído" : "Cancelado"} /> }
+        ]}
+        actions={(item) => <RowActions actions={[{ label: "Ver atendimento", primary: true, onClick: () => setSelectedId(item.id) }]} />}
+        empty="Nenhum atendimento foi finalizado pela Agenda."
+        emptyFiltered="Nenhum atendimento corresponde aos filtros aplicados."
+      />
+      <ServiceExecutionDetail executionId={selectedId} onClose={() => setSelectedId(null)} />
+    </div>
+  );
+}
+
+function ServiceExecutionDetail({ executionId, onClose }) {
+  const { data } = useFetch(executionId ? `/service-executions/${executionId}` : null);
+  const execution = asObject(data);
+  const snapshot = asObject(execution.snapshot);
+  return (
+    <Modal open={Boolean(executionId)} title="Atendimento realizado" subtitle={executionId ? `Registro #${executionId}` : ""} size="lg" onClose={onClose} footer={<Button variant="secondary" onClick={onClose}>Fechar</Button>}>
+      {!data ? <Loading /> : <div className="stack">
+        <div className="summary-grid">
+          <span>Cliente <strong>{snapshot.client_name || "—"}</strong></span>
+          <span>Serviço <strong>{snapshot.procedure || "Atendimento"}</strong></span>
+          <span>Data <strong>{formatDateWithYear(snapshot.appointment_date || execution.completed_at)}</strong></span>
+          <span>Total <strong>{currency.format(execution.total_value || 0)}</strong></span>
+        </div>
+        {(execution.clinical_notes || execution.occurrences || execution.aftercare_notes) ? <div className="soft-card stack">
+          {execution.clinical_notes && <div><strong>Observações clínicas</strong><p>{execution.clinical_notes}</p></div>}
+          {execution.occurrences && <div><strong>Intercorrências</strong><p>{execution.occurrences}</p></div>}
+          {execution.aftercare_notes && <div><strong>Orientações pós-atendimento</strong><p>{execution.aftercare_notes}</p></div>}
+        </div> : <p className="empty-state">Nenhuma informação clínica opcional foi registrada.</p>}
+        <DataView
+          rows={asArray(execution.items)}
+          columns={[
+            { key: "item_name", label: "Item" },
+            { key: "item_type", label: "Tipo", render: (item) => item.item_type === "service" ? "Serviço" : "Produto aplicado" },
+            { key: "quantity", label: "Quantidade" },
+            { key: "total_value", label: "Valor", render: (item) => currency.format(item.total_value || 0) }
+          ]}
+          empty="Nenhum item registrado."
+        />
+      </div>}
+    </Modal>
   );
 }
 
@@ -572,6 +646,9 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
   const [form, setForm] = useState({ appointment_date: "", appointment_time: "", status: "pendente", notes: "" });
   const [payments, setPayments] = useState([{ method: "Pix", amount: 0, status: "pago", installments: 1, fee_amount: 0, expected_receipt_date: "" }]);
   const [financialNotes, setFinancialNotes] = useState("");
+  const [clinicalNotes, setClinicalNotes] = useState("");
+  const [occurrences, setOccurrences] = useState("");
+  const [aftercareNotes, setAftercareNotes] = useState("");
   const [error, setError] = useState("");
   const [deletion, setDeletion] = useState(null);
   const [cancellation, setCancellation] = useState(null);
@@ -606,6 +683,9 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
     }, safeServices, safeJewelry));
     setPayments([{ method: appointment.remaining_payment_method || "Pix", amount: Math.max(0, Number(appointment.remaining_value || 0)), status: "pago", installments: 1, fee_amount: 0, expected_receipt_date: "" }]);
     setFinancialNotes(appointment.financial_notes || "");
+    setClinicalNotes("");
+    setOccurrences("");
+    setAftercareNotes("");
     setError("");
     setDeletion(null);
     setCancellation(null);
@@ -675,7 +755,7 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
       const updateData = await updateResponse.json().catch(() => ({}));
       return setError(updateData.error || "Não foi possível salvar os itens do atendimento.");
     }
-    const response = await apiFetch(`/appointments/${appointment.id}/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ payments, financial_notes: financialNotes }) });
+    const response = await apiFetch(`/appointments/${appointment.id}/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ payments, financial_notes: financialNotes, clinical_notes: clinicalNotes, occurrences, aftercare_notes: aftercareNotes }) });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) return setError(data.error || "Não foi possível concluir o atendimento.");
     onSaved?.();
@@ -736,6 +816,10 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
           <AppointmentValueSummary form={form} services={safeServices} jewelry={safeJewelry} />
           <Textarea label="Observação" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} />
           {form.status !== "atendido" && <section className="soft-card stack">
+            <div className="section-inline-header"><strong>Registro clínico</strong><small>Campos opcionais</small></div>
+            <Textarea label="Observações clínicas (opcional)" value={clinicalNotes} onChange={setClinicalNotes} />
+            <Textarea label="Intercorrências (opcional)" value={occurrences} onChange={setOccurrences} />
+            <Textarea label="Orientações pós-atendimento (opcional)" value={aftercareNotes} onChange={setAftercareNotes} />
             <div className="section-inline-header"><strong>Conferência financeira</strong><Button variant="secondary" onClick={() => setPayments([...payments, { method: "Pix", amount: 0, status: "pago", installments: 1, fee_amount: 0, expected_receipt_date: "" }])}>Dividir pagamento</Button></div>
             {payments.map((payment, index) => <div className="form-grid" key={`${index}-${payment.method}`}>
               <PaymentSelect label={`Forma ${index + 1}`} value={payment.method} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, method: value } : item))} />
@@ -775,33 +859,21 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
 
 export function BookingAdmin({ onBack, initialTab }) {
   const { data: services } = useFetch("/services");
-  const { data: procedures } = useFetch("/procedures");
   const { data: professionalsData } = useFetch("/professionals");
   const { data: options } = useFetch("/options");
   const { data: availability } = useFetch("/availability");
   const { data: blocks } = useFetch("/schedule-blocks");
   const { data: appointments } = useFetch("/appointments?status=pendente");
-  // Serviço, procedimento e profissional alimentam também "/options" (usado nos
-  // Os cadastros daqui também alimentam o checklist do Onboarding.
+  // Serviço e profissional alimentam também "/options" e o checklist do onboarding.
   const invalidate = useApiInvalidate();
-  const refreshServices = () => invalidate("/services", "/options", "/booking/readiness");
-  const refreshProcedures = () => invalidate("/procedures", "/options", "/booking/readiness");
   const refreshProfessionals = () => invalidate("/professionals", "/options", "/booking/readiness");
   const refreshAvailability = () => invalidate("/availability", "/booking/readiness");
   const refreshBlocks = () => invalidate("/schedule-blocks", "/availability");
   const refreshAppointments = () => invalidate("/appointments", "/dashboard");
   const [tab, setTab] = useState(initialTab === "servicos" ? "profissionais" : (initialTab || "profissionais"));
-  const [serviceForm, setServiceForm] = useState(defaultServiceForm());
-  const [editingServiceId, setEditingServiceId] = useState(null);
-  const [serviceModalOpen, setServiceModalOpen] = useState(false);
-  const [procedureForm, setProcedureForm] = useState(defaultProcedureForm());
-  const [editingProcedureId, setEditingProcedureId] = useState(null);
-  const [procedureModalOpen, setProcedureModalOpen] = useState(false);
   const [professionalForm, setProfessionalForm] = useState(defaultProfessionalForm());
   const [editingProfessionalId, setEditingProfessionalId] = useState(null);
   const [professionalModalOpen, setProfessionalModalOpen] = useState(false);
-  const [serviceError, setServiceError] = useState("");
-  const [procedureError, setProcedureError] = useState("");
   const [professionalError, setProfessionalError] = useState("");
   const [weeklyProfessionalId, setWeeklyProfessionalId] = useState("");
   const [weeklyDays, setWeeklyDays] = useState([]);
@@ -814,13 +886,11 @@ export function BookingAdmin({ onBack, initialTab }) {
   const professionals = asArray(asObject(options).professionals);
   const allProfessionals = asArray(professionalsData);
   const safeServices = asArray(services);
-  const safeProcedures = asArray(procedures);
   const safeAvailability = asArray(availability);
   const safeBlocks = asArray(blocks);
   const safeAppointments = asArray(appointments);
 
   const activeServices = safeServices.filter((service) => Boolean(Number(service.is_active ?? service.active_online_booking)));
-  const activeProcedures = safeProcedures.filter((procedure) => Boolean(Number(procedure.is_active)));
   const activeProfessionals = allProfessionals.filter((professional) => Boolean(Number(professional.active)));
   const weeklyWeekdays = [0, 1, 2, 3, 4, 5, 6];
 
@@ -874,143 +944,7 @@ export function BookingAdmin({ onBack, initialTab }) {
     setWeeklyDays(weeklyDaysForProfessional(weeklyProfessionalId));
   }, [availability, weeklyProfessionalId, activeProfessionals.length]);
 
-  if (services == null || procedures == null || professionalsData == null || availability == null || blocks == null || appointments == null) return <Loading />;
-
-  function validateServiceForm() {
-    if (!serviceForm.name.trim()) return "Informe o nome do serviço.";
-    if (Number(serviceForm.base_price || 0) < 0) return "Preço não pode ser negativo.";
-    if (Number(serviceForm.duration_minutes || 0) <= 0) return "Duração deve ser um número positivo.";
-    return "";
-  }
-
-  function validateProcedureForm() {
-    if (!procedureForm.name.trim()) return "Informe o nome do procedimento.";
-    if (!procedureForm.service_id) return "Procedimento precisa ter um serviço vinculado.";
-    if (Number(procedureForm.price || 0) < 0) return "Preço não pode ser negativo.";
-    if (Number(procedureForm.duration_minutes || 0) <= 0) return "Duração deve ser um número positivo.";
-    return "";
-  }
-
-  function openNewService() {
-    setEditingServiceId(null);
-    setServiceForm(defaultServiceForm());
-    setServiceError("");
-    setServiceModalOpen(true);
-  }
-
-  async function saveService(event) {
-    event.preventDefault();
-    setServiceError("");
-    const error = validateServiceForm();
-    if (error) return setServiceError(error);
-    const response = await apiFetch(editingServiceId ? `/services/${editingServiceId}` : "/services", {
-      method: editingServiceId ? "PUT" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(serviceForm)
-    });
-    if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
-      return setServiceError(payload.error || "Não foi possível salvar o serviço.");
-    }
-    setServiceForm(defaultServiceForm());
-    setEditingServiceId(null);
-    setServiceModalOpen(false);
-    refreshServices();
-  }
-
-  function editService(service) {
-    setEditingServiceId(service.id);
-    setServiceError("");
-    setServiceForm({
-      name: service.name || "",
-      description: service.description || "",
-      base_price: service.base_price || 0,
-      deposit_value: Number(service.deposit_value || 25),
-      duration_minutes: service.duration_minutes || 40,
-      is_active: Boolean(service.is_active)
-    });
-    setServiceModalOpen(true);
-  }
-
-  function removeService(service) {
-    setDeleting({
-      message: `Excluir ${service.name}?`,
-      run: async () => {
-        const response = await apiFetch(`/services/${service.id}`, { method: "DELETE" });
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}));
-          return setServiceError(payload.error || "Não foi possível excluir o serviço.");
-        }
-        if (editingServiceId === service.id) {
-          setEditingServiceId(null);
-          setServiceForm(defaultServiceForm());
-        }
-        refreshServices();
-        refreshProcedures();
-      }
-    });
-  }
-
-  function openNewProcedure() {
-    setEditingProcedureId(null);
-    setProcedureForm(defaultProcedureForm());
-    setProcedureError("");
-    setProcedureModalOpen(true);
-  }
-
-  async function saveProcedure(event) {
-    event.preventDefault();
-    setProcedureError("");
-    const error = validateProcedureForm();
-    if (error) return setProcedureError(error);
-    const response = await apiFetch(editingProcedureId ? `/procedures/${editingProcedureId}` : "/procedures", {
-      method: editingProcedureId ? "PUT" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(procedureForm)
-    });
-    if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
-      return setProcedureError(payload.error || "Não foi possível salvar o procedimento.");
-    }
-    setProcedureForm(defaultProcedureForm());
-    setEditingProcedureId(null);
-    setProcedureModalOpen(false);
-    refreshProcedures();
-  }
-
-  function editProcedure(procedure) {
-    setEditingProcedureId(procedure.id);
-    setProcedureError("");
-    setProcedureForm({
-      service_id: procedure.service_id || "",
-      name: procedure.name || "",
-      body_area: procedure.body_area || "",
-      description: procedure.description || "",
-      price: procedure.price || 0,
-      duration_minutes: procedure.duration_minutes || 40,
-      aftercare_instructions: procedure.aftercare_instructions || "",
-      is_active: Boolean(procedure.is_active)
-    });
-    setProcedureModalOpen(true);
-  }
-
-  function removeProcedure(procedure) {
-    setDeleting({
-      message: `Excluir ${procedure.name}?`,
-      run: async () => {
-        const response = await apiFetch(`/procedures/${procedure.id}`, { method: "DELETE" });
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}));
-          return setProcedureError(payload.error || "Não foi possível excluir o procedimento.");
-        }
-        if (editingProcedureId === procedure.id) {
-          setEditingProcedureId(null);
-          setProcedureForm(defaultProcedureForm());
-        }
-        refreshProcedures();
-      }
-    });
-  }
+  if (services == null || professionalsData == null || availability == null || blocks == null || appointments == null) return <Loading />;
 
   function openNewProfessional() {
     setEditingProfessionalId(null);
@@ -1085,7 +1019,6 @@ export function BookingAdmin({ onBack, initialTab }) {
     setReadinessMessage("");
     if (!activeProfessionals.length) return setReadinessMessage("Cadastre e ative pelo menos um profissional antes de configurar a agenda semanal.");
     if (!activeServices.length) return setReadinessMessage("Cadastre e ative pelo menos um serviço antes de configurar a agenda semanal.");
-    if (!activeProcedures.length) return setReadinessMessage("Cadastre e ative pelo menos um procedimento vinculado ao serviço.");
     if (!weeklyProfessionalId) return setReadinessMessage("Escolha o profissional da agenda semanal.");
     const response = await apiFetch("/availability/generate-weekly", {
       method: "POST",
@@ -1265,150 +1198,6 @@ export function BookingAdmin({ onBack, initialTab }) {
         </div>
       )}
 
-      {tab === "servicos" && (
-        <div className="stack">
-          <div className="panel">
-            <CrudHeader
-              title="Serviços cadastrados"
-              subtitle="Cadastro real no PostgreSQL"
-              actionLabel="Novo serviço"
-              onAction={openNewService}
-            />
-            <DataView
-              rows={safeServices}
-              defaultSort={{ key: "name", dir: "asc" }}
-              searchPlaceholder="Buscar por nome do serviço"
-              filters={[
-                {
-                  key: "status",
-                  label: "Agendamento online",
-                  type: "select",
-                  options: [{ value: "ativo", label: "Ativo" }, { value: "inativo", label: "Inativo" }],
-                  match: (service, value) => (service.is_active ? "ativo" : "inativo") === value
-                }
-              ]}
-              columns={[
-                { key: "name", label: "Nome" },
-                { key: "duration_minutes", label: "Duração", value: (service) => asNumber(service.duration_minutes), render: (service) => `${service.duration_minutes} min` },
-                { key: "base_price", label: "Preço base", value: (service) => asNumber(service.base_price), render: (service) => currency.format(service.base_price || 0) },
-                { key: "is_active", label: "Status", value: (service) => service.is_active ? "Ativo" : "Inativo", render: (service) => <StatusBadge status={service.is_active ? "Ativo" : "Inativo"} /> },
-              ]}
-              actions={(service) => <RowActions actions={[
-                { label: "Editar", onClick: () => editService(service), primary: true },
-                { label: "Excluir", onClick: () => removeService(service), danger: true },
-              ]} />}
-              empty="Você ainda não possui serviços cadastrados."
-              emptyFiltered="Nenhum serviço corresponde aos filtros aplicados."
-            />
-          </div>
-
-          <div className="panel">
-            <CrudHeader
-              title="Procedimentos cadastrados"
-              subtitle="Vincule a um serviço"
-              actionLabel="Novo procedimento"
-              onAction={openNewProcedure}
-            />
-            <DataView
-              rows={safeProcedures}
-              defaultSort={{ key: "name", dir: "asc" }}
-              searchPlaceholder="Buscar por nome, serviço ou área do corpo"
-              filters={[
-                {
-                  key: "service_id",
-                  label: "Serviço vinculado",
-                  type: "select",
-                  options: safeServices.map((service) => ({ value: String(service.id), label: service.name })),
-                  match: (procedure, value) => String(procedure.service_id) === value
-                },
-                {
-                  key: "body_area",
-                  label: "Área do corpo",
-                  type: "select",
-                  options: distinctOptions(safeProcedures.map((procedure) => procedure.body_area)),
-                  match: (procedure, value) => procedure.body_area === value
-                },
-                {
-                  key: "status",
-                  label: "Status",
-                  type: "select",
-                  options: [{ value: "ativo", label: "Ativo" }, { value: "inativo", label: "Inativo" }],
-                  match: (procedure, value) => (procedure.is_active ? "ativo" : "inativo") === value
-                }
-              ]}
-              columns={[
-                { key: "name", label: "Nome" },
-                { key: "service_name", label: "Serviço", value: (procedure) => procedure.service_name || "Sem serviço", render: (procedure) => procedure.service_name || "Sem serviço" },
-                { key: "body_area", label: "Área do corpo", value: (procedure) => procedure.body_area || "Sem área", render: (procedure) => procedure.body_area || "Sem área" },
-                { key: "duration_minutes", label: "Duração", value: (procedure) => asNumber(procedure.duration_minutes), render: (procedure) => `${procedure.duration_minutes} min` },
-                { key: "price", label: "Preço", value: (procedure) => asNumber(procedure.price), render: (procedure) => currency.format(procedure.price || 0) },
-                { key: "is_active", label: "Status", value: (procedure) => procedure.is_active ? "Ativo" : "Inativo", render: (procedure) => <StatusBadge status={procedure.is_active ? "Ativo" : "Inativo"} /> },
-              ]}
-              actions={(procedure) => <RowActions actions={[
-                { label: "Editar", onClick: () => editProcedure(procedure), primary: true },
-                { label: "Excluir", onClick: () => removeProcedure(procedure), danger: true },
-              ]} />}
-              empty="Você ainda não possui procedimentos cadastrados."
-              emptyFiltered="Nenhum procedimento corresponde aos filtros aplicados."
-            />
-          </div>
-
-          <Modal
-            open={serviceModalOpen}
-            title={editingServiceId ? "Editar serviço" : "Novo serviço"}
-            subtitle="Cadastro real no PostgreSQL"
-            onClose={() => setServiceModalOpen(false)}
-            footer={(
-              <>
-                <Button variant="secondary" onClick={() => setServiceModalOpen(false)}>Cancelar</Button>
-                <Button type="submit" form="service-form">{editingServiceId ? "Salvar alterações" : "Salvar serviço"}</Button>
-              </>
-            )}
-          >
-            <form id="service-form" onSubmit={saveService}>
-              <div className="form-grid">
-                <Input label="Nome" value={serviceForm.name} onChange={(value) => setServiceForm({ ...serviceForm, name: value })} required />
-                <Input type="number" label="Duração em minutos" value={serviceForm.duration_minutes} onChange={(value) => setServiceForm({ ...serviceForm, duration_minutes: value })} />
-                <Input type="number" label="Preço base" value={serviceForm.base_price} onChange={(value) => setServiceForm({ ...serviceForm, base_price: value })} />
-                <Input type="number" label="Sinal obrigatório" value={serviceForm.deposit_value} onChange={(value) => setServiceForm({ ...serviceForm, deposit_value: value })} />
-              </div>
-              <Textarea label="Descrição" value={serviceForm.description} onChange={(value) => setServiceForm({ ...serviceForm, description: value })} />
-              <Switch label="Serviço ativo" checked={serviceForm.is_active} onChange={(value) => setServiceForm({ ...serviceForm, is_active: value })} />
-              {serviceError && <span className="form-error">{serviceError}</span>}
-            </form>
-          </Modal>
-
-          <Modal
-            open={procedureModalOpen}
-            title={editingProcedureId ? "Editar procedimento" : "Novo procedimento"}
-            subtitle="Vincule a um serviço"
-            onClose={() => setProcedureModalOpen(false)}
-            footer={(
-              <>
-                <Button variant="secondary" onClick={() => setProcedureModalOpen(false)}>Cancelar</Button>
-                <Button type="submit" form="procedure-form">{editingProcedureId ? "Salvar alterações" : "Salvar procedimento"}</Button>
-              </>
-            )}
-          >
-            <form id="procedure-form" onSubmit={saveProcedure}>
-              <div className="form-grid">
-                <Select label="Serviço" value={procedureForm.service_id} onChange={(value) => setProcedureForm({ ...procedureForm, service_id: value })} required>
-                  <option value="">Selecione</option>
-                  {safeServices.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
-                </Select>
-                <Input label="Nome" value={procedureForm.name} onChange={(value) => setProcedureForm({ ...procedureForm, name: value })} required />
-                <Input label="Área do corpo" value={procedureForm.body_area} onChange={(value) => setProcedureForm({ ...procedureForm, body_area: value })} />
-                <Input type="number" label="Preço" value={procedureForm.price} onChange={(value) => setProcedureForm({ ...procedureForm, price: value })} />
-                <Input type="number" label="Duração em minutos" value={procedureForm.duration_minutes} onChange={(value) => setProcedureForm({ ...procedureForm, duration_minutes: value })} />
-              </div>
-              <Textarea label="Descrição" value={procedureForm.description} onChange={(value) => setProcedureForm({ ...procedureForm, description: value })} />
-              <Textarea label="Orientações pós-atendimento" value={procedureForm.aftercare_instructions} onChange={(value) => setProcedureForm({ ...procedureForm, aftercare_instructions: value })} />
-              <Switch label="Procedimento ativo" checked={procedureForm.is_active} onChange={(value) => setProcedureForm({ ...procedureForm, is_active: value })} />
-              {procedureError && <span className="form-error">{procedureError}</span>}
-            </form>
-          </Modal>
-        </div>
-      )}
       {tab === "horarios" && (
         <article className="panel weekly-schedule-panel">
           <div className="panel-heading">

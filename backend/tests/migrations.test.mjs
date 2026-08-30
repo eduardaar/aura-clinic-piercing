@@ -58,6 +58,8 @@ test("migrations versionadas têm baseline válido por escopo", () => {
       "0019",
       "0020",
       "0021",
+      "0022",
+      "0023",
     ],
   );
   assert.ok(platform.every((item) => /^[a-f0-9]{64}$/.test(item.checksum)));
@@ -101,6 +103,14 @@ test("migration 0011 persiste a configuração explícita de parcelas nas origen
     explicitInstallments.sql,
     /ALTER\s+TABLE\s+sales_orders[^;]*\bADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?installments_json/i,
   );
+});
+
+test("migration 0021 adiciona os dados clínicos opcionais à execução", () => {
+  const clinicalExecution = loadMigrations("tenant").find((item) => item.version === "0021");
+  assert.ok(clinicalExecution, "a migration tenant 0021 é obrigatória");
+  for (const column of ["clinical_notes", "occurrences", "aftercare_notes"]) {
+    assert.match(clinicalExecution.sql, new RegExp(`service_executions[^;]*${column}`, "i"));
+  }
 });
 
 test("checksum é estável entre checkout LF e CRLF", () => {

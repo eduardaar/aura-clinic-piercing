@@ -373,17 +373,23 @@ test("refechamento da agenda preserva execução/pagamento e recalcula apenas o 
     method: "POST",
     body: {
       payments: [{ amount: 40, method: "Pix", status: "pago" }],
+      clinical_notes: "Cicatrização adequada",
+      occurrences: "",
+      aftercare_notes: "Higienizar conforme orientação",
       installment_count: 3, first_due_date: "2026-01-31", payment_method: "Cartão de crédito"
     }
   });
   assert.equal(first.status, 200, JSON.stringify(first.json));
 
   const before = await withTenantSchema(ctx.tenant.id, async (db) => ({
-    executions: await db.all("SELECT id FROM service_executions WHERE appointment_id=?", [criado.json.id]),
+    executions: await db.all("SELECT id,clinical_notes,occurrences,aftercare_notes FROM service_executions WHERE appointment_id=?", [criado.json.id]),
     payments: await db.all("SELECT id,service_execution_id,amount FROM payments WHERE appointment_id=? AND payment_type='restante' ORDER BY id", [criado.json.id]),
     receivables: await db.all("SELECT amount FROM financial_entries WHERE source_type='service_execution' AND entry_type='receivable' AND source_id=(SELECT id FROM service_executions WHERE appointment_id=?) AND status!='canceled' ORDER BY installment_number", [criado.json.id])
   }));
   assert.equal(before.executions.length, 1);
+  assert.equal(before.executions[0].clinical_notes, "Cicatrização adequada");
+  assert.equal(before.executions[0].occurrences, null, "campo clínico opcional vazio vira NULL");
+  assert.equal(before.executions[0].aftercare_notes, "Higienizar conforme orientação");
   assert.equal(before.payments.length, 1);
   assert.equal(Number(before.payments[0].service_execution_id), Number(before.executions[0].id));
   assert.equal(before.receivables.reduce((sum, item) => sum + Number(item.amount), 0), 80);
@@ -399,11 +405,12 @@ test("refechamento da agenda preserva execução/pagamento e recalcula apenas o 
   assert.equal(second.status, 200, JSON.stringify(second.json));
 
   const afterState = await withTenantSchema(ctx.tenant.id, async (db) => ({
-    executions: await db.all("SELECT id FROM service_executions WHERE appointment_id=?", [criado.json.id]),
+    executions: await db.all("SELECT id,clinical_notes FROM service_executions WHERE appointment_id=?", [criado.json.id]),
     payments: await db.all("SELECT id,service_execution_id,amount FROM payments WHERE appointment_id=? AND payment_type='restante' ORDER BY id", [criado.json.id]),
     receivables: await db.all("SELECT amount FROM financial_entries WHERE source_type='service_execution' AND entry_type='receivable' AND source_id=(SELECT id FROM service_executions WHERE appointment_id=?) AND status!='canceled' ORDER BY installment_number", [criado.json.id])
   }));
   assert.equal(afterState.executions.length, 1, "índice e upsert mantêm uma execução de serviço");
+  assert.equal(afterState.executions[0].clinical_notes, "Cicatrização adequada", "refechamento sem campo clínico preserva o registro");
   assert.equal(afterState.payments.length, 1, "refechamento atualiza a baixa em vez de recriá-la");
   assert.equal(afterState.payments[0].id, before.payments[0].id);
   assert.equal(Number(afterState.payments[0].service_execution_id), Number(afterState.executions[0].id));

@@ -68,6 +68,12 @@ export async function ensureServiceExecution(db, appointmentId, user, options = 
     appointment_time: appointment.appointment_time,
     region: appointment.piercing_region || null
   };
+  const optionalText = (key) => options[key] === undefined
+    ? (existing?.[key] || null)
+    : (String(options[key] || "").trim() || null);
+  const clinicalNotes = optionalText("clinical_notes");
+  const occurrences = optionalText("occurrences");
+  const aftercareNotes = optionalText("aftercare_notes");
 
   let executionId = existing?.id;
   if (existing) {
@@ -75,23 +81,25 @@ export async function ensureServiceExecution(db, appointmentId, user, options = 
       client_id=?, professional_id=?, service_id=?, status='completed', snapshot=?,
       service_subtotal=?, product_subtotal=?, discount_total=?, total_value=?, paid_value=?, receivable_value=?,
       payment_method=?, installment_count=?, first_due_date=?, installments_json=?, executed_by_user_id=?,
+      clinical_notes=?, occurrences=?, aftercare_notes=?,
       completed_at=now(), cancelled_at=NULL, cancellation_reason=NULL, updated_at=now()
       WHERE id=?`, [
       appointment.client_id, appointment.professional_id, appointment.service_id, snapshot,
       serviceSubtotal, productSubtotal, Number(appointment.discount_value || 0), total, paid, outstanding,
       paymentMethod, installmentCount, firstDueDate, explicitInstallments ? serializeInstallments(explicitInstallments) : null,
-      user?.id || null, existing.id
+      user?.id || null, clinicalNotes, occurrences, aftercareNotes, existing.id
     ]);
   } else {
     const created = await db.run(`INSERT INTO service_executions
       (appointment_id, client_id, professional_id, service_id, snapshot,
        service_subtotal, product_subtotal, discount_total, total_value, paid_value, receivable_value,
-       payment_method, installment_count, first_due_date, installments_json, executed_by_user_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`, [
+       payment_method, installment_count, first_due_date, installments_json, executed_by_user_id,
+       clinical_notes, occurrences, aftercare_notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`, [
       appointment.id, appointment.client_id, appointment.professional_id, appointment.service_id, snapshot,
       serviceSubtotal, productSubtotal, Number(appointment.discount_value || 0), total, paid, outstanding,
       paymentMethod, installmentCount, firstDueDate, explicitInstallments ? serializeInstallments(explicitInstallments) : null,
-      user?.id || null
+      user?.id || null, clinicalNotes, occurrences, aftercareNotes
     ]);
     executionId = created.returnedId;
   }

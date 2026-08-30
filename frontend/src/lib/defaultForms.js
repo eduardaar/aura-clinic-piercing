@@ -249,6 +249,7 @@ export function defaultServiceForm() {
   return {
     name: "",
     description: "",
+    pre_service_notes: "",
     base_price: 0,
     deposit_value: 25,
     duration_minutes: 40,
