@@ -368,6 +368,46 @@ CREATE TABLE IF NOT EXISTS platform.legal_acceptances (
 
 CREATE INDEX IF NOT EXISTS ix_legal_acceptances_tenant ON platform.legal_acceptances (tenant_id, accepted_at DESC);
 
+-- HistÃ³rico imutÃ¡vel das publicaÃ§Ãµes. `legal_documents` continua sendo a
+-- leitura barata da versÃ£o vigente; esta tabela permite provar qual texto
+-- correspondia a cada aceite antigo.
+CREATE TABLE IF NOT EXISTS platform.legal_document_versions (
+  id BIGSERIAL PRIMARY KEY,
+  document_key TEXT NOT NULL REFERENCES platform.legal_documents(document_key) ON DELETE CASCADE,
+  version INTEGER NOT NULL CHECK (version >= 1),
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  published_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  published_by INTEGER REFERENCES platform.platform_users(id) ON DELETE SET NULL,
+  UNIQUE (document_key, version)
+);
+
+CREATE INDEX IF NOT EXISTS ix_legal_document_versions_document
+  ON platform.legal_document_versions(document_key, version DESC);
+
+-- Notícias públicas e capítulos do manual compartilham o mesmo contrato de
+-- publicação. Texto simples evita HTML arbitrário no painel e no site.
+CREATE TABLE IF NOT EXISTS platform.content_articles (
+  id BIGSERIAL PRIMARY KEY,
+  content_type TEXT NOT NULL CHECK (content_type IN ('news', 'manual')),
+  slug TEXT NOT NULL CHECK (slug ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$'),
+  title TEXT NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
+  content TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'Geral',
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'archived')),
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
+  published_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_by INTEGER REFERENCES platform.platform_users(id) ON DELETE SET NULL,
+  UNIQUE (content_type, slug)
+);
+
+CREATE INDEX IF NOT EXISTS ix_content_articles_public
+  ON platform.content_articles(content_type, status, sort_order, published_at DESC);
+
 INSERT INTO platform.legal_documents (document_key, title, content, version) VALUES
   ('terms_of_use', 'Termos de Uso', 'Estes Termos de Uso regulam o acesso e a utilização da plataforma Aura. Ao criar uma conta, você declara que leu e concorda com estas condições.\n\nA conta deve ser usada de forma lícita e com informações verdadeiras. Você é responsável por proteger suas credenciais e pelos dados inseridos por sua equipe.\n\nA Aura pode atualizar recursos, preços e estes termos mediante aviso pelos canais oficiais. O uso continuado após a publicação de uma nova versão representa a concordância com ela.', 1),
   ('privacy_policy', 'Política de Privacidade', 'A Aura trata os dados necessários para operar a plataforma, prestar suporte, processar cobranças e manter a segurança do serviço.\n\nOs dados dos clientes da sua clínica permanecem sob sua responsabilidade. A Aura atua como operadora quando processa esses dados para disponibilizar os recursos contratados.\n\nVocê pode solicitar informações sobre seus dados pelos canais oficiais. Mantemos medidas técnicas e organizacionais adequadas para proteger os dados contra acesso não autorizado.', 1)

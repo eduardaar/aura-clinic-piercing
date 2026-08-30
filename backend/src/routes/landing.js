@@ -11,12 +11,12 @@ import path from "path";
 import { requirePlatformAuth as requirePlatform } from "../middleware/auth.js";
 import { upload, parseUpload } from "../middleware/upload.js";
 import { isProduction } from "../config/index.js";
-import { query } from "../database/connection.js";
+import { pool, query } from "../database/connection.js";
 import {
   LandingError,
   listLandingSections,
   updateLandingSection,
-  reorderLandingSections
+  reorderLandingSections,
 } from "../services/landing.js";
 
 const router = Router();
@@ -27,7 +27,7 @@ function handleLandingError(res, error) {
   }
   console.error(`[landing] ${error?.message || error}`);
   return res.status(500).json({
-    error: isProduction ? "Erro interno no servidor." : `Erro interno: ${error.message}`
+    error: isProduction ? "Erro interno no servidor." : `Erro interno: ${error.message}`,
   });
 }
 
@@ -57,7 +57,7 @@ function normalizeLegalDocument(row) {
     title: row.title,
     content: row.content,
     version: Number(row.version),
-    updated_at: row.updated_at
+    updated_at: row.updated_at,
   };
 }
 
@@ -65,7 +65,7 @@ function normalizeLegalDocument(row) {
 router.get("/api/legal-documents", async (_req, res) => {
   try {
     const result = await query(
-      "SELECT document_key, title, content, version, updated_at FROM platform.legal_documents ORDER BY document_key"
+      "SELECT document_key, title, content, version, updated_at FROM platform.legal_documents ORDER BY document_key",
     );
     res.json({ documents: result.rows.map(normalizeLegalDocument) });
   } catch (error) {
@@ -91,9 +91,33 @@ router.get("/api/platform/landing", requirePlatform, async (_req, res) => {
 router.get("/api/platform/legal-documents", requirePlatform, async (_req, res) => {
   try {
     const result = await query(
-      "SELECT document_key, title, content, version, updated_at FROM platform.legal_documents ORDER BY document_key"
+      `SELECT d.document_key, d.title, d.content, d.version, d.updated_at,
+        (SELECT COUNT(*)::int FROM platform.legal_document_versions v WHERE v.document_key = d.document_key) AS version_count
+       FROM platform.legal_documents d ORDER BY d.document_key`,
     );
-    res.json({ documents: result.rows.map(normalizeLegalDocument) });
+    res.json({
+      documents: result.rows.map((row) => ({
+        ...normalizeLegalDocument(row),
+        version_count: Number(row.version_count || 0),
+      })),
+    });
+  } catch (error) {
+    handleLandingError(res, error);
+  }
+});
+
+router.get("/api/platform/legal-documents/:key/versions", requirePlatform, async (req, res) => {
+  const key = String(req.params.key || "");
+  if (!LEGAL_DOCUMENT_KEYS.includes(key)) return res.status(404).json({ error: "Documento legal não encontrado." });
+  try {
+    const result = await query(
+      `SELECT document_key AS key, title, content, version, published_at, published_by
+       FROM platform.legal_document_versions
+       WHERE document_key = $1
+       ORDER BY version DESC`,
+      [key],
+    );
+    res.json({ versions: result.rows });
   } catch (error) {
     handleLandingError(res, error);
   }
@@ -105,19 +129,41 @@ router.put("/api/platform/legal-documents/:key", requirePlatform, async (req, re
   const content = String(req.body?.content || "").trim();
   if (!LEGAL_DOCUMENT_KEYS.includes(key)) return res.status(404).json({ error: "Documento legal não encontrado." });
   if (!title || !content) return res.status(400).json({ error: "Informe título e conteúdo do documento." });
-  if (title.length > 160 || content.length > 30000) return res.status(400).json({ error: "O documento excede o tamanho permitido." });
+  if (title.length > 160 || content.length > 30000)
+    return res.status(400).json({ error: "O documento excede o tamanho permitido." });
+  let client;
   try {
-    const result = await query(
-      `UPDATE platform.legal_documents
-       SET title = $1, content = $2, version = version + 1, updated_at = now(), updated_by = $3
-       WHERE document_key = $4
-       RETURNING document_key, title, content, version, updated_at`,
-      [title, content, req.platformUser?.sub || null, key]
+    client = await pool.connect();
+    await client.query("BEGIN");
+    const current = await client.query(
+      "SELECT version FROM platform.legal_documents WHERE document_key = $1 FOR UPDATE",
+      [key],
     );
-    if (!result.rows[0]) return res.status(404).json({ error: "Documento legal não encontrado." });
-    res.json({ document: normalizeLegalDocument(result.rows[0]) });
+    if (!current.rows[0]) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Documento legal não encontrado." });
+    }
+    const nextVersion = Number(current.rows[0].version) + 1;
+    const result = await client.query(
+      `UPDATE platform.legal_documents
+       SET title = $1, content = $2, version = $3, updated_at = now(), updated_by = $4
+       WHERE document_key = $5
+       RETURNING document_key, title, content, version, updated_at`,
+      [title, content, nextVersion, req.platformUser?.sub || null, key],
+    );
+    await client.query(
+      `INSERT INTO platform.legal_document_versions
+        (document_key, version, title, content, published_at, published_by)
+       VALUES ($1, $2, $3, $4, now(), $5)`,
+      [key, nextVersion, title, content, req.platformUser?.sub || null],
+    );
+    await client.query("COMMIT");
+    res.json({ document: { ...normalizeLegalDocument(result.rows[0]), version_count: nextVersion } });
   } catch (error) {
+    await client?.query("ROLLBACK").catch(() => {});
     handleLandingError(res, error);
+  } finally {
+    client?.release();
   }
 });
 
@@ -126,7 +172,7 @@ router.put("/api/platform/landing/sections/:key", requirePlatform, async (req, r
     const updated = await updateLandingSection(req.params.key, {
       content: req.body?.content,
       enabled: req.body?.enabled,
-      userId: req.platformUser?.sub
+      userId: req.platformUser?.sub,
     });
     res.json(updated);
   } catch (error) {

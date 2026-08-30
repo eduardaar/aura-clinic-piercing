@@ -32,7 +32,7 @@ test("migrations versionadas têm baseline válido por escopo", () => {
   const tenant = loadMigrations("tenant");
   assert.deepEqual(
     platform.map((item) => item.version),
-    ["0001", "0002", "0003", "0004", "0005", "0006", "0007"],
+    ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008"],
   );
   const tenantVersions = tenant.map((item) => item.version);
   assert.deepEqual(tenantVersions.slice(0, 19), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019"]);
@@ -40,6 +40,14 @@ test("migrations versionadas têm baseline válido por escopo", () => {
   assert.equal(new Set(tenantVersions).size, tenantVersions.length, "versões tenant não podem se repetir");
   for (const version of ["0020", "0021", "0022", "0023", "0024", "0025", "0028", "0029", "0030"]) assert.ok(tenantVersions.includes(version));
   assert.ok(platform.every((item) => /^[a-f0-9]{64}$/.test(item.checksum)));
+});
+
+test("migration platform 0008 versiona documentos e centraliza conteúdo público", () => {
+  const content = loadMigrations("platform").find((item) => item.version === "0008");
+  assert.ok(content, "a migration platform 0008 é obrigatória");
+  assert.match(content.sql, /CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+platform\.legal_document_versions/i);
+  assert.match(content.sql, /CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+platform\.content_articles/i);
+  assert.match(content.sql, /content_type\s+IN\s*\('news',\s*'manual'\)/i);
 });
 
 test("migration 0021 amplia o cadastro brasileiro de clientes", () => {

@@ -3,6 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { API } from "../lib/api";
 import { PublicTopNav } from "../components/layout/PublicTopNav";
 import { PublicFooter } from "../components/layout/PublicFooter";
+import { ArticleContent } from "../components/common/ArticleContent";
 import "../styles/legal.css";
 
 const FALLBACK = {
@@ -32,7 +33,7 @@ export function LegalDocument({ documentKey }) {
         <span className="legal-kicker">Aura · documento legal</span>
         <h1>{document.title}</h1>
         {document.version && <p className="legal-version">Versão {document.version} · atualizada em {new Date(document.updated_at).toLocaleDateString("pt-BR")}</p>}
-        <div className="legal-content">{String(document.content || "").split(/\n\s*\n/).map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>
+        <ArticleContent content={document.content} className="legal-content" />
       </article>
     </main>
     <PublicFooter />

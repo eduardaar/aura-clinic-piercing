@@ -8,6 +8,7 @@ import { PublicFooter } from "../components/layout/PublicFooter";
 import { Accordion } from "../components/common/Ui";
 import { DEFAULT_LANDING_SECTIONS, LANDING_DEFAULTS } from "./landingDefaults";
 import "../styles/landing-carousel.css";
+import "../styles/content-hub.css";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -167,6 +168,30 @@ function FaqSection() {
           </Accordion.Item>
         ))}
       </Accordion>
+    </section>
+  );
+}
+
+function NewsSection({ articles }) {
+  if (!articles.length) return null;
+  return (
+    <section className="au-l-sec au-l-news" id="novidades">
+      <div className="au-l-sec-head">
+        <span className="au-l-kicker">Produto e gestão</span>
+        <h2>Notícias e novidades</h2>
+        <p>Acompanhe as evoluções da Aura e conteúdos para a rotina da sua clínica.</p>
+      </div>
+      <div className="content-public-grid">
+        {articles.map((article) => (
+          <article className="content-public-card" key={article.id}>
+            <span>{article.published_at ? new Date(article.published_at).toLocaleDateString("pt-BR") : "Novidade"}</span>
+            <h3>{article.title}</h3>
+            <p>{article.summary}</p>
+            <a href={`/novidades/${article.slug}`}>Ler novidade <ChevronRight size={16} aria-hidden="true" /></a>
+          </article>
+        ))}
+      </div>
+      <a className="content-public-all" href="/novidades">Ver todas as novidades</a>
     </section>
   );
 }
@@ -377,6 +402,7 @@ export function Landing() {
   // chega, ela substitui o embutido; até lá a página está inteira.
   const [sections, setSections] = useState(DEFAULT_LANDING_SECTIONS);
   const [plans, setPlans] = useState([]);
+  const [news, setNews] = useState([]);
 
   useEffect(() => {
     let active = true;
@@ -404,6 +430,15 @@ export function Landing() {
       .then((response) => response.json())
       .then((payload) => setPlans(asArray(payload.plans)))
       .catch(() => setPlans([]));
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetch(`${API}/news?limit=3`)
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((payload) => { if (active) setNews(asArray(payload.articles)); })
+      .catch(() => { if (active) setNews([]); });
+    return () => { active = false; };
   }, []);
 
   const orderedPlans = useMemo(
@@ -437,6 +472,7 @@ export function Landing() {
         {heroContent && <HeroSection content={heroContent} />}
         {featuresContent && <FeaturesSection content={featuresContent} />}
         {plansContent && <PlansSection content={plansContent} plans={orderedPlans} />}
+        <NewsSection articles={news} />
 
         {/* Os blocos institucionais restantes respeitam a ordem da API. Hero,
             recursos e planos têm uma sequência comercial fixa definida acima. */}

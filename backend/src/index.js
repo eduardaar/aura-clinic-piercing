@@ -50,6 +50,7 @@ import webhookRoutes from "./routes/webhooks.js";
 import billingRoutes from "./routes/billing.js";
 import integrationsRoutes from "./routes/integrations.js";
 import landingRoutes from "./routes/landing.js";
+import contentHubRoutes from "./routes/contentHub.js";
 import planAdminRoutes from "./routes/planAdmin.js";
 import accountAdminRoutes from "./routes/accountAdmin.js";
 import platformFinanceRoutes from "./routes/platformFinance.js";
@@ -180,6 +181,7 @@ app.use(reportsRoutes);
 app.use(billingRoutes);
 app.use(integrationsRoutes);
 app.use(landingRoutes);
+app.use(contentHubRoutes);
 // Painel do super-admin: planos, contas/cotas, financeiro e suporte.
 app.use(planAdminRoutes);
 app.use(accountAdminRoutes);

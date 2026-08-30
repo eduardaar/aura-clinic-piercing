@@ -3,10 +3,12 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   BarChart3,
+  BookOpen,
   Calendar,
   ContactRound,
   Gem,
   Home,
+  Newspaper,
   Package,
   PackagePlus,
   ScrollText,
@@ -157,6 +159,16 @@ export const APP_PAGES = Object.freeze([
     component: lazyNamed(() => import("../features/support/Support"), "Support")
   },
   {
+    id: "manual", path: "/app/ajuda/manual", title: "Manual do usuário", group: null, icon: BookOpen, menu: false,
+    roleRank: { admin: 24.1, reception: 10.1, finance: 8.1, piercer: 11.1 },
+    component: lazyNamed(() => import("../features/help/HelpCenter"), "UserManual")
+  },
+  {
+    id: "product-news", path: "/app/ajuda/novidades", title: "Novidades", group: null, icon: Newspaper, menu: false,
+    roleRank: { admin: 24.2, reception: 10.2, finance: 8.2, piercer: 11.2 },
+    component: lazyNamed(() => import("../features/help/HelpCenter"), "ProductNews")
+  },
+  {
     id: "meu-plano", path: "/app/meu-plano", title: "Meu plano", group: null, menu: false,
     roleRank: { admin: 25 },
     component: lazyNamed(() => import("../features/platform/MyPlan"), "MyPlan")
@@ -181,7 +193,8 @@ export const APP_PAGES = Object.freeze([
   { id: "signup", path: "/cadastro", title: "Cadastro", public: true, match: "prefix", component: lazyNamed(() => import("../features/platform/Signup"), "Signup") },
   { id: "platform", path: "/plataforma", title: "Acesso restrito", public: true, match: "prefix", component: lazyNamed(() => import("../features/platform/PlatformAdmin"), "PlatformAdmin") },
   { id: "terms-of-use", path: "/termos-de-uso", title: "Termos de uso", public: true, match: "exact", documentKey: "terms_of_use", component: lazyNamed(() => import("../pages/LegalDocument"), "LegalDocument") },
-  { id: "privacy-policy", path: "/politica-de-privacidade", title: "Política de privacidade", public: true, match: "exact", documentKey: "privacy_policy", component: lazyNamed(() => import("../pages/LegalDocument"), "LegalDocument") }
+  { id: "privacy-policy", path: "/politica-de-privacidade", title: "Política de privacidade", public: true, match: "exact", documentKey: "privacy_policy", component: lazyNamed(() => import("../pages/LegalDocument"), "LegalDocument") },
+  { id: "news", path: "/novidades", title: "Notícias e novidades", public: true, match: "prefix", component: lazyNamed(() => import("../pages/News"), "NewsPage") }
 ]);
 
 export const INTERNAL_APP_PAGES = Object.freeze(APP_PAGES.filter((page) => !page.public));

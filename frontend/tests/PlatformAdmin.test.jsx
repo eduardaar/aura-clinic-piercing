@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/features/platform/LandingEditor", () => ({ LandingEditor: () => <div>Conteúdo Landing</div> }));
 vi.mock("../src/features/platform/LegalEditor", () => ({ LegalEditor: () => <div>Conteúdo Legal</div> }));
+vi.mock("../src/features/platform/ContentAdmin", () => ({ ContentAdmin: () => <div>Conteúdo e Ajuda</div> }));
 vi.mock("../src/features/platform/PlansAdmin", () => ({ PlansAdmin: () => <div>Conteúdo Planos</div> }));
 vi.mock("../src/features/platform/AccountsAdmin", () => ({ AccountsAdmin: () => <div>Conteúdo Clínicas</div> }));
 vi.mock("../src/features/platform/FinanceAdmin", () => ({ PlatformFinance: () => <div>Conteúdo Dashboard</div> }));
@@ -41,6 +42,9 @@ describe("navegação do painel da plataforma", () => {
     await user.click(screen.getByRole("tab", { name: "E-mail" }));
     expect(screen.getByText("Conteúdo E-mail")).toBeInTheDocument();
     expect(screen.queryByText("Conteúdo Planos")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Conteúdo e ajuda" }));
+    expect(screen.getByText("Conteúdo e Ajuda")).toBeInTheDocument();
   });
 
   it("permite voltar do login restrito para a tela inicial", () => {

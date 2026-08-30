@@ -14,6 +14,7 @@ import { SupportInbox, SupportOpenBadge } from "./SupportInbox";
 // operacionais de contas a pagar e receber de cada clínica.
 import { PlatformFinance } from "./FinanceAdmin";
 import { EmailAdmin } from "./EmailAdmin";
+import { ContentAdmin } from "./ContentAdmin";
 
 // Painel do super-admin da plataforma (/plataforma).
 // Sessão própria em aura-platform-session (separada da aura-session das clínicas)
@@ -40,6 +41,7 @@ const TABS = [
   ["suporte", "Suporte"],
   ["email", "E-mail"],
   ["landing", "Landing pública"],
+  ["conteudo", "Conteúdo e ajuda"],
   ["legal", "Termos e privacidade"],
 ];
 
@@ -58,6 +60,7 @@ const TAB_HEADINGS = {
   suporte: { title: "Suporte", subtitle: "Chamados abertos pelas clínicas." },
   email: { title: "E-mail", subtitle: "Servidor SMTP usado nas mensagens enviadas aos clientes." },
   landing: { title: "Landing pública", subtitle: "Edite os blocos da página inicial em /." },
+  conteudo: { title: "Conteúdo e ajuda", subtitle: "Notícias públicas e manual do usuário em uma gestão única." },
   legal: { title: "Termos e privacidade", subtitle: "Textos legais e versões aceitas durante o cadastro." },
 };
 
@@ -347,6 +350,7 @@ export function PlatformAdmin() {
             se acumularem com Clínicas, bloqueando inclusive a rolagem. */}
         <Tabs.Content key={tab} value={tab} className="platform-tab-content">
           {tab === "landing" && <LandingEditor token={token} onUnauthorized={clearPlatformSession} />}
+          {tab === "conteudo" && <ContentAdmin token={token} onUnauthorized={clearPlatformSession} />}
           {tab === "legal" && <LegalEditor token={token} onUnauthorized={clearPlatformSession} />}
           {tab === "planos" && <PlansAdmin token={token} onUnauthorized={clearPlatformSession} />}
           {tab === "contas" && <AccountsAdmin token={token} onUnauthorized={clearPlatformSession} onCreate={openCreate} refreshKey={accountsRefresh} />}

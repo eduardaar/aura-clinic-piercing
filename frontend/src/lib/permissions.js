@@ -21,7 +21,7 @@ import { appPageById, INTERNAL_APP_PAGES } from "./appPages.js";
  * @typedef {"dashboard" | "agenda" | "services" | "communications" | "catalog" | "products" | "inventory" | "consumables"
  *   | "catalog-customization" | "sales" | "purchases" | "receivables" | "payables" | "suppliers" | "finance-categories" | "cost-centers" | "reports" | "client-center"
  *   | "clients" | "terms" | "postcare" | "admin" | "audit" | "integrations" | "support"
- *   | "meu-plano" | "settings" | "onboarding"} Page
+ *   | "manual" | "product-news" | "meu-plano" | "settings" | "onboarding"} Page
  */
 
 /**

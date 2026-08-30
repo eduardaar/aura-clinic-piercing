@@ -41,5 +41,7 @@ test("menu e páginas públicas preservam agrupamento e correspondência", () =>
   assert.deepEqual(menu.find(({ group }) => group === "Gestão").pages.map(({ id }) => id), ["reports", "audit"]);
   assert.equal(publicPageForPath("/catalogo/produto/42").id, "public-catalog");
   assert.equal(publicPageForPath("/politica-de-privacidade").documentKey, "privacy_policy");
+  assert.equal(publicPageForPath("/novidades/agenda-renovada").id, "news");
+  assert.equal(pageForAppPath("/app/ajuda/manual"), "manual");
   assert.equal(publicPageForPath("/app/dashboard"), null);
 });

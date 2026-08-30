@@ -2,7 +2,7 @@ import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Bell, Calendar, ChevronDown, LifeBuoy, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Search, Settings as SettingsIcon, Sparkles, UserRound } from "lucide-react";
+import { Bell, BookOpen, Calendar, ChevronDown, CircleHelp, LifeBuoy, LogOut, Menu, Newspaper, PanelLeftClose, PanelLeftOpen, Search, Settings as SettingsIcon, Sparkles, UserRound } from "lucide-react";
 import "./styles.css";
 import "./styles/topnav.css";
 import "./styles/landing.css";
@@ -92,6 +92,7 @@ function App() {
   const isSignup = publicRoute?.id === "signup";
   const isAbout = publicRoute?.id === "about";
   const isPlansPage = publicRoute?.id === "plans";
+  const isNewsPage = publicRoute?.id === "news";
   const legalDocumentKey = publicRoute?.documentKey || null;
   const isLegalPage = Boolean(legalDocumentKey);
   const isPlatform = publicRoute?.id === "platform";
@@ -263,10 +264,10 @@ function App() {
   // Se não tem sessão e não está em rota pública (nem na landing "/"),
   // redireciona para login.
   useEffect(() => {
-    if (!normalizedSession && !isLanding && !isAbout && !isPlansPage && !isPublicCatalog && !isPublicBooking && !isPublicCheckout && !isSignup && !isPlatform && !isLegalPage && !isLoginPath) {
+    if (!normalizedSession && !isLanding && !isAbout && !isPlansPage && !isNewsPage && !isPublicCatalog && !isPublicBooking && !isPublicCheckout && !isSignup && !isPlatform && !isLegalPage && !isLoginPath) {
       window.location.href = "/login";
     }
-  }, [normalizedSession, isLanding, isAbout, isPlansPage, isPublicCatalog, isPublicBooking, isPublicCheckout, isSignup, isPlatform, isLegalPage, isLoginPath]);
+  }, [normalizedSession, isLanding, isAbout, isPlansPage, isNewsPage, isPublicCatalog, isPublicBooking, isPublicCheckout, isSignup, isPlatform, isLegalPage, isLoginPath]);
 
   // Landing pública na raiz "/" quando não há sessão.
   if (isLanding && !normalizedSession) {
@@ -306,7 +307,7 @@ function App() {
     const BookingPage = hasTenant ? publicRoute.component : appPageById("booking-directory").component;
     return <Suspense fallback={<Loading />}><BookingPage /></Suspense>;
   }
-  if (isPublicCheckout || isSignup || isPlatform || legalDocumentKey) {
+  if (isPublicCheckout || isSignup || isPlatform || isNewsPage || legalDocumentKey) {
     const PublicPage = publicRoute.component;
     return <Suspense fallback={<Loading />}><PublicPage {...(legalDocumentKey ? { documentKey: legalDocumentKey } : {})} /></Suspense>;
   }
@@ -401,6 +402,16 @@ function App() {
               {asNumber(alertsData.count) > 0 && <span>{asNumber(alertsData.count)}</span>}
             </button>
             <DropdownMenu.Root>
+              <DropdownMenu.Trigger className="topbar-quick-action" aria-label="Abrir ajuda" title="Ajuda"><CircleHelp size={20} /></DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content className="user-menu-popover" align="end" sideOffset={8}>
+                  <DropdownMenu.Item onSelect={() => navigate("manual")}><BookOpen size={16} /> Manual do usuário</DropdownMenu.Item>
+                  <DropdownMenu.Item onSelect={() => navigate("product-news")}><Newspaper size={16} /> Novidades</DropdownMenu.Item>
+                  {canAccessPage(normalizedSession.user, "support") && <DropdownMenu.Item onSelect={() => navigate("support")}><LifeBuoy size={16} /> Suporte</DropdownMenu.Item>}
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
+            <DropdownMenu.Root>
               <DropdownMenu.Trigger className="user-chip" title="Abrir menu da conta" aria-label="Abrir menu da conta">
                 <span className="user-avatar" aria-hidden="true"><UserRound size={18} /></span>
                 <span className="user-chip-copy"><strong>{normalizedSession.user?.name || "Usuário"}</strong><small>{roleLabel(normalizedSession.user?.role)}</small></span>
@@ -409,7 +420,6 @@ function App() {
               <DropdownMenu.Portal>
                 <DropdownMenu.Content className="user-menu-popover" align="end" sideOffset={8}>
                   <DropdownMenu.Item onSelect={() => navigate("settings")}><SettingsIcon size={16} /> Configurações</DropdownMenu.Item>
-                  {canAccessPage(normalizedSession.user, "support") && <DropdownMenu.Item onSelect={() => navigate("support")}><LifeBuoy size={16} /> Suporte</DropdownMenu.Item>}
                   {canAccessPage(normalizedSession.user, "meu-plano") && <DropdownMenu.Item onSelect={() => navigate("meu-plano")}><Sparkles size={16} /> Meu plano</DropdownMenu.Item>}
                   <DropdownMenu.Separator />
                   <DropdownMenu.Item className="danger" onSelect={handleLogout}><LogOut size={16} /> Sair</DropdownMenu.Item>

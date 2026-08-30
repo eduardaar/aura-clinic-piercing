@@ -43,7 +43,8 @@ export function PublicFooter({ content }) {
         {data.contact_email && <a href={`mailto:${data.contact_email}`}><Mail size={18} aria-hidden="true" /> E-mail</a>}
         {data.contact_instagram && <a href={data.contact_instagram} target="_blank" rel="noreferrer"><Instagram size={18} aria-hidden="true" /> Instagram</a>}
       </div>
-      <div className="au-public-footer-group au-public-footer-links"><span>Legal</span>
+      <div className="au-public-footer-group au-public-footer-links"><span>Institucional</span>
+        <a href="/novidades">Notícias e novidades</a>
         <a href="/termos-de-uso" onClick={(event) => { event.preventDefault(); setOpenLegalDocument("terms_of_use"); }}>Termos de uso</a>
         <a href="/politica-de-privacidade" onClick={(event) => { event.preventDefault(); setOpenLegalDocument("privacy_policy"); }}>Privacidade</a>
       </div>
