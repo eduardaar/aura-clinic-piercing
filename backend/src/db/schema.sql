@@ -485,6 +485,9 @@ ON CONFLICT (template_key) DO NOTHING;
 
 INSERT INTO automation_rules (rule_key, name, event_type, template_key, offset_minutes, is_active) VALUES
   ('booking_received', 'Solicitação recebida', 'booking_created', 'booking_received', 0, 1),
+  ('booking_confirmed', 'Agendamento confirmado', 'appointment_confirmed', 'booking_confirmed', 0, 1),
+  ('booking_rescheduled', 'Agendamento reagendado', 'appointment_rescheduled', 'booking_rescheduled', 0, 1),
+  ('booking_cancelled', 'Agendamento cancelado', 'appointment_cancelled', 'booking_cancelled', 0, 1),
   ('reminder_24h', 'Lembrete 24h', 'appointment_upcoming', 'reminder_24h', -1440, 1),
   ('reminder_2h', 'Lembrete 2h', 'appointment_upcoming', 'reminder_2h', -120, 1),
   ('payment_pending', 'Pagamento pendente', 'payment_pending', 'payment_pending', 60, 1),

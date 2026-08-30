@@ -34,6 +34,11 @@ import { requireFeature } from "../services/subscriptions.js";
 import { consumeAppointmentRecipe, restoreAppointmentConsumptions } from "../services/consumableUsage.js";
 import { cancelAppointmentWithResolution } from "../services/appointmentCancellations.js";
 import { applyCreditToAppointment } from "../services/clientCredits.js";
+import {
+  cancelPendingAppointmentCommunications,
+  scheduleAppointmentClientAutomations,
+  scheduleClientAutomationEvent
+} from "../services/communications.js";
 
 const router = Router();
 
@@ -212,6 +217,10 @@ router.post("/api/appointments", withFeature("agenda", async (req, res, db) => {
     return result.returnedId;
   });
   const created = await listAppointments(db, "WHERE a.id = ?", [appointmentId]).then((rows) => rows[0]);
+  await scheduleAppointmentClientAutomations(db, appointmentId);
+  if (depositValue > 0 && !depositReceived) {
+    await scheduleClientAutomationEvent(db, appointmentId, "payment_pending");
+  }
   res.status(201).json(created);
 }));
 
@@ -245,6 +254,8 @@ router.post("/api/appointments/:id/complete", withFeature("agenda", async (req, 
     return res.status(400).json({ error: error.message || "Não foi possível concluir o atendimento." });
   }
   const updated = await listAppointments(db, "WHERE a.id = ?", [req.params.id]).then((rows) => rows[0]);
+  await cancelPendingAppointmentCommunications(db, req.params.id);
+  await scheduleClientAutomationEvent(db, req.params.id, "appointment_completed", { uniqueContext: updated?.updated_at || "completed" });
   res.json(updated);
 }));
 
@@ -255,7 +266,10 @@ router.post("/api/appointments/:id/cancel", withFeature("agenda", async (req, re
   const resolution = String(req.body?.resolution || "");
   if (["client_credit", "manual_refund"].includes(resolution) && !authorizePermission(req, res, P.FINANCE_EDIT)) return;
   try {
-    res.json(await cancelAppointmentWithResolution(db, req.params.id, req.body || {}, req.user?.id || null));
+    const result = await cancelAppointmentWithResolution(db, req.params.id, req.body || {}, req.user?.id || null);
+    await cancelPendingAppointmentCommunications(db, req.params.id);
+    await scheduleClientAutomationEvent(db, req.params.id, "appointment_cancelled", { uniqueContext: result.cancellation_id });
+    res.json(result);
   } catch (error) {
     const message = error.message || "Não foi possível cancelar o agendamento.";
     res.status(/não encontrado/i.test(message) ? 404 : /já |deve ser resolvido|Não há sinal|Há sinal/i.test(message) ? 409 : 400).json({ error: message });
@@ -444,6 +458,16 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
   });
 
   const updated = await listAppointments(db, "WHERE a.id = ?", [req.params.id]).then((rows) => rows[0]);
+  const scheduleChanged = (req.body.appointment_date !== undefined && req.body.appointment_date !== appointment.appointment_date)
+    || (req.body.appointment_time !== undefined && req.body.appointment_time !== appointment.appointment_time);
+  const justConfirmed = updated?.status === "confirmado" && appointment.status !== "confirmado";
+  if (scheduleChanged || justConfirmed) {
+    await cancelPendingAppointmentCommunications(db, req.params.id);
+    const context = `${updated.appointment_date}-${updated.appointment_time}`;
+    if (scheduleChanged) await scheduleClientAutomationEvent(db, req.params.id, "appointment_rescheduled", { uniqueContext: context });
+    if (justConfirmed) await scheduleClientAutomationEvent(db, req.params.id, "appointment_confirmed", { uniqueContext: context });
+    await scheduleClientAutomationEvent(db, req.params.id, "appointment_upcoming", { uniqueContext: context });
+  }
   if (["confirmado", "remarcado"].includes(updated?.status) || req.body.appointment_date || req.body.appointment_time) {
     await queueAppointmentReminderNotifications(db, updated);
   }
