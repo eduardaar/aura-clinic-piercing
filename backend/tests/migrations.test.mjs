@@ -30,7 +30,7 @@ function clientWith({ ledger = [], failOn } = {}) {
 test("migrations versionadas têm baseline válido por escopo", () => {
   const platform = loadMigrations("platform");
   const tenant = loadMigrations("tenant");
-  assert.deepEqual(platform.map((item) => item.version), ["0001", "0002", "0003", "0004", "0005", "0006"]);
+  assert.deepEqual(platform.map((item) => item.version), ["0001", "0002", "0003", "0004", "0005", "0006", "0007"]);
   assert.deepEqual(tenant.map((item) => item.version), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016"]);
   assert.ok(platform.every((item) => /^[a-f0-9]{64}$/.test(item.checksum)));
 });

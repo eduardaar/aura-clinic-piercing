@@ -23,6 +23,7 @@ backlog herdado.
 | [PADRAO-VISUAL.md](./PADRAO-VISUAL.md) | Primitivas e convenções de UI. |
 | [ASAAS.md](./ASAAS.md) | Integração e cuidados operacionais do gateway de pagamentos. |
 | [R2.md](./R2.md) | Armazenamento de arquivos no Cloudflare R2. |
+| [SMTP.md](./SMTP.md) | Configuração, segurança e homologação do envio de e-mail por SMTP. |
 | [CATALOGO-BUILDER.md](./CATALOGO-BUILDER.md) | Contrato técnico do editor de catálogo. |
 | [LANDING.md](./LANDING.md) | Landing editável e seus limites de segurança. |
 | [JOBS-EM-SEGUNDO-PLANO.md](./JOBS-EM-SEGUNDO-PLANO.md) | Fila persistente e execução assíncrona. |

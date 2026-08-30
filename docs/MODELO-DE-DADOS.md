@@ -33,6 +33,7 @@ de forma idempotente no boot.
 | --- | --- | --- |
 | Clínicas e assinatura | `tenants`, `subscription_plans`, `tenant_subscriptions`, `tenant_invoices` | Cadastro da clínica, oferta comercial, ciclo de trial/assinatura e faturas da plataforma. |
 | Administração | `platform_users`, `admin_audit`, `blocked_ips`, `idempotency_keys` | Super-admins, trilha de ações, proteção de login e deduplicação de operações financeiras. |
+| E-mail | `smtp_settings` | Configuração SMTP global. A senha é cifrada com AES-256-GCM antes de chegar ao banco e nunca volta pela API. |
 | Gateway | `webhook_events` | Registro idempotente de webhooks do Asaas, para plataforma e clínicas. |
 | Landing e jurídico | `landing_sections`, `legal_documents`, `legal_acceptances` | Conteúdo público editável e versão aceita de Termos de Uso/Privacidade. |
 | Suporte | `support_tickets`, `support_messages` | Chamados das clínicas, respostas e notas internas. |

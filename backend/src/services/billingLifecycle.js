@@ -95,7 +95,7 @@ function emailCopy(row) {
 }
 
 async function sendNotices() {
-  if (!emailProviderStatus().configured) return 0;
+  if (!(await emailProviderStatus()).enabled) return 0;
   let sent = 0;
   for (const row of await notificationCandidates()) {
     const notificationId = await claimNotification(row);

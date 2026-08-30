@@ -112,6 +112,7 @@ segurança de conteúdo.
 | Planos | `GET/POST /api/platform/plans`; `GET /api/platform/plans/:code/usage`; `PUT/DELETE /api/platform/plans/:code`; `PATCH /api/platform/plans/:code/active`; `PATCH /api/platform/plans/order`. |
 | Cobrança | `GET /api/platform/invoices`; `POST /api/platform/invoices/:id/sync`; `GET /api/platform/finance/summary`, `/overdue`, `/upcoming`, `/monthly`, `/by-plan`. |
 | Suporte | `GET /api/platform/support/tickets`, `/open-count`, `/tickets/:id`; `POST /api/platform/support/tickets/:id/messages`; `PATCH /api/platform/support/tickets/:id`. |
+| E-mail | `GET/PUT/DELETE /api/platform/email-settings`; `POST /api/platform/email-settings/verify`; `POST /api/platform/email-settings/test`. A senha SMTP é somente de escrita: a API devolve apenas `password_configured`. |
 | Conteúdo público | `GET /api/platform/landing`; `PUT /api/platform/landing/sections/:key`; `PATCH /api/platform/landing/order`; `POST /api/platform/landing/uploads`; `GET /api/platform/legal-documents`; `PUT /api/platform/legal-documents/:key`. |
 
 ## Referências de implementação

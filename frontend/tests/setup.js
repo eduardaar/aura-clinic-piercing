@@ -32,6 +32,13 @@ if (!HTMLElement.prototype.hasPointerCapture) {
   HTMLElement.prototype.releasePointerCapture = () => {};
 }
 if (!HTMLElement.prototype.scrollIntoView) HTMLElement.prototype.scrollIntoView = () => {};
+if (!globalThis.ResizeObserver) {
+  globalThis.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
 
 afterEach(() => {
   cleanup();

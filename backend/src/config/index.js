@@ -86,6 +86,12 @@ if ((RESEND_API_KEY || EMAIL_FROM) && !resendEmailEnabled) {
   console.warn("[email] Configure RESEND_API_KEY e EMAIL_FROM juntos; o envio transacional permanecerá desativado até lá.");
 }
 
+if (isProduction && !process.env.SMTP_VAULT_KEY) {
+  console.warn(
+    "[email] SMTP_VAULT_KEY não definida: a senha SMTP será cifrada com AUTH_SECRET. Defina uma chave dedicada antes de rotacionar AUTH_SECRET."
+  );
+}
+
 // A integração da plataforma só liga com chave E token de webhook. Sem o token
 // o webhook seria uma rota pública capaz de marcar fatura como paga — por isso
 // o par é indivisível: falta um, a integração fica desligada inteira.

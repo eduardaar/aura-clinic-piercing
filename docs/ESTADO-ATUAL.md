@@ -21,7 +21,7 @@
 | --- | --- | --- |
 | Multi-tenancy por schema Postgres | **Entregue** | `middleware/withDb.js`; `scripts/test-isolation.mjs` (9 checagens, incluindo token cruzado, suspensão e 30 requisições alternadas sem vazamento de pool) |
 | Provisionamento e desprovisionamento de clínica | **Entregue** | `services/tenants.js`; clínica nova nasce com `schema.sql` + todas as migrations de tenant na mesma transação |
-| Migrations versionadas com ledger e checksum | **Entregue** | `src/db/migrations/` (platform `0001`–`0006`, tenant `0001`–`0016`); CLI `npm --prefix backend run migrations:apply` |
+| Migrations versionadas com ledger e checksum | **Entregue** | `src/db/migrations/` (platform `0001`–`0007`, tenant `0001`–`0016`); CLI `npm --prefix backend run migrations:apply` |
 | Painel de super-admin | **Entregue** | `routes/platform.js`, `features/platform/PlatformAdmin.jsx` |
 | Cadastro público de clínica | **Entregue** | `POST /api/signup`, com verificação de disponibilidade de nome e e-mail antes do aceite |
 
@@ -91,17 +91,17 @@
 | Upload otimizado, com conversão para WebP | **Entregue** | `middleware/upload.js`, commit `42d47784` |
 | Armazenamento em Cloudflare R2 | **Não validado** | código pronto e testado com stub, **nunca exercitado contra um bucket real**. Com o R2 desligado, todas as clínicas gravam no mesmo diretório local — impróprio para produção. Ver [R2.md](./R2.md) |
 | Gateway de pagamento Asaas | **Não validado** | integração implementada, com cofre por clínica e webhook autenticado, **nunca exercitada contra o sandbox real**. Ver [ASAAS.md](./ASAAS.md) |
-| E-mail transacional (Resend) | **Não validado** | sem `RESEND_API_KEY` e `EMAIL_FROM` a fila fica em modo assistido, sem envio nem débito de crédito |
+| E-mail transacional (SMTP com fallback Resend) | **Não validado** | SMTP genérico configurável no painel, senha cifrada e teste de conexão/envio; ainda não exercitado contra um servidor SMTP real. Resend permanece como fallback opcional. Ver [SMTP.md](./SMTP.md) |
 | WhatsApp Cloud API | **Parcial** | a configuração por clínica funciona e o token não é exposto; falta o produto (ver P-03) |
 
 ## 6. Qualidade
 
 | Camada | Resultado | Quando |
 | --- | --- | --- |
-| Suíte backend | 539/539 em 104 s, 58 arquivos de teste | reexecutada em 30/08; runner isolado de `RUN_MIGRATIONS_ON_BOOT` local |
+| Suíte backend | 546/546 em 104 s, 60 arquivos de teste | reexecutada em 30/08; inclui cofre e rotas SMTP; runner isolado de `RUN_MIGRATIONS_ON_BOOT` local |
 | Homologação crítica ponta a ponta | 123/123 (`scripts/qa-homologation-critical.mjs`) | tenant novo, após as correções |
-| Frontend unitário e de componentes | 33/33 e 109/109 em 15 arquivos | reexecutados em 30/08 |
-| Build do frontend | aprovado, 1.793 módulos | reexecutado em 30/08 |
+| Frontend unitário e de componentes | 33/33 e 111/111 em 16 arquivos | reexecutados em 30/08 |
+| Build do frontend | aprovado, 1.794 módulos | reexecutado em 30/08 |
 
 Relatório completo, com as sete falhas encontradas e corrigidas: [RELATORIO-HOMOLOGACAO-CRITICA-2026-08-27.md](./RELATORIO-HOMOLOGACAO-CRITICA-2026-08-27.md).
 
@@ -129,11 +129,11 @@ Proposta em [PLANO-WHATSAPP-CREDITOS-AURA.md](./PLANO-WHATSAPP-CREDITOS-AURA.md)
 
 ### P-04 — gates externos nunca exercitados
 
-R2, Asaas e Resend estão implementados e testados contra stubs, mas **nunca rodaram contra o serviço real**. É o próximo gate antes de produção, e cada um precisa do seu próprio sandbox:
+R2, Asaas e o envio SMTP estão implementados e testados localmente, mas **nunca rodaram contra o serviço externo real**. É o próximo gate antes de produção, e cada um precisa do seu próprio sandbox:
 
 - R2: seguir o runbook de [R2.md](./R2.md) e migrar os anexos antigos;
 - Asaas: sandbox próprio, com o webhook apontado e o mesmo token cadastrado nos dois lados;
-- Resend: domínio verificado e `EMAIL_FROM` real.
+- SMTP: conta real, remetente autorizado e roteiro de [SMTP.md](./SMTP.md); se o fallback Resend for mantido, domínio verificado e `EMAIL_FROM` real.
 
 Enquanto isso não acontecer, trate qualquer afirmação sobre os três como "deve funcionar", não como "funciona".
 

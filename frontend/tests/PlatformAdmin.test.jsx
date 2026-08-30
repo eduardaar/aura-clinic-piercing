@@ -8,6 +8,7 @@ vi.mock("../src/features/platform/LegalEditor", () => ({ LegalEditor: () => <div
 vi.mock("../src/features/platform/PlansAdmin", () => ({ PlansAdmin: () => <div>Conteúdo Planos</div> }));
 vi.mock("../src/features/platform/AccountsAdmin", () => ({ AccountsAdmin: () => <div>Conteúdo Clínicas</div> }));
 vi.mock("../src/features/platform/FinanceAdmin", () => ({ PlatformFinance: () => <div>Conteúdo Dashboard</div> }));
+vi.mock("../src/features/platform/EmailAdmin", () => ({ EmailAdmin: () => <div>Conteúdo E-mail</div> }));
 vi.mock("../src/features/platform/SupportInbox", () => ({
   SupportInbox: () => <div>Conteúdo Suporte</div>,
   SupportOpenBadge: () => null,
@@ -36,6 +37,10 @@ describe("navegação do painel da plataforma", () => {
     expect(screen.getByText("Conteúdo Planos")).toBeInTheDocument();
     expect(screen.queryByText("Conteúdo Clínicas")).not.toBeInTheDocument();
     expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
+
+    await user.click(screen.getByRole("tab", { name: "E-mail" }));
+    expect(screen.getByText("Conteúdo E-mail")).toBeInTheDocument();
+    expect(screen.queryByText("Conteúdo Planos")).not.toBeInTheDocument();
   });
 
   it("permite voltar do login restrito para a tela inicial", () => {

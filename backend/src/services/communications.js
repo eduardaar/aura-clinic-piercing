@@ -73,9 +73,9 @@ export async function processDueCommunications(db, limit = 100, tenantId = null)
       // envio oficial, a reserva é feita ANTES da chamada externa: assim não
       // há mensagem paga sem saldo, nem saldo perdido em falha da Meta.
       const officialWhatsApp = item.channel === "whatsapp" ? await whatsappCloudStatus(db) : null;
-      const officialEmail = item.channel === "email" ? emailProviderStatus() : null;
+      const officialEmail = item.channel === "email" ? await emailProviderStatus() : null;
       provider = tenantId && officialWhatsApp?.enabled ? "whatsapp_cloud"
-        : tenantId && officialEmail?.enabled ? "resend"
+        : tenantId && officialEmail?.enabled ? officialEmail.provider
           : null;
       if (provider) {
         reservation = await reserveCommunicationCredits(db, tenantId, {
@@ -93,7 +93,7 @@ export async function processDueCommunications(db, limit = 100, tenantId = null)
             subject: (() => {
               try { return JSON.parse(item.payload || "{}").subject || item.template; } catch { return item.template; }
             })(),
-            text: item.message
+            text: item.message,
           })
           : null;
       if (sent) {

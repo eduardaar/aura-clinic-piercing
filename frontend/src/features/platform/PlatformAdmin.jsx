@@ -13,6 +13,7 @@ import { SupportInbox, SupportOpenBadge } from "./SupportInbox";
 // Nome explícito para não confundir o financeiro da plataforma com os módulos
 // operacionais de contas a pagar e receber de cada clínica.
 import { PlatformFinance } from "./FinanceAdmin";
+import { EmailAdmin } from "./EmailAdmin";
 
 // Painel do super-admin da plataforma (/plataforma).
 // Sessão própria em aura-platform-session (separada da aura-session das clínicas)
@@ -37,6 +38,7 @@ const TABS = [
   ["contas", "Clínicas"],
   ["planos", "Planos"],
   ["suporte", "Suporte"],
+  ["email", "E-mail"],
   ["landing", "Landing pública"],
   ["legal", "Termos e privacidade"],
 ];
@@ -54,6 +56,7 @@ const TAB_HEADINGS = {
   contas: { title: "Clínicas", subtitle: "Cadastro, plano, assinatura, uso e faturas de cada cliente." },
   planos: { title: "Planos", subtitle: "Preço, recursos e limites dos planos vendidos pela plataforma." },
   suporte: { title: "Suporte", subtitle: "Chamados abertos pelas clínicas." },
+  email: { title: "E-mail", subtitle: "Servidor SMTP usado nas mensagens enviadas aos clientes." },
   landing: { title: "Landing pública", subtitle: "Edite os blocos da página inicial em /." },
   legal: { title: "Termos e privacidade", subtitle: "Textos legais e versões aceitas durante o cadastro." },
 };
@@ -348,6 +351,7 @@ export function PlatformAdmin() {
           {tab === "planos" && <PlansAdmin token={token} onUnauthorized={clearPlatformSession} />}
           {tab === "contas" && <AccountsAdmin token={token} onUnauthorized={clearPlatformSession} onCreate={openCreate} refreshKey={accountsRefresh} />}
           {tab === "dashboard" && <PlatformFinance token={token} onUnauthorized={clearPlatformSession} />}
+          {tab === "email" && <EmailAdmin token={token} onUnauthorized={clearPlatformSession} />}
           {tab === "suporte" && (
             <SupportInbox
               token={token}

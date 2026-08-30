@@ -340,7 +340,8 @@ backend/src/
 │   ├── Vendas e financeiro     sales.js, finance.js, payments.js, reports.js, billing.js
 │   ├── Público                 catalog.js, booking.js, store.js, landing.js
 │   ├── Acesso                  auth.js, users.js
-│   ├── Plataforma              platform.js, planAdmin.js, platformFinance.js, accountAdmin.js
+│   ├── Plataforma              platform.js, planAdmin.js, platformFinance.js, accountAdmin.js,
+│   │                           platformEmail.js
 │   ├── Integrações             integrations.js, webhooks.js, notifications.js, aiAssistant.js
 │   └── Operação                health.js, dashboard.js, alerts.js, uploads.js,
 │                               jobs.js, errorLogs.js, support.js
@@ -356,14 +357,14 @@ backend/src/
 │   │                           pricing.js, discounts.js, promotions.js, idempotency.js
 │   ├── Plataforma              platformBilling.js, platformFinance.js, subscriptions.js,
 │   │                           billingLifecycle.js, tenantCharges.js, planAdmin.js
-│   ├── Integrações             asaas/, whatsappCloud.js, emailProvider.js,
-│   │                           communications.js, communicationCredits.js, storage/
+│   ├── Integrações             asaas/, whatsappCloud.js, emailProvider.js, smtpSettings.js,
+│   │                           smtpVault.js, communications.js, communicationCredits.js, storage/
 │   └── Infra                   jobs.js, jobWorker.js, pagination.js, loginGuard.js,
 │                               totp.js, errorLogs.js, privacy.js, support.js
 ├── schemas/
 │   └── index.js             Schemas de validação Zod
 ├── db/migrations/           Migrations versionadas com ledger e checksum
-│   ├── platform/            0001–0006
+│   ├── platform/            0001–0007
 │   └── tenant/              0001–0016
 ├── text-normalizer.js       Normalização de encoding das respostas
 └── data/uploads/            Arquivos enviados (fallback local, quando o R2 está desligado)

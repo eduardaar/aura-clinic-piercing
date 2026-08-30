@@ -391,6 +391,31 @@
     color: #6b5300;
   }
 
+  .smtp-security-options,
+  .smtp-actions,
+  .smtp-test-row {
+    display: flex;
+    align-items: end;
+    flex-wrap: wrap;
+    gap: 12px 20px;
+  }
+
+  .smtp-test-row > label {
+    flex: 1 1 280px;
+  }
+
+  .smtp-feedback.is-success {
+    border-color: rgba(47, 125, 78, .35);
+    background: rgba(47, 125, 78, .07);
+    color: #245f3b;
+  }
+
+  .smtp-feedback.is-error {
+    border-color: rgba(192, 57, 43, .35);
+    background: rgba(192, 57, 43, .07);
+    color: #8f2c24;
+  }
+
   /* Aviso que NÃO pode sumir sozinho (falha de propagação de preço, cobrança
    * pendurada). Toast desaparece; dinheiro em risco precisa de dispensa.
    *
