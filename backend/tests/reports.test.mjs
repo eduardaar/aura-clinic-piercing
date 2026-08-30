@@ -16,13 +16,22 @@ after(async () => {
 });
 
 test("central gera todos os relatórios suportados e CSV isolados no tenant", async () => {
-  const types = ["financial", "sales", "stock", "services", "clients", "professionals", "appointments", "cancellations", "promotions", "coupons", "commissions", "payments", "catalog_conversion"];
+  const types = ["financial", "sales", "stock", "abc", "services", "clients", "professionals", "appointments", "cancellations", "promotions", "coupons", "commissions", "payments", "catalog_conversion"];
   for (const type of types) {
     const response = await req(`/reports/${type}?from=2026-01-01&to=2026-12-31`, { tenant: context.slug, token: context.token });
     assert.equal(response.status, 200, `${type}: ${JSON.stringify(response.json)}`);
     assert.equal(Array.isArray(response.json.rows), true);
     assert.equal(response.json.type, type);
   }
+});
+
+test("catálogo central agrupa relatórios e declara filtros e exportadores", async () => {
+  const response = await req("/reports", { tenant: context.slug, token: context.token });
+  assert.equal(response.status, 200, JSON.stringify(response.json));
+  assert.ok(response.json.reports.length >= 10);
+  assert.ok(response.json.reports.every((report) => report.category && Array.isArray(report.filters)));
+  assert.deepEqual(response.json.formats, ["pdf", "xlsx", "csv", "txt"]);
+  assert.ok(response.json.reports.some((report) => report.type === "abc"));
 });
 
 test("analytics público valida sessão e aparece no relatório de conversão", async () => {

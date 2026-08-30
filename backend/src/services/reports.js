@@ -1,7 +1,29 @@
-const REPORT_TYPES = new Set([
-  "financial", "sales", "stock", "services", "clients", "professionals",
-  "appointments", "cancellations", "promotions", "coupons", "commissions", "payments", "catalog_conversion"
-]);
+import { inventoryIntelligence } from "./inventoryIntelligence.js";
+
+const PERIOD_FILTERS = ["from", "to"];
+
+export const REPORT_CATALOG = Object.freeze([
+  { type: "appointments", label: "Agendamentos", category: "Atendimento", filters: [...PERIOD_FILTERS, "status", "professional_id"] },
+  { type: "services", label: "Serviços executados", category: "Atendimento", filters: PERIOD_FILTERS },
+  { type: "cancellations", label: "Cancelamentos e recusas", category: "Atendimento", filters: [...PERIOD_FILTERS, "professional_id"] },
+  { type: "clients", label: "Clientes", category: "Clientes e clínico", filters: [] },
+  { type: "sales", label: "Vendas", category: "Comercial", filters: [...PERIOD_FILTERS, "status"] },
+  { type: "promotions", label: "Promoções", category: "Comercial", filters: PERIOD_FILTERS },
+  { type: "coupons", label: "Cupons", category: "Comercial", filters: PERIOD_FILTERS },
+  { type: "catalog_conversion", label: "Conversão do catálogo", category: "Comercial", filters: PERIOD_FILTERS },
+  { type: "stock", label: "Posição de estoque", category: "Estoque e compras", filters: ["product_id", "category"] },
+  { type: "abc", label: "Curva ABC de estoque", category: "Estoque e compras", filters: ["days"] },
+  { type: "financial", label: "Lançamentos financeiros", category: "Financeiro", filters: PERIOD_FILTERS },
+  { type: "payments", label: "Pagamentos", category: "Financeiro", filters: [...PERIOD_FILTERS, "status"] },
+  { type: "professionals", label: "Desempenho por profissional", category: "Gestão e auditoria", filters: [...PERIOD_FILTERS, "professional_id"] },
+  { type: "commissions", label: "Comissões", category: "Gestão e auditoria", filters: [...PERIOD_FILTERS, "professional_id"] }
+].map((report) => Object.freeze({ ...report, formats: ["pdf", "xlsx", "csv", "txt"] })));
+
+const REPORT_TYPES = new Set(REPORT_CATALOG.map(({ type }) => type));
+
+export function getReportDefinition(type) {
+  return REPORT_CATALOG.find((report) => report.type === type) || null;
+}
 
 // O relatório básico abre a central; alguns tipos revelam dados ou ações de
 // módulos vendidos separadamente e precisam conservar esses gates também em
@@ -51,13 +73,16 @@ export async function buildReport(db, type, filters = {}) {
     if (category) { clauses.push("j.category=?"); params.push(category); }
     rows = await db.all(`SELECT j.id, j.name, j.sku, j.category, j.material, j.color, j.quantity, j.cost_value, j.sale_value, j.status, j.supplier FROM jewelry_inventory j WHERE ${clauses.join(" AND ")} ORDER BY j.category,j.name`, params);
   } else if (type === "services") {
+    const serviceParams = [from, to];
+    const professionalClause = professionalId ? "AND a.professional_id=?" : "";
+    if (professionalId) serviceParams.push(professionalId);
     rows = await db.all(`
       SELECT COALESCE(s.name,a.procedure) AS service, COUNT(*) AS appointments,
         COALESCE(SUM(a.total_value),0) AS revenue, COALESCE(AVG(a.total_value),0) AS average_ticket
       FROM appointments a LEFT JOIN services s ON s.id=a.service_id
-      WHERE a.appointment_date BETWEEN ? AND ? AND a.status NOT IN ('cancelado','recusado')
+      WHERE a.appointment_date BETWEEN ? AND ? AND a.status NOT IN ('cancelado','recusado') ${professionalClause}
       GROUP BY COALESCE(s.name,a.procedure) ORDER BY revenue DESC
-    `, [from, to]);
+    `, serviceParams);
   } else if (type === "clients") {
     rows = await db.all(`
       SELECT c.id, c.full_name, c.whatsapp, c.instagram, c.birth_date, COUNT(a.id) AS appointments,
@@ -168,6 +193,12 @@ export async function buildReport(db, type, filters = {}) {
       FROM catalog_events WHERE SUBSTRING(occurred_at,1,10) BETWEEN ? AND ?
       GROUP BY event_type ORDER BY events DESC
     `, [from, to]);
+  } else if (type === "abc") {
+    const days = Math.min(Math.max(Number(filters.days || 90), 1), 3650);
+    const metrics = await inventoryIntelligence(db, days);
+    rows = metrics.map(({ name, sku, abc_class, units_out, movement_value, daily_demand, days_to_stockout }) => ({
+      name, sku, abc_class, units_out, movement_value, daily_demand, days_to_stockout
+    }));
   }
   return { type, from, to, rows, total_rows: rows.length, generated_at: new Date().toISOString() };
 }
