@@ -242,7 +242,7 @@ export async function availableBookingSlots(db, { service, professionalId, date 
   const appointments = await db.all(
     `SELECT appointment_time, end_time
      FROM appointments
-     WHERE professional_id = ? AND appointment_date = ? AND status NOT IN ('cancelado', 'recusado')`,
+     WHERE professional_id = ? AND appointment_date = ? AND status NOT IN ('cancelado', 'recusado', 'remarcado', 'nao_compareceu')`,
     [professionalId, date]
   );
   const blocks = await db.all(

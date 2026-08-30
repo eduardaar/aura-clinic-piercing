@@ -42,6 +42,7 @@ import { recordAudit } from "../services/audit.js";
 import { cancelServiceExecution, ensureServiceExecution } from "../services/serviceExecutions.js";
 
 const router = Router();
+const APPOINTMENT_STATUSES = new Set(["pendente", "awaiting_deposit_proof", "confirmado", "chegou", "em_atendimento", "atendido", "cancelado", "nao_compareceu", "remarcado", "recusado"]);
 
 // Whitelist de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
 const APPOINTMENT_SORTABLE = {
@@ -156,7 +157,7 @@ router.post("/api/appointments", withFeature("agenda", async (req, res, db) => {
   const conflict = await db.get(
     `SELECT id FROM appointments
      WHERE professional_id = ? AND appointment_date = ? AND appointment_time = ?
-     AND status NOT IN ('cancelado', 'remarcado')`,
+     AND status NOT IN ('cancelado', 'remarcado', 'nao_compareceu')`,
     [body.professional_id, body.appointment_date, body.appointment_time]
   );
   if (conflict) {
@@ -286,9 +287,9 @@ router.post("/api/appointments/:id/cancel", withFeature("agenda", async (req, re
   try {
     const result = await cancelAppointmentWithResolution(db, req.params.id, req.body || {}, req.user?.id || null);
     await recordAudit(db, {
-      req, module: "appointments", action: "cancel", entityType: "appointment", entityId: req.params.id,
-      reason: String(req.body?.reason || "Cancelamento"),
-      after: { status: "cancelado", resolution: result.resolution, deposit_amount: result.deposit_amount },
+      req, module: "appointments", action: result.outcome === "nao_compareceu" ? "no_show" : "cancel", entityType: "appointment", entityId: req.params.id,
+      reason: String(req.body?.reason || (result.outcome === "nao_compareceu" ? "Não compareceu" : "Cancelamento")),
+      after: { status: result.outcome, resolution: result.resolution, deposit_amount: result.deposit_amount },
       severity: "critical"
     });
     await cancelPendingAppointmentCommunications(db, req.params.id);
@@ -321,6 +322,9 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
   }
   if (req.body.status === "cancelado") {
     return res.status(409).json({ error: "Use o fluxo de cancelamento para registrar retenção, crédito, reembolso ou ausência de pagamento." });
+  }
+  if (req.body.status !== undefined && !APPOINTMENT_STATUSES.has(String(req.body.status))) {
+    return res.status(400).json({ error: "Status do agendamento inválido." });
   }
   const appointment = await db.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
   const financialFields = ["total_value", "discount_value", "deposit_value", "remaining_value", "deposit_payment_method", "remaining_payment_method", "deposit_status", "deposit_paid_at", "coupon_code", "coupon_id"];
@@ -407,7 +411,12 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
     req.body.remaining_value = 0;
   }
 
-  const fields = ["status", "appointment_date", "appointment_time", "end_time", "professional_id", "service_id", "jewelry_id", "jewelry_variant_id", "procedure", "description", "piercing_region", "total_value", "discount_value", "deposit_value", "remaining_value", "deposit_payment_method", "remaining_payment_method", "deposit_status", "deposit_paid_at", "financial_notes", "coupon_code", "coupon_id", "coupon_snapshot", "notes"];
+  if (req.body.status === "chegou" && !appointment.arrived_at) req.body.arrived_at = localTimestamp();
+  if (req.body.status === "em_atendimento") {
+    if (!appointment.arrived_at) req.body.arrived_at = localTimestamp();
+    if (!appointment.started_at) req.body.started_at = localTimestamp();
+  }
+  const fields = ["status", "appointment_date", "appointment_time", "end_time", "professional_id", "service_id", "jewelry_id", "jewelry_variant_id", "procedure", "description", "piercing_region", "total_value", "discount_value", "deposit_value", "remaining_value", "deposit_payment_method", "remaining_payment_method", "deposit_status", "deposit_paid_at", "financial_notes", "coupon_code", "coupon_id", "coupon_snapshot", "notes", "arrived_at", "started_at"];
   const updates = fields.filter((field) => req.body[field] !== undefined);
 
   await db.transaction(async (tx) => {

@@ -67,10 +67,10 @@ router.get("/api/dashboard", withDb(async (_req, res, db) => {
   const periodStart = localDate(new Date(Date.now() - (periodDays - 1) * 86_400_000));
   const stats = await db.get(`
     SELECT
-      SUM(CASE WHEN appointment_date = ? AND status NOT IN ('cancelado', 'recusado') THEN 1 ELSE 0 END) AS today_count,
+      SUM(CASE WHEN appointment_date = ? AND status NOT IN ('cancelado', 'recusado', 'remarcado', 'nao_compareceu') THEN 1 ELSE 0 END) AS today_count,
       SUM(CASE WHEN status IN ('pendente', 'awaiting_deposit_proof') THEN 1 ELSE 0 END) AS pending_count,
       SUM(CASE WHEN status = 'confirmado' THEN 1 ELSE 0 END) AS confirmed_count,
-      SUM(CASE WHEN appointment_date LIKE ? AND status NOT IN ('cancelado', 'recusado') THEN total_value ELSE 0 END) AS month_forecast
+      SUM(CASE WHEN appointment_date LIKE ? AND status NOT IN ('cancelado', 'recusado', 'remarcado', 'nao_compareceu') THEN total_value ELSE 0 END) AS month_forecast
     FROM appointments
   `, [today, `${month}%`]);
   // Faturamento do dia: todos os tipos de pagamento quitados na data local de hoje.

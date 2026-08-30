@@ -278,7 +278,7 @@ export async function buildReport(db, type, filters = {}) {
       SELECT COALESCE(s.name,a.procedure) AS service, COUNT(*) AS appointments,
         COALESCE(SUM(a.total_value),0) AS revenue, COALESCE(AVG(a.total_value),0) AS average_ticket
       FROM appointments a LEFT JOIN services s ON s.id=a.service_id
-      WHERE a.appointment_date BETWEEN ? AND ? AND a.status NOT IN ('cancelado','recusado') ${professionalClause}
+      WHERE a.appointment_date BETWEEN ? AND ? AND a.status NOT IN ('cancelado','recusado','remarcado','nao_compareceu') ${professionalClause}
       GROUP BY COALESCE(s.name,a.procedure) ORDER BY revenue DESC
     `, serviceParams);
   } else if (type === "clients") {

@@ -13,14 +13,15 @@ function text(value, label) {
 
 export async function cancelAppointmentWithResolution(db, appointmentId, body = {}, userId = null) {
   const resolution = String(body.resolution || "");
+  const outcome = body.outcome === "no_show" ? "nao_compareceu" : "cancelado";
   if (!RESOLUTIONS.has(resolution)) throw new Error("Escolha retenção do sinal, crédito, reembolso manual ou sem pagamento.");
-  const reason = text(body.reason, "Motivo do cancelamento");
+  const reason = text(body.reason, outcome === "nao_compareceu" ? "Motivo da ausência" : "Motivo do cancelamento");
   return db.transaction(async (tx) => {
     const appointment = await tx.get("SELECT * FROM appointments WHERE id=? FOR UPDATE", [appointmentId]);
     if (!appointment) throw new Error("Agendamento não encontrado.");
     const previous = await tx.get("SELECT id FROM appointment_cancellations WHERE appointment_id=?", [appointmentId]);
     if (previous) throw new Error("Este agendamento já possui uma resolução de cancelamento.");
-    if (appointment.status === "cancelado") throw new Error("Agendamento já está cancelado.");
+    if (["cancelado", "nao_compareceu"].includes(appointment.status)) throw new Error("Este agendamento já possui um desfecho.");
 
     const paidRows = await tx.all(`
       SELECT * FROM payments
@@ -71,11 +72,11 @@ export async function cancelAppointmentWithResolution(db, appointmentId, body = 
     }
     await cancelServiceExecution(tx, appointment.id, reason);
     const depositStatus = resolution === "retain_deposit" ? "retido" : resolution === "manual_refund" ? "estornado" : resolution === "client_credit" ? "creditado" : "cancelado";
-    await tx.run(`UPDATE appointments SET status='cancelado', remaining_value=0, deposit_status=?, financial_notes=?, updated_at=? WHERE id=?`,
-      [depositStatus, `${appointment.financial_notes || ""}\nCancelamento #${created.returnedId}: ${reason}`.trim(), localTimestamp(), appointment.id]);
+    await tx.run(`UPDATE appointments SET status=?, no_show_at=CASE WHEN ?='nao_compareceu' THEN now() ELSE no_show_at END, remaining_value=0, deposit_status=?, financial_notes=?, updated_at=? WHERE id=?`,
+      [outcome, outcome, depositStatus, `${appointment.financial_notes || ""}\n${outcome === "nao_compareceu" ? "Ausência" : "Cancelamento"} #${created.returnedId}: ${reason}`.trim(), localTimestamp(), appointment.id]);
     const after = await tx.get("SELECT * FROM appointments WHERE id=?", [appointment.id]);
     await tx.run("INSERT INTO appointment_financial_audit (appointment_id, user_id, action, reason, before_snapshot, after_snapshot) VALUES (?, ?, 'cancellation_resolution', ?, ?, ?)",
       [appointment.id, userId, reason, JSON.stringify(appointment), JSON.stringify(after)]);
-    return { cancellation_id: created.returnedId, appointment: after, resolution, deposit_amount: depositAmount };
+    return { cancellation_id: created.returnedId, appointment: after, resolution, outcome, deposit_amount: depositAmount };
   });
 }
