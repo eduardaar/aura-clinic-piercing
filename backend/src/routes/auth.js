@@ -1,6 +1,7 @@
 // Rota de login (autenticação).
 import { Router } from "express";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import { withDb } from "../middleware/withDb.js";
 import { loginLimiter } from "../middleware/rateLimit.js";
 import { createToken, requireRole } from "../middleware/auth.js";
@@ -17,8 +18,76 @@ import {
 } from "../services/sessions.js";
 import { decryptTotpSecret, encryptTotpSecret, generateTotpSecret, otpauthUri, verifyTotp } from "../services/totp.js";
 import { hydrateUserPermissions } from "../services/permissionService.js";
+import { PUBLIC_APP_URL } from "../config/index.js";
+import { sendTransactionalEmail } from "../services/emailProvider.js";
 
 const router = Router();
+
+const PASSWORD_RESET_RESPONSE = {
+  ok: true,
+  message: "Se o e-mail estiver cadastrado e ativo, enviaremos as instruções de recuperação."
+};
+
+function passwordResetHash(token) {
+  return crypto.createHash("sha256").update(String(token || ""), "utf8").digest("hex");
+}
+
+router.post("/api/auth/forgot-password", loginLimiter, withDb(async (req, res, db) => {
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  if (!/^\S+@\S+\.\S+$/.test(email)) return res.json(PASSWORD_RESET_RESPONSE);
+
+  const user = await db.get("SELECT id, name, email, status FROM users WHERE lower(email)=? LIMIT 1", [email]);
+  if (!user || user.status !== "active") return res.json(PASSWORD_RESET_RESPONSE);
+
+  const token = crypto.randomBytes(32).toString("base64url");
+  await db.transaction(async (tx) => {
+    await tx.run("UPDATE password_reset_tokens SET used_at=now() WHERE user_id=? AND used_at IS NULL", [user.id]);
+    await tx.run(
+      "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, requested_ip) VALUES (?, ?, now() + INTERVAL '30 minutes', ?)",
+      [user.id, passwordResetHash(token), String(req.ip || "").slice(0, 100) || null]
+    );
+  });
+
+  const link = `${PUBLIC_APP_URL}/login?t=${encodeURIComponent(req.tenant.slug)}&reset=${encodeURIComponent(token)}`;
+  try {
+    await sendTransactionalEmail({
+      to: user.email,
+      subject: "Redefinição de senha · Aura Clinic",
+      text: `${user.name || "Olá"},\n\nRecebemos uma solicitação para redefinir sua senha. O link abaixo é válido por 30 minutos e só pode ser usado uma vez:\n\n${link}\n\nSe você não fez esta solicitação, ignore esta mensagem.`
+    });
+  } catch (error) {
+    console.warn(`[auth] Falha ao enviar recuperação de senha para o tenant ${req.tenant.id}: ${error?.message || error}`);
+  }
+  res.json(PASSWORD_RESET_RESPONSE);
+}));
+
+router.post("/api/auth/reset-password", loginLimiter, withDb(async (req, res, db) => {
+  const token = String(req.body?.token || "");
+  const password = String(req.body?.password || "");
+  if (token.length < 32 || password.length < 12) {
+    return res.status(400).json({ error: "Link inválido ou senha com menos de 12 caracteres." });
+  }
+
+  const reset = await db.transaction(async (tx) => {
+    const current = await tx.get(
+      `SELECT prt.id, prt.user_id
+         FROM password_reset_tokens prt
+         JOIN users u ON u.id=prt.user_id
+        WHERE prt.token_hash=? AND prt.used_at IS NULL AND prt.expires_at>now() AND u.status='active'
+        LIMIT 1 FOR UPDATE OF prt`,
+      [passwordResetHash(token)]
+    );
+    if (!current) return null;
+    const passwordHash = await bcrypt.hash(password, 12);
+    await tx.run("UPDATE users SET password_hash=?, session_version=session_version+1 WHERE id=?", [passwordHash, current.user_id]);
+    await tx.run("UPDATE user_sessions SET revoked_at=now() WHERE user_id=? AND revoked_at IS NULL", [current.user_id]);
+    await tx.run("UPDATE password_reset_tokens SET used_at=now() WHERE user_id=? AND used_at IS NULL", [current.user_id]);
+    return current;
+  });
+  if (!reset) return res.status(400).json({ error: "Este link é inválido, expirou ou já foi utilizado." });
+  clearRefreshCookie(res);
+  res.json({ ok: true, message: "Senha redefinida. Entre novamente com a nova senha." });
+}));
 
 router.post("/api/login", loginLimiter, withDb(async (req, res, db) => {
   if (!validateBody(loginSchema, req, res)) return;

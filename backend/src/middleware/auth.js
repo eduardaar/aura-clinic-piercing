@@ -14,6 +14,8 @@ const PLATFORM_AUDIENCE = "aura-platform";
 const PUBLIC_ROUTE_METHODS = new Set([
   "POST /api/login",
   "POST /api/auth/refresh",
+  "POST /api/auth/forgot-password",
+  "POST /api/auth/reset-password",
   "GET /api/health",
   "GET /api/catalog",
   "POST /api/catalog/coupon-quote",
