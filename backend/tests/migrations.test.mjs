@@ -38,7 +38,7 @@ test("migrations versionadas têm baseline válido por escopo", () => {
   assert.deepEqual(tenantVersions.slice(0, 19), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019"]);
   assert.deepEqual([...tenantVersions].sort(), tenantVersions, "migrations tenant devem permanecer ordenadas");
   assert.equal(new Set(tenantVersions).size, tenantVersions.length, "versões tenant não podem se repetir");
-  assert.deepEqual(tenantVersions.slice(-5), ["0020", "0021", "0022", "0023", "0024"]);
+  for (const version of ["0020", "0021", "0022", "0023", "0024", "0028"]) assert.ok(tenantVersions.includes(version));
   assert.ok(platform.every((item) => /^[a-f0-9]{64}$/.test(item.checksum)));
 });
 
@@ -48,6 +48,14 @@ test("migration 0021 amplia o cadastro brasileiro de clientes", () => {
   assert.match(clients.sql, /ALTER\s+TABLE\s+clients[^;]*social_name/i);
   assert.match(clients.sql, /preferred_contact/i);
   assert.match(clients.sql, /postal_code/i);
+});
+
+test("migration 0028 amplia relacionamento e consentimentos do cliente", () => {
+  const relationship = loadMigrations("tenant").find((item) => item.version === "0028");
+  assert.ok(relationship, "a migration tenant 0028 é obrigatória");
+  for (const column of ["acquisition_source", "tags", "lifecycle_status", "marketing_consent", "guardian_client_id"]) {
+    assert.match(relationship.sql, new RegExp(`clients[^;]*${column}`, "i"));
+  }
 });
 
 test("migration 0020 amplia a fonte única de fornecedores", () => {

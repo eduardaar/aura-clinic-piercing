@@ -30,6 +30,7 @@ const BRAZIL_STATES = new Set([
   "TO",
 ]);
 const CONTACT_CHANNELS = new Set(["whatsapp", "email", "phone"]);
+const CLIENT_STATUSES = new Set(["active", "inactive", "blocked"]);
 
 function text(value) {
   return String(value ?? "")
@@ -39,6 +40,23 @@ function text(value) {
 
 function digits(value) {
   return String(value ?? "").replace(/\D/g, "");
+}
+
+function boolean(value, fallback = false) {
+  if (value === undefined || value === null || value === "") return Boolean(fallback);
+  return value === true || value === 1 || value === "1" || String(value).toLowerCase() === "true";
+}
+
+function tags(value) {
+  const entries = Array.isArray(value) ? value : String(value ?? "").split(",");
+  return [...new Set(entries.map((entry) => text(entry).toLowerCase()).filter(Boolean))].slice(0, 30);
+}
+
+function optionalId(value, field, errors) {
+  if (value === undefined || value === null || value === "") return null;
+  const id = Number(value);
+  if (!Number.isInteger(id) || id <= 0) errors[field] = "Selecione um cliente válido.";
+  return Number.isInteger(id) && id > 0 ? id : null;
 }
 
 function brazilianPhone(value, field, errors, required = false) {
@@ -111,11 +129,13 @@ export function normalizeClientData(body = {}, current = {}) {
   const postalCode = digits(body.postal_code ?? body.cep ?? current.postal_code ?? "");
   const state = text(body.state ?? body.uf ?? current.state ?? "").toUpperCase();
   const fullName = text(rawName);
+  const lifecycleStatus = text(body.lifecycle_status ?? current.lifecycle_status ?? "active").toLowerCase();
 
   if (!fullName) errors.full_name = "Informe o nome civil completo.";
   if (postalCode && postalCode.length !== 8) errors.postal_code = "Informe um CEP com 8 dígitos.";
   if (state && !BRAZIL_STATES.has(state)) errors.state = "Selecione uma UF brasileira válida.";
   if (!CONTACT_CHANNELS.has(preferredContact)) errors.preferred_contact = "Selecione um canal de contato válido.";
+  if (!CLIENT_STATUSES.has(lifecycleStatus)) errors.lifecycle_status = "Selecione um status válido.";
 
   const data = {
     full_name: fullName,
@@ -134,6 +154,17 @@ export function normalizeClientData(body = {}, current = {}) {
     neighborhood: text(body.neighborhood ?? current.neighborhood ?? ""),
     city: text(body.city ?? current.city ?? ""),
     state,
+    acquisition_source: text(body.acquisition_source ?? current.acquisition_source ?? ""),
+    referred_by_client_id: optionalId(body.referred_by_client_id ?? current.referred_by_client_id, "referred_by_client_id", errors),
+    tags: tags(body.tags ?? current.tags ?? []),
+    lifecycle_status: lifecycleStatus,
+    blocked_reason: lifecycleStatus === "blocked" ? text(body.blocked_reason ?? current.blocked_reason ?? "") : "",
+    operational_consent: boolean(body.operational_consent, current.operational_consent),
+    marketing_consent: boolean(body.marketing_consent, current.marketing_consent),
+    emergency_contact_name: text(body.emergency_contact_name ?? current.emergency_contact_name ?? ""),
+    emergency_contact_phone: brazilianPhone(body.emergency_contact_phone ?? current.emergency_contact_phone ?? "", "emergency_contact_phone", errors),
+    guardian_client_id: optionalId(body.guardian_client_id ?? current.guardian_client_id, "guardian_client_id", errors),
+    guardian_relationship: text(body.guardian_relationship ?? current.guardian_relationship ?? ""),
     notes: String(body.notes ?? current.notes ?? "").trim(),
   };
 

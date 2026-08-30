@@ -1,7 +1,7 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useState } from "react";
 import { FileSignature, HeartPulse } from "lucide-react";
-import { Button, Input, SecureImage, Select, StatusBadge, Tabs, Textarea } from "../../components/common/Ui";
+import { Button, Checkbox, Input, SecureImage, Select, StatusBadge, Tabs, Textarea } from "../../components/common/Ui";
 import { ConfirmDeleteModal, Modal, CrudHeader, RowActions } from "../../components/common/Crud";
 import { DataView, MONTH_OPTIONS } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
@@ -218,6 +218,7 @@ export function ClientsMedical({ onNavigate }) {
           key={editing ? editing.id : "new"}
           formId="client-form"
           client={editing || undefined}
+          clients={clients}
           onSaved={() => {
             setModalOpen(false);
             setEditing(null);
@@ -420,6 +421,18 @@ function ClientProfile({ client, onChanged, onNavigate, onEdit }) {
                 <dd>{client.instagram || "Não informado"}</dd>
               </div>
               <div>
+                <dt>Status</dt>
+                <dd>{{ active: "Ativo", inactive: "Inativo", blocked: "Bloqueado" }[client.lifecycle_status] || "Ativo"}</dd>
+              </div>
+              <div>
+                <dt>Origem</dt>
+                <dd>{client.acquisition_source || "Não informada"}</dd>
+              </div>
+              <div>
+                <dt>Tags</dt>
+                <dd>{asArray(client.tags).join(", ") || "Nenhuma"}</dd>
+              </div>
+              <div>
                 <dt>Endereço</dt>
                 <dd>
                   {[
@@ -577,11 +590,22 @@ function initialClientForm(client) {
     neighborhood: client?.neighborhood || "",
     city: client?.city || "",
     state: client?.state || "",
+    acquisition_source: client?.acquisition_source || "",
+    referred_by_client_id: client?.referred_by_client_id || "",
+    tags: asArray(client?.tags).join(", "),
+    lifecycle_status: client?.lifecycle_status || "active",
+    blocked_reason: client?.blocked_reason || "",
+    operational_consent: Boolean(client?.operational_consent),
+    marketing_consent: Boolean(client?.marketing_consent),
+    emergency_contact_name: client?.emergency_contact_name || "",
+    emergency_contact_phone: formatBrazilianPhone(client?.emergency_contact_phone),
+    guardian_client_id: client?.guardian_client_id || "",
+    guardian_relationship: client?.guardian_relationship || "",
     notes: client?.notes || "",
   };
 }
 
-export function ClientEditForm({ client, onSaved, onCancel = () => {}, formId }) {
+export function ClientEditForm({ client, clients = [], onSaved, onCancel = () => {}, formId }) {
   const [form, setForm] = useState(() => initialClientForm(client));
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState(/** @type {Record<string, string | undefined>} */ ({}));
@@ -802,6 +826,40 @@ export function ClientEditForm({ client, onSaved, onCancel = () => {}, formId })
               onChange={(value) => change("instagram", normalizeInstagramInput(value))}
               placeholder="@usuario"
             />
+          </div>
+        </AdvancedFields>
+
+        <AdvancedFields
+          title="Relacionamento e preferências"
+          description="Informações opcionais para organizar o atendimento e a comunicação da clínica."
+        >
+          <div className="form-grid">
+            <Select label="Origem do cliente" value={form.acquisition_source} onChange={(value) => change("acquisition_source", value)}>
+              <option value="">Não informada</option>
+              {["Instagram", "Indicação", "Google", "Passagem", "Evento", "Outro"].map((source) => <option key={source} value={source}>{source}</option>)}
+            </Select>
+            <Select label="Indicado por" value={form.referred_by_client_id} onChange={(value) => change("referred_by_client_id", value)}>
+              <option value="">Não informado</option>
+              {asArray(clients).filter((item) => item.id !== client?.id).map((item) => <option key={item.id} value={item.id}>{personName(item)}</option>)}
+            </Select>
+            <Input name="tags" label="Tags" value={form.tags} onChange={(value) => change("tags", value)} placeholder="vip, retorno, indicação" />
+            <Select label="Status do cliente" value={form.lifecycle_status} onChange={(value) => change("lifecycle_status", value)}>
+              <option value="active">Ativo</option>
+              <option value="inactive">Inativo</option>
+              <option value="blocked">Bloqueado</option>
+            </Select>
+            {form.lifecycle_status === "blocked" && <Input name="blocked_reason" label="Motivo interno do bloqueio" value={form.blocked_reason} onChange={(value) => change("blocked_reason", value)} />}
+            <Input name="emergency_contact_name" label="Contato de emergência" value={form.emergency_contact_name} onChange={(value) => change("emergency_contact_name", value)} />
+            <Input name="emergency_contact_phone" label="Telefone de emergência" value={form.emergency_contact_phone} onChange={(value) => change("emergency_contact_phone", formatBrazilianPhone(value))} inputMode="tel" maxLength={15} placeholder="(11) 99999-9999" />
+            <Select label="Responsável legal cadastrado" value={form.guardian_client_id} onChange={(value) => change("guardian_client_id", value)}>
+              <option value="">Não informado</option>
+              {asArray(clients).filter((item) => item.id !== client?.id).map((item) => <option key={item.id} value={item.id}>{personName(item)}</option>)}
+            </Select>
+            <Input name="guardian_relationship" label="Vínculo do responsável" value={form.guardian_relationship} onChange={(value) => change("guardian_relationship", value)} placeholder="Mãe, pai, tutor…" />
+          </div>
+          <div className="stack">
+            <Checkbox checked={form.operational_consent} onChange={(value) => change("operational_consent", value)} label="Aceita comunicações operacionais sobre agendamentos e atendimento" />
+            <Checkbox checked={form.marketing_consent} onChange={(value) => change("marketing_consent", value)} label="Aceita comunicações de marketing e novidades" />
           </div>
         </AdvancedFields>
 

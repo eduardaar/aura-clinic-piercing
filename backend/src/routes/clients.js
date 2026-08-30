@@ -30,6 +30,16 @@ function clientResponse(client) {
   return client ? { ...client, name: client.full_name } : client;
 }
 
+async function validateClientLinks(db, data, currentId = null) {
+  for (const [field, id] of [["referred_by_client_id", data.referred_by_client_id], ["guardian_client_id", data.guardian_client_id]]) {
+    if (!id) continue;
+    if (currentId && Number(id) === Number(currentId)) return `${field === "guardian_client_id" ? "Responsável" : "Indicador"} não pode ser o próprio cliente.`;
+    const linked = await db.get("SELECT id FROM clients WHERE id=? AND deleted_at IS NULL", [id]);
+    if (!linked) return `${field === "guardian_client_id" ? "Responsável" : "Cliente indicador"} não encontrado.`;
+  }
+  return "";
+}
+
 router.post(
   "/api/clients",
   withFeature("clients", async (req, res, db) => {
@@ -38,6 +48,8 @@ router.post(
     if (!normalized.valid)
       return res.status(400).json({ error: firstClientError(normalized.errors), field_errors: normalized.errors });
     const b = normalized.data;
+    const linkError = await validateClientLinks(db, b);
+    if (linkError) return res.status(400).json({ error: linkError });
     req.body = { ...req.body, full_name: b.full_name, whatsapp: b.whatsapp };
     if (!validateBody(clientCreateSchema, req, res)) return;
     // Cota do plano — só na criação. Editar e listar cliente que já existe nunca
@@ -50,8 +62,10 @@ router.post(
       `INSERT INTO clients (
       full_name, social_name, phone, whatsapp, instagram, email, birth_date, cpf, tax_id,
       preferred_contact, postal_code, address_line, address_number, address_complement,
-      neighborhood, city, state, notes
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      neighborhood, city, state, acquisition_source, referred_by_client_id, tags, lifecycle_status,
+      blocked_reason, operational_consent, marketing_consent, emergency_contact_name,
+      emergency_contact_phone, guardian_client_id, guardian_relationship, notes
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       [
         b.full_name,
         b.social_name,
@@ -70,6 +84,17 @@ router.post(
         b.neighborhood,
         b.city,
         b.state,
+        b.acquisition_source,
+        b.referred_by_client_id,
+        JSON.stringify(b.tags),
+        b.lifecycle_status,
+        b.blocked_reason,
+        b.operational_consent,
+        b.marketing_consent,
+        b.emergency_contact_name,
+        b.emergency_contact_phone,
+        b.guardian_client_id,
+        b.guardian_relationship,
         b.notes,
       ],
     );
@@ -85,13 +110,17 @@ async function updateClient(req, res, db) {
   if (!normalized.valid)
     return res.status(400).json({ error: firstClientError(normalized.errors), field_errors: normalized.errors });
   const b = normalized.data;
+  const linkError = await validateClientLinks(db, b, req.params.id);
+  if (linkError) return res.status(400).json({ error: linkError });
   req.body = { ...req.body, full_name: b.full_name, whatsapp: b.whatsapp };
   if (!validateBody(clientUpdateSchema, req, res)) return;
   await db.run(
     `UPDATE clients SET
       full_name=?, social_name=?, phone=?, whatsapp=?, instagram=?, email=?, birth_date=?, cpf=?, tax_id=?,
       preferred_contact=?, postal_code=?, address_line=?, address_number=?, address_complement=?,
-      neighborhood=?, city=?, state=?, notes=?, updated_at=CURRENT_TIMESTAMP
+      neighborhood=?, city=?, state=?, acquisition_source=?, referred_by_client_id=?, tags=?, lifecycle_status=?,
+      blocked_reason=?, operational_consent=?, marketing_consent=?, emergency_contact_name=?,
+      emergency_contact_phone=?, guardian_client_id=?, guardian_relationship=?, notes=?, updated_at=CURRENT_TIMESTAMP
      WHERE id=?`,
     [
       b.full_name,
@@ -111,6 +140,17 @@ async function updateClient(req, res, db) {
       b.neighborhood,
       b.city,
       b.state,
+      b.acquisition_source,
+      b.referred_by_client_id,
+      JSON.stringify(b.tags),
+      b.lifecycle_status,
+      b.blocked_reason,
+      b.operational_consent,
+      b.marketing_consent,
+      b.emergency_contact_name,
+      b.emergency_contact_phone,
+      b.guardian_client_id,
+      b.guardian_relationship,
       b.notes,
       req.params.id,
     ],
@@ -156,7 +196,7 @@ router.delete(
     await db.transaction(async (tx) => {
       if (action === "anonymize") {
         await tx.run(
-          `UPDATE clients SET full_name=?, social_name='', whatsapp=?, phone='', instagram='', email='', birth_date='', cpf='', tax_id='', preferred_contact='whatsapp', postal_code='', address_line='', address_number='', address_complement='', neighborhood='', city='', state='', notes='', deleted_at=?, anonymized_at=?, updated_at=? WHERE id=?`,
+          `UPDATE clients SET full_name=?, social_name='', whatsapp=?, phone='', instagram='', email='', birth_date='', cpf='', tax_id='', preferred_contact='whatsapp', postal_code='', address_line='', address_number='', address_complement='', neighborhood='', city='', state='', acquisition_source='', referred_by_client_id=NULL, tags='[]'::jsonb, lifecycle_status='inactive', blocked_reason='', operational_consent=false, marketing_consent=false, emergency_contact_name='', emergency_contact_phone='', guardian_client_id=NULL, guardian_relationship='', notes='', deleted_at=?, anonymized_at=?, updated_at=? WHERE id=?`,
           [
             `Cliente anonimizado #${id}`,
             `anonimizado-${id}`,
@@ -226,7 +266,7 @@ router.get(
     if (req.query.search) {
       const search = String(req.query.search).trim();
       const searchDigits = search.replace(/\D/g, "");
-      const textColumns = ["full_name", "social_name", "email", "instagram", "city", "address_line", "neighborhood"];
+      const textColumns = ["full_name", "social_name", "email", "instagram", "city", "address_line", "neighborhood", "acquisition_source", "CAST(tags AS TEXT)"];
       const matches = textColumns.map((column) => `${column} ILIKE ?`);
       params.push(...Array(textColumns.length).fill(`%${search}%`));
       if (searchDigits) {
@@ -238,6 +278,10 @@ router.get(
       clauses.push(`(${matches.join(" OR ")})`);
     }
     clauses.unshift("deleted_at IS NULL");
+    if (req.query.status && ["active", "inactive", "blocked"].includes(String(req.query.status))) {
+      clauses.push("lifecycle_status=?");
+      params.push(String(req.query.status));
+    }
     const where = `WHERE ${clauses.join(" AND ")}`;
     const paging = parsePaging(req.query, {
       sortable: CLIENT_SORTABLE,
