@@ -16,8 +16,33 @@ function title(type) {
   return getReportDefinition(type)?.label || `Relatório ${String(type || "").replaceAll("_", " ")}`;
 }
 
-const FINANCIAL_TYPES = new Set(["financial", "payments", "commissions"]);
+const FINANCIAL_TYPES = new Set(["financial", "payables", "receivables", "purchases", "payments", "commissions"]);
 const OWN_REPORT_TYPES = new Set(["appointments", "cancellations", "services", "professionals", "commissions"]);
+
+const VALUE_LABELS = Object.freeze({
+  active: "Ativo", inactive: "Inativo", approved: "Aprovado", review: "Em análise", blocked: "Bloqueado",
+  draft: "Rascunho", confirmed: "Confirmada", cancelled: "Cancelada", pending: "Pendente", paid: "Pago",
+  partially_paid: "Parcialmente pago", overdue: "Vencido", canceled: "Cancelado", refunded: "Estornado",
+  product: "Produto/joia", consumable: "Material de consumo", expired: "Vencido", expiring: "Próximo do vencimento",
+  exhausted: "Esgotado", available: "Disponível", info: "Informativa", warning: "Atenção", critical: "Crítica",
+  payable: "A pagar", receivable: "A receber", income: "Receita", expense: "Despesa"
+});
+
+function exportColumns(report, definition) {
+  const available = report.rows.length ? Object.keys(report.rows[0]) : (definition?.columns || []).map(({ key }) => key);
+  const declared = new Map((definition?.columns || []).map((column) => [column.key, column]));
+  return available.map((key) => ({ key, label: declared.get(key)?.label || String(key).replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase()), kind: declared.get(key)?.kind }));
+}
+
+function exportValue(column, value) {
+  if (value === null || value === undefined || value === "") return "";
+  if (column.kind === "boolean" || typeof value === "boolean") return value === true || value === 1 ? "Sim" : "Não";
+  if (column.kind === "date") {
+    const date = new Date(`${String(value).slice(0, 10)}T12:00:00`);
+    if (!Number.isNaN(date.getTime())) return date.toLocaleDateString("pt-BR");
+  }
+  return VALUE_LABELS[String(value)] || value;
+}
 
 function reportPermission(req, type) {
   return FINANCIAL_TYPES.has(type)
@@ -49,13 +74,15 @@ router.get("/api/reports/:type", withFeature("basic_reports", async (req, res, d
     filters.professional_id = req.user.professional_id;
   }
   try {
-    const report = await buildReport(db, req.params.type, filters);
     const format = String(req.query.format || "json");
     if (!["json", "csv", "xlsx", "pdf", "txt"].includes(format)) return res.status(400).json({ error: "Formato de relatório inválido." });
-    const columns = report.rows.length ? Object.keys(report.rows[0]) : [];
+    filters.paginated = format === "json";
+    const report = await buildReport(db, req.params.type, filters);
+    const definition = getReportDefinition(req.params.type);
+    const columns = exportColumns(report, definition);
     if (format === "csv" || format === "txt") {
       const separator = format === "csv" ? "," : "\t";
-      const content = [columns.join(separator), ...report.rows.map((row) => columns.map((key) => csvEscape(row[key])).join(separator))].join("\n");
+      const content = [columns.map(({ label }) => csvEscape(label)).join(separator), ...report.rows.map((row) => columns.map((column) => csvEscape(exportValue(column, row[column.key]))).join(separator))].join("\n");
       res.header("Content-Type", format === "csv" ? "text/csv; charset=utf-8" : "text/plain; charset=utf-8");
       res.attachment(`${req.params.type}-${report.from}-${report.to}.${format}`);
       await recordAudit(db, { req, module: "reports", action: "export", entityType: "report", entityId: req.params.type, metadata: { format, filters, row_count: report.total_rows } });
@@ -64,8 +91,8 @@ router.get("/api/reports/:type", withFeature("basic_reports", async (req, res, d
     if (format === "xlsx") {
       const workbook = new ExcelJS.Workbook();
       const sheet = workbook.addWorksheet("Relatório");
-      sheet.columns = columns.map((key) => ({ header: key, key, width: 22 }));
-      sheet.addRows(report.rows);
+      sheet.columns = columns.map(({ key, label }) => ({ header: label, key, width: 22 }));
+      sheet.addRows(report.rows.map((row) => Object.fromEntries(columns.map((column) => [column.key, exportValue(column, row[column.key])]))));
       res.header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.attachment(`${req.params.type}-${report.from}-${report.to}.xlsx`);
       await recordAudit(db, { req, module: "reports", action: "export", entityType: "report", entityId: req.params.type, metadata: { format, filters, row_count: report.total_rows } });
@@ -80,7 +107,7 @@ router.get("/api/reports/:type", withFeature("basic_reports", async (req, res, d
       doc.fontSize(18).text(title(req.params.type));
       doc.fontSize(9).text(`${report.from} a ${report.to} · ${report.total_rows} registro(s)`).moveDown();
       report.rows.forEach((row) => {
-        doc.fontSize(7).text(columns.map((key) => `${key}: ${row[key] ?? ""}`).join(" | "));
+        doc.fontSize(7).text(columns.map((column) => `${column.label}: ${exportValue(column, row[column.key])}`).join(" | "));
       });
       await recordAudit(db, { req, module: "reports", action: "export", entityType: "report", entityId: req.params.type, metadata: { format, filters, row_count: report.total_rows } });
       doc.end();
