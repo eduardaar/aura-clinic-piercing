@@ -56,7 +56,7 @@ export function splitInstallmentCents(totalCents, count) {
   return Array.from({ length: installments }, (_, index) => base + (index < remainder ? 1 : 0));
 }
 
-function normalizePurchase(body = {}, idempotencyKey = "") {
+export function normalizePurchase(body = {}, idempotencyKey = "") {
   const items = Array.isArray(body.items) ? body.items : [];
   if (!items.length) throw new PurchaseValidationError("Adicione ao menos um item à compra.");
   const seenTargets = new Set();
@@ -69,16 +69,27 @@ function normalizePurchase(body = {}, idempotencyKey = "") {
     if (unitCostCents <= 0) throw new PurchaseValidationError(`Custo unitário do item ${index + 1} deve ser maior que zero.`);
     const lineTotalCents = unitCostCents * quantity;
     if (!Number.isSafeInteger(lineTotalCents)) throw new PurchaseValidationError(`Total do item ${index + 1} fora do limite permitido.`);
+    const newInventoryItem = item.new_inventory_item && typeof item.new_inventory_item === "object"
+      ? {
+        name: String(item.new_inventory_item.name || "").trim(),
+        kind: item.new_inventory_item.kind === "consumable" ? "consumable" : "product",
+        gtin: String(item.new_inventory_item.gtin || "").trim(),
+        supplier_item_code: String(item.new_inventory_item.supplier_item_code || "").trim(),
+        stock_unit: String(item.new_inventory_item.stock_unit || "unidade").trim() || "unidade"
+      }
+      : null;
+    if (newInventoryItem && !newInventoryItem.name) throw new PurchaseValidationError(`Informe o nome do novo item ${index + 1}.`);
     const itemType = "product";
-    const productId = requiredId(item.product_id ?? item.inventory_item_id, `Item de estoque ${index + 1}`);
+    const productId = newInventoryItem ? null : requiredId(item.product_id ?? item.inventory_item_id, `Item de estoque ${index + 1}`);
     const productVariantId = item.product_variant_id ? requiredId(item.product_variant_id, `Variação do item ${index + 1}`) : null;
-    const target = `product:${productId}:${productVariantId || 0}`;
+    const target = newInventoryItem ? `new:${index}` : `product:${productId}:${productVariantId || 0}`;
     if (seenTargets.has(target)) throw new PurchaseValidationError(`O item ${index + 1} repete o mesmo item/variação na compra.`);
     seenTargets.add(target);
     return {
       item_type: itemType,
       product_id: productId,
       product_variant_id: productVariantId,
+      new_inventory_item: newInventoryItem,
       quantity,
       unit_cost_cents: unitCostCents,
       line_total_cents: lineTotalCents,
@@ -126,6 +137,30 @@ function normalizePurchase(body = {}, idempotencyKey = "") {
     discount_cents: discountCents,
     total_cents: totalCents
   };
+}
+
+async function createMissingInventoryItems(tx, purchase) {
+  for (const item of purchase.items) {
+    const draft = item.new_inventory_item;
+    if (!draft) continue;
+    const consumable = draft.kind === "consumable";
+    const inserted = await tx.run(`
+      INSERT INTO jewelry_inventory
+        (name,description,category,material,color,quantity,cost_value,sale_value,supplier_id,
+         gtin,supplier_item_code,stock_unit,purchase_unit,consumption_unit,
+         can_sell,can_use_in_service,track_stock,track_lots,can_publish,is_catalog_active,is_published,notes)
+      VALUES (?,?,?,?,?,0,0,0,?,?,?,?,?,?,?,?,true,?,?,0,0,?) RETURNING id
+    `, [
+      draft.name, "Item criado durante a conferência da NF-e",
+      consumable ? "Material de consumo" : "Produto/joia", "Não informado", "Não informado",
+      purchase.supplier_id, draft.gtin || null, draft.supplier_item_code || null,
+      draft.stock_unit, draft.stock_unit, draft.stock_unit,
+      !consumable, consumable, consumable, false,
+      `Origem: NF-e. Revise o cadastro antes de publicar ou vender.`
+    ]);
+    item.product_id = inserted.returnedId;
+    item.product_variant_id = null;
+  }
 }
 
 export async function getPurchase(db, id) {
@@ -346,6 +381,7 @@ export async function createPurchase(db, body, { idempotencyKey = "", userId = n
 
   try {
     const result = await db.transaction(async (tx) => {
+      await createMissingInventoryItems(tx, purchase);
       await validatePurchaseReferences(tx, purchase);
       const inserted = await tx.run(`
         INSERT INTO purchase_orders

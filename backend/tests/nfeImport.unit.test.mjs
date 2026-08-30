@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { NfeImportError, parseNfeXml, previewNfeImport } from "../src/services/nfeImport.js";
+import { normalizePurchase } from "../src/services/purchases.js";
 
 const KEY = "35260812345678000123550010000001231000001234";
 
@@ -43,4 +44,34 @@ test("prévia localiza fornecedor e item sem gravar dados", async () => {
   assert.equal(preview.requires_review, false);
   assert.equal(writes, 0);
   assert.equal(Object.hasOwn(preview, "xml"), false);
+});
+
+test("compra aceita cadastrar item novo somente dentro da confirmação fiscal", () => {
+  const purchase = normalizePurchase({
+    supplier_id: 7,
+    purchase_date: "2026-08-30",
+    first_due_date: "2026-09-30",
+    installment_count: 1,
+    payment_method: "Pix",
+    items: [{
+      quantity: 10,
+      unit_cost: "2.50",
+      new_inventory_item: {
+        name: "Agulha importada",
+        kind: "consumable",
+        gtin: "7891234567890",
+        supplier_item_code: "AG-01",
+        stock_unit: "UN"
+      }
+    }]
+  }, "nfe-new-item-test");
+  assert.equal(purchase.items[0].product_id, null);
+  assert.deepEqual(purchase.items[0].new_inventory_item, {
+    name: "Agulha importada",
+    kind: "consumable",
+    gtin: "7891234567890",
+    supplier_item_code: "AG-01",
+    stock_unit: "UN"
+  });
+  assert.equal(purchase.total_cents, 2500);
 });

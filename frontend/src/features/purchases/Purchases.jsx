@@ -263,10 +263,11 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
     const grouped = new Map();
     for (const imported of selected) {
       const [itemType, rawId, rawVariantId] = imported.selected_target.split(":");
+      const isNewItem = itemType === "new";
       const product = itemType === "product" ? safeProducts.find((item) => String(item.id) === rawId) : null;
       const variant = product ? asArray(product.variants).find((item) => String(item.id) === rawVariantId && rawVariantId !== "0") : null;
       const consumable = itemType === "consumable" ? safeConsumables.find((item) => String(item.id) === rawId) : null;
-      if (!product && !consumable) return setError(`Revise a associação de ${imported.name}.`);
+      if (!product && !consumable && !isNewItem) return setError(`Revise a associação de ${imported.name}.`);
       const quantity = Number(imported.quantity);
       const lineValue = quantity * asNumber(imported.unit_cost);
       const current = grouped.get(imported.selected_target);
@@ -278,11 +279,18 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
       }
       grouped.set(imported.selected_target, {
         row_key: crypto.randomUUID?.() || `nfe-${Date.now()}-${imported.line_number}`,
-        item_type: itemType,
-        product_id: product ? Number(product.id) : Number(consumable.id),
+        item_type: isNewItem ? rawId : itemType,
+        product_id: product ? Number(product.id) : (consumable ? Number(consumable.id) : null),
         consumable_id: consumable ? Number(consumable.id) : null,
         product_variant_id: variant ? Number(variant.id) : null,
-        item_name: consumable?.name || (variant ? `${product.name} - ${variant.variation_name || variant.sku}` : product.name),
+        item_name: isNewItem ? imported.name : (consumable?.name || (variant ? `${product.name} - ${variant.variation_name || variant.sku}` : product.name)),
+        new_inventory_item: isNewItem ? {
+          name: imported.name,
+          kind: rawId,
+          gtin: imported.gtin || "",
+          supplier_item_code: imported.supplier_code || "",
+          stock_unit: imported.unit || "unidade",
+        } : undefined,
         quantity,
         unit_cost: asNumber(imported.unit_cost),
         batch_code: imported.batch_code || "",
@@ -482,6 +490,8 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
                           <Select ariaLabel={`Associar ${imported.name}`} value={imported.selected_target} onChange={(selected_target) => setNfePreview((current) => ({ ...current, items: current.items.map((item, itemIndex) => itemIndex === index ? { ...item, selected_target } : item) }))}>
                             <option value="">Selecione o item</option>
                             <option value="ignore">Ignorar esta linha</option>
+                            <option value={`new:product:${imported.line_number}`}>Cadastrar novo produto/joia</option>
+                            <option value={`new:consumable:${imported.line_number}`}>Cadastrar novo material de consumo</option>
                             {safeProducts.flatMap((product) => {
                               const productVariants = asArray(product.variants).filter((variant) => Number(variant.is_active ?? 1));
                               return productVariants.length
