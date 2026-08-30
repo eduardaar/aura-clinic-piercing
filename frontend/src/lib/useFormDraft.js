@@ -67,12 +67,12 @@ export function useFormDraft({
   userId,
   formId,
   value,
-  onRestore,
-  schemaKey,
-  version,
+  onRestore = undefined,
+  schemaKey = undefined,
+  version = undefined,
   debounceMs = 600,
   enabled = true,
-  storage,
+  storage = undefined,
 }) {
   const resolvedSchemaKey = String(schemaKey ?? version ?? "1");
   const activeStorage = storage === undefined ? defaultStorage() : storage;

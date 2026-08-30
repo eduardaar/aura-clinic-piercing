@@ -1,14 +1,29 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useState } from "react";
 import { FileSignature, HeartPulse } from "lucide-react";
-import { Button, Input, SecureImage, Select, StatusBadge, Textarea } from "../../components/common/Ui";
+import { Button, Input, SecureImage, Select, StatusBadge, Tabs, Textarea } from "../../components/common/Ui";
 import { ConfirmDeleteModal, Modal, CrudHeader, RowActions } from "../../components/common/Crud";
 import { DataView, MONTH_OPTIONS } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
+import { AdvancedFields, FormSection, FormWorkflow, ValidationSummary } from "../../components/common/FormWorkflow";
 import { asArray, dateInputValue, formatDate, formatLongDate } from "../../lib/utils";
-import { apiFetch, readStoredSession, useApiInvalidate, useFetch } from "../../lib/api";
+import { apiFetch, readStoredSession, tenantSlug, useApiInvalidate, useFetch } from "../../lib/api";
+import {
+  BRAZIL_STATE_OPTIONS,
+  formatBrazilianPhone,
+  formatCep,
+  formatCpf,
+  normalizeEmailInput,
+  normalizeInstagramInput,
+  validateClientForm,
+} from "../../lib/clientFields";
+import { useFormDraft } from "../../lib/useFormDraft";
 import { defaultMedicalRecord } from "../../lib/defaultForms";
 import { currency, personName, whatsappUrl } from "../../features/shared/helpers";
+import "./clients.css";
+
+const TermsIcon = ({ size }) => <FileSignature size={size} />;
+const PostCareIcon = ({ size }) => <HeartPulse size={size} />;
 
 export function ClientWorkspace({ onNavigate }) {
   return <ClientsMedical onNavigate={onNavigate} />;
@@ -48,7 +63,14 @@ export function ClientsMedical({ onNavigate }) {
     const response = await apiFetch(`/clients/${client.id}/deletion-impact`);
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) return setError(payload.error || "Não foi possível analisar o cadastro.");
-    setDeleting({ client, impact: payload.impact || {}, action: payload.action, confirmation: "", reason: "", busy: false });
+    setDeleting({
+      client,
+      impact: payload.impact || {},
+      action: payload.action,
+      confirmation: "",
+      reason: "",
+      busy: false,
+    });
   }
 
   async function removeClient() {
@@ -56,7 +78,10 @@ export function ClientsMedical({ onNavigate }) {
     if (!client) return;
     setDeleting({ ...deleting, busy: true });
     setError("");
-    const response = await apiFetch(`/clients/${client.id}`, { method: "DELETE", body: JSON.stringify({ confirmation: deleting.confirmation, reason: deleting.reason }) });
+    const response = await apiFetch(`/clients/${client.id}`, {
+      method: "DELETE",
+      body: JSON.stringify({ confirmation: deleting.confirmation, reason: deleting.reason }),
+    });
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
       setError(payload.error || "Não foi possível excluir o cliente.");
@@ -78,8 +103,8 @@ export function ClientsMedical({ onNavigate }) {
           title="Clientes"
           subtitle="Base de clientes da Aura Clinic"
           actions={[
-            { label: "Termos digitais", icon: FileSignature, onClick: () => onNavigate?.("terms") },
-            { label: "Pós-atendimento", icon: HeartPulse, onClick: () => onNavigate?.("postcare") }
+            { label: "Termos digitais", icon: TermsIcon, onClick: () => onNavigate?.("terms") },
+            { label: "Pós-atendimento", icon: PostCareIcon, onClick: () => onNavigate?.("postcare") },
           ]}
           actionLabel="Novo cliente"
           onAction={openNew}
@@ -88,7 +113,7 @@ export function ClientsMedical({ onNavigate }) {
         <DataView
           rows={clients}
           defaultSort={{ key: "full_name", dir: "asc" }}
-          searchPlaceholder="Buscar por nome, WhatsApp, Instagram, e-mail ou telefone"
+          searchPlaceholder="Buscar por nome, CPF, telefone, e-mail ou Instagram"
           filters={[
             {
               key: "contato",
@@ -116,27 +141,58 @@ export function ClientsMedical({ onNavigate }) {
             },
           ]}
           columns={[
-            { key: "full_name", label: "Nome", value: (client) => personName(client), render: (client) => personName(client) },
-            { key: "whatsapp", label: "WhatsApp", render: (client) => client.whatsapp || "—" },
+            {
+              key: "full_name",
+              label: "Cliente",
+              value: (client) =>
+                `${client.full_name || ""} ${client.social_name || ""} ${client.cpf || ""} ${formatCpf(client.cpf)}`,
+              render: (client) => (
+                <span className="client-list-name">
+                  <strong>{client.social_name || personName(client)}</strong>
+                  {client.social_name && <small>{client.full_name}</small>}
+                </span>
+              ),
+            },
+            {
+              key: "whatsapp",
+              label: "WhatsApp",
+              value: (client) => client.whatsapp,
+              render: (client) => formatBrazilianPhone(client.whatsapp) || "—",
+            },
             { key: "instagram", label: "Instagram", render: (client) => client.instagram || "sem Instagram" },
             {
               key: "contact",
               label: "Contato",
-              value: (client) => `${client.phone || ""} ${client.email || ""}`,
+              value: (client) =>
+                `${client.phone || ""} ${formatBrazilianPhone(client.phone)} ${client.email || ""} ${client.postal_code || ""} ${formatCep(client.postal_code)}`,
               render: (client) => (
-                <span>{client.phone || "Sem telefone"} · {client.email || "Sem e-mail"}</span>
+                <span>
+                  {formatBrazilianPhone(client.phone) || "Sem telefone"} · {client.email || "Sem e-mail"}
+                </span>
               ),
             },
           ]}
           actions={(client) => (
-            <RowActions
-              actions={[
-                { label: "Ver perfil", onClick: () => setProfile(client), primary: true },
-                { label: "Editar", onClick: () => openEdit(client) },
-                { label: "WhatsApp", href: whatsappUrl(client.whatsapp, `Olá, ${personName(client)}, tudo bem? Aqui é da Aura Clinic. Estamos entrando em contato para confirmar informações, acompanhar seu atendimento ou informar uma atualização importante.`), target: "_blank", rel: "noreferrer" },
-                ...(isAdmin ? [{ label: "Excluir cliente", onClick: () => openDeletion(client), danger: true }] : []),
-              ]}
-            />
+            <div className="client-row-actions">
+              <Button variant="ghost" onClick={() => setProfile(client)}>
+                Ver perfil
+              </Button>
+              <RowActions
+                actions={[
+                  { label: "Editar", onClick: () => openEdit(client) },
+                  {
+                    label: "WhatsApp",
+                    href: whatsappUrl(
+                      client.whatsapp,
+                      `Olá, ${personName(client)}, tudo bem? Aqui é da Aura Clinic. Estamos entrando em contato para confirmar informações, acompanhar seu atendimento ou informar uma atualização importante.`,
+                    ),
+                    target: "_blank",
+                    rel: "noreferrer",
+                  },
+                  ...(isAdmin ? [{ label: "Excluir cliente", onClick: () => openDeletion(client), danger: true }] : []),
+                ]}
+              />
+            </div>
           )}
           empty="Você ainda não possui clientes cadastrados."
         />
@@ -147,12 +203,16 @@ export function ClientsMedical({ onNavigate }) {
         title={editing ? "Editar cliente" : "Novo cliente"}
         subtitle="Dados cadastrais do cliente"
         onClose={() => setModalOpen(false)}
-        footer={(
+        footer={
           <>
-            <Button type="button" variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>
-            <Button type="submit" form="client-form" variant="primary">{editing ? "Salvar alterações" : "Salvar cliente"}</Button>
+            <Button type="button" variant="secondary" onClick={() => setModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button type="submit" form="client-form" variant="primary">
+              {editing ? "Salvar alterações" : "Salvar cliente"}
+            </Button>
           </>
-        )}
+        }
       >
         <ClientEditForm
           key={editing ? editing.id : "new"}
@@ -166,18 +226,83 @@ export function ClientsMedical({ onNavigate }) {
         />
       </Modal>
 
-      <Modal open={!!deleting} title="Excluir cliente" subtitle="Análise segura do histórico" onClose={() => !deleting?.busy && setDeleting(null)} footer={<><Button variant="secondary" onClick={() => setDeleting(null)} disabled={deleting?.busy}>Cancelar</Button><Button variant="danger" onClick={removeClient} disabled={deleting?.busy || deleting?.confirmation !== "EXCLUIR CLIENTE" || !deleting?.reason?.trim()}>{deleting?.busy ? "Processando…" : deleting?.action === "anonymize" ? "Anonimizar e arquivar" : "Excluir definitivamente"}</Button></>}>
-        {deleting && <div className="stack">
-          <div className="soft-card"><strong>{personName(deleting.client)}</strong><p>{deleting.action === "anonymize" ? "Há histórico vinculado. Os dados pessoais serão anonimizados e o histórico financeiro/clínico será preservado." : "Não há histórico vinculado. O cadastro será excluído definitivamente."}</p></div>
-          <div className="summary-grid">{Object.entries(deleting.impact).map(([key, value]) => <span key={key}>{key.replaceAll("_", " ")}: <strong>{value}</strong></span>)}</div>
-          <Input label="Motivo obrigatório" value={deleting.reason} onChange={(reason) => setDeleting({ ...deleting, reason })} />
-          <Input label="Digite EXCLUIR CLIENTE" value={deleting.confirmation} onChange={(confirmation) => setDeleting({ ...deleting, confirmation })} />
-        </div>}
+      <Modal
+        open={!!deleting}
+        title="Excluir cliente"
+        subtitle="Análise segura do histórico"
+        onClose={() => !deleting?.busy && setDeleting(null)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDeleting(null)} disabled={deleting?.busy}>
+              Cancelar
+            </Button>
+            <Button
+              variant="danger"
+              onClick={removeClient}
+              disabled={deleting?.busy || deleting?.confirmation !== "EXCLUIR CLIENTE" || !deleting?.reason?.trim()}
+            >
+              {deleting?.busy
+                ? "Processando…"
+                : deleting?.action === "anonymize"
+                  ? "Anonimizar e arquivar"
+                  : "Excluir definitivamente"}
+            </Button>
+          </>
+        }
+      >
+        {deleting && (
+          <div className="stack">
+            <div className="soft-card">
+              <strong>{personName(deleting.client)}</strong>
+              <p>
+                {deleting.action === "anonymize"
+                  ? "Há histórico vinculado. Os dados pessoais serão anonimizados e o histórico financeiro/clínico será preservado."
+                  : "Não há histórico vinculado. O cadastro será excluído definitivamente."}
+              </p>
+            </div>
+            <div className="summary-grid">
+              {Object.entries(deleting.impact).map(([key, value]) => (
+                <span key={key}>
+                  {key.replaceAll("_", " ")}: <strong>{value}</strong>
+                </span>
+              ))}
+            </div>
+            <Input
+              label="Motivo obrigatório"
+              value={deleting.reason}
+              onChange={(reason) => setDeleting({ ...deleting, reason })}
+            />
+            <Input
+              label="Digite EXCLUIR CLIENTE"
+              value={deleting.confirmation}
+              onChange={(confirmation) => setDeleting({ ...deleting, confirmation })}
+            />
+          </div>
+        )}
       </Modal>
       {profile && (
-        <Modal open title={personName(profile)} subtitle="Timeline, histórico clínico e relacionamento" size="lg" onClose={() => setProfile(null)}
-          footer={<Button variant="secondary" onClick={() => setProfile(null)}>Fechar</Button>}>
-          <ClientProfileLoader clientId={profile.id} fallback={profile} onChanged={refresh} />
+        <Modal
+          open
+          title={personName(profile)}
+          subtitle="Timeline, histórico clínico e relacionamento"
+          size="lg"
+          onClose={() => setProfile(null)}
+          footer={
+            <Button variant="secondary" onClick={() => setProfile(null)}>
+              Fechar
+            </Button>
+          }
+        >
+          <ClientProfileLoader
+            clientId={profile.id}
+            fallback={profile}
+            onChanged={refresh}
+            onNavigate={onNavigate}
+            onEdit={() => {
+              setProfile(null);
+              openEdit(profile);
+            }}
+          />
         </Modal>
       )}
     </section>
@@ -187,94 +312,515 @@ export function ClientsMedical({ onNavigate }) {
 // A lista de clientes é enxuta (só as colunas da tabela): histórico, pagamentos,
 // prontuários e fidelidade vêm de /clients/:id, sob demanda. Antes tudo isso
 // vinha embutido na listagem, que chegava a 845 KB.
-function ClientProfileLoader({ clientId, fallback, onChanged }) {
+function ClientProfileLoader({ clientId, fallback, onChanged, onNavigate, onEdit }) {
   const { data } = useFetch(`/clients/${clientId}`);
   if (!data) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
   // `onChanged` já invalida "/clients" inteiro — o detalhe recarrega junto.
-  return <ClientProfile client={{ ...fallback, ...data }} onChanged={() => onChanged?.()} />;
+  return (
+    <ClientProfile
+      client={{ ...fallback, ...data }}
+      onChanged={() => onChanged?.()}
+      onNavigate={onNavigate}
+      onEdit={onEdit}
+    />
+  );
 }
 
-function ClientProfile({ client, onChanged }) {
+function ClientProfile({ client, onChanged, onNavigate, onEdit }) {
+  const [tab, setTab] = useState("data");
   const timeline = asArray(client.timeline);
-  const paid = asArray(client.payments).filter((item) => item.status === "pago").reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const paid = Number(client.summary?.total_spent || 0);
+  const pending = Number(client.summary?.pending_amount || 0);
   const { data: creditsData } = useFetch(`/clients/${client.id}/credits`);
   const availableCredit = Number(creditsData?.open_amount || 0);
+  const lastAppointment = client.summary?.last_appointment;
+  const nextAppointment = client.summary?.next_appointment;
   return (
-    <div className="stack">
-      <div className="metric-grid">
-        <article className="metric-card"><span>Atendimentos</span><strong>{asArray(client.history).length}</strong></article>
-        <article className="metric-card"><span>Total pago</span><strong>{currency.format(paid)}</strong></article>
-        <article className="metric-card"><span>Termos</span><strong>{asArray(client.terms).length}</strong></article>
-        <article className="metric-card"><span>Retornos</span><strong>{asArray(client.followups).length}</strong></article>
-        <article className="metric-card"><span>Fidelidade</span><strong>{client.loyalty?.availablePoints || 0} pts</strong></article>
-        <article className="metric-card"><span>Crédito disponível</span><strong>{currency.format(availableCredit)}</strong></article>
+    <div className="stack client-360">
+      <div className="client-360-metrics">
+        <article>
+          <span>Último atendimento</span>
+          <strong>{lastAppointment ? formatDate(lastAppointment.appointment_date) : "Nenhum"}</strong>
+        </article>
+        <article>
+          <span>Próximo atendimento</span>
+          <strong>
+            {nextAppointment
+              ? `${formatDate(nextAppointment.appointment_date)} às ${nextAppointment.appointment_time}`
+              : "Não agendado"}
+          </strong>
+        </article>
+        <article>
+          <span>Total gasto</span>
+          <strong>{currency.format(paid)}</strong>
+        </article>
+        <article>
+          <span>Pendências</span>
+          <strong>{currency.format(pending)}</strong>
+        </article>
       </div>
-      <section className="detail-card">
-        <h3>Preferências e observações</h3>
-        <p>{client.notes || "Nenhuma observação cadastrada."}</p>
-        <small>{client.whatsapp} · {client.email || "sem e-mail"} · {client.instagram || "sem Instagram"}</small>
-      </section>
-      {availableCredit > 0 && <section className="detail-card"><h3>Crédito do cliente</h3><p>{currency.format(availableCredit)} disponível para aplicar em um novo atendimento ou venda.</p></section>}
-      <section className="detail-card">
-        <h3>Timeline completa</h3>
-        <div className="medical-timeline">
-          {timeline.map((item, index) => (
-            <article className="record-entry" key={`${item.type}-${item.date}-${index}`}>
-              <header><div><strong>{item.title}</strong><span>{formatLongDate(String(item.date || "").slice(0, 10))} · {item.type}</span></div><StatusBadge status={item.status}>{item.status}</StatusBadge></header>
-              {item.value !== undefined && <small>{currency.format(Number(item.value || 0))}</small>}
-            </article>
-          ))}
-          {!timeline.length && <p className="empty-state">Nenhum evento registrado para esta cliente.</p>}
-        </div>
-      </section>
-      <MedicalRecordForm client={client} onSaved={onChanged} />
-      <MedicalRecordTimeline client={client} onChanged={onChanged} />
+
+      <Tabs value={tab} onValueChange={setTab}>
+        <Tabs.List className="client-360-tabs" aria-label="Perfil do cliente">
+          <Tabs.Trigger value="data">Dados</Tabs.Trigger>
+          <Tabs.Trigger value="history">Histórico e atendimentos</Tabs.Trigger>
+          <Tabs.Trigger value="terms">Termos digitais</Tabs.Trigger>
+          <Tabs.Trigger value="postcare">Pós-atendimento</Tabs.Trigger>
+        </Tabs.List>
+
+        <Tabs.Content value="data">
+          <section className="client-360-panel">
+            <header>
+              <div>
+                <h3>Dados do cliente</h3>
+                <p>Cadastro, contato e preferências.</p>
+              </div>
+              <Button variant="secondary" onClick={onEdit}>
+                Editar dados
+              </Button>
+            </header>
+            <dl className="client-360-details">
+              <div>
+                <dt>Nome civil</dt>
+                <dd>{client.full_name}</dd>
+              </div>
+              <div>
+                <dt>Nome social</dt>
+                <dd>{client.social_name || "Não informado"}</dd>
+              </div>
+              <div>
+                <dt>Nascimento</dt>
+                <dd>{client.birth_date ? formatDate(client.birth_date) : "Não informado"}</dd>
+              </div>
+              <div>
+                <dt>CPF</dt>
+                <dd>{formatCpf(client.cpf) || "Não informado"}</dd>
+              </div>
+              <div>
+                <dt>WhatsApp</dt>
+                <dd>{formatBrazilianPhone(client.whatsapp)}</dd>
+              </div>
+              <div>
+                <dt>Telefone</dt>
+                <dd>{formatBrazilianPhone(client.phone) || "Não informado"}</dd>
+              </div>
+              <div>
+                <dt>E-mail</dt>
+                <dd>{client.email || "Não informado"}</dd>
+              </div>
+              <div>
+                <dt>Canal preferido</dt>
+                <dd>
+                  {{ whatsapp: "WhatsApp", email: "E-mail", phone: "Telefone" }[client.preferred_contact] || "WhatsApp"}
+                </dd>
+              </div>
+              <div>
+                <dt>Instagram</dt>
+                <dd>{client.instagram || "Não informado"}</dd>
+              </div>
+              <div>
+                <dt>Endereço</dt>
+                <dd>
+                  {[
+                    client.address_line,
+                    client.address_number,
+                    client.address_complement,
+                    client.neighborhood,
+                    client.city,
+                    client.state,
+                  ]
+                    .filter(Boolean)
+                    .join(", ") || "Não informado"}
+                  {client.postal_code ? ` · CEP ${formatCep(client.postal_code)}` : ""}
+                </dd>
+              </div>
+              <div className="client-360-details-wide">
+                <dt>Observações</dt>
+                <dd>{client.notes || "Nenhuma observação cadastrada."}</dd>
+              </div>
+              <div>
+                <dt>Cadastrado em</dt>
+                <dd>{client.created_at ? formatLongDate(String(client.created_at).slice(0, 10)) : "Não informado"}</dd>
+              </div>
+            </dl>
+            {(availableCredit > 0 || client.loyalty?.availablePoints > 0) && (
+              <div className="client-360-balance">
+                <span>
+                  Crédito: <strong>{currency.format(availableCredit)}</strong>
+                </span>
+                <span>
+                  Fidelidade: <strong>{client.loyalty?.availablePoints || 0} pts</strong>
+                </span>
+              </div>
+            )}
+          </section>
+        </Tabs.Content>
+
+        <Tabs.Content value="history">
+          <section className="client-360-panel">
+            <h3>Linha do tempo</h3>
+            <div className="medical-timeline">
+              {timeline.map((item) => (
+                <article className="record-entry" key={`${item.type}-${item.date}-${item.title}`}>
+                  <header>
+                    <div>
+                      <strong>{item.title}</strong>
+                      <span>
+                        {formatLongDate(String(item.date || "").slice(0, 10))} · {item.type}
+                      </span>
+                    </div>
+                    <StatusBadge status={item.status}>{item.status}</StatusBadge>
+                  </header>
+                  {item.value !== undefined && <small>{currency.format(Number(item.value || 0))}</small>}
+                </article>
+              ))}
+              {!timeline.length && <p className="empty-state">Nenhum evento registrado para este cliente.</p>}
+            </div>
+          </section>
+          {client.clinical_access ? (
+            <>
+              <MedicalRecordForm client={client} onSaved={onChanged} />
+              <MedicalRecordTimeline client={client} onChanged={onChanged} />
+            </>
+          ) : (
+            <p className="empty-state">Seu perfil não possui acesso ao prontuário clínico.</p>
+          )}
+        </Tabs.Content>
+
+        <Tabs.Content value="terms">
+          <section className="client-360-panel">
+            <header>
+              <div>
+                <h3>Termos digitais</h3>
+                <p>Histórico de documentos assinados.</p>
+              </div>
+              {client.clinical_access && (
+                <Button variant="secondary" onClick={() => onNavigate?.("terms")}>
+                  Abrir termos
+                </Button>
+              )}
+            </header>
+            {!client.clinical_access ? (
+              <p className="empty-state">Seu perfil não possui acesso aos termos clínicos.</p>
+            ) : (
+              <div className="client-360-list">
+                {asArray(client.terms).map((term) => (
+                  <article key={term.id}>
+                    <div>
+                      <strong>{term.procedure || "Termo de consentimento"}</strong>
+                      <span>{term.piercing_region || "Região não informada"}</span>
+                    </div>
+                    <small>{formatLongDate(String(term.signed_at || "").slice(0, 10))}</small>
+                  </article>
+                ))}
+                {!asArray(client.terms).length && <p className="empty-state">Nenhum termo digital assinado.</p>}
+              </div>
+            )}
+          </section>
+        </Tabs.Content>
+
+        <Tabs.Content value="postcare">
+          <section className="client-360-panel">
+            <header>
+              <div>
+                <h3>Pós-atendimento</h3>
+                <p>Acompanhamentos e evolução de cicatrização.</p>
+              </div>
+              {client.clinical_access && (
+                <Button variant="secondary" onClick={() => onNavigate?.("postcare")}>
+                  Abrir pós-atendimento
+                </Button>
+              )}
+            </header>
+            {!client.clinical_access ? (
+              <p className="empty-state">Seu perfil não possui acesso ao pós-atendimento clínico.</p>
+            ) : (
+              <div className="client-360-list">
+                {asArray(client.followups).map((followup) => (
+                  <article key={followup.id}>
+                    <div>
+                      <strong>Retorno de {followup.reminder_day} dias</strong>
+                      <span>{followup.healing_status || "Aguardando retorno"}</span>
+                    </div>
+                    <div>
+                      <StatusBadge status={followup.status}>{followup.status}</StatusBadge>
+                      <small>{formatDate(followup.due_date)}</small>
+                    </div>
+                  </article>
+                ))}
+                {!asArray(client.followups).length && <p className="empty-state">Nenhum acompanhamento programado.</p>}
+              </div>
+            )}
+          </section>
+        </Tabs.Content>
+      </Tabs>
     </div>
   );
 }
 
-export function ClientEditForm({ client, onSaved, onCancel, formId }) {
-  const [form, setForm] = useState({
+function initialClientForm(client) {
+  return {
     full_name: client?.full_name || "",
-    phone: client?.phone || "",
-    whatsapp: client?.whatsapp || "",
+    social_name: client?.social_name || "",
+    phone: formatBrazilianPhone(client?.phone),
+    whatsapp: formatBrazilianPhone(client?.whatsapp),
     instagram: client?.instagram || "",
     email: client?.email || "",
     birth_date: dateInputValue(client?.birth_date),
-    cpf: client?.cpf || "",
-    notes: client?.notes || ""
-  });
+    cpf: formatCpf(client?.cpf),
+    preferred_contact: client?.preferred_contact || "whatsapp",
+    postal_code: formatCep(client?.postal_code),
+    address_line: client?.address_line || "",
+    address_number: client?.address_number || "",
+    address_complement: client?.address_complement || "",
+    neighborhood: client?.neighborhood || "",
+    city: client?.city || "",
+    state: client?.state || "",
+    notes: client?.notes || "",
+  };
+}
+
+export function ClientEditForm({ client, onSaved, onCancel = () => {}, formId }) {
+  const [form, setForm] = useState(() => initialClientForm(client));
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState(/** @type {Record<string, string | undefined>} */ ({}));
+  const session = readStoredSession();
+  const draft = useFormDraft({
+    tenantId: tenantSlug(),
+    userId: session?.user?.id,
+    formId: `client:${client?.id || "new"}`,
+    schemaKey: "client-profile-v1",
+    value: form,
+    onRestore: setForm,
+  });
+
+  function change(field, value) {
+    setForm((current) => ({ ...current, [field]: value }));
+    if (fieldErrors[field]) setFieldErrors((current) => ({ ...current, [field]: undefined }));
+  }
 
   async function submit(event) {
     event.preventDefault();
     setError("");
+    const validation = validateClientForm(form);
+    setFieldErrors(validation);
+    if (Object.keys(validation).length) return;
     const response = await apiFetch(client?.id ? `/clients/${client.id}` : "/clients", {
       method: client?.id ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form)
+      body: JSON.stringify(form),
     });
-    if (!response.ok) return setError((await response.json()).error || "Não foi possível salvar o cliente.");
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      setFieldErrors(payload.field_errors || {});
+      return setError(payload.error || "Não foi possível salvar o cliente.");
+    }
+    draft.discardDraft();
     onSaved();
   }
 
   return (
     <form id={formId} className="client-edit-form" onSubmit={submit}>
-      <div className="form-grid">
-        <Input label="Nome" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} required />
-        <Input label="Telefone" value={form.phone} onChange={(value) => setForm({ ...form, phone: value })} />
-        <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => setForm({ ...form, whatsapp: value })} required />
-        <Input label="Instagram" value={form.instagram} onChange={(value) => setForm({ ...form, instagram: value })} />
-        <Input label="E-mail" value={form.email} onChange={(value) => setForm({ ...form, email: value })} />
-        <Input label="CPF" value={form.cpf} onChange={(value) => setForm({ ...form, cpf: value })} />
-        <Input type="date" label="Nascimento" value={form.birth_date} onChange={(value) => setForm({ ...form, birth_date: value })} />
-      </div>
-      <Textarea label="Observações importantes" value={form.notes} onChange={(notes) => setForm({ ...form, notes })} />
+      <FormWorkflow
+        title="Cadastro do cliente"
+        description="Dados brasileiros padronizados para contato e atendimento."
+        draft={draft}
+      >
+        {draft.hasDraft && (
+          <div className="client-draft-recovery" role="status">
+            <div>
+              <strong>Há um preenchimento não salvo.</strong>
+              <span>Restaure para continuar de onde parou ou descarte o rascunho.</span>
+            </div>
+            <Button variant="secondary" onClick={draft.restoreDraft}>
+              Restaurar
+            </Button>
+            <Button variant="ghost" onClick={draft.discardDraft}>
+              Descartar
+            </Button>
+          </div>
+        )}
+        <ValidationSummary
+          errors={Object.entries(fieldErrors)
+            .filter(([, message]) => message)
+            .map(([field, message]) => ({ field, message }))}
+          onErrorClick={(field) => {
+            const target = document.querySelector(`[name="${field}"]`);
+            if (target instanceof HTMLElement) target.focus();
+          }}
+        />
+        <FormSection
+          title="Dados principais"
+          description="Nome, nascimento e documento para identificar o cliente corretamente."
+        >
+          <div className="form-grid">
+            <Input
+              name="full_name"
+              label="Nome civil completo"
+              value={form.full_name}
+              onChange={(value) => change("full_name", value)}
+              required
+              aria-invalid={Boolean(fieldErrors.full_name)}
+            />
+            <Input
+              name="social_name"
+              label="Nome social"
+              value={form.social_name}
+              onChange={(value) => change("social_name", value)}
+              autoComplete="name"
+            />
+            <Input
+              name="birth_date"
+              type="date"
+              label="Nascimento"
+              value={form.birth_date}
+              onChange={(value) => change("birth_date", value)}
+              required
+              aria-invalid={Boolean(fieldErrors.birth_date)}
+            />
+            <Input
+              name="cpf"
+              label="CPF"
+              value={form.cpf}
+              onChange={(value) => change("cpf", formatCpf(value))}
+              inputMode="numeric"
+              maxLength={14}
+              placeholder="000.000.000-00"
+              aria-invalid={Boolean(fieldErrors.cpf)}
+            />
+          </div>
+        </FormSection>
+
+        <FormSection
+          title="Contato"
+          description="O canal preferido é apenas indicativo e não apaga os demais contatos."
+        >
+          <div className="form-grid">
+            <Input
+              name="whatsapp"
+              label="WhatsApp"
+              value={form.whatsapp}
+              onChange={(value) => change("whatsapp", formatBrazilianPhone(value))}
+              inputMode="tel"
+              maxLength={15}
+              placeholder="(11) 99999-9999"
+              required
+              aria-invalid={Boolean(fieldErrors.whatsapp)}
+            />
+            <Input
+              name="phone"
+              label="Telefone"
+              value={form.phone}
+              onChange={(value) => change("phone", formatBrazilianPhone(value))}
+              inputMode="tel"
+              maxLength={15}
+              placeholder="(11) 99999-9999"
+              aria-invalid={Boolean(fieldErrors.phone)}
+            />
+            <Input
+              name="email"
+              type="email"
+              label="E-mail"
+              value={form.email}
+              onChange={(value) => change("email", normalizeEmailInput(value))}
+              autoComplete="email"
+              aria-invalid={Boolean(fieldErrors.email)}
+            />
+            <Select
+              label="Canal preferido de contato"
+              value={form.preferred_contact}
+              onChange={(value) => change("preferred_contact", value)}
+            >
+              <option value="whatsapp">WhatsApp</option>
+              <option value="email">E-mail</option>
+              <option value="phone">Telefone</option>
+            </Select>
+          </div>
+        </FormSection>
+
+        <AdvancedFields
+          title="Endereço e dados adicionais"
+          description="Campos opcionais para entrega, documento fiscal ou relacionamento."
+        >
+          <div className="form-grid">
+            <Input
+              name="postal_code"
+              label="CEP"
+              value={form.postal_code}
+              onChange={(value) => change("postal_code", formatCep(value))}
+              inputMode="numeric"
+              maxLength={9}
+              placeholder="00000-000"
+              aria-invalid={Boolean(fieldErrors.postal_code)}
+            />
+            <Input
+              name="address_line"
+              label="Logradouro"
+              value={form.address_line}
+              onChange={(value) => change("address_line", value)}
+              autoComplete="address-line1"
+            />
+            <Input
+              name="address_number"
+              label="Número"
+              value={form.address_number}
+              onChange={(value) => change("address_number", value)}
+            />
+            <Input
+              name="address_complement"
+              label="Complemento"
+              value={form.address_complement}
+              onChange={(value) => change("address_complement", value)}
+              autoComplete="address-line2"
+            />
+            <Input
+              name="neighborhood"
+              label="Bairro"
+              value={form.neighborhood}
+              onChange={(value) => change("neighborhood", value)}
+            />
+            <Input
+              name="city"
+              label="Cidade"
+              value={form.city}
+              onChange={(value) => change("city", value)}
+              autoComplete="address-level2"
+            />
+            <Select label="UF" value={form.state} onChange={(value) => change("state", value)}>
+              <option value="">Selecione</option>
+              {BRAZIL_STATE_OPTIONS.map((state) => (
+                <option key={state} value={state}>
+                  {state}
+                </option>
+              ))}
+            </Select>
+            <Input
+              name="instagram"
+              label="Instagram"
+              value={form.instagram}
+              onChange={(value) => change("instagram", normalizeInstagramInput(value))}
+              placeholder="@usuario"
+            />
+          </div>
+        </AdvancedFields>
+
+        <FormSection title="Observações">
+          <Textarea
+            name="notes"
+            label="Observações"
+            value={form.notes}
+            onChange={(value) => change("notes", value)}
+            rows={4}
+          />
+        </FormSection>
+      </FormWorkflow>
       {error && <span className="form-error">{error}</span>}
       {!formId && (
         <div className="modal-actions">
-          <Button type="button" variant="secondary" onClick={onCancel}>Cancelar</Button>
+          <Button type="button" variant="secondary" onClick={onCancel}>
+            Cancelar
+          </Button>
           <Button variant="primary">Salvar cliente</Button>
         </div>
       )}
@@ -291,7 +837,9 @@ export function MedicalRecordForm({ client, onSaved }) {
     event.preventDefault();
     setError("");
     const formData = new FormData();
-    Object.entries(record).forEach(([key, value]) => formData.append(key, value));
+    Object.entries(record).forEach(([key, value]) => {
+      formData.append(key, value);
+    });
     if (files.before_photo) formData.append("before_photo", files.before_photo);
     if (files.after_photo) formData.append("after_photo", files.after_photo);
     const response = await apiFetch(`/clients/${client.id}/medical-records`, { method: "POST", body: formData });
@@ -306,27 +854,78 @@ export function MedicalRecordForm({ client, onSaved }) {
     <form className="medical-form" onSubmit={submit}>
       <h3>Novo registro de prontuário</h3>
       <div className="form-grid">
-        <Input type="date" label="Data do registro" value={record.record_date} onChange={(value) => setRecord({ ...record, record_date: value })} />
-        <Select label="Atendimento vinculado" value={record.appointment_id} onChange={(value) => setRecord({ ...record, appointment_id: value })}>
+        <Input
+          type="date"
+          label="Data do registro"
+          value={record.record_date}
+          onChange={(value) => setRecord({ ...record, record_date: value })}
+        />
+        <Select
+          label="Atendimento vinculado"
+          value={record.appointment_id}
+          onChange={(value) => setRecord({ ...record, appointment_id: value })}
+        >
           <option value="">Sem vínculo</option>
-          {asArray(client.history).map((item) => <option key={item.id} value={item.id}>{formatDate(item.appointment_date)} · {item.procedure}</option>)}
+          {asArray(client.history).map((item) => (
+            <option key={item.id} value={item.id}>
+              {formatDate(item.appointment_date)} · {item.procedure}
+            </option>
+          ))}
         </Select>
       </div>
-      <Textarea label="Histórico de perfurações" value={record.piercing_history} onChange={(piercing_history) => setRecord({ ...record, piercing_history })} />
-      <Textarea label="Joias usadas" value={record.jewelry_used} onChange={(jewelry_used) => setRecord({ ...record, jewelry_used })} />
+      <Textarea
+        label="Histórico de perfurações"
+        value={record.piercing_history}
+        onChange={(piercing_history) => setRecord({ ...record, piercing_history })}
+      />
+      <Textarea
+        label="Joias usadas"
+        value={record.jewelry_used}
+        onChange={(jewelry_used) => setRecord({ ...record, jewelry_used })}
+      />
       <div className="form-grid">
-        <label>Foto antes
-          <input type="file" accept="image/*" onChange={(event) => setFiles({ ...files, before_photo: event.target.files[0] })} />
+        <label>
+          Foto antes
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(event) => setFiles({ ...files, before_photo: event.target.files[0] })}
+          />
         </label>
-        <label>Foto depois
-          <input type="file" accept="image/*" onChange={(event) => setFiles({ ...files, after_photo: event.target.files[0] })} />
+        <label>
+          Foto depois
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(event) => setFiles({ ...files, after_photo: event.target.files[0] })}
+          />
         </label>
       </div>
-      <Textarea label="Intercorrências" value={record.occurrences} onChange={(occurrences) => setRecord({ ...record, occurrences })} />
-      <Textarea label="Orientações passadas" value={record.guidance} onChange={(guidance) => setRecord({ ...record, guidance })} />
-      <Textarea label="Alergias ou observações importantes" value={record.allergies_notes} onChange={(allergies_notes) => setRecord({ ...record, allergies_notes })} />
-      <Textarea label="Evolução da cicatrização" value={record.healing_evolution} onChange={(healing_evolution) => setRecord({ ...record, healing_evolution })} />
-      <Textarea label="Retornos realizados" value={record.returns_done} onChange={(returns_done) => setRecord({ ...record, returns_done })} />
+      <Textarea
+        label="Intercorrências"
+        value={record.occurrences}
+        onChange={(occurrences) => setRecord({ ...record, occurrences })}
+      />
+      <Textarea
+        label="Orientações passadas"
+        value={record.guidance}
+        onChange={(guidance) => setRecord({ ...record, guidance })}
+      />
+      <Textarea
+        label="Alergias ou observações importantes"
+        value={record.allergies_notes}
+        onChange={(allergies_notes) => setRecord({ ...record, allergies_notes })}
+      />
+      <Textarea
+        label="Evolução da cicatrização"
+        value={record.healing_evolution}
+        onChange={(healing_evolution) => setRecord({ ...record, healing_evolution })}
+      />
+      <Textarea
+        label="Retornos realizados"
+        value={record.returns_done}
+        onChange={(returns_done) => setRecord({ ...record, returns_done })}
+      />
       {error && <span className="form-error">{error}</span>}
       <Button variant="primary">Salvar prontuário</Button>
     </form>
@@ -345,47 +944,81 @@ export function MedicalRecordTimeline({ client, onChanged }) {
     <div className="medical-section">
       <h3>Prontuário individual</h3>
       <div className="medical-timeline">
-        {asArray(client.medicalRecords).length ? asArray(client.medicalRecords).map((record) => (
-          <article className="record-entry" key={record.id}>
-            <header>
-              <div>
-                <strong>{formatLongDate(record.record_date)}</strong>
-                <span>{record.procedure || "Registro avulso"} · {record.piercing_region || "sem região vinculada"}</span>
-              </div>
-              <Button variant="danger" onClick={() => setDeleting({ message: "Excluir este registro do prontuário?", run: () => remove(record.id) })}>Excluir</Button>
-            </header>
-            <div className="record-photos">
-              {record.before_photo_url && (
-  <figure>
-    <SecureImage src={record.before_photo_url} alt="Antes" />
-    <figcaption>Antes</figcaption>
-  </figure>
-)}
+        {asArray(client.medicalRecords).length ? (
+          asArray(client.medicalRecords).map((record) => (
+            <article className="record-entry" key={record.id}>
+              <header>
+                <div>
+                  <strong>{formatLongDate(record.record_date)}</strong>
+                  <span>
+                    {record.procedure || "Registro avulso"} · {record.piercing_region || "sem região vinculada"}
+                  </span>
+                </div>
+                <Button
+                  variant="danger"
+                  onClick={() =>
+                    setDeleting({ message: "Excluir este registro do prontuário?", run: () => remove(record.id) })
+                  }
+                >
+                  Excluir
+                </Button>
+              </header>
+              <div className="record-photos">
+                {record.before_photo_url && (
+                  <figure>
+                    <SecureImage src={record.before_photo_url} alt="Antes" />
+                    <figcaption>Antes</figcaption>
+                  </figure>
+                )}
 
-{record.after_photo_url && (
-  <figure>
-    <SecureImage src={record.after_photo_url} alt="Depois" />
-    <figcaption>Depois</figcaption>
-  </figure>
-)}
-            </div>
-            <dl className="record-details">
-              <div><dt>Joias usadas</dt><dd>{record.jewelry_used || record.appointment_jewelry || "Não informado"}</dd></div>
-              <div><dt>Intercorrências</dt><dd>{record.occurrences || "Sem intercorrências registradas"}</dd></div>
-              <div><dt>Orientações</dt><dd>{record.guidance || "Não informado"}</dd></div>
-              <div><dt>Alergias/observações</dt><dd>{record.allergies_notes || client.notes || "Não informado"}</dd></div>
-              <div><dt>Evolução</dt><dd>{record.healing_evolution || "Não informado"}</dd></div>
-              <div><dt>Retornos</dt><dd>{record.returns_done || "Não informado"}</dd></div>
-            </dl>
-          </article>
-        )) : <p className="empty-state">Nenhum registro de prontuário ainda.</p>}
+                {record.after_photo_url && (
+                  <figure>
+                    <SecureImage src={record.after_photo_url} alt="Depois" />
+                    <figcaption>Depois</figcaption>
+                  </figure>
+                )}
+              </div>
+              <dl className="record-details">
+                <div>
+                  <dt>Joias usadas</dt>
+                  <dd>{record.jewelry_used || record.appointment_jewelry || "Não informado"}</dd>
+                </div>
+                <div>
+                  <dt>Intercorrências</dt>
+                  <dd>{record.occurrences || "Sem intercorrências registradas"}</dd>
+                </div>
+                <div>
+                  <dt>Orientações</dt>
+                  <dd>{record.guidance || "Não informado"}</dd>
+                </div>
+                <div>
+                  <dt>Alergias/observações</dt>
+                  <dd>{record.allergies_notes || client.notes || "Não informado"}</dd>
+                </div>
+                <div>
+                  <dt>Evolução</dt>
+                  <dd>{record.healing_evolution || "Não informado"}</dd>
+                </div>
+                <div>
+                  <dt>Retornos</dt>
+                  <dd>{record.returns_done || "Não informado"}</dd>
+                </div>
+              </dl>
+            </article>
+          ))
+        ) : (
+          <p className="empty-state">Nenhum registro de prontuário ainda.</p>
+        )}
       </div>
 
       <ConfirmDeleteModal
         open={!!deleting}
         message={deleting?.message}
         onClose={() => setDeleting(null)}
-        onConfirm={async () => { await deleting.run(); setDeleting(null); }}
+        onConfirm={async () => {
+          await deleting.run();
+          setDeleting(null);
+        }}
       />
     </div>
   );

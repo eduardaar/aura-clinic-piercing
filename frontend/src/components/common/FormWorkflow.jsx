@@ -17,11 +17,11 @@ function formatSavedAt(savedAt) {
 /** Estrutura externa consistente para páginas e modais com formulários longos. */
 export function FormWorkflow({
   title,
-  description,
-  eyebrow,
-  actions,
-  draft,
-  children,
+  description = null,
+  eyebrow = null,
+  actions = null,
+  draft = null,
+  children = null,
   className = "",
   as: Component = "div",
   ...props
@@ -66,7 +66,7 @@ export function FormWorkflow({
 }
 
 /** Painel da etapa atual, utilizável também sem o invólucro FormWorkflow. */
-export function FormPage({ title, description, actions, children, className = "", ...props }) {
+export function FormPage({ title, description = null, actions = null, children = null, className = "", ...props }) {
   const headingId = React.useId();
   return (
     <section
@@ -91,7 +91,15 @@ export function FormPage({ title, description, actions, children, className = ""
 FormWorkflow.Page = FormPage;
 
 /** Agrupa campos relacionados e mantém instruções junto ao contexto. */
-export function FormSection({ title, description, badge, actions, children, className = "", ...props }) {
+export function FormSection({
+  title,
+  description = null,
+  badge = null,
+  actions = null,
+  children = null,
+  className = "",
+  ...props
+}) {
   const headingId = React.useId();
   return (
     <section
@@ -168,11 +176,11 @@ export function StepNavigator({
 export function AdvancedFields({
   title = "Campos avançados",
   description = "Preencha apenas se for necessário.",
-  count,
-  open,
+  count = null,
+  open = undefined,
   defaultOpen = false,
-  onOpenChange,
-  children,
+  onOpenChange = undefined,
+  children = null,
   className = "",
 }) {
   const controlledProps =
@@ -211,7 +219,7 @@ function normalizeError(error, index) {
 }
 
 /** Resumo no topo para não obrigar a pessoa a caçar erros em formulários longos. */
-export function ValidationSummary({ errors = [], title, onErrorClick, className = "" }) {
+export function ValidationSummary({ errors = [], title = null, onErrorClick = null, className = "" }) {
   const normalizedErrors = errors.filter(Boolean).map(normalizeError);
   if (!normalizedErrors.length) return null;
   const resolvedTitle = title ?? `Revise ${normalizedErrors.length === 1 ? "o campo indicado" : "os campos indicados"}`;

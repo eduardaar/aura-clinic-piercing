@@ -1,0 +1,187 @@
+.client-list-name {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.client-list-name small {
+  color: var(--muted);
+}
+
+.client-row-actions {
+  align-items: center;
+  display: flex;
+  gap: 0.35rem;
+  justify-content: flex-end;
+}
+
+.client-edit-form {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.client-edit-form .form-workflow__header h1 {
+  font-size: 1.35rem;
+}
+
+.client-draft-recovery {
+  align-items: center;
+  background: color-mix(in srgb, var(--gold) 10%, white);
+  border: 1px solid color-mix(in srgb, var(--gold) 35%, transparent);
+  border-radius: 0.8rem;
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.8rem;
+}
+
+.client-draft-recovery > div {
+  display: grid;
+  flex: 1;
+  gap: 0.15rem;
+}
+
+.client-draft-recovery span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.client-360-metrics {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.client-360-metrics article {
+  background: color-mix(in srgb, var(--gold) 7%, white);
+  border: 1px solid color-mix(in srgb, var(--gold) 22%, transparent);
+  border-radius: 0.8rem;
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 0.9rem;
+}
+
+.client-360-metrics span,
+.client-360-details dt {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.client-360-tabs {
+  overflow-x: auto;
+}
+
+.client-360-panel {
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  margin-top: 1rem;
+  padding: 1rem;
+}
+
+.client-360-panel > header {
+  align-items: flex-start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.client-360-panel h3,
+.client-360-panel p {
+  margin: 0;
+}
+
+.client-360-panel header p {
+  color: var(--muted);
+  margin-top: 0.25rem;
+}
+
+.client-360-details {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 1rem 0 0;
+}
+
+.client-360-details > div {
+  min-width: 0;
+}
+
+.client-360-details dt {
+  font-weight: 600;
+  margin-bottom: 0.2rem;
+}
+
+.client-360-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.client-360-details-wide {
+  grid-column: 1 / -1;
+}
+
+.client-360-balance {
+  background: color-mix(in srgb, var(--gold) 8%, white);
+  border-radius: 0.7rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-top: 1rem;
+  padding: 0.8rem;
+}
+
+.client-360-list {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.client-360-list article {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 0.8rem;
+}
+
+.client-360-list article > div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.client-360-list span,
+.client-360-list small {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+@media (max-width: 800px) {
+  .client-360-metrics,
+  .client-360-details {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .client-draft-recovery,
+  .client-360-panel > header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .client-360-metrics,
+  .client-360-details {
+    grid-template-columns: 1fr;
+  }
+
+  .client-360-details-wide {
+    grid-column: auto;
+  }
+
+  .client-360-list article {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

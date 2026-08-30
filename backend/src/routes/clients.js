@@ -14,6 +14,7 @@ import { recordPrivacyAudit } from "../services/privacy.js";
 import { P } from "../config/permissions.js";
 import { authorizePermission } from "../middleware/requirePermission.js";
 import { hasPermission } from "../services/permissionService.js";
+import { firstClientError, normalizeClientData } from "../services/clientData.js";
 
 const router = Router();
 
@@ -22,55 +23,97 @@ const CLIENT_SORTABLE = {
   name: "full_name",
   created_at: "created_at",
   updated_at: "updated_at",
-  birth_date: "birth_date"
+  birth_date: "birth_date",
 };
-
-function normalizeClientBody(body = {}, current = {}) {
-  const name = body.full_name ?? body.name ?? current.full_name ?? "";
-  return {
-    full_name: String(name || "").trim(),
-    phone: body.phone ?? current.phone ?? "",
-    whatsapp: body.whatsapp ?? body.phone ?? current.whatsapp ?? "",
-    instagram: body.instagram ?? current.instagram ?? "",
-    email: body.email ?? current.email ?? "",
-    birth_date: body.birth_date ?? body.birthday ?? body.birthDate ?? current.birth_date ?? "",
-    cpf: body.cpf ?? current.cpf ?? "",
-    notes: body.notes ?? current.notes ?? ""
-  };
-}
 
 function clientResponse(client) {
   return client ? { ...client, name: client.full_name } : client;
 }
 
-router.post("/api/clients", withFeature("clients", async (req, res, db) => {
-  if (!authorizePermission(req, res, P.CLIENTS_CREATE)) return;
-  const b = normalizeClientBody(req.body);
-  req.body = { ...req.body, full_name: b.full_name, whatsapp: b.whatsapp };
-  if (!validateBody(clientCreateSchema, req, res)) return;
-  // Cota do plano — só na criação. Editar e listar cliente que já existe nunca
-  // passa por aqui: cota não esconde nem trava o que a clínica já cadastrou.
-  //
-  // Este guard NÃO vale para o agendamento público (routes/booking.js): lá quem
-  // receberia o 409 é o cliente final da clínica, que não tem como resolver.
-  if (!(await requireWithinLimit(req, res, "clients", db))) return;
-  const result = await db.run(
-    "INSERT INTO clients (full_name, phone, whatsapp, instagram, email, birth_date, cpf, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
-    [b.full_name, b.phone, b.whatsapp, b.instagram, b.email, b.birth_date, b.cpf, b.notes]
-  );
-  res.status(201).json(clientResponse(await db.get("SELECT * FROM clients WHERE id = ?", [result.returnedId])));
-}));
+router.post(
+  "/api/clients",
+  withFeature("clients", async (req, res, db) => {
+    if (!authorizePermission(req, res, P.CLIENTS_CREATE)) return;
+    const normalized = normalizeClientData(req.body);
+    if (!normalized.valid)
+      return res.status(400).json({ error: firstClientError(normalized.errors), field_errors: normalized.errors });
+    const b = normalized.data;
+    req.body = { ...req.body, full_name: b.full_name, whatsapp: b.whatsapp };
+    if (!validateBody(clientCreateSchema, req, res)) return;
+    // Cota do plano — só na criação. Editar e listar cliente que já existe nunca
+    // passa por aqui: cota não esconde nem trava o que a clínica já cadastrou.
+    //
+    // Este guard NÃO vale para o agendamento público (routes/booking.js): lá quem
+    // receberia o 409 é o cliente final da clínica, que não tem como resolver.
+    if (!(await requireWithinLimit(req, res, "clients", db))) return;
+    const result = await db.run(
+      `INSERT INTO clients (
+      full_name, social_name, phone, whatsapp, instagram, email, birth_date, cpf, tax_id,
+      preferred_contact, postal_code, address_line, address_number, address_complement,
+      neighborhood, city, state, notes
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      [
+        b.full_name,
+        b.social_name,
+        b.phone,
+        b.whatsapp,
+        b.instagram,
+        b.email,
+        b.birth_date,
+        b.cpf,
+        b.cpf,
+        b.preferred_contact,
+        b.postal_code,
+        b.address_line,
+        b.address_number,
+        b.address_complement,
+        b.neighborhood,
+        b.city,
+        b.state,
+        b.notes,
+      ],
+    );
+    res.status(201).json(clientResponse(await db.get("SELECT * FROM clients WHERE id = ?", [result.returnedId])));
+  }),
+);
 
 async function updateClient(req, res, db) {
   if (!authorizePermission(req, res, P.CLIENTS_EDIT)) return;
   const current = await db.get("SELECT * FROM clients WHERE id = ?", [req.params.id]);
   if (!current) return res.status(404).json({ error: "Cliente nao encontrado." });
-  const b = normalizeClientBody(req.body, current);
+  const normalized = normalizeClientData(req.body, current);
+  if (!normalized.valid)
+    return res.status(400).json({ error: firstClientError(normalized.errors), field_errors: normalized.errors });
+  const b = normalized.data;
   req.body = { ...req.body, full_name: b.full_name, whatsapp: b.whatsapp };
   if (!validateBody(clientUpdateSchema, req, res)) return;
   await db.run(
-    "UPDATE clients SET full_name = ?, phone = ?, whatsapp = ?, instagram = ?, email = ?, birth_date = ?, cpf = ?, notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-    [b.full_name, b.phone, b.whatsapp, b.instagram, b.email, b.birth_date, b.cpf, b.notes, req.params.id]
+    `UPDATE clients SET
+      full_name=?, social_name=?, phone=?, whatsapp=?, instagram=?, email=?, birth_date=?, cpf=?, tax_id=?,
+      preferred_contact=?, postal_code=?, address_line=?, address_number=?, address_complement=?,
+      neighborhood=?, city=?, state=?, notes=?, updated_at=CURRENT_TIMESTAMP
+     WHERE id=?`,
+    [
+      b.full_name,
+      b.social_name,
+      b.phone,
+      b.whatsapp,
+      b.instagram,
+      b.email,
+      b.birth_date,
+      b.cpf,
+      b.cpf,
+      b.preferred_contact,
+      b.postal_code,
+      b.address_line,
+      b.address_number,
+      b.address_complement,
+      b.neighborhood,
+      b.city,
+      b.state,
+      b.notes,
+      req.params.id,
+    ],
   );
   res.json(clientResponse(await db.get("SELECT * FROM clients WHERE id = ?", [req.params.id])));
 }
@@ -80,42 +123,67 @@ router.patch("/api/clients/:id", withFeature("clients", updateClient));
 
 // Crédito é exibido separado de pagamentos: ele representa uma obrigação da
 // clínica com o cliente e nunca deve desaparecer em uma observação livre.
-router.get("/api/clients/:id/credits", withFeature("clients", async (req, res, db) => {
-  if (!authorizePermission(req, res, P.CLIENTS_VIEW)) return;
-  const client = await db.get("SELECT id FROM clients WHERE id=?", [req.params.id]);
-  if (!client) return res.status(404).json({ error: "Cliente não encontrado." });
-  const credits = await db.all(`SELECT * FROM client_credits WHERE client_id=? ORDER BY created_at DESC, id DESC`, [client.id]);
-  const openAmount = credits.filter((item) => ["open", "partially_used"].includes(item.status)).reduce((sum, item) => sum + Number(item.remaining_amount || 0), 0);
-  res.json({ credits, open_amount: Number(openAmount.toFixed(2)) });
-}));
+router.get(
+  "/api/clients/:id/credits",
+  withFeature("clients", async (req, res, db) => {
+    if (!authorizePermission(req, res, P.CLIENTS_VIEW)) return;
+    const client = await db.get("SELECT id FROM clients WHERE id=?", [req.params.id]);
+    if (!client) return res.status(404).json({ error: "Cliente não encontrado." });
+    const credits = await db.all(`SELECT * FROM client_credits WHERE client_id=? ORDER BY created_at DESC, id DESC`, [
+      client.id,
+    ]);
+    const openAmount = credits
+      .filter((item) => ["open", "partially_used"].includes(item.status))
+      .reduce((sum, item) => sum + Number(item.remaining_amount || 0), 0);
+    res.json({ credits, open_amount: Number(openAmount.toFixed(2)) });
+  }),
+);
 
-router.delete("/api/clients/:id", withFeature("clients", async (req, res, db) => {
-  if (!authorizePermission(req, res, P.CLIENTS_DELETE)) return;
-  const id = req.params.id;
-  if (req.body?.confirmation !== "EXCLUIR CLIENTE") return res.status(400).json({ error: "Digite EXCLUIR CLIENTE para confirmar." });
-  const reason = String(req.body?.reason || "").trim();
-  if (!reason) return res.status(400).json({ error: "Informe o motivo da exclusão." });
-  const client = await db.get("SELECT * FROM clients WHERE id = ? AND deleted_at IS NULL", [id]);
-  if (!client) return res.status(404).json({ error: "Cliente não encontrado." });
-  const linked = await clientDeletionImpact(db, id);
-  const total = Object.values(linked).reduce((sum, value) => sum + Number(value || 0), 0);
-  const action = total > 0 ? "anonymize" : "hard_delete";
-  await db.transaction(async (tx) => {
-    if (action === "anonymize") {
-      await tx.run(`UPDATE clients SET full_name = ?, whatsapp = ?, phone = '', instagram = '', email = '', birth_date = '', cpf = '', notes = '', deleted_at = ?, anonymized_at = ?, updated_at = ? WHERE id = ?`, [`Cliente anonimizado #${id}`, `anonimizado-${id}`, new Date().toISOString(), new Date().toISOString(), new Date().toISOString(), id]);
-    } else {
-      await tx.run("DELETE FROM clients WHERE id = ?", [id]);
-    }
-    await tx.run("INSERT INTO administrative_audit_logs (entity_type, entity_id, action, reason, user_id, snapshot) VALUES ('client', ?, ?, ?, ?, ?)", [id, action, reason, req.user?.id || null, JSON.stringify({ client, impact: linked })]);
-  });
-  // Só a exclusão de verdade muda a contagem da cota — a anonimização preserva
-  // a linha (e o vínculo com agendamentos, pagamentos e prontuários).
-  if (action === "hard_delete") invalidateUsageCache(req.tenant?.id);
-  res.json({ ok: true, action, impact: linked });
-}));
+router.delete(
+  "/api/clients/:id",
+  withFeature("clients", async (req, res, db) => {
+    if (!authorizePermission(req, res, P.CLIENTS_DELETE)) return;
+    const id = req.params.id;
+    if (req.body?.confirmation !== "EXCLUIR CLIENTE")
+      return res.status(400).json({ error: "Digite EXCLUIR CLIENTE para confirmar." });
+    const reason = String(req.body?.reason || "").trim();
+    if (!reason) return res.status(400).json({ error: "Informe o motivo da exclusão." });
+    const client = await db.get("SELECT * FROM clients WHERE id = ? AND deleted_at IS NULL", [id]);
+    if (!client) return res.status(404).json({ error: "Cliente não encontrado." });
+    const linked = await clientDeletionImpact(db, id);
+    const total = Object.values(linked).reduce((sum, value) => sum + Number(value || 0), 0);
+    const action = total > 0 ? "anonymize" : "hard_delete";
+    await db.transaction(async (tx) => {
+      if (action === "anonymize") {
+        await tx.run(
+          `UPDATE clients SET full_name=?, social_name='', whatsapp=?, phone='', instagram='', email='', birth_date='', cpf='', tax_id='', preferred_contact='whatsapp', postal_code='', address_line='', address_number='', address_complement='', neighborhood='', city='', state='', notes='', deleted_at=?, anonymized_at=?, updated_at=? WHERE id=?`,
+          [
+            `Cliente anonimizado #${id}`,
+            `anonimizado-${id}`,
+            new Date().toISOString(),
+            new Date().toISOString(),
+            new Date().toISOString(),
+            id,
+          ],
+        );
+      } else {
+        await tx.run("DELETE FROM clients WHERE id = ?", [id]);
+      }
+      await tx.run(
+        "INSERT INTO administrative_audit_logs (entity_type, entity_id, action, reason, user_id, snapshot) VALUES ('client', ?, ?, ?, ?, ?)",
+        [id, action, reason, req.user?.id || null, JSON.stringify({ client, impact: linked })],
+      );
+    });
+    // Só a exclusão de verdade muda a contagem da cota — a anonimização preserva
+    // a linha (e o vínculo com agendamentos, pagamentos e prontuários).
+    if (action === "hard_delete") invalidateUsageCache(req.tenant?.id);
+    res.json({ ok: true, action, impact: linked });
+  }),
+);
 
 async function clientDeletionImpact(db, id) {
-  const row = await db.get(`
+  const row = await db.get(
+    `
     SELECT
       (SELECT COUNT(*) FROM appointments WHERE client_id = ?) AS appointments,
       (SELECT COUNT(*) FROM payments WHERE client_id = ?) AS payments,
@@ -128,124 +196,167 @@ async function clientDeletionImpact(db, id) {
       (SELECT COUNT(*) FROM coupon_usages WHERE client_id = ?) AS coupon_usages,
       (SELECT COUNT(*) FROM promotion_usages WHERE client_id = ?) AS promotion_usages,
       (SELECT COUNT(*) FROM payment_intents WHERE client_id = ?) AS payment_intents
-  `, [id, id, id, id, id, id, id, id, id, id, id]);
+  `,
+    [id, id, id, id, id, id, id, id, id, id, id],
+  );
   return Object.fromEntries(Object.entries(row || {}).map(([key, value]) => [key, Number(value || 0)]));
 }
 
-router.get("/api/clients/:id/deletion-impact", withFeature("clients", async (req, res, db) => {
-  if (!authorizePermission(req, res, P.CLIENTS_DELETE)) return;
-  const client = await db.get("SELECT id FROM clients WHERE id = ? AND deleted_at IS NULL", [req.params.id]);
-  if (!client) return res.status(404).json({ error: "Cliente não encontrado." });
-  const impact = await clientDeletionImpact(db, req.params.id);
-  res.json({ impact, action: Object.values(impact).some(Number) ? "anonymize" : "hard_delete" });
-}));
+router.get(
+  "/api/clients/:id/deletion-impact",
+  withFeature("clients", async (req, res, db) => {
+    if (!authorizePermission(req, res, P.CLIENTS_DELETE)) return;
+    const client = await db.get("SELECT id FROM clients WHERE id = ? AND deleted_at IS NULL", [req.params.id]);
+    if (!client) return res.status(404).json({ error: "Cliente não encontrado." });
+    const impact = await clientDeletionImpact(db, req.params.id);
+    res.json({ impact, action: Object.values(impact).some(Number) ? "anonymize" : "hard_delete" });
+  }),
+);
 
 // Listagem ENXUTA: só as colunas da própria tabela `clients`, que é o que a
 // tela de listagem/busca exibe. O enriquecimento (timeline, prontuários,
 // fidelidade...) saiu daqui e virou GET /api/clients/:id — antes esta rota
 // carregava onze tabelas inteiras em memória para montar a timeline de todos.
-router.get("/api/clients", withFeature("clients", async (req, res, db) => {
-  if (!authorizePermission(req, res, P.CLIENTS_VIEW)) return;
-  const clauses = [];
-  const params = [];
-  if (req.query.search) {
-    clauses.push("(full_name ILIKE ? OR whatsapp ILIKE ? OR phone ILIKE ? OR email ILIKE ? OR instagram ILIKE ? OR cpf ILIKE ?)");
-    params.push(...Array(6).fill(`%${req.query.search}%`));
-  }
-  clauses.unshift("deleted_at IS NULL");
-  const where = `WHERE ${clauses.join(" AND ")}`;
-  const paging = parsePaging(req.query, {
-    sortable: CLIENT_SORTABLE,
-    tieBreak: "id",
-    defaultOrderBy: "ORDER BY full_name"
-  });
-  const { rows, total } = await fetchPage(db, {
-    select: "*",
-    from: "clients",
-    where,
-    params,
-    orderBy: paging.orderBy,
-    paging
-  });
-  await recordPrivacyAudit(db, {
-    req, action: "client_list_read", resourceType: "client_list",
-    detail: { result_count: rows.length, searched: Boolean(req.query.search) }
-  });
-  res.json(pageResponse(rows.map(clientResponse), total, paging));
-}));
+router.get(
+  "/api/clients",
+  withFeature("clients", async (req, res, db) => {
+    if (!authorizePermission(req, res, P.CLIENTS_VIEW)) return;
+    const clauses = [];
+    const params = [];
+    if (req.query.search) {
+      const search = String(req.query.search).trim();
+      const searchDigits = search.replace(/\D/g, "");
+      const textColumns = ["full_name", "social_name", "email", "instagram", "city", "address_line", "neighborhood"];
+      const matches = textColumns.map((column) => `${column} ILIKE ?`);
+      params.push(...Array(textColumns.length).fill(`%${search}%`));
+      if (searchDigits) {
+        for (const column of ["whatsapp", "phone", "cpf", "postal_code"]) {
+          matches.push(`regexp_replace(COALESCE(${column}, ''), '[^0-9]', '', 'g') LIKE ?`);
+          params.push(`%${searchDigits}%`);
+        }
+      }
+      clauses.push(`(${matches.join(" OR ")})`);
+    }
+    clauses.unshift("deleted_at IS NULL");
+    const where = `WHERE ${clauses.join(" AND ")}`;
+    const paging = parsePaging(req.query, {
+      sortable: CLIENT_SORTABLE,
+      tieBreak: "id",
+      defaultOrderBy: "ORDER BY full_name",
+    });
+    const { rows, total } = await fetchPage(db, {
+      select: "*",
+      from: "clients",
+      where,
+      params,
+      orderBy: paging.orderBy,
+      paging,
+    });
+    await recordPrivacyAudit(db, {
+      req,
+      action: "client_list_read",
+      resourceType: "client_list",
+      detail: { result_count: rows.length, searched: Boolean(req.query.search) },
+    });
+    res.json(pageResponse(rows.map(clientResponse), total, paging));
+  }),
+);
 
-router.get("/api/clients/:id", withFeature("clients", async (req, res, db) => {
-  if (!authorizePermission(req, res, P.CLIENTS_VIEW)) return;
-  const client = await getClientWithDetails(db, req.params.id);
-  if (client?.deleted_at) return res.status(404).json({ error: "Cliente nao encontrado." });
-  if (!client) return res.status(404).json({ error: "Cliente nao encontrado." });
-  // Recepção não enxerga prontuário nem termo (mesma regra da listagem antiga).
-  const canReadClinical = hasPermission(req.user, P.CLINICAL_FILES_VIEW);
-  const visible = !canReadClinical
-    ? { ...client, medicalRecords: [], terms: [] }
-    : client;
-  await recordPrivacyAudit(db, {
-    req,
-    action: canReadClinical ? "clinical_record_read" : "client_profile_read",
-    resourceType: "client",
-    resourceId: client.id,
-    clientId: client.id
-  });
-  res.json(clientResponse(visible));
-}));
+router.get(
+  "/api/clients/:id",
+  withFeature("clients", async (req, res, db) => {
+    if (!authorizePermission(req, res, P.CLIENTS_VIEW)) return;
+    const client = await getClientWithDetails(db, req.params.id);
+    if (client?.deleted_at) return res.status(404).json({ error: "Cliente nao encontrado." });
+    if (!client) return res.status(404).json({ error: "Cliente nao encontrado." });
+    // Recepção não enxerga prontuário nem termo (mesma regra da listagem antiga).
+    const canReadClinical = hasPermission(req.user, P.CLINICAL_FILES_VIEW);
+    const visible = !canReadClinical
+      ? { ...client, medicalRecords: [], terms: [], followups: [], clinical_access: false }
+      : { ...client, clinical_access: true };
+    await recordPrivacyAudit(db, {
+      req,
+      action: canReadClinical ? "clinical_record_read" : "client_profile_read",
+      resourceType: "client",
+      resourceId: client.id,
+      clientId: client.id,
+    });
+    res.json(clientResponse(visible));
+  }),
+);
 
-router.post("/api/clients/:id/loyalty-redemptions", withFeature("clients", async (req, res, db) => {
-  if (!requireRole(req, res, ["admin", "reception"])) return;
-  const client = await db.get("SELECT id FROM clients WHERE id = ?", [req.params.id]);
-  if (!client) return res.status(404).json({ error: "Cliente nao encontrado." });
-  const points = Number(req.body.points_used || 0);
-  const discount = Number(req.body.discount_value || 0);
-  const loyalty = await getClientLoyalty(db, req.params.id);
-  if (points <= 0 || points > loyalty.availablePoints) {
-    return res.status(400).json({ error: "Pontos insuficientes para resgate." });
-  }
-  await db.run(
-    "INSERT INTO loyalty_redemptions (client_id, points_used, discount_value, notes) VALUES (?, ?, ?, ?)",
-    [req.params.id, points, discount, req.body.notes || ""]
-  );
-  res.status(201).json(await getClientLoyalty(db, req.params.id));
-}));
+router.post(
+  "/api/clients/:id/loyalty-redemptions",
+  withFeature("clients", async (req, res, db) => {
+    if (!requireRole(req, res, ["admin", "reception"])) return;
+    const client = await db.get("SELECT id FROM clients WHERE id = ?", [req.params.id]);
+    if (!client) return res.status(404).json({ error: "Cliente nao encontrado." });
+    const points = Number(req.body.points_used || 0);
+    const discount = Number(req.body.discount_value || 0);
+    const loyalty = await getClientLoyalty(db, req.params.id);
+    if (points <= 0 || points > loyalty.availablePoints) {
+      return res.status(400).json({ error: "Pontos insuficientes para resgate." });
+    }
+    await db.run(
+      "INSERT INTO loyalty_redemptions (client_id, points_used, discount_value, notes) VALUES (?, ?, ?, ?)",
+      [req.params.id, points, discount, req.body.notes || ""],
+    );
+    res.status(201).json(await getClientLoyalty(db, req.params.id));
+  }),
+);
 
-router.post("/api/clients/:id/medical-records", withFeature("clients", async (req, res, db) => {
-  if (!authorizePermission(req, res, P.CLINICAL_FILES_EDIT)) return;
-  await parseUpload(privateUpload.fields([{ name: "before_photo", maxCount: 1 }, { name: "after_photo", maxCount: 1 }]), req, res, { imagesOnly: true });
-  await registerPrivateFiles(db, Object.values(req.files || {}).flat(), "medical_record", req.user?.id);
-  const client = await db.get("SELECT id FROM clients WHERE id = ?", [req.params.id]);
-  if (!client) return res.status(404).json({ error: "Cliente nao encontrado." });
-  const body = req.body;
-  const beforePhoto = req.files?.before_photo?.[0] ? `/api/private-files/${req.files.before_photo[0].filename}` : "";
-  const afterPhoto = req.files?.after_photo?.[0] ? `/api/private-files/${req.files.after_photo[0].filename}` : "";
-  const result = await db.run(
-    `INSERT INTO client_medical_records
+router.post(
+  "/api/clients/:id/medical-records",
+  withFeature("clients", async (req, res, db) => {
+    if (!authorizePermission(req, res, P.CLINICAL_FILES_EDIT)) return;
+    await parseUpload(
+      privateUpload.fields([
+        { name: "before_photo", maxCount: 1 },
+        { name: "after_photo", maxCount: 1 },
+      ]),
+      req,
+      res,
+      { imagesOnly: true },
+    );
+    await registerPrivateFiles(db, Object.values(req.files || {}).flat(), "medical_record", req.user?.id);
+    const client = await db.get("SELECT id FROM clients WHERE id = ?", [req.params.id]);
+    if (!client) return res.status(404).json({ error: "Cliente nao encontrado." });
+    const body = req.body;
+    const beforePhoto = req.files?.before_photo?.[0] ? `/api/private-files/${req.files.before_photo[0].filename}` : "";
+    const afterPhoto = req.files?.after_photo?.[0] ? `/api/private-files/${req.files.after_photo[0].filename}` : "";
+    const result = await db.run(
+      `INSERT INTO client_medical_records
     (client_id, appointment_id, record_date, piercing_history, jewelry_used, before_photo_url, after_photo_url, occurrences, guidance, allergies_notes, healing_evolution, returns_done)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-    [
-      req.params.id,
-      body.appointment_id || null,
-      body.record_date || new Date().toISOString().slice(0, 10),
-      body.piercing_history || "",
-      body.jewelry_used || "",
-      beforePhoto,
-      afterPhoto,
-      body.occurrences || "",
-      body.guidance || "",
-      body.allergies_notes || "",
-      body.healing_evolution || "",
-      body.returns_done || ""
-    ]
-  );
-  res.status(201).json(await getMedicalRecord(db, result.returnedId));
-}));
+      [
+        req.params.id,
+        body.appointment_id || null,
+        body.record_date || new Date().toISOString().slice(0, 10),
+        body.piercing_history || "",
+        body.jewelry_used || "",
+        beforePhoto,
+        afterPhoto,
+        body.occurrences || "",
+        body.guidance || "",
+        body.allergies_notes || "",
+        body.healing_evolution || "",
+        body.returns_done || "",
+      ],
+    );
+    res.status(201).json(await getMedicalRecord(db, result.returnedId));
+  }),
+);
 
-router.delete("/api/clients/:clientId/medical-records/:recordId", withFeature("clients", async (req, res, db) => {
-  if (!authorizePermission(req, res, P.CLINICAL_FILES_EDIT)) return;
-  await db.run("DELETE FROM client_medical_records WHERE id = ? AND client_id = ?", [req.params.recordId, req.params.clientId]);
-  res.json({ ok: true });
-}));
+router.delete(
+  "/api/clients/:clientId/medical-records/:recordId",
+  withFeature("clients", async (req, res, db) => {
+    if (!authorizePermission(req, res, P.CLINICAL_FILES_EDIT)) return;
+    await db.run("DELETE FROM client_medical_records WHERE id = ? AND client_id = ?", [
+      req.params.recordId,
+      req.params.clientId,
+    ]);
+    res.json({ ok: true });
+  }),
+);
 
 export default router;

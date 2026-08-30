@@ -173,15 +173,40 @@ CREATE TABLE IF NOT EXISTS services (
 CREATE TABLE IF NOT EXISTS clients (
   id SERIAL PRIMARY KEY,
   full_name TEXT NOT NULL,
+  social_name TEXT,
+  phone TEXT,
   whatsapp TEXT NOT NULL,
   instagram TEXT,
+  email TEXT,
   notes TEXT,
   birth_date TEXT,
+  cpf TEXT,
+  tax_id TEXT,
+  preferred_contact TEXT NOT NULL DEFAULT 'whatsapp',
+  postal_code TEXT,
+  address_line TEXT,
+  address_number TEXT,
+  address_complement TEXT,
+  neighborhood TEXT,
+  city TEXT,
+  state TEXT,
   created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS social_name TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS preferred_contact TEXT NOT NULL DEFAULT 'whatsapp';
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS postal_code TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS address_line TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS address_number TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS address_complement TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS neighborhood TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS city TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS state TEXT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS deleted_at TEXT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS anonymized_at TEXT;
 CREATE INDEX IF NOT EXISTS idx_clients_active_name ON clients(full_name) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_clients_active_social_name ON clients(social_name) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_clients_active_cpf ON clients(cpf) WHERE deleted_at IS NULL AND cpf IS NOT NULL AND cpf <> '';
+CREATE INDEX IF NOT EXISTS idx_clients_active_whatsapp ON clients(whatsapp) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_administrative_audit_entity ON administrative_audit_logs(entity_type, entity_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS jewelry_inventory (
