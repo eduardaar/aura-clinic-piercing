@@ -11,6 +11,7 @@ import { ledgerReport, normalizeEntry } from "../services/financeLedger.js";
 import { installmentMoneyCents, resolveInstallmentSchedule } from "../services/receivables.js";
 import { parsePaging } from "../services/pagination.js";
 import { recordPrivacyAudit } from "../services/privacy.js";
+import { recordAudit } from "../services/audit.js";
 import {
   normalizeSupplierInput,
   SUPPLIER_COLUMNS,
@@ -459,7 +460,12 @@ router.post("/api/finance/suppliers", withFeature("basic_finance", async (req, r
       `INSERT INTO suppliers (${SUPPLIER_COLUMNS.join(", ")}) VALUES (${placeholders.join(", ")}) RETURNING id`,
       supplierWriteValues(supplier)
     );
-    res.status(201).json(await db.get("SELECT * FROM suppliers WHERE id = ?", [result.returnedId]));
+    const created = await db.get("SELECT * FROM suppliers WHERE id = ?", [result.returnedId]);
+    await recordAudit(db, {
+      req, module: "suppliers", action: "create", entityType: "supplier", entityId: created.id,
+      reason: "Fornecedor criado", after: { id: created.id, name: created.name, is_active: created.is_active, supplier_type: created.supplier_type }
+    });
+    res.status(201).json(created);
   } catch (error) {
     return sendSupplierError(res, error);
   }
@@ -477,7 +483,14 @@ router.patch("/api/finance/suppliers/:id", withFeature("basic_finance", async (r
       `UPDATE suppliers SET ${assignments.join(", ")}, updated_at=to_char(now(), 'YYYY-MM-DD HH24:MI:SS') WHERE id=?`,
       [...supplierWriteValues(supplier), current.id]
     );
-    res.json(await db.get("SELECT * FROM suppliers WHERE id = ?", [current.id]));
+    const updated = await db.get("SELECT * FROM suppliers WHERE id = ?", [current.id]);
+    await recordAudit(db, {
+      req, module: "suppliers", action: !Number(updated.is_active) && Number(current.is_active) ? "archive" : "update",
+      entityType: "supplier", entityId: current.id, reason: String(req.body?.reason || "Fornecedor alterado"),
+      before: { id: current.id, name: current.name, is_active: current.is_active, quality_status: current.quality_status },
+      after: { id: updated.id, name: updated.name, is_active: updated.is_active, quality_status: updated.quality_status }, severity: "warning"
+    });
+    res.json(updated);
   } catch (error) {
     return sendSupplierError(res, error);
   }
