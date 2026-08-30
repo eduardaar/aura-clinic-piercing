@@ -10,14 +10,34 @@ import {
   getPurchase,
   listPurchases
 } from "../services/purchases.js";
+import { NfeImportError, previewNfeImport } from "../services/nfeImport.js";
+import { recordAudit } from "../services/audit.js";
 
 const router = Router();
 
 function purchaseError(res, error) {
-  if (!(error instanceof PurchaseValidationError)) return false;
+  if (!(error instanceof PurchaseValidationError) && !(error instanceof NfeImportError)) return false;
   res.status(error.status).json({ error: error.message });
   return true;
 }
+
+router.post("/api/purchases/nfe/preview", withFeature("basic_finance", async (req, res, db) => {
+  if (!authorizePermission(req, res, P.FINANCE_CREATE)) return;
+  try {
+    const preview = await previewNfeImport(db, req.body?.xml);
+    await recordAudit(db, {
+      req,
+      module: "purchases",
+      action: "nfe_preview",
+      entityType: "nfe",
+      entityId: preview.access_key,
+      metadata: { xml_hash: preview.xml_hash, issuer_document: preview.issuer.document, item_count: preview.items.length }
+    });
+    res.json(preview);
+  } catch (error) {
+    if (!purchaseError(res, error)) throw error;
+  }
+}));
 
 router.get("/api/purchases", withFeature("basic_finance", async (req, res, db) => {
   if (!authorizePermission(req, res, P.FINANCE_VIEW)) return;

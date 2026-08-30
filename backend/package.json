@@ -36,6 +36,7 @@
     "exceljs": "^4.4.0",
     "express": "^5.1.0",
     "express-rate-limit": "^8.5.2",
+    "fast-xml-parser": "^5.3.6",
     "helmet": "^8.2.0",
     "ioredis": "^5.11.1",
     "multer": "^2.0.2",

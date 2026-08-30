@@ -7,6 +7,7 @@ import {
   serializeInstallments
 } from "./receivables.js";
 import { localTimestamp } from "./utils.js";
+import { NfeImportError, parseNfeXml, registerPurchaseFiscalDocument } from "./nfeImport.js";
 
 export class PurchaseValidationError extends Error {
   constructor(message, status = 400) {
@@ -87,7 +88,11 @@ function normalizePurchase(body = {}, idempotencyKey = "") {
       expiry_date: itemType === "consumable" && item.expiry_date ? requiredDate(item.expiry_date, `Validade do item ${index + 1}`) : null
     };
   });
-  const totalCents = normalizedItems.reduce((sum, item) => sum + item.line_total_cents, 0);
+  const productsCents = normalizedItems.reduce((sum, item) => sum + item.line_total_cents, 0);
+  const freightCents = moneyToCents(body.freight_value || 0, "Frete");
+  const discountCents = moneyToCents(body.discount_value || 0, "Desconto");
+  if (discountCents > productsCents + freightCents) throw new PurchaseValidationError("Desconto maior que o valor da compra.");
+  const totalCents = productsCents + freightCents - discountCents;
   if (!Number.isSafeInteger(totalCents) || totalCents <= 0) throw new PurchaseValidationError("Total da compra inválido.");
   let explicitInstallments;
   try {
@@ -118,6 +123,9 @@ function normalizePurchase(body = {}, idempotencyKey = "") {
     idempotency_key: key,
     status: requestedStatus,
     items: normalizedItems,
+    products_cents: productsCents,
+    freight_cents: freightCents,
+    discount_cents: discountCents,
     total_cents: totalCents
   };
 }
@@ -151,8 +159,13 @@ export async function getPurchase(db, id) {
     ORDER BY installment_number, id
   `, [id]);
   const storedInstallments = parseStoredInstallments(purchase.installments_json);
+  const fiscal_document = await db.get(`
+    SELECT access_key, document_number, series, protocol, authorization_status,
+      xml_hash, issuer_document, created_at
+    FROM purchase_fiscal_documents WHERE purchase_order_id=?
+  `, [id]);
   const { installments_json: _installmentsJson, ...purchaseData } = purchase;
-  return { ...purchaseData, installments: storedInstallments, items, payables };
+  return { ...purchaseData, installments: storedInstallments, items, payables, fiscal_document: fiscal_document || null };
 }
 
 export async function listPurchases(db, { status = "", supplierId = null } = {}) {
@@ -348,6 +361,7 @@ export async function confirmPurchase(db, id, userId = null) {
 
 export async function createPurchase(db, body, { idempotencyKey = "", userId = null } = {}) {
   const purchase = normalizePurchase(body, idempotencyKey);
+  const fiscalDocument = body.nfe_xml ? parseNfeXml(body.nfe_xml) : null;
   const existing = await db.get("SELECT id FROM purchase_orders WHERE idempotency_key = ?", [purchase.idempotency_key]);
   if (existing) return { ...(await getPurchase(db, existing.id)), idempotent: true };
 
@@ -357,13 +371,15 @@ export async function createPurchase(db, body, { idempotencyKey = "", userId = n
       const inserted = await tx.run(`
         INSERT INTO purchase_orders
           (supplier_id, purchase_date, first_due_date, installment_count, payment_method, category,
-           installments_json, cost_center_id, total_value, status, idempotency_key, notes, created_by_user_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?) RETURNING id
+           installments_json, cost_center_id, products_value, freight_value, discount_value, total_value,
+           status, idempotency_key, notes, created_by_user_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?) RETURNING id
       `, [
         purchase.supplier_id, purchase.purchase_date, purchase.first_due_date, purchase.installment_count,
         purchase.payment_method, purchase.category,
         purchase.installments ? JSON.stringify(serializeInstallments(purchase.installments)) : null,
-        purchase.cost_center_id, purchase.total_cents / 100,
+        purchase.cost_center_id, purchase.products_cents / 100, purchase.freight_cents / 100,
+        purchase.discount_cents / 100, purchase.total_cents / 100,
         purchase.idempotency_key, purchase.notes, userId
       ]);
       for (const item of purchase.items) {
@@ -373,6 +389,7 @@ export async function createPurchase(db, body, { idempotencyKey = "", userId = n
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [inserted.returnedId, item.item_type, item.product_id, item.consumable_id, item.product_variant_id, item.quantity, item.unit_cost_cents / 100, item.line_total_cents / 100, item.batch_code, item.expiry_date]);
       }
+      await registerPurchaseFiscalDocument(tx, inserted.returnedId, fiscalDocument, userId);
       if (purchase.status === "draft") return { purchaseId: inserted.returnedId, idempotent: false };
       const locked = await tx.get("SELECT * FROM purchase_orders WHERE id = ? FOR UPDATE", [inserted.returnedId]);
       return confirmPurchaseLocked(tx, locked, userId);
@@ -382,6 +399,9 @@ export async function createPurchase(db, body, { idempotencyKey = "", userId = n
     if (error?.code === "23505" && String(error.constraint || "").includes("purchase_orders_idempotency")) {
       const duplicate = await db.get("SELECT id FROM purchase_orders WHERE idempotency_key = ?", [purchase.idempotency_key]);
       if (duplicate) return { ...(await getPurchase(db, duplicate.id)), idempotent: true };
+    }
+    if (error?.code === "23505" && String(error.constraint || "").includes("purchase_fiscal_documents")) {
+      throw new NfeImportError("Esta NF-e já foi importada em outra compra.", 409);
     }
     throw error;
   }

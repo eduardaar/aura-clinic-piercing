@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Landmark, Tags } from "lucide-react";
+import { FileUp, Landmark, Tags } from "lucide-react";
 import { Button, Input, Metric, PaymentSelect, Select, StatusBadge, Textarea } from "../../components/common/Ui";
 import { CrudHeader, Modal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
@@ -22,6 +22,8 @@ function emptyPurchase() {
     payment_method: "Pix",
     category: "",
     cost_center_id: "",
+    freight_value: 0,
+    discount_value: 0,
     notes: "",
     idempotency_key:
       typeof crypto !== "undefined" && crypto.randomUUID
@@ -58,6 +60,9 @@ export function Purchases({ onNavigate }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [details, setDetails] = useState(null);
   const [error, setError] = useState("");
+  const [nfeXml, setNfeXml] = useState("");
+  const [nfePreview, setNfePreview] = useState(null);
+  const [importingNfe, setImportingNfe] = useState(false);
 
   const purchasePayload = asObject(data);
   const purchases = Array.isArray(data) ? data : asArray(purchasePayload.items);
@@ -67,7 +72,8 @@ export function Purchases({ onNavigate }) {
   const selectedConsumable = safeConsumables.find((item) => String(item.id) === String(line.consumable_id));
   const variants = asArray(selectedProduct?.variants).filter((item) => Number(item.is_active ?? 1));
   const selectedVariant = variants.find((item) => String(item.id) === String(line.product_variant_id));
-  const total = items.reduce((sum, item) => sum + asNumber(item.quantity) * asNumber(item.unit_cost), 0);
+  const productsTotal = items.reduce((sum, item) => sum + asNumber(item.quantity) * asNumber(item.unit_cost), 0);
+  const total = Math.max(0, productsTotal + asNumber(form.freight_value) - asNumber(form.discount_value));
   const currentMonth = new Date().toISOString().slice(0, 7);
   const monthPurchases = purchases.filter((item) =>
     String(item.purchase_date || item.created_at || "").startsWith(currentMonth),
@@ -84,6 +90,8 @@ export function Purchases({ onNavigate }) {
     setItems([]);
     setInstallments([]);
     setAutomaticInstallments(true);
+    setNfeXml("");
+    setNfePreview(null);
     setError("");
     setModalOpen(true);
   }
@@ -144,6 +152,95 @@ export function Purchases({ onNavigate }) {
     setError("");
   }
 
+  function fiscalTarget(match) {
+    if (!match) return "";
+    return match.item_type === "consumable"
+      ? `consumable:${match.consumable_id}`
+      : `product:${match.product_id}:${match.product_variant_id || 0}`;
+  }
+
+  async function importNfe(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setError("");
+    if (file.size > 900 * 1024) return setError("O XML da NF-e deve ter no máximo 900 KB.");
+    setImportingNfe(true);
+    try {
+      const xml = await file.text();
+      const response = await apiFetch("/purchases/nfe/preview", { method: "POST", body: JSON.stringify({ xml }) });
+      const preview = await response.json().catch(() => ({}));
+      if (!response.ok) return setError(preview.error || "Não foi possível importar a NF-e.");
+      const importedInstallments = asArray(preview.installments).map((installment, index) => ({
+        installment_number: index + 1,
+        due_date: installment.due_date,
+        amount: installment.amount,
+        payment_method: preview.payment_method || "Outros",
+      }));
+      const firstDueDate = importedInstallments[0]?.due_date || preview.purchase_date || today();
+      setNfeXml(xml);
+      setNfePreview({
+        ...preview,
+        items: asArray(preview.items).map((item) => ({ ...item, selected_target: fiscalTarget(item.match) })),
+      });
+      setForm((current) => ({
+        ...current,
+        supplier_id: preview.supplier?.id ? String(preview.supplier.id) : current.supplier_id,
+        purchase_date: preview.purchase_date || current.purchase_date,
+        first_due_date: firstDueDate,
+        installment_count: importedInstallments.length || 1,
+        payment_method: preview.payment_method || current.payment_method,
+        freight_value: preview.totals?.freight || 0,
+        discount_value: preview.totals?.discount || 0,
+        notes: `NF-e ${preview.number || ""} série ${preview.series || ""} · chave ${preview.access_key}`,
+      }));
+      setInstallments(importedInstallments);
+      setAutomaticInstallments(importedInstallments.length === 0);
+    } finally {
+      setImportingNfe(false);
+    }
+  }
+
+  function applyNfeItems() {
+    const selected = asArray(nfePreview?.items).filter((item) => item.selected_target !== "ignore");
+    if (selected.some((item) => !item.selected_target)) return setError("Associe ou ignore todos os itens importados.");
+    if (selected.some((item) => !Number.isInteger(Number(item.quantity)) || Number(item.quantity) <= 0)) {
+      return setError("Há item da NF-e com quantidade fracionada; ajuste a unidade de estoque antes de importar.");
+    }
+    const grouped = new Map();
+    for (const imported of selected) {
+      const [itemType, rawId, rawVariantId] = imported.selected_target.split(":");
+      const product = itemType === "product" ? safeProducts.find((item) => String(item.id) === rawId) : null;
+      const variant = product ? asArray(product.variants).find((item) => String(item.id) === rawVariantId && rawVariantId !== "0") : null;
+      const consumable = itemType === "consumable" ? safeConsumables.find((item) => String(item.id) === rawId) : null;
+      if (!product && !consumable) return setError(`Revise a associação de ${imported.name}.`);
+      const quantity = Number(imported.quantity);
+      const lineValue = quantity * asNumber(imported.unit_cost);
+      const current = grouped.get(imported.selected_target);
+      if (current) {
+        current.quantity += quantity;
+        current._costTotal += lineValue;
+        current.unit_cost = current._costTotal / current.quantity;
+        continue;
+      }
+      grouped.set(imported.selected_target, {
+        row_key: crypto.randomUUID?.() || `nfe-${Date.now()}-${imported.line_number}`,
+        item_type: itemType,
+        product_id: product ? Number(product.id) : null,
+        consumable_id: consumable ? Number(consumable.id) : null,
+        product_variant_id: variant ? Number(variant.id) : null,
+        item_name: consumable?.name || (variant ? `${product.name} - ${variant.variation_name || variant.sku}` : product.name),
+        quantity,
+        unit_cost: asNumber(imported.unit_cost),
+        batch_code: imported.batch_code || "",
+        expiry_date: imported.expiry_date || null,
+        _costTotal: lineValue,
+      });
+    }
+    setItems([...grouped.values()].map(({ _costTotal, ...item }) => item));
+    setError("");
+  }
+
   async function save(event) {
     event.preventDefault();
     setError("");
@@ -163,6 +260,7 @@ export function Purchases({ onNavigate }) {
         cost_center_id: form.cost_center_id ? Number(form.cost_center_id) : null,
         installments: installmentsForPayload(installments),
         items: items.map(({ product_name: _productName, row_key: _rowKey, ...item }) => item),
+        nfe_xml: nfeXml || undefined,
       }),
     });
     const payload = await response.json().catch(() => ({}));
@@ -275,6 +373,36 @@ export function Purchases({ onNavigate }) {
         }
       >
         <form id="purchase-form" className="stack" onSubmit={save}>
+          <section className="soft-card stack">
+            <div className="section-inline-header">
+              <div><strong>Importar XML da NF-e</strong><span>O sistema apenas prepara uma prévia; nada entra no estoque antes da confirmação.</span></div>
+              <label className="button secondary">
+                <FileUp size={16} /> {importingNfe ? "Lendo…" : "Selecionar XML"}
+                <input type="file" accept=".xml,text/xml,application/xml" hidden disabled={importingNfe} onChange={importNfe} />
+              </label>
+            </div>
+            {nfePreview && <>
+              <small>NF-e {nfePreview.number} · série {nfePreview.series} · emitente {nfePreview.issuer?.name} · {nfePreview.access_key}</small>
+              {!nfePreview.supplier && <span className="form-error">Fornecedor não localizado pelo documento. Selecione-o abaixo ou cadastre-o antes de confirmar.</span>}
+              <div className="clean-list">
+                {asArray(nfePreview.items).map((imported, index) => <div key={`${imported.line_number}-${imported.supplier_code}`}>
+                  <span><strong>{imported.name}</strong><small>{imported.quantity} {imported.unit} × {currency.format(asNumber(imported.unit_cost))} · cód. {imported.supplier_code || "—"}</small></span>
+                  <Select ariaLabel={`Associar ${imported.name}`} value={imported.selected_target} onChange={(selected_target) => setNfePreview((current) => ({ ...current, items: current.items.map((item, itemIndex) => itemIndex === index ? { ...item, selected_target } : item) }))}>
+                    <option value="">Selecione o item</option>
+                    <option value="ignore">Ignorar esta linha</option>
+                    {safeProducts.flatMap((product) => {
+                      const productVariants = asArray(product.variants).filter((variant) => Number(variant.is_active ?? 1));
+                      return productVariants.length
+                        ? productVariants.map((variant) => <option key={`p-${product.id}-${variant.id}`} value={`product:${product.id}:${variant.id}`}>{product.name} · {variant.variation_name || variant.sku}</option>)
+                        : [<option key={`p-${product.id}`} value={`product:${product.id}:0`}>{product.name}</option>];
+                    })}
+                    {safeConsumables.map((item) => <option key={`c-${item.id}`} value={`consumable:${item.id}`}>{item.name} · material</option>)}
+                  </Select>
+                </div>)}
+              </div>
+              <Button type="button" variant="secondary" onClick={applyNfeItems}>Aplicar itens conferidos</Button>
+            </>}
+          </section>
           <div className="form-grid">
             <Select
               label="Fornecedor"
@@ -296,6 +424,8 @@ export function Purchases({ onNavigate }) {
               onChange={(purchase_date) => setForm({ ...form, purchase_date })}
               required
             />
+            <Input type="number" min="0" step="0.01" label="Frete" value={form.freight_value} onChange={(freight_value) => setForm({ ...form, freight_value })} />
+            <Input type="number" min="0" step="0.01" label="Desconto" value={form.discount_value} onChange={(discount_value) => setForm({ ...form, discount_value })} />
             <Select
               label="Categoria financeira"
               value={form.category}
