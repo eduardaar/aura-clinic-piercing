@@ -253,7 +253,17 @@ export function defaultServiceForm() {
     base_price: 0,
     deposit_value: 25,
     duration_minutes: 40,
-    is_active: true
+    is_active: true,
+    active_online_booking: true,
+    minimum_age_years: "",
+    requires_guardian: false,
+    requires_signed_term: false,
+    return_after_days: "",
+    scheduling_interval_minutes: 0,
+    minimum_advance_minutes: 0,
+    postcare_enabled: false,
+    postcare_days: "7, 15, 30",
+    aftercare_instructions: ""
   };
 }
 
@@ -266,7 +276,16 @@ export function defaultProcedureForm() {
     price: 0,
     duration_minutes: 40,
     aftercare_instructions: "",
-    is_active: true
+    is_active: true,
+    minimum_age_years: "",
+    requires_guardian: "",
+    requires_signed_term: "",
+    return_after_days: "",
+    scheduling_interval_minutes: "",
+    minimum_advance_minutes: "",
+    postcare_enabled: "",
+    postcare_days: "",
+    available_online: ""
   };
 }
 

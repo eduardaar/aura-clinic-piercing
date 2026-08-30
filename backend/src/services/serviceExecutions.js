@@ -7,6 +7,7 @@ import {
   serializeInstallments,
   syncServiceExecutionReceivables
 } from "./receivables.js";
+import { parseServiceRulesSnapshot } from "./serviceRules.js";
 
 export async function getServiceExecution(db, id) {
   const execution = await db.get("SELECT * FROM service_executions WHERE id=?", [id]);
@@ -66,7 +67,8 @@ export async function ensureServiceExecution(db, appointmentId, user, options = 
     procedure: appointment.service_name || appointment.procedure || "Atendimento",
     appointment_date: appointment.appointment_date,
     appointment_time: appointment.appointment_time,
-    region: appointment.piercing_region || null
+    region: appointment.piercing_region || null,
+    service_rules: parseServiceRulesSnapshot(appointment.service_rules_snapshot)
   };
   const optionalText = (key) => options[key] === undefined
     ? (existing?.[key] || null)

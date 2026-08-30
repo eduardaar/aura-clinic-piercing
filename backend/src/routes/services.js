@@ -8,6 +8,7 @@ import { validateBody } from "../middleware/validate.js";
 import { serviceCreateSchema, serviceUpdateSchema } from "../schemas/index.js";
 import { parsePaging, pageResponse } from "../services/pagination.js";
 import { replaceServiceRecipe, serviceRecipe } from "../services/consumableUsage.js";
+import { normalizePostcareDays } from "../services/serviceRules.js";
 
 const router = Router();
 
@@ -16,17 +17,17 @@ const SERVICE_SORTABLE = {
   name: "name",
   price: "price",
   duration: "duration_minutes",
-  active: "active_online_booking",
+  active: "is_active",
   created_at: "created_at"
 };
 
 router.get("/api/services", withFeature("procedures", async (req, res, db) => {
   const clauses = [];
   const params = [];
-  // `status` aqui é "active"/"inactive" (a coluna é active_online_booking).
+  // Status interno e disponibilidade online são decisões independentes.
   if (req.query.status) {
-    clauses.push("active_online_booking = ?");
-    params.push(req.query.status === "active" ? 1 : 0);
+    clauses.push("is_active = ?");
+    params.push(req.query.status === "active");
   }
   if (req.query.search) {
     clauses.push("(name ILIKE ? OR description ILIKE ?)");
@@ -36,7 +37,7 @@ router.get("/api/services", withFeature("procedures", async (req, res, db) => {
   const paging = parsePaging(req.query, {
     sortable: SERVICE_SORTABLE,
     tieBreak: "id",
-    defaultOrderBy: "ORDER BY active_online_booking DESC, name, id"
+    defaultOrderBy: "ORDER BY is_active DESC, name, id"
   });
   const items = await listServices(db, { where, params, paging });
   const total = paging.paginated ? await countServices(db, { where, params }) : items.length;
@@ -47,15 +48,29 @@ router.post("/api/services", withFeature("procedures", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
   if (!validateBody(serviceCreateSchema, req, res)) return;
   const result = await db.run(
-    "INSERT INTO services (name, description, duration_minutes, price, deposit_value, active_online_booking, pre_service_notes) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
+    `INSERT INTO services
+      (name,description,duration_minutes,price,deposit_value,is_active,active_online_booking,pre_service_notes,
+       minimum_age_years,requires_guardian,requires_signed_term,return_after_days,scheduling_interval_minutes,
+       minimum_advance_minutes,postcare_enabled,postcare_days,aftercare_instructions)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`,
     [
       req.body.name,
       req.body.description || "",
       Number(req.body.duration_minutes || 40),
       Number(req.body.base_price ?? req.body.price ?? 0),
       Number(req.body.deposit_value ?? 25),
-      boolNumber(req.body.is_active ?? req.body.active_online_booking ?? 1),
-      req.body.pre_service_notes || ""
+      Boolean(boolNumber(req.body.is_active ?? true)),
+      boolNumber(req.body.active_online_booking ?? req.body.online_booking_enabled ?? req.body.is_active ?? 1),
+      req.body.pre_service_notes || "",
+      req.body.minimum_age_years === "" || req.body.minimum_age_years == null ? null : Number(req.body.minimum_age_years),
+      Boolean(boolNumber(req.body.requires_guardian ?? false)),
+      Boolean(boolNumber(req.body.requires_signed_term ?? false)),
+      req.body.return_after_days === "" || req.body.return_after_days == null ? null : Number(req.body.return_after_days),
+      Number(req.body.scheduling_interval_minutes || 0),
+      Number(req.body.minimum_advance_minutes || 0),
+      Boolean(boolNumber(req.body.postcare_enabled ?? false)),
+      JSON.stringify(normalizePostcareDays(req.body.postcare_days)),
+      req.body.aftercare_instructions || ""
     ]
   );
   await replaceProfessionalServices(db, result.returnedId, req.body.professional_ids || []);
@@ -68,15 +83,27 @@ async function updateService(req, res, db) {
   const service = await db.get("SELECT * FROM services WHERE id = ?", [req.params.id]);
   if (!service) return res.status(404).json({ error: "Servico nao encontrado." });
   await db.run(
-    `UPDATE services SET name = ?, description = ?, duration_minutes = ?, price = ?, deposit_value = ?, active_online_booking = ?, pre_service_notes = ? WHERE id = ?`,
+    `UPDATE services SET name=?,description=?,duration_minutes=?,price=?,deposit_value=?,is_active=?,active_online_booking=?,pre_service_notes=?,
+      minimum_age_years=?,requires_guardian=?,requires_signed_term=?,return_after_days=?,scheduling_interval_minutes=?,
+      minimum_advance_minutes=?,postcare_enabled=?,postcare_days=?,aftercare_instructions=? WHERE id=?`,
     [
       req.body.name ?? service.name,
       req.body.description ?? service.description,
       Number(req.body.duration_minutes ?? service.duration_minutes),
       Number(req.body.base_price ?? req.body.price ?? service.price),
       Number(req.body.deposit_value ?? service.deposit_value),
-      boolNumber(req.body.is_active ?? req.body.active_online_booking ?? service.active_online_booking),
+      Boolean(boolNumber(req.body.is_active ?? service.is_active)),
+      boolNumber(req.body.active_online_booking ?? req.body.online_booking_enabled ?? service.active_online_booking),
       req.body.pre_service_notes ?? service.pre_service_notes,
+      req.body.minimum_age_years === undefined ? service.minimum_age_years : (req.body.minimum_age_years === "" || req.body.minimum_age_years === null ? null : Number(req.body.minimum_age_years)),
+      Boolean(boolNumber(req.body.requires_guardian ?? service.requires_guardian)),
+      Boolean(boolNumber(req.body.requires_signed_term ?? service.requires_signed_term)),
+      req.body.return_after_days === undefined ? service.return_after_days : (req.body.return_after_days === "" || req.body.return_after_days === null ? null : Number(req.body.return_after_days)),
+      Number(req.body.scheduling_interval_minutes ?? service.scheduling_interval_minutes ?? 0),
+      Number(req.body.minimum_advance_minutes ?? service.minimum_advance_minutes ?? 0),
+      Boolean(boolNumber(req.body.postcare_enabled ?? service.postcare_enabled)),
+      JSON.stringify(normalizePostcareDays(req.body.postcare_days ?? service.postcare_days)),
+      req.body.aftercare_instructions ?? service.aftercare_instructions,
       req.params.id
     ]
   );
@@ -123,7 +150,7 @@ router.delete("/api/services/:id", withFeature("procedures", async (req, res, db
     await db.run("DELETE FROM services WHERE id = ?", [req.params.id]);
     return res.json({ ok: true, deleted: true });
   }
-  await db.run("UPDATE services SET active_online_booking = 0 WHERE id = ?", [req.params.id]);
+  await db.run("UPDATE services SET is_active=false, active_online_booking=0 WHERE id = ?", [req.params.id]);
   res.json({ ok: true, archived: true });
 }));
 

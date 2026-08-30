@@ -213,6 +213,15 @@ function AppointmentItemsEditor({ form, services, procedures = [], jewelry, onCh
         const selectedVariant = asArray(selectedJewelry?.variants).find((variant) => String(variant.id) === String(item.jewelry_variant_id));
         const selectedStock = selectedVariant ? asNumber(selectedVariant.quantity) : asNumber(selectedJewelry?.inventory_quantity ?? selectedJewelry?.quantity);
         const selectedService = asArray(services).find((service) => String(service.id) === String(item.service_id));
+        const selectedProcedure = asArray(procedures).find((procedure) => String(procedure.id) === String(item.procedure_id));
+        const ruleValue = (field) => selectedProcedure?.[field] ?? selectedService?.[field];
+        const ruleSummary = [
+          ruleValue("minimum_age_years") != null ? `idade mínima ${ruleValue("minimum_age_years")} anos` : "",
+          ruleValue("requires_guardian") ? "responsável para menor" : "",
+          ruleValue("requires_signed_term") ? "termo obrigatório" : "",
+          asNumber(ruleValue("return_after_days")) > 0 ? `retorno em ${ruleValue("return_after_days")} dias` : "",
+          asNumber(ruleValue("minimum_advance_minutes")) > 0 ? `${ruleValue("minimum_advance_minutes")} min de antecedência` : ""
+        ].filter(Boolean);
         return (
           <div className={`appointment-item-row ${compact ? "compact" : ""}`} key={`${index}-${item.service_id}-${item.jewelry_id}`}>
             <Select label="Serviço" value={item.service_id} onChange={(value) => {
@@ -255,6 +264,7 @@ function AppointmentItemsEditor({ form, services, procedures = [], jewelry, onCh
             </Select>
             <Input type="number" label="Qtd." value={item.quantity} onChange={(value) => updateItem(index, { quantity: value })} />
             <Button variant="secondary" className="danger" onClick={() => removeItem(index)} disabled={items.length === 1}>Remover</Button>
+            {ruleSummary.length > 0 && <span className="field-hint">Regras: {ruleSummary.join(" · ")}</span>}
             {selectedJewelry && <div className="appointment-jewelry-selected" data-product-id={selectedJewelry.id}>
               <strong>{selectedJewelry.name}</strong><span>ID {selectedJewelry.id}</span>
               <span>{selectedVariant ? `Variação: ${selectedVariant.variation_name || selectedVariant.sku}` : "Sem variação"}</span>

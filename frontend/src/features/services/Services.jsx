@@ -12,6 +12,19 @@ function rowsOf(value) {
   return asArray(value).length ? asArray(value) : asArray(asObject(value).items);
 }
 
+function dayList(value) {
+  if (Array.isArray(value)) return value.join(", ");
+  if (typeof value !== "string") return "";
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.join(", ") : value;
+  } catch { return value; }
+}
+
+function inheritedBoolean(value) {
+  return value === null || value === undefined || value === "" ? "" : String(Boolean(value));
+}
+
 export function ServicesWorkspace() {
   const { data: servicesData } = useFetch("/services");
   const { data: proceduresData } = useFetch("/procedures");
@@ -43,7 +56,7 @@ export function ServicesWorkspace() {
 
   function editService(service) {
     setEditingServiceId(service.id);
-    setServiceForm({ ...defaultServiceForm(), name: service.name || "", description: service.description || "", base_price: service.base_price ?? service.price ?? 0, deposit_value: service.deposit_value ?? 0, duration_minutes: service.duration_minutes || 40, is_active: Boolean(Number(service.is_active ?? service.active_online_booking)), pre_service_notes: service.pre_service_notes || "" });
+    setServiceForm({ ...defaultServiceForm(), ...service, name: service.name || "", description: service.description || "", base_price: service.base_price ?? service.price ?? 0, deposit_value: service.deposit_value ?? 0, duration_minutes: service.duration_minutes || 40, is_active: Boolean(Number(service.is_active)), active_online_booking: Boolean(Number(service.active_online_booking)), pre_service_notes: service.pre_service_notes || "", minimum_age_years: service.minimum_age_years ?? "", return_after_days: service.return_after_days ?? "", postcare_days: dayList(service.postcare_days) || "7, 15, 30", aftercare_instructions: service.aftercare_instructions || "" });
     setServiceError("");
     setServiceModalOpen(true);
   }
@@ -79,7 +92,7 @@ export function ServicesWorkspace() {
 
   function editVariation(procedure) {
     setEditingProcedureId(procedure.id);
-    setProcedureForm({ ...defaultProcedureForm(), service_id: String(procedure.service_id || ""), name: procedure.name || "", body_area: procedure.body_area || "", description: procedure.description || "", price: procedure.price || 0, duration_minutes: procedure.duration_minutes || 40, aftercare_instructions: procedure.aftercare_instructions || "", is_active: Boolean(Number(procedure.is_active)) });
+    setProcedureForm({ ...defaultProcedureForm(), ...procedure, service_id: String(procedure.service_id || ""), name: procedure.name || "", body_area: procedure.body_area || "", description: procedure.description || "", price: procedure.price || 0, duration_minutes: procedure.duration_minutes || 40, aftercare_instructions: procedure.aftercare_instructions || "", is_active: Boolean(Number(procedure.is_active)), minimum_age_years: procedure.minimum_age_years ?? "", requires_guardian: inheritedBoolean(procedure.requires_guardian), requires_signed_term: inheritedBoolean(procedure.requires_signed_term), return_after_days: procedure.return_after_days ?? "", scheduling_interval_minutes: procedure.scheduling_interval_minutes ?? "", minimum_advance_minutes: procedure.minimum_advance_minutes ?? "", postcare_enabled: inheritedBoolean(procedure.postcare_enabled), postcare_days: dayList(procedure.postcare_days), available_online: inheritedBoolean(procedure.available_online) });
     setProcedureError("");
     setProcedureModalOpen(true);
   }
@@ -146,7 +159,25 @@ export function ServicesWorkspace() {
           <Input type="number" label="Duração em minutos" value={serviceForm.duration_minutes} onChange={(value) => setServiceForm({ ...serviceForm, duration_minutes: Number(value) })} />
           <Input type="number" label="Preço base" value={serviceForm.base_price} onChange={(value) => setServiceForm({ ...serviceForm, base_price: Number(value) })} />
           <Input type="number" label="Sinal sugerido" value={serviceForm.deposit_value} onChange={(value) => setServiceForm({ ...serviceForm, deposit_value: Number(value) })} />
-        </div><Textarea label="Descrição" value={serviceForm.description} onChange={(value) => setServiceForm({ ...serviceForm, description: value })} /><Textarea label="Orientações pré-atendimento (opcional)" value={serviceForm.pre_service_notes || ""} onChange={(value) => setServiceForm({ ...serviceForm, pre_service_notes: value })} /><Switch id="service-active" label="Disponível para novos agendamentos" description="" defaultChecked={undefined} checked={Boolean(serviceForm.is_active)} onChange={(value) => setServiceForm({ ...serviceForm, is_active: value })} />{serviceError && <span className="form-error">{serviceError}</span>}</form>
+        </div>
+          <Textarea label="Descrição" value={serviceForm.description} onChange={(value) => setServiceForm({ ...serviceForm, description: value })} />
+          <Textarea label="Orientações pré-atendimento (opcional)" value={serviceForm.pre_service_notes || ""} onChange={(value) => setServiceForm({ ...serviceForm, pre_service_notes: value })} />
+          <div className="form-grid">
+            <Input type="number" min="0" max="120" label="Idade mínima (opcional)" value={serviceForm.minimum_age_years} onChange={(value) => setServiceForm({ ...serviceForm, minimum_age_years: value })} />
+            <Input type="number" min="1" label="Retorno após quantos dias (opcional)" value={serviceForm.return_after_days} onChange={(value) => setServiceForm({ ...serviceForm, return_after_days: value })} />
+            <Input type="number" min="0" label="Intervalo após atendimento (min)" value={serviceForm.scheduling_interval_minutes} onChange={(value) => setServiceForm({ ...serviceForm, scheduling_interval_minutes: value })} />
+            <Input type="number" min="0" label="Antecedência mínima (min)" value={serviceForm.minimum_advance_minutes} onChange={(value) => setServiceForm({ ...serviceForm, minimum_advance_minutes: value })} />
+          </div>
+          <div className="chip-toggle-grid">
+            <Switch id="service-guardian" label="Exigir responsável para menor" description="" defaultChecked={undefined} checked={Boolean(serviceForm.requires_guardian)} onChange={(value) => setServiceForm({ ...serviceForm, requires_guardian: value })} />
+            <Switch id="service-term" label="Exigir termo antes de concluir" description="" defaultChecked={undefined} checked={Boolean(serviceForm.requires_signed_term)} onChange={(value) => setServiceForm({ ...serviceForm, requires_signed_term: value })} />
+            <Switch id="service-postcare" label="Gerar pós-atendimento" description="" defaultChecked={undefined} checked={Boolean(serviceForm.postcare_enabled)} onChange={(value) => setServiceForm({ ...serviceForm, postcare_enabled: value })} />
+            <Switch id="service-online" label="Disponível no agendamento online" description="" defaultChecked={undefined} checked={Boolean(serviceForm.active_online_booking)} onChange={(value) => setServiceForm({ ...serviceForm, active_online_booking: value })} />
+            <Switch id="service-active" label="Serviço ativo na clínica" description="" defaultChecked={undefined} checked={Boolean(serviceForm.is_active)} onChange={(value) => setServiceForm({ ...serviceForm, is_active: value })} />
+          </div>
+          {serviceForm.postcare_enabled && <><Input label="Dias do pós-atendimento" value={serviceForm.postcare_days} onChange={(value) => setServiceForm({ ...serviceForm, postcare_days: value })} placeholder="7, 15, 30" /><Textarea label="Orientações pós-atendimento (opcional)" value={serviceForm.aftercare_instructions} onChange={(value) => setServiceForm({ ...serviceForm, aftercare_instructions: value })} /></>}
+          {serviceError && <span className="form-error">{serviceError}</span>}
+        </form>
       </Modal>
 
       <Modal open={procedureModalOpen} title={editingProcedureId ? "Editar variação clínica" : "Nova variação clínica"} subtitle="Opcional: detalhe região, técnica ou orientação específica sem criar outro fluxo operacional." onClose={() => setProcedureModalOpen(false)} footer={<><Button variant="secondary" onClick={() => setProcedureModalOpen(false)}>Cancelar</Button><Button type="submit" form="variation-form">Salvar variação</Button></>}>
@@ -156,7 +187,21 @@ export function ServicesWorkspace() {
           <Input label="Região do corpo (opcional)" value={procedureForm.body_area} onChange={(value) => setProcedureForm({ ...procedureForm, body_area: value })} />
           <Input type="number" label="Preço" value={procedureForm.price} onChange={(value) => setProcedureForm({ ...procedureForm, price: Number(value) })} />
           <Input type="number" label="Duração em minutos" value={procedureForm.duration_minutes} onChange={(value) => setProcedureForm({ ...procedureForm, duration_minutes: Number(value) })} />
-        </div><Textarea label="Descrição (opcional)" value={procedureForm.description} onChange={(value) => setProcedureForm({ ...procedureForm, description: value })} /><Textarea label="Orientações pós-atendimento (opcional)" value={procedureForm.aftercare_instructions} onChange={(value) => setProcedureForm({ ...procedureForm, aftercare_instructions: value })} /><Switch id="variation-active" label="Variação ativa" description="" defaultChecked={undefined} checked={Boolean(procedureForm.is_active)} onChange={(value) => setProcedureForm({ ...procedureForm, is_active: value })} />{procedureError && <span className="form-error">{procedureError}</span>}</form>
+        </div>
+          <Textarea label="Descrição (opcional)" value={procedureForm.description} onChange={(value) => setProcedureForm({ ...procedureForm, description: value })} />
+          <Textarea label="Orientações pós-atendimento (opcional)" value={procedureForm.aftercare_instructions} onChange={(value) => setProcedureForm({ ...procedureForm, aftercare_instructions: value })} />
+          <p className="field-hint">Campos em “Herdar do serviço” mantêm a regra principal. Configure somente as exceções desta variação.</p>
+          <div className="form-grid">
+            <Input type="number" min="0" max="120" label="Idade mínima (opcional)" value={procedureForm.minimum_age_years} onChange={(value) => setProcedureForm({ ...procedureForm, minimum_age_years: value })} />
+            <Input type="number" min="1" label="Retorno após dias (opcional)" value={procedureForm.return_after_days} onChange={(value) => setProcedureForm({ ...procedureForm, return_after_days: value })} />
+            <Input type="number" min="0" label="Intervalo após atendimento (min)" value={procedureForm.scheduling_interval_minutes} onChange={(value) => setProcedureForm({ ...procedureForm, scheduling_interval_minutes: value })} />
+            <Input type="number" min="0" label="Antecedência mínima (min)" value={procedureForm.minimum_advance_minutes} onChange={(value) => setProcedureForm({ ...procedureForm, minimum_advance_minutes: value })} />
+            {[["requires_guardian", "Responsável legal"], ["requires_signed_term", "Termo obrigatório"], ["postcare_enabled", "Pós-atendimento"], ["available_online", "Disponibilidade online"]].map(([field, label]) => <Select key={field} label={label} value={procedureForm[field]} onChange={(value) => setProcedureForm({ ...procedureForm, [field]: value })}><option value="">Herdar do serviço</option><option value="true">Sim</option><option value="false">Não</option></Select>)}
+          </div>
+          {procedureForm.postcare_enabled === "true" && <Input label="Dias do pós-atendimento" value={procedureForm.postcare_days} onChange={(value) => setProcedureForm({ ...procedureForm, postcare_days: value })} placeholder="7, 15, 30" />}
+          <Switch id="variation-active" label="Variação ativa" description="" defaultChecked={undefined} checked={Boolean(procedureForm.is_active)} onChange={(value) => setProcedureForm({ ...procedureForm, is_active: value })} />
+          {procedureError && <span className="form-error">{procedureError}</span>}
+        </form>
       </Modal>
       <ConfirmDeleteModal open={!!deleting} message={deleting?.message} onClose={() => setDeleting(null)} onConfirm={async () => { await deleting.run(); setDeleting(null); }} />
     </section>

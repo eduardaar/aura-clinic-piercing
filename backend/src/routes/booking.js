@@ -14,6 +14,7 @@ import { tenantClient } from "../services/asaas/credentials.js";
 import { createAppointmentDepositCharge } from "../services/tenantCharges.js";
 import { bookingTaxId } from "../services/taxId.js";
 import { scheduleAppointmentClientAutomations } from "../services/communications.js";
+import { resolveServiceRules, validateAppointmentTimingRules, validateClientServiceRules } from "../services/serviceRules.js";
 
 const router = Router();
 
@@ -62,12 +63,12 @@ async function bookingReadiness(db) {
     profileSettings,
     catalogTheme
   ] = await Promise.all([
-    db.get("SELECT COUNT(*) AS count FROM services WHERE active_online_booking = 1"),
+    db.get("SELECT COUNT(*) AS count FROM services WHERE is_active=true AND active_online_booking = 1"),
     db.get(`
       SELECT COUNT(*) AS count
       FROM procedures p
       JOIN services s ON s.id = p.service_id
-      WHERE p.is_active = 1 AND s.active_online_booking = 1
+      WHERE p.is_active = 1 AND s.is_active=true AND s.active_online_booking = 1
     `),
     db.get("SELECT COUNT(*) AS count FROM professionals WHERE active = 1"),
     db.get(`
@@ -81,7 +82,7 @@ async function bookingReadiness(db) {
       FROM professional_services ps
       JOIN professionals p ON p.id = ps.professional_id
       JOIN services s ON s.id = ps.service_id
-      WHERE p.active = 1 AND s.active_online_booking = 1
+      WHERE p.active = 1 AND s.is_active=true AND s.active_online_booking = 1
     `),
     db.get("SELECT COUNT(*) AS count FROM jewelry_inventory"),
     db.get("SELECT COUNT(*) AS count FROM clients"),
@@ -137,13 +138,13 @@ router.get("/api/booking/readiness", withDb(async (_req, res, db) => {
 
 router.get("/api/booking/config", withFeature("online_booking", async (req, res, db) => {
   console.info("[booking-config] tenant recebido", req.tenant);
-  const services = await db.all("SELECT * FROM services WHERE active_online_booking = 1 ORDER BY name");
+  const services = await db.all("SELECT * FROM services WHERE is_active=true AND active_online_booking = 1 ORDER BY name");
   const professionalsRows = await db.all(`
     SELECT DISTINCT p.*
     FROM professionals p
     JOIN professional_services ps ON ps.professional_id = p.id
     JOIN services s ON s.id = ps.service_id
-    WHERE p.active = 1 AND s.active_online_booking = 1
+    WHERE p.active = 1 AND s.is_active=true AND s.active_online_booking = 1
     ORDER BY p.name
   `);
   const links = await db.all(`
@@ -151,7 +152,7 @@ router.get("/api/booking/config", withFeature("online_booking", async (req, res,
     FROM professional_services ps
     JOIN professionals p ON p.id = ps.professional_id
     JOIN services s ON s.id = ps.service_id
-    WHERE p.active = 1 AND s.active_online_booking = 1
+    WHERE p.active = 1 AND s.is_active=true AND s.active_online_booking = 1
   `);
   const professionals = professionalsRows.map((professional) => ({
     ...professional,
@@ -189,7 +190,7 @@ router.get("/api/booking/slots", withFeature("online_booking", async (req, res, 
   if (!serviceId || !professionalId || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return res.status(400).json({ error: "Servico, profissional e data sao obrigatorios." });
   }
-  const service = await db.get("SELECT * FROM services WHERE id = ? AND active_online_booking = 1", [serviceId]);
+  const service = await db.get("SELECT * FROM services WHERE id = ? AND is_active=true AND active_online_booking = 1", [serviceId]);
   if (!service) return res.status(404).json({ error: "Servico nao encontrado." });
   const linked = await db.get("SELECT id FROM professional_services WHERE professional_id = ? AND service_id = ?", [professionalId, serviceId]);
   if (!linked) return res.status(409).json({ error: "Este profissional nao realiza o servico selecionado." });
@@ -207,7 +208,7 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
   const existing = await listAppointments(db, "WHERE a.public_booking_key = ?", [bookingKey]).then((rows) => rows[0]);
   if (existing) return res.status(200).json({ ...existing, idempotent: true });
 
-  const service = await db.get("SELECT * FROM services WHERE id = ? AND active_online_booking = 1", [body.service_id]);
+  const service = await db.get("SELECT * FROM services WHERE id = ? AND is_active=true AND active_online_booking = 1", [body.service_id]);
   if (!service) return res.status(404).json({ error: "Servico nao encontrado." });
 
   const professionalId = Number(body.professional_id || 0);
@@ -232,16 +233,16 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
   const requestedItems = parseItems(body.items);
   const bookingItems = [];
   if (!requestedItems.length || !requestedItems.some((item) => item.item_type === "service")) {
-    bookingItems.push({ item_type: "service", service_id: service.id, name: service.name, quantity: 1, unit_price: Number(service.price || service.base_price || 0), duration_minutes: Number(service.duration_minutes || 40), deposit_value: Number(service.deposit_value || 25) });
+    bookingItems.push({ item_type: "service", service_id: service.id, name: service.name, quantity: 1, unit_price: Number(service.price || service.base_price || 0), duration_minutes: Number(service.duration_minutes || 40), deposit_value: Number(service.deposit_value || 25), service_rules_snapshot: resolveServiceRules(service) });
   }
   for (const requested of requestedItems) {
     const quantity = Math.max(Number(requested.quantity || requested.qty || 1), 1);
     if (requested.item_type === "service" || requested.service_id) {
-      const itemService = await db.get("SELECT * FROM services WHERE id=? AND active_online_booking=1", [requested.service_id]);
+      const itemService = await db.get("SELECT * FROM services WHERE id=? AND is_active=true AND active_online_booking=1", [requested.service_id]);
       if (!itemService) return res.status(404).json({ error: "Um dos serviços selecionados não está disponível." });
       const itemLinked = await db.get("SELECT id FROM professional_services WHERE professional_id=? AND service_id=?", [professionalId, itemService.id]);
       if (!itemLinked) return res.status(409).json({ error: "O profissional selecionado não realiza todos os serviços escolhidos." });
-      bookingItems.push({ item_type: "service", service_id: itemService.id, name: itemService.name, quantity, unit_price: Number(itemService.price || itemService.base_price || 0), duration_minutes: Number(itemService.duration_minutes || 40), deposit_value: Number(itemService.deposit_value || 25), notes: requested.notes || "" });
+      bookingItems.push({ item_type: "service", service_id: itemService.id, name: itemService.name, quantity, unit_price: Number(itemService.price || itemService.base_price || 0), duration_minutes: Number(itemService.duration_minutes || 40), deposit_value: Number(itemService.deposit_value || 25), notes: requested.notes || "", service_rules_snapshot: resolveServiceRules(itemService) });
     } else if (requested.jewelry_id || requested.product_id) {
       const itemJewelryId = Number(requested.jewelry_id || requested.product_id);
       const itemVariantId = Number(requested.jewelry_variant_id || requested.variation_id || 0) || null;
@@ -268,6 +269,13 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
   }
   const depositValue = Math.min(bookingItems.filter((item) => item.item_type === "service").reduce((sum, item) => sum + Number(item.deposit_value || 0), 0), totalValue);
   const remainingValue = Math.max(totalValue - depositValue, 0);
+  const serviceRulesSnapshot = bookingItems.filter((item) => item.item_type === "service").map((item) => item.service_rules_snapshot);
+  const publicClient = { birth_date: body.birth_date || null };
+  const guardianProvided = Boolean(String(body.guardian_name || "").trim() && String(body.guardian_document || "").replace(/\D/g, ""));
+  const clientRuleError = validateClientServiceRules({ rules: serviceRulesSnapshot, client: publicClient, appointmentDate: date, guardianProvided });
+  if (clientRuleError) return res.status(400).json({ error: clientRuleError });
+  const timingRuleError = validateAppointmentTimingRules({ rules: serviceRulesSnapshot, appointmentDate: date, appointmentTime: time });
+  if (timingRuleError) return res.status(400).json({ error: timingRuleError });
 
   // A clínica tem gateway configurado? A checagem é só uma leitura do cofre
   // (sem rede) e precisa acontecer ANTES da transação, porque decide duas
@@ -287,7 +295,7 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
     full_name: body.full_name,
     whatsapp: body.whatsapp,
     instagram: body.instagram || "",
-    birth_date: "",
+    birth_date: body.birth_date || "",
     client_notes: body.notes || "",
     // Normalizado para dígitos: é o formato que o Asaas aceita e o que evita o
     // mesmo documento gravado de três jeitos conforme a máscara do formulário.
@@ -297,7 +305,9 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
   const referencePhoto = req.files?.reference_photo?.[0] ? `/api/private-files/${req.files.reference_photo[0].filename}` : "";
   const paymentProof = req.files?.payment_proof?.[0] ? `/api/private-files/${req.files.payment_proof[0].filename}` : "";
   const durationMinutes = bookingItems.filter((item) => item.item_type === "service").reduce((sum, item) => sum + Number(item.duration_minutes || 0) * Number(item.quantity || 1), 0) || Number(service.duration_minutes || 40);
-  const multiItemSlots = await availableBookingSlots(db, { service: { ...service, duration_minutes: durationMinutes }, professionalId, date });
+  const multiItemSlots = await availableBookingSlots(db, { service: { ...service, duration_minutes: durationMinutes,
+    scheduling_interval_minutes: Math.max(0, ...serviceRulesSnapshot.map((rule) => Number(rule.scheduling_interval_minutes || 0))),
+    minimum_advance_minutes: Math.max(0, ...serviceRulesSnapshot.map((rule) => Number(rule.minimum_advance_minutes || 0))) }, professionalId, date });
   if (!multiItemSlots.some((slot) => slot.time === time)) return res.status(409).json({ error: "O horário não comporta a duração total dos serviços selecionados." });
   const endTime = addMinutesToTime(time, durationMinutes);
 
@@ -314,8 +324,8 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
     outcome = await db.transaction(async (tx) => {
       const result = await tx.run(
         `INSERT INTO appointments
-          (client_id, professional_id, service_id, jewelry_id, jewelry_variant_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, duration_minutes, total_value, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, status, source, public_booking_key, notes, reference_photo_url, payment_proof_url)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+          (client_id, professional_id, service_id, jewelry_id, jewelry_variant_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, duration_minutes, total_value, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, status, source, public_booking_key, notes, reference_photo_url, payment_proof_url, service_rules_snapshot)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [
           client.id,
           professionalId,
@@ -339,7 +349,8 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
           bookingKey,
           [body.notes || "", body.selected_color ? `Observação de cor: ${body.selected_color}` : ""].filter(Boolean).join("\n"),
           referencePhoto,
-          paymentProof
+          paymentProof,
+          JSON.stringify(serviceRulesSnapshot)
         ]
       );
       if (depositValue > 0) {
@@ -351,13 +362,13 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
       for (const item of bookingItems) {
         await tx.run(
           `INSERT INTO appointment_items
-            (appointment_id, service_id, jewelry_id, jewelry_variant_id, quantity, procedure_price, jewelry_unit_price, duration_minutes, subtotal, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            (appointment_id, service_id, jewelry_id, jewelry_variant_id, quantity, procedure_price, jewelry_unit_price, duration_minutes, subtotal, notes, service_rules_snapshot)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             result.returnedId, item.service_id || null, item.jewelry_id || null, item.jewelry_variant_id || null,
             item.quantity, item.item_type === "service" ? item.unit_price : 0,
             item.item_type === "jewelry" ? item.unit_price : 0, item.duration_minutes || 0,
-            item.unit_price * item.quantity, item.notes || ""
+            item.unit_price * item.quantity, item.notes || "", JSON.stringify(item.service_rules_snapshot || {})
           ]
         );
       }

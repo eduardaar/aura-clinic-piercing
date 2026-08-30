@@ -11,6 +11,7 @@ import {
 import { syncProductInventory } from "./inventory.js";
 import { limitOffset, countRows } from "./pagination.js";
 import { getAppointmentFinancialSnapshot } from "./finance.js";
+import { parseServiceRulesSnapshot, resolveServiceRules } from "./serviceRules.js";
 
 function sameDateTimeDate(value, date) {
   return String(value || "").slice(0, 10) === date;
@@ -99,6 +100,7 @@ export async function normalizeAppointmentItems(db, body = {}) {
     const procedurePrice = Number(raw.procedure_price || raw.service_price || procedure?.price || service?.price || body.procedure_value || body.service_value || 0);
     const jewelryUnitPrice = jewelryId ? Number(raw.jewelry_unit_price || raw.unit_price || variant?.sale_value || jewelry?.sale_value || body.jewelry_value || 0) : 0;
     const duration = Number(raw.duration_minutes || procedure?.duration_minutes || service?.duration_minutes || body.duration_minutes || 0);
+    const serviceRulesSnapshot = resolveServiceRules(service || {}, procedure);
     items.push({
       procedure_id: procedureId,
       service_id: serviceId,
@@ -111,6 +113,7 @@ export async function normalizeAppointmentItems(db, body = {}) {
       procedure_price: procedurePrice,
       jewelry_unit_price: jewelryUnitPrice,
       duration_minutes: duration,
+      service_rules_snapshot: serviceRulesSnapshot,
       subtotal: procedurePrice + jewelryUnitPrice * quantity,
       notes: raw.notes || ""
     });
@@ -141,8 +144,8 @@ export async function replaceAppointmentItems(db, appointmentId, items = []) {
   for (const item of Array.isArray(items) ? items : []) {
     await db.run(
       `INSERT INTO appointment_items
-      (appointment_id, procedure_id, service_id, region, jewelry_id, jewelry_variant_id, quantity, procedure_price, jewelry_unit_price, duration_minutes, subtotal, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (appointment_id, procedure_id, service_id, region, jewelry_id, jewelry_variant_id, quantity, procedure_price, jewelry_unit_price, duration_minutes, subtotal, notes, service_rules_snapshot)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         appointmentId,
         item.procedure_id || null,
@@ -155,7 +158,8 @@ export async function replaceAppointmentItems(db, appointmentId, items = []) {
         Number(item.jewelry_unit_price || 0),
         Number(item.duration_minutes || 0),
         Number(item.subtotal || 0),
-        item.notes || ""
+        item.notes || "",
+        JSON.stringify(item.service_rules_snapshot || {})
       ]
     );
   }
@@ -185,11 +189,12 @@ async function attachAppointmentItems(db, rows = []) {
   return rows.map((row) => ({ ...row, items: grouped[row.id] || [] }));
 }
 
-// O frontend lê base_price/is_active; as colunas reais são price/active_online_booking.
+// Alias de preço preservado; status interno e disponibilidade online são campos
+// independentes desde a migration 0032.
 async function decorateService(db, service) {
   if (!service) return service;
   service.base_price = service.price;
-  service.is_active = service.active_online_booking;
+  service.online_booking_enabled = service.active_online_booking;
   service.professional_ids = (await db.all("SELECT professional_id FROM professional_services WHERE service_id = ?", [service.id])).map((item) => item.professional_id);
   return service;
 }
@@ -211,7 +216,7 @@ export async function listServices(db, { where = "", params = [], paging = null 
   return services.map((service) => ({
     ...service,
     base_price: service.price,
-    is_active: service.active_online_booking,
+    online_booking_enabled: service.active_online_booking,
     professional_ids: links.filter((link) => link.service_id === service.id).map((link) => link.professional_id)
   }));
 }
@@ -233,14 +238,14 @@ export async function replaceProfessionalServices(db, serviceId, professionalIds
   }
 }
 
-export async function availableBookingSlots(db, { service, professionalId, date }) {
+export async function availableBookingSlots(db, { service, professionalId, date, now = new Date() }) {
   const weekday = new Date(`${date}T12:00:00`).getDay();
   const availability = await db.get(
     "SELECT * FROM professional_availability WHERE professional_id = ? AND weekday = ? AND is_active = 1",
     [professionalId, weekday]
   );
   const appointments = await db.all(
-    `SELECT appointment_time, end_time
+    `SELECT appointment_time, end_time, service_rules_snapshot
      FROM appointments
      WHERE professional_id = ? AND appointment_date = ? AND status NOT IN ('cancelado', 'recusado', 'remarcado', 'nao_compareceu')`,
     [professionalId, date]
@@ -278,16 +283,24 @@ export async function availableBookingSlots(db, { service, professionalId, date 
   }
 
   const slots = [];
+  const serviceInterval = Math.max(0, Number(service.scheduling_interval_minutes || 0));
+  const minimumStart = now.getTime() + Math.max(0, Number(service.minimum_advance_minutes || 0)) * 60_000;
   for (const window of availabilityWindows) {
     const duration = Number(service.duration_minutes || window.duration_minutes || 40);
-    const step = duration + Number(window.buffer_minutes || 0);
+    const interval = Math.max(serviceInterval, Number(window.buffer_minutes || 0));
+    const step = duration + interval;
     for (let cursor = timeToMinutes(window.start_time); cursor + duration <= timeToMinutes(window.end_time); cursor += step) {
       const start = cursor;
       const end = cursor + duration;
+      const slotTime = minutesToTime(start);
+      if (new Date(`${date}T${slotTime}:00`).getTime() < minimumStart) continue;
       if (window.lunch_start && window.lunch_end && rangesOverlap(start, end, timeToMinutes(window.lunch_start), timeToMinutes(window.lunch_end))) continue;
-      if (appointments.some((item) => rangesOverlap(start, end, timeToMinutes(item.appointment_time), timeToMinutes(item.end_time || addMinutesToTime(item.appointment_time, duration))))) continue;
+      if (appointments.some((item) => {
+        const existingInterval = Math.max(0, ...parseServiceRulesSnapshot(item.service_rules_snapshot).map((rule) => Number(rule.scheduling_interval_minutes || 0)));
+        return rangesOverlap(start, end + interval, timeToMinutes(item.appointment_time), timeToMinutes(item.end_time || addMinutesToTime(item.appointment_time, duration)) + existingInterval);
+      })) continue;
       if (blocks.some((block) => blockType(block) !== "special_hours" && !Number(block.is_full_day || 0) && rangesOverlap(start, end, dateTimeToDayMinutes(block.start_datetime), dateTimeToDayMinutes(block.end_datetime)))) continue;
-      slots.push({ time: minutesToTime(start), end_time: minutesToTime(end), source: window.source });
+      slots.push({ time: slotTime, end_time: minutesToTime(end), source: window.source });
     }
   }
   const uniqueSlots = Array.from(new Map(slots.map((slot) => [slot.time, slot])).values())

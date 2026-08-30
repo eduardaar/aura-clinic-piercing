@@ -2,7 +2,7 @@
 import { Router } from "express";
 import { withFeature } from "../middleware/withDb.js";
 import { parseUpload, privateUpload, registerPrivateFiles } from "../middleware/upload.js";
-import { normalizeAppointment, addMinutesToTime, localTimestamp } from "../services/utils.js";
+import { normalizeAppointment, addMinutesToTime, localTimestamp, rangesOverlap, timeToMinutes } from "../services/utils.js";
 import { parsePaging, pageResponse } from "../services/pagination.js";
 import {
   listAppointments,
@@ -40,6 +40,7 @@ import {
 } from "../services/communications.js";
 import { recordAudit } from "../services/audit.js";
 import { cancelServiceExecution, ensureServiceExecution } from "../services/serviceExecutions.js";
+import { assertCompletionServiceRules, parseServiceRulesSnapshot, validateAppointmentTimingRules, validateClientServiceRules } from "../services/serviceRules.js";
 
 const router = Router();
 const APPOINTMENT_STATUSES = new Set(["pendente", "awaiting_deposit_proof", "confirmado", "chegou", "em_atendimento", "atendido", "cancelado", "nao_compareceu", "remarcado", "recusado"]);
@@ -168,6 +169,12 @@ router.post("/api/appointments", withFeature("agenda", async (req, res, db) => {
   const serviceId = optionalId(body.service_id);
   const service = serviceId ? await db.get("SELECT * FROM services WHERE id = ?", [serviceId]) : null;
   const items = await normalizeAppointmentItems(db, { ...body, service_id: serviceId });
+  const serviceRulesSnapshot = items.filter((item) => item.service_id || item.procedure_id).map((item) => item.service_rules_snapshot);
+  const clientProfile = await db.get("SELECT * FROM clients WHERE id=?", [client.id]);
+  const clientRuleError = validateClientServiceRules({ rules: serviceRulesSnapshot, client: clientProfile, appointmentDate: body.appointment_date, guardianProvided: Boolean(body.guardian_name && body.guardian_document) });
+  if (clientRuleError) return res.status(400).json({ error: clientRuleError });
+  const timingRuleError = validateAppointmentTimingRules({ rules: serviceRulesSnapshot, appointmentDate: body.appointment_date, appointmentTime: body.appointment_time });
+  if (timingRuleError) return res.status(400).json({ error: timingRuleError });
   const stockError = await validateAppointmentItemsStock(db, items);
   if (stockError) return res.status(409).json({ error: stockError });
   const firstItem = items[0] || {};
@@ -197,14 +204,23 @@ router.post("/api/appointments", withFeature("agenda", async (req, res, db) => {
   const remainingValue = operationTotals.outstandingBalance;
   const duration = totals.durationMinutes || Number(service?.duration_minutes || body.duration_minutes || 40);
   const endTime = addMinutesToTime(body.appointment_time, duration);
+  const requestedInterval = Math.max(0, ...serviceRulesSnapshot.map((rule) => Number(rule.scheduling_interval_minutes || 0)));
+  const sameDayAppointments = await db.all(`SELECT appointment_time,end_time,service_rules_snapshot FROM appointments
+    WHERE professional_id=? AND appointment_date=? AND status NOT IN ('cancelado','remarcado','nao_compareceu')`, [body.professional_id, body.appointment_date]);
+  const overlapsInterval = sameDayAppointments.some((scheduled) => {
+    const scheduledInterval = Math.max(0, ...parseServiceRulesSnapshot(scheduled.service_rules_snapshot).map((rule) => Number(rule.scheduling_interval_minutes || 0)));
+    return rangesOverlap(timeToMinutes(body.appointment_time), timeToMinutes(endTime) + requestedInterval,
+      timeToMinutes(scheduled.appointment_time), timeToMinutes(scheduled.end_time || addMinutesToTime(scheduled.appointment_time, duration)) + scheduledInterval);
+  });
+  if (overlapsInterval) return res.status(409).json({ error: "O horário conflita com outro atendimento ou com seu intervalo obrigatório." });
   // Agendamento + itens + sinal formam um registro só: agendamento sem itens
   // (ou sem o pagamento do sinal) já entra torto na agenda e no financeiro.
   const appointmentId = await db.transaction(async (tx) => {
     const result = await tx.run(
       `INSERT INTO appointments
-      (client_id, professional_id, service_id, jewelry_id, jewelry_variant_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, total_value, service_value, jewelry_value, subtotal_value, discount_value, coupon_id, coupon_code, coupon_snapshot, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, deposit_status, deposit_paid_at, financial_notes, status, notes, reference_photo_url, duration_minutes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-      [client.id, body.professional_id, serviceId || firstItem.service_id || null, jewelryId, variantId, body.procedure || firstItem.procedure_name || service?.name || "Atendimento", body.description, body.piercing_region || firstItem.region || "Atendimento", body.appointment_date, body.appointment_time, endTime, totalValue, totals.procedureValue, totals.jewelryValue, totals.totalValue, discountValue, couponQuote?.coupon?.id || null, couponQuote?.coupon?.code || null, couponQuote ? JSON.stringify(couponQuote) : null, depositValue, remainingValue, body.deposit_payment_method, body.remaining_payment_method, depositStatus, depositReceived ? (body.deposit_paid_at || localTimestamp()) : null, body.financial_notes || "", body.status || "pendente", body.notes, photoUrl, duration]
+      (client_id, professional_id, service_id, jewelry_id, jewelry_variant_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, total_value, service_value, jewelry_value, subtotal_value, discount_value, coupon_id, coupon_code, coupon_snapshot, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, deposit_status, deposit_paid_at, financial_notes, status, notes, reference_photo_url, duration_minutes, service_rules_snapshot)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      [client.id, body.professional_id, serviceId || firstItem.service_id || null, jewelryId, variantId, body.procedure || firstItem.procedure_name || service?.name || "Atendimento", body.description, body.piercing_region || firstItem.region || "Atendimento", body.appointment_date, body.appointment_time, endTime, totalValue, totals.procedureValue, totals.jewelryValue, totals.totalValue, discountValue, couponQuote?.coupon?.id || null, couponQuote?.coupon?.code || null, couponQuote ? JSON.stringify(couponQuote) : null, depositValue, remainingValue, body.deposit_payment_method, body.remaining_payment_method, depositStatus, depositReceived ? (body.deposit_paid_at || localTimestamp()) : null, body.financial_notes || "", body.status || "pendente", body.notes, photoUrl, duration, JSON.stringify(serviceRulesSnapshot)]
     );
     await replaceAppointmentItems(tx, result.returnedId, items);
     if (couponQuote?.coupon?.id) {
@@ -252,6 +268,7 @@ router.post("/api/appointments/:id/complete", withFeature("agenda", async (req, 
       !(await requireFeature(req, res, "basic_finance"))) return;
   try {
     await db.transaction(async (tx) => {
+      await assertCompletionServiceRules(tx, req.params.id);
       await registerCompletionPayments(tx, req.params.id, req.body.payments, req.user?.id);
       await tx.run("UPDATE appointments SET status = 'atendido', financial_notes = ?, updated_at = ? WHERE id = ?", [req.body.financial_notes || before.financial_notes || "", localTimestamp(), req.params.id]);
       const after = await tx.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
@@ -405,6 +422,15 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
     req.body.coupon_snapshot = couponQuote ? JSON.stringify(couponQuote) : appointment.coupon_snapshot || null;
     req.body.discount_value = operationTotals.discountTotal;
     req.body.remaining_value = operationTotals.outstandingBalance;
+    const rules = items.filter((item) => item.service_id || item.procedure_id).map((item) => item.service_rules_snapshot);
+    const clientProfile = await db.get("SELECT * FROM clients WHERE id=?", [appointment.client_id]);
+    const clientRuleError = validateClientServiceRules({ rules, client: clientProfile, appointmentDate: req.body.appointment_date || appointment.appointment_date });
+    if (clientRuleError) return res.status(400).json({ error: clientRuleError });
+    if (req.body.appointment_date !== undefined || req.body.appointment_time !== undefined) {
+      const timingRuleError = validateAppointmentTimingRules({ rules, appointmentDate: req.body.appointment_date || appointment.appointment_date, appointmentTime: req.body.appointment_time || appointment.appointment_time });
+      if (timingRuleError) return res.status(400).json({ error: timingRuleError });
+    }
+    req.body.service_rules_snapshot = JSON.stringify(rules);
     pendingItems = items;
   }
   if (req.body.status === "cancelado") {
@@ -416,11 +442,13 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
     if (!appointment.arrived_at) req.body.arrived_at = localTimestamp();
     if (!appointment.started_at) req.body.started_at = localTimestamp();
   }
-  const fields = ["status", "appointment_date", "appointment_time", "end_time", "professional_id", "service_id", "jewelry_id", "jewelry_variant_id", "procedure", "description", "piercing_region", "total_value", "discount_value", "deposit_value", "remaining_value", "deposit_payment_method", "remaining_payment_method", "deposit_status", "deposit_paid_at", "financial_notes", "coupon_code", "coupon_id", "coupon_snapshot", "notes", "arrived_at", "started_at"];
+  const fields = ["status", "appointment_date", "appointment_time", "end_time", "professional_id", "service_id", "jewelry_id", "jewelry_variant_id", "procedure", "description", "piercing_region", "total_value", "discount_value", "deposit_value", "remaining_value", "deposit_payment_method", "remaining_payment_method", "deposit_status", "deposit_paid_at", "financial_notes", "coupon_code", "coupon_id", "coupon_snapshot", "notes", "arrived_at", "started_at", "service_rules_snapshot"];
   const updates = fields.filter((field) => req.body[field] !== undefined);
 
   await db.transaction(async (tx) => {
-    if (pendingItems) await replaceAppointmentItems(tx, req.params.id, pendingItems);
+    if (pendingItems) {
+      await replaceAppointmentItems(tx, req.params.id, pendingItems);
+    }
     if (updates.length) {
       await tx.run(
         `UPDATE appointments SET ${updates.map((field) => `${field} = ?`).join(", ")} WHERE id = ?`,
@@ -449,6 +477,7 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
     }
 
     if (req.body.status === "atendido") {
+      await assertCompletionServiceRules(tx, req.params.id);
       await deductJewelryStock(tx, req.params.id);
       await consumeAppointmentRecipe(tx, req.params.id, req.user?.id || null);
       const configuredReceivable = configuresReceivableSchedule(req.body);

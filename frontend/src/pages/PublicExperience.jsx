@@ -1747,7 +1747,7 @@ export function PublicBooking() {
   });
   // `cpf`/`email` ficam fora de `defaultPublicBooking()` porque nascem sempre
   // vazios: são digitados na etapa 5 e não vêm por query string como o resto.
-  const [form, setForm] = useState(() => ({ ...defaultPublicBooking(), cpf: "", email: "" }));
+  const [form, setForm] = useState(() => ({ ...defaultPublicBooking(), cpf: "", email: "", birth_date: "", guardian_name: "", guardian_document: "" }));
   const [slots, setSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -1767,6 +1767,14 @@ export function PublicBooking() {
   const selectedJewelryVariant = asArray(selectedJewelry?.variants).find((variant) => String(variant.id) === String(form.jewelry_variant_id));
   const selectedJewelryValue = form.jewelry_id ? asNumber(selectedJewelryVariant?.sale_value || selectedJewelry?.sale_value || 0) : 0;
   const selectedServices = services.filter((item) => effectiveServiceIds.some((id) => String(id) === String(item.id)));
+  const needsBirthDate = selectedServices.some((item) => (item.minimum_age_years !== null && item.minimum_age_years !== undefined) || Boolean(item.requires_guardian));
+  const minimumAge = Math.max(0, ...selectedServices.map((item) => asNumber(item.minimum_age_years, 0)));
+  const birthDate = form.birth_date ? new Date(`${form.birth_date}T12:00:00`) : null;
+  const appointmentDate = form.appointment_date ? new Date(`${form.appointment_date}T12:00:00`) : new Date();
+  const ageAtAppointment = birthDate && !Number.isNaN(birthDate.getTime()) ? appointmentDate.getFullYear() - birthDate.getFullYear() - (appointmentDate < new Date(appointmentDate.getFullYear(), birthDate.getMonth(), birthDate.getDate()) ? 1 : 0) : null;
+  const guardianRequired = selectedServices.some((item) => Boolean(item.requires_guardian)) && ageAtAppointment !== null && ageAtAppointment < 18;
+  const ageBlocked = minimumAge > 0 && ageAtAppointment !== null && ageAtAppointment < minimumAge;
+  const rulesDataMissing = (needsBirthDate && !form.birth_date) || (guardianRequired && (!form.guardian_name.trim() || !String(form.guardian_document || "").replace(/\D/g, "")));
   const selectedServiceValue = selectedServices.reduce((sum, item) => sum + asNumber(item.base_price || item.price || 0), 0);
   const bookingOrderItems = readCatalogStorage("aura-catalog-order", []);
   const orderJewelryValue = asArray(bookingOrderItems).reduce((sum, item) => sum + asNumber(item.sale_value) * asNumber(item.qty, 1), 0);
@@ -1808,6 +1816,8 @@ export function PublicBooking() {
     // Última barreira antes do envio: a etapa 5 pode ter sido pulada por link
     // com query string, e o backend devolveria 400 depois do resumo inteiro.
     if (cpfError) return setError(`${cpfError} Volte à etapa "Dados" para corrigir.`);
+    if (ageBlocked) return setError(`Este procedimento exige idade mínima de ${minimumAge} anos.`);
+    if (rulesDataMissing) return setError("Preencha os dados necessários para validar idade e responsável legal.");
     setError("");
     setSubmitting(true);
     const body = new FormData();
@@ -1868,6 +1878,7 @@ export function PublicBooking() {
                     setForm({ ...form, service_id: next[0] || "", professional_id: "", appointment_time: "" });
                   }}>
                     <strong>{item.name}</strong><p>{item.description}</p><span>{item.duration_minutes} min · {currency.format(item.base_price || item.price || 0)}</span>
+                    {(item.minimum_age_years != null || item.requires_guardian || item.requires_signed_term) && <small>{[item.minimum_age_years != null ? `${item.minimum_age_years}+ anos` : "", item.requires_guardian ? "responsável para menor" : "", item.requires_signed_term ? "termo obrigatório" : ""].filter(Boolean).join(" · ")}</small>}
                   </button>
                 );
               })}
@@ -1931,6 +1942,11 @@ export function PublicBooking() {
                   fatura e o recibo do sinal. */}
               <Input label="E-mail (opcional)" type="email" value={form.email} onChange={(value) => setForm({ ...form, email: value })} />
               <Input label="Instagram" value={form.instagram} onChange={(value) => setForm({ ...form, instagram: value })} />
+              {needsBirthDate && <Input label="Data de nascimento" type="date" value={form.birth_date} onChange={(value) => setForm({ ...form, birth_date: value })} required />}
+              {guardianRequired && <>
+                <Input label="Nome do responsável legal" value={form.guardian_name} onChange={(value) => setForm({ ...form, guardian_name: value })} required />
+                <Input label="Documento do responsável" value={form.guardian_document} onChange={(value) => setForm({ ...form, guardian_document: formatTaxId(value) })} required />
+              </>}
               <label>Foto de referência<input type="file" accept="image/*" onChange={(event) => setForm({ ...form, reference_photo: event.target.files?.[0] })} /></label>
             </div>
             <span className={cpfError && form.cpf ? "field-hint is-error" : "field-hint"}>
@@ -1941,7 +1957,8 @@ export function PublicBooking() {
                   : "Sem CPF o sinal não pode ser cobrado online: você envia o comprovante do Pix pelo WhatsApp e a equipe confirma na mão."}
             </span>
             <label>Observações<textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
-            <button className="primary-button booking-wide-button" disabled={!form.full_name || !form.whatsapp || Boolean(cpfError)} onClick={() => setStep(6)}>Ver Resumo</button>
+            {ageBlocked && <span className="field-hint is-error">Este procedimento exige idade mínima de {minimumAge} anos.</span>}
+            <button className="primary-button booking-wide-button" disabled={!form.full_name || !form.whatsapp || Boolean(cpfError) || rulesDataMissing || ageBlocked} onClick={() => setStep(6)}>Ver Resumo</button>
           </section>
         )}
         {step === 6 && (
@@ -1958,6 +1975,7 @@ export function PublicBooking() {
             {(selectedJewelry || bookingOrderItems.length > 0) && <p><strong>Valor das joias:</strong> {currency.format(bookingOrderItems.length ? orderJewelryValue : selectedJewelryValue)}</p>}
             <p><strong>Valor total:</strong> {currency.format(selectedTotal)}</p>
             <p><strong>Sinal obrigatório:</strong> {currency.format(selectedDeposit)}</p>
+            {selectedServices.some((item) => Boolean(item.requires_signed_term)) && <p><strong>Termo digital:</strong> deverá estar assinado antes da conclusão do atendimento.</p>}
             <p><strong>Valor restante:</strong> {currency.format(selectedRemaining)}</p>
             <p><strong>Regras:</strong> {data.rules?.cancellation}</p>
             <Input label="Cupom (opcional)" value={form.coupon_code || ""} onChange={(value) => setForm({ ...form, coupon_code: value.toUpperCase() })} />
