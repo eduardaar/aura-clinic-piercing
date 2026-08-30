@@ -1,9 +1,8 @@
 # Documentação — Aura Clinic Piercing
 
-Esta pasta guarda a referência técnica atual e propostas que ainda estão em
-discussão. Roadmaps, matrizes comerciais, auditorias pontuais e regras de
-produto antigas foram removidos para que as próximas decisões comecem sem
-backlog herdado.
+Esta pasta guarda a referência técnica atual, os estudos aprovados e os roadmaps
+ativos. Documentos históricos devem ser identificados como tal para não serem
+confundidos com a regra de produto vigente.
 
 ## Comece por aqui
 
@@ -46,6 +45,8 @@ backlog herdado.
 | [ESTUDO-MATERIAIS-CONSUMO-AURA.md](./ESTUDO-MATERIAIS-CONSUMO-AURA.md) | Leitura da base local e fluxo aplicado para materiais operacionais. |
 | [ROADMAP-ESTOQUE-CATALOGO-AURA.md](./ROADMAP-ESTOQUE-CATALOGO-AURA.md) | Etapas para consolidar estoque, variações e catálogo. Não executado — é a pendência P-02 de [ESTADO-ATUAL.md](./ESTADO-ATUAL.md). |
 | [ROADMAP-LANCAMENTO-SETEMBRO-2026.md](./ROADMAP-LANCAMENTO-SETEMBRO-2026.md) | Plano semanal de homologação, preparação de produção e decisão Go/No-Go para setembro de 2026. |
+| [ESTUDO-TECNICO-EXECUCAO-ROADMAP-LANCAMENTO-SETEMBRO-2026.md](./ESTUDO-TECNICO-EXECUCAO-ROADMAP-LANCAMENTO-SETEMBRO-2026.md) | Arquitetura-alvo, dependências, agentes, automações, ondas e validações para executar o lançamento com velocidade. |
+| [ROADMAP-LIMPEZA-LEGADO-POS-LANCAMENTO.md](./ROADMAP-LIMPEZA-LEGADO-POS-LANCAMENTO.md) | Limpeza ampla que permanecerá para depois do lançamento e registro do que foi antecipado ao roadmap de setembro. |
 
 ## Como usar esta documentação
 
