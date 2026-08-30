@@ -39,6 +39,7 @@ import {
   scheduleAppointmentClientAutomations,
   scheduleClientAutomationEvent
 } from "../services/communications.js";
+import { recordAudit } from "../services/audit.js";
 
 const router = Router();
 
@@ -214,6 +215,16 @@ router.post("/api/appointments", withFeature("agenda", async (req, res, db) => {
         [result.returnedId, client.id, depositValue, body.deposit_payment_method || "Pix", depositReceived ? "pago" : "pendente", depositReceived ? (body.deposit_paid_at || localTimestamp()) : localTimestamp()]
       );
     }
+    await recordAudit(tx, {
+      req, module: "appointments", action: "create", entityType: "appointment", entityId: result.returnedId,
+      reason: "Agendamento criado",
+      after: {
+        id: result.returnedId, client_id: client.id, professional_id: body.professional_id,
+        service_id: serviceId || firstItem.service_id || null, appointment_date: body.appointment_date,
+        appointment_time: body.appointment_time, status: body.status || "pendente", total_value: totalValue,
+        deposit_value: depositValue
+      }
+    });
     return result.returnedId;
   });
   const created = await listAppointments(db, "WHERE a.id = ?", [appointmentId]).then((rows) => rows[0]);
@@ -249,6 +260,13 @@ router.post("/api/appointments/:id/complete", withFeature("agenda", async (req, 
       await ensureSalesOrderForAppointment(tx, req.params.id, req.user, req.body);
       await ensurePostCareFollowups(tx, req.params.id);
       await awardLoyaltyForAppointment(tx, req.params.id);
+      const completed = await tx.get("SELECT id, client_id, professional_id, service_id, appointment_date, appointment_time, status, total_value, remaining_value FROM appointments WHERE id=?", [req.params.id]);
+      await recordAudit(tx, {
+        req, module: "appointments", action: "complete", entityType: "appointment", entityId: req.params.id,
+        reason: String(req.body?.reason || "Atendimento concluído"),
+        before: { id: before.id, status: before.status, total_value: before.total_value, remaining_value: before.remaining_value },
+        after: completed, severity: "warning"
+      });
     });
   } catch (error) {
     return res.status(400).json({ error: error.message || "Não foi possível concluir o atendimento." });
@@ -267,6 +285,12 @@ router.post("/api/appointments/:id/cancel", withFeature("agenda", async (req, re
   if (["client_credit", "manual_refund"].includes(resolution) && !authorizePermission(req, res, P.FINANCE_EDIT)) return;
   try {
     const result = await cancelAppointmentWithResolution(db, req.params.id, req.body || {}, req.user?.id || null);
+    await recordAudit(db, {
+      req, module: "appointments", action: "cancel", entityType: "appointment", entityId: req.params.id,
+      reason: String(req.body?.reason || "Cancelamento"),
+      after: { status: "cancelado", resolution: result.resolution, deposit_amount: result.deposit_amount },
+      severity: "critical"
+    });
     await cancelPendingAppointmentCommunications(db, req.params.id);
     await scheduleClientAutomationEvent(db, req.params.id, "appointment_cancelled", { uniqueContext: result.cancellation_id });
     res.json(result);
@@ -455,6 +479,22 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
       const after = await tx.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
       await tx.run("INSERT INTO appointment_financial_audit (appointment_id, user_id, action, reason, before_snapshot, after_snapshot) VALUES (?, ?, 'financial_correction', ?, ?, ?)", [req.params.id, req.user.id, String(req.body.reason).trim(), JSON.stringify(appointment), JSON.stringify(after)]);
     }
+    if (updates.length || pendingItems) {
+      const after = await tx.get("SELECT id, client_id, professional_id, service_id, appointment_date, appointment_time, status, total_value, remaining_value FROM appointments WHERE id=?", [req.params.id]);
+      await recordAudit(tx, {
+        req, module: "appointments", action: "update", entityType: "appointment", entityId: req.params.id,
+        reason: String(req.body?.reason || "Alteração de agendamento"),
+        before: {
+          id: appointment.id, client_id: appointment.client_id, professional_id: appointment.professional_id,
+          service_id: appointment.service_id, appointment_date: appointment.appointment_date,
+          appointment_time: appointment.appointment_time, status: appointment.status,
+          total_value: appointment.total_value, remaining_value: appointment.remaining_value
+        },
+        after,
+        metadata: { changed_fields: updates.filter((field) => !["notes", "description", "financial_notes", "coupon_snapshot"].includes(field)) },
+        severity: finalizedFinancialChange ? "critical" : "info"
+      });
+    }
   });
 
   const updated = await listAppointments(db, "WHERE a.id = ?", [req.params.id]).then((rows) => rows[0]);
@@ -510,7 +550,17 @@ router.delete("/api/appointments/:id", withFeature("agenda", async (req, res, db
   await db.transaction(async (tx) => {
     await tx.run("DELETE FROM notification_queue WHERE appointment_id = ?", [req.params.id]);
     await tx.run("DELETE FROM appointments WHERE id = ?", [req.params.id]);
-    await tx.run("INSERT INTO administrative_audit_logs (entity_type, entity_id, action, reason, user_id, snapshot) VALUES ('appointment', ?, 'hard_delete', ?, ?, ?)", [req.params.id, reason, req.user?.id || null, JSON.stringify({ appointment, impact })]);
+    await recordAudit(tx, {
+      req, module: "appointments", action: "delete", entityType: "appointment", entityId: req.params.id,
+      reason,
+      before: {
+        id: appointment.id, client_id: appointment.client_id, professional_id: appointment.professional_id,
+        service_id: appointment.service_id, appointment_date: appointment.appointment_date,
+        appointment_time: appointment.appointment_time, status: appointment.status,
+        total_value: appointment.total_value
+      },
+      metadata: { impact }, severity: "critical"
+    });
   });
   // A cota conta agendamentos CRIADOS no mês; apagar um do mês corrente devolve
   // a vaga, então a medição cacheada não serve mais.
