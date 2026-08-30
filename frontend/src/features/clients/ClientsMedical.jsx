@@ -6,7 +6,7 @@ import { ConfirmDeleteModal, Modal, CrudHeader, RowActions } from "../../compone
 import { DataView, MONTH_OPTIONS } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { AdvancedFields, FormSection, FormWorkflow, ValidationSummary } from "../../components/common/FormWorkflow";
-import { asArray, dateInputValue, formatDate, formatLongDate } from "../../lib/utils";
+import { asArray, asObject, dateInputValue, formatDate, formatLongDate } from "../../lib/utils";
 import { apiFetch, readStoredSession, tenantSlug, useApiInvalidate, useFetch } from "../../lib/api";
 import {
   BRAZIL_STATE_OPTIONS,
@@ -39,6 +39,7 @@ export function ClientsMedical({ onNavigate, createSignal = 0 }) {
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState(null);
+  const [merging, setMerging] = useState(null);
   const [profile, setProfile] = useState(null);
   useEffect(() => {
     if (!createSignal) return;
@@ -64,6 +65,12 @@ export function ClientsMedical({ onNavigate, createSignal = 0 }) {
   }
 
   const isAdmin = readStoredSession()?.user?.role === "admin";
+
+  function openMerge(client) {
+    setError("");
+    setProfile(null);
+    setMerging(client);
+  }
 
   async function openDeletion(client) {
     setError("");
@@ -196,6 +203,7 @@ export function ClientsMedical({ onNavigate, createSignal = 0 }) {
                     target: "_blank",
                     rel: "noreferrer",
                   },
+                  ...(isAdmin ? [{ label: "Mesclar cadastro", onClick: () => openMerge(client), danger: true }] : []),
                   ...(isAdmin ? [{ label: "Excluir cliente", onClick: () => openDeletion(client), danger: true }] : []),
                 ]}
               />
@@ -296,9 +304,10 @@ export function ClientsMedical({ onNavigate, createSignal = 0 }) {
           size="lg"
           onClose={() => setProfile(null)}
           footer={
-            <Button variant="secondary" onClick={() => setProfile(null)}>
-              Fechar
-            </Button>
+            <>
+              {isAdmin && <Button variant="danger" onClick={() => openMerge(profile)}>Mesclar cadastro</Button>}
+              <Button variant="secondary" onClick={() => setProfile(null)}>Fechar</Button>
+            </>
           }
         >
           <ClientProfileLoader
@@ -313,7 +322,80 @@ export function ClientsMedical({ onNavigate, createSignal = 0 }) {
           />
         </Modal>
       )}
+      {merging && (
+        <ClientMergeModal
+          source={merging}
+          onClose={() => setMerging(null)}
+          onMerged={() => {
+            setMerging(null);
+            setProfile(null);
+            refresh();
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+function ClientMergeModal({ source, onClose, onMerged }) {
+  const [search, setSearch] = useState("");
+  const [targetId, setTargetId] = useState("");
+  const [reason, setReason] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const query = new URLSearchParams({ limit: "100", ...(search.trim() ? { search: search.trim() } : {}) });
+  const { data } = useFetch(`/clients?${query}`);
+  const candidateRows = asArray(data).length ? asArray(data) : asArray(asObject(data).items);
+  const candidates = candidateRows.filter((client) => Number(client.id) !== Number(source.id));
+
+  async function submit() {
+    setBusy(true);
+    setError("");
+    const response = await apiFetch(`/clients/${source.id}/merge`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target_client_id: Number(targetId), reason, confirmation }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setError(payload.error || "Não foi possível mesclar os clientes.");
+      setBusy(false);
+      return;
+    }
+    onMerged(payload);
+  }
+
+  return (
+    <Modal
+      open
+      title="Mesclar cadastro duplicado"
+      subtitle="Todo o histórico será movido para o cliente mantido"
+      onClose={() => !busy && onClose()}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>Cancelar</Button>
+          <Button variant="danger" onClick={submit} disabled={busy || !targetId || reason.trim().length < 5 || confirmation !== "MESCLAR CLIENTES"}>
+            {busy ? "Mesclando…" : "Mesclar definitivamente"}
+          </Button>
+        </>
+      }
+    >
+      <div className="stack">
+        <div className="soft-card">
+          <strong>Cadastro duplicado: {personName(source)}</strong>
+          <p>Este cadastro será anonimizado e não poderá ser reutilizado. Agenda, pagamentos, vendas e históricos serão vinculados ao destino.</p>
+        </div>
+        <Input label="Buscar cliente que será mantido" value={search} onChange={setSearch} placeholder="Nome, CPF, telefone ou e-mail" />
+        <Select label="Cliente de destino" value={targetId} onChange={setTargetId}>
+          <option value="">Selecione o cadastro correto</option>
+          {candidates.map((client) => <option key={client.id} value={client.id}>{personName(client)} · {formatCpf(client.cpf) || formatBrazilianPhone(client.whatsapp)}</option>)}
+        </Select>
+        <Textarea label="Motivo obrigatório" value={reason} onChange={setReason} placeholder="Ex.: cadastro duplicado confirmado pelo CPF" />
+        <Input label="Digite MESCLAR CLIENTES" value={confirmation} onChange={setConfirmation} />
+        {error && <span className="form-error">{error}</span>}
+      </div>
+    </Modal>
   );
 }
 

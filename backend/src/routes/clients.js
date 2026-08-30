@@ -16,6 +16,7 @@ import { authorizePermission } from "../middleware/requirePermission.js";
 import { hasPermission } from "../services/permissionService.js";
 import { firstClientError, normalizeClientData } from "../services/clientData.js";
 import { recordAudit } from "../services/audit.js";
+import { ClientMergeError, mergeClients } from "../services/clientMerge.js";
 
 const router = Router();
 
@@ -205,6 +206,30 @@ async function updateClient(req, res, db) {
 router.put("/api/clients/:id", withFeature("clients", updateClient));
 router.patch("/api/clients/:id", withFeature("clients", updateClient));
 
+router.post(
+  "/api/clients/:id/merge",
+  withFeature("clients", async (req, res, db) => {
+    if (!authorizePermission(req, res, P.CLIENTS_DELETE)) return;
+    if (req.body?.confirmation !== "MESCLAR CLIENTES")
+      return res.status(400).json({ error: "Digite MESCLAR CLIENTES para confirmar." });
+    try {
+      const result = await mergeClients(db, {
+        sourceId: req.params.id,
+        targetId: req.body?.target_client_id,
+        reason: req.body?.reason,
+        actor: req.user,
+        req,
+      });
+      invalidateUsageCache(req.tenant?.id);
+      res.json({ ok: true, ...result });
+    } catch (error) {
+      if (error instanceof ClientMergeError)
+        return res.status(error.status).json({ error: error.message, code: error.code });
+      throw error;
+    }
+  }),
+);
+
 // Crédito é exibido separado de pagamentos: ele representa uma obrigação da
 // clínica com o cliente e nunca deve desaparecer em uma observação livre.
 router.get(
@@ -279,9 +304,10 @@ async function clientDeletionImpact(db, id) {
       (SELECT COUNT(*) FROM loyalty_redemptions WHERE client_id = ?) AS loyalty_redemptions,
       (SELECT COUNT(*) FROM coupon_usages WHERE client_id = ?) AS coupon_usages,
       (SELECT COUNT(*) FROM promotion_usages WHERE client_id = ?) AS promotion_usages,
-      (SELECT COUNT(*) FROM payment_intents WHERE client_id = ?) AS payment_intents
+      (SELECT COUNT(*) FROM payment_intents WHERE client_id = ?) AS payment_intents,
+      (SELECT COUNT(*) FROM clients WHERE merged_into_client_id = ?) AS merged_sources
   `,
-    [id, id, id, id, id, id, id, id, id, id, id],
+    [id, id, id, id, id, id, id, id, id, id, id, id],
   );
   return Object.fromEntries(Object.entries(row || {}).map(([key, value]) => [key, Number(value || 0)]));
 }
