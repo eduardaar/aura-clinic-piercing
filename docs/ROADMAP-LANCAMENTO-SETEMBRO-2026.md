@@ -40,7 +40,7 @@ estoque, financeiro, pagamento, arquivos privados e auditoria.
 - [x] Criar registros configuráveis para relatórios e seus filtros/colunas/exportadores, evitando novas telas e implementações paralelas.
 - [ ] Usar codemod AST somente para alterações mecânicas repetitivas, como imports, nomes de componentes, props e IDs de página; nunca para regras financeiras, clínicas, fiscais, de estoque ou permissão.
 - [ ] Remover no mesmo lote as telas, rotas, serviços, aliases e estruturas substituídas de Serviços/Procedimentos, Materiais/Produtos, atendimento em Vendas, relatórios e auditoria.
-- [ ] Remover candidatos já comprovados sem consumidor: `react-router-dom`, `@aws-sdk/s3-request-presigner`, `legacyLocalDateValue`, o `DataTable` antigo e `admin_audit_logs`; confirmar novamente com busca estática imediatamente antes da remoção.
+- [x] Remover candidatos já comprovados sem consumidor: `react-router-dom`, `@aws-sdk/s3-request-presigner`, `legacyLocalDateValue`, o `DataTable` antigo e `admin_audit_logs`; confirmar novamente com busca estática imediatamente antes da remoção.
 - [x] Implementar a busca global do cabeçalho ou retirá-la temporariamente; não lançar um controle que apenas aparenta pesquisar.
 - [ ] Durante o desenvolvimento, criar migrations novas por fatia; no candidato a release, gerar uma baseline completa com `pg_dump --schema-only`, remover o bootstrap SQL duplicado, zerar a base e comprovar a criação de plataforma e clínica somente pelas migrations.
 - [x] Executar Biome e testes direcionados durante cada tarefa; reservar build e suítes completas para a integração de cada lote e para o candidato final.
