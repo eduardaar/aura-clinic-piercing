@@ -39,6 +39,12 @@ test("menu e páginas públicas preservam agrupamento e correspondência", () =>
     "inventory", "purchases", "suppliers"
   ]);
   assert.deepEqual(menu.find(({ group }) => group === "Gestão").pages.map(({ id }) => id), ["reports", "audit"]);
+  assert.deepEqual(menu.find(({ group }) => group === "Financeiro").pages.map(({ id }) => id), ["receivables"]);
+  assert.equal(menuPages({ onboardingComplete: true }).flatMap(({ pages }) => pages).some(({ id }) => id === "onboarding"), false);
+  assert.deepEqual(appPageById("client-center").menuChildren.filter(({ queue }) => queue).map(({ page }) => page), ["terms", "postcare"]);
+  assert.deepEqual(appPageById("agenda").menuChildren.find(({ id }) => id === "agenda-procedures"), {
+    id: "agenda-procedures", label: "Procedimentos", page: "agenda", target: "procedimentos", feature: "procedures"
+  });
   assert.equal(publicPageForPath("/catalogo/produto/42").id, "public-catalog");
   assert.equal(publicPageForPath("/politica-de-privacidade").documentKey, "privacy_policy");
   assert.equal(publicPageForPath("/novidades/agenda-renovada").id, "news");

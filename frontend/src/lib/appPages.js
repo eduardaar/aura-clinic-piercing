@@ -11,6 +11,7 @@ import {
   Newspaper,
   Package,
   PackagePlus,
+  MessageSquare,
   ScrollText,
   ShieldCheck,
   ShoppingCart,
@@ -33,6 +34,15 @@ export const APP_PAGES = Object.freeze([
   {
     id: "agenda", path: "/app/agenda", title: "Agenda", group: "Atendimento", icon: Calendar, menu: true, menuRank: 0,
     roleRank: { admin: 1, reception: 0, piercer: 0 }, permission: "appointments.view",
+    menuChildren: [
+      { id: "agenda-calendar", label: "Calendário", page: "agenda", target: "calendario" },
+      { id: "agenda-requests", label: "Solicitações online", page: "agenda", target: "solicitacoes" },
+      { id: "agenda-history", label: "Histórico de atendimentos", page: "agenda", target: "historico" },
+      { id: "agenda-procedures", label: "Procedimentos", page: "agenda", target: "procedimentos", feature: "procedures" },
+      { id: "agenda-professionals", label: "Profissionais", page: "agenda", target: "profissionais" },
+      { id: "agenda-hours", label: "Horários", page: "agenda", target: "horarios" },
+      { id: "agenda-blocks", label: "Bloqueios", page: "agenda", target: "bloqueios" }
+    ],
     component: lazyNamed(() => import("../features/agenda/Agenda"), "AgendaWorkspace")
   },
   {
@@ -41,8 +51,13 @@ export const APP_PAGES = Object.freeze([
     component: lazyNamed(() => import("../features/services/Services"), "ServicesWorkspace")
   },
   {
-    id: "communications", path: "/app/comunicacoes", title: "Comunicações", group: null, menu: false,
+    id: "communications", path: "/app/comunicacoes", title: "Comunicações", group: "Atendimento", icon: MessageSquare, menu: true, menuRank: 3,
     roleRank: { admin: 3, reception: 2, piercer: 2 }, permission: "communication.view", feature: "message_templates",
+    menuChildren: [
+      { id: "communications-queue", label: "Fila de mensagens", page: "communications", target: "service" },
+      { id: "communications-history", label: "Histórico e automações", page: "communications", target: "automation" },
+      { id: "communications-templates", label: "Modelos", page: "communications", target: "templates" }
+    ],
     component: lazyNamed(() => import("../features/communications/Communications"), "Communications")
   },
   {
@@ -58,6 +73,13 @@ export const APP_PAGES = Object.freeze([
   {
     id: "inventory", path: "/app/produtos/estoque", title: "Estoque", group: "Estoque e compras", icon: Table2, menu: true, menuRank: 0,
     roleRank: { admin: 6, reception: 4, piercer: 4 }, permission: "inventory.view", feature: "basic_inventory",
+    menuChildren: [
+      { id: "inventory-all", label: "Todos os itens", page: "inventory", target: "todos" },
+      { id: "inventory-products", label: "Produtos e joias", page: "inventory", target: "vendaveis" },
+      { id: "inventory-materials", label: "Materiais de procedimento", page: "inventory", target: "materiais" },
+      { id: "inventory-lots", label: "Lotes e validades", page: "inventory", target: "lotes" },
+      { id: "inventory-movements", label: "Movimentações", page: "inventory", target: "movimentacoes" }
+    ],
     component: lazyNamed(() => import("../features/inventory/Inventory"), "CatalogWorkspace")
   },
   {
@@ -68,6 +90,12 @@ export const APP_PAGES = Object.freeze([
   {
     id: "catalog", path: "/app/catalogo", title: "Catálogo", group: "Comercial", icon: Gem, menu: true, menuRank: 0,
     roleRank: { admin: 8 }, feature: "basic_catalog",
+    menuChildren: [
+      { id: "catalog-online", label: "Catálogo online", page: "catalog" },
+      { id: "catalog-personalization", label: "Personalização", page: "catalog-customization", target: "layout" },
+      { id: "catalog-promotions", label: "Promoções", page: "catalog-customization", target: "promocoes", feature: "campaigns" },
+      { id: "catalog-coupons", label: "Cupons", page: "catalog-customization", target: "cupons", feature: "coupons" }
+    ],
     component: lazyNamed(() => import("../features/inventory/Inventory"), "CatalogWorkspace")
   },
   {
@@ -82,12 +110,18 @@ export const APP_PAGES = Object.freeze([
   },
   {
     id: "receivables", path: "/app/financeiro/receber", aliases: ["/app/financeiro"], title: "Contas a receber",
-    group: "Financeiro", icon: ArrowDownToLine, menu: true, menuRank: 0, roleRank: { admin: 11, finance: 0 },
+    menuTitle: "Financeiro", group: "Financeiro", icon: ArrowDownToLine, menu: true, menuRank: 0, roleRank: { admin: 11, finance: 0 },
     permission: "finance.view", feature: "basic_finance",
+    menuChildren: [
+      { id: "finance-receivables", label: "Contas a receber", page: "receivables" },
+      { id: "finance-payables", label: "Contas a pagar", page: "payables" },
+      { id: "finance-categories", label: "Categorias", page: "finance-categories" },
+      { id: "finance-cost-centers", label: "Centros de custo", page: "cost-centers" }
+    ],
     component: lazyNamed(() => import("../features/finance/Receivables"), "AccountsReceivable")
   },
   {
-    id: "payables", path: "/app/financeiro/pagar", title: "Contas a pagar", group: "Financeiro", icon: ArrowUpFromLine, menu: true, menuRank: 1,
+    id: "payables", path: "/app/financeiro/pagar", title: "Contas a pagar", group: null, icon: ArrowUpFromLine, menu: false, menuRank: 1,
     roleRank: { admin: 12, finance: 1 }, permission: "finance.expenses", feature: "basic_finance",
     component: lazyNamed(() => import("../features/finance/Payables"), "PayablesAdmin")
   },
@@ -121,6 +155,11 @@ export const APP_PAGES = Object.freeze([
   {
     id: "client-center", path: "/app/clientes", title: "Clientes", group: "Atendimento", icon: UsersRound, menu: true, menuRank: 2,
     roleRank: { admin: 17, reception: 8, piercer: 7 }, permission: "clients.view",
+    menuChildren: [
+      { id: "clients-list", label: "Lista de clientes", page: "client-center" },
+      { id: "clients-terms", label: "Termos pendentes", page: "terms", queue: true },
+      { id: "clients-postcare", label: "Pós-atendimentos pendentes", page: "postcare", queue: true }
+    ],
     component: lazyNamed(() => import("../features/clients/ClientsMedical"), "ClientWorkspace")
   },
   {
@@ -139,12 +178,12 @@ export const APP_PAGES = Object.freeze([
     component: lazyNamed(() => import("../features/postcare/PostCare"), "PostCare")
   },
   {
-    id: "admin", path: "/app/acessos", title: "Usuários e permissões", menuTitle: "Usuários e permissões", group: "Configurações", icon: ShieldCheck, menu: true, menuRank: 1,
+    id: "admin", path: "/app/acessos", title: "Usuários e permissões", menuTitle: "Usuários e permissões", group: null, icon: ShieldCheck, menu: false, menuRank: 1,
     roleRank: { admin: 21 }, permission: "users.view",
     component: lazyNamed(() => import("../features/access/AccessAdmin"), "AccessAdmin")
   },
   {
-    id: "integrations", path: "/app/integracoes", title: "Integrações", group: "Configurações", icon: Sparkles, menu: true, menuRank: 2,
+    id: "integrations", path: "/app/integracoes", title: "Integrações", group: null, icon: Sparkles, menu: false, menuRank: 2,
     roleRank: { admin: 22 },
     component: lazyNamed(() => import("../features/integrations/Integrations"), "Integrations")
   },
@@ -169,13 +208,19 @@ export const APP_PAGES = Object.freeze([
     component: lazyNamed(() => import("../features/help/HelpCenter"), "ProductNews")
   },
   {
-    id: "meu-plano", path: "/app/meu-plano", title: "Meu plano", group: "Configurações", icon: Sparkles, menu: true, menuRank: 3,
+    id: "meu-plano", path: "/app/meu-plano", title: "Meu plano", group: null, icon: Sparkles, menu: false, menuRank: 3,
     roleRank: { admin: 25 },
     component: lazyNamed(() => import("../features/platform/MyPlan"), "MyPlan")
   },
   {
-    id: "settings", path: "/app/configuracoes", title: "Dados e preferências", group: "Configurações", icon: Sparkles, menu: true, menuRank: 0,
+    id: "settings", path: "/app/configuracoes", title: "Dados e preferências", menuTitle: "Configurações", group: "Configurações", icon: Sparkles, menu: true, menuRank: 0,
     roleRank: { admin: 26, reception: 10, finance: 8, piercer: 11 }, permission: "settings.view",
+    menuChildren: [
+      { id: "settings-clinic", label: "Dados da clínica", page: "settings" },
+      { id: "settings-users", label: "Usuários e permissões", page: "admin" },
+      { id: "settings-integrations", label: "Integrações e automações", page: "integrations" },
+      { id: "settings-plan", label: "Meu plano", page: "meu-plano" }
+    ],
     component: lazyNamed(() => import("../features/settings/Settings"), "Settings")
   },
 
@@ -211,11 +256,11 @@ export function publicPageForPath(pathname) {
   )) || null;
 }
 
-export function menuPages({ onboardingAtBottom = false } = {}) {
+export function menuPages({ onboardingAtBottom = false, onboardingComplete = false } = {}) {
   const groupOrder = ["Início", "Atendimento", "Comercial", "Estoque e compras", "Financeiro", "Gestão", "Configurações"];
   return groupOrder.map((group) => ({
     group,
-    pages: INTERNAL_APP_PAGES.filter((page) => page.menu && (page.id === "onboarding"
+    pages: INTERNAL_APP_PAGES.filter((page) => page.menu && !(onboardingComplete && page.id === "onboarding") && (page.id === "onboarding"
       ? group === (onboardingAtBottom ? "Configurações" : "Início")
       : page.group === group)).sort((left, right) => left.menuRank - right.menuRank)
   })).filter(({ pages }) => pages.length > 0);

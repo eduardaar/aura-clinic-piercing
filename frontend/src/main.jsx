@@ -41,6 +41,7 @@ function App() {
   const [session, setSession] = useState(readStoredSession);
   const [page, setPage] = useState(() => pageForAppPath() || "dashboard");
   const [agendaTarget, setAgendaTarget] = useState(null);
+  const [navigationTarget, setNavigationTarget] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // Preferência de menu recolhido é por usuário e persiste entre sessões.
   const [navCollapsed, setNavCollapsed] = useState(() => {
@@ -184,11 +185,12 @@ function App() {
     return () => { active = false; };
   }, [isAdminAuthenticated, isPlatform, normalizedSession?.user?.id]);
 
-  const navigate = useCallback((nextPage, { replace = false } = {}) => {
+  const navigate = useCallback((nextPage, { replace = false, target = null } = {}) => {
     const destination = appPathForPage(nextPage);
     if (window.location.pathname !== destination) {
       window.history[replace ? "replaceState" : "pushState"]({ auraPage: nextPage }, "", destination);
     }
+    setNavigationTarget(target);
     setPage(nextPage);
   }, []);
 
@@ -317,12 +319,14 @@ function App() {
   const ActivePage = appPageById(activePage)?.component;
   const activePageProps = {
     dashboard: { user: normalizedSession.user, setPage: navigate, alertsOpen, setAlertsOpen, alertsData, alertsLoading },
-    agenda: { initialScreen: agendaTarget ? "settings" : "agenda", initialSettingsTab: agendaTarget, onSettingsClosed: () => setAgendaTarget(null), features: planFeatures, onUpgrade: openProfessionalPlan, createSignal: quickCreate.page === "agenda" ? quickCreate.signal : 0 },
+    agenda: { initialScreen: agendaTarget ? "settings" : "agenda", initialSettingsTab: agendaTarget, navigationTarget, onSettingsClosed: () => setAgendaTarget(null), features: planFeatures, onUpgrade: openProfessionalPlan, createSignal: quickCreate.page === "agenda" ? quickCreate.signal : 0 },
     services: { onNavigate: navigate },
     onboarding: { onNavigate: navigate, onOpenAgendaSettings: (tab) => { setAgendaTarget(tab); navigate("agenda"); } },
     products: { area: "produtos" },
-    inventory: { area: "produtos", initialTab: "todos" },
+    inventory: { area: "produtos", initialTab: navigationTarget || "todos" },
     catalog: { area: "catalogo" },
+    "catalog-customization": { initialSection: navigationTarget || "layout" },
+    communications: { initialTab: navigationTarget || "service" },
     "client-center": { onNavigate: navigate, createSignal: quickCreate.page === "client-center" ? quickCreate.signal : 0 },
     sales: { features: planFeatures, onUpgrade: openProfessionalPlan, createSignal: quickCreate.page === "sales" ? quickCreate.signal : 0 },
     purchases: { onNavigate: navigate, createSignal: quickCreate.page === "purchases" ? quickCreate.signal : 0 },
@@ -343,13 +347,15 @@ function App() {
       {isAdminAuthenticated && (
         <Sidebar
           page={activePage}
+          navigationTarget={navigationTarget}
           role={normalizedSession.user?.role}
           user={normalizedSession.user}
           brand={{ name: identity?.store_name || "", short: identity?.short_name || identity?.slogan || "", logoUrl: brandLogoUrl }}
           features={planFeatures}
-          setPage={(next) => {
-            if (next !== "agenda") setAgendaTarget(null);
-            navigate(next);
+          setPage={(next, target = null) => {
+            const agendaSettingsTargets = ["procedimentos", "profissionais", "horarios", "bloqueios", "solicitacoes"];
+            setAgendaTarget(next === "agenda" && agendaSettingsTargets.includes(target) ? target : null);
+            navigate(next, { target });
             setSidebarOpen(false);
           }}
           open={sidebarOpen}

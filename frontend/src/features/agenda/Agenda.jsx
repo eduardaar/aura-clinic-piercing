@@ -14,6 +14,7 @@ import { SmartCombobox } from "../../components/common/SmartCombobox";
 import { publicLinkForTenant } from "../../lib/publicRoutes";
 import { PlanUpgradeNotice } from "../../components/common/PlanUpgradeNotice";
 import { can, planAllowsAction } from "../../lib/permissions";
+import { ServicesWorkspace } from "../services/Services";
 import "../../styles/agenda-admin-responsive.css";
 
 // formatDate() de lib/utils devolve dd/MM sem ano, e a agenda lista atendimentos
@@ -65,11 +66,12 @@ function distinctOptions(values) {
   return [...new Set(values.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), "pt-BR"));
 }
 
-export function AgendaWorkspace({ initialScreen = "agenda", initialSettingsTab, onSettingsClosed, features = [], onUpgrade, createSignal = 0 }) {
+export function AgendaWorkspace({ initialScreen = "agenda", initialSettingsTab, navigationTarget, onSettingsClosed, features = [], onUpgrade, createSignal = 0 }) {
   const [screen, setScreen] = useState(initialScreen);
+  useEffect(() => setScreen(initialScreen), [initialScreen]);
   return screen === "settings"
     ? <BookingAdmin initialTab={initialSettingsTab} onBack={() => { setScreen("agenda"); onSettingsClosed?.(); }} />
-    : <VisualCalendar features={features} onUpgrade={onUpgrade} onOpenSettings={() => setScreen("settings")} createSignal={createSignal} />;
+    : <VisualCalendar navigationTarget={navigationTarget} features={features} onUpgrade={onUpgrade} onOpenSettings={() => setScreen("settings")} createSignal={createSignal} />;
 }
 
 function PublicBookingLink() {
@@ -326,7 +328,7 @@ function AppointmentValueSummary({ form, services, jewelry }) {
   );
 }
 
-export function VisualCalendar({ onOpenSettings, features = [], onUpgrade, createSignal = 0 }) {
+export function VisualCalendar({ navigationTarget, onOpenSettings, features = [], onUpgrade, createSignal = 0 }) {
   const { data: options } = useFetch("/options");
   const { data: clients } = useFetch("/clients");
   const { data: services } = useFetch("/services");
@@ -336,6 +338,10 @@ export function VisualCalendar({ onOpenSettings, features = [], onUpgrade, creat
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [createSeed, setCreateSeed] = useState(null);
   useEffect(() => { if (createSignal) setCreateSeed({}); }, [createSignal]);
+  useEffect(() => {
+    if (navigationTarget === "historico") setFilters((current) => ({ ...current, mode: "realizados" }));
+    if (navigationTarget === "calendario") setFilters((current) => ({ ...current, mode: "mensal" }));
+  }, [navigationTarget]);
   const { data } = useFetch(`/appointments?${new URLSearchParams(Object.fromEntries(Object.entries(filters).filter(([, v]) => v && !["mensal", "semanal", "diario", "lista", "realizados"].includes(v))))}`);
   // Invalidar "/appointments" alcança o calendário sob qualquer combinação de
   // filtros, não só a consulta que está montada agora.
@@ -897,6 +903,7 @@ export function BookingAdmin({ onBack, initialTab }) {
   const refreshBlocks = () => invalidate("/schedule-blocks", "/availability");
   const refreshAppointments = () => invalidate("/appointments", "/dashboard");
   const [tab, setTab] = useState(initialTab === "servicos" ? "profissionais" : (initialTab || "profissionais"));
+  useEffect(() => setTab(initialTab === "servicos" ? "profissionais" : (initialTab || "profissionais")), [initialTab]);
   const [professionalForm, setProfessionalForm] = useState(defaultProfessionalForm());
   const [editingProfessionalId, setEditingProfessionalId] = useState(null);
   const [professionalModalOpen, setProfessionalModalOpen] = useState(false);
@@ -1132,6 +1139,7 @@ export function BookingAdmin({ onBack, initialTab }) {
       <Tabs value={tab} onValueChange={setTab}>
         <Tabs.List className="customization-tabs" aria-label="Configurações da agenda">
           {[
+            ["procedimentos", "Procedimentos"],
             ["profissionais", "Profissionais"],
             ["horarios", "Agenda semanal"],
             ["bloqueios", "Disponibilidade avançada"],
@@ -1139,6 +1147,8 @@ export function BookingAdmin({ onBack, initialTab }) {
           ].map(([id, label]) => <Tabs.Trigger key={id} value={id}>{label}</Tabs.Trigger>)}
         </Tabs.List>
       </Tabs>
+
+      {tab === "procedimentos" && <ServicesWorkspace />}
 
       {tab === "profissionais" && (
         <div className="panel">

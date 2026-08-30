@@ -46,7 +46,7 @@ async function request(path, options = {}) {
   return payload;
 }
 
-export function Communications() {
+export function Communications({ initialTab = "service" }) {
   const templatesRequest = useFetch("/communication-templates");
   const rulesRequest = useFetch("/automation-rules");
   const notificationsRequest = useFetch("/notifications");
@@ -56,7 +56,7 @@ export function Communications() {
   const [rules, setRules] = useState([]);
   const [busy, setBusy] = useState("");
   const [feedback, setFeedback] = useState("");
-  const [tab, setTab] = useState("service");
+  const [tab, setTab] = useState(initialTab);
   const [assistantTask, setAssistantTask] = useState("draft_message");
   const [assistantInput, setAssistantInput] = useState("");
   const [assistantOutput, setAssistantOutput] = useState("");
@@ -64,6 +64,7 @@ export function Communications() {
 
   useEffect(() => setTemplates(asArray(templatesRequest.data?.templates)), [templatesRequest.data]);
   useEffect(() => setRules(asArray(rulesRequest.data)), [rulesRequest.data]);
+  useEffect(() => setTab(initialTab), [initialTab]);
 
   const variables = asArray(templatesRequest.data?.variables);
   const notifications = asArray(notificationsRequest.data);

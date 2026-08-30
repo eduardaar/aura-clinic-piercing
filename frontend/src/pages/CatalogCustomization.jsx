@@ -136,11 +136,11 @@ function CatalogPublicLinks() {
   );
 }
 
-export function CatalogCustomization() {
+export function CatalogCustomization({ initialSection = "layout" }) {
   const { data, refresh } = useFetch("/catalog-customization");
   const { data: historyData, refresh: refreshHistory } = useFetch("/catalog-customization/history");
   const [form, setFormState] = useState(defaultCatalogCustomization());
-  const [activeSection, setActiveSection] = useState("layout");
+  const [activeSection, setActiveSection] = useState(initialSection);
   const [previewDevice, setPreviewDevice] = useState("desktop");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
@@ -160,6 +160,8 @@ export function CatalogCustomization() {
   const redoRef = useRef([]);
   const loadedDraftVersionRef = useRef(null);
   const [localHistory, setLocalHistory] = useState({ undo: 0, redo: 0, announcement: "" });
+
+  useEffect(() => setActiveSection(initialSection), [initialSection]);
 
   const syncLocalHistory = useCallback((announcement = "") => {
     setLocalHistory({ undo: undoRef.current.length, redo: redoRef.current.length, announcement });

@@ -244,6 +244,38 @@
 .sidebar nav button.locked { opacity: .45; }
 .sidebar nav button.locked:hover { opacity: .62; }
 .sidebar nav button .lock-icon { margin-left: auto; opacity: .6; }
+.sidebar nav button.has-submenu > svg:last-child { margin-left: auto; width: 15px; height: 15px; }
+
+.nav-submenu {
+  display: grid;
+  gap: 2px;
+  padding: 2px 0 6px 18px;
+}
+
+.sidebar nav .nav-submenu button {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 9px;
+  font-size: 12.5px;
+}
+
+.nav-submenu-dot {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: .48;
+}
+
+.nav-submenu button small {
+  margin-left: auto;
+  color: rgb(from var(--gold-light) r g b / .82);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
 
 .sidebar nav button:focus-visible,
 .sidebar-foot button:focus-visible {
@@ -508,6 +540,7 @@
 .nav-collapsed .nav-label,
 .nav-collapsed .lock-icon,
 .nav-collapsed .trial-badge { display: none; }
+.nav-collapsed .sidebar nav button.has-submenu > svg:last-child { display: none; }
 .nav-collapsed .sidebar-foot { padding: 10px 10px 14px; }
 
 /* O rótulo do grupo vira um traço: mantém a separação visual sem texto. */
