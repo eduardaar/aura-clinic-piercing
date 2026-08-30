@@ -23,6 +23,8 @@ test("rotas canônicas e aliases antigos derivam do registro", () => {
 
 test("permissões, features, títulos e ordem dos papéis usam APP_PAGES", () => {
   assert.equal(PAGE_PERMISSION.purchases, appPageById("purchases").permission);
+  assert.equal(PAGE_PERMISSION.audit, "audit.view");
+  assert.equal(pageForAppPath("/app/auditoria"), "audit");
   assert.equal(PAGE_FEATURE.terms, appPageById("terms").feature);
   assert.equal(pageTitle("postcare"), appPageById("postcare").title);
   assert.deepEqual(allowedPagesForRole("finance").slice(0, 3), ["receivables", "payables", "purchases"]);
@@ -36,6 +38,7 @@ test("menu e páginas públicas preservam agrupamento e correspondência", () =>
   assert.deepEqual(menu.find(({ group }) => group === "Estoque e compras").pages.map(({ id }) => id), [
     "products", "inventory", "consumables", "purchases", "suppliers"
   ]);
+  assert.deepEqual(menu.find(({ group }) => group === "Gestão").pages.map(({ id }) => id), ["reports", "audit"]);
   assert.equal(publicPageForPath("/catalogo/produto/42").id, "public-catalog");
   assert.equal(publicPageForPath("/politica-de-privacidade").documentKey, "privacy_policy");
   assert.equal(publicPageForPath("/app/dashboard"), null);

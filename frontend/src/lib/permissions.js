@@ -20,7 +20,7 @@ import { appPageById, INTERNAL_APP_PAGES } from "./appPages.js";
  * Páginas do app autenticado.
  * @typedef {"dashboard" | "agenda" | "services" | "communications" | "catalog" | "products" | "inventory" | "consumables"
  *   | "catalog-customization" | "sales" | "purchases" | "receivables" | "payables" | "suppliers" | "finance-categories" | "cost-centers" | "reports" | "client-center"
- *   | "clients" | "terms" | "postcare" | "admin" | "integrations" | "support"
+ *   | "clients" | "terms" | "postcare" | "admin" | "audit" | "integrations" | "support"
  *   | "meu-plano" | "settings" | "onboarding"} Page
  */
 
@@ -43,7 +43,7 @@ export function allowedPagesForRole(role) {
     .filter((page) => Number.isFinite(page.roleRank?.[role]))
     .sort((left, right) => left.roleRank[role] - right.roleRank[role])
     .map((page) => page.id);
-  return ranked.length > 0 ? ranked : ["dashboard", "agenda", "client-center", "clients", "settings"];
+  return /** @type {Page[]} */ (ranked.length > 0 ? ranked : ["dashboard", "agenda", "client-center", "clients", "settings"]);
 }
 
 // Espelha PAGE_FEATURE do backend (backend/src/services/plans.js): página -> feature

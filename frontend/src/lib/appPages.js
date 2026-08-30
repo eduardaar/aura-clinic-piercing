@@ -9,6 +9,7 @@ import {
   Home,
   Package,
   PackagePlus,
+  ScrollText,
   ShieldCheck,
   ShoppingCart,
   Sparkles,
@@ -109,6 +110,11 @@ export const APP_PAGES = Object.freeze([
     roleRank: { admin: 16, reception: 7, finance: 6 },
     permission: ["reports.view_own", "reports.view_financial", "reports.view_all"], feature: "basic_reports",
     component: lazyNamed(() => import("../features/reports/Reports"), "Reports")
+  },
+  {
+    id: "audit", path: "/app/auditoria", title: "Auditoria", group: "Gestão", icon: ScrollText, menu: true, menuRank: 1,
+    roleRank: { admin: 16.5, finance: 6.5 }, permission: "audit.view",
+    component: lazyNamed(() => import("../features/access/AuditAdmin"), "AuditAdmin")
   },
   {
     id: "client-center", path: "/app/clientes", title: "Clientes", group: "Atendimento", icon: UsersRound, menu: true, menuRank: 2,

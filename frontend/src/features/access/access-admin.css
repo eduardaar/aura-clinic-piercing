@@ -1,0 +1,57 @@
+.access-admin-page .ui-tabs-list { margin-bottom: 18px; }
+.access-admin-page .ui-tabs-content { min-width: 0; }
+.access-muted { color: var(--muted); }
+.access-permissions-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.access-permissions-heading h3,
+.access-permissions-heading p { margin: 0; }
+.access-permissions-heading p { color: var(--muted); margin-top: 4px; }
+.access-permission-groups { display: grid; gap: 14px; }
+.access-permission-group {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+  min-width: 0;
+}
+.access-permission-group legend { font-weight: 700; padding: 0 6px; }
+.access-permission-label { display: grid; gap: 3px; }
+.access-permission-label small { color: var(--muted); font-weight: 400; }
+.audit-cell-detail { display: block; color: var(--muted); margin-top: 3px; }
+.audit-detail-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+.audit-detail-summary div { border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.audit-detail-summary dt { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+.audit-detail-summary dd { margin: 0; font-weight: 650; overflow-wrap: anywhere; }
+.audit-detail-summary small { display: block; color: var(--muted); font-weight: 400; margin-top: 3px; }
+.audit-diff-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.audit-diff-grid section,
+.audit-metadata { min-width: 0; }
+.audit-diff-grid h3,
+.audit-metadata h3 { margin: 0 0 8px; }
+.audit-diff-grid pre,
+.audit-metadata pre {
+  background: var(--surface-soft, #f7f7f7);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin: 0;
+  max-height: 360px;
+  overflow: auto;
+  padding: 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (max-width: 720px) {
+  .access-permissions-heading { align-items: stretch; flex-direction: column; }
+  .access-permissions-heading button { width: 100%; }
+  .audit-detail-summary,
+  .audit-diff-grid { grid-template-columns: 1fr; }
+}
