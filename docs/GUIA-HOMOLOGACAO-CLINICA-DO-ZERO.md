@@ -488,19 +488,21 @@ Se os recursos estiverem liberados:
 
 ## 13. Lacunas e módulos recomendados
 
-| Código | Lacuna | Evolução proposta |
+> Situação em 29/08/2026. **M-01, M-02, M-03, M-06 e M-07 foram entregues** nos commits `31c089e5`, `e00464d2` e `575b61a5` — não são mais lacunas, e sim casos de teste. Se algum deles não funcionar, é defeito, não ausência de recurso. O estado consolidado do projeto está em [ESTADO-ATUAL.md](./ESTADO-ATUAL.md).
+
+| Código | Tema | Situação |
 | --- | --- | --- |
-| M-01 | consumo não baixa por procedimento | ficha técnica de serviço: material + quantidade; baixa ao concluir agenda |
-| M-02 | sinal/cancelamento/reembolso sem política clara | módulo de cancelamento da agenda com retenção, devolução, crédito ou transferência |
-| M-03 | devolução/troca/estorno pós-venda | fluxo auditável com retorno de estoque e reversão financeira |
-| M-04 | WhatsApp oficial com créditos pendente | executar plano de onboarding, templates, webhook, worker e cobrança |
-| M-05 | categorias de estoque/catálogo fragmentadas | taxonomia canônica pai/filha e migração assistida |
-| M-06 | pendências de qualidade de estoque dispersas | painel de saúde: saldo negativo, preço zero, SKU/imagem/categoria ausentes |
-| M-07 | materiais estéreis sem lote/validade | lote, validade, alerta e baixa FEFO, se requerido pela clínica |
+| M-01 | consumo baixa por ficha técnica do serviço | **entregue** — receita congelada em `appointment_consumptions` ao concluir; reabrir ou cancelar estorna o mesmo que foi consumido (H-12) |
+| M-02 | política de sinal, cancelamento e reembolso | **entregue** — `POST /api/appointments/:id/cancel` exige motivo e uma de quatro resoluções; `PATCH` direto bloqueado (H-18) |
+| M-03 | devolução/troca/estorno pós-venda | **entregue** — devolução por item com condição e ação financeira; só item `sellable` volta ao estoque (H-21) |
+| M-04 | WhatsApp oficial com créditos | **pendente** — configuração Cloud API é por clínica; falta cofre central, saldo, baixa por envio e conciliação |
+| M-05 | categorias de estoque/catálogo fragmentadas | **pendente** — taxonomia canônica e migração assistida ainda não executadas |
+| M-06 | painel de saúde do estoque | **entregue** — `GET /api/inventory/health`: estoque baixo, cadastro incompleto, lotes vencidos/a vencer |
+| M-07 | lote e validade de material estéril | **entregue** — lotes, validade e baixa FEFO; soma dos lotes nunca excede o saldo (H-12) |
 
 ## 14. Aprovação e reporte
 
-A rodada é aprovada somente se todos os casos aplicáveis estiverem com evidência, R-01 a R-10 passarem, os valores de estoque/pagar/receber fecharem e M-01 a M-07 tiverem prioridade definida.
+A rodada é aprovada somente se todos os casos aplicáveis estiverem com evidência, R-01 a R-10 passarem, os valores de estoque/pagar/receber fecharem e as lacunas ainda abertas (M-04 e M-05) tiverem prioridade definida.
 
 Modelo de defeito:
 

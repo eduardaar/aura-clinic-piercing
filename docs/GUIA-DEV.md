@@ -19,7 +19,7 @@ createdb aura_clinic
 # ou: psql -U postgres -c "CREATE DATABASE aura_clinic;"
 ```
 
-Um único banco atende todas as clínicas: o schema de controle `platform` e um schema `tenant_<id>` por clínica são criados automaticamente pelo backend (ver `docs/ARQUITETURA.md`).
+Um único banco atende todas as clínicas: o schema de controle `platform` e um schema `tenant_<slug>` por clínica são criados pelo backend (ver `docs/ARQUITETURA.md`). O bootstrap no boot depende de `RUN_DATABASE_MIGRATIONS`: com `false`, o servidor sobe sem tocar no banco e num banco vazio nada é criado — nem o schema `platform`, nem o superadmin.
 
 ### 2. `.env` do backend
 
@@ -116,7 +116,7 @@ Executa `backup.sh`: carrega o `.env`, valida `DATABASE_URL` e `pg_dump`, e gera
 
 ### Migração para multi-tenant — `node backend/scripts/migrate-to-multitenant.mjs`
 
-Migração **única** que converte um banco legado single-tenant (tabelas no schema `public`) para o modelo multi-tenant. Passos: garante o schema `platform`; cria (se não existir) o tenant inicial `aura` e seu schema `tenant_<id>`; **move** todas as tabelas de `public` para o schema do tenant via `ALTER TABLE ... SET SCHEMA` (sem copiar dados). É idempotente: se `aura` já existir, não faz nada. Rode apenas se você tiver dados legados no `public`.
+Migração **única** que converte um banco legado single-tenant (tabelas no schema `public`) para o modelo multi-tenant. Passos: garante o schema `platform`; cria (se não existir) o tenant inicial `aura` e o schema dele; **move** todas as tabelas de `public` para o schema do tenant via `ALTER TABLE ... SET SCHEMA` (sem copiar dados). É idempotente: se `aura` já existir, não faz nada. Rode apenas se você tiver dados legados no `public`.
 
 ### Migrations versionadas — `npm --prefix backend run migrations:apply`
 

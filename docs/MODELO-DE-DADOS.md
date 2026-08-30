@@ -1,9 +1,15 @@
 # Modelo de dados
 
 O PostgreSQL é multi-tenant por schema: `platform` concentra os dados da
-Monitence, e cada clínica possui um schema `tenant_<id>`. O nome do schema vem
-exclusivamente de `platform.tenants.id`; por isso as tabelas da clínica **não**
-precisam de `tenant_id`.
+Monitence, e cada clínica possui um schema `tenant_<slug>` (o slug com `_` no
+lugar de `-`, ex.: `tenant_aura_clinic`). O nome é calculado uma única vez no
+provisionamento e gravado em `platform.tenants.schema_name` — o código sempre lê
+essa coluna, nunca recalcula. Por isso as tabelas da clínica **não** precisam de
+`tenant_id`.
+
+> As **chaves do object storage** seguem outra convenção, de propósito:
+> `tenant_<id>` com o id inteiro (ver `services/storage/keys.js`). Um caminho de
+> arquivo não pode depender de algo que a clínica possa vir a trocar.
 
 As fontes de verdade são [platformSchema.sql](../backend/src/db/platformSchema.sql)
 e [schema.sql](../backend/src/db/schema.sql). O backend aplica os dois schemas
@@ -30,19 +36,23 @@ de forma idempotente no boot.
 | Gateway | `webhook_events` | Registro idempotente de webhooks do Asaas, para plataforma e clínicas. |
 | Landing e jurídico | `landing_sections`, `legal_documents`, `legal_acceptances` | Conteúdo público editável e versão aceita de Termos de Uso/Privacidade. |
 | Suporte | `support_tickets`, `support_messages` | Chamados das clínicas, respostas e notas internas. |
-| Operação | `product_migrations` | Registro de migrações/importações de produto administradas pela plataforma. |
+| Cobrança | `billing_notifications` | Avisos de cobrança já enviados, para não repetir a mesma notificação. |
+| Operação | `product_migrations`, `schema_migrations` | Migrações/importações de produto e o **ledger das migrations versionadas**: uma linha por versão aplicada, com escopo (`platform` ou `tenant`), schema alvo e checksum. É o que impede reaplicar ou editar uma migration já aplicada. |
 
 Relações principais: cada linha de `tenant_subscriptions`, `tenant_invoices`,
 `legal_acceptances`, `support_tickets` e `product_migrations` pertence a uma
 linha de `tenants`. `support_messages` pertence a um chamado.
 
-## Schema de clínica (`tenant_<id>`)
+## Schema de clínica (`tenant_<slug>`)
 
 ### Administração, arquivos e integrações
 
 | Tabelas | Responsabilidade |
 | --- | --- |
 | `users` | Contas da clínica, papéis `admin`, `reception`, `finance` e `piercer`, e `session_version` para revogar tokens após troca de senha/papel. |
+| `user_permissions` | Overrides de permissão por usuário sobre o papel: `allowed = true` concede, `false` revoga. A revogação vence a concessão (`services/permissionService.js`). |
+| `user_sessions` | Uma linha por sessão ativa: hash do refresh token, expiração e revogação. É o que torna a sessão revogável de verdade — logout, "encerrar todas" e troca de senha atuam aqui. |
+| `background_jobs` | Fila persistente de execução assíncrona consumida pelo `jobWorker`. |
 | `clinic_settings`, `catalog_theme` | Identidade e preferências da clínica e da vitrine. |
 | `admin_audit_logs`, `administrative_audit_logs` | Auditoria de resets e exclusões administrativas. |
 | `tenant_integrations` | Credenciais cifradas de integrações da clínica, como Asaas. |
@@ -58,7 +68,10 @@ linha de `tenants`. `support_messages` pertence a um chamado.
 | `professionals`, `services`, `procedures`, `professional_services` | Equipe, serviços, procedimentos e a relação N:N entre profissional e serviço. |
 | `professional_availability`, `schedule_blocks` | Regras semanais de disponibilidade e indisponibilidades pontuais. |
 | `appointments`, `appointment_items`, `inventory_reservations` | Agendamento, vários itens por atendimento e reserva temporária de estoque. |
-| `payments`, `payment_intents`, `payment_events`, `appointment_financial_audit` | Liquidações, cobranças online, token público não sequencial, eventos recebidos e auditoria financeira do atendimento. |
+| `payments`, `payment_intents`, `payment_events`, `payment_operations`, `appointment_financial_audit` | Liquidações, cobranças online, token público não sequencial, eventos recebidos, operações do gateway e auditoria financeira do atendimento. |
+| `appointment_cancellations` | Cancelamento auditável do atendimento: motivo e a resolução financeira escolhida (`no_payment`, `retain_deposit`, `client_credit`, `manual_refund`). O `PATCH` direto para `status = cancelado` é bloqueado justamente para forçar o registro aqui. |
+| `appointment_consumptions` | Consumo de materiais congelado no momento da conclusão do atendimento. Guarda o que foi realmente baixado, não a receita atual — é o que permite estornar exatamente a mesma quantidade ao reabrir ou cancelar. |
+| `client_credits`, `client_credit_usages` | Crédito rastreável do cliente (origem: sinal retido ou devolução) e cada uso dele, para que o saldo nunca seja um número solto em observação. |
 | `client_medical_records`, `digital_terms`, `post_care_followups` | Prontuário, consentimento assinado (incluindo assinatura separada do responsável por menor) e acompanhamento pós-atendimento. |
 | `loyalty_points`, `loyalty_redemptions` | Crédito e resgate de pontos de fidelidade. |
 
@@ -80,6 +93,18 @@ Uma variação pertence a `jewelry_inventory`; `sales_order_items`, itens de
 agendamento, movimentos, contagens e reservas podem apontar para a variação.
 O produto pai mantém os dados compartilhados e o resumo de estoque.
 
+### Materiais de consumo
+
+Materiais operacionais (luva, agulha, gaze, antisséptico) vivem **fora** do estoque de produtos: não têm SKU comercial, não aparecem em Vendas nem no catálogo público e só saem por ficha técnica ou baixa manual. Confundir os dois cadastros corrompe estoque e financeiro ao mesmo tempo.
+
+| Tabela | Papel |
+| --- | --- |
+| `consumables` | Material operacional: unidade, saldo, mínimo e custo de referência. |
+| `consumable_stock_movements` | Histórico de entrada, saída, perda e ajuste do material. |
+| `consumable_lots` | Lotes com código e validade. A soma dos lotes nunca pode exceder o saldo do material — invariante validada com lock na escrita. |
+| `consumable_lot_allocations` | Qual lote saiu em cada movimento. A baixa segue FEFO: vence primeiro, sai primeiro. Estoque histórico sem lote continua utilizável. |
+| `service_consumable_recipes` | A ficha técnica: material e quantidade por serviço. É o que faz concluir um atendimento baixar material sozinho. |
+
 ### Vendas e financeiro
 
 | Tabelas | Responsabilidade |
@@ -87,7 +112,8 @@ O produto pai mantém os dados compartilhados e o resumo de estoque.
 | `sales_orders`, `sales_order_items` | Pedidos internos ou do checkout público e suas linhas. `installments_json` preserva o cronograma editável enquanto a venda está aberta; ao concluir, ele é materializado no razão. |
 | `purchase_orders`, `purchase_order_items`, `suppliers` | Compras, itens recebidos e fornecedores PF/PJ. `installments_json` preserva o cronograma no rascunho; a confirmação é a origem da entrada de estoque e das parcelas a pagar. |
 | `coupons`, `coupon_usages`, `catalog_promotions`, `promotion_usages`, `promotion_audit_logs` | Regras comerciais, aplicação e auditoria de cupons/promoções. |
-| `expenses`, `expense_audit_logs` | Despesas e alterações relevantes. |
+| `expenses`, `expense_audit_logs` | Despesas e alterações relevantes. Reembolso manual de agenda ou de venda vira uma despesa paga aqui, rastreável até a origem. |
+| `sales_returns`, `sales_return_items` | Devolução de venda por item, com `return_to_stock` e `condition`. Só item `sellable` volta ao estoque; danificado ou descartado fica registrado sem voltar a ficar disponível. A API impede devolver mais do que foi vendido e preserva as devoluções anteriores. |
 | `financial_categories`, `financial_cost_centers`, `financial_entries`, `financial_entry_audit` | Categorias, centros de custo, razão de contas a pagar/receber e trilha do lançamento. |
 | `financial_goals`, `financial_reconciliations` | Metas e conciliação de extratos. |
 

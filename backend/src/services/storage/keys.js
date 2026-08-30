@@ -11,9 +11,11 @@
 //   BUCKET PRIVADO   tenant_<id>/<pasta>/<arquivo>      (pasta vem do purpose)
 //                    orfaos/<arquivo>                   (sem dono identificável)
 //
-// `<id>` é o id INTEIRO do tenant (`req.tenant.id`), o mesmo que nomeia o schema
-// Postgres. Nunca o slug: o slug pode ser trocado pela clínica e levaria embora
-// o caminho de todos os arquivos dela.
+// `<id>` é o id INTEIRO do tenant (`req.tenant.id`). Nunca o slug: o slug pode
+// ser trocado pela clínica e levaria embora o caminho de todos os arquivos dela.
+// (O schema Postgres resolve o mesmo problema de outro jeito — deriva do slug
+// UMA vez e congela o nome em `platform.tenants.schema_name`. Convenções
+// diferentes, mesma regra: o caminho nunca persegue um valor mutável.)
 
 // Categorias aceitas no bucket público. Lista fechada de propósito: categoria
 // livre vira lixeira ("img", "imgs", "images") e ninguém mais acha nada.

@@ -5,12 +5,18 @@ discussão. Roadmaps, matrizes comerciais, auditorias pontuais e regras de
 produto antigas foram removidos para que as próximas decisões comecem sem
 backlog herdado.
 
+## Comece por aqui
+
+| Documento | Conteúdo |
+| --- | --- |
+| [ESTADO-ATUAL.md](./ESTADO-ATUAL.md) | **O que está entregue, o que é parcial, o que está pendente e o que nunca foi validado contra serviço externo.** Atualize aqui sempre que uma pendência for resolvida ou uma nova aparecer. |
+
 ## Referência técnica
 
 | Documento | Conteúdo |
 | --- | --- |
-| [ARQUITETURA.md](./ARQUITETURA.md) | Estrutura do monorepo, multi-tenancy, autenticação e componentes compartilhados. |
-| [MODELO-DE-DADOS.md](./MODELO-DE-DADOS.md) | Schemas `platform` e `tenant_<id>` e relações de dados atuais. |
+| [ARQUITETURA.md](./ARQUITETURA.md) | Estrutura do monorepo, multi-tenancy, sessão/autenticação, autorização em três camadas e componentes compartilhados. |
+| [MODELO-DE-DADOS.md](./MODELO-DE-DADOS.md) | Schemas `platform` e `tenant_<slug>` e relações de dados atuais. |
 | [API.md](./API.md) | Endpoints e convenções da API. O código é a fonte de verdade para regras em evolução. |
 | [FLUXOS.md](./FLUXOS.md) | Fluxos operacionais existentes e ambiente local. |
 | [GUIA-DEV.md](./GUIA-DEV.md) | Configuração, execução, testes e scripts de desenvolvimento. |
@@ -20,6 +26,14 @@ backlog herdado.
 | [CATALOGO-BUILDER.md](./CATALOGO-BUILDER.md) | Contrato técnico do editor de catálogo. |
 | [LANDING.md](./LANDING.md) | Landing editável e seus limites de segurança. |
 | [JOBS-EM-SEGUNDO-PLANO.md](./JOBS-EM-SEGUNDO-PLANO.md) | Fila persistente e execução assíncrona. |
+| [EVOLUCAO-OPERACIONAL-ESTOQUE-E-FINANCEIRO.md](./EVOLUCAO-OPERACIONAL-ESTOQUE-E-FINANCEIRO.md) | Ficha técnica, consumo automático, lotes/FEFO, cancelamento e devolução: o que a última rodada entregou e com quais regras. |
+
+## Homologação
+
+| Documento | Conteúdo |
+| --- | --- |
+| [GUIA-HOMOLOGACAO-CLINICA-DO-ZERO.md](./GUIA-HOMOLOGACAO-CLINICA-DO-ZERO.md) | Roteiro ponta a ponta com dados fictícios para validar uma clínica nova. |
+| [RELATORIO-HOMOLOGACAO-CRITICA-2026-08-27.md](./RELATORIO-HOMOLOGACAO-CRITICA-2026-08-27.md) | Resultado da rodada de 27/08: sete falhas encontradas, corrigidas e retestadas. |
 
 ## Ideias e propostas
 
@@ -29,12 +43,12 @@ backlog herdado.
 | [PLANO-WHATSAPP-CREDITOS-AURA.md](./PLANO-WHATSAPP-CREDITOS-AURA.md) | Proposta em revisão; não é compromisso de produto nem regra ativa. |
 | [ESTUDO-SERVICOS-AGENDA-FINANCEIRO.md](./ESTUDO-SERVICOS-AGENDA-FINANCEIRO.md) | Diagnóstico e proposta para separar serviços executados pela agenda de vendas de produtos. |
 | [ESTUDO-MATERIAIS-CONSUMO-AURA.md](./ESTUDO-MATERIAIS-CONSUMO-AURA.md) | Leitura da base local e fluxo aplicado para materiais operacionais. |
-| [ROADMAP-ESTOQUE-CATALOGO-AURA.md](./ROADMAP-ESTOQUE-CATALOGO-AURA.md) | Diagnóstico seguro e etapas para consolidar estoque, variações e catálogo. |
-| [GUIA-HOMOLOGACAO-CLINICA-DO-ZERO.md](./GUIA-HOMOLOGACAO-CLINICA-DO-ZERO.md) | Roteiro ponta a ponta com dados fictícios para validar uma clínica nova. |
+| [ROADMAP-ESTOQUE-CATALOGO-AURA.md](./ROADMAP-ESTOQUE-CATALOGO-AURA.md) | Etapas para consolidar estoque, variações e catálogo. Não executado — é a pendência P-02 de [ESTADO-ATUAL.md](./ESTADO-ATUAL.md). |
 
 ## Como usar esta documentação
 
-- Consulte o código antes de tratar uma regra como definitiva.
+- Consulte o código antes de tratar uma regra como definitiva. Quando encontrar divergência, corrija o documento na hora — documentação errada custa mais que documentação ausente.
+- Ao concluir ou abrir uma pendência, atualize [ESTADO-ATUAL.md](./ESTADO-ATUAL.md) no mesmo commit.
 - Registre uma ideia em `IDEIAS.md` antes de transformá-la em plano.
 - Crie um plano de implementação somente depois de definir problema, público,
   hipótese, custo e critério de sucesso.

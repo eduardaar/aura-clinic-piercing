@@ -24,7 +24,7 @@ Fluxo de onboarding de um novo estúdio (novo tenant).
 4. **Provisionamento** (backend, `services/tenants.js → provisionTenant`):
    - Valida os dados; rejeita slugs reservados (ex.: `platform`, `public`, `admin`) e slugs já usados (`409`).
    - Insere a clínica em `platform.tenants` (obtendo um `id`).
-   - Cria o schema Postgres `tenant_<id>` e aplica o `schema.sql` (todas as tabelas do app) nele.
+   - Cria o schema Postgres `tenant_<slug>` e aplica nele o `schema.sql` (todas as tabelas do app) mais todas as migrations de tenant.
    - Cria o usuário admin inicial (`role='admin'`, senha com bcrypt) e insere o tema padrão do catálogo (`catalog_theme` id=1).
    - Em caso de erro, faz **rollback completo** (dropa o schema e remove o registro) — nada de clínica meio-criada.
 5. **Resposta** — `201 { tenant:{id,name,slug} }`. A clínica já pode ser acessada.
@@ -88,7 +88,7 @@ Perfil super-admin (login separado dos usuários de clínica). Página: `/plataf
 2. **Listar clínicas** — `GET /api/platform/tenants` mostra todas as clínicas com `status`/`plan`.
 3. **Criar uma clínica** — `POST /api/platform/tenants` com os mesmos campos do signup (nome, slug, admin). Provisiona o schema e o admin (igual ao fluxo (a), porém iniciado pelo super-admin).
 4. **Suspender / reativar** — `PATCH /api/platform/tenants/:id` com `{ status: "suspenso" }` (ou `"ativo"`). Clínica suspensa passa a receber `403` em suas rotas e no login; o cache de tenant é invalidado.
-5. **Excluir uma clínica** — `DELETE /api/platform/tenants/:id` com `{ confirmation: "<slug>" }` (a confirmação deve ser exatamente o slug). Isso **deprovisiona** a clínica: `DROP SCHEMA tenant_<id> CASCADE` (remove todos os dados) e apaga o registro em `platform.tenants`.
+5. **Excluir uma clínica** — `DELETE /api/platform/tenants/:id` com `{ confirmation: "<slug>" }` (a confirmação deve ser exatamente o slug). Isso **deprovisiona** a clínica: `DROP SCHEMA tenant_<slug> CASCADE` (remove todos os dados), apaga o registro em `platform.tenants` e limpa o ledger de migrations daquele schema — as três exclusões na mesma transação.
 6. **Métricas** — `GET /api/platform/metrics` traz clientes e agendamentos por clínica ativa.
 
 > Cuidado: a exclusão é destrutiva e irreversível. Garanta backups (`npm --prefix backend run backup`) antes de remover uma clínica em produção.

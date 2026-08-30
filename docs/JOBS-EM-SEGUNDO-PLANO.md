@@ -4,7 +4,7 @@
 
 Tarefas que podem demorar — inicialmente, exportação de relatórios CSV — não
 devem manter a requisição HTTP aberta nem competir com a agenda e o checkout.
-A tabela `background_jobs` existe dentro de cada schema `tenant_<id>` para que
+A tabela `background_jobs` existe dentro do schema de cada clínica para que
 nenhuma clínica consiga listar, executar ou baixar um trabalho de outra.
 
 ## Contrato atual

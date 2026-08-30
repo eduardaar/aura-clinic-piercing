@@ -13,9 +13,9 @@ frontend/   SPA React + Vite
 
 - Frontend: React + Vite
 - Backend: Node.js + Express
-- Banco: **PostgreSQL multi-tenant** — cada clínica vive em um schema próprio (`tenant_<id>`), com isolamento físico dos dados
+- Banco: **PostgreSQL multi-tenant** — cada clínica vive em um schema próprio (`tenant_<slug>`), com isolamento físico dos dados
 - Arquivos: Cloudflare R2 quando configurado; disco local apenas como fallback de desenvolvimento/migração
-- Autenticação: token HMAC assinado no login (carrega a clínica), enviado via `Authorization: Bearer`
+- Autenticação: access token HMAC de 15 min (carrega a clínica) via `Authorization: Bearer`, renovado por refresh token em cookie `HttpOnly` de 30 dias
 
 ## Multi-tenant (SaaS)
 
@@ -24,7 +24,7 @@ frontend/   SPA React + Vite
 - **Login**: informa o código da clínica + e-mail + senha em `/login`.
 - **Painel da plataforma (super-admin)**: página `/plataforma` — listar, criar, suspender/reativar e excluir clínicas, além de métricas. Login separado (`platform.platform_users`).
 - **Isolamento**: cada requisição usa uma conexão dedicada do pool com `search_path` apontando para o schema da clínica, com reset garantido antes de devolver ao pool. Verificado por `backend/scripts/test-isolation.mjs` (9 checagens, incluindo token cruzado e suspensão).
-- **Migrations**: no boot, o backend garante o schema `platform` e aplica o `schema.sql` (idempotente) em todos os schemas de clínica.
+- **Migrations**: o bootstrap de banco no boot é **condicionado por env**. Com `RUN_DATABASE_MIGRATIONS=false` (ou `SKIP_DATABASE_BOOTSTRAP=true`) o backend sobe sem tocar no banco — num banco vazio isso significa **nenhum schema `platform` e nenhum superadmin**. Habilitado, o boot garante o schema `platform` e aplica o `schema.sql` (idempotente) em todos os schemas de clínica. As migrations versionadas (`src/db/migrations/`) só rodam no boot com `RUN_MIGRATIONS_ON_BOOT=true` (proibido em produção); o caminho normal é o CLI `npm --prefix backend run migrations:apply`. Clínica nova recebe `schema.sql` + todas as migrations de tenant automaticamente no provisionamento.
 
 ## Pré-requisitos
 
@@ -87,7 +87,7 @@ Acesse:
 
 - **Clínica** (código/slug) + e-mail + senha em `/login`. Clínica migrada: `aura`, admin `admin@auraclinic.com`, senha padrão `aura123` (**troque em produção**).
 - **Plataforma**: `/plataforma` com o superadmin definido em `PLATFORM_ADMIN_EMAIL`/`PLATFORM_ADMIN_PASSWORD`.
-- Em desenvolvimento local a API libera acesso administrativo sem token para agilizar; em produção (`NODE_ENV=production`) o token é obrigatório em todas as rotas protegidas.
+- O token é obrigatório em todas as rotas protegidas, **inclusive em desenvolvimento**. Existe um bypass local opcional (`ALLOW_LOCAL_AUTH_BYPASS=true`, só fora de produção e só para requisições de `localhost`), **desligado por padrão** — mantenha assim para exercitar o mesmo fluxo da produção.
 
 ## Estrutura
 
@@ -119,7 +119,7 @@ frontend/
 
 ## Banco de dados
 
-PostgreSQL (`aura_clinic`), organizado em schemas: `platform` (controle da plataforma) e um `tenant_<id>` por clínica. Tabelas principais de cada clínica:
+PostgreSQL (`aura_clinic`), organizado em schemas: `platform` (controle da plataforma) e um `tenant_<slug>` por clínica (slug com `_` no lugar de `-`, ex.: `tenant_aura_clinic`). Tabelas principais de cada clínica:
 
 - `users`, `professionals`, `services`, `procedures`
 - `clients`, `appointments`, `payments`
@@ -148,10 +148,18 @@ O comando localiza a conta existente no tenant, preserva nome/senha/demais dados
 
 ## Níveis de acesso
 
-- `admin`: acessa tudo
-- `reception`: agenda, agendamentos e clientes
-- `finance`: financeiro e relatórios
-- `piercer`: atendimentos, clientes, prontuários e pós-atendimento
+O acesso é decidido em três camadas, nesta ordem:
+
+1. **Papel do usuário** — a base:
+
+   - `admin`: acessa tudo (ignora as demais checagens de permissão)
+   - `reception`: agenda, serviços, clientes, produtos, vendas e relatórios
+   - `finance`: contas a pagar/receber, compras, fornecedores, categorias, centros de custo, relatórios e vendas
+   - `piercer`: agenda, atendimentos, clientes, prontuários, termos e pós-atendimento
+
+2. **Overrides por usuário** — a tabela `user_permissions` concede (`allowed = true`) ou revoga (`allowed = false`) permissões individuais sobre o papel. Resolvido em `services/permissionService.js`; a revogação vence a concessão.
+
+3. **Recursos do plano** — mesmo com permissão, a página ou ação pode estar travada pelo plano contratado da clínica (`services/planLimits.js` e o mapa de features em `frontend/src/lib/permissions.js`). Item com cadeado na UI é limitação de plano, não falta de permissão.
 
 ## API e documentação
 
