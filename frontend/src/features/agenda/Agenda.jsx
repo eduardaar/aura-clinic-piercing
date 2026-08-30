@@ -34,6 +34,17 @@ function formatOperationalTime(value) {
   return Number.isNaN(parsed.getTime()) ? "" : parsed.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 }
 
+function operationalRequirements(value) {
+  if (!value) return { checklist: [], biosafety: { enabled: false, required_fields: [] } };
+  if (typeof value === "string") {
+    try { return operationalRequirements(JSON.parse(value)); } catch { return { checklist: [], biosafety: { enabled: false, required_fields: [] } }; }
+  }
+  return {
+    checklist: asArray(value.checklist),
+    biosafety: { enabled: Boolean(value.biosafety?.enabled), required_fields: asArray(value.biosafety?.required_fields) }
+  };
+}
+
 // Status canônicos de agendamento, com o rótulo que aparece na tela.
 const APPOINTMENT_STATUS_OPTIONS = [
   { value: "pendente", label: "Pendente" },
@@ -465,6 +476,8 @@ function ServiceExecutionDetail({ executionId, onClose }) {
   const { data } = useFetch(executionId ? `/service-executions/${executionId}` : null);
   const execution = asObject(data);
   const snapshot = asObject(execution.snapshot);
+  const checklist = asArray(execution.checklist_snapshot);
+  const biosafety = asObject(execution.biosafety_snapshot);
   return (
     <Modal open={Boolean(executionId)} title="Atendimento realizado" subtitle={executionId ? `Registro #${executionId}` : ""} size="lg" onClose={onClose} footer={<Button variant="secondary" onClick={onClose}>Fechar</Button>}>
       {!data ? <Loading /> : <div className="stack">
@@ -479,6 +492,17 @@ function ServiceExecutionDetail({ executionId, onClose }) {
           {execution.occurrences && <div><strong>Intercorrências</strong><p>{execution.occurrences}</p></div>}
           {execution.aftercare_notes && <div><strong>Orientações pós-atendimento</strong><p>{execution.aftercare_notes}</p></div>}
         </div> : <p className="empty-state">Nenhuma informação clínica opcional foi registrada.</p>}
+        {(checklist.length > 0 || biosafety.enabled) && <div className="soft-card stack">
+          <strong>Checklist e rastreabilidade</strong>
+          {checklist.length > 0 && <div>{checklist.map((item) => <p key={item.key}>{item.completed ? "✓" : "○"} {item.label}{item.required ? " (obrigatório)" : ""}</p>)}</div>}
+          {biosafety.enabled && <div>
+            {biosafety.sterilization_cycle && <p>Ciclo: <strong>{biosafety.sterilization_cycle}</strong></p>}
+            {biosafety.sterilization_record && <p>Registro: <strong>{biosafety.sterilization_record}</strong></p>}
+            {asArray(biosafety.material_lots).map((item, index) => <p key={`${item.batch_code}-${index}`}>Material/lote: <strong>{item.batch_code || item.inventory_item_lot_id}</strong> · qtd. {item.quantity}</p>)}
+            {biosafety.notes && <p>Observações: {biosafety.notes}</p>}
+          </div>}
+          {asArray(execution.operationalHistory).length > 1 && <small>{asArray(execution.operationalHistory).length} revisões preservadas no histórico.</small>}
+        </div>}
         <DataView
           rows={asArray(execution.items)}
           columns={[
@@ -675,6 +699,8 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
   const [clinicalNotes, setClinicalNotes] = useState("");
   const [occurrences, setOccurrences] = useState("");
   const [aftercareNotes, setAftercareNotes] = useState("");
+  const [operationalChecklist, setOperationalChecklist] = useState([]);
+  const [biosafety, setBiosafety] = useState({ material_lots: [], sterilization_cycle: "", sterilization_record: "", applied_jewelry_id: "", applied_jewelry_variant_id: "", notes: "" });
   const [error, setError] = useState("");
   const [deletion, setDeletion] = useState(null);
   const [cancellation, setCancellation] = useState(null);
@@ -686,6 +712,7 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
   const safeServices = asArray(services);
   const safeProcedures = asArray(procedures);
   const safeJewelry = asArray(asObject(options).serviceItems);
+  const operationalRules = operationalRequirements(appointment?.operational_requirements_snapshot);
 
   useEffect(() => {
     if (!appointment) return;
@@ -712,6 +739,17 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
     setClinicalNotes("");
     setOccurrences("");
     setAftercareNotes("");
+    const requirements = operationalRequirements(appointment.operational_requirements_snapshot);
+    setOperationalChecklist(requirements.checklist.map((item) => ({ ...item, completed: false })));
+    setBiosafety({
+      enabled: requirements.biosafety.enabled,
+      material_lots: [],
+      sterilization_cycle: "",
+      sterilization_record: "",
+      applied_jewelry_id: appointment.jewelry_id || "",
+      applied_jewelry_variant_id: appointment.jewelry_variant_id || "",
+      notes: ""
+    });
     setError("");
     setDeletion(null);
     setCancellation(null);
@@ -781,7 +819,7 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
       const updateData = await updateResponse.json().catch(() => ({}));
       return setError(updateData.error || "Não foi possível salvar os itens do atendimento.");
     }
-    const response = await apiFetch(`/appointments/${appointment.id}/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ payments, financial_notes: financialNotes, clinical_notes: clinicalNotes, occurrences, aftercare_notes: aftercareNotes }) });
+    const response = await apiFetch(`/appointments/${appointment.id}/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ payments, financial_notes: financialNotes, clinical_notes: clinicalNotes, occurrences, aftercare_notes: aftercareNotes, checklist: operationalChecklist, biosafety }) });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) return setError(data.error || "Não foi possível concluir o atendimento.");
     onSaved?.();
@@ -849,6 +887,25 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
             <Textarea label="Observações clínicas (opcional)" value={clinicalNotes} onChange={setClinicalNotes} />
             <Textarea label="Intercorrências (opcional)" value={occurrences} onChange={setOccurrences} />
             <Textarea label="Orientações pós-atendimento (opcional)" value={aftercareNotes} onChange={setAftercareNotes} />
+            {operationalChecklist.length > 0 && <div className="soft-card stack">
+              <div className="section-inline-header"><strong>Checklist do atendimento</strong><small>Opcionais podem ficar em branco</small></div>
+              {operationalChecklist.map((item) => <Checkbox key={item.key} label={`${item.label}${item.required ? " *" : ""}`} checked={Boolean(item.completed)} onChange={(completed) => setOperationalChecklist(operationalChecklist.map((row) => row.key === item.key ? { ...row, completed } : row))} />)}
+            </div>}
+            {operationalRules.biosafety.enabled && <div className="soft-card stack">
+              <div className="section-inline-header"><strong>Rastreabilidade de biossegurança</strong><small>Dados preservados no histórico</small></div>
+              <div className="form-grid">
+                <Input label={`Ciclo de esterilização${operationalRules.biosafety.required_fields.includes("sterilization_cycle") ? " *" : ""}`} value={biosafety.sterilization_cycle} onChange={(sterilization_cycle) => setBiosafety({ ...biosafety, sterilization_cycle })} />
+                <Input label={`Registro/comprovante${operationalRules.biosafety.required_fields.includes("sterilization_record") ? " *" : ""}`} value={biosafety.sterilization_record} onChange={(sterilization_record) => setBiosafety({ ...biosafety, sterilization_record })} />
+                <Select label={`Joia aplicada${operationalRules.biosafety.required_fields.includes("applied_jewelry") ? " *" : ""}`} value={biosafety.applied_jewelry_id} onChange={(applied_jewelry_id) => setBiosafety({ ...biosafety, applied_jewelry_id })}><option value="">Não informar</option>{safeJewelry.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select>
+              </div>
+              {asArray(biosafety.material_lots).map((material, index) => <div className="form-grid" key={index}>
+                <Input label={`Material/lote${operationalRules.biosafety.required_fields.includes("material_lots") ? " *" : ""}`} value={material.batch_code} onChange={(batch_code) => setBiosafety({ ...biosafety, material_lots: biosafety.material_lots.map((row, rowIndex) => rowIndex === index ? { ...row, batch_code } : row) })} placeholder="Ex.: Agulha lote ABC123" />
+                <Input type="number" min="1" label="Quantidade" value={material.quantity} onChange={(quantity) => setBiosafety({ ...biosafety, material_lots: biosafety.material_lots.map((row, rowIndex) => rowIndex === index ? { ...row, quantity } : row) })} />
+                <Button variant="secondary" onClick={() => setBiosafety({ ...biosafety, material_lots: biosafety.material_lots.filter((_, rowIndex) => rowIndex !== index) })}>Remover</Button>
+              </div>)}
+              <Button variant="secondary" onClick={() => setBiosafety({ ...biosafety, material_lots: [...biosafety.material_lots, { batch_code: "", quantity: 1 }] })}>Adicionar material/lote</Button>
+              <Textarea label="Observações de biossegurança (opcional)" value={biosafety.notes} onChange={(notes) => setBiosafety({ ...biosafety, notes })} />
+            </div>}
             <div className="section-inline-header"><strong>Conferência financeira</strong><Button variant="secondary" onClick={() => setPayments([...payments, { method: "Pix", amount: 0, status: "pago", installments: 1, fee_amount: 0, expected_receipt_date: "" }])}>Dividir pagamento</Button></div>
             {payments.map((payment, index) => <div className="form-grid" key={`${index}-${payment.method}`}>
               <PaymentSelect label={`Forma ${index + 1}`} value={payment.method} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, method: value } : item))} />

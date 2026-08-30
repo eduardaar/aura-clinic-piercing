@@ -12,6 +12,7 @@ import { syncProductInventory } from "./inventory.js";
 import { limitOffset, countRows } from "./pagination.js";
 import { getAppointmentFinancialSnapshot } from "./finance.js";
 import { parseServiceRulesSnapshot, resolveServiceRules } from "./serviceRules.js";
+import { getClinicOperationalSettings, resolveOperationalRequirements } from "./operationalRequirements.js";
 
 function sameDateTimeDate(value, date) {
   return String(value || "").slice(0, 10) === date;
@@ -87,6 +88,7 @@ export async function normalizeAppointmentItems(db, body = {}) {
   }];
 
   const items = [];
+  const clinicOperationalSettings = await getClinicOperationalSettings(db);
   for (const raw of baseItems) {
     const serviceId = raw.service_id ? Number(raw.service_id) : (body.service_id ? Number(body.service_id) : null);
     const procedureId = raw.procedure_id ? Number(raw.procedure_id) : null;
@@ -100,7 +102,8 @@ export async function normalizeAppointmentItems(db, body = {}) {
     const procedurePrice = Number(raw.procedure_price || raw.service_price || procedure?.price || service?.price || body.procedure_value || body.service_value || 0);
     const jewelryUnitPrice = jewelryId ? Number(raw.jewelry_unit_price || raw.unit_price || variant?.sale_value || jewelry?.sale_value || body.jewelry_value || 0) : 0;
     const duration = Number(raw.duration_minutes || procedure?.duration_minutes || service?.duration_minutes || body.duration_minutes || 0);
-    const serviceRulesSnapshot = resolveServiceRules(service || {}, procedure);
+    const operationalRequirements = resolveOperationalRequirements({ clinic: clinicOperationalSettings, service: service || {}, variation: procedure });
+    const serviceRulesSnapshot = { ...resolveServiceRules(service || {}, procedure), operational_requirements: operationalRequirements };
     items.push({
       procedure_id: procedureId,
       service_id: serviceId,
@@ -114,6 +117,7 @@ export async function normalizeAppointmentItems(db, body = {}) {
       jewelry_unit_price: jewelryUnitPrice,
       duration_minutes: duration,
       service_rules_snapshot: serviceRulesSnapshot,
+      operational_requirements_snapshot: operationalRequirements,
       subtotal: procedurePrice + jewelryUnitPrice * quantity,
       notes: raw.notes || ""
     });

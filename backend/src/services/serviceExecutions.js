@@ -8,13 +8,15 @@ import {
   syncServiceExecutionReceivables
 } from "./receivables.js";
 import { parseServiceRulesSnapshot } from "./serviceRules.js";
+import { prepareOperationalCompletion } from "./operationalRequirements.js";
 
 export async function getServiceExecution(db, id) {
   const execution = await db.get("SELECT * FROM service_executions WHERE id=?", [id]);
   if (!execution) return null;
   const items = await db.all("SELECT * FROM service_execution_items WHERE service_execution_id=? ORDER BY id", [id]);
   const receivables = await db.all("SELECT * FROM financial_entries WHERE source_type='service_execution' AND source_id=? AND entry_type='receivable' AND status!='canceled' ORDER BY installment_number,id", [id]);
-  return { ...execution, items, receivables };
+  const operationalHistory = await db.all("SELECT * FROM service_execution_operational_revisions WHERE service_execution_id=? ORDER BY recorded_at DESC,id DESC", [id]);
+  return { ...execution, items, receivables, operationalHistory };
 }
 
 export async function ensureServiceExecution(db, appointmentId, user, options = {}) {
@@ -76,6 +78,24 @@ export async function ensureServiceExecution(db, appointmentId, user, options = 
   const clinicalNotes = optionalText("clinical_notes");
   const occurrences = optionalText("occurrences");
   const aftercareNotes = optionalText("aftercare_notes");
+  const operational = prepareOperationalCompletion({
+    requirements: appointment.operational_requirements_snapshot,
+    checklist: options.checklist ?? existing?.checklist_snapshot,
+    biosafety: options.biosafety ?? existing?.biosafety_snapshot,
+    appointment,
+    user
+  });
+  for (const material of operational.biosafetySnapshot.material_lots || []) {
+    if (material.inventory_item_id && !(await db.get("SELECT id FROM jewelry_inventory WHERE id=?", [material.inventory_item_id]))) {
+      throw new Error("Um dos materiais informados na biossegurança não existe mais.");
+    }
+    if (material.inventory_item_lot_id && !(await db.get("SELECT id FROM inventory_item_lots WHERE id=? AND inventory_item_id=?", [material.inventory_item_lot_id, material.inventory_item_id]))) {
+      throw new Error("O lote informado não pertence ao material selecionado.");
+    }
+  }
+  if (operational.biosafetySnapshot.applied_jewelry_id && !(await db.get("SELECT id FROM jewelry_inventory WHERE id=?", [operational.biosafetySnapshot.applied_jewelry_id]))) {
+    throw new Error("A joia aplicada informada não existe mais.");
+  }
 
   let executionId = existing?.id;
   if (existing) {
@@ -83,28 +103,35 @@ export async function ensureServiceExecution(db, appointmentId, user, options = 
       client_id=?, professional_id=?, service_id=?, status='completed', snapshot=?,
       service_subtotal=?, product_subtotal=?, discount_total=?, total_value=?, paid_value=?, receivable_value=?,
       payment_method=?, installment_count=?, first_due_date=?, installments_json=?, executed_by_user_id=?,
-      clinical_notes=?, occurrences=?, aftercare_notes=?,
+      clinical_notes=?, occurrences=?, aftercare_notes=?,checklist_snapshot=?,biosafety_snapshot=?,
       completed_at=now(), cancelled_at=NULL, cancellation_reason=NULL, updated_at=now()
       WHERE id=?`, [
       appointment.client_id, appointment.professional_id, appointment.service_id, snapshot,
       serviceSubtotal, productSubtotal, Number(appointment.discount_value || 0), total, paid, outstanding,
       paymentMethod, installmentCount, firstDueDate, explicitInstallments ? serializeInstallments(explicitInstallments) : null,
-      user?.id || null, clinicalNotes, occurrences, aftercareNotes, existing.id
+      user?.id || null, clinicalNotes, occurrences, aftercareNotes,
+      JSON.stringify(operational.checklistSnapshot), JSON.stringify(operational.biosafetySnapshot), existing.id
     ]);
   } else {
     const created = await db.run(`INSERT INTO service_executions
       (appointment_id, client_id, professional_id, service_id, snapshot,
        service_subtotal, product_subtotal, discount_total, total_value, paid_value, receivable_value,
        payment_method, installment_count, first_due_date, installments_json, executed_by_user_id,
-       clinical_notes, occurrences, aftercare_notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`, [
+       clinical_notes, occurrences, aftercare_notes,checklist_snapshot,biosafety_snapshot)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`, [
       appointment.id, appointment.client_id, appointment.professional_id, appointment.service_id, snapshot,
       serviceSubtotal, productSubtotal, Number(appointment.discount_value || 0), total, paid, outstanding,
       paymentMethod, installmentCount, firstDueDate, explicitInstallments ? serializeInstallments(explicitInstallments) : null,
-      user?.id || null, clinicalNotes, occurrences, aftercareNotes
+      user?.id || null, clinicalNotes, occurrences, aftercareNotes,
+      JSON.stringify(operational.checklistSnapshot), JSON.stringify(operational.biosafetySnapshot)
     ]);
     executionId = created.returnedId;
   }
+
+  await db.run(`INSERT INTO service_execution_operational_revisions
+    (service_execution_id,appointment_id,checklist_snapshot,biosafety_snapshot,recorded_by_user_id)
+    VALUES (?,?,?,?,?)`, [executionId, appointment.id, JSON.stringify(operational.checklistSnapshot),
+    JSON.stringify(operational.biosafetySnapshot), user?.id || null]);
 
   await db.run("DELETE FROM service_execution_items WHERE service_execution_id=?", [executionId]);
   const sourceItems = appointmentItems.length ? appointmentItems : [{

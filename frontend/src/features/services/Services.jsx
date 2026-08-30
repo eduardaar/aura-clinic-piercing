@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Button, Input, Select, StatusBadge, Switch, Textarea } from "../../components/common/Ui";
+import { useEffect, useState } from "react";
+import { Button, Checkbox, Input, Select, StatusBadge, Switch, Textarea } from "../../components/common/Ui";
 import { ConfirmDeleteModal, CrudHeader, Modal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { Loading } from "../../components/common/Feedback";
@@ -25,9 +25,55 @@ function inheritedBoolean(value) {
   return value === null || value === undefined || value === "" ? "" : String(Boolean(value));
 }
 
+const CHECKLIST_PRESETS = [
+  ["client_registration_checked", "Cadastro do cliente conferido"],
+  ["digital_term_signed", "Termo digital conferido"],
+  ["guardian_validated", "Responsável legal validado"],
+  ["jewelry_checked", "Joia conferida"],
+  ["materials_prepared", "Materiais separados"],
+  ["guidance_delivered", "Orientações entregues"]
+];
+const BIOSAFETY_FIELDS = [
+  ["material_lots", "Lotes dos materiais"],
+  ["sterilization_cycle", "Ciclo de esterilização"],
+  ["sterilization_record", "Registro/comprovante de esterilização"],
+  ["applied_jewelry", "Joia aplicada"]
+];
+
+function jsonConfig(value, fallback) {
+  if (value == null || value === "") return fallback;
+  if (typeof value !== "string") return value;
+  try { return JSON.parse(value); } catch { return fallback; }
+}
+
+function OperationalEditor({ checklist = [], biosafety = {}, onChange }) {
+  const rows = Array.isArray(checklist) ? checklist : [];
+  const requiredFields = Array.isArray(biosafety.required_fields) ? biosafety.required_fields : [];
+  const [customLabel, setCustomLabel] = useState("");
+  const updatePreset = (key, label, enabled) => {
+    const current = rows.find((item) => item.key === key);
+    const next = rows.filter((item) => item.key !== key);
+    if (enabled) next.push(current || { key, label, required: false, enabled: true });
+    onChange({ checklist: next, biosafety });
+  };
+  const updateRequired = (key, required) => onChange({ checklist: rows.map((item) => item.key === key ? { ...item, required } : item), biosafety });
+  const customRows = rows.filter((item) => !CHECKLIST_PRESETS.some(([key]) => key === item.key));
+  return <div className="stack">
+    <div className="soft-card stack"><strong>Checklist do atendimento</strong><small>Ative somente o que a clínica usa. Itens obrigatórios impedem apenas a conclusão do atendimento.</small>
+      {CHECKLIST_PRESETS.map(([key, label]) => { const item = rows.find((row) => row.key === key); return <div className="form-grid" key={key}><Checkbox label={label} checked={Boolean(item)} onChange={(checked) => updatePreset(key, label, checked)} /><Checkbox label="Obrigatório" disabled={!item} checked={Boolean(item?.required)} onChange={(checked) => updateRequired(key, checked)} /></div>; })}
+      {customRows.map((item) => <div className="form-grid" key={item.key}><Checkbox label={item.label} checked onChange={(checked) => updatePreset(item.key, item.label, checked)} /><Checkbox label="Obrigatório" checked={Boolean(item.required)} onChange={(checked) => updateRequired(item.key, checked)} /></div>)}
+      <div className="form-grid"><Input label="Novo item personalizado" value={customLabel} onChange={setCustomLabel} /><Button variant="secondary" disabled={!customLabel.trim()} onClick={() => { const label = customLabel.trim(); const key = `custom_${Date.now()}`; onChange({ checklist: [...rows, { key, label, required: false, enabled: true }], biosafety }); setCustomLabel(""); }}>Adicionar</Button></div>
+    </div>
+    <div className="soft-card stack"><Switch id={`biosafety-${rows.length}`} label="Usar rastreabilidade de biossegurança" description="Registre lote, esterilização e joia aplicada quando fizer sentido." checked={Boolean(biosafety.enabled)} onChange={(enabled) => onChange({ checklist: rows, biosafety: { ...biosafety, enabled } })} />
+      {biosafety.enabled && BIOSAFETY_FIELDS.map(([field, label]) => <Checkbox key={field} label={`${label} obrigatório`} checked={requiredFields.includes(field)} onChange={(checked) => onChange({ checklist: rows, biosafety: { ...biosafety, required_fields: checked ? [...requiredFields, field] : requiredFields.filter((item) => item !== field) } })} />)}
+    </div>
+  </div>;
+}
+
 export function ServicesWorkspace() {
   const { data: servicesData } = useFetch("/services");
   const { data: proceduresData } = useFetch("/procedures");
+  const { data: settingsData } = useFetch("/service-operational-settings");
   const invalidate = useApiInvalidate();
   const [serviceForm, setServiceForm] = useState(defaultServiceForm());
   const [procedureForm, setProcedureForm] = useState(defaultProcedureForm());
@@ -39,8 +85,14 @@ export function ServicesWorkspace() {
   const [serviceError, setServiceError] = useState("");
   const [procedureError, setProcedureError] = useState("");
   const [deleting, setDeleting] = useState(null);
+  const [operationalSettings, setOperationalSettings] = useState({ checklist: [], biosafety: { enabled: false, required_fields: [] } });
+  const [settingsMessage, setSettingsMessage] = useState("");
 
-  if (servicesData == null || proceduresData == null) return <Loading />;
+  useEffect(() => {
+    if (settingsData) setOperationalSettings({ checklist: jsonConfig(settingsData.checklist, []), biosafety: jsonConfig(settingsData.biosafety, { enabled: false, required_fields: [] }) });
+  }, [settingsData]);
+
+  if (servicesData == null || proceduresData == null || settingsData == null) return <Loading />;
   const services = rowsOf(servicesData);
   const procedures = rowsOf(proceduresData);
   const selectedService = services.find((item) => String(item.id) === String(selectedServiceId));
@@ -92,9 +144,17 @@ export function ServicesWorkspace() {
 
   function editVariation(procedure) {
     setEditingProcedureId(procedure.id);
-    setProcedureForm({ ...defaultProcedureForm(), ...procedure, service_id: String(procedure.service_id || ""), name: procedure.name || "", body_area: procedure.body_area || "", description: procedure.description || "", price: procedure.price || 0, duration_minutes: procedure.duration_minutes || 40, aftercare_instructions: procedure.aftercare_instructions || "", is_active: Boolean(Number(procedure.is_active)), minimum_age_years: procedure.minimum_age_years ?? "", requires_guardian: inheritedBoolean(procedure.requires_guardian), requires_signed_term: inheritedBoolean(procedure.requires_signed_term), return_after_days: procedure.return_after_days ?? "", scheduling_interval_minutes: procedure.scheduling_interval_minutes ?? "", minimum_advance_minutes: procedure.minimum_advance_minutes ?? "", postcare_enabled: inheritedBoolean(procedure.postcare_enabled), postcare_days: dayList(procedure.postcare_days), available_online: inheritedBoolean(procedure.available_online) });
+    setProcedureForm({ ...defaultProcedureForm(), ...procedure, service_id: String(procedure.service_id || ""), name: procedure.name || "", body_area: procedure.body_area || "", description: procedure.description || "", price: procedure.price || 0, duration_minutes: procedure.duration_minutes || 40, aftercare_instructions: procedure.aftercare_instructions || "", is_active: Boolean(Number(procedure.is_active)), minimum_age_years: procedure.minimum_age_years ?? "", requires_guardian: inheritedBoolean(procedure.requires_guardian), requires_signed_term: inheritedBoolean(procedure.requires_signed_term), return_after_days: procedure.return_after_days ?? "", scheduling_interval_minutes: procedure.scheduling_interval_minutes ?? "", minimum_advance_minutes: procedure.minimum_advance_minutes ?? "", postcare_enabled: inheritedBoolean(procedure.postcare_enabled), postcare_days: dayList(procedure.postcare_days), available_online: inheritedBoolean(procedure.available_online), checklist_config: procedure.checklist_config == null ? null : jsonConfig(procedure.checklist_config, []), biosafety_config: procedure.biosafety_config == null ? null : jsonConfig(procedure.biosafety_config, { enabled: false, required_fields: [] }) });
     setProcedureError("");
     setProcedureModalOpen(true);
+  }
+
+  async function saveOperationalSettings() {
+    setSettingsMessage("");
+    const response = await apiFetch("/service-operational-settings", { method: "PUT", body: JSON.stringify(operationalSettings) });
+    if (!response.ok) return setSettingsMessage((await response.json().catch(() => ({}))).error || "Não foi possível salvar.");
+    setSettingsMessage("Configuração salva.");
+    invalidate("/service-operational-settings");
   }
 
   async function saveVariation(event) {
@@ -122,6 +182,11 @@ export function ServicesWorkspace() {
   return (
     <section className="booking-admin-page stack">
       <header className="availability-header agenda-settings-header"><div><span className="eyebrow">Configuração da Agenda</span><h2>Catálogo de serviços</h2><p>Configure o que a clínica oferece. O atendimento começa e termina exclusivamente na Agenda.</p></div></header>
+      <div className="panel stack">
+        <CrudHeader title="Checklist e biossegurança" subtitle="Padrão opcional da clínica, copiado para o agendamento como histórico." />
+        <OperationalEditor checklist={operationalSettings.checklist} biosafety={operationalSettings.biosafety} onChange={setOperationalSettings} />
+        <div className="toolbar"><Button onClick={saveOperationalSettings}>Salvar configuração</Button>{settingsMessage && <small>{settingsMessage}</small>}</div>
+      </div>
       <div className="panel">
         <CrudHeader title="Serviços disponíveis" subtitle="Preço, duração, sinal e orientações usados nos agendamentos." actionLabel="Novo serviço" onAction={openNewService} />
         <DataView
@@ -199,6 +264,8 @@ export function ServicesWorkspace() {
             {[["requires_guardian", "Responsável legal"], ["requires_signed_term", "Termo obrigatório"], ["postcare_enabled", "Pós-atendimento"], ["available_online", "Disponibilidade online"]].map(([field, label]) => <Select key={field} label={label} value={procedureForm[field]} onChange={(value) => setProcedureForm({ ...procedureForm, [field]: value })}><option value="">Herdar do serviço</option><option value="true">Sim</option><option value="false">Não</option></Select>)}
           </div>
           {procedureForm.postcare_enabled === "true" && <Input label="Dias do pós-atendimento" value={procedureForm.postcare_days} onChange={(value) => setProcedureForm({ ...procedureForm, postcare_days: value })} placeholder="7, 15, 30" />}
+          <Switch id="variation-operational-override" label="Personalizar checklist e biossegurança" description="Desativado: herda a configuração da clínica/serviço." checked={procedureForm.checklist_config !== null || procedureForm.biosafety_config !== null} onChange={(checked) => setProcedureForm({ ...procedureForm, checklist_config: checked ? [] : null, biosafety_config: checked ? { enabled: false, required_fields: [] } : null })} />
+          {(procedureForm.checklist_config !== null || procedureForm.biosafety_config !== null) && <OperationalEditor checklist={procedureForm.checklist_config || []} biosafety={procedureForm.biosafety_config || { enabled: false, required_fields: [] }} onChange={({ checklist, biosafety }) => setProcedureForm({ ...procedureForm, checklist_config: checklist, biosafety_config: biosafety })} />}
           <Switch id="variation-active" label="Variação ativa" description="" defaultChecked={undefined} checked={Boolean(procedureForm.is_active)} onChange={(value) => setProcedureForm({ ...procedureForm, is_active: value })} />
           {procedureError && <span className="form-error">{procedureError}</span>}
         </form>

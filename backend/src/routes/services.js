@@ -9,8 +9,26 @@ import { serviceCreateSchema, serviceUpdateSchema } from "../schemas/index.js";
 import { parsePaging, pageResponse } from "../services/pagination.js";
 import { replaceServiceRecipe, serviceRecipe } from "../services/consumableUsage.js";
 import { normalizePostcareDays } from "../services/serviceRules.js";
+import { getClinicOperationalSettings, normalizeBiosafetyConfig, normalizeChecklistConfig } from "../services/operationalRequirements.js";
 
 const router = Router();
+
+function nullableConfig(value, normalizer) {
+  return value === null || value === undefined ? null : JSON.stringify(normalizer(value));
+}
+
+router.get("/api/service-operational-settings", withFeature("procedures", async (_req, res, db) => {
+  res.json(await getClinicOperationalSettings(db));
+}));
+
+router.put("/api/service-operational-settings", withFeature("procedures", async (req, res, db) => {
+  if (!requireRole(req, res, ["admin", "reception"])) return;
+  const checklist = normalizeChecklistConfig(req.body?.checklist);
+  const biosafety = normalizeBiosafetyConfig(req.body?.biosafety);
+  await db.run(`UPDATE service_operational_settings SET checklist_config=?,biosafety_config=?,updated_at=now(),updated_by_user_id=? WHERE id=1`,
+    [JSON.stringify(checklist), JSON.stringify(biosafety), req.user?.id || null]);
+  res.json({ checklist, biosafety });
+}));
 
 // Whitelist de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
 const SERVICE_SORTABLE = {
@@ -51,8 +69,8 @@ router.post("/api/services", withFeature("procedures", async (req, res, db) => {
     `INSERT INTO services
       (name,description,duration_minutes,price,deposit_value,is_active,active_online_booking,pre_service_notes,
        minimum_age_years,requires_guardian,requires_signed_term,return_after_days,scheduling_interval_minutes,
-       minimum_advance_minutes,postcare_enabled,postcare_days,aftercare_instructions)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`,
+       minimum_advance_minutes,postcare_enabled,postcare_days,aftercare_instructions,checklist_config,biosafety_config)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`,
     [
       req.body.name,
       req.body.description || "",
@@ -70,7 +88,9 @@ router.post("/api/services", withFeature("procedures", async (req, res, db) => {
       Number(req.body.minimum_advance_minutes || 0),
       Boolean(boolNumber(req.body.postcare_enabled ?? false)),
       JSON.stringify(normalizePostcareDays(req.body.postcare_days)),
-      req.body.aftercare_instructions || ""
+      req.body.aftercare_instructions || "",
+      nullableConfig(req.body.checklist_config, normalizeChecklistConfig),
+      nullableConfig(req.body.biosafety_config, normalizeBiosafetyConfig)
     ]
   );
   await replaceProfessionalServices(db, result.returnedId, req.body.professional_ids || []);
@@ -85,7 +105,7 @@ async function updateService(req, res, db) {
   await db.run(
     `UPDATE services SET name=?,description=?,duration_minutes=?,price=?,deposit_value=?,is_active=?,active_online_booking=?,pre_service_notes=?,
       minimum_age_years=?,requires_guardian=?,requires_signed_term=?,return_after_days=?,scheduling_interval_minutes=?,
-      minimum_advance_minutes=?,postcare_enabled=?,postcare_days=?,aftercare_instructions=? WHERE id=?`,
+      minimum_advance_minutes=?,postcare_enabled=?,postcare_days=?,aftercare_instructions=?,checklist_config=?,biosafety_config=? WHERE id=?`,
     [
       req.body.name ?? service.name,
       req.body.description ?? service.description,
@@ -104,6 +124,8 @@ async function updateService(req, res, db) {
       Boolean(boolNumber(req.body.postcare_enabled ?? service.postcare_enabled)),
       JSON.stringify(normalizePostcareDays(req.body.postcare_days ?? service.postcare_days)),
       req.body.aftercare_instructions ?? service.aftercare_instructions,
+      req.body.checklist_config === undefined ? service.checklist_config : nullableConfig(req.body.checklist_config, normalizeChecklistConfig),
+      req.body.biosafety_config === undefined ? service.biosafety_config : nullableConfig(req.body.biosafety_config, normalizeBiosafetyConfig),
       req.params.id
     ]
   );

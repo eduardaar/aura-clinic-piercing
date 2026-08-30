@@ -41,6 +41,7 @@ import {
 import { recordAudit } from "../services/audit.js";
 import { cancelServiceExecution, ensureServiceExecution } from "../services/serviceExecutions.js";
 import { assertCompletionServiceRules, parseServiceRulesSnapshot, validateAppointmentTimingRules, validateClientServiceRules } from "../services/serviceRules.js";
+import { mergeOperationalRequirements } from "../services/operationalRequirements.js";
 
 const router = Router();
 const APPOINTMENT_STATUSES = new Set(["pendente", "awaiting_deposit_proof", "confirmado", "chegou", "em_atendimento", "atendido", "cancelado", "nao_compareceu", "remarcado", "recusado"]);
@@ -170,6 +171,7 @@ router.post("/api/appointments", withFeature("agenda", async (req, res, db) => {
   const service = serviceId ? await db.get("SELECT * FROM services WHERE id = ?", [serviceId]) : null;
   const items = await normalizeAppointmentItems(db, { ...body, service_id: serviceId });
   const serviceRulesSnapshot = items.filter((item) => item.service_id || item.procedure_id).map((item) => item.service_rules_snapshot);
+  const operationalRequirementsSnapshot = mergeOperationalRequirements(items.map((item) => item.operational_requirements_snapshot));
   const clientProfile = await db.get("SELECT * FROM clients WHERE id=?", [client.id]);
   const clientRuleError = validateClientServiceRules({ rules: serviceRulesSnapshot, client: clientProfile, appointmentDate: body.appointment_date, guardianProvided: Boolean(body.guardian_name && body.guardian_document) });
   if (clientRuleError) return res.status(400).json({ error: clientRuleError });
@@ -218,9 +220,9 @@ router.post("/api/appointments", withFeature("agenda", async (req, res, db) => {
   const appointmentId = await db.transaction(async (tx) => {
     const result = await tx.run(
       `INSERT INTO appointments
-      (client_id, professional_id, service_id, jewelry_id, jewelry_variant_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, total_value, service_value, jewelry_value, subtotal_value, discount_value, coupon_id, coupon_code, coupon_snapshot, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, deposit_status, deposit_paid_at, financial_notes, status, notes, reference_photo_url, duration_minutes, service_rules_snapshot)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-      [client.id, body.professional_id, serviceId || firstItem.service_id || null, jewelryId, variantId, body.procedure || firstItem.procedure_name || service?.name || "Atendimento", body.description, body.piercing_region || firstItem.region || "Atendimento", body.appointment_date, body.appointment_time, endTime, totalValue, totals.procedureValue, totals.jewelryValue, totals.totalValue, discountValue, couponQuote?.coupon?.id || null, couponQuote?.coupon?.code || null, couponQuote ? JSON.stringify(couponQuote) : null, depositValue, remainingValue, body.deposit_payment_method, body.remaining_payment_method, depositStatus, depositReceived ? (body.deposit_paid_at || localTimestamp()) : null, body.financial_notes || "", body.status || "pendente", body.notes, photoUrl, duration, JSON.stringify(serviceRulesSnapshot)]
+      (client_id, professional_id, service_id, jewelry_id, jewelry_variant_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, total_value, service_value, jewelry_value, subtotal_value, discount_value, coupon_id, coupon_code, coupon_snapshot, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, deposit_status, deposit_paid_at, financial_notes, status, notes, reference_photo_url, duration_minutes, service_rules_snapshot, operational_requirements_snapshot)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      [client.id, body.professional_id, serviceId || firstItem.service_id || null, jewelryId, variantId, body.procedure || firstItem.procedure_name || service?.name || "Atendimento", body.description, body.piercing_region || firstItem.region || "Atendimento", body.appointment_date, body.appointment_time, endTime, totalValue, totals.procedureValue, totals.jewelryValue, totals.totalValue, discountValue, couponQuote?.coupon?.id || null, couponQuote?.coupon?.code || null, couponQuote ? JSON.stringify(couponQuote) : null, depositValue, remainingValue, body.deposit_payment_method, body.remaining_payment_method, depositStatus, depositReceived ? (body.deposit_paid_at || localTimestamp()) : null, body.financial_notes || "", body.status || "pendente", body.notes, photoUrl, duration, JSON.stringify(serviceRulesSnapshot), JSON.stringify(operationalRequirementsSnapshot)]
     );
     await replaceAppointmentItems(tx, result.returnedId, items);
     if (couponQuote?.coupon?.id) {
@@ -431,6 +433,7 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
       if (timingRuleError) return res.status(400).json({ error: timingRuleError });
     }
     req.body.service_rules_snapshot = JSON.stringify(rules);
+    req.body.operational_requirements_snapshot = JSON.stringify(mergeOperationalRequirements(items.map((item) => item.operational_requirements_snapshot)));
     pendingItems = items;
   }
   if (req.body.status === "cancelado") {
@@ -442,7 +445,7 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
     if (!appointment.arrived_at) req.body.arrived_at = localTimestamp();
     if (!appointment.started_at) req.body.started_at = localTimestamp();
   }
-  const fields = ["status", "appointment_date", "appointment_time", "end_time", "professional_id", "service_id", "jewelry_id", "jewelry_variant_id", "procedure", "description", "piercing_region", "total_value", "discount_value", "deposit_value", "remaining_value", "deposit_payment_method", "remaining_payment_method", "deposit_status", "deposit_paid_at", "financial_notes", "coupon_code", "coupon_id", "coupon_snapshot", "notes", "arrived_at", "started_at", "service_rules_snapshot"];
+  const fields = ["status", "appointment_date", "appointment_time", "end_time", "professional_id", "service_id", "jewelry_id", "jewelry_variant_id", "procedure", "description", "piercing_region", "total_value", "discount_value", "deposit_value", "remaining_value", "deposit_payment_method", "remaining_payment_method", "deposit_status", "deposit_paid_at", "financial_notes", "coupon_code", "coupon_id", "coupon_snapshot", "notes", "arrived_at", "started_at", "service_rules_snapshot", "operational_requirements_snapshot"];
   const updates = fields.filter((field) => req.body[field] !== undefined);
 
   await db.transaction(async (tx) => {

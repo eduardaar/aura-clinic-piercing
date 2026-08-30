@@ -7,6 +7,7 @@ import { validateBody } from "../middleware/validate.js";
 import { procedureCreateSchema, procedureUpdateSchema } from "../schemas/index.js";
 import { parsePaging, fetchPage, pageResponse } from "../services/pagination.js";
 import { normalizePostcareDays } from "../services/serviceRules.js";
+import { normalizeBiosafetyConfig, normalizeChecklistConfig } from "../services/operationalRequirements.js";
 
 const router = Router();
 
@@ -18,6 +19,10 @@ function nullableBoolean(value) {
   if (value === "" || value === null || value === undefined) return null;
   if (typeof value === "string") return ["1", "true", "sim", "on"].includes(value.toLowerCase());
   return Boolean(value);
+}
+
+function nullableConfig(value, normalizer) {
+  return value === null || value === undefined ? null : JSON.stringify(normalizer(value));
 }
 
 // Whitelist de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
@@ -81,12 +86,13 @@ router.post("/api/procedures", withFeature("procedures", async (req, res, db) =>
     `INSERT INTO procedures
       (service_id,name,body_area,description,price,duration_minutes,aftercare_instructions,is_active,
        minimum_age_years,requires_guardian,requires_signed_term,return_after_days,scheduling_interval_minutes,
-       minimum_advance_minutes,postcare_enabled,postcare_days,available_online)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`,
+       minimum_advance_minutes,postcare_enabled,postcare_days,available_online,checklist_config,biosafety_config)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`,
     [Number(b.service_id), b.name.trim(), b.body_area || "", b.description || "", Number(b.price || 0), Number(b.duration_minutes || 40), b.aftercare_instructions || "", boolNumber(b.is_active ?? 1),
       nullableNumber(b.minimum_age_years), nullableBoolean(b.requires_guardian), nullableBoolean(b.requires_signed_term), nullableNumber(b.return_after_days),
       nullableNumber(b.scheduling_interval_minutes), nullableNumber(b.minimum_advance_minutes), nullableBoolean(b.postcare_enabled),
-      b.postcare_days === "" || b.postcare_days == null ? null : JSON.stringify(normalizePostcareDays(b.postcare_days)), nullableBoolean(b.available_online)]
+      b.postcare_days === "" || b.postcare_days == null ? null : JSON.stringify(normalizePostcareDays(b.postcare_days)), nullableBoolean(b.available_online),
+      nullableConfig(b.checklist_config, normalizeChecklistConfig), nullableConfig(b.biosafety_config, normalizeBiosafetyConfig)]
   );
   res.status(201).json(await db.get("SELECT * FROM procedures WHERE id = ?", [result.returnedId]));
 }));
@@ -100,7 +106,7 @@ router.put("/api/procedures/:id", withFeature("procedures", async (req, res, db)
   await db.run(
     `UPDATE procedures SET service_id=?,name=?,body_area=?,description=?,price=?,duration_minutes=?,aftercare_instructions=?,is_active=?,
       minimum_age_years=?,requires_guardian=?,requires_signed_term=?,return_after_days=?,scheduling_interval_minutes=?,
-      minimum_advance_minutes=?,postcare_enabled=?,postcare_days=?,available_online=?,updated_at=CURRENT_TIMESTAMP
+      minimum_advance_minutes=?,postcare_enabled=?,postcare_days=?,available_online=?,checklist_config=?,biosafety_config=?,updated_at=CURRENT_TIMESTAMP
      WHERE id = ?`,
     [Number(b.service_id || existing.service_id), b.name || existing.name, b.body_area ?? existing.body_area, b.description ?? existing.description, Number(b.price ?? existing.price), Number(b.duration_minutes || existing.duration_minutes), b.aftercare_instructions ?? existing.aftercare_instructions, boolNumber(b.is_active ?? existing.is_active),
       b.minimum_age_years === undefined ? existing.minimum_age_years : nullableNumber(b.minimum_age_years),
@@ -111,7 +117,9 @@ router.put("/api/procedures/:id", withFeature("procedures", async (req, res, db)
       b.minimum_advance_minutes === undefined ? existing.minimum_advance_minutes : nullableNumber(b.minimum_advance_minutes),
       b.postcare_enabled === undefined ? existing.postcare_enabled : nullableBoolean(b.postcare_enabled),
       b.postcare_days === undefined ? existing.postcare_days : (b.postcare_days === "" || b.postcare_days === null ? null : JSON.stringify(normalizePostcareDays(b.postcare_days))),
-      b.available_online === undefined ? existing.available_online : nullableBoolean(b.available_online), req.params.id]
+      b.available_online === undefined ? existing.available_online : nullableBoolean(b.available_online),
+      b.checklist_config === undefined ? existing.checklist_config : nullableConfig(b.checklist_config, normalizeChecklistConfig),
+      b.biosafety_config === undefined ? existing.biosafety_config : nullableConfig(b.biosafety_config, normalizeBiosafetyConfig), req.params.id]
   );
   res.json(await db.get("SELECT * FROM procedures WHERE id = ?", [req.params.id]));
 }));

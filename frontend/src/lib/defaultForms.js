@@ -263,7 +263,9 @@ export function defaultServiceForm() {
     minimum_advance_minutes: 0,
     postcare_enabled: false,
     postcare_days: "7, 15, 30",
-    aftercare_instructions: ""
+    aftercare_instructions: "",
+    checklist_config: null,
+    biosafety_config: null
   };
 }
 
@@ -285,7 +287,9 @@ export function defaultProcedureForm() {
     minimum_advance_minutes: "",
     postcare_enabled: "",
     postcare_days: "",
-    available_online: ""
+    available_online: "",
+    checklist_config: null,
+    biosafety_config: null
   };
 }
 

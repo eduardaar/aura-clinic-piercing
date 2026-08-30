@@ -15,6 +15,7 @@ import { createAppointmentDepositCharge } from "../services/tenantCharges.js";
 import { bookingTaxId } from "../services/taxId.js";
 import { scheduleAppointmentClientAutomations } from "../services/communications.js";
 import { resolveServiceRules, validateAppointmentTimingRules, validateClientServiceRules } from "../services/serviceRules.js";
+import { getClinicOperationalSettings, mergeOperationalRequirements, resolveOperationalRequirements } from "../services/operationalRequirements.js";
 
 const router = Router();
 
@@ -232,8 +233,13 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
   if (variantId && !variant) return res.status(404).json({ error: "Variação selecionada não encontrada." });
   const requestedItems = parseItems(body.items);
   const bookingItems = [];
+  const clinicOperationalSettings = await getClinicOperationalSettings(db);
+  const serviceSnapshot = (item) => {
+    const operationalRequirements = resolveOperationalRequirements({ clinic: clinicOperationalSettings, service: item });
+    return { ...resolveServiceRules(item), operational_requirements: operationalRequirements };
+  };
   if (!requestedItems.length || !requestedItems.some((item) => item.item_type === "service")) {
-    bookingItems.push({ item_type: "service", service_id: service.id, name: service.name, quantity: 1, unit_price: Number(service.price || service.base_price || 0), duration_minutes: Number(service.duration_minutes || 40), deposit_value: Number(service.deposit_value || 25), service_rules_snapshot: resolveServiceRules(service) });
+    bookingItems.push({ item_type: "service", service_id: service.id, name: service.name, quantity: 1, unit_price: Number(service.price || service.base_price || 0), duration_minutes: Number(service.duration_minutes || 40), deposit_value: Number(service.deposit_value || 25), service_rules_snapshot: serviceSnapshot(service) });
   }
   for (const requested of requestedItems) {
     const quantity = Math.max(Number(requested.quantity || requested.qty || 1), 1);
@@ -242,7 +248,7 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
       if (!itemService) return res.status(404).json({ error: "Um dos serviços selecionados não está disponível." });
       const itemLinked = await db.get("SELECT id FROM professional_services WHERE professional_id=? AND service_id=?", [professionalId, itemService.id]);
       if (!itemLinked) return res.status(409).json({ error: "O profissional selecionado não realiza todos os serviços escolhidos." });
-      bookingItems.push({ item_type: "service", service_id: itemService.id, name: itemService.name, quantity, unit_price: Number(itemService.price || itemService.base_price || 0), duration_minutes: Number(itemService.duration_minutes || 40), deposit_value: Number(itemService.deposit_value || 25), notes: requested.notes || "", service_rules_snapshot: resolveServiceRules(itemService) });
+      bookingItems.push({ item_type: "service", service_id: itemService.id, name: itemService.name, quantity, unit_price: Number(itemService.price || itemService.base_price || 0), duration_minutes: Number(itemService.duration_minutes || 40), deposit_value: Number(itemService.deposit_value || 25), notes: requested.notes || "", service_rules_snapshot: serviceSnapshot(itemService) });
     } else if (requested.jewelry_id || requested.product_id) {
       const itemJewelryId = Number(requested.jewelry_id || requested.product_id);
       const itemVariantId = Number(requested.jewelry_variant_id || requested.variation_id || 0) || null;
@@ -270,6 +276,7 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
   const depositValue = Math.min(bookingItems.filter((item) => item.item_type === "service").reduce((sum, item) => sum + Number(item.deposit_value || 0), 0), totalValue);
   const remainingValue = Math.max(totalValue - depositValue, 0);
   const serviceRulesSnapshot = bookingItems.filter((item) => item.item_type === "service").map((item) => item.service_rules_snapshot);
+  const operationalRequirementsSnapshot = mergeOperationalRequirements(serviceRulesSnapshot.map((item) => item.operational_requirements));
   const publicClient = { birth_date: body.birth_date || null };
   const guardianProvided = Boolean(String(body.guardian_name || "").trim() && String(body.guardian_document || "").replace(/\D/g, ""));
   const clientRuleError = validateClientServiceRules({ rules: serviceRulesSnapshot, client: publicClient, appointmentDate: date, guardianProvided });
@@ -324,8 +331,8 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
     outcome = await db.transaction(async (tx) => {
       const result = await tx.run(
         `INSERT INTO appointments
-          (client_id, professional_id, service_id, jewelry_id, jewelry_variant_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, duration_minutes, total_value, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, status, source, public_booking_key, notes, reference_photo_url, payment_proof_url, service_rules_snapshot)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+          (client_id, professional_id, service_id, jewelry_id, jewelry_variant_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, duration_minutes, total_value, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, status, source, public_booking_key, notes, reference_photo_url, payment_proof_url, service_rules_snapshot, operational_requirements_snapshot)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [
           client.id,
           professionalId,
@@ -350,7 +357,8 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
           [body.notes || "", body.selected_color ? `Observação de cor: ${body.selected_color}` : ""].filter(Boolean).join("\n"),
           referencePhoto,
           paymentProof,
-          JSON.stringify(serviceRulesSnapshot)
+          JSON.stringify(serviceRulesSnapshot),
+          JSON.stringify(operationalRequirementsSnapshot)
         ]
       );
       if (depositValue > 0) {
