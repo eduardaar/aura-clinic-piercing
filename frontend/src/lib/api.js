@@ -53,14 +53,11 @@ export const API_ORIGIN = API.replace(/\/api$/, "");
 
 // --- Multi-tenant: identificação da clínica (slug) ---------------------------
 const TENANT_STORAGE_KEY = "aura-tenant";
-// Tenant padrão do domínio quando nenhum ?t=<slug> é informado. Aponta para a
-// clínica real (aura-clinic), não para a clínica-semente do início do projeto.
-// Cada cliente sempre tem seu próprio link explícito: /catalogo?t=<slug>.
-const DEFAULT_TENANT_SLUG = "aura-clinic";
 const TENANT_SLUG_PATTERN = /^[a-z0-9-]+$/;
 
 /**
- * Slug da clínica ativa, na ordem: `?t=` da URL > localStorage > padrão.
+ * Slug da clínica ativa, na ordem: `?t=` da URL > localStorage. Sem uma
+ * identificação explícita, devolve vazio em vez de chutar outra clínica.
  * @returns {string}
  */
 export function tenantSlug() {
@@ -72,9 +69,9 @@ export function tenantSlug() {
       return urlTenant;
     }
     const stored = (localStorage.getItem(TENANT_STORAGE_KEY) || "").trim();
-    return TENANT_SLUG_PATTERN.test(stored) ? stored : DEFAULT_TENANT_SLUG;
+    return TENANT_SLUG_PATTERN.test(stored) ? stored : "";
   } catch {
-    return DEFAULT_TENANT_SLUG;
+    return "";
   }
 }
 
@@ -89,7 +86,7 @@ export function setTenantSlug(slug) {
   try {
     localStorage.setItem(TENANT_STORAGE_KEY, normalized);
   } catch {
-    // localStorage indisponível: as chamadas seguem com o fallback padrão.
+    // localStorage indisponível: a tela ainda pode enviar o slug explicitamente.
   }
 }
 
@@ -143,6 +140,20 @@ function clearAccessSession() {
   try { localStorage.removeItem("aura-session"); } catch { /* storage indisponível */ }
 }
 
+export const ACCESS_SESSION_ENDED_EVENT = "aura:session-ended";
+const TENANT_SESSION_ERROR_CODES = new Set(["tenant_mismatch", "tenant_not_found", "tenant_suspended"]);
+
+function endAccessSession() {
+  clearAccessSession();
+  try { window.dispatchEvent(new Event(ACCESS_SESSION_ENDED_EVENT)); } catch { /* ambiente sem DOM */ }
+}
+
+async function isTenantSessionError(response) {
+  if (![403, 404].includes(response.status)) return false;
+  const payload = await response.clone().json().catch(() => null);
+  return TENANT_SESSION_ERROR_CODES.has(payload?.code);
+}
+
 async function refreshAccessToken() {
   const response = await fetch(`${API}/auth/refresh`, {
     method: "POST",
@@ -157,7 +168,7 @@ async function refreshAccessToken() {
 /**
  * Chamada AUTENTICADA à API. É a única porta de saída do app para o backend:
  * injeta `Authorization`, `X-Tenant` e `Content-Type` (exceto em FormData) e
- * derruba a sessão em 401.
+ * derruba a sessão em 401 ou quando a clínica da sessão deixou de ser válida.
  *
  * Devolve a `Response` CRUA — não faz `.json()` nem lança em erro HTTP. Para
  * leitura já tratada, use `fetchApiJson`/`useFetch`.
@@ -174,19 +185,27 @@ export async function apiFetch(path, options = {}) {
   const token = authToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
   // Multi-tenant: identifica a clínica em todas as chamadas (não sobrescreve um X-Tenant explícito).
-  if (!headers.has("X-Tenant")) headers.set("X-Tenant", tenantSlug());
+  const tenant = tenantSlug();
+  if (!headers.has("X-Tenant") && tenant) headers.set("X-Tenant", tenant);
   let response = await fetch(`${API}${path}`, { ...options, headers, credentials: "include" });
+  const isSessionEndpoint = ["/login", "/auth/refresh", "/auth/logout"].includes(path);
+  if (!isSessionEndpoint && await isTenantSessionError(response)) {
+    endAccessSession();
+    return response;
+  }
   // Um token copiado do localStorage só vale 15 min. A credencial duradoura
   // fica no cookie HttpOnly e é rotacionada aqui antes de repetir UMA vez.
-  if (response.status !== 401 || ["/login", "/auth/refresh", "/auth/logout"].includes(path)) return response;
+  if (response.status !== 401 || isSessionEndpoint) return response;
   const session = await refreshAccessToken().catch(() => null);
   if (session?.token) {
     headers.set("Authorization", `Bearer ${session.token}`);
     response = await fetch(`${API}${path}`, { ...options, headers, credentials: "include" });
-    if (response.status !== 401) return response;
+    if (response.status !== 401) {
+      if (await isTenantSessionError(response)) endAccessSession();
+      return response;
+    }
   }
-  clearAccessSession();
-  window.location.reload();
+  endAccessSession();
   return response;
 }
 
@@ -199,7 +218,8 @@ export async function apiFetch(path, options = {}) {
  */
 export function publicApiFetch(path, options = {}) {
   const headers = new Headers(options.headers || {});
-  if (!headers.has("X-Tenant")) headers.set("X-Tenant", tenantSlug());
+  const tenant = tenantSlug();
+  if (!headers.has("X-Tenant") && tenant) headers.set("X-Tenant", tenant);
   return fetch(`${API}${path}`, { ...options, headers, credentials: "include" });
 }
 

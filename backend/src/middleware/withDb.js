@@ -61,7 +61,7 @@ export const withDb = (handler) => async (req, res) => {
     tenant = await resolveTenant(req);
   } catch (error) {
     if (error instanceof TenantError) {
-      return res.status(error.statusCode).json({ error: error.message });
+      return res.status(error.statusCode).json({ error: error.message, code: error.code });
     }
     console.error(error);
     return res.status(500).json({

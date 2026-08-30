@@ -21,6 +21,10 @@ regras de negócio implementadas em cada rota.
   resposta em array por compatibilidade.
 - Erros usam `{ error, code? }`. Conflitos de versão, idempotência ou estoque
   retornam `409`; recurso do plano indisponível retorna `402` ou `403`.
+- Falhas de resolução da clínica usam códigos estáveis: `tenant_required`,
+  `tenant_invalid`, `tenant_mismatch`, `tenant_not_found` e
+  `tenant_suspended`. O frontend encerra a sessão somente nos três últimos;
+  um `403` de permissão ou `404` de recurso comum não derruba o usuário.
 
 ### Autorização por assinatura
 

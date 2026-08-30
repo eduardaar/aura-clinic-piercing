@@ -23,7 +23,7 @@ import { Sidebar } from "./components/layout/Sidebar";
 import { Loading } from "./components/common/Feedback";
 import { AppErrorBoundary } from "./components/common/AppErrorBoundary";
 import { asArray, asNumber } from "./lib/utils";
-import { API_ORIGIN, apiFetch, readStoredSession } from "./lib/api";
+import { ACCESS_SESSION_ENDED_EVENT, API_ORIGIN, apiFetch, readStoredSession } from "./lib/api";
 import { queryClient } from "./lib/queryClient";
 import { installGlobalErrorReporting } from "./lib/errorReporter";
 import { canAccessPage, defaultPageForRole, pageTitle, resolveAccessiblePage } from "./lib/permissions";
@@ -139,6 +139,16 @@ function App() {
   useEffect(() => {
     setUiTheme(applyUiTheme(readUiTheme(normalizedSession?.user?.id)));
   }, [normalizedSession?.user?.id]);
+
+  useEffect(() => {
+    const syncStoredSession = () => setSession(readStoredSession());
+    window.addEventListener(ACCESS_SESSION_ENDED_EVENT, syncStoredSession);
+    window.addEventListener("storage", syncStoredSession);
+    return () => {
+      window.removeEventListener(ACCESS_SESSION_ENDED_EVENT, syncStoredSession);
+      window.removeEventListener("storage", syncStoredSession);
+    };
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event) => {

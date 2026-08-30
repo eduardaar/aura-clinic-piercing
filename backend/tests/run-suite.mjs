@@ -31,6 +31,10 @@ const env = {
   // Banco descartável da suíte: única exceção explícita ao bloqueio de
   // bootstrap global usado pelo deploy real.
   RUN_DATABASE_MIGRATIONS: "true",
+  // Não herdar esta flag do .env local: o runner usa NODE_ENV=production para
+  // exercitar autenticação real, e migrations incrementais no boot são
+  // deliberadamente proibidas nesse ambiente.
+  RUN_MIGRATIONS_ON_BOOT: "false",
   ALLOW_LEGACY_GLOBAL_BOOTSTRAP: "true",
   PORT: String(PORT),
   AUTH_SECRET: process.env.AUTH_SECRET || "aura-test-secret-only-for-isolated-suite-2026",

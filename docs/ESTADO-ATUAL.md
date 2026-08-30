@@ -1,6 +1,6 @@
 # Estado atual do projeto
 
-> Situação em **29/08/2026**, base `575b61a5` (`main`, sincronizada com `origin/main`).
+> Situação em **30/08/2026**, após a primeira rodada de testes e melhorias sobre a base `3d34c9b0`.
 >
 > Este documento existe para responder uma pergunta só: **o que já está feito e o que ainda não está.** Ele não propõe roadmap nem assume compromisso de produto — para isso, use [IDEIAS.md](./IDEIAS.md). Quando o código e este documento discordarem, o código vence: registre a correção aqui.
 
@@ -37,6 +37,7 @@
 | Papéis mais permissões granulares por usuário | **Entregue** | `services/permissionService.js`; tabela `user_permissions` (migration `0003`) |
 | Gates de recurso por plano | **Entregue** | `services/planLimits.js`; `frontend/src/lib/permissions.js` |
 | Proteção de login (bloqueio por IP, rate limit) | **Entregue** | `services/loginGuard.js`, `middleware/rateLimit.js` |
+| Sessão encerrada quando a clínica deixa de ser válida | **Entregue** | erros de tenant têm códigos estáveis; `apiFetch` limpa a sessão em `tenant_mismatch`, `tenant_not_found` e `tenant_suspended`, sem confundir `403/404` comuns; 6 regressões em `apiSession.test.jsx` |
 
 ## 3. Operação da clínica
 
@@ -97,33 +98,16 @@
 
 | Camada | Resultado | Quando |
 | --- | --- | --- |
-| Suíte backend | 539/539 em 97 s, 58 arquivos de teste | homologação de 27/08 |
+| Suíte backend | 539/539 em 104 s, 58 arquivos de teste | reexecutada em 30/08; runner isolado de `RUN_MIGRATIONS_ON_BOOT` local |
 | Homologação crítica ponta a ponta | 123/123 (`scripts/qa-homologation-critical.mjs`) | tenant novo, após as correções |
-| Frontend unitário e de componentes | 33/33 e 103/103 em 14 arquivos | mesma rodada |
-| Build do frontend | aprovado, 1.793 módulos | mesma rodada |
+| Frontend unitário e de componentes | 33/33 e 109/109 em 15 arquivos | reexecutados em 30/08 |
+| Build do frontend | aprovado, 1.793 módulos | reexecutado em 30/08 |
 
 Relatório completo, com as sete falhas encontradas e corrigidas: [RELATORIO-HOMOLOGACAO-CRITICA-2026-08-27.md](./RELATORIO-HOMOLOGACAO-CRITICA-2026-08-27.md).
 
 ---
 
 ## Pendências abertas
-
-### P-01 — sessão fantasma: `403` e `404` não derrubam a sessão no frontend
-
-**Severidade: média.** Não vaza dado; trava a interface.
-
-`apiFetch` (`frontend/src/lib/api.js`) só limpa a sessão quando a resposta é `401`. Mas o backend responde:
-
-- `404` quando a clínica guardada no `localStorage` não existe mais;
-- `403` quando o token é de uma clínica e o `X-Tenant` é de outra.
-
-Nesses dois casos o app renderiza o menu indefinidamente, com telas vazias, e nunca redireciona para `/login` — porque `main.jsx` decide mostrar o shell apenas pela **presença** de `aura-session` no `localStorage`, sem validar assinatura nem expiração.
-
-Agrava o problema o fato de `DEFAULT_TENANT_SLUG = "aura-clinic"` estar cravado em `api.js`: sem `aura-tenant` no storage, o frontend chuta esse slug e cai direto no `404`.
-
-**Como reproduzir:** faça login, apague a clínica pelo painel de plataforma (ou recrie o banco) e recarregue `/app/dashboard`. O menu aparece, nada carrega e não há redirecionamento.
-
-**Correção esperada:** tratar `403` e `404` de tenant como fim de sessão, do mesmo jeito que o `401`; e não usar um slug fixo como fallback silencioso.
 
 ### P-02 — taxonomia e duplicidades do estoque (M-05)
 

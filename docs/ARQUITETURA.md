@@ -211,7 +211,7 @@ Todo handler de rota é embrulhado pelo middleware `withDb` (`backend/src/middle
 
  antes de usá-lo.
 
-   > **Atenção no consumo:** clínica inexistente responde `404` e token de outra clínica responde `403` — nenhum dos dois é `401`. Cliente que só trata `401` para derrubar sessão fica preso numa sessão inválida. Ver a pendência **P-01** em [ESTADO-ATUAL.md](./ESTADO-ATUAL.md).
+   > **Atenção no consumo:** clínica inexistente responde `404 tenant_not_found`; token de outra clínica responde `403 tenant_mismatch`; clínica suspensa responde `403 tenant_suspended`. O frontend usa esses códigos para encerrar a sessão sem confundir `403` de permissão ou `404` de recurso comum.
 
 3. **Client dedicado do pool com `search_path`** — `withDb` pega **um client do pool** Postgres (`pool.connect()`) e executa `SET search_path TO "tenant_<slug>", public`. A partir daí toda query dessa requisição roda no schema da clínica.
 

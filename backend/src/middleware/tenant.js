@@ -18,10 +18,11 @@ export const TENANT_SLUG_REGEX = /^[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$/;
 
 // Erro de resolução com status HTTP — o withDb converte em resposta.
 export class TenantError extends Error {
-  constructor(statusCode, message) {
+  constructor(statusCode, message, code) {
     super(message);
     this.name = "TenantError";
     this.statusCode = statusCode;
+    this.code = code;
   }
 }
 
@@ -101,7 +102,7 @@ export async function resolveTenant(req) {
   if (decoded && decoded.tslug) {
     // Token manda; header divergente indica tentativa de acessar outra clínica.
     if (headerSlug && headerSlug !== decoded.tslug) {
-      throw new TenantError(403, "Clínica do token não corresponde à requisição.");
+      throw new TenantError(403, "Clínica do token não corresponde à requisição.", "tenant_mismatch");
     }
     slug = String(decoded.tslug);
   } else if (headerSlug) {
@@ -113,17 +114,17 @@ export async function resolveTenant(req) {
   } else if (process.env.DEFAULT_TENANT) {
     slug = String(process.env.DEFAULT_TENANT).trim().toLowerCase();
   } else {
-    throw new TenantError(400, "Informe a clínica (header X-Tenant).");
+    throw new TenantError(400, "Informe a clínica (header X-Tenant).", "tenant_required");
   }
 
   if (!TENANT_SLUG_REGEX.test(slug)) {
-    throw new TenantError(400, "Identificador de clínica inválido.");
+    throw new TenantError(400, "Identificador de clínica inválido.", "tenant_invalid");
   }
 
   const tenant = await findTenantBySlug(slug);
-  if (!tenant) throw new TenantError(404, "Clínica não encontrada.");
+  if (!tenant) throw new TenantError(404, "Clínica não encontrada.", "tenant_not_found");
   if (tenant.status === "suspenso") {
-    throw new TenantError(403, "Clínica suspensa. Contate o suporte.");
+    throw new TenantError(403, "Clínica suspensa. Contate o suporte.", "tenant_suspended");
   }
 
   const resolved = {

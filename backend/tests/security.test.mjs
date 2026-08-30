@@ -130,6 +130,7 @@ test("token válido da clínica A + header X-Tenant de B → 403 (token não bat
   // resolveTenant vê tslug=A no token e header=B → divergência → 403.
   const { status, json } = await req("/appointments", { tenant: ctx.b.slug, token: ctx.a.token });
   assert.equal(status, 403, JSON.stringify(json));
+  assert.equal(json.code, "tenant_mismatch");
 });
 
 test("isolamento cruzado bloqueia todos os domínios sensíveis antes de consultar dados", async () => {
@@ -151,12 +152,14 @@ test("token válido da clínica A SEM header (usa tslug do token) → acessa A n
 test("clínica inexistente via X-Tenant (sem token) → 404", async () => {
   const { status, json } = await req("/appointments", { tenant: "clinica-que-nao-existe-999" });
   assert.equal(status, 404, JSON.stringify(json));
+  assert.equal(json.code, "tenant_not_found");
 });
 
 test("slug de tenant com formato inválido → 400", async () => {
   // Regex TENANT_SLUG_REGEX rejeita (ex.: com caractere proibido / curto demais).
-  const { status } = await req("/appointments", { tenant: "ab" });
+  const { status, json } = await req("/appointments", { tenant: "ab" });
   assert.equal(status, 400);
+  assert.equal(json.code, "tenant_invalid");
 });
 
 test("token de plataforma NÃO autentica em rota de clínica → 401", async () => {
