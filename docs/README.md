@@ -45,6 +45,7 @@ backlog herdado.
 | [ESTUDO-SERVICOS-AGENDA-FINANCEIRO.md](./ESTUDO-SERVICOS-AGENDA-FINANCEIRO.md) | Diagnóstico e proposta para separar serviços executados pela agenda de vendas de produtos. |
 | [ESTUDO-MATERIAIS-CONSUMO-AURA.md](./ESTUDO-MATERIAIS-CONSUMO-AURA.md) | Leitura da base local e fluxo aplicado para materiais operacionais. |
 | [ROADMAP-ESTOQUE-CATALOGO-AURA.md](./ROADMAP-ESTOQUE-CATALOGO-AURA.md) | Etapas para consolidar estoque, variações e catálogo. Não executado — é a pendência P-02 de [ESTADO-ATUAL.md](./ESTADO-ATUAL.md). |
+| [ROADMAP-LANCAMENTO-SETEMBRO-2026.md](./ROADMAP-LANCAMENTO-SETEMBRO-2026.md) | Plano semanal de homologação, preparação de produção e decisão Go/No-Go para setembro de 2026. |
 
 ## Como usar esta documentação
 
