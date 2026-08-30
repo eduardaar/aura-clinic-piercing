@@ -28,12 +28,13 @@ async function authoritativePublicItems(db, submitted) {
     let variantId = Number(raw.product_variant_id || 0) || null;
     const quantity = Number(raw.quantity || 0);
     if (!Number.isInteger(quantity) || quantity < 1) throw new SalesOrderValidationError("Quantidade inválida.");
-    const product = await db.get("SELECT id,name,category,sale_value,status,is_catalog_active,is_published FROM jewelry_inventory WHERE id=?", [productId]);
-    if (!product || Number(product.is_catalog_active) !== 1 || Number(product.is_published) !== 1 || product.status === "arquivado") {
+    const product = await db.get("SELECT id,name,category,sale_value,status,is_catalog_active,is_published,can_sell,can_publish,track_stock FROM jewelry_inventory WHERE id=?", [productId]);
+    if (!product || !product.can_sell || !product.can_publish || Number(product.is_catalog_active) !== 1 || Number(product.is_published) !== 1 || product.status === "arquivado") {
       throw new SalesOrderValidationError("Produto indisponível.", 409);
     }
     if (!variantId) {
-      const variants = await db.all("SELECT id FROM jewelry_variants WHERE jewelry_id=? AND is_active=1 AND quantity>0 ORDER BY id", [productId]);
+      const variants = await db.all(`SELECT id FROM jewelry_variants
+        WHERE jewelry_id=? AND is_active=1 AND (? = false OR quantity>0) ORDER BY id`, [productId, product.track_stock]);
       if (variants.length === 1) variantId = variants[0].id;
       else if (variants.length > 1) throw new SalesOrderValidationError("Selecione a variação do produto.");
     }
@@ -43,8 +44,10 @@ async function authoritativePublicItems(db, submitted) {
     if (variantId && (!variant || Number(variant.is_active) !== 1 || variant.status === "esgotado")) {
       throw new SalesOrderValidationError("Variação indisponível.", 409);
     }
-    const available = await availableStock(db, productId, variantId);
-    if (available === null || available < quantity) throw new SalesOrderValidationError("Estoque insuficiente para este item.", 409);
+    if (product.track_stock) {
+      const available = await availableStock(db, productId, variantId);
+      if (available === null || available < quantity) throw new SalesOrderValidationError("Estoque insuficiente para este item.", 409);
+    }
     const unitPrice = Number(variant?.sale_value || product.sale_value || 0);
     items.push({
       ...raw,
@@ -69,6 +72,8 @@ async function authoritativePublicItems(db, submitted) {
 async function resolveStockTarget(db, item) {
   if (item.item_type !== "produto" || !item.product_id) return null;
   const productId = Number(item.product_id);
+  const itemRecord = await db.get("SELECT id,name,quantity,can_sell,track_stock FROM jewelry_inventory WHERE id=?", [productId]);
+  if (!itemRecord || !itemRecord.can_sell || !itemRecord.track_stock) return null;
   let variantId = item.product_variant_id ? Number(item.product_variant_id) : null;
   if (!variantId) {
     const firstAvailable = await db.get(
@@ -79,12 +84,12 @@ async function resolveStockTarget(db, item) {
   }
   if (variantId) {
     const variant = await db.get(
-      `SELECT v.id, v.quantity, v.variation_name, v.sku, j.name AS product_name
+      `SELECT v.id, v.quantity, v.variation_name, v.sku, j.name AS product_name, j.can_sell
        FROM jewelry_variants v LEFT JOIN jewelry_inventory j ON j.id = v.jewelry_id
        WHERE v.id = ?`,
       [variantId]
     );
-    if (!variant) return null;
+    if (!variant || !variant.can_sell) return null;
     const variantLabel = variant.variation_name || variant.sku || "";
     return {
       key: `variant:${variant.id}`,
@@ -92,9 +97,7 @@ async function resolveStockTarget(db, item) {
       label: [variant.product_name, variantLabel].filter(Boolean).join(" - ")
     };
   }
-  const product = await db.get("SELECT id, name, quantity FROM jewelry_inventory WHERE id = ?", [productId]);
-  if (!product) return null;
-  return { key: `product:${product.id}`, available: Number(product.quantity || 0), label: product.name || "" };
+  return { key: `product:${itemRecord.id}`, available: Number(itemRecord.quantity || 0), label: itemRecord.name || "" };
 }
 
 function insufficientStockError(name, requested, available) {
@@ -131,6 +134,8 @@ export async function assertStockForSoldItems(db, items = []) {
 // precisa aparecer, não ser silenciada com um `Math.max(0, ...)`.
 export async function deductSoldProductStock(db, item, orderId) {
   if (item.item_type !== "produto" || !item.product_id) return;
+  const inventoryItem = await db.get("SELECT track_stock FROM jewelry_inventory WHERE id = ?", [item.product_id]);
+  if (!inventoryItem?.track_stock) return;
   const quantity = Number(item.quantity || 1);
   let variantId = item.product_variant_id;
   if (!variantId) {

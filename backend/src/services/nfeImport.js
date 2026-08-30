@@ -136,12 +136,8 @@ async function matchItem(db, item) {
     SELECT 'product', v.jewelry_id, NULL::integer, v.id, CONCAT(j.name, ' - ', COALESCE(v.variation_name,v.sku)), v.sku, v.gtin, v.supplier_item_code
       FROM jewelry_variants v JOIN jewelry_inventory j ON j.id=v.jewelry_id
      WHERE v.is_active=1 AND (v.gtin=? OR v.supplier_item_code=? OR v.sku=?)
-    UNION ALL
-    SELECT 'consumable', NULL::integer, c.id, NULL::integer, c.name, NULL, c.gtin, c.supplier_item_code
-      FROM consumables c
-     WHERE c.status='active' AND (c.gtin=? OR c.supplier_item_code=? OR c.name=?)
     LIMIT 12
-  `, [...params, ...params, item.gtin || "__none__", item.supplier_code || "__none__", item.name || "__none__"]);
+  `, [...params, ...params]);
   return { ...item, match: candidates.length === 1 ? candidates[0] : null, candidates };
 }
 

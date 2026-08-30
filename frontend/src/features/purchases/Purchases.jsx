@@ -48,7 +48,6 @@ export function Purchases({ onNavigate }) {
   const { data, loading, error: purchasesError } = useFetch("/purchases");
   const { data: suppliers } = useFetch("/finance/suppliers");
   const { data: products } = useFetch("/jewelry");
-  const { data: consumables } = useFetch("/consumables");
   const { data: categories } = useFetch("/finance/categories");
   const { data: centers } = useFetch("/finance/cost-centers");
   const invalidate = useApiInvalidate();
@@ -67,7 +66,7 @@ export function Purchases({ onNavigate }) {
   const purchasePayload = asObject(data);
   const purchases = Array.isArray(data) ? data : asArray(purchasePayload.items);
   const safeProducts = asArray(products);
-  const safeConsumables = asArray(consumables).filter((item) => item.status === "active");
+  const safeConsumables = safeProducts.filter((item) => Boolean(Number(item.can_use_in_service)) && !Boolean(Number(item.can_sell)) && item.status !== "arquivado");
   const selectedProduct = safeProducts.find((item) => String(item.id) === String(line.product_id));
   const selectedConsumable = safeConsumables.find((item) => String(item.id) === String(line.consumable_id));
   const variants = asArray(selectedProduct?.variants).filter((item) => Number(item.is_active ?? 1));
@@ -109,7 +108,7 @@ export function Purchases({ onNavigate }) {
 
   function selectConsumable(consumableId) {
     const consumable = safeConsumables.find((item) => String(item.id) === String(consumableId));
-    setLine({ ...emptyItem(), item_type: "consumable", consumable_id: consumableId, unit_cost: consumable?.cost_value ?? "" });
+    setLine({ ...emptyItem(), item_type: "consumable", product_id: consumableId, consumable_id: consumableId, unit_cost: consumable?.cost_value ?? "" });
   }
 
   function selectVariant(variantId) {
@@ -140,7 +139,7 @@ export function Purchases({ onNavigate }) {
             ? crypto.randomUUID()
             : `purchase-item-${Date.now()}-${Math.random()}`,
         item_type: isConsumable ? "consumable" : "product",
-        product_id: isConsumable ? null : Number(selectedProduct.id),
+        product_id: isConsumable ? Number(selectedConsumable.id) : Number(selectedProduct.id),
         consumable_id: isConsumable ? Number(selectedConsumable.id) : null,
         product_variant_id: isConsumable ? null : (selectedVariant?.id ? Number(selectedVariant.id) : null),
         item_name: label,
@@ -226,7 +225,7 @@ export function Purchases({ onNavigate }) {
       grouped.set(imported.selected_target, {
         row_key: crypto.randomUUID?.() || `nfe-${Date.now()}-${imported.line_number}`,
         item_type: itemType,
-        product_id: product ? Number(product.id) : null,
+        product_id: product ? Number(product.id) : Number(consumable.id),
         consumable_id: consumable ? Number(consumable.id) : null,
         product_variant_id: variant ? Number(variant.id) : null,
         item_name: consumable?.name || (variant ? `${product.name} - ${variant.variation_name || variant.sku}` : product.name),
@@ -276,7 +275,7 @@ export function Purchases({ onNavigate }) {
     setDetails(response.ok ? payload : { ...item, error: payload.error || "Não foi possível abrir a compra." });
   }
 
-  if (loading || data == null || suppliers == null || products == null || consumables == null || categories == null || centers == null)
+  if (loading || data == null || suppliers == null || products == null || categories == null || centers == null)
     return <Loading />;
   if (purchasesError) return <ApiError message={purchasesError} />;
 

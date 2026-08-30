@@ -225,7 +225,7 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
 
   const jewelryId = Number(body.jewelry_id || 0) || null;
   const variantId = Number(body.jewelry_variant_id || 0) || null;
-  const jewelry = jewelryId ? await db.get("SELECT * FROM jewelry_inventory WHERE id = ? AND is_catalog_active = 1 AND is_published = 1 AND virtual_store_active = 1 AND status != 'arquivado'", [jewelryId]) : null;
+  const jewelry = jewelryId ? await db.get("SELECT * FROM jewelry_inventory WHERE id = ? AND can_use_in_service=true AND can_publish=true AND is_catalog_active = 1 AND is_published = 1 AND virtual_store_active = 1 AND status != 'arquivado'", [jewelryId]) : null;
   if (jewelryId && !jewelry) return res.status(404).json({ error: "Joia selecionada não encontrada no catálogo." });
   const variant = variantId ? await db.get("SELECT * FROM jewelry_variants WHERE id = ? AND jewelry_id = ? AND is_active = 1", [variantId, jewelryId]) : null;
   if (variantId && !variant) return res.status(404).json({ error: "Variação selecionada não encontrada." });
@@ -245,7 +245,7 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
     } else if (requested.jewelry_id || requested.product_id) {
       const itemJewelryId = Number(requested.jewelry_id || requested.product_id);
       const itemVariantId = Number(requested.jewelry_variant_id || requested.variation_id || 0) || null;
-      const itemJewelry = await db.get("SELECT * FROM jewelry_inventory WHERE id=? AND is_catalog_active=1 AND is_published=1 AND virtual_store_active=1 AND status!='arquivado'", [itemJewelryId]);
+      const itemJewelry = await db.get("SELECT * FROM jewelry_inventory WHERE id=? AND can_use_in_service=true AND can_publish=true AND is_catalog_active=1 AND is_published=1 AND virtual_store_active=1 AND status!='arquivado'", [itemJewelryId]);
       if (!itemJewelry) return res.status(404).json({ error: "Uma das joias selecionadas não está disponível." });
       const itemVariant = itemVariantId ? await db.get("SELECT * FROM jewelry_variants WHERE id=? AND jewelry_id=? AND is_active=1", [itemVariantId, itemJewelryId]) : null;
       if (itemVariantId && !itemVariant) return res.status(404).json({ error: "Uma das variações selecionadas não está disponível." });

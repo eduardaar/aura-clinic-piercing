@@ -136,32 +136,61 @@ router.get("/api/inventory/intelligence", withFeature("basic_inventory", async (
 // corrigir nada sozinho: cada pendência é uma decisão da clínica.
 router.get("/api/inventory/health", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_VIEW)) return;
-  const [products, consumables, lots, recipes] = await Promise.all([
-    db.all(`SELECT id, name, sku, quantity, low_stock_threshold, category, photo_url, sale_value
-              FROM jewelry_inventory WHERE status != 'arquivado' ORDER BY name`),
-    db.all("SELECT id, name, quantity, minimum_quantity, supplier, cost_value FROM consumables WHERE status='active' ORDER BY name"),
-    db.all(`SELECT l.*, c.name AS consumable_name FROM consumable_lots l JOIN consumables c ON c.id=l.consumable_id
-              WHERE l.active=true AND l.remaining_quantity>0 ORDER BY l.expiry_date NULLS LAST, l.id`),
-    db.all(`SELECT r.service_id, s.name AS service_name, COUNT(*)::int AS ingredient_count
-              FROM service_consumable_recipes r JOIN services s ON s.id=r.service_id GROUP BY r.service_id, s.name`)
+  const [items, lots, recipes] = await Promise.all([
+    db.all(`SELECT id,name,sku,quantity,low_stock_threshold,category,photo_url,sale_value,can_sell,can_use_in_service,can_publish,track_stock
+      FROM jewelry_inventory WHERE status!='arquivado' ORDER BY name`),
+    db.all(`SELECT l.*,i.name AS item_name FROM inventory_item_lots l JOIN jewelry_inventory i ON i.id=l.inventory_item_id
+      WHERE l.active=true AND l.remaining_quantity>0 ORDER BY l.expiry_date NULLS LAST,l.id`),
+    db.all(`SELECT r.service_id,s.name AS service_name,COUNT(*)::int AS ingredient_count
+      FROM service_inventory_recipes r JOIN services s ON s.id=r.service_id GROUP BY r.service_id,s.name`)
   ]);
   const today = new Date().toISOString().slice(0, 10);
   const inThirtyDays = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
-  const missing = products.filter((item) => !String(item.sku || "").trim() || !String(item.category || "").trim() || !String(item.photo_url || "").trim() || Number(item.sale_value || 0) <= 0);
-  const lowStock = [...products.filter((item) => Number(item.quantity) <= Number(item.low_stock_threshold || 0)).map((item) => ({ ...item, kind: "product" })),
-    ...consumables.filter((item) => Number(item.quantity) <= Number(item.minimum_quantity || 0)).map((item) => ({ ...item, kind: "consumable" }))];
+  const missing = items.filter((item) => !String(item.sku || "").trim() || !String(item.category || "").trim());
+  const lowStock = items.filter((item) => item.track_stock && Number(item.quantity) <= Number(item.low_stock_threshold || 0));
   res.json({
     generated_at: new Date().toISOString(),
-    summary: { products: products.length, consumables: consumables.length, low_stock: lowStock.length, incomplete_products: missing.length,
-      expired_lots: lots.filter((lot) => lot.expiry_date && lot.expiry_date < today).length,
+    summary: { items: items.length, sellable: items.filter((item) => item.can_sell).length,
+      procedure_items: items.filter((item) => item.can_use_in_service).length, low_stock: lowStock.length,
+      incomplete_items: missing.length, expired_lots: lots.filter((lot) => lot.expiry_date && lot.expiry_date < today).length,
       expiring_lots: lots.filter((lot) => lot.expiry_date && lot.expiry_date >= today && lot.expiry_date <= inThirtyDays).length,
       services_with_recipe: recipes.length },
-    low_stock: lowStock,
-    incomplete_products: missing,
+    low_stock: lowStock, incomplete_items: missing,
     expired_lots: lots.filter((lot) => lot.expiry_date && lot.expiry_date < today),
     expiring_lots: lots.filter((lot) => lot.expiry_date && lot.expiry_date >= today && lot.expiry_date <= inThirtyDays),
     service_recipes: recipes
   });
+}));
+router.get("/api/inventory/lots", withFeature("basic_inventory", async (req, res, db) => {
+  if (!authorizePermission(req, res, P.INVENTORY_VIEW)) return;
+  res.json(await db.all(`SELECT l.*,i.name AS item_name,i.sku,i.stock_unit,v.variation_name
+    FROM inventory_item_lots l JOIN jewelry_inventory i ON i.id=l.inventory_item_id
+    LEFT JOIN jewelry_variants v ON v.id=l.product_variant_id
+    WHERE l.active=true ORDER BY l.expiry_date NULLS LAST,l.id DESC`));
+}));
+
+router.get("/api/inventory/movements", withFeature("basic_inventory", async (req, res, db) => {
+  if (!authorizePermission(req, res, P.INVENTORY_VIEW)) return;
+  res.json(await db.all(`SELECT m.*,i.name AS item_name,i.sku,v.variation_name
+    FROM stock_movements m JOIN jewelry_inventory i ON i.id=m.jewelry_id
+    LEFT JOIN jewelry_variants v ON v.id=m.variant_id
+    ORDER BY m.movement_date DESC,m.id DESC LIMIT 500`));
+}));
+
+router.post("/api/jewelry/:id/lots", withFeature("basic_inventory", async (req, res, db) => {
+  if (!authorizePermission(req, res, P.INVENTORY_ADJUST)) return;
+  try {
+    const quantity = movementQuantity(req.body?.quantity);
+    const item = await db.get("SELECT * FROM jewelry_inventory WHERE id=? AND status!='arquivado'", [req.params.id]);
+    if (!item || !item.track_lots) return res.status(409).json({ error: "O item não está configurado para controlar lotes." });
+    const result = await db.run(`INSERT INTO inventory_item_lots
+      (inventory_item_id,product_variant_id,batch_code,expiry_date,received_quantity,remaining_quantity,unit_cost,notes)
+      VALUES (?,?,?,?,?,?,?,?) RETURNING id`, [item.id, req.body?.product_variant_id || null, String(req.body?.batch_code || "").trim(),
+      req.body?.expiry_date || null, quantity, quantity, Number(req.body?.unit_cost || item.cost_value || 0), String(req.body?.notes || "").trim()]);
+    res.status(201).json(await db.get("SELECT * FROM inventory_item_lots WHERE id=?", [result.returnedId]));
+  } catch (error) {
+    res.status(400).json({ error: error.message || "Não foi possível registrar o lote." });
+  }
 }));
 
 router.post("/api/inventory/suggestions/refresh", withFeature("basic_inventory", async (req, res, db) => {
@@ -415,12 +444,22 @@ function jewelryPayload(body, sku, pricing) {
     Number(body.low_stock_threshold || 5),
     Number(body.critical_stock_threshold || 3),
     cleanImageUrl(body.image_url) || null,
-    boolNumber(body.is_published ?? 0)
+    boolNumber(body.is_published ?? 0),
+    String(body.stock_unit || "unidade"),
+    String(body.purchase_unit || body.stock_unit || "unidade"),
+    String(body.consumption_unit || body.stock_unit || "unidade"),
+    Math.max(1, Number(body.purchase_to_stock_factor || 1)),
+    Boolean(body.can_sell ?? true),
+    Boolean(body.can_use_in_service ?? true),
+    Boolean(body.track_stock ?? true),
+    Boolean(body.track_lots ?? false),
+    Boolean(body.can_publish ?? true),
+    body.supplier_id ? Number(body.supplier_id) : null
   ];
 }
 
 function updateValue(field, body) {
-  if (["quantity", "top_size_mm", "cost_value", "sale_value", "purchase_cost_cents", "allocated_freight_cents", "additional_cost_cents", "total_cost_cents", "price_multiplier", "suggested_price_cents", "sale_price_cents", "price_manually_overridden", "cost_estimated", "low_stock_threshold", "critical_stock_threshold", "weight_grams", "package_length_cm", "package_width_cm", "package_height_cm", "preparation_days", "is_catalog_active", "is_featured", "is_new", "is_most_wanted", "is_promotion", "is_last_units", "virtual_store_active", "is_published"].includes(field)) {
+  if (["quantity", "top_size_mm", "cost_value", "sale_value", "purchase_cost_cents", "allocated_freight_cents", "additional_cost_cents", "total_cost_cents", "price_multiplier", "suggested_price_cents", "sale_price_cents", "price_manually_overridden", "cost_estimated", "low_stock_threshold", "critical_stock_threshold", "weight_grams", "package_length_cm", "package_width_cm", "package_height_cm", "preparation_days", "is_catalog_active", "is_featured", "is_new", "is_most_wanted", "is_promotion", "is_last_units", "virtual_store_active", "is_published", "purchase_to_stock_factor", "supplier_id"].includes(field)) {
     return Number(body[field] || 0);
   }
   if (field === "gallery_urls") {
@@ -465,6 +504,12 @@ router.get("/api/jewelry", withFeature("basic_inventory", async (req, res, db) =
     if (req.query[field]) {
       clauses.push(`j.${field} = ?`);
       params.push(req.query[field]);
+    }
+  }
+  for (const field of ["can_sell", "can_use_in_service", "track_stock", "track_lots", "can_publish"]) {
+    if (req.query[field] !== undefined && req.query[field] !== "") {
+      clauses.push(`j.${field} = ?`);
+      params.push(["1", "true"].includes(String(req.query[field]).toLowerCase()));
     }
   }
   for (const field of ["material", "color", "size", "thickness", "length", "diameter", "top_size_mm", "thread_type", "supplier"]) {
@@ -522,8 +567,8 @@ router.post("/api/jewelry", withFeature("basic_inventory", async (req, res, db) 
     const pricing = calculatePricing(req.body, pricingSettings);
     const result = await db.run(
       `INSERT INTO jewelry_inventory
-      (name, description, photo_url, gallery_urls, category${hasCategoryReference ? ", category_id" : ""}, subcategory, variant_group, variation_label, material, color, stone, size, top_size_mm, thickness, stem_length, thread_type, piercing_type, weight_grams, package_length_cm, package_width_cm, package_height_cm, package_type, virtual_store_active, preparation_days, shipping_info, seo_title, seo_description, freight_notes, quantity, cost_value, sale_value, purchase_cost_cents, allocated_freight_cents, additional_cost_cents, total_cost_cents, price_multiplier, price_rounding_mode, suggested_price_cents, sale_price_cents, price_manually_overridden, cost_estimated, supplier, physical_location, sku, is_catalog_active, is_featured, is_new, is_most_wanted, is_promotion, is_last_units, notes, status, low_stock_threshold, critical_stock_threshold, image_url, is_published)
-      VALUES (${Array(hasCategoryReference ? 57 : 56).fill("?").join(", ")}) RETURNING id`,
+      (name, description, photo_url, gallery_urls, category${hasCategoryReference ? ", category_id" : ""}, subcategory, variant_group, variation_label, material, color, stone, size, top_size_mm, thickness, stem_length, thread_type, piercing_type, weight_grams, package_length_cm, package_width_cm, package_height_cm, package_type, virtual_store_active, preparation_days, shipping_info, seo_title, seo_description, freight_notes, quantity, cost_value, sale_value, purchase_cost_cents, allocated_freight_cents, additional_cost_cents, total_cost_cents, price_multiplier, price_rounding_mode, suggested_price_cents, sale_price_cents, price_manually_overridden, cost_estimated, supplier, physical_location, sku, is_catalog_active, is_featured, is_new, is_most_wanted, is_promotion, is_last_units, notes, status, low_stock_threshold, critical_stock_threshold, image_url, is_published, stock_unit, purchase_unit, consumption_unit, purchase_to_stock_factor, can_sell, can_use_in_service, track_stock, track_lots, can_publish, supplier_id)
+      VALUES (${Array(hasCategoryReference ? 67 : 66).fill("?").join(", ")}) RETURNING id`,
       hasCategoryReference
         ? jewelryPayload(req.body, sku, pricing)
         : jewelryPayload(req.body, sku, pricing).filter((_value, index) => index !== 5)
@@ -570,7 +615,7 @@ router.patch("/api/jewelry/:id", withFeature("basic_inventory", async (req, res,
   const pricing = calculatePricing(req.body, pricingSettings);
   Object.assign(req.body, pricing);
 
-  const fields = ["name", "description", "photo_url", "image_url", "gallery_urls", "category", "category_id", "subcategory", "variant_group", "variation_label", "material", "color", "stone", "size", "top_size_mm", "thickness", "stem_length", "thread_type", "piercing_type", "weight_grams", "package_length_cm", "package_width_cm", "package_height_cm", "package_type", "virtual_store_active", "preparation_days", "shipping_info", "seo_title", "seo_description", "freight_notes", "quantity", "cost_value", "sale_value", "purchase_cost_cents", "allocated_freight_cents", "additional_cost_cents", "total_cost_cents", "price_multiplier", "price_rounding_mode", "suggested_price_cents", "sale_price_cents", "price_manually_overridden", "cost_estimated", "supplier", "physical_location", "sku", "is_catalog_active", "is_featured", "is_new", "is_most_wanted", "is_promotion", "is_last_units", "is_published", "notes", "status", "low_stock_threshold", "critical_stock_threshold"];
+  const fields = ["name", "description", "photo_url", "image_url", "gallery_urls", "category", "category_id", "subcategory", "variant_group", "variation_label", "material", "color", "stone", "size", "top_size_mm", "thickness", "stem_length", "thread_type", "piercing_type", "weight_grams", "package_length_cm", "package_width_cm", "package_height_cm", "package_type", "virtual_store_active", "preparation_days", "shipping_info", "seo_title", "seo_description", "freight_notes", "quantity", "cost_value", "sale_value", "purchase_cost_cents", "allocated_freight_cents", "additional_cost_cents", "total_cost_cents", "price_multiplier", "price_rounding_mode", "suggested_price_cents", "sale_price_cents", "price_manually_overridden", "cost_estimated", "supplier", "supplier_id", "physical_location", "sku", "is_catalog_active", "is_featured", "is_new", "is_most_wanted", "is_promotion", "is_last_units", "is_published", "notes", "status", "low_stock_threshold", "critical_stock_threshold", "stock_unit", "purchase_unit", "consumption_unit", "purchase_to_stock_factor", "can_sell", "can_use_in_service", "track_stock", "track_lots", "can_publish"];
   const updates = fields.filter((field) => req.body[field] !== undefined);
 
   await db.run("BEGIN");
@@ -605,6 +650,12 @@ router.post("/api/jewelry/:id/variants/:variantId/movements", withFeature("basic
     const quantity = movementQuantity(req.body.quantity);
     const movementType = req.body.movement_type || "Ajuste";
     await db.transaction(async (tx) => {
+      const inventoryItem = await tx.get("SELECT track_stock FROM jewelry_inventory WHERE id = ? FOR UPDATE", [req.params.id]);
+      if (!inventoryItem?.track_stock) {
+        const error = new Error("Este item não está configurado para controlar estoque.");
+        error.statusCode = inventoryItem ? 409 : 404;
+        throw error;
+      }
       const variant = await tx.get(
         "SELECT * FROM jewelry_variants WHERE id = ? AND jewelry_id = ? FOR UPDATE",
         [req.params.variantId, req.params.id]
@@ -630,7 +681,7 @@ router.post("/api/jewelry/:id/variants/:variantId/movements", withFeature("basic
     });
     res.json({ ok: true, product: (await attachVariants(db, [await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [req.params.id])]))[0] });
   } catch (error) {
-    if (error instanceof InvalidStockQuantityError || error instanceof InsufficientStockError || error.statusCode === 404) {
+    if (error instanceof InvalidStockQuantityError || error instanceof InsufficientStockError || [404, 409].includes(error.statusCode)) {
       return res.status(error.statusCode || 400).json({ error: error.message });
     }
     throw error;
@@ -654,8 +705,13 @@ router.post("/api/jewelry/:id/movements", withFeature("basic_inventory", async (
     await db.transaction(async (tx) => {
       const jewelry = await tx.get("SELECT * FROM jewelry_inventory WHERE id = ? FOR UPDATE", [req.params.id]);
       if (!jewelry) {
-        const error = new Error("Joia nao encontrada.");
+        const error = new Error("Item de estoque não encontrado.");
         error.statusCode = 404;
+        throw error;
+      }
+      if (!jewelry.track_stock) {
+        const error = new Error("Este item não está configurado para controlar estoque.");
+        error.statusCode = 409;
         throw error;
       }
       const variants = await tx.all("SELECT * FROM jewelry_variants WHERE jewelry_id = ? AND is_active = 1 ORDER BY id FOR UPDATE", [req.params.id]);

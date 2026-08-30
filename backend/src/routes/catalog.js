@@ -62,7 +62,7 @@ router.post("/api/catalog/events", withFeature("basic_catalog", async (req, res,
   if (sessionKey.length < 8) return res.status(400).json({ error: "Sessão inválida." });
   const productId = req.body?.product_id ? Number(req.body.product_id) : null;
   if (productId && !(await db.get(
-    "SELECT id FROM jewelry_inventory WHERE id=? AND is_catalog_active=1 AND is_published=1 AND virtual_store_active=1 AND status!='arquivado'",
+    "SELECT id FROM jewelry_inventory WHERE id=? AND can_publish=true AND is_catalog_active=1 AND is_published=1 AND virtual_store_active=1 AND status!='arquivado'",
     [productId]
   ))) {
     return res.status(404).json({ error: "Produto não encontrado." });
@@ -108,6 +108,7 @@ router.get("/api/catalog", withFeature("basic_catalog", async (_req, res, db) =>
       j.*
     FROM jewelry_inventory j
     WHERE j.is_catalog_active = 1
+      AND j.can_publish = true
       AND j.is_published = 1
       AND j.virtual_store_active = 1
       AND j.status != 'arquivado'

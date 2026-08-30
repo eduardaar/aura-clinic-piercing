@@ -553,7 +553,7 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
   const safeClients = asArray(clients);
   const safeServices = asArray(services);
   const safeProcedures = asArray(procedures);
-  const safeJewelry = asArray(safeOptions.jewelry);
+  const safeJewelry = asArray(safeOptions.serviceItems);
   const safeProfessionals = asArray(safeOptions.professionals);
   const [form, setForm] = useState(defaultAppointment());
   const [error, setError] = useState("");
@@ -668,7 +668,7 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
   const hasPaidDeposit = Number(appointment?.deposit_value || 0) > 0 && ["pago", "confirmado"].includes(String(appointment?.deposit_status || "").toLowerCase());
   const safeServices = asArray(services);
   const safeProcedures = asArray(procedures);
-  const safeJewelry = asArray(asObject(options).jewelry);
+  const safeJewelry = asArray(asObject(options).serviceItems);
 
   useEffect(() => {
     if (!appointment) return;

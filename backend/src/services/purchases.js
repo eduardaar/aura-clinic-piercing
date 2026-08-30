@@ -69,23 +69,21 @@ function normalizePurchase(body = {}, idempotencyKey = "") {
     if (unitCostCents <= 0) throw new PurchaseValidationError(`Custo unitário do item ${index + 1} deve ser maior que zero.`);
     const lineTotalCents = unitCostCents * quantity;
     if (!Number.isSafeInteger(lineTotalCents)) throw new PurchaseValidationError(`Total do item ${index + 1} fora do limite permitido.`);
-    const itemType = String(item.item_type || "product").toLowerCase() === "consumable" ? "consumable" : "product";
-    const productId = itemType === "product" ? requiredId(item.product_id, `Produto do item ${index + 1}`) : null;
-    const consumableId = itemType === "consumable" ? requiredId(item.consumable_id, `Material do item ${index + 1}`) : null;
-    const productVariantId = itemType === "product" && item.product_variant_id ? requiredId(item.product_variant_id, `Variação do item ${index + 1}`) : null;
-    const target = itemType === "consumable" ? `consumable:${consumableId}` : `product:${productId}:${productVariantId || 0}`;
-    if (seenTargets.has(target)) throw new PurchaseValidationError(`O item ${index + 1} repete o mesmo produto/variação na compra.`);
+    const itemType = "product";
+    const productId = requiredId(item.product_id ?? item.inventory_item_id, `Item de estoque ${index + 1}`);
+    const productVariantId = item.product_variant_id ? requiredId(item.product_variant_id, `Variação do item ${index + 1}`) : null;
+    const target = `product:${productId}:${productVariantId || 0}`;
+    if (seenTargets.has(target)) throw new PurchaseValidationError(`O item ${index + 1} repete o mesmo item/variação na compra.`);
     seenTargets.add(target);
     return {
       item_type: itemType,
       product_id: productId,
-      consumable_id: consumableId,
       product_variant_id: productVariantId,
       quantity,
       unit_cost_cents: unitCostCents,
       line_total_cents: lineTotalCents,
-      batch_code: itemType === "consumable" ? String(item.batch_code || "").trim() : null,
-      expiry_date: itemType === "consumable" && item.expiry_date ? requiredDate(item.expiry_date, `Validade do item ${index + 1}`) : null
+      batch_code: String(item.batch_code || "").trim() || null,
+      expiry_date: item.expiry_date ? requiredDate(item.expiry_date, `Validade do item ${index + 1}`) : null
     };
   });
   const productsCents = normalizedItems.reduce((sum, item) => sum + item.line_total_cents, 0);
@@ -141,12 +139,11 @@ export async function getPurchase(db, id) {
   `, [id]);
   if (!purchase) return null;
   const items = await db.all(`
-    SELECT poi.*, COALESCE(j.name, cm.name) AS item_name, poi.item_type,
-      j.name AS product_name, cm.name AS consumable_name, cm.unit AS consumable_unit, j.sku AS product_sku,
+    SELECT poi.*, j.name AS item_name, poi.item_type,
+      j.name AS product_name, j.stock_unit, j.sku AS product_sku,
       v.variation_name, v.sku AS variant_sku
     FROM purchase_order_items poi
     LEFT JOIN jewelry_inventory j ON j.id = poi.product_id
-    LEFT JOIN consumables cm ON cm.id = poi.consumable_id
     LEFT JOIN jewelry_variants v ON v.id = poi.product_variant_id
     WHERE poi.purchase_order_id = ?
     ORDER BY poi.id
@@ -214,43 +211,20 @@ async function confirmPurchaseLocked(tx, purchase, userId) {
 
   const touchedProducts = new Set();
   for (const item of items) {
-    if (item.item_type === "consumable") {
-      const consumable = await tx.get("SELECT * FROM consumables WHERE id = ? FOR UPDATE", [item.consumable_id]);
-      if (!consumable || consumable.status === "archived") throw new PurchaseValidationError(`Material ${item.consumable_id} não está disponível para entrada.`, 409);
-      const previousQuantity = Number(consumable.quantity || 0);
-      const nextQuantity = previousQuantity + Number(item.quantity);
-      const previousCost = Number(consumable.cost_value || 0);
-      const incomingCost = Number(item.unit_cost || 0);
-      const averageCost = nextQuantity > 0 ? Number(((previousQuantity * previousCost + Number(item.quantity) * incomingCost) / nextQuantity).toFixed(2)) : incomingCost;
-      await tx.run("UPDATE consumables SET quantity=?, cost_value=?, updated_at=to_char(now(), 'YYYY-MM-DD HH24:MI:SS') WHERE id=?", [nextQuantity, averageCost, consumable.id]);
-      await tx.run(
-        `INSERT INTO consumable_stock_movements
-          (consumable_id, movement_type, quantity, notes, movement_date, purchase_order_id, purchase_order_item_id)
-         VALUES (?, 'Entrada', ?, ?, ?, ?, ?)`,
-        [consumable.id, item.quantity, `Entrada automática da compra #${purchase.id}`, purchase.purchase_date, purchase.id, item.id]
-      );
-      if (item.batch_code || item.expiry_date) {
-        await tx.run(`
-          INSERT INTO consumable_lots
-            (consumable_id, purchase_order_id, purchase_order_item_id, batch_code, expiry_date, received_quantity, remaining_quantity, unit_cost, notes)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [consumable.id, purchase.id, item.id, item.batch_code || "", item.expiry_date || null, item.quantity, item.quantity, item.unit_cost || 0,
-          `Lote criado automaticamente pela compra #${purchase.id}`]);
-      }
-      continue;
-    }
     const product = await tx.get("SELECT * FROM jewelry_inventory WHERE id = ? FOR UPDATE", [item.product_id]);
-    if (!product || product.status === "arquivado") throw new PurchaseValidationError(`Produto ${item.product_id} não está disponível para entrada.`, 409);
+    if (!product || product.status === "arquivado") throw new PurchaseValidationError(`Item ${item.product_id} não está disponível para entrada.`, 409);
+    if (!product.track_stock) continue;
+    const stockQuantity = Number(item.quantity) * Number(product.purchase_to_stock_factor || 1);
+    const incomingStockUnitCostCents = Math.round(moneyToCents(item.unit_cost, "Custo da compra") / Number(product.purchase_to_stock_factor || 1));
     if (item.product_variant_id) {
       const variant = await tx.get("SELECT * FROM jewelry_variants WHERE id = ? FOR UPDATE", [item.product_variant_id]);
       if (!variant || Number(variant.jewelry_id) !== Number(item.product_id) || Number(variant.is_active) !== 1) {
         throw new PurchaseValidationError(`Variação inválida para o produto ${product.name}.`, 409);
       }
       const previousQuantity = Number(variant.quantity || 0);
-      const nextQuantity = previousQuantity + Number(item.quantity);
+      const nextQuantity = previousQuantity + stockQuantity;
       const previousCostCents = Number(variant.purchase_cost_cents || 0) || moneyToCents(variant.cost_value || 0, "Custo anterior");
-      const incomingCostCents = moneyToCents(item.unit_cost, "Custo da compra");
-      const averageCostCents = Math.round((previousQuantity * previousCostCents + Number(item.quantity) * incomingCostCents) / nextQuantity);
+      const averageCostCents = Math.round((previousQuantity * previousCostCents + stockQuantity * incomingStockUnitCostCents) / nextQuantity);
       const totalCostCents = averageCostCents + Number(variant.allocated_freight_cents || 0) + Number(variant.additional_cost_cents || 0);
       const suggestedPriceCents = applyPriceRounding(Math.round(totalCostCents * Number(variant.price_multiplier || 3)), variant.price_rounding_mode || "exact");
       const manualPrice = Number(variant.price_manually_overridden || 0) === 1;
@@ -270,10 +244,9 @@ async function confirmPurchaseLocked(tx, purchase, userId) {
         throw new PurchaseValidationError(`Selecione a variação que recebeu estoque em ${product.name}.`, 409);
       }
       const previousQuantity = Number(product.quantity || 0);
-      const nextQuantity = previousQuantity + Number(item.quantity);
+      const nextQuantity = previousQuantity + stockQuantity;
       const previousCostCents = Number(product.purchase_cost_cents || 0) || moneyToCents(product.cost_value || 0, "Custo anterior");
-      const incomingCostCents = moneyToCents(item.unit_cost, "Custo da compra");
-      const averageCostCents = Math.round((previousQuantity * previousCostCents + Number(item.quantity) * incomingCostCents) / nextQuantity);
+      const averageCostCents = Math.round((previousQuantity * previousCostCents + stockQuantity * incomingStockUnitCostCents) / nextQuantity);
       const totalCostCents = averageCostCents + Number(product.allocated_freight_cents || 0) + Number(product.additional_cost_cents || 0);
       const suggestedPriceCents = applyPriceRounding(Math.round(totalCostCents * Number(product.price_multiplier || 3)), product.price_rounding_mode || "exact");
       const manualPrice = Number(product.price_manually_overridden || 0) === 1;
@@ -287,19 +260,25 @@ async function confirmPurchaseLocked(tx, purchase, userId) {
         [nextQuantity, averageCostCents / 100, averageCostCents, totalCostCents, suggestedPriceCents, salePriceCents, salePriceCents / 100, product.id]
       );
     }
-    await tx.run(`
+    if (product.track_stock) await tx.run(`
       INSERT INTO stock_movements
         (jewelry_id, variant_id, movement_type, quantity, notes, movement_date, purchase_order_id, purchase_order_item_id)
       VALUES (?, ?, 'Entrada', ?, ?, ?, ?, ?)
     `, [
       item.product_id,
       item.product_variant_id,
-      item.quantity,
+      stockQuantity,
       `Entrada automática da compra #${purchase.id}`,
       purchase.purchase_date,
       purchase.id,
       item.id
     ]);
+    if (product.track_lots && (item.batch_code || item.expiry_date)) {
+      await tx.run(`INSERT INTO inventory_item_lots
+        (inventory_item_id,product_variant_id,purchase_order_id,purchase_order_item_id,batch_code,expiry_date,received_quantity,remaining_quantity,unit_cost,notes)
+        VALUES (?,?,?,?,?,?,?,?,?,?)`, [product.id, item.product_variant_id || null, purchase.id, item.id, item.batch_code || "", item.expiry_date || null,
+        stockQuantity, stockQuantity, incomingStockUnitCostCents / 100, `Lote criado automaticamente pela compra #${purchase.id}`]);
+    }
   }
   for (const productId of touchedProducts) await syncProductInventory(tx, productId);
 
@@ -385,9 +364,9 @@ export async function createPurchase(db, body, { idempotencyKey = "", userId = n
       for (const item of purchase.items) {
         await tx.run(`
           INSERT INTO purchase_order_items
-          (purchase_order_id, item_type, product_id, consumable_id, product_variant_id, quantity, unit_cost, line_total, batch_code, expiry_date)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [inserted.returnedId, item.item_type, item.product_id, item.consumable_id, item.product_variant_id, item.quantity, item.unit_cost_cents / 100, item.line_total_cents / 100, item.batch_code, item.expiry_date]);
+          (purchase_order_id, item_type, product_id, product_variant_id, quantity, unit_cost, line_total, batch_code, expiry_date)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [inserted.returnedId, item.item_type, item.product_id, item.product_variant_id, item.quantity, item.unit_cost_cents / 100, item.line_total_cents / 100, item.batch_code, item.expiry_date]);
       }
       await registerPurchaseFiscalDocument(tx, inserted.returnedId, fiscalDocument, userId);
       if (purchase.status === "draft") return { purchaseId: inserted.returnedId, idempotent: false };

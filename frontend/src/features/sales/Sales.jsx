@@ -64,7 +64,7 @@ export function SalesWorkspace({ features = [], onUpgrade }) {
   const canRefundSales = can(currentUser, "finance.refund");
   const canApplyCredit = can(currentUser, "finance.edit");
   const safeOrders = asArray(orders);
-  const safeJewelry = asArray(jewelry);
+  const safeJewelry = asArray(jewelry).filter((item) => Boolean(Number(item.can_sell ?? 1)));
   const statusOptions = distinctOptions(safeOrders, (order) => order.status, (value) => ORDER_STATUS_LABELS[value] || value);
   const typeOptions = distinctOptions(safeOrders, (order) => order.order_type, saleOrderTypeLabel);
   const sourceOptions = distinctOptions(safeOrders, (order) => order.source, saleSourceLabel);

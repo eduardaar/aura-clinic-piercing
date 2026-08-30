@@ -36,7 +36,7 @@ test("menu e páginas públicas preservam agrupamento e correspondência", () =>
     "Início", "Atendimento", "Comercial", "Estoque e compras", "Financeiro", "Gestão", "Sistema"
   ]);
   assert.deepEqual(menu.find(({ group }) => group === "Estoque e compras").pages.map(({ id }) => id), [
-    "products", "inventory", "consumables", "purchases", "suppliers"
+    "inventory", "purchases", "suppliers"
   ]);
   assert.deepEqual(menu.find(({ group }) => group === "Gestão").pages.map(({ id }) => id), ["reports", "audit"]);
   assert.equal(publicPageForPath("/catalogo/produto/42").id, "public-catalog");

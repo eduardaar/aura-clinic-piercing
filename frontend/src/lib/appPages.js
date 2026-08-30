@@ -44,7 +44,7 @@ export const APP_PAGES = Object.freeze([
     component: lazyNamed(() => import("../features/communications/Communications"), "Communications")
   },
   {
-    id: "products", path: "/app/produtos", title: "Produtos", group: "Estoque e compras", icon: Package, menu: true, menuRank: 0,
+    id: "products", path: "/app/produtos", title: "Itens de estoque", group: null, icon: Package, menu: false, menuRank: 0,
     roleRank: { admin: 4, reception: 3, piercer: 3 }, permission: "inventory.view", feature: "basic_inventory",
     component: lazyNamed(() => import("../features/inventory/Inventory"), "CatalogWorkspace")
   },
@@ -54,14 +54,14 @@ export const APP_PAGES = Object.freeze([
     component: lazyNamed(() => import("../features/purchases/Purchases"), "Purchases")
   },
   {
-    id: "inventory", path: "/app/produtos/estoque", title: "Estoque", group: "Estoque e compras", icon: Table2, menu: true, menuRank: 1,
+    id: "inventory", path: "/app/produtos/estoque", title: "Estoque", group: "Estoque e compras", icon: Table2, menu: true, menuRank: 0,
     roleRank: { admin: 6, reception: 4, piercer: 4 }, permission: "inventory.view", feature: "basic_inventory",
     component: lazyNamed(() => import("../features/inventory/Inventory"), "CatalogWorkspace")
   },
   {
-    id: "consumables", path: "/app/materiais", title: "Materiais de consumo", menuTitle: "Materiais", group: "Estoque e compras", icon: Package, menu: true, menuRank: 2,
+    id: "consumables", path: "/app/materiais", title: "Materiais de procedimento", menuTitle: "Materiais", group: null, icon: Package, menu: false, menuRank: 2,
     roleRank: { admin: 7, reception: 5, piercer: 5 }, feature: "basic_inventory",
-    component: lazyNamed(() => import("../features/consumables/Consumables"), "ConsumablesWorkspace")
+    component: lazyNamed(() => import("../features/inventory/Inventory"), "InventoryMaterialsWorkspace")
   },
   {
     id: "catalog", path: "/app/catalogo", title: "Catálogo", group: "Comercial", icon: Gem, menu: true, menuRank: 0,

@@ -327,7 +327,7 @@ function App() {
     services: { onNavigate: navigate },
     onboarding: { onNavigate: navigate, onOpenAgendaSettings: (tab) => { setAgendaTarget(tab); navigate("agenda"); } },
     products: { area: "produtos" },
-    inventory: { area: "produtos", initialTab: "unidades" },
+    inventory: { area: "produtos", initialTab: "todos" },
     catalog: { area: "catalogo" },
     "client-center": { onNavigate: navigate },
     sales: { features: planFeatures, onUpgrade: openProfessionalPlan },

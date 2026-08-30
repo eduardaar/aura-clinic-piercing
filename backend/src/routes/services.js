@@ -87,23 +87,28 @@ async function updateService(req, res, db) {
 router.put("/api/services/:id", withFeature("procedures", updateService));
 router.patch("/api/services/:id", withFeature("procedures", updateService));
 
-// Ficha técnica: materiais operacionais, separados dos produtos vendidos. A
-// baixa só acontece quando o atendimento é concluído, nunca ao agendar.
-router.get("/api/services/:id/consumables", withFeature("basic_inventory", async (req, res, db) => {
+// Ficha técnica usa a mesma origem central do estoque. A rota antiga é mantida
+// somente como alias de compatibilidade durante o corte pré-produção.
+const getInventoryRecipe = withFeature("basic_inventory", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
   const service = await db.get("SELECT id FROM services WHERE id=?", [req.params.id]);
   if (!service) return res.status(404).json({ error: "Serviço não encontrado." });
   res.json(await serviceRecipe(db, req.params.id));
-}));
+});
 
-router.put("/api/services/:id/consumables", withFeature("basic_inventory", async (req, res, db) => {
+const putInventoryRecipe = withFeature("basic_inventory", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception"])) return;
   try {
     res.json(await replaceServiceRecipe(db, req.params.id, req.body?.items));
   } catch (error) {
     res.status(/não encontrado/i.test(error.message) ? 404 : 400).json({ error: error.message || "Não foi possível salvar a ficha técnica." });
   }
-}));
+});
+
+router.get("/api/services/:id/inventory-items", getInventoryRecipe);
+router.put("/api/services/:id/inventory-items", putInventoryRecipe);
+router.get("/api/services/:id/consumables", getInventoryRecipe);
+router.put("/api/services/:id/consumables", putInventoryRecipe);
 
 router.delete("/api/services/:id", withFeature("procedures", async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;

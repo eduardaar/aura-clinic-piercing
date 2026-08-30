@@ -38,7 +38,7 @@ test("migrations versionadas têm baseline válido por escopo", () => {
   assert.deepEqual(tenantVersions.slice(0, 19), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019"]);
   assert.deepEqual([...tenantVersions].sort(), tenantVersions, "migrations tenant devem permanecer ordenadas");
   assert.equal(new Set(tenantVersions).size, tenantVersions.length, "versões tenant não podem se repetir");
-  for (const version of ["0020", "0021", "0022", "0023", "0024", "0028", "0029", "0030"]) assert.ok(tenantVersions.includes(version));
+  for (const version of ["0020", "0021", "0022", "0023", "0024", "0025", "0028", "0029", "0030"]) assert.ok(tenantVersions.includes(version));
   assert.ok(platform.every((item) => /^[a-f0-9]{64}$/.test(item.checksum)));
 });
 
@@ -96,6 +96,17 @@ test("migration 0024 adiciona os dados clínicos opcionais à execução", () =>
   for (const column of ["clinical_notes", "occurrences", "aftercare_notes"]) {
     assert.match(clinicalExecution.sql, new RegExp(`service_executions[^;]*${column}`, "i"));
   }
+});
+
+test("migration 0025 unifica produtos e materiais na mesma fonte de estoque", () => {
+  const unifiedInventory = loadMigrations("tenant").find((item) => item.version === "0025");
+  assert.ok(unifiedInventory, "a migration tenant 0025 é obrigatória");
+  for (const column of ["can_sell", "can_use_in_service", "track_stock", "track_lots", "can_publish"]) {
+    assert.match(unifiedInventory.sql, new RegExp(`jewelry_inventory[^;]*${column}`, "i"));
+  }
+  assert.match(unifiedInventory.sql, /CREATE\s+TABLE\s+service_inventory_recipes/i);
+  assert.match(unifiedInventory.sql, /CREATE\s+TABLE\s+inventory_item_lots/i);
+  assert.match(unifiedInventory.sql, /DROP\s+TABLE\s+IF\s+EXISTS\s+consumables\s+CASCADE/i);
 });
 
 test("checksum é estável entre checkout LF e CRLF", () => {
