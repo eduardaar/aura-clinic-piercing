@@ -27,6 +27,12 @@ function formatDateWithYear(date) {
   return parsed.toLocaleDateString("pt-BR");
 }
 
+function formatOperationalTime(value) {
+  if (!value) return "";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+}
+
 // Status canônicos de agendamento, com o rótulo que aparece na tela.
 const APPOINTMENT_STATUS_OPTIONS = [
   { value: "pendente", label: "Pendente" },
@@ -802,6 +808,9 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
             <strong>{personName(appointment)}</strong>
             <p>{appointment.whatsapp || "WhatsApp não informado"}</p>
             <p>{appointment.service_name || appointment.procedure || "Procedimento não informado"} · {appointment.professional_name || "Sem profissional"}</p>
+            {appointment.arrived_at && <p>Chegada registrada: {formatOperationalTime(appointment.arrived_at)}</p>}
+            {appointment.started_at && <p>Atendimento iniciado: {formatOperationalTime(appointment.started_at)}</p>}
+            {appointment.no_show_at && <p>Ausência registrada: {formatOperationalTime(appointment.no_show_at)}</p>}
           </div>
           <div className="form-grid">
             <Input type="date" label="Data" value={form.appointment_date} onChange={(value) => setForm({ ...form, appointment_date: value })} />
