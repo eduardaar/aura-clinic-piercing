@@ -21,7 +21,6 @@ import { validateCoupon } from "../services/discounts.js";
 import { calculateOperationTotals, getAppointmentFinancialSnapshot } from "../services/finance.js";
 import { ensurePostCareFollowups } from "../services/postcare.js";
 import { awardLoyaltyForAppointment } from "../services/loyalty.js";
-import { ensureSalesOrderForAppointment } from "../services/sales.js";
 import { validateBody } from "../middleware/validate.js";
 import { appointmentCreateSchema } from "../schemas/index.js";
 import { queueAppointmentReminderNotifications } from "../services/notifications.js";
@@ -29,7 +28,7 @@ import { invalidateUsageCache, requireWithinLimit } from "../services/planLimits
 import { P } from "../config/permissions.js";
 import { authorizePermission } from "../middleware/requirePermission.js";
 import { hasPermission } from "../services/permissionService.js";
-import { cancelSalesOrderReceivables, configuresReceivableSchedule } from "../services/receivables.js";
+import { configuresReceivableSchedule } from "../services/receivables.js";
 import { requireFeature } from "../services/subscriptions.js";
 import { consumeAppointmentRecipe, restoreAppointmentConsumptions } from "../services/consumableUsage.js";
 import { cancelAppointmentWithResolution } from "../services/appointmentCancellations.js";
@@ -40,6 +39,7 @@ import {
   scheduleClientAutomationEvent
 } from "../services/communications.js";
 import { recordAudit } from "../services/audit.js";
+import { cancelServiceExecution, ensureServiceExecution } from "../services/serviceExecutions.js";
 
 const router = Router();
 
@@ -257,7 +257,7 @@ router.post("/api/appointments/:id/complete", withFeature("agenda", async (req, 
       await tx.run("INSERT INTO appointment_financial_audit (appointment_id, user_id, action, reason, before_snapshot, after_snapshot) VALUES (?, ?, ?, ?, ?, ?)", [req.params.id, req.user?.id, before.status === "atendido" ? "reopen_financial_close" : "financial_close", req.body.reason || null, JSON.stringify(before), JSON.stringify(after)]);
       await deductJewelryStock(tx, req.params.id);
       await consumeAppointmentRecipe(tx, req.params.id, req.user?.id || null);
-      await ensureSalesOrderForAppointment(tx, req.params.id, req.user, req.body);
+      await ensureServiceExecution(tx, req.params.id, req.user, req.body);
       await ensurePostCareFollowups(tx, req.params.id);
       await awardLoyaltyForAppointment(tx, req.params.id);
       const completed = await tx.get("SELECT id, client_id, professional_id, service_id, appointment_date, appointment_time, status, total_value, remaining_value FROM appointments WHERE id=?", [req.params.id]);
@@ -444,7 +444,7 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
       await consumeAppointmentRecipe(tx, req.params.id, req.user?.id || null);
       const configuredReceivable = configuresReceivableSchedule(req.body);
       if (!configuredReceivable) await registerRemainingPayment(tx, req.params.id);
-      await ensureSalesOrderForAppointment(tx, req.params.id, req.user, req.body);
+      await ensureServiceExecution(tx, req.params.id, req.user, req.body);
       await ensurePostCareFollowups(tx, req.params.id);
       await awardLoyaltyForAppointment(tx, req.params.id);
     }
@@ -458,21 +458,9 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
     if (finalizedFinancialChange && req.body.status !== "atendido") {
       const after = await tx.get("SELECT * FROM appointments WHERE id=?", [req.params.id]);
       if (after?.status === "atendido") {
-        await ensureSalesOrderForAppointment(tx, req.params.id, req.user, req.body);
+        await ensureServiceExecution(tx, req.params.id, req.user, req.body);
       } else {
-        const serviceOrder = await tx.get(
-          "SELECT id FROM sales_orders WHERE appointment_id=? AND order_type='ordem_servico' FOR UPDATE",
-          [req.params.id]
-        );
-        if (serviceOrder) {
-          // A baixa física já foi desfeita por restoreJewelryStock. Manter o
-          // marcador como 1 faria uma conclusão futura pular a nova baixa.
-          await tx.run(
-            "UPDATE sales_orders SET status=?, stock_deducted=0 WHERE id=?",
-            [after?.status === "cancelado" ? "cancelado" : "aberta", serviceOrder.id]
-          );
-          await cancelSalesOrderReceivables(tx, serviceOrder.id);
-        }
+        await cancelServiceExecution(tx, req.params.id, req.body.reason || "Atendimento reaberto");
       }
     }
     if (finalizedFinancialChange) {
@@ -517,7 +505,7 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
 async function appointmentDeletionImpact(db, id) {
   const row = await db.get(`SELECT
     (SELECT COUNT(*) FROM payments WHERE appointment_id = ?) AS payments,
-    (SELECT COUNT(*) FROM sales_orders WHERE appointment_id = ?) AS sales,
+    (SELECT COUNT(*) FROM service_executions WHERE appointment_id = ?) AS executions,
     (SELECT COUNT(*) FROM client_medical_records WHERE appointment_id = ?) AS medical_records,
     (SELECT COUNT(*) FROM digital_terms WHERE appointment_id = ?) AS terms,
     (SELECT COUNT(*) FROM post_care_followups WHERE appointment_id = ?) AS followups,

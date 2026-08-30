@@ -1,7 +1,7 @@
 import { localTimestamp } from "./utils.js";
 import { restoreJewelryStock } from "./appointments.js";
 import { restoreAppointmentConsumptions } from "./consumableUsage.js";
-import { cancelSalesOrderReceivables } from "./receivables.js";
+import { cancelServiceExecution } from "./serviceExecutions.js";
 
 const RESOLUTIONS = new Set(["retain_deposit", "client_credit", "manual_refund", "no_payment"]);
 
@@ -69,11 +69,7 @@ export async function cancelAppointmentWithResolution(db, appointmentId, body = 
       await restoreJewelryStock(tx, appointment.id);
       await restoreAppointmentConsumptions(tx, appointment.id, userId, `Cancelamento #${created.returnedId}: ${reason}`);
     }
-    const serviceOrder = await tx.get("SELECT id FROM sales_orders WHERE appointment_id=? AND order_type='ordem_servico' FOR UPDATE", [appointment.id]);
-    if (serviceOrder) {
-      await cancelSalesOrderReceivables(tx, serviceOrder.id);
-      await tx.run("UPDATE sales_orders SET status='cancelado', stock_deducted=0 WHERE id=?", [serviceOrder.id]);
-    }
+    await cancelServiceExecution(tx, appointment.id, reason);
     const depositStatus = resolution === "retain_deposit" ? "retido" : resolution === "manual_refund" ? "estornado" : resolution === "client_credit" ? "creditado" : "cancelado";
     await tx.run(`UPDATE appointments SET status='cancelado', remaining_value=0, deposit_status=?, financial_notes=?, updated_at=? WHERE id=?`,
       [depositStatus, `${appointment.financial_notes || ""}\nCancelamento #${created.returnedId}: ${reason}`.trim(), localTimestamp(), appointment.id]);

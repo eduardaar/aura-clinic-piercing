@@ -331,7 +331,7 @@ test("atendimento marcado 'atendido' que falha no meio não deixa nenhuma das 5 
   assert.equal(criado.status, 201, JSON.stringify(criado.json));
   const appointmentId = criado.json.id;
   const estoqueAntes = await estoqueDaJoia();
-  const pedidosAntes = (await api("/sales-orders?include_agenda=true")).json.length;
+  const execucoesAntes = (await api("/service-executions")).json.length;
 
   // A data inválida é recusada antes de qualquer escrita operacional.
   const falha = await api(`/appointments/${appointmentId}`, { method: "PATCH", body: { status: "atendido", appointment_date: "data-invalida" } });
@@ -343,7 +343,7 @@ test("atendimento marcado 'atendido' que falha no meio não deixa nenhuma das 5 
   assert.equal(agendamento.appointment_date, HOJE, "a data inválida não pode ter sido gravada");
   assert.equal(Number(agendamento.stock_deducted || 0), 0, "a baixa de estoque tem de ter sido desfeita");
   assert.equal(await estoqueDaJoia(), estoqueAntes, "o estoque não pode ter caído");
-  assert.equal((await api("/sales-orders?include_agenda=true")).json.length, pedidosAntes, "nenhuma ordem de serviço pode ser criada");
+  assert.equal((await api("/service-executions")).json.length, execucoesAntes, "nenhuma execução pode ser criada");
   const postCare = await api("/post-care");
   assert.equal(postCare.json.filter((item) => Number(item.appointment_id) === Number(appointmentId)).length, 0);
 
@@ -352,12 +352,12 @@ test("atendimento marcado 'atendido' que falha no meio não deixa nenhuma das 5 
   assert.equal(sucesso.status, 200, JSON.stringify(sucesso.json));
   assert.equal(sucesso.json.status, "atendido");
   assert.equal(await estoqueDaJoia(), estoqueAntes - 1, "agora sim o estoque cai");
-  assert.equal((await api("/sales-orders?include_agenda=true")).json.length, pedidosAntes + 1, "ordem de serviço gerada");
+  assert.equal((await api("/service-executions")).json.length, execucoesAntes + 1, "execução de serviço gerada");
   const postCareDepois = await api("/post-care");
   assert.equal(postCareDepois.json.filter((item) => Number(item.appointment_id) === Number(appointmentId)).length, 3);
 });
 
-test("refechamento da agenda preserva ordem/pagamento e recalcula apenas o saldo a receber", async () => {
+test("refechamento da agenda preserva execução/pagamento e recalcula apenas o saldo a receber", async () => {
   const criado = await api("/appointments", {
     method: "POST",
     body: {
@@ -379,13 +379,13 @@ test("refechamento da agenda preserva ordem/pagamento e recalcula apenas o saldo
   assert.equal(first.status, 200, JSON.stringify(first.json));
 
   const before = await withTenantSchema(ctx.tenant.id, async (db) => ({
-    orders: await db.all("SELECT id FROM sales_orders WHERE appointment_id=? AND order_type='ordem_servico'", [criado.json.id]),
-    payments: await db.all("SELECT id,sales_order_id,amount FROM payments WHERE appointment_id=? AND payment_type='restante' ORDER BY id", [criado.json.id]),
-    receivables: await db.all("SELECT amount FROM financial_entries WHERE source_type='sales_order' AND entry_type='receivable' AND source_id=(SELECT id FROM sales_orders WHERE appointment_id=? AND order_type='ordem_servico') AND status!='canceled' ORDER BY installment_number", [criado.json.id])
+    executions: await db.all("SELECT id FROM service_executions WHERE appointment_id=?", [criado.json.id]),
+    payments: await db.all("SELECT id,service_execution_id,amount FROM payments WHERE appointment_id=? AND payment_type='restante' ORDER BY id", [criado.json.id]),
+    receivables: await db.all("SELECT amount FROM financial_entries WHERE source_type='service_execution' AND entry_type='receivable' AND source_id=(SELECT id FROM service_executions WHERE appointment_id=?) AND status!='canceled' ORDER BY installment_number", [criado.json.id])
   }));
-  assert.equal(before.orders.length, 1);
+  assert.equal(before.executions.length, 1);
   assert.equal(before.payments.length, 1);
-  assert.equal(Number(before.payments[0].sales_order_id), Number(before.orders[0].id));
+  assert.equal(Number(before.payments[0].service_execution_id), Number(before.executions[0].id));
   assert.equal(before.receivables.reduce((sum, item) => sum + Number(item.amount), 0), 80);
 
   const second = await api(`/appointments/${criado.json.id}/complete`, {
@@ -399,14 +399,14 @@ test("refechamento da agenda preserva ordem/pagamento e recalcula apenas o saldo
   assert.equal(second.status, 200, JSON.stringify(second.json));
 
   const afterState = await withTenantSchema(ctx.tenant.id, async (db) => ({
-    orders: await db.all("SELECT id FROM sales_orders WHERE appointment_id=? AND order_type='ordem_servico'", [criado.json.id]),
-    payments: await db.all("SELECT id,sales_order_id,amount FROM payments WHERE appointment_id=? AND payment_type='restante' ORDER BY id", [criado.json.id]),
-    receivables: await db.all("SELECT amount FROM financial_entries WHERE source_type='sales_order' AND entry_type='receivable' AND source_id=(SELECT id FROM sales_orders WHERE appointment_id=? AND order_type='ordem_servico') AND status!='canceled' ORDER BY installment_number", [criado.json.id])
+    executions: await db.all("SELECT id FROM service_executions WHERE appointment_id=?", [criado.json.id]),
+    payments: await db.all("SELECT id,service_execution_id,amount FROM payments WHERE appointment_id=? AND payment_type='restante' ORDER BY id", [criado.json.id]),
+    receivables: await db.all("SELECT amount FROM financial_entries WHERE source_type='service_execution' AND entry_type='receivable' AND source_id=(SELECT id FROM service_executions WHERE appointment_id=?) AND status!='canceled' ORDER BY installment_number", [criado.json.id])
   }));
-  assert.equal(afterState.orders.length, 1, "índice e upsert mantêm uma ordem de serviço");
+  assert.equal(afterState.executions.length, 1, "índice e upsert mantêm uma execução de serviço");
   assert.equal(afterState.payments.length, 1, "refechamento atualiza a baixa em vez de recriá-la");
   assert.equal(afterState.payments[0].id, before.payments[0].id);
-  assert.equal(Number(afterState.payments[0].sales_order_id), Number(afterState.orders[0].id));
+  assert.equal(Number(afterState.payments[0].service_execution_id), Number(afterState.executions[0].id));
   assert.equal(afterState.receivables.length, 2);
   assert.equal(afterState.receivables.reduce((sum, item) => sum + Number(item.amount), 0), 60);
 
@@ -416,10 +416,10 @@ test("refechamento da agenda preserva ordem/pagamento e recalcula apenas o saldo
   });
   assert.equal(reopened.status, 200, JSON.stringify(reopened.json));
   const reopenedState = await withTenantSchema(ctx.tenant.id, async (db) => ({
-    order: await db.get("SELECT status FROM sales_orders WHERE appointment_id=? AND order_type='ordem_servico'", [criado.json.id]),
-    activeReceivables: await db.all("SELECT id FROM financial_entries WHERE source_type='sales_order' AND source_id=? AND entry_type='receivable' AND status NOT IN ('canceled','refunded')", [afterState.orders[0].id])
+    execution: await db.get("SELECT status FROM service_executions WHERE appointment_id=?", [criado.json.id]),
+    activeReceivables: await db.all("SELECT id FROM financial_entries WHERE source_type='service_execution' AND source_id=? AND entry_type='receivable' AND status NOT IN ('canceled','refunded')", [afterState.executions[0].id])
   }));
-  assert.equal(reopenedState.order.status, "aberta");
+  assert.equal(reopenedState.execution.status, "cancelled");
   assert.equal(reopenedState.activeReceivables.length, 0, "reabrir atendimento cancela os títulos da conclusão anterior");
 });
 
@@ -471,18 +471,14 @@ test("reabrir atendimento estorna estoque com e sem variação uma única vez", 
 
     const reopenedState = await withTenantSchema(ctx.tenant.id, async (db) => ({
       appointment: await db.get("SELECT stock_deducted FROM appointments WHERE id=?", [created.json.id]),
-      order: await db.get(
-        "SELECT status,stock_deducted FROM sales_orders WHERE appointment_id=? AND order_type='ordem_servico'",
-        [created.json.id]
-      ),
+      execution: await db.get("SELECT status FROM service_executions WHERE appointment_id=?", [created.json.id]),
       reversals: await db.all(
         "SELECT id FROM stock_movements WHERE jewelry_id=? AND movement_type='Entrada' AND notes LIKE ?",
         [item.jewelryId, `%#${created.json.id}`]
       )
     }));
     assert.equal(Number(reopenedState.appointment.stock_deducted), 0, `${item.label}: agenda permite nova baixa`);
-    assert.equal(reopenedState.order.status, "aberta");
-    assert.equal(Number(reopenedState.order.stock_deducted), 0, `${item.label}: ordem permite nova baixa`);
+    assert.equal(reopenedState.execution.status, "cancelled");
     assert.equal(reopenedState.reversals.length, 1, `${item.label}: existe um único movimento de estorno`);
 
     const repeated = await api(`/appointments/${created.json.id}`, {

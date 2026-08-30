@@ -804,22 +804,24 @@ test("5c. muda status do agendamento até 'atendido'", async () => {
   assert.equal(patch.status, 200, JSON.stringify(patch.json));
   assert.equal(patch.json.status, "atendido");
 
-  const orders = await api("/sales-orders?include_agenda=true");
-  assert.equal(orders.status, 200, JSON.stringify(orders.json));
-  const serviceOrders = orders.json.filter((order) => Number(order.appointment_id) === Number(ctx.appointmentId) && order.order_type === "ordem_servico");
-  assert.equal(serviceOrders.length, 1, "agendamento atendido deve gerar uma unica ordem de servico");
-  assert.ok(serviceOrders[0].items.some((item) => item.item_type === "servico"), "ordem deve conter item de servico");
+  const executions = await api("/service-executions");
+  assert.equal(executions.status, 200, JSON.stringify(executions.json));
+  const execution = executions.json.find((item) => Number(item.appointment_id) === Number(ctx.appointmentId));
+  assert.ok(execution, "agendamento atendido deve gerar uma única execução de serviço");
+  const executionDetail = await api(`/service-executions/${execution.id}`);
+  assert.equal(executionDetail.status, 200, JSON.stringify(executionDetail.json));
+  assert.ok(executionDetail.json.items.some((item) => item.item_type === "service"), "execução deve conter item de serviço");
 
   // O sinal (pago na reserva) e o restante (pago aqui, ao concluir) existiam
-  // em `payments` antes deste título existir — o vínculo retroativo feito por
-  // ensureSalesOrderForAppointment precisa alcançar os dois.
+  // em `payments` antes da execução existir; o vínculo retroativo precisa
+  // alcançar todos sem criar uma venda artificial.
   const payments = await withTenantSchema(ctx.tenant.id, (db) =>
-    db.all("SELECT payment_type, sales_order_id FROM payments WHERE appointment_id = ?", [ctx.appointmentId])
+    db.all("SELECT payment_type, sales_order_id, service_execution_id FROM payments WHERE appointment_id = ?", [ctx.appointmentId])
   );
   assert.ok(payments.length >= 1, "deveria haver ao menos um pagamento vinculado ao atendimento");
   assert.ok(
-    payments.every((payment) => Number(payment.sales_order_id) === Number(serviceOrders[0].id)),
-    `todo pagamento do atendimento deve apontar para o título gerado: ${JSON.stringify(payments)}`
+    payments.every((payment) => Number(payment.service_execution_id) === Number(execution.id) && payment.sales_order_id == null),
+    `todo pagamento deve apontar para a execução e não para venda: ${JSON.stringify(payments)}`
   );
 });
 

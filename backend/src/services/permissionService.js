@@ -13,12 +13,10 @@ export function hasPermission(user, permission) {
 }
 
 export async function hydrateUserPermissions(db, user) {
-  const [rows, profile] = await Promise.all([
-    db.all("SELECT permission, allowed FROM user_permissions WHERE user_id = ?", [user.id]),
-    user.access_profile_id
-      ? db.get("SELECT id, name, base_role FROM access_profiles WHERE id = ? AND is_active = true", [user.access_profile_id])
-      : Promise.resolve(null)
-  ]);
+  const rows = await db.all("SELECT permission, allowed FROM user_permissions WHERE user_id = ?", [user.id]);
+  const profile = user.access_profile_id
+    ? await db.get("SELECT id, name, base_role FROM access_profiles WHERE id = ? AND is_active = true", [user.access_profile_id])
+    : null;
   const profilePermissions = profile
     ? (await db.all("SELECT permission FROM access_profile_permissions WHERE profile_id = ? AND allowed = true", [profile.id])).map((row) => row.permission)
     : null;

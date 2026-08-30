@@ -92,13 +92,13 @@ export async function buildReport(db, type, filters = {}) {
           COALESCE(SUM(a.total_value) FILTER (WHERE a.status='atendido'),0) AS revenue
         FROM appointments a WHERE a.appointment_date BETWEEN ? AND ? GROUP BY a.professional_id
       ), sold AS (
-        SELECT a.professional_id,
-          COALESCE(SUM(soi.quantity) FILTER (WHERE soi.item_type='produto'),0) AS products_sold,
-          COALESCE(SUM(soi.quantity) FILTER (WHERE soi.product_id IS NOT NULL),0) AS jewelry_sold
-        FROM sales_orders so JOIN appointments a ON a.id=so.appointment_id
-        JOIN sales_order_items soi ON soi.sales_order_id=so.id
-        WHERE SUBSTRING(so.created_at,1,10) BETWEEN ? AND ? AND so.status IN ('concluida','pago')
-        GROUP BY a.professional_id
+        SELECT se.professional_id,
+          COALESCE(SUM(sei.quantity) FILTER (WHERE sei.item_type='product'),0) AS products_sold,
+          COALESCE(SUM(sei.quantity) FILTER (WHERE sei.product_id IS NOT NULL),0) AS jewelry_sold
+        FROM service_executions se
+        JOIN service_execution_items sei ON sei.service_execution_id=se.id
+        WHERE se.completed_at::date BETWEEN ?::date AND ?::date AND se.status='completed'
+        GROUP BY se.professional_id
       )
       SELECT p.id, p.name AS professional,
         GREATEST(COALESCE(av.availability_days,0),COALESCE(pr.appointment_days,0)) AS worked_days,
