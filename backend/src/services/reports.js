@@ -145,34 +145,31 @@ export async function buildReport(db, type, filters = {}) {
   } else if (type === "stock_movements") {
     const movementType = String(filters.movement_type || "");
     const itemType = String(filters.item_type || "");
-    const unionParams = [from, to, from, to];
-    let sql = `SELECT * FROM (
-      SELECT sm.id,sm.movement_date,'product' AS item_type,j.name AS item,j.sku,sm.movement_type,sm.quantity,
+    const params = [from, to];
+    let sql = `SELECT sm.id,sm.movement_date,
+        CASE WHEN j.can_sell THEN 'product' ELSE 'consumable' END AS item_type,
+        j.name AS item,COALESCE(v.sku,j.sku) AS sku,sm.movement_type,sm.quantity,
         sm.notes,sm.purchase_order_id,sm.sales_order_id
       FROM stock_movements sm JOIN jewelry_inventory j ON j.id=sm.jewelry_id
-      WHERE SUBSTRING(sm.movement_date,1,10) BETWEEN ? AND ?
-      UNION ALL
-      SELECT csm.id,csm.movement_date,'consumable' AS item_type,c.name AS item,NULL AS sku,csm.movement_type,csm.quantity,
-        csm.notes,csm.purchase_order_id,NULL AS sales_order_id
-      FROM consumable_stock_movements csm JOIN consumables c ON c.id=csm.consumable_id
-      WHERE SUBSTRING(csm.movement_date,1,10) BETWEEN ? AND ?
-    ) movement_source WHERE 1=1`;
-    if (movementType) { sql += " AND movement_type=?"; unionParams.push(movementType); }
-    if (itemType) { sql += " AND item_type=?"; unionParams.push(itemType); }
-    await setPaged(sql, unionParams, { searchColumns: ["item", "sku", "movement_type", "notes"], sortColumns: { id: "id", movement_date: "movement_date", item: "item", item_type: "item_type", movement_type: "movement_type", quantity: "quantity" }, defaultSort: "movement_date" });
+      LEFT JOIN jewelry_variants v ON v.id=sm.variant_id
+      WHERE SUBSTRING(sm.movement_date,1,10) BETWEEN ? AND ?`;
+    if (movementType) { sql += " AND sm.movement_type=?"; params.push(movementType); }
+    if (itemType === "product") sql += " AND j.can_sell=true";
+    if (itemType === "consumable") sql += " AND j.can_sell=false AND j.can_use_in_service=true";
+    await setPaged(sql, params, { searchColumns: ["item", "sku", "movement_type", "notes"], sortColumns: { id: "id", movement_date: "movement_date", item: "item", item_type: "item_type", movement_type: "movement_type", quantity: "quantity" }, defaultSort: "movement_date" });
   } else if (type === "lots") {
     const clauses = ["1=1"];
     const params = [];
-    if (/^\d{4}-\d{2}-\d{2}$/.test(filters.expiry_from || "")) { clauses.push("cl.expiry_date>=?"); params.push(filters.expiry_from); }
-    if (/^\d{4}-\d{2}-\d{2}$/.test(filters.expiry_to || "")) { clauses.push("cl.expiry_date<=?"); params.push(filters.expiry_to); }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(filters.expiry_from || "")) { clauses.push("lot.expiry_date>=?"); params.push(filters.expiry_from); }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(filters.expiry_to || "")) { clauses.push("lot.expiry_date<=?"); params.push(filters.expiry_to); }
     const consumableId = toInteger(filters.consumable_id);
-    if (consumableId) { clauses.push("cl.consumable_id=?"); params.push(consumableId); }
-    const lotStatus = `CASE WHEN cl.active=false THEN 'inactive' WHEN cl.remaining_quantity=0 THEN 'exhausted' WHEN cl.expiry_date<CURRENT_DATE THEN 'expired' WHEN cl.expiry_date<=CURRENT_DATE+30 THEN 'expiring' ELSE 'available' END`;
+    if (consumableId) { clauses.push("lot.inventory_item_id=?"); params.push(consumableId); }
+    const lotStatus = `CASE WHEN lot.active=false THEN 'inactive' WHEN lot.remaining_quantity=0 THEN 'exhausted' WHEN lot.expiry_date<CURRENT_DATE THEN 'expired' WHEN lot.expiry_date<=CURRENT_DATE+30 THEN 'expiring' ELSE 'available' END`;
     if (status) { clauses.push(`${lotStatus}=?`); params.push(status); }
     await setPaged(`
-      SELECT cl.id,c.name AS consumable,cl.batch_code,cl.expiry_date,cl.received_quantity,cl.remaining_quantity,
-        cl.unit_cost,${lotStatus} AS status,cl.purchase_order_id
-      FROM consumable_lots cl JOIN consumables c ON c.id=cl.consumable_id WHERE ${clauses.join(" AND ")}
+      SELECT lot.id,item.name AS consumable,lot.batch_code,lot.expiry_date,lot.received_quantity,lot.remaining_quantity,
+        lot.unit_cost,${lotStatus} AS status,lot.purchase_order_id
+      FROM inventory_item_lots lot JOIN jewelry_inventory item ON item.id=lot.inventory_item_id WHERE ${clauses.join(" AND ")}
     `, params, { searchColumns: ["consumable", "batch_code", "status"], sortColumns: { id: "id", consumable: "consumable", batch_code: "batch_code", expiry_date: "expiry_date", remaining_quantity: "remaining_quantity", status: "status" }, defaultSort: "expiry_date" });
   } else if (type === "digital_terms") {
     const clauses = ["SUBSTRING(dt.signed_at,1,10) BETWEEN ? AND ?"];
