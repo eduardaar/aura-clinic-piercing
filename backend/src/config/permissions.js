@@ -24,3 +24,37 @@ export const P = Object.freeze({
 
 export const ALL_PERMISSIONS = Object.freeze(Object.values(P));
 export const PERMISSION_SET = new Set(ALL_PERMISSIONS);
+
+const MODULE_LABELS = Object.freeze({
+  dashboard: "Painel", appointments: "Agenda e atendimentos", clients: "Clientes",
+  anamnesis: "Anamnese", clinical_files: "Arquivos clínicos", sales: "Vendas",
+  inventory: "Estoque", cash: "Caixa", finance: "Financeiro", reports: "Relatórios",
+  commission: "Comissões", communication: "Comunicação", coupons: "Cupons",
+  users: "Usuários e acessos", settings: "Configurações", audit: "Auditoria"
+});
+
+const ACTION_LABELS = Object.freeze({
+  view: "Visualizar", financial: "Visualizar dados financeiros", create: "Cadastrar",
+  edit: "Editar", delete: "Excluir", reschedule: "Reagendar", cancel: "Cancelar",
+  review: "Revisar", finalize: "Finalizar", apply_discount: "Aplicar desconto",
+  apply_coupon: "Aplicar cupom", edit_final_value: "Alterar valor final", sell: "Vender",
+  adjust: "Ajustar", view_cost: "Visualizar custos", open: "Abrir", receive_payment: "Receber pagamento",
+  close: "Fechar", withdraw: "Realizar retirada", mark_test: "Marcar como teste",
+  expenses: "Gerenciar despesas", refund: "Realizar estorno", view_own: "Visualizar próprios dados",
+  view_financial: "Visualizar relatórios financeiros", view_all: "Visualizar todos os dados",
+  send: "Enviar", permissions: "Gerenciar permissões", edit_open: "Editar em aberto",
+  edit_closed: "Editar concluído"
+});
+
+const HIGH_RISK_ACTIONS = new Set(["delete", "cancel", "refund", "withdraw", "adjust", "permissions", "edit_closed"]);
+
+export const PERMISSION_CATALOG = Object.freeze(ALL_PERMISSIONS.map((key) => {
+  const [module, action] = key.split(".");
+  return Object.freeze({
+    key,
+    module,
+    module_label: MODULE_LABELS[module] || module,
+    label: ACTION_LABELS[action] || action.replaceAll("_", " "),
+    risk: HIGH_RISK_ACTIONS.has(action) ? "high" : "standard"
+  });
+}));
