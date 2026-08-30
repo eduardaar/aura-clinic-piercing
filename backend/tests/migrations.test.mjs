@@ -38,7 +38,7 @@ test("migrations versionadas têm baseline válido por escopo", () => {
   assert.deepEqual(tenantVersions.slice(0, 19), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019"]);
   assert.deepEqual([...tenantVersions].sort(), tenantVersions, "migrations tenant devem permanecer ordenadas");
   assert.equal(new Set(tenantVersions).size, tenantVersions.length, "versões tenant não podem se repetir");
-  for (const version of ["0020", "0021", "0022", "0023", "0024", "0025", "0028", "0029", "0030", "0031", "0032", "0033"]) assert.ok(tenantVersions.includes(version));
+  for (const version of ["0020", "0021", "0022", "0023", "0024", "0025", "0028", "0029", "0030", "0031", "0032", "0033", "0034"]) assert.ok(tenantVersions.includes(version));
   assert.ok(platform.every((item) => /^[a-f0-9]{64}$/.test(item.checksum)));
 });
 
@@ -143,6 +143,14 @@ test("migration 0033 persiste checklist e biossegurança com histórico", () => 
   assert.match(operational.sql, /appointments[^;]*operational_requirements_snapshot/i);
   assert.match(operational.sql, /service_executions[^;]*checklist_snapshot/i);
   assert.match(operational.sql, /CREATE\s+TABLE\s+service_execution_operational_revisions/i);
+});
+
+test("migration 0034 preserva o histórico de reagendamentos", () => {
+  const history = loadMigrations("tenant").find((item) => item.version === "0034");
+  assert.ok(history, "a migration tenant 0034 é obrigatória");
+  for (const column of ["previous_date", "previous_time", "new_date", "new_time", "reason", "changed_by_user_id"]) {
+    assert.match(history.sql, new RegExp(`appointment_reschedule_history[^;]*${column}`, "i"));
+  }
 });
 
 test("checksum é estável entre checkout LF e CRLF", () => {

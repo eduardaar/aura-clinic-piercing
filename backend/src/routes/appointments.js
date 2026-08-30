@@ -356,6 +356,11 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
     if (!String(req.body.reason || "").trim()) return res.status(400).json({ error: "Informe o motivo da alteração financeira." });
   }
   if (!appointment) return res.status(404).json({ error: "Agendamento não encontrado." });
+  const scheduleChanged = (req.body.appointment_date !== undefined && req.body.appointment_date !== appointment.appointment_date)
+    || (req.body.appointment_time !== undefined && req.body.appointment_time !== appointment.appointment_time);
+  if (scheduleChanged && !String(req.body.reason || "").trim()) {
+    return res.status(400).json({ error: "Informe o motivo do reagendamento." });
+  }
   const willRecalculateReceivable = finalizedFinancialChange && !leavingFinalized &&
     String(req.body.status || appointment.status) === "atendido";
   if ((configuresReceivableSchedule(req.body) || willRecalculateReceivable) &&
@@ -458,6 +463,16 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
         [...updates.map((field) => req.body[field]), req.params.id]
       );
     }
+    if (scheduleChanged) {
+      await tx.run(`INSERT INTO appointment_reschedule_history
+        (appointment_id,previous_date,previous_time,new_date,new_time,reason,changed_by_user_id)
+        VALUES (?,?,?,?,?,?,?)`, [
+        appointment.id, appointment.appointment_date, appointment.appointment_time,
+        req.body.appointment_date || appointment.appointment_date,
+        req.body.appointment_time || appointment.appointment_time,
+        String(req.body.reason).trim(), req.user?.id || null
+      ]);
+    }
 
     const depositChanged = ["deposit_value", "deposit_status", "deposit_payment_method", "deposit_paid_at"]
       .some((field) => req.body[field] !== undefined);
@@ -527,8 +542,6 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
   });
 
   const updated = await listAppointments(db, "WHERE a.id = ?", [req.params.id]).then((rows) => rows[0]);
-  const scheduleChanged = (req.body.appointment_date !== undefined && req.body.appointment_date !== appointment.appointment_date)
-    || (req.body.appointment_time !== undefined && req.body.appointment_time !== appointment.appointment_time);
   const justConfirmed = updated?.status === "confirmado" && appointment.status !== "confirmado";
   if (scheduleChanged || justConfirmed) {
     await cancelPendingAppointmentCommunications(db, req.params.id);

@@ -693,7 +693,7 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
 }
 
 export function AppointmentQuickModal({ appointment, options, services, procedures, onClose, onSaved, features = [], onUpgrade }) {
-  const [form, setForm] = useState({ appointment_date: "", appointment_time: "", status: "pendente", notes: "" });
+  const [form, setForm] = useState({ appointment_date: "", appointment_time: "", status: "pendente", notes: "", reschedule_reason: "" });
   const [payments, setPayments] = useState([{ method: "Pix", amount: 0, status: "pago", installments: 1, fee_amount: 0, expected_receipt_date: "" }]);
   const [financialNotes, setFinancialNotes] = useState("");
   const [clinicalNotes, setClinicalNotes] = useState("");
@@ -729,6 +729,7 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
       appointment_time: appointment.appointment_time || "",
       status: appointment.status || "pendente",
       notes: appointment.notes || "",
+      reschedule_reason: "",
       deposit_value: appointment.deposit_value || 0,
       deposit_status: appointment.deposit_status || "pendente",
       coupon_code: appointment.coupon_code || "",
@@ -782,9 +783,16 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
     if (!appointment?.id) return;
     setError("");
     const pricedForm = priceAppointmentDraft(form, safeServices, safeJewelry);
+    const scheduleChanged = pricedForm.appointment_date !== appointment.appointment_date
+      || pricedForm.appointment_time !== appointment.appointment_time;
+    if (scheduleChanged && !String(pricedForm.reschedule_reason || "").trim()) {
+      setError("Informe o motivo do reagendamento.");
+      return;
+    }
     const payload = {
       ...pricedForm,
       ...patch,
+      reason: scheduleChanged ? pricedForm.reschedule_reason : patch.reason,
       appointment_items: normalizeAppointmentFormItems(pricedForm, safeServices, safeJewelry)
     };
     const response = await apiFetch(`/appointments/${appointment.id}`, {
@@ -872,6 +880,9 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
             <Input type="time" label="Horário" value={form.appointment_time} onChange={(value) => setForm({ ...form, appointment_time: value })} />
             <StatusSelect value={form.status} options={["cancelado", "nao_compareceu"].includes(appointment.status) ? [...APPOINTMENT_EDITABLE_STATUSES, appointment.status] : APPOINTMENT_EDITABLE_STATUSES} onChange={(value) => setForm({ ...form, status: value })} />
           </div>
+          {(form.appointment_date !== appointment.appointment_date || form.appointment_time !== appointment.appointment_time) && (
+            <Textarea label="Motivo do reagendamento" value={form.reschedule_reason || ""} onChange={(reschedule_reason) => setForm({ ...form, reschedule_reason })} required />
+          )}
           <AppointmentItemsEditor
             form={form}
             services={safeServices}
