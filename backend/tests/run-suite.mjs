@@ -7,6 +7,8 @@
 // Uso:
 //   node tests/run-suite.mjs                 → roda todos os tests/*.test.mjs
 //   node tests/run-suite.mjs tests/flow.test.mjs   → roda um arquivo só
+//   node tests/run-suite.mjs tests/auth.test.mjs tests/users.test.mjs
+//                                                → roda vários arquivos na mesma API
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -20,7 +22,7 @@ dotenv.config();
 dotenv.config({ path: path.join(process.cwd(), "../.env") });
 
 const PORT = process.env.TEST_PORT || 4199;
-const target = process.argv[2];
+const requestedTargets = process.argv.slice(2);
 const runnerPlatformEmail = `qa.runner.${process.pid}@aura.local`;
 const runnerPlatformPassword = `AuraRunner-${process.pid}-4495`;
 const env = {
@@ -96,8 +98,8 @@ if (!ok) {
 }
 await preparePlatformUser();
 
-const testTargets = target
-  ? [target]
+const testTargets = requestedTargets.length > 0
+  ? requestedTargets
   : fs.readdirSync(path.join(process.cwd(), "tests"))
     .filter((file) => file.endsWith(".test.mjs"))
     .map((file) => path.join("tests", file));

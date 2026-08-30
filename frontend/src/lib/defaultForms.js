@@ -245,10 +245,6 @@ export function nextBookingDates(total = 10) {
   });
 }
 
-export function legacyLocalDateValue(date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
-
 export function defaultServiceForm() {
   return {
     name: "",

@@ -28,7 +28,7 @@ frontend/   SPA React + Vite
 
 ## Pré-requisitos
 
-- Node.js 18+
+- Node.js 20.19+
 - PostgreSQL 14+ em execução
 
 ## Configuração
@@ -68,6 +68,14 @@ Suba backend + frontend juntos:
 
 ```bash
 npm run dev
+```
+
+Verificações disponíveis na raiz:
+
+```bash
+npm run check:changed   # Biome apenas nos arquivos alterados em relação à main
+npm run verify:static   # Biome nos alterados, typecheck e build do frontend
+npm run verify:full     # verificação estática e todas as suítes backend/frontend
 ```
 
 Ou individualmente:
