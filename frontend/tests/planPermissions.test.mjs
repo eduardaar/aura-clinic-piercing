@@ -25,11 +25,11 @@ test("Profissional libera as ações que geram contas a receber", () => {
 });
 
 test("perfil financeiro sem módulo contratado cai em uma tela operacional permitida", () => {
-  assert.equal(defaultPageForPlan("finance", ["basic_catalog"]), "sales");
+  assert.equal(defaultPageForPlan("finance", ["basic_catalog"]), "audit");
 });
 
 test("rota direta fora do plano leva admin ao upgrade e demais perfis ao fallback", () => {
   assert.equal(resolveAccessiblePage("admin", "receivables", ["basic_catalog"]), "meu-plano");
-  assert.equal(resolveAccessiblePage("finance", "receivables", ["basic_catalog"]), "sales");
+  assert.equal(resolveAccessiblePage("finance", "receivables", ["basic_catalog"]), "audit");
   assert.equal(resolveAccessiblePage("admin", "receivables", [], false), "receivables");
 });

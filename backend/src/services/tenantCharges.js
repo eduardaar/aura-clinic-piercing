@@ -542,11 +542,12 @@ export async function getPixData(db, intentId) {
 /** Consulta PIX pública por token aleatório, sem expor/aceitar o id serial. */
 export async function getPixDataByPublicToken(db, publicToken) {
   const intent = await db.get(
-    "SELECT id, public_token_expires_at FROM payment_intents WHERE public_token=?",
+    "SELECT id, status, public_token_expires_at FROM payment_intents WHERE public_token=?",
     [String(publicToken || "")]
   );
   if (!intent) return { kind: "not_found", data: null };
-  if (!intent.public_token_expires_at || new Date(intent.public_token_expires_at).getTime() <= Date.now()) {
+  if (["cancelled", "canceled", "refunded", "chargeback"].includes(String(intent.status || "").toLowerCase()) ||
+      !intent.public_token_expires_at || new Date(intent.public_token_expires_at).getTime() <= Date.now()) {
     return { kind: "expired", data: null };
   }
   return { kind: "ok", data: await getPixData(db, intent.id) };
@@ -989,11 +990,12 @@ export async function syncIntent(db, intentId) {
 /** Conciliação pública limitada ao intent identificado por token aleatório. */
 export async function syncIntentByPublicToken(db, publicToken) {
   const intent = await db.get(
-    "SELECT id, public_token_expires_at FROM payment_intents WHERE public_token=?",
+    "SELECT id, status, public_token_expires_at FROM payment_intents WHERE public_token=?",
     [String(publicToken || "")]
   );
   if (!intent) return { kind: "not_found", intent: null };
-  if (!intent.public_token_expires_at || new Date(intent.public_token_expires_at).getTime() <= Date.now()) {
+  if (["cancelled", "canceled", "refunded", "chargeback"].includes(String(intent.status || "").toLowerCase()) ||
+      !intent.public_token_expires_at || new Date(intent.public_token_expires_at).getTime() <= Date.now()) {
     return { kind: "expired", intent: null };
   }
   await syncIntent(db, intent.id);
