@@ -11,6 +11,12 @@ import { ledgerReport, normalizeEntry } from "../services/financeLedger.js";
 import { installmentMoneyCents, resolveInstallmentSchedule } from "../services/receivables.js";
 import { parsePaging } from "../services/pagination.js";
 import { recordPrivacyAudit } from "../services/privacy.js";
+import {
+  normalizeSupplierInput,
+  SUPPLIER_COLUMNS,
+  SUPPLIER_JSON_COLUMNS,
+  SupplierValidationError
+} from "../services/suppliers.js";
 
 const router = Router();
 
@@ -401,40 +407,80 @@ router.get("/api/finance/suppliers", withFeature("basic_finance", async (req, re
   const includeInactive = String(req.query?.include_inactive || "") === "1";
   const clauses = [];
   const params = [];
-  if (!includeInactive) clauses.push("is_active = 1");
+  if (!includeInactive) clauses.push("s.is_active = 1 AND s.quality_status <> 'blocked'");
   if (search) {
-    clauses.push("name ILIKE ?");
-    params.push(`%${search}%`);
+    clauses.push(`(s.name ILIKE ? OR s.legal_name ILIKE ? OR s.trade_name ILIKE ? OR s.document ILIKE ?
+      OR s.contact_name ILIKE ? OR s.phone ILIKE ? OR s.whatsapp ILIKE ? OR s.email ILIKE ?
+      OR s.website ILIKE ? OR s.categories::text ILIKE ? OR s.brands::text ILIKE ?
+      OR s.material_references::text ILIKE ? OR s.certifications::text ILIKE ? OR s.lot_references::text ILIKE ?
+      OR s.city ILIKE ?)`);
+    params.push(...Array(15).fill(`%${search}%`));
   }
-  res.json(await db.all(`SELECT * FROM suppliers ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""} ORDER BY name`, params));
+  res.json(await db.all(`
+    SELECT s.*,
+      (SELECT MAX(po.purchase_date) FROM purchase_orders po WHERE po.supplier_id=s.id AND po.status='confirmed') AS last_purchase_date,
+      COALESCE((SELECT SUM(po.total_value) FROM purchase_orders po WHERE po.supplier_id=s.id AND po.status='confirmed'), 0) AS total_purchased,
+      COALESCE((SELECT SUM(GREATEST(fe.amount-fe.paid_amount, 0)) FROM financial_entries fe
+        WHERE fe.supplier_id=s.id AND fe.entry_type='payable' AND fe.lifecycle_status='active'
+          AND fe.status IN ('pending', 'overdue', 'partially_paid')), 0) AS pending_payables
+    FROM suppliers s ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""} ORDER BY s.name`, params));
 }));
+
+function supplierWriteValues(supplier) {
+  return SUPPLIER_COLUMNS.map((column) => {
+    if (SUPPLIER_JSON_COLUMNS.has(column)) return JSON.stringify(supplier[column] || []);
+    if (column === "is_active") return supplier[column] ? 1 : 0;
+    return supplier[column];
+  });
+}
+
+async function ensureUniqueSupplierDocument(db, document, excludedId = null) {
+  if (!document) return;
+  const duplicate = await db.get(
+    `SELECT id FROM suppliers WHERE document=?${excludedId ? " AND id<>?" : ""}`,
+    excludedId ? [document, excludedId] : [document]
+  );
+  if (duplicate) throw new SupplierValidationError("Já existe um fornecedor com este CPF/CNPJ.", 409);
+}
+
+function sendSupplierError(res, error) {
+  if (error instanceof SupplierValidationError) return res.status(error.status).json({ error: error.message });
+  if (error?.code === "23505") return res.status(409).json({ error: "Já existe um fornecedor com este CPF/CNPJ." });
+  throw error;
+}
 
 router.post("/api/finance/suppliers", withFeature("basic_finance", async (req, res, db) => {
   if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
-  const name = String(req.body?.name || "").trim();
-  if (!name) return res.status(400).json({ error: "Informe o nome do fornecedor." });
-  const personType = String(req.body?.person_type || "PJ").toUpperCase();
-  if (!new Set(["PJ", "PF"]).has(personType)) return res.status(400).json({ error: "Tipo de pessoa inválido." });
-  const result = await db.run(
-    "INSERT INTO suppliers (name, person_type, document, phone, email, notes) VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
-    [name, personType, req.body?.document || "", req.body?.phone || "", req.body?.email || "", req.body?.notes || ""]
-  );
-  res.status(201).json(await db.get("SELECT * FROM suppliers WHERE id = ?", [result.returnedId]));
+  try {
+    const supplier = normalizeSupplierInput(req.body);
+    await ensureUniqueSupplierDocument(db, supplier.document);
+    const placeholders = SUPPLIER_COLUMNS.map((column) => SUPPLIER_JSON_COLUMNS.has(column) ? "?::jsonb" : "?");
+    const result = await db.run(
+      `INSERT INTO suppliers (${SUPPLIER_COLUMNS.join(", ")}) VALUES (${placeholders.join(", ")}) RETURNING id`,
+      supplierWriteValues(supplier)
+    );
+    res.status(201).json(await db.get("SELECT * FROM suppliers WHERE id = ?", [result.returnedId]));
+  } catch (error) {
+    return sendSupplierError(res, error);
+  }
 }));
 
 router.patch("/api/finance/suppliers/:id", withFeature("basic_finance", async (req, res, db) => {
   if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
   const current = await db.get("SELECT * FROM suppliers WHERE id = ?", [req.params.id]);
   if (!current) return res.status(404).json({ error: "Fornecedor não encontrado." });
-  const name = String(req.body?.name ?? current.name).trim();
-  if (!name) return res.status(400).json({ error: "Informe o nome do fornecedor." });
-  const personType = String(req.body?.person_type ?? current.person_type ?? "PJ").toUpperCase();
-  if (!new Set(["PJ", "PF"]).has(personType)) return res.status(400).json({ error: "Tipo de pessoa inválido." });
-  await db.run(
-    "UPDATE suppliers SET name=?, person_type=?, document=?, phone=?, email=?, notes=?, is_active=? WHERE id=?",
-    [name, personType, req.body?.document ?? current.document, req.body?.phone ?? current.phone, req.body?.email ?? current.email, req.body?.notes ?? current.notes, req.body?.is_active ?? current.is_active, current.id]
-  );
-  res.json(await db.get("SELECT * FROM suppliers WHERE id = ?", [current.id]));
+  try {
+    const supplier = normalizeSupplierInput(req.body, current);
+    await ensureUniqueSupplierDocument(db, supplier.document, current.id);
+    const assignments = SUPPLIER_COLUMNS.map((column) => `${column}=${SUPPLIER_JSON_COLUMNS.has(column) ? "?::jsonb" : "?"}`);
+    await db.run(
+      `UPDATE suppliers SET ${assignments.join(", ")}, updated_at=to_char(now(), 'YYYY-MM-DD HH24:MI:SS') WHERE id=?`,
+      [...supplierWriteValues(supplier), current.id]
+    );
+    res.json(await db.get("SELECT * FROM suppliers WHERE id = ?", [current.id]));
+  } catch (error) {
+    return sendSupplierError(res, error);
+  }
 }));
 
 router.get("/api/finance/export.csv", withFeature("basic_finance", async (req, res, db) => {

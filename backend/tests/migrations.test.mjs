@@ -31,8 +31,17 @@ test("migrations versionadas têm baseline válido por escopo", () => {
   const platform = loadMigrations("platform");
   const tenant = loadMigrations("tenant");
   assert.deepEqual(platform.map((item) => item.version), ["0001", "0002", "0003", "0004", "0005", "0006", "0007"]);
-  assert.deepEqual(tenant.map((item) => item.version), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016"]);
+  assert.deepEqual(tenant.map((item) => item.version), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020"]);
   assert.ok(platform.every((item) => /^[a-f0-9]{64}$/.test(item.checksum)));
+});
+
+test("migration 0020 amplia a fonte única de fornecedores", () => {
+  const suppliers = loadMigrations("tenant").find((item) => item.version === "0020");
+  assert.ok(suppliers, "a migration tenant 0020 é obrigatória");
+  assert.match(suppliers.sql, /ALTER\s+TABLE\s+suppliers[^;]*legal_name/i);
+  assert.match(suppliers.sql, /categories\s+JSONB/i);
+  assert.match(suppliers.sql, /ux_suppliers_document/i);
+  assert.doesNotMatch(suppliers.sql, /CREATE\s+TABLE\s+supplier/i);
 });
 
 test("migration platform 0006 consolida matriz e aliases sem reofertar legado", () => {

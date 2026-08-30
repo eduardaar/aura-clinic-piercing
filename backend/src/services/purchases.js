@@ -184,7 +184,7 @@ export async function listPurchases(db, { status = "", supplierId = null } = {})
 }
 
 async function validatePurchaseReferences(db, purchase) {
-  const supplier = await db.get("SELECT * FROM suppliers WHERE id = ? AND is_active = 1", [purchase.supplier_id]);
+  const supplier = await db.get("SELECT * FROM suppliers WHERE id = ? AND is_active = 1 AND quality_status <> 'blocked'", [purchase.supplier_id]);
   if (!supplier) throw new PurchaseValidationError("Fornecedor ativo não encontrado.", 404);
   if (purchase.cost_center_id) {
     const center = await db.get("SELECT id FROM financial_cost_centers WHERE id = ? AND is_active = 1", [purchase.cost_center_id]);

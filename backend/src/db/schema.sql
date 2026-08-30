@@ -938,13 +938,44 @@ CREATE TABLE IF NOT EXISTS suppliers (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   person_type TEXT NOT NULL DEFAULT 'PJ' CHECK (person_type IN ('PJ', 'PF')),
+  legal_name TEXT,
+  trade_name TEXT,
   document TEXT,
+  state_registration TEXT,
+  contact_name TEXT,
   phone TEXT,
+  whatsapp TEXT,
   email TEXT,
+  website TEXT,
+  postal_code TEXT,
+  street TEXT,
+  street_number TEXT,
+  address_complement TEXT,
+  neighborhood TEXT,
+  city TEXT,
+  state TEXT,
+  country TEXT NOT NULL DEFAULT 'Brasil',
+  categories JSONB NOT NULL DEFAULT '[]'::jsonb,
+  brands JSONB NOT NULL DEFAULT '[]'::jsonb,
+  certifications JSONB NOT NULL DEFAULT '[]'::jsonb,
+  material_references JSONB NOT NULL DEFAULT '[]'::jsonb,
+  lot_references JSONB NOT NULL DEFAULT '[]'::jsonb,
+  payment_terms TEXT,
+  payment_method TEXT,
+  payment_days INTEGER CHECK (payment_days BETWEEN 0 AND 3650),
+  lead_time_days INTEGER CHECK (lead_time_days BETWEEN 0 AND 3650),
+  minimum_order_value NUMERIC(12,2) CHECK (minimum_order_value >= 0),
+  freight_terms TEXT,
+  quality_status TEXT NOT NULL DEFAULT 'review' CHECK (quality_status IN ('approved', 'review', 'blocked')),
   notes TEXT,
   is_active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS'),
+  updated_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_suppliers_document ON suppliers(document) WHERE NULLIF(document, '') IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_suppliers_name_search ON suppliers(lower(name));
+CREATE INDEX IF NOT EXISTS idx_suppliers_categories ON suppliers USING GIN(categories);
 
 ALTER TABLE financial_entries ADD COLUMN IF NOT EXISTS supplier_id INTEGER REFERENCES suppliers(id);
 

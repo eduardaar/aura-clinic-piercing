@@ -5,15 +5,9 @@ import { DataView } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
 import { asArray } from "../../lib/utils";
+import { SupplierRegistry } from "./SupplierRegistry";
 
 const REGISTRY_CONFIG = {
-  suppliers: {
-    title: "Fornecedores",
-    subtitle: "Fornecedores usados em compras e contas a pagar.",
-    singular: "fornecedor",
-    endpoint: "/finance/suppliers",
-    empty: () => ({ name: "", person_type: "PJ", document: "", phone: "", email: "", notes: "", is_active: true }),
-  },
   categories: {
     title: "Categorias financeiras",
     subtitle: "Categorias usadas nos lançamentos financeiros.",
@@ -35,7 +29,12 @@ function normalizeActive(value) {
 }
 
 export function FinanceRegistries({ registry = "suppliers" }) {
-  const config = REGISTRY_CONFIG[registry] || REGISTRY_CONFIG.suppliers;
+  if (registry === "suppliers") return <SupplierRegistry />;
+  return <SimpleFinanceRegistry registry={registry} />;
+}
+
+function SimpleFinanceRegistry({ registry }) {
+  const config = REGISTRY_CONFIG[registry] || REGISTRY_CONFIG.categories;
   const { data, error: requestError } = useFetch(`${config.endpoint}?include_inactive=1`);
   const invalidate = useApiInvalidate();
   const [editing, setEditing] = useState(null);
@@ -94,18 +93,6 @@ export function FinanceRegistries({ registry = "suppliers" }) {
       render: (item) => <StatusBadge status={normalizeActive(item.is_active) ? "Ativo" : "Inativo"} />,
     },
   ];
-  const supplierColumns = [
-    { key: "name", label: "Fornecedor" },
-    { key: "person_type", label: "Tipo", render: (item) => item.person_type || "PJ" },
-    { key: "document", label: "Documento", render: (item) => item.document || "—" },
-    {
-      key: "contact",
-      label: "Contato",
-      value: (item) => `${item.phone || ""} ${item.email || ""}`,
-      render: (item) => [item.phone, item.email].filter(Boolean).join(" · ") || "—",
-    },
-    commonColumns[2],
-  ];
   return (
     <section className="stack finance-registries-page">
       <section className="panel stack">
@@ -132,7 +119,7 @@ export function FinanceRegistries({ registry = "suppliers" }) {
               match: (item, value) => (normalizeActive(item.is_active) ? "ativo" : "inativo") === value,
             },
           ]}
-          columns={registry === "suppliers" ? supplierColumns : commonColumns}
+          columns={commonColumns}
           actions={(item) => (
             <RowActions
               actions={[
@@ -167,40 +154,12 @@ export function FinanceRegistries({ registry = "suppliers" }) {
         <form id="finance-registry-form" className="stack" onSubmit={save}>
           <div className="form-grid">
             <Input label="Nome" value={form.name} onChange={(name) => setForm({ ...form, name })} required />
-            {registry === "suppliers" && (
-              <>
-                <Select
-                  label="Tipo de pessoa"
-                  value={form.person_type || "PJ"}
-                  onChange={(person_type) => setForm({ ...form, person_type })}
-                >
-                  <option value="PJ">Pessoa jurídica</option>
-                  <option value="PF">Pessoa física</option>
-                </Select>
-                <Input
-                  label={form.person_type === "PF" ? "CPF" : "CNPJ"}
-                  value={form.document || ""}
-                  onChange={(document) => setForm({ ...form, document })}
-                />
-                <Input label="Telefone" value={form.phone || ""} onChange={(phone) => setForm({ ...form, phone })} />
-                <Input
-                  type="email"
-                  label="E-mail"
-                  value={form.email || ""}
-                  onChange={(email) => setForm({ ...form, email })}
-                />
-              </>
-            )}
           </div>
-          {registry === "suppliers" ? (
-            <Textarea label="Observações" value={form.notes || ""} onChange={(notes) => setForm({ ...form, notes })} />
-          ) : (
-            <Textarea
-              label="Descrição"
-              value={form.description || ""}
-              onChange={(description) => setForm({ ...form, description })}
-            />
-          )}
+          <Textarea
+            label="Descrição"
+            value={form.description || ""}
+            onChange={(description) => setForm({ ...form, description })}
+          />
           <Select
             label="Status"
             value={normalizeActive(form.is_active) ? "active" : "inactive"}
