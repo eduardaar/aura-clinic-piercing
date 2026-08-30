@@ -18,7 +18,6 @@ import "./styles/catalog-v2.css";
 import "./styles/operations-responsive.css";
 // Última camada: invariantes responsivas compartilhadas por todo o produto.
 import "./styles/responsive.css";
-import { Login } from "./components/auth/Login";
 import { Sidebar } from "./components/layout/Sidebar";
 import { Loading } from "./components/common/Feedback";
 import { AppErrorBoundary } from "./components/common/AppErrorBoundary";
@@ -30,47 +29,13 @@ import { canAccessPage, defaultPageForRole, pageTitle, resolveAccessiblePage } f
 import { roleLabel } from "./features/shared/helpers";
 import { applyUiTheme, readUiTheme, saveUiTheme } from "./lib/uiTheme";
 import { appPathForPage, isAppPath, pageForAppPath } from "./lib/appRoutes";
+import { appPageById, publicPageForPath } from "./lib/appPages";
 
 if (typeof __AURA_BUILD__ !== "undefined") {
   console.info("Aura Clinic", __AURA_BUILD__);
 }
 
-// Code-splitting: telas pesadas carregadas sob demanda via React.lazy().
-// Todos os componentes usam named export, por isso mapeamos para { default } no wrapper.
-const Dashboard = lazy(() => import("./features/dashboard/Dashboard").then((m) => ({ default: m.Dashboard })));
 const AlertsPopup = lazy(() => import("./features/dashboard/Dashboard").then((m) => ({ default: m.AlertsPopup })));
-const AgendaWorkspace = lazy(() => import("./features/agenda/Agenda").then((m) => ({ default: m.AgendaWorkspace })));
-const ServicesWorkspace = lazy(() => import("./features/services/Services").then((m) => ({ default: m.ServicesWorkspace })));
-const Communications = lazy(() => import("./features/communications/Communications").then((m) => ({ default: m.Communications })));
-const CatalogWorkspace = lazy(() => import("./features/inventory/Inventory").then((m) => ({ default: m.CatalogWorkspace })));
-const ConsumablesWorkspace = lazy(() => import("./features/consumables/Consumables").then((m) => ({ default: m.ConsumablesWorkspace })));
-const SalesWorkspace = lazy(() => import("./features/sales/Sales").then((m) => ({ default: m.SalesWorkspace })));
-const Purchases = lazy(() => import("./features/purchases/Purchases").then((m) => ({ default: m.Purchases })));
-const AccountsReceivable = lazy(() => import("./features/finance/Receivables").then((m) => ({ default: m.AccountsReceivable })));
-const PayablesAdmin = lazy(() => import("./features/finance/Payables").then((m) => ({ default: m.PayablesAdmin })));
-const FinanceRegistries = lazy(() => import("./features/finance/FinanceRegistries").then((m) => ({ default: m.FinanceRegistries })));
-const Reports = lazy(() => import("./features/reports/Reports").then((m) => ({ default: m.Reports })));
-const AccessAdmin = lazy(() => import("./features/access/AccessAdmin").then((m) => ({ default: m.AccessAdmin })));
-const Integrations = lazy(() => import("./features/integrations/Integrations").then((m) => ({ default: m.Integrations })));
-const Support = lazy(() => import("./features/support/Support").then((m) => ({ default: m.Support })));
-const ClientWorkspace = lazy(() => import("./features/clients/ClientsMedical").then((m) => ({ default: m.ClientWorkspace })));
-const ClientsMedical = lazy(() => import("./features/clients/ClientsMedical").then((m) => ({ default: m.ClientsMedical })));
-const DigitalTerms = lazy(() => import("./features/terms/DigitalTerms").then((m) => ({ default: m.DigitalTerms })));
-const PostCare = lazy(() => import("./features/postcare/PostCare").then((m) => ({ default: m.PostCare })));
-const PublicCatalog = lazy(() => import("./pages/PublicExperience").then((m) => ({ default: m.PublicCatalog })));
-const PublicBooking = lazy(() => import("./pages/PublicExperience").then((m) => ({ default: m.PublicBooking })));
-const PublicCheckout = lazy(() => import("./pages/PublicExperience").then((m) => ({ default: m.PublicCheckout })));
-const CatalogCustomization = lazy(() => import("./pages/CatalogCustomization").then((m) => ({ default: m.CatalogCustomization })));
-const Signup = lazy(() => import("./features/platform/Signup").then((m) => ({ default: m.Signup })));
-const PlatformAdmin = lazy(() => import("./features/platform/PlatformAdmin").then((m) => ({ default: m.PlatformAdmin })));
-const MyPlan = lazy(() => import("./features/platform/MyPlan").then((m) => ({ default: m.MyPlan })));
-const Landing = lazy(() => import("./pages/Landing").then((m) => ({ default: m.Landing })));
-const AboutPage = lazy(() => import("./pages/Landing").then((m) => ({ default: m.AboutPage })));
-const LegalDocument = lazy(() => import("./pages/LegalDocument").then((m) => ({ default: m.LegalDocument })));
-const CatalogDirectory = lazy(() => import("./pages/PublicDirectory").then((m) => ({ default: m.CatalogDirectory })));
-const BookingDirectory = lazy(() => import("./pages/PublicDirectory").then((m) => ({ default: m.BookingDirectory })));
-const Settings = lazy(() => import("./features/settings/Settings").then((m) => ({ default: m.Settings })));
-const Onboarding = lazy(() => import("./features/onboarding/Onboarding").then((m) => ({ default: m.Onboarding })));
 
 function App() {
   const [session, setSession] = useState(readStoredSession);
@@ -119,20 +84,20 @@ function App() {
   
   // Verificar pathname atual (para renderizar apenas login em /login)
   const currentPathname = window.location.pathname;
-  const isLoginPath = currentPathname === "/login" || currentPathname.startsWith("/login?");
-  
-  const isPublicCatalog = currentPathname.startsWith("/catalogo");
-  const isPublicBooking = currentPathname.startsWith("/agendar");
-  const isPublicCheckout = currentPathname.startsWith("/comprar");
-  const isSignup = currentPathname.startsWith("/cadastro");
-  const isAbout = currentPathname === "/sobre";
-  const isPlansPage = currentPathname === "/planos";
-  const legalDocumentKey = currentPathname === "/termos-de-uso" ? "terms_of_use" : currentPathname === "/politica-de-privacidade" ? "privacy_policy" : null;
+  const publicRoute = publicPageForPath(currentPathname);
+  const isLoginPath = publicRoute?.id === "login";
+  const isPublicCatalog = publicRoute?.id === "public-catalog";
+  const isPublicBooking = publicRoute?.id === "public-booking";
+  const isPublicCheckout = publicRoute?.id === "public-checkout";
+  const isSignup = publicRoute?.id === "signup";
+  const isAbout = publicRoute?.id === "about";
+  const isPlansPage = publicRoute?.id === "plans";
+  const legalDocumentKey = publicRoute?.documentKey || null;
   const isLegalPage = Boolean(legalDocumentKey);
-  const isPlatform = currentPathname.startsWith("/plataforma");
+  const isPlatform = publicRoute?.id === "platform";
   const isInternalApp = isAppPath(currentPathname);
   // Landing de marketing: raiz "/" sem sessão. Com sessão, "/" é o app.
-  const isLanding = currentPathname === "/";
+  const isLanding = publicRoute?.id === "landing";
   
   const normalizedSession = session?.user ? session : session ? { user: session } : null;
 
@@ -305,19 +270,24 @@ function App() {
 
   // Landing pública na raiz "/" quando não há sessão.
   if (isLanding && !normalizedSession) {
-    return <Suspense fallback={<Loading />}><Landing /></Suspense>;
+    const LandingPage = publicRoute.component;
+    return <Suspense fallback={<Loading />}><LandingPage /></Suspense>;
   }
-  if (isAbout) return <Suspense fallback={<Loading />}><AboutPage /></Suspense>;
+  if (isAbout) {
+    const AboutPage = publicRoute.component;
+    return <Suspense fallback={<Loading />}><AboutPage /></Suspense>;
+  }
   // Planos faz parte da landing. Mantemos a URL antiga apenas como atalho para
   // não quebrar links já compartilhados, sem sustentar uma tela separada.
   if (isPlansPage) {
-    window.location.replace("/#planos");
+    window.location.replace(publicRoute.redirect);
     return <Loading />;
   }
 
   // Se está em /login, renderizar APENAS login (sem app shell)
   if (isLoginPath) {
-    return <Login onLogin={setSession} />;
+    const LoginPage = publicRoute.component;
+    return <Suspense fallback={<Loading />}><LoginPage onLogin={setSession} /></Suspense>;
   }
 
   // Rotas públicas: sempre acessíveis (carregadas sob demanda).
@@ -325,23 +295,21 @@ function App() {
   if (isPublicCatalog) {
     const params = new URLSearchParams(window.location.search);
     const hasTenant = ["t", "tenant", "clinic"].some((key) => params.get(key));
-    return hasTenant
-      ? <Suspense fallback={<Loading />}><PublicCatalog /></Suspense>
-      : <Suspense fallback={<Loading />}><CatalogDirectory /></Suspense>;
+    const CatalogPage = hasTenant ? publicRoute.component : appPageById("catalog-directory").component;
+    return <Suspense fallback={<Loading />}><CatalogPage /></Suspense>;
   }
   // /agendar SEM ?t=<slug> → diretório de clínicas com agendamento online;
   // com ?t → a agenda daquela clínica.
   if (isPublicBooking) {
     const params = new URLSearchParams(window.location.search);
     const hasTenant = ["t", "tenant", "clinic"].some((key) => params.get(key));
-    return hasTenant
-      ? <Suspense fallback={<Loading />}><PublicBooking /></Suspense>
-      : <Suspense fallback={<Loading />}><BookingDirectory /></Suspense>;
+    const BookingPage = hasTenant ? publicRoute.component : appPageById("booking-directory").component;
+    return <Suspense fallback={<Loading />}><BookingPage /></Suspense>;
   }
-  if (isPublicCheckout) return <Suspense fallback={<Loading />}><PublicCheckout /></Suspense>;
-  if (legalDocumentKey) return <Suspense fallback={<Loading />}><LegalDocument documentKey={legalDocumentKey} /></Suspense>;
-  if (isSignup) return <Suspense fallback={<Loading />}><Signup /></Suspense>;
-  if (isPlatform) return <Suspense fallback={<Loading />}><PlatformAdmin /></Suspense>;
+  if (isPublicCheckout || isSignup || isPlatform || legalDocumentKey) {
+    const PublicPage = publicRoute.component;
+    return <Suspense fallback={<Loading />}><PublicPage {...(legalDocumentKey ? { documentKey: legalDocumentKey } : {})} /></Suspense>;
+  }
   
   // Se não tem sessão, renderizar nada (useEffect acima vai redirecionar)
   if (!normalizedSession) {
@@ -352,6 +320,29 @@ function App() {
   const openProfessionalPlan = canAccessPage(normalizedSession.user, "meu-plano")
     ? () => navigate("meu-plano")
     : undefined;
+  const ActivePage = appPageById(activePage)?.component;
+  const activePageProps = {
+    dashboard: { user: normalizedSession.user, setPage: navigate, alertsOpen, setAlertsOpen, alertsData, alertsLoading },
+    agenda: { initialScreen: agendaTarget ? "settings" : "agenda", initialSettingsTab: agendaTarget, onSettingsClosed: () => setAgendaTarget(null), features: planFeatures, onUpgrade: openProfessionalPlan },
+    services: { onNavigate: navigate },
+    onboarding: { onNavigate: navigate, onOpenAgendaSettings: (tab) => { setAgendaTarget(tab); navigate("agenda"); } },
+    products: { area: "produtos" },
+    inventory: { area: "produtos", initialTab: "unidades" },
+    catalog: { area: "catalogo" },
+    "client-center": { onNavigate: navigate },
+    sales: { features: planFeatures, onUpgrade: openProfessionalPlan },
+    purchases: { onNavigate: navigate },
+    receivables: { onNavigate: navigate },
+    payables: { onNavigate: navigate },
+    suppliers: { registry: "suppliers" },
+    "finance-categories": { registry: "categories" },
+    "cost-centers": { registry: "centers" },
+    clients: { onNavigate: navigate },
+    terms: { onBack: () => navigate("client-center") },
+    postcare: { onBack: () => navigate("client-center") },
+    "meu-plano": { subscription, plans, onChanged: loadStoreIdentity },
+    settings: { user: normalizedSession.user, theme: uiTheme, onThemeChange: changeUiTheme, navCollapsed, onNavCollapsedChange: changeNavCollapsed, onUserChanged: changeUser }
+  }[activePage] || {};
   return (
     <div className={`app-shell ${navCollapsed ? "nav-collapsed" : ""}`}>
       {/* Sidebar apenas renderizado se autenticado */}
@@ -445,36 +436,8 @@ function App() {
           </div>
         )}
         <Suspense fallback={<Loading />}>
-          {activePage === "meu-plano" && <MyPlan subscription={subscription} plans={plans} onChanged={loadStoreIdentity} />}
-          {activePage === "dashboard" && <Dashboard user={normalizedSession.user} setPage={navigate} alertsOpen={alertsOpen} setAlertsOpen={setAlertsOpen} alertsData={alertsData} alertsLoading={alertsLoading} />}
           {activePage !== "dashboard" && alertsOpen && <AlertsPopup alerts={alertsData} loading={alertsLoading} onClose={() => setAlertsOpen(false)} onAction={(nextPage) => { setAlertsOpen(false); navigate(nextPage); }} />}
-          {activePage === "agenda" && <AgendaWorkspace initialScreen={agendaTarget ? "settings" : "agenda"} initialSettingsTab={agendaTarget} onSettingsClosed={() => setAgendaTarget(null)} features={planFeatures} onUpgrade={openProfessionalPlan} />}
-          {activePage === "services" && <ServicesWorkspace onNavigate={navigate} />}
-          {activePage === "onboarding" && <Onboarding onNavigate={navigate} onOpenAgendaSettings={(tab) => { setAgendaTarget(tab); navigate("agenda"); }} />}
-          {activePage === "communications" && <Communications />}
-          {activePage === "products" && <CatalogWorkspace area="produtos" />}
-          {/* Compatibilidade com atalhos antigos: não há mais menu separado;
-              quem ainda chegar em "inventory" abre a aba Estoque da mesma área. */}
-          {activePage === "inventory" && <CatalogWorkspace area="produtos" initialTab="unidades" />}
-          {activePage === "consumables" && <ConsumablesWorkspace />}
-          {activePage === "catalog" && <CatalogWorkspace area="catalogo" />}
-          {activePage === "client-center" && <ClientWorkspace onNavigate={navigate} />}
-          {activePage === "catalog-customization" && <CatalogCustomization />}
-          {activePage === "sales" && <SalesWorkspace features={planFeatures} onUpgrade={openProfessionalPlan} />}
-          {activePage === "purchases" && <Purchases onNavigate={navigate} />}
-          {activePage === "receivables" && <AccountsReceivable onNavigate={navigate} />}
-          {activePage === "payables" && <PayablesAdmin onNavigate={navigate} />}
-          {activePage === "suppliers" && <FinanceRegistries key="suppliers" registry="suppliers" />}
-          {activePage === "finance-categories" && <FinanceRegistries key="categories" registry="categories" />}
-          {activePage === "cost-centers" && <FinanceRegistries key="centers" registry="centers" />}
-          {activePage === "reports" && <Reports />}
-          {activePage === "clients" && <ClientsMedical onNavigate={navigate} />}
-          {activePage === "terms" && <DigitalTerms onBack={() => navigate("client-center")} />}
-          {activePage === "postcare" && <PostCare onBack={() => navigate("client-center")} />}
-          {activePage === "admin" && <AccessAdmin />}
-          {activePage === "integrations" && <Integrations />}
-          {activePage === "support" && <Support />}
-          {activePage === "settings" && <Settings user={normalizedSession.user} theme={uiTheme} onThemeChange={changeUiTheme} navCollapsed={navCollapsed} onNavCollapsedChange={changeNavCollapsed} onUserChanged={changeUser} />}
+          {ActivePage && <ActivePage key={activePage} {...activePageProps} />}
         </Suspense>
         </div>
       </main>
