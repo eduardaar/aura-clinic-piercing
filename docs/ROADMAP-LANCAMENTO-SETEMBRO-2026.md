@@ -31,19 +31,19 @@ estoque, financeiro, pagamento, arquivos privados e auditoria.
 
 ### Aceleração e limpeza antecipada incorporadas ao lançamento
 
-- [ ] Criar uma branch de integração do lançamento e worktrees separados por fatia vertical, com um integrador e até três agentes executores.
-- [ ] Reservar ao integrador os hotspots compartilhados: migrations e schema, registro de rotas/menu, permissões, entrypoint, CSS global, pacotes e lockfiles.
-- [ ] Fixar Node `20.19+` como mínimo comum para desenvolvimento, CI e produção.
-- [ ] Criar comandos de verificação rápida por arquivos alterados e permitir executar vários testes backend relacionados com uma única subida da API.
-- [ ] Criar um registro único de páginas do frontend, reunindo rota, título, grupo, ícone, permissão, recurso do plano, componente e aliases temporários.
-- [ ] Manter o catálogo de permissões e perfis como fonte oficial no backend, entregando ao frontend grupos, rótulos, descrições e impacto.
-- [ ] Criar registros configuráveis para relatórios e seus filtros/colunas/exportadores, evitando novas telas e implementações paralelas.
+- [x] Criar uma branch de integração do lançamento e worktrees separados por fatia vertical, com um integrador e até três agentes executores.
+- [x] Reservar ao integrador os hotspots compartilhados: migrations e schema, registro de rotas/menu, permissões, entrypoint, CSS global, pacotes e lockfiles.
+- [x] Fixar Node `20.19+` como mínimo comum para desenvolvimento, CI e produção.
+- [x] Criar comandos de verificação rápida por arquivos alterados e permitir executar vários testes backend relacionados com uma única subida da API.
+- [x] Criar um registro único de páginas do frontend, reunindo rota, título, grupo, ícone, permissão, recurso do plano, componente e aliases temporários.
+- [x] Manter o catálogo de permissões e perfis como fonte oficial no backend, entregando ao frontend grupos, rótulos, descrições e impacto.
+- [x] Criar registros configuráveis para relatórios e seus filtros/colunas/exportadores, evitando novas telas e implementações paralelas.
 - [ ] Usar codemod AST somente para alterações mecânicas repetitivas, como imports, nomes de componentes, props e IDs de página; nunca para regras financeiras, clínicas, fiscais, de estoque ou permissão.
 - [ ] Remover no mesmo lote as telas, rotas, serviços, aliases e estruturas substituídas de Serviços/Procedimentos, Materiais/Produtos, atendimento em Vendas, relatórios e auditoria.
 - [ ] Remover candidatos já comprovados sem consumidor: `react-router-dom`, `@aws-sdk/s3-request-presigner`, `legacyLocalDateValue`, o `DataTable` antigo e `admin_audit_logs`; confirmar novamente com busca estática imediatamente antes da remoção.
 - [ ] Implementar a busca global do cabeçalho ou retirá-la temporariamente; não lançar um controle que apenas aparenta pesquisar.
 - [ ] Durante o desenvolvimento, criar migrations novas por fatia; no candidato a release, gerar uma baseline completa com `pg_dump --schema-only`, remover o bootstrap SQL duplicado, zerar a base e comprovar a criação de plataforma e clínica somente pelas migrations.
-- [ ] Executar Biome e testes direcionados durante cada tarefa; reservar build e suítes completas para a integração de cada lote e para o candidato final.
+- [x] Executar Biome e testes direcionados durante cada tarefa; reservar build e suítes completas para a integração de cada lote e para o candidato final.
 
 ## Semana 1 — 1 a 6 de setembro
 
@@ -218,7 +218,7 @@ Se qualquer item acima falhar, o lançamento fica **No-Go** até a correção.
 - [ ] Despesas sem entrada de estoque, como aluguel, energia e internet, devem ser lançadas diretamente em Contas a pagar, sem passar por Compras.
 - [ ] Quando uma joia for aplicada durante um procedimento, manter um único fechamento para o cliente, mas separar nos dados e relatórios a receita do serviço e a receita do produto. Troca ou instalação profissional deve ser procedimento da Agenda; entrega avulsa da joia deve ser Venda.
 - [ ] Reutilizar componentes visuais comuns de itens, totais, pagamentos e parcelas entre os três fluxos, sem fundir suas regras de negócio ou telas operacionais.
-- [ ] Evoluir o modelo interno para que atendimento concluído deixe de depender de `sales_orders` do tipo `ordem_servico`: criar uma execução de serviço própria, vinculada ao agendamento, e fazer corte direto para o novo fluxo, evitando escrita dupla e duplicidade de receita, estoque ou recebíveis. Como não há necessidade de preservar dados antigos antes do lançamento, recriar as bases descartáveis em vez de implementar backfill legado.
+- [x] Evoluir o modelo interno para que atendimento concluído deixe de depender de `sales_orders` do tipo `ordem_servico`: criar uma execução de serviço própria, vinculada ao agendamento, e fazer corte direto para o novo fluxo, evitando escrita dupla e duplicidade de receita, estoque ou recebíveis. Como não há necessidade de preservar dados antigos antes do lançamento, recriar as bases descartáveis em vez de implementar backfill legado.
 - [ ] **Aprovado — unificar Produtos e Materiais em uma fonte de verdade:** criar a entidade central **Item de estoque**, eliminando identidades, saldos, custos, compras, lotes e movimentações duplicadas entre produtos para venda e materiais de procedimento.
 - [ ] Cada item de estoque deve possuir nome/SKU, categoria, unidade de estoque, quantidade, estoque mínimo, custo médio, fornecedor e configurações explícitas como **pode ser vendido**, **pode ser utilizado em procedimento**, **controla estoque**, **controla lote/validade** e **pode aparecer no catálogo**.
 - [ ] Não usar somente a categoria para controlar o comportamento do item. Categoria deve servir para organização e filtros; permissões de venda, uso em procedimento, publicação e rastreabilidade devem ser campos próprios, evitando que uma simples troca de categoria exponha um material na venda ou no catálogo.
@@ -251,7 +251,7 @@ Se qualquer item acima falhar, o lançamento fica **No-Go** até a correção.
 - [ ] Criar componentes compartilhados para sustentar o padrão: estrutura de formulário em tela cheia, navegador de etapas, seção de formulário, campos avançados recolhíveis, lista editável responsiva, editor de item, resumo de revisão e resumo de validação por etapa.
 - [ ] Integrar o padrão de formulários grandes à lógica de rascunho automático: salvar por seção/etapa, indicar quando o rascunho foi salvo, restaurar o preenchimento e impedir perda de dados ao editar itens, trocar de etapa, fechar a tela ou acessar um cadastro auxiliar.
 - [ ] Aplicar inicialmente o padrão em **Compras, Vendas, Agendamento/Atendimento, Procedimentos e Fornecedores**, reutilizando os mesmos componentes visuais sem misturar suas regras de negócio.
-- [ ] **Aprovado — criar Gestão de equipe, perfis de acesso e auditoria central:** organizar a área em Usuários, Perfis de acesso e Auditoria; permitir criar, duplicar e reutilizar perfis personalizados; agrupar permissões por módulo com nomes, descrições e impactos claros; mostrar permissões efetivas e permitir configurar o perfil e suas exceções antes de concluir o cadastro do usuário.
+- [x] **Aprovado — criar Gestão de equipe, perfis de acesso e auditoria central:** organizar a área em Usuários, Perfis de acesso e Auditoria; permitir criar, duplicar e reutilizar perfis personalizados; agrupar permissões por módulo com nomes, descrições e impactos claros; mostrar permissões efetivas e permitir configurar o perfil e suas exceções antes de concluir o cadastro do usuário.
 - [ ] Registrar na auditoria central cadastros, alterações, arquivamentos, exclusões, logins e bloqueios, mudanças de perfil/permissão, operações financeiras e de estoque, importações fiscais, exportações de relatórios e acessos a informações clínicas sensíveis. Exibir filtros por período, usuário, módulo, ação e entidade, com comparação antes/depois e motivo quando aplicável.
 - [ ] Tratar a auditoria como registro imutável e protegido por permissão. Nunca gravar senhas, tokens, segredos SMTP, dados de cartão ou conteúdo clínico desnecessário; registrar metadados de acesso sensível sem expor o conteúdo. Corrigir também o salvamento silencioso de permissões sem motivo e auditar a exclusão de usuários.
 - [ ] **Aprovado — evoluir a Central de relatórios com uma arquitetura única e econômica:** organizar os relatórios nas categorias Atendimento, Clientes e Clínico, Comercial, Estoque e Compras, Financeiro e Gestão/Auditoria; dentro de cada categoria, apresentar apenas os relatórios permitidos pelo plano e pelas permissões do usuário.
