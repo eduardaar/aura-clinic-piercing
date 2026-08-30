@@ -65,11 +65,11 @@ function distinctOptions(values) {
   return [...new Set(values.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), "pt-BR"));
 }
 
-export function AgendaWorkspace({ initialScreen = "agenda", initialSettingsTab, onSettingsClosed, features = [], onUpgrade }) {
+export function AgendaWorkspace({ initialScreen = "agenda", initialSettingsTab, onSettingsClosed, features = [], onUpgrade, createSignal = 0 }) {
   const [screen, setScreen] = useState(initialScreen);
   return screen === "settings"
     ? <BookingAdmin initialTab={initialSettingsTab} onBack={() => { setScreen("agenda"); onSettingsClosed?.(); }} />
-    : <VisualCalendar features={features} onUpgrade={onUpgrade} onOpenSettings={() => setScreen("settings")} />;
+    : <VisualCalendar features={features} onUpgrade={onUpgrade} onOpenSettings={() => setScreen("settings")} createSignal={createSignal} />;
 }
 
 function PublicBookingLink() {
@@ -316,7 +316,7 @@ function AppointmentValueSummary({ form, services, jewelry }) {
   );
 }
 
-export function VisualCalendar({ onOpenSettings, features = [], onUpgrade }) {
+export function VisualCalendar({ onOpenSettings, features = [], onUpgrade, createSignal = 0 }) {
   const { data: options } = useFetch("/options");
   const { data: clients } = useFetch("/clients");
   const { data: services } = useFetch("/services");
@@ -325,6 +325,7 @@ export function VisualCalendar({ onOpenSettings, features = [], onUpgrade }) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [createSeed, setCreateSeed] = useState(null);
+  useEffect(() => { if (createSignal) setCreateSeed({}); }, [createSignal]);
   const { data } = useFetch(`/appointments?${new URLSearchParams(Object.fromEntries(Object.entries(filters).filter(([, v]) => v && !["mensal", "semanal", "diario", "lista", "realizados"].includes(v))))}`);
   // Invalidar "/appointments" alcança o calendário sob qualquer combinação de
   // filtros, não só a consulta que está montada agora.

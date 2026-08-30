@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FileUp, Landmark, Tags } from "lucide-react";
 import { Button, Input, Metric, PaymentSelect, Select, StatusBadge, Textarea } from "../../components/common/Ui";
 import { CrudHeader, Modal, RowActions } from "../../components/common/Crud";
@@ -44,7 +44,7 @@ function formatDate(value) {
 const purchaseStatusLabel = (status) =>
   ({ draft: "Rascunho", confirmed: "Confirmada", cancelled: "Cancelada" })[status] || status || "Confirmada";
 
-export function Purchases({ onNavigate }) {
+export function Purchases({ onNavigate, createSignal = 0 }) {
   const { data, loading, error: purchasesError } = useFetch("/purchases");
   const { data: suppliers } = useFetch("/finance/suppliers");
   const { data: products } = useFetch("/jewelry");
@@ -62,6 +62,7 @@ export function Purchases({ onNavigate }) {
   const [nfeXml, setNfeXml] = useState("");
   const [nfePreview, setNfePreview] = useState(null);
   const [importingNfe, setImportingNfe] = useState(false);
+  useEffect(() => { if (createSignal) openNew(); }, [createSignal]);
 
   const purchasePayload = asObject(data);
   const purchases = Array.isArray(data) ? data : asArray(purchasePayload.items);

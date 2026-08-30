@@ -1,5 +1,5 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button, FinancialSummary, Input, Metric, Select, StatusBadge, Textarea } from "../../components/common/Ui";
 import { Modal, CrudHeader, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
@@ -38,7 +38,7 @@ const distinctOptions = (rows, pick, label = (value) => value) =>
 const orderItemsLabel = (order) =>
   asArray(order.items).map((item) => `${item.quantity}x ${item.item_name}`).join(" · ");
 
-export function SalesWorkspace({ features = [], onUpgrade }) {
+export function SalesWorkspace({ features = [], onUpgrade, createSignal = 0 }) {
   const { data: orders, loading: ordersLoading, error: ordersError } = useFetch("/sales-orders");
   const { data: jewelry } = useFetch("/jewelry");
   // Uma venda dá baixa no estoque e lança no financeiro: invalidar só a lista
@@ -57,6 +57,7 @@ export function SalesWorkspace({ features = [], onUpgrade }) {
   const [details, setDetails] = useState(null);
   const [returnOrder, setReturnOrder] = useState(null);
   const [returnForm, setReturnForm] = useState(null);
+  useEffect(() => { if (createSignal) openNew(); }, [createSignal]);
   const canGenerateReceivables = planAllowsAction(features, "sales.generate_receivables");
   const currentUser = readStoredSession()?.user || {};
   const canCancelSales = can(currentUser, "sales.cancel");

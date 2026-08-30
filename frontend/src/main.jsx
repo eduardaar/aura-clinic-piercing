@@ -1,8 +1,8 @@
-import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import React, { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Bell, BookOpen, Calendar, ChevronDown, CircleHelp, LifeBuoy, LogOut, Menu, Newspaper, PanelLeftClose, PanelLeftOpen, Search, Settings as SettingsIcon, Sparkles, UserRound } from "lucide-react";
+import { Bell, BookOpen, Calendar, ChevronDown, CircleHelp, LifeBuoy, LogOut, Menu, Newspaper, PanelLeftClose, PanelLeftOpen, Plus, Settings as SettingsIcon, Sparkles, UserRound } from "lucide-react";
 import "./styles.css";
 import "./styles/topnav.css";
 import "./styles/landing.css";
@@ -56,8 +56,7 @@ function App() {
     });
   }
   const [alertsOpen, setAlertsOpen] = useState(false);
-  const [globalSearch, setGlobalSearch] = useState("");
-  const globalSearchRef = useRef(null);
+  const [quickCreate, setQuickCreate] = useState({ page: "", signal: 0 });
   const [alertsData, setAlertsData] = useState({ count: 0, items: [] });
   const [alertsLoading, setAlertsLoading] = useState(false);
   // Identidade da clínica logada (nome + logo), para o app exibir a marca do
@@ -114,17 +113,6 @@ function App() {
       window.removeEventListener(ACCESS_SESSION_ENDED_EVENT, syncStoredSession);
       window.removeEventListener("storage", syncStoredSession);
     };
-  }, []);
-
-  useEffect(() => {
-    const onKeyDown = (event) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        globalSearchRef.current?.focus();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
   function changeUiTheme(nextTheme) {
@@ -203,6 +191,11 @@ function App() {
     }
     setPage(nextPage);
   }, []);
+
+  const openQuickCreate = useCallback((nextPage) => {
+    setQuickCreate({ page: nextPage, signal: Date.now() });
+    navigate(nextPage);
+  }, [navigate]);
 
   useEffect(() => {
     const onPopState = () => {
@@ -324,15 +317,15 @@ function App() {
   const ActivePage = appPageById(activePage)?.component;
   const activePageProps = {
     dashboard: { user: normalizedSession.user, setPage: navigate, alertsOpen, setAlertsOpen, alertsData, alertsLoading },
-    agenda: { initialScreen: agendaTarget ? "settings" : "agenda", initialSettingsTab: agendaTarget, onSettingsClosed: () => setAgendaTarget(null), features: planFeatures, onUpgrade: openProfessionalPlan },
+    agenda: { initialScreen: agendaTarget ? "settings" : "agenda", initialSettingsTab: agendaTarget, onSettingsClosed: () => setAgendaTarget(null), features: planFeatures, onUpgrade: openProfessionalPlan, createSignal: quickCreate.page === "agenda" ? quickCreate.signal : 0 },
     services: { onNavigate: navigate },
     onboarding: { onNavigate: navigate, onOpenAgendaSettings: (tab) => { setAgendaTarget(tab); navigate("agenda"); } },
     products: { area: "produtos" },
     inventory: { area: "produtos", initialTab: "todos" },
     catalog: { area: "catalogo" },
-    "client-center": { onNavigate: navigate },
-    sales: { features: planFeatures, onUpgrade: openProfessionalPlan },
-    purchases: { onNavigate: navigate },
+    "client-center": { onNavigate: navigate, createSignal: quickCreate.page === "client-center" ? quickCreate.signal : 0 },
+    sales: { features: planFeatures, onUpgrade: openProfessionalPlan, createSignal: quickCreate.page === "sales" ? quickCreate.signal : 0 },
+    purchases: { onNavigate: navigate, createSignal: quickCreate.page === "purchases" ? quickCreate.signal : 0 },
     receivables: { onNavigate: navigate },
     payables: { onNavigate: navigate },
     suppliers: { registry: "suppliers" },
@@ -379,23 +372,22 @@ function App() {
             <Menu size={20} className="nav-toggle-mobile" />
             {navCollapsed ? <PanelLeftOpen size={20} className="nav-toggle-desk" /> : <PanelLeftClose size={20} className="nav-toggle-desk" />}
           </button>
-          <form className="global-search" role="search" onSubmit={(event) => event.preventDefault()}>
-            <Search size={19} aria-hidden="true" />
-            <input
-              ref={globalSearchRef}
-              type="search"
-              value={globalSearch}
-              onChange={(event) => setGlobalSearch(event.target.value)}
-              placeholder="Buscar cliente, agendamento, serviço…"
-              aria-label="Busca global"
-            />
-            <kbd>⌘ K</kbd>
-          </form>
           <div className="topbar-page-context">
             <span>{brandName}</span>
             <strong>{activePage === "dashboard" ? "Visão geral" : pageTitle(activePage)}</strong>
           </div>
           <div className="topbar-actions">
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger className="primary-button" aria-label="Criar novo registro"><Plus size={17} /> Novo</DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content className="user-menu-popover" align="end" sideOffset={8}>
+                  {canAccessPage(normalizedSession.user, "agenda", planFeatures) && <DropdownMenu.Item onSelect={() => openQuickCreate("agenda")}>Novo agendamento</DropdownMenu.Item>}
+                  {canAccessPage(normalizedSession.user, "client-center", planFeatures) && <DropdownMenu.Item onSelect={() => openQuickCreate("client-center")}>Novo cliente</DropdownMenu.Item>}
+                  {canAccessPage(normalizedSession.user, "sales", planFeatures) && <DropdownMenu.Item onSelect={() => openQuickCreate("sales")}>Nova venda</DropdownMenu.Item>}
+                  {canAccessPage(normalizedSession.user, "purchases", planFeatures) && <DropdownMenu.Item onSelect={() => openQuickCreate("purchases")}>Nova compra</DropdownMenu.Item>}
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
             <button type="button" className="topbar-quick-action topbar-calendar-action" onClick={() => navigate("agenda")} aria-label="Abrir agenda" title="Agenda"><Calendar size={20} /></button>
             <button className="topbar-quick-action topbar-notification-action" aria-label="Pendências ativas" title="Pendências ativas" onClick={openAlerts}>
               <Bell size={20} />

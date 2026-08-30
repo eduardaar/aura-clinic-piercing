@@ -1,5 +1,5 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FileSignature, HeartPulse } from "lucide-react";
 import { Button, Checkbox, Input, SecureImage, Select, StatusBadge, Tabs, Textarea } from "../../components/common/Ui";
 import { ConfirmDeleteModal, Modal, CrudHeader, RowActions } from "../../components/common/Crud";
@@ -25,11 +25,11 @@ import "./clients.css";
 const TermsIcon = ({ size }) => <FileSignature size={size} />;
 const PostCareIcon = ({ size }) => <HeartPulse size={size} />;
 
-export function ClientWorkspace({ onNavigate }) {
-  return <ClientsMedical onNavigate={onNavigate} />;
+export function ClientWorkspace({ onNavigate, createSignal = 0 }) {
+  return <ClientsMedical onNavigate={onNavigate} createSignal={createSignal} />;
 }
 
-export function ClientsMedical({ onNavigate }) {
+export function ClientsMedical({ onNavigate, createSignal = 0 }) {
   const { data } = useFetch("/clients");
   // Uma invalidação de "/clients" cobre a listagem, os filtros e o detalhe
   // "/clients/:id"; o dashboard conta clientes, então acompanha.
@@ -40,6 +40,13 @@ export function ClientsMedical({ onNavigate }) {
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState(null);
   const [profile, setProfile] = useState(null);
+  useEffect(() => {
+    if (!createSignal) return;
+    setEditing(null);
+    setError("");
+    setProfile(null);
+    setModalOpen(true);
+  }, [createSignal]);
   if (!data) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
   const clients = asArray(data);

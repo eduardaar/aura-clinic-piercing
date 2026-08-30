@@ -36,7 +36,7 @@ export const APP_PAGES = Object.freeze([
     component: lazyNamed(() => import("../features/agenda/Agenda"), "AgendaWorkspace")
   },
   {
-    id: "services", path: "/app/servicos", title: "Serviços", group: "Atendimento", icon: Sparkles, menu: true, menuRank: 1,
+    id: "services", path: "/app/servicos", title: "Procedimentos da Agenda", group: null, icon: Sparkles, menu: false, menuRank: 1,
     roleRank: { admin: 2, reception: 1, piercer: 1 }, feature: "procedures",
     component: lazyNamed(() => import("../features/services/Services"), "ServicesWorkspace")
   },
@@ -76,7 +76,7 @@ export const APP_PAGES = Object.freeze([
     component: lazyNamed(() => import("../pages/CatalogCustomization"), "CatalogCustomization")
   },
   {
-    id: "sales", path: "/app/vendas", title: "Vendas e ordens", menuTitle: "Vendas", group: "Comercial", icon: ShoppingCart, menu: true, menuRank: 1,
+    id: "sales", path: "/app/vendas", title: "Vendas", menuTitle: "Vendas", group: "Comercial", icon: ShoppingCart, menu: true, menuRank: 1,
     roleRank: { admin: 10, reception: 6, finance: 7, piercer: 6 }, permission: "sales.view", feature: "basic_catalog",
     component: lazyNamed(() => import("../features/sales/Sales"), "SalesWorkspace")
   },
@@ -139,12 +139,12 @@ export const APP_PAGES = Object.freeze([
     component: lazyNamed(() => import("../features/postcare/PostCare"), "PostCare")
   },
   {
-    id: "admin", path: "/app/acessos", title: "Acessos administrativos", menuTitle: "Acessos", group: "Sistema", icon: ShieldCheck, menu: true, menuRank: 0,
+    id: "admin", path: "/app/acessos", title: "Usuários e permissões", menuTitle: "Usuários e permissões", group: "Configurações", icon: ShieldCheck, menu: true, menuRank: 1,
     roleRank: { admin: 21 }, permission: "users.view",
     component: lazyNamed(() => import("../features/access/AccessAdmin"), "AccessAdmin")
   },
   {
-    id: "integrations", path: "/app/integracoes", title: "Integrações", group: null, menu: false,
+    id: "integrations", path: "/app/integracoes", title: "Integrações", group: "Configurações", icon: Sparkles, menu: true, menuRank: 2,
     roleRank: { admin: 22 },
     component: lazyNamed(() => import("../features/integrations/Integrations"), "Integrations")
   },
@@ -169,12 +169,12 @@ export const APP_PAGES = Object.freeze([
     component: lazyNamed(() => import("../features/help/HelpCenter"), "ProductNews")
   },
   {
-    id: "meu-plano", path: "/app/meu-plano", title: "Meu plano", group: null, menu: false,
+    id: "meu-plano", path: "/app/meu-plano", title: "Meu plano", group: "Configurações", icon: Sparkles, menu: true, menuRank: 3,
     roleRank: { admin: 25 },
     component: lazyNamed(() => import("../features/platform/MyPlan"), "MyPlan")
   },
   {
-    id: "settings", path: "/app/configuracoes", title: "Configurações", group: null, menu: false,
+    id: "settings", path: "/app/configuracoes", title: "Dados e preferências", group: "Configurações", icon: Sparkles, menu: true, menuRank: 0,
     roleRank: { admin: 26, reception: 10, finance: 8, piercer: 11 }, permission: "settings.view",
     component: lazyNamed(() => import("../features/settings/Settings"), "Settings")
   },
@@ -212,11 +212,11 @@ export function publicPageForPath(pathname) {
 }
 
 export function menuPages({ onboardingAtBottom = false } = {}) {
-  const groupOrder = ["Início", "Atendimento", "Comercial", "Estoque e compras", "Financeiro", "Gestão", "Sistema"];
+  const groupOrder = ["Início", "Atendimento", "Comercial", "Estoque e compras", "Financeiro", "Gestão", "Configurações"];
   return groupOrder.map((group) => ({
     group,
     pages: INTERNAL_APP_PAGES.filter((page) => page.menu && (page.id === "onboarding"
-      ? group === (onboardingAtBottom ? "Sistema" : "Início")
+      ? group === (onboardingAtBottom ? "Configurações" : "Início")
       : page.group === group)).sort((left, right) => left.menuRank - right.menuRank)
   })).filter(({ pages }) => pages.length > 0);
 }

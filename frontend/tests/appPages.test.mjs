@@ -33,7 +33,7 @@ test("permissões, features, títulos e ordem dos papéis usam APP_PAGES", () =>
 test("menu e páginas públicas preservam agrupamento e correspondência", () => {
   const menu = menuPages();
   assert.deepEqual(menu.map(({ group }) => group), [
-    "Início", "Atendimento", "Comercial", "Estoque e compras", "Financeiro", "Gestão", "Sistema"
+    "Início", "Atendimento", "Comercial", "Estoque e compras", "Financeiro", "Gestão", "Configurações"
   ]);
   assert.deepEqual(menu.find(({ group }) => group === "Estoque e compras").pages.map(({ id }) => id), [
     "inventory", "purchases", "suppliers"
