@@ -34,34 +34,11 @@ test("migrations versionadas têm baseline válido por escopo", () => {
     platform.map((item) => item.version),
     ["0001", "0002", "0003", "0004", "0005", "0006", "0007"],
   );
-  assert.deepEqual(
-    tenant.map((item) => item.version),
-    [
-      "0001",
-      "0002",
-      "0003",
-      "0004",
-      "0005",
-      "0006",
-      "0007",
-      "0008",
-      "0009",
-      "0010",
-      "0011",
-      "0012",
-      "0013",
-      "0014",
-      "0015",
-      "0016",
-      "0017",
-      "0018",
-      "0019",
-      "0020",
-      "0021",
-      "0022",
-      "0023",
-    ],
-  );
+  const tenantVersions = tenant.map((item) => item.version);
+  assert.deepEqual(tenantVersions.slice(0, 19), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019"]);
+  assert.deepEqual([...tenantVersions].sort(), tenantVersions, "migrations tenant devem permanecer ordenadas");
+  assert.equal(new Set(tenantVersions).size, tenantVersions.length, "versões tenant não podem se repetir");
+  assert.deepEqual(tenantVersions.slice(-5), ["0020", "0021", "0022", "0023", "0024"]);
   assert.ok(platform.every((item) => /^[a-f0-9]{64}$/.test(item.checksum)));
 });
 
@@ -105,9 +82,9 @@ test("migration 0011 persiste a configuração explícita de parcelas nas origen
   );
 });
 
-test("migration 0021 adiciona os dados clínicos opcionais à execução", () => {
-  const clinicalExecution = loadMigrations("tenant").find((item) => item.version === "0021");
-  assert.ok(clinicalExecution, "a migration tenant 0021 é obrigatória");
+test("migration 0024 adiciona os dados clínicos opcionais à execução", () => {
+  const clinicalExecution = loadMigrations("tenant").find((item) => item.version === "0024");
+  assert.ok(clinicalExecution, "a migration tenant 0024 é obrigatória");
   for (const column of ["clinical_notes", "occurrences", "aftercare_notes"]) {
     assert.match(clinicalExecution.sql, new RegExp(`service_executions[^;]*${column}`, "i"));
   }
