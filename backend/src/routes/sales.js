@@ -24,6 +24,7 @@ import {
 import { requireFeature } from "../services/subscriptions.js";
 import { createSalesReturn, listSalesReturns } from "../services/salesReturns.js";
 import { applyCreditToSalesOrder } from "../services/clientCredits.js";
+import { recordAudit } from "../services/audit.js";
 
 const router = Router();
 
@@ -94,7 +95,12 @@ router.post("/api/sales-orders/:id/returns", withFeature("basic_catalog", async 
   if (!authorizePermission(req, res, P.SALES_EDIT_CLOSED)) return;
   if (["client_credit", "manual_refund"].includes(String(req.body?.financial_action || "")) && !authorizePermission(req, res, P.FINANCE_REFUND)) return;
   try {
-    res.status(201).json(await createSalesReturn(db, req.params.id, req.body || {}, req.user?.id || null));
+    const result = await createSalesReturn(db, req.params.id, req.body || {}, req.user?.id || null);
+    await recordAudit(db, {
+      req, module: "sales", action: "return", entityType: "sales_order", entityId: req.params.id,
+      reason: String(req.body?.reason || "Devolução de venda"), metadata: { return_id: result.id, financial_action: req.body?.financial_action }, severity: "critical"
+    });
+    res.status(201).json(result);
   } catch (error) {
     const message = error.message || "Não foi possível registrar a devolução.";
     res.status(/não encontrada|não encontrado/i.test(message) ? 404 : /supera|já recebido|só pode|usam o cancelamento/i.test(message) ? 409 : 400).json({ error: message });
@@ -104,7 +110,12 @@ router.post("/api/sales-orders/:id/returns", withFeature("basic_catalog", async 
 router.post("/api/sales-orders/:id/apply-client-credit", withFeature("basic_catalog", async (req, res, db) => {
   if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
   try {
-    res.json(await applyCreditToSalesOrder(db, req.params.id, req.body || {}, req.user?.id || null));
+    const result = await applyCreditToSalesOrder(db, req.params.id, req.body || {}, req.user?.id || null);
+    await recordAudit(db, {
+      req, module: "sales", action: "apply_client_credit", entityType: "sales_order", entityId: req.params.id,
+      reason: String(req.body?.reason || "Crédito do cliente aplicado"), severity: "warning"
+    });
+    res.json(result);
   } catch (error) {
     res.status(/não encontrada|não encontrado/i.test(error.message) ? 404 : 400).json({ error: error.message || "Não foi possível aplicar o crédito." });
   }
@@ -124,6 +135,10 @@ router.post("/api/sales-orders", withFeature("basic_catalog", async (req, res, d
     throw error;
   }
   if (!order) return res.status(400).json({ error: "Não foi possível criar a venda." });
+  await recordAudit(db, {
+    req, module: "sales", action: "create", entityType: "sales_order", entityId: order.id,
+    reason: "Venda interna criada", after: { id: order.id, client_id: order.client_id, status: order.status, total_value: order.total_value }
+  });
   res.status(201).json(order);
 }));
 
@@ -137,6 +152,10 @@ router.post("/api/sales-orders/public", withFeature("basic_catalog", async (req,
     throw error;
   }
   if (!order) return res.status(400).json({ error: "Não foi possível criar a venda." });
+  await recordAudit(db, {
+    req, actor: null, module: "sales", action: "public_create", entityType: "sales_order", entityId: order.id,
+    reason: "Pedido criado pelo catálogo público", after: { id: order.id, client_id: order.client_id, status: order.status, total_value: order.total_value }
+  });
 
   // Cobrança online do pedido, quando a clínica tem gateway configurado.
   //
@@ -280,6 +299,13 @@ router.patch("/api/sales-orders/:id", withFeature("basic_catalog", async (req, r
       }
 
       if (nextStatus === "cancelado") await cancelSalesOrderReceivables(tx, locked.id);
+      await recordAudit(tx, {
+        req, module: "sales", action: nextStatus === "cancelado" ? "cancel" : "update", entityType: "sales_order", entityId: locked.id,
+        reason: String(req.body?.reason || (nextStatus === "cancelado" ? "Venda cancelada" : "Venda alterada")),
+        before: { id: locked.id, status: locked.status, payment_method: locked.payment_method, receivable_mode: locked.receivable_mode },
+        after: { id: locked.id, status: nextStatus, payment_method: nextPaymentMethod, receivable_mode: receivableMode },
+        severity: nextStatus === "cancelado" ? "critical" : "warning"
+      });
     });
   } catch (error) {
     if (error instanceof SalesOrderValidationError || /recebimento|parcelas|vencimento/i.test(String(error.message))) {

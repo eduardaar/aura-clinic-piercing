@@ -66,6 +66,13 @@ router.post("/api/purchases", withFeature("basic_finance", async (req, res, db) 
       idempotencyKey: req.get("Idempotency-Key"),
       userId: req.user?.id || null
     });
+    if (!purchase.idempotent) {
+      await recordAudit(db, {
+        req, module: "purchases", action: "create", entityType: "purchase", entityId: purchase.id,
+        reason: purchase.fiscal_document_id ? "Compra criada por importação fiscal" : "Compra criada",
+        after: { id: purchase.id, supplier_id: purchase.supplier_id, status: purchase.status, total_value: purchase.total_value }
+      });
+    }
     res.status(purchase.idempotent ? 200 : 201).json(purchase);
   } catch (error) {
     if (!purchaseError(res, error)) throw error;
@@ -75,7 +82,12 @@ router.post("/api/purchases", withFeature("basic_finance", async (req, res, db) 
 router.post("/api/purchases/:id/confirm", withFeature("basic_finance", async (req, res, db) => {
   if (!authorizePermission(req, res, P.FINANCE_CREATE)) return;
   try {
-    res.json(await confirmPurchase(db, req.params.id, req.user?.id || null));
+    const purchase = await confirmPurchase(db, req.params.id, req.user?.id || null);
+    await recordAudit(db, {
+      req, module: "purchases", action: "confirm", entityType: "purchase", entityId: req.params.id,
+      reason: "Entrada de compra confirmada", after: { id: purchase.id, status: purchase.status, total_value: purchase.total_value }, severity: "warning"
+    });
+    res.json(purchase);
   } catch (error) {
     if (!purchaseError(res, error)) throw error;
   }
@@ -84,7 +96,12 @@ router.post("/api/purchases/:id/confirm", withFeature("basic_finance", async (re
 router.delete("/api/purchases/:id", withFeature("basic_finance", async (req, res, db) => {
   if (!authorizePermission(req, res, P.FINANCE_CANCEL)) return;
   try {
-    res.json(await deleteDraftPurchase(db, req.params.id));
+    const result = await deleteDraftPurchase(db, req.params.id);
+    await recordAudit(db, {
+      req, module: "purchases", action: "delete_draft", entityType: "purchase", entityId: req.params.id,
+      reason: String(req.body?.reason || "Rascunho de compra removido"), severity: "warning"
+    });
+    res.json(result);
   } catch (error) {
     if (!purchaseError(res, error)) throw error;
   }
