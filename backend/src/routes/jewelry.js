@@ -31,6 +31,7 @@ import { parsePaging, fetchPage, pageResponse } from "../services/pagination.js"
 import { invalidateUsageCache, requireWithinLimit } from "../services/planLimits.js";
 import { JEWELRY_CATEGORIES } from "../config/index.js";
 import { hasPermission } from "../services/permissionService.js";
+import { recordAudit } from "../services/audit.js";
 
 const router = Router();
 
@@ -576,6 +577,15 @@ router.post("/api/jewelry", withFeature("basic_inventory", async (req, res, db) 
     await replaceJewelryVariants(db, result.returnedId, req.body.variants || [variantFromLegacy({ ...req.body, sku: "" })]);
     await syncProductImages(db, result.returnedId, req.body.images || req.body.gallery_urls || [req.body.image_url || req.body.photo_url].filter(Boolean));
     const product = (await attachVariants(db, [await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [result.returnedId])]))[0];
+    await recordAudit(db, {
+      req,
+      module: "inventory",
+      action: "create",
+      entityType: "inventory_item",
+      entityId: product.id,
+      reason: "Cadastro de item de estoque",
+      after: product
+    });
     await db.run("COMMIT");
     return res.status(201).json(product);
   } catch (error) {
@@ -631,6 +641,16 @@ router.patch("/api/jewelry/:id", withFeature("basic_inventory", async (req, res,
       await syncProductImages(db, jewelry.id, req.body.images || req.body.gallery_urls || [req.body.image_url || req.body.photo_url].filter(Boolean));
     }
     const product = (await attachVariants(db, [await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [req.params.id])]))[0];
+    await recordAudit(db, {
+      req,
+      module: "inventory",
+      action: "update",
+      entityType: "inventory_item",
+      entityId: product.id,
+      reason: String(req.body.reason || "Atualização de item de estoque"),
+      before: jewelry,
+      after: product
+    });
     await db.run("COMMIT");
     return res.json(product);
   } catch (error) {
@@ -678,6 +698,17 @@ router.post("/api/jewelry/:id/variants/:variantId/movements", withFeature("basic
         [nextQuantity, variantStatus(nextQuantity, variant.low_stock_threshold), variant.id]
       );
       await syncProductInventory(tx, req.params.id);
+      await recordAudit(tx, {
+        req,
+        module: "inventory",
+        action: "stock_movement",
+        entityType: "inventory_variant",
+        entityId: variant.id,
+        reason: String(req.body.notes || movementType),
+        before: { quantity: currentQuantity },
+        after: { quantity: nextQuantity },
+        metadata: { inventory_item_id: req.params.id, movement_type: movementType, quantity }
+      });
     });
     res.json({ ok: true, product: (await attachVariants(db, [await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [req.params.id])]))[0] });
   } catch (error) {
@@ -742,6 +773,17 @@ router.post("/api/jewelry/:id/movements", withFeature("basic_inventory", async (
       } else {
         await tx.run("UPDATE jewelry_inventory SET quantity = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [nextQuantity, status, req.params.id]);
       }
+      await recordAudit(tx, {
+        req,
+        module: "inventory",
+        action: "stock_movement",
+        entityType: variants[0] ? "inventory_variant" : "inventory_item",
+        entityId: variants[0]?.id || jewelry.id,
+        reason: String(req.body.notes || movementType),
+        before: { quantity: currentQuantity },
+        after: { quantity: nextQuantity },
+        metadata: { inventory_item_id: jewelry.id, movement_type: movementType, quantity }
+      });
     });
     res.json({
       ok: true,
@@ -758,6 +800,8 @@ router.post("/api/jewelry/:id/movements", withFeature("basic_inventory", async (
 
 router.delete("/api/jewelry/:id", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_DELETE)) return;
+  const jewelry = await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [req.params.id]);
+  if (!jewelry) return res.status(404).json({ error: "Item de estoque não encontrado." });
   const linked = await db.get(`
     SELECT
       (SELECT COUNT(*) FROM appointments WHERE jewelry_id = ?) +
@@ -766,9 +810,30 @@ router.delete("/api/jewelry/:id", withFeature("basic_inventory", async (req, res
   `, [req.params.id, req.params.id, req.params.id]);
   if (linked.count > 0) {
     await db.run("UPDATE jewelry_inventory SET status = 'arquivado', is_catalog_active = 0 WHERE id = ?", [req.params.id]);
+    await recordAudit(db, {
+      req,
+      module: "inventory",
+      action: "archive",
+      entityType: "inventory_item",
+      entityId: jewelry.id,
+      reason: String(req.body?.reason || "Item arquivado por possuir histórico vinculado"),
+      before: jewelry,
+      after: { ...jewelry, status: "arquivado", is_catalog_active: 0 },
+      severity: "warning"
+    });
     return res.json({ ok: true, archived: true });
   }
   await db.run("DELETE FROM jewelry_inventory WHERE id = ?", [req.params.id]);
+  await recordAudit(db, {
+    req,
+    module: "inventory",
+    action: "delete",
+    entityType: "inventory_item",
+    entityId: jewelry.id,
+    reason: String(req.body?.reason || "Exclusão de item sem histórico vinculado"),
+    before: jewelry,
+    severity: "critical"
+  });
   // Arquivar mantém a linha (e a contagem); excluir de verdade não.
   invalidateUsageCache(req.tenant?.id);
   res.json({ ok: true, archived: false });
