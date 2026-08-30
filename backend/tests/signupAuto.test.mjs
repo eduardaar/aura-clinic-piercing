@@ -15,6 +15,28 @@ after(async () => {
   if (ctx.tenantId) await deleteTenant(ctx.platformToken, ctx.tenantId, ctx.slug);
 });
 
+test("não cria clínica antes do aceite jurídico e da escolha de plano válida", async () => {
+  const suffix = Math.floor(performance.now() * 1000) % 1000000;
+  const email = `incompleto${suffix}@signup.test`;
+  const base = { name: `Clinica Incompleta ${suffix}`, admin_email: email, admin_password: "SenhaForte123" };
+  const semAceite = await req("/signup", { method: "POST", body: { ...base, plan_code: "profissional" } });
+  assert.equal(semAceite.status, 400, JSON.stringify(semAceite.json));
+  assert.equal(semAceite.json.code, "legal_acceptance_required");
+
+  const legal = await req("/legal-documents");
+  const legalAcceptances = Object.fromEntries(legal.json.documents.map((item) => [item.key, item.version]));
+  const planoInvalido = await req("/signup", {
+    method: "POST",
+    body: { ...base, plan_code: "plano-inexistente", legal_acceptances: legalAcceptances }
+  });
+  assert.equal(planoInvalido.status, 400, JSON.stringify(planoInvalido.json));
+  assert.equal(planoInvalido.json.code, "plano_obrigatorio");
+
+  const availability = await req(`/signup/availability?email=${encodeURIComponent(email)}`);
+  assert.equal(availability.status, 200);
+  assert.equal(availability.json.email.available, true, "nenhuma tentativa incompleta pode criar a clínica");
+});
+
 test("signup sem slug deriva o código do nome e retorna token que autentica", async () => {
   const suffix = Math.floor(performance.now() * 1000) % 1000000;
   const name = `Studio Lua Piercing ${suffix}`;

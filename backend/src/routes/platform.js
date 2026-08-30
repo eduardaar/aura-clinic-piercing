@@ -137,8 +137,15 @@ router.post("/api/signup", signupLimiter, async (req, res) => {
     // esta guarda de propósito: atribuir um plano fora de linha é justamente
     // como se honra um contrato antigo ou um acordo especial.
     const planoPedido = String(b.plan_code || b.plan || "").trim().toLowerCase();
-    const planCode = normalizePlanCode(planoPedido);
-    if (planoPedido && planByCode(planCode).is_active === false) {
+    const requestedPlan = listPlans().find((plan) => plan.code === planoPedido);
+    if (!requestedPlan) {
+      return res.status(400).json({
+        error: "Escolha um plano disponível para criar a conta.",
+        code: "plano_obrigatorio"
+      });
+    }
+    const planCode = requestedPlan.code;
+    if (requestedPlan.is_active === false) {
       return res.status(400).json({
         error: "Este plano não está mais disponível para contratação.",
         code: "plano_indisponivel"
