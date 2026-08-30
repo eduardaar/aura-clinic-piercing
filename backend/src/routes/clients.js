@@ -15,6 +15,7 @@ import { P } from "../config/permissions.js";
 import { authorizePermission } from "../middleware/requirePermission.js";
 import { hasPermission } from "../services/permissionService.js";
 import { firstClientError, normalizeClientData } from "../services/clientData.js";
+import { recordAudit } from "../services/audit.js";
 
 const router = Router();
 
@@ -40,6 +41,35 @@ async function validateClientLinks(db, data, currentId = null) {
   return "";
 }
 
+async function findClientDuplicates(db, data, currentId = null) {
+  const clauses = [];
+  const params = [];
+  for (const [field, value] of [["cpf", data.cpf], ["whatsapp", data.whatsapp], ["email", data.email]]) {
+    if (!value) continue;
+    clauses.push(field === "email" ? "lower(email)=lower(?)" : `${field}=?`);
+    params.push(value);
+  }
+  if (!clauses.length) return [];
+  if (currentId) {
+    clauses.push("id<>?");
+    params.push(currentId);
+  }
+  return db.all(
+    `SELECT id, full_name, cpf, whatsapp, email FROM clients
+      WHERE deleted_at IS NULL AND (${clauses.slice(0, currentId ? -1 : undefined).join(" OR ")})${currentId ? " AND id<>?" : ""}
+      ORDER BY full_name LIMIT 10`,
+    params
+  );
+}
+
+function duplicateResponse(res, matches) {
+  return res.status(409).json({
+    error: `Possível cliente duplicado: ${matches.map((item) => item.full_name).join(", ")}. Abra o cadastro existente antes de continuar.`,
+    code: "duplicate_client",
+    matches
+  });
+}
+
 router.post(
   "/api/clients",
   withFeature("clients", async (req, res, db) => {
@@ -50,6 +80,8 @@ router.post(
     const b = normalized.data;
     const linkError = await validateClientLinks(db, b);
     if (linkError) return res.status(400).json({ error: linkError });
+    const duplicates = await findClientDuplicates(db, b);
+    if (duplicates.length) return duplicateResponse(res, duplicates);
     req.body = { ...req.body, full_name: b.full_name, whatsapp: b.whatsapp };
     if (!validateBody(clientCreateSchema, req, res)) return;
     // Cota do plano — só na criação. Editar e listar cliente que já existe nunca
@@ -98,7 +130,12 @@ router.post(
         b.notes,
       ],
     );
-    res.status(201).json(clientResponse(await db.get("SELECT * FROM clients WHERE id = ?", [result.returnedId])));
+    const created = await db.get("SELECT * FROM clients WHERE id = ?", [result.returnedId]);
+    await recordAudit(db, {
+      req, module: "clients", action: "create", entityType: "client", entityId: created.id,
+      reason: "Cadastro de cliente", after: { id: created.id, full_name: created.full_name, lifecycle_status: created.lifecycle_status }
+    });
+    res.status(201).json(clientResponse(created));
   }),
 );
 
@@ -112,6 +149,8 @@ async function updateClient(req, res, db) {
   const b = normalized.data;
   const linkError = await validateClientLinks(db, b, req.params.id);
   if (linkError) return res.status(400).json({ error: linkError });
+  const duplicates = await findClientDuplicates(db, b, req.params.id);
+  if (duplicates.length) return duplicateResponse(res, duplicates);
   req.body = { ...req.body, full_name: b.full_name, whatsapp: b.whatsapp };
   if (!validateBody(clientUpdateSchema, req, res)) return;
   await db.run(
@@ -155,7 +194,15 @@ async function updateClient(req, res, db) {
       req.params.id,
     ],
   );
-  res.json(clientResponse(await db.get("SELECT * FROM clients WHERE id = ?", [req.params.id])));
+  const updated = await db.get("SELECT * FROM clients WHERE id = ?", [req.params.id]);
+  await recordAudit(db, {
+    req, module: "clients", action: "update", entityType: "client", entityId: updated.id,
+    reason: "Alteração de cliente",
+    before: { id: current.id, full_name: current.full_name, lifecycle_status: current.lifecycle_status, preferred_contact: current.preferred_contact },
+    after: { id: updated.id, full_name: updated.full_name, lifecycle_status: updated.lifecycle_status, preferred_contact: updated.preferred_contact },
+    severity: "warning"
+  });
+  res.json(clientResponse(updated));
 }
 
 router.put("/api/clients/:id", withFeature("clients", updateClient));
