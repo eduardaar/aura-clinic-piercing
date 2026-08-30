@@ -42,21 +42,18 @@ async function validateClientLinks(db, data, currentId = null) {
 }
 
 async function findClientDuplicates(db, data, currentId = null) {
-  const clauses = [];
+  const identityClauses = [];
   const params = [];
   for (const [field, value] of [["cpf", data.cpf], ["whatsapp", data.whatsapp], ["email", data.email]]) {
     if (!value) continue;
-    clauses.push(field === "email" ? "lower(email)=lower(?)" : `${field}=?`);
+    identityClauses.push(field === "email" ? "lower(email)=lower(?)" : `${field}=?`);
     params.push(value);
   }
-  if (!clauses.length) return [];
-  if (currentId) {
-    clauses.push("id<>?");
-    params.push(currentId);
-  }
+  if (!identityClauses.length) return [];
+  if (currentId) params.push(currentId);
   return db.all(
     `SELECT id, full_name, cpf, whatsapp, email FROM clients
-      WHERE deleted_at IS NULL AND (${clauses.slice(0, currentId ? -1 : undefined).join(" OR ")})${currentId ? " AND id<>?" : ""}
+      WHERE deleted_at IS NULL AND (${identityClauses.join(" OR ")})${currentId ? " AND id<>?" : ""}
       ORDER BY full_name LIMIT 10`,
     params
   );
