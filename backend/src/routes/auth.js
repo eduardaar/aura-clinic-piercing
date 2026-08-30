@@ -20,6 +20,7 @@ import { decryptTotpSecret, encryptTotpSecret, generateTotpSecret, otpauthUri, v
 import { hydrateUserPermissions } from "../services/permissionService.js";
 import { PUBLIC_APP_URL } from "../config/index.js";
 import { sendTransactionalEmail } from "../services/emailProvider.js";
+import { recordAudit } from "../services/audit.js";
 
 const router = Router();
 
@@ -70,7 +71,7 @@ router.post("/api/auth/reset-password", loginLimiter, withDb(async (req, res, db
 
   const reset = await db.transaction(async (tx) => {
     const current = await tx.get(
-      `SELECT prt.id, prt.user_id
+      `SELECT prt.id, prt.user_id, u.name, u.email, u.role
          FROM password_reset_tokens prt
          JOIN users u ON u.id=prt.user_id
         WHERE prt.token_hash=? AND prt.used_at IS NULL AND prt.expires_at>now() AND u.status='active'
@@ -85,6 +86,10 @@ router.post("/api/auth/reset-password", loginLimiter, withDb(async (req, res, db
     return current;
   });
   if (!reset) return res.status(400).json({ error: "Este link é inválido, expirou ou já foi utilizado." });
+  await recordAudit(db, {
+    req, actor: { id: reset.user_id, name: reset.name, email: reset.email, role: reset.role }, module: "auth",
+    action: "password_reset", entityType: "user", entityId: reset.user_id, reason: "Senha redefinida por link de recuperação", severity: "warning"
+  });
   clearRefreshCookie(res);
   res.json({ ok: true, message: "Senha redefinida. Entre novamente com a nova senha." });
 }));
@@ -94,18 +99,27 @@ router.post("/api/login", loginLimiter, withDb(async (req, res, db) => {
   const { email, password } = req.body;
   const user = await db.get("SELECT * FROM users WHERE email = ?", [email]);
   if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+    await recordAudit(db, {
+      req, actor: { email: String(email || "").trim().toLowerCase() }, module: "auth", action: "login_failed",
+      entityType: "session", reason: "Credenciais inválidas", severity: "warning"
+    });
     return res.status(401).json({ error: "Credenciais inválidas." });
   }
-  if (user.status === "inactive") return res.status(403).json({ error: "Usuário inativo. Contate o administrador." });
+  if (user.status === "inactive") {
+    await recordAudit(db, { req, actor: user, module: "auth", action: "login_blocked", entityType: "user", entityId: user.id, reason: "Usuário inativo", severity: "warning" });
+    return res.status(403).json({ error: "Usuário inativo. Contate o administrador." });
+  }
   if (user.mfa_enabled) {
     const secret = decryptTotpSecret(user.mfa_totp_secret_encrypted);
     if (!secret || !verifyTotp(secret, req.body?.mfa_code)) {
+      await recordAudit(db, { req, actor: user, module: "auth", action: "mfa_failed", entityType: "user", entityId: user.id, reason: "Código do autenticador ausente ou inválido", severity: "warning" });
       return res.status(401).json({ error: "Informe o código do seu autenticador.", code: "mfa_required" });
     }
   }
   const session = await createClinicSession(db, user, req);
   const authorizedUser = await hydrateUserPermissions(db, user);
   setRefreshCookie(res, session.refreshToken);
+  await recordAudit(db, { req, actor: user, module: "auth", action: "login", entityType: "session", entityId: session.id, reason: "Login realizado" });
   // Token amarrado à clínica resolvida (multi-tenant); devolve também a clínica.
   res.json({
     token: createToken(user, req.tenant, { sessionId: session.id }),
