@@ -120,19 +120,14 @@ export async function buildFinanceReport(db) {
   // `sales_order_id`. Somar `sales_orders.total_value` aqui contaria a mesma
   // venda duas vezes.
   const deposits = await db.get("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE payment_type = 'sinal' AND status = 'pago' AND paid_at LIKE ?", [`${month}%`]);
-  // "A receber" soma as duas frentes que ainda não têm baixa: agendamentos
-  // não concluídos (o valor nasce e vive em `appointments` até a agenda
-  // fechar o atendimento) e vendas de balcão/catálogo que ainda estão
-  // pendente/aberta. Vendas de origem 'agenda' ficam de fora do segundo termo
-  // de propósito — nascem sempre já concluídas (ensureSalesOrderForAppointment
-  // em services/sales.js), então contá-las aqui seria dobrar o que o primeiro
-  // termo já cobre.
+  // "A receber" soma as duas frentes: agenda e vendas de produtos. A execução
+  // do serviço não cria uma segunda venda, evitando receita duplicada.
   const forecast = await db.get(`
     SELECT
       COALESCE((SELECT SUM(total_value) FROM appointments WHERE status IN ('pendente', 'awaiting_deposit_proof', 'confirmado')), 0)
-        + COALESCE((SELECT SUM(total_value) FROM sales_orders WHERE status IN ('pendente', 'aberta') AND source != 'agenda'), 0) AS total,
+        + COALESCE((SELECT SUM(total_value) FROM sales_orders WHERE status IN ('pendente', 'aberta')), 0) AS total,
       COALESCE((SELECT SUM(remaining_value) FROM appointments WHERE status IN ('pendente', 'awaiting_deposit_proof', 'confirmado')), 0)
-        + COALESCE((SELECT SUM(total_value) FROM sales_orders WHERE status IN ('pendente', 'aberta') AND source != 'agenda'), 0) AS pending
+        + COALESCE((SELECT SUM(total_value) FROM sales_orders WHERE status IN ('pendente', 'aberta')), 0) AS pending
   `);
   const methods = await db.all("SELECT method, COUNT(*) AS total, COALESCE(SUM(amount), 0) AS amount FROM payments GROUP BY method ORDER BY total DESC");
   const expensesSummary = await db.get(`

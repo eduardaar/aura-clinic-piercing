@@ -1,4 +1,4 @@
-// Serviços de vendas (pedidos avulsos e vinculados a atendimentos).
+// Serviços de vendas de produtos (balcão e catálogo).
 import { normalizeSalesOrderItems, variantStatus, localTimestamp } from "./utils.js";
 import { upsertClient } from "./appointments.js";
 import { syncProductInventory } from "./inventory.js";
@@ -212,12 +212,7 @@ export async function createSalesOrder(db, body, user) {
   const discount = Number(couponQuote?.discount_amount || 0);
   const total = Number(Math.max(subtotal - discount, 0).toFixed(2));
   const orderType = String(body.order_type || "produto");
-  // "ordem_servico" é reservado ao título gerado sozinho por
-  // ensureSalesOrderForAppointment ao concluir um atendimento da agenda —
-  // essa função nunca passa por createSalesOrder, então nenhuma chamada
-  // legítima chega aqui com este tipo. Bloquear evita que balcão/catálogo
-  // criem manualmente um "atendimento" que na verdade não existiu na agenda,
-  // a origem de duplicidade de baixa que este pacote corrige.
+  // Atendimentos possuem execução e financeiro próprios no fluxo da agenda.
   if (orderType === "ordem_servico") {
     throw new SalesOrderValidationError("Ordem de serviço é gerada automaticamente pela agenda ao concluir um atendimento — não pode ser criada manualmente.");
   }

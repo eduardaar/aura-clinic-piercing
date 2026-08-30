@@ -120,12 +120,7 @@ export function SalesWorkspace({ features = [], onUpgrade }) {
   );
   const summary = {
     total: monthOrders.reduce((sum, order) => sum + Number(order.total_value || 0), 0),
-    products: monthOrders.filter((order) => order.order_type === "produto").reduce((sum, order) => sum + Number(order.total_value || 0), 0),
-    // "mista" é a venda de balcão com produto e serviço no mesmo pedido — não
-    // confundir com "ordem_servico" (agenda), que aparece no total mas tem
-    // card próprio abaixo.
-    legacyMixed: monthOrders.filter((order) => order.order_type === "mista").reduce((sum, order) => sum + Number(order.total_value || 0), 0),
-    legacyAgenda: monthOrders.filter((order) => order.order_type === "ordem_servico").reduce((sum, order) => sum + Number(order.total_value || 0), 0)
+    products: monthOrders.filter((order) => order.order_type === "produto").reduce((sum, order) => sum + Number(order.total_value || 0), 0)
   };
 
   function openNew() {
