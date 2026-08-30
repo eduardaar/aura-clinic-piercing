@@ -5,7 +5,8 @@ import { SalesWorkspace } from "../src/features/sales/Sales";
 
 vi.mock("../src/lib/api", () => ({
   apiFetch: vi.fn(),
-  readStoredSession: () => ({ user: { role: "admin" } }),
+  readStoredSession: () => ({ user: { id: 7, role: "admin" } }),
+  tenantSlug: () => "clinica-teste",
   useApiInvalidate: () => vi.fn(),
   useFetch: () => ({ data: [], loading: false, error: "" })
 }));
@@ -16,6 +17,8 @@ describe("ações financeiras da venda por plano", () => {
     render(<SalesWorkspace features={["basic_catalog"]} />);
 
     await user.click(screen.getByRole("button", { name: /Nova venda/i }));
+    expect(screen.getByRole("heading", { name: "Dados principais" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /3\. Pagamento/i }));
     expect(screen.getByRole("note")).toHaveTextContent("A venda e o pagamento imediato continuam disponíveis no Start.");
 
     await user.click(screen.getByRole("combobox", { name: "Recebimento" }));

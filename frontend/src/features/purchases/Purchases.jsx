@@ -1,11 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FileUp, Landmark, Tags } from "lucide-react";
+import {
+  AdvancedFields,
+  FormSection,
+  FormWorkflow,
+  ReviewSummary,
+  StepNavigator,
+  ValidationSummary,
+} from "../../components/common/FormWorkflow";
 import { Button, Input, Metric, PaymentSelect, Select, StatusBadge, Textarea } from "../../components/common/Ui";
 import { CrudHeader, Modal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { InstallmentGrid } from "../../components/common/InstallmentGrid";
-import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
+import { apiFetch, readStoredSession, tenantSlug, useApiInvalidate, useFetch } from "../../lib/api";
+import { useFormDraft } from "../../lib/useFormDraft";
 import { installmentSummary, installmentsForPayload } from "../../lib/installments";
 import { asArray, asNumber, asObject } from "../../lib/utils";
 import { financeLabel } from "../../lib/financeLabels";
@@ -44,6 +53,12 @@ function formatDate(value) {
 const purchaseStatusLabel = (status) =>
   ({ draft: "Rascunho", confirmed: "Confirmada", cancelled: "Cancelada" })[status] || status || "Confirmada";
 
+const PURCHASE_STEPS = [
+  { id: "details", label: "Dados", description: "Fornecedor e data" },
+  { id: "items", label: "Itens", description: "Produtos e materiais" },
+  { id: "payment", label: "Pagamento", description: "Total e parcelas" },
+];
+
 export function Purchases({ onNavigate, createSignal = 0 }) {
   const { data, loading, error: purchasesError } = useFetch("/purchases");
   const { data: suppliers } = useFetch("/finance/suppliers");
@@ -62,6 +77,30 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
   const [nfeXml, setNfeXml] = useState("");
   const [nfePreview, setNfePreview] = useState(null);
   const [importingNfe, setImportingNfe] = useState(false);
+  const [activeStep, setActiveStep] = useState("details");
+  const sessionUser = readStoredSession()?.user || {};
+  const draftValue = useMemo(
+    () => ({ form, line, items, installments, automaticInstallments }),
+    [automaticInstallments, form, installments, items, line],
+  );
+  const draft = useFormDraft({
+    tenantId: tenantSlug() || "tenant",
+    userId: sessionUser.id || "user",
+    formId: "purchase-new",
+    schemaKey: "purchase-v1",
+    value: draftValue,
+    enabled: modalOpen,
+    onRestore: (value) => {
+      const restored = asObject(value);
+      setForm({ ...emptyPurchase(), ...asObject(restored.form) });
+      setLine({ ...emptyItem(), ...asObject(restored.line) });
+      setItems(asArray(restored.items));
+      setInstallments(asArray(restored.installments));
+      setAutomaticInstallments(restored.automaticInstallments !== false);
+      setActiveStep("details");
+    },
+  });
+  // biome-ignore lint/correctness/useExhaustiveDependencies: createSignal representa uma borda de evento externa.
   useEffect(() => { if (createSignal) openNew(); }, [createSignal]);
 
   const purchasePayload = asObject(data);
@@ -85,15 +124,29 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
   };
 
   function openNew() {
-    setForm(emptyPurchase());
-    setLine(emptyItem());
-    setItems([]);
-    setInstallments([]);
-    setAutomaticInstallments(true);
-    setNfeXml("");
-    setNfePreview(null);
-    setError("");
+    if (!draft.savedAt || draft.hasDraft) {
+      setForm(emptyPurchase());
+      setLine(emptyItem());
+      setItems([]);
+      setInstallments([]);
+      setAutomaticInstallments(true);
+      setNfeXml("");
+      setNfePreview(null);
+      setError("");
+      setActiveStep("details");
+    }
     setModalOpen(true);
+  }
+
+  function closePurchaseModal() {
+    draft.flushDraft();
+    setModalOpen(false);
+  }
+
+  function movePurchaseStep(offset) {
+    const index = PURCHASE_STEPS.findIndex((step) => step.id === activeStep);
+    const next = PURCHASE_STEPS[Math.max(0, Math.min(PURCHASE_STEPS.length - 1, index + offset))];
+    if (next) setActiveStep(next.id);
   }
 
   function selectProduct(productId) {
@@ -265,6 +318,7 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) return setError(payload.error || "Não foi possível registrar a compra.");
+    draft.clearDraft();
     setModalOpen(false);
     invalidate("/purchases", "/jewelry", "/inventory", "/finance/ledger", "/finance", "/dashboard");
   }
@@ -360,123 +414,96 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
         title="Nova compra"
         subtitle="Produtos para revenda e materiais de consumo entram em estoques separados; as parcelas vão para contas a pagar."
         size="lg"
-        onClose={() => setModalOpen(false)}
+        onClose={closePurchaseModal}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setModalOpen(false)}>
-              Cancelar
+            <Button
+              variant="secondary"
+              onClick={() => activeStep === "details" ? closePurchaseModal() : movePurchaseStep(-1)}
+            >
+              {activeStep === "details" ? "Cancelar" : "Voltar"}
             </Button>
-            <Button type="submit" form="purchase-form">
-              Confirmar compra
-            </Button>
+            {activeStep === "payment" ? (
+              <Button type="submit" form="purchase-form">Confirmar compra</Button>
+            ) : (
+              <Button type="button" onClick={() => movePurchaseStep(1)}>Continuar</Button>
+            )}
           </>
         }
       >
         <form id="purchase-form" className="stack" onSubmit={save}>
-          <section className="soft-card stack">
-            <div className="section-inline-header">
-              <div><strong>Importar XML da NF-e</strong><span>O sistema apenas prepara uma prévia; nada entra no estoque antes da confirmação.</span></div>
-              <label className="button secondary">
-                <FileUp size={16} /> {importingNfe ? "Lendo…" : "Selecionar XML"}
-                <input type="file" accept=".xml,text/xml,application/xml" hidden disabled={importingNfe} onChange={importNfe} />
-              </label>
-            </div>
-            {nfePreview && <>
-              <small>NF-e {nfePreview.number} · série {nfePreview.series} · emitente {nfePreview.issuer?.name} · {nfePreview.access_key}</small>
-              {!nfePreview.supplier && <span className="form-error">Fornecedor não localizado pelo documento. Selecione-o abaixo ou cadastre-o antes de confirmar.</span>}
-              <div className="clean-list">
-                {asArray(nfePreview.items).map((imported, index) => <div key={`${imported.line_number}-${imported.supplier_code}`}>
-                  <span><strong>{imported.name}</strong><small>{imported.quantity} {imported.unit} × {currency.format(asNumber(imported.unit_cost))} · cód. {imported.supplier_code || "—"}</small></span>
-                  <Select ariaLabel={`Associar ${imported.name}`} value={imported.selected_target} onChange={(selected_target) => setNfePreview((current) => ({ ...current, items: current.items.map((item, itemIndex) => itemIndex === index ? { ...item, selected_target } : item) }))}>
-                    <option value="">Selecione o item</option>
-                    <option value="ignore">Ignorar esta linha</option>
-                    {safeProducts.flatMap((product) => {
-                      const productVariants = asArray(product.variants).filter((variant) => Number(variant.is_active ?? 1));
-                      return productVariants.length
-                        ? productVariants.map((variant) => <option key={`p-${product.id}-${variant.id}`} value={`product:${product.id}:${variant.id}`}>{product.name} · {variant.variation_name || variant.sku}</option>)
-                        : [<option key={`p-${product.id}`} value={`product:${product.id}:0`}>{product.name}</option>];
-                    })}
-                    {safeConsumables.map((item) => <option key={`c-${item.id}`} value={`consumable:${item.id}`}>{item.name} · material</option>)}
-                  </Select>
-                </div>)}
-              </div>
-              <Button type="button" variant="secondary" onClick={applyNfeItems}>Aplicar itens conferidos</Button>
-            </>}
-          </section>
-          <div className="form-grid">
-            <Select
-              label="Fornecedor"
-              value={form.supplier_id}
-              onChange={(supplier_id) => setForm({ ...form, supplier_id })}
-              required
-            >
-              <option value="">Selecione</option>
-              {asArray(suppliers).map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </Select>
-            <Input
-              type="date"
-              label="Data da compra"
-              value={form.purchase_date}
-              onChange={(purchase_date) => setForm({ ...form, purchase_date })}
-              required
-            />
-            <Input type="number" min="0" step="0.01" label="Frete" value={form.freight_value} onChange={(freight_value) => setForm({ ...form, freight_value })} />
-            <Input type="number" min="0" step="0.01" label="Desconto" value={form.discount_value} onChange={(discount_value) => setForm({ ...form, discount_value })} />
-            <Select
-              label="Categoria financeira"
-              value={form.category}
-              onChange={(category) => setForm({ ...form, category })}
-            >
-              <option value="">Sem categoria</option>
-              {asArray(categories).map((item) => (
-                <option key={item.id} value={item.name}>
-                  {item.name}
-                </option>
-              ))}
-            </Select>
-            <Select
-              label="Centro de custo"
-              value={form.cost_center_id}
-              onChange={(cost_center_id) => setForm({ ...form, cost_center_id })}
-            >
-              <option value="">Sem centro</option>
-              {asArray(centers).map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </Select>
-            <PaymentSelect
-              label="Forma de pagamento"
-              value={form.payment_method}
-              onChange={(payment_method) => setForm({ ...form, payment_method })}
-            />
-            <Input
-              type="number"
-              min="1"
-              max="120"
-              label="Parcelas"
-              value={form.installment_count}
-              onChange={(installment_count) => setForm({ ...form, installment_count })}
-              required
-            />
-            <Input
-              type="date"
-              label="Primeiro vencimento"
-              value={form.first_due_date}
-              onChange={(first_due_date) => setForm({ ...form, first_due_date })}
-              required
-            />
-          </div>
+          <FormWorkflow
+            title="Cadastro da compra"
+            description="Preencha o essencial primeiro. Importação fiscal e classificações continuam opcionais."
+            eyebrow="Compras"
+            draft={draft}
+            actions={draft.hasDraft ? (
+              <>
+                <Button type="button" variant="secondary" onClick={draft.restoreDraft}>Restaurar</Button>
+                <Button type="button" variant="ghost" onClick={draft.discardDraft}>Descartar</Button>
+              </>
+            ) : null}
+          >
+            <StepNavigator steps={PURCHASE_STEPS} currentStep={activeStep} onStepChange={setActiveStep} canNavigateTo={undefined} />
+            <ValidationSummary errors={error ? [error] : []} />
 
-          <section className="soft-card stack">
+            {activeStep === "details" && (
+              <FormWorkflow.Page title="Dados principais" description="Identifique de quem e quando a clínica comprou.">
+                <FormSection title="Fornecedor e data" badge="Obrigatório">
+                  <div className="form-grid">
+                    <Select label="Fornecedor" value={form.supplier_id} onChange={(supplier_id) => setForm({ ...form, supplier_id })} required>
+                      <option value="">Selecione</option>
+                      {asArray(suppliers).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                    </Select>
+                    <Input type="date" label="Data da compra" value={form.purchase_date} onChange={(purchase_date) => setForm({ ...form, purchase_date })} required />
+                  </div>
+                </FormSection>
+                <AdvancedFields
+                  title="Importar XML da NF-e"
+                  description="Opcional. Preenche fornecedor, itens e parcelas a partir da nota."
+                  count={nfePreview ? asArray(nfePreview.items).length : undefined}
+                  open={undefined}
+                  onOpenChange={undefined}
+                >
+                  <section className="stack">
+                    <div className="section-inline-header">
+                      <span>Nada entra no estoque antes da confirmação final.</span>
+                      <label className="button secondary">
+                        <FileUp size={16} /> {importingNfe ? "Lendo…" : "Selecionar XML"}
+                        <input type="file" accept=".xml,text/xml,application/xml" hidden disabled={importingNfe} onChange={importNfe} />
+                      </label>
+                    </div>
+                    {nfePreview && <>
+                      <small>NF-e {nfePreview.number} · série {nfePreview.series} · emitente {nfePreview.issuer?.name} · {nfePreview.access_key}</small>
+                      {!nfePreview.supplier && <span className="form-error">Fornecedor não localizado pelo documento. Selecione-o antes de confirmar.</span>}
+                      <div className="clean-list">
+                        {asArray(nfePreview.items).map((imported, index) => <div key={`${imported.line_number}-${imported.supplier_code}`}>
+                          <span><strong>{imported.name}</strong><small>{imported.quantity} {imported.unit} × {currency.format(asNumber(imported.unit_cost))} · cód. {imported.supplier_code || "—"}</small></span>
+                          <Select ariaLabel={`Associar ${imported.name}`} value={imported.selected_target} onChange={(selected_target) => setNfePreview((current) => ({ ...current, items: current.items.map((item, itemIndex) => itemIndex === index ? { ...item, selected_target } : item) }))}>
+                            <option value="">Selecione o item</option>
+                            <option value="ignore">Ignorar esta linha</option>
+                            {safeProducts.flatMap((product) => {
+                              const productVariants = asArray(product.variants).filter((variant) => Number(variant.is_active ?? 1));
+                              return productVariants.length
+                                ? productVariants.map((variant) => <option key={`p-${product.id}-${variant.id}`} value={`product:${product.id}:${variant.id}`}>{product.name} · {variant.variation_name || variant.sku}</option>)
+                                : [<option key={`p-${product.id}`} value={`product:${product.id}:0`}>{product.name}</option>];
+                            })}
+                            {safeConsumables.map((item) => <option key={`c-${item.id}`} value={`consumable:${item.id}`}>{item.name} · material</option>)}
+                          </Select>
+                        </div>)}
+                      </div>
+                      <Button type="button" variant="secondary" onClick={applyNfeItems}>Aplicar itens conferidos</Button>
+                    </>}
+                  </section>
+                </AdvancedFields>
+              </FormWorkflow.Page>
+            )}
+
+            {activeStep === "items" && <FormWorkflow.Page title="Itens da compra" description="Monte a lista em uma única tela, sem abrir formulários sobrepostos.">
+          <FormSection title="Adicionar item" description="Informe o custo unitário negociado.">
             <div className="section-inline-header">
-              <strong>Itens da compra</strong>
-              <span>Informe o custo unitário negociado.</span>
+              <strong>Novo item</strong>
+              <span>{items.length} item(ns) adicionado(s)</span>
             </div>
             <div className="form-grid">
               <Select label="Tipo de item" value={line.item_type} onChange={(item_type) => setLine({ ...emptyItem(), item_type })}>
@@ -511,7 +538,7 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
                 min="1"
                 label="Quantidade"
                 value={line.quantity}
-                onChange={(quantity) => setLine({ ...line, quantity })}
+                onChange={(quantity) => setLine({ ...line, quantity: Number(quantity || 0) })}
               />
               <Input
                 type="number"
@@ -553,20 +580,47 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
               <span>Total da compra</span>
               <strong>{currency.format(total)}</strong>
             </div>
-          </section>
-          <InstallmentGrid
-            total={total}
-            count={form.installment_count}
-            firstDueDate={form.first_due_date}
-            paymentMethod={form.payment_method}
-            installments={installments}
-            onChange={setInstallments}
-            automatic={automaticInstallments}
-            onAutomaticChange={setAutomaticInstallments}
-            title="Parcelas da compra"
-          />
-          <Textarea label="Observações" value={form.notes} onChange={(notes) => setForm({ ...form, notes })} />
-          {error && <span className="form-error">{error}</span>}
+          </FormSection>
+            </FormWorkflow.Page>}
+
+            {activeStep === "payment" && <FormWorkflow.Page title="Pagamento e conferência" description="Defina as contas a pagar e confirme os totais.">
+              <FormSection title="Condições de pagamento" badge="Obrigatório">
+                <div className="form-grid">
+                  <PaymentSelect label="Forma de pagamento" value={form.payment_method} onChange={(payment_method) => setForm({ ...form, payment_method })} />
+                  <Input type="number" min="1" max="120" label="Parcelas" value={form.installment_count} onChange={(installment_count) => setForm({ ...form, installment_count: Number(installment_count || 1) })} required />
+                  <Input type="date" label="Primeiro vencimento" value={form.first_due_date} onChange={(first_due_date) => setForm({ ...form, first_due_date })} required />
+                </div>
+                <InstallmentGrid total={total} count={form.installment_count} firstDueDate={form.first_due_date} paymentMethod={form.payment_method} installments={installments} onChange={setInstallments} automatic={automaticInstallments} onAutomaticChange={setAutomaticInstallments} title="Parcelas da compra" />
+              </FormSection>
+              <AdvancedFields title="Valores e classificação" description="Frete, desconto, categoria, centro de custo e observações." count={undefined} open={undefined} onOpenChange={undefined}>
+                <div className="form-grid">
+                  <Input type="number" min="0" step="0.01" label="Frete" value={form.freight_value} onChange={(freight_value) => setForm({ ...form, freight_value: Number(freight_value || 0) })} />
+                  <Input type="number" min="0" step="0.01" label="Desconto" value={form.discount_value} onChange={(discount_value) => setForm({ ...form, discount_value: Number(discount_value || 0) })} />
+                  <Select label="Categoria financeira" value={form.category} onChange={(category) => setForm({ ...form, category })}>
+                    <option value="">Sem categoria</option>
+                    {asArray(categories).map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}
+                  </Select>
+                  <Select label="Centro de custo" value={form.cost_center_id} onChange={(cost_center_id) => setForm({ ...form, cost_center_id })}>
+                    <option value="">Sem centro</option>
+                    {asArray(centers).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                  </Select>
+                </div>
+                <Textarea label="Observações" value={form.notes} onChange={(notes) => setForm({ ...form, notes })} />
+              </AdvancedFields>
+              <ReviewSummary
+                title="Resumo da compra"
+                description={undefined}
+                sections={undefined}
+                onEdit={undefined}
+                items={[
+                  { label: "Fornecedor", value: asArray(suppliers).find((item) => String(item.id) === String(form.supplier_id))?.name },
+                  { label: "Itens", value: items.length },
+                  { label: "Total", value: currency.format(total) },
+                  { label: "Pagamento", value: `${form.installment_count || 1} parcela(s) · ${form.payment_method}` },
+                ]}
+              />
+            </FormWorkflow.Page>}
+          </FormWorkflow>
         </form>
       </Modal>
 
