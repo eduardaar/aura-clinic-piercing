@@ -323,6 +323,7 @@ export function DigitalTerms({ onBack }) {
 
 export function LoyaltyPanel({ client, onChanged }) {
   const loyalty = client.loyalty || { availablePoints: 0, totalEarned: 0, level: "Cliente Aura", benefits: [], history: [], redemptions: [], redeemedPoints: 0 };
+  /** @type {[Record<string, any>, React.Dispatch<React.SetStateAction<Record<string, any>>>]} */
   const [redeem, setRedeem] = useState({ points_used: 10, discount_value: 0, notes: "" });
   const [error, setError] = useState("");
 

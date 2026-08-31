@@ -172,7 +172,10 @@ before(async () => {
   ctx.tenant = created.tenant;
   ctx.token = (await loginTenant(created.slug, created.adminEmail, created.adminPassword)).token;
 
-  const service = await api("/services", { method: "POST", body: { name: "Servico TX", duration_minutes: 30, price: 120, deposit_value: 40 } });
+  // `postcare_enabled` nasce false (migration 0032): as cinco escritas do
+  // atendimento concluído incluem os lembretes de pós-atendimento, então o
+  // serviço precisa declarar que os gera.
+  const service = await api("/services", { method: "POST", body: { name: "Servico TX", duration_minutes: 30, price: 120, deposit_value: 40, postcare_enabled: true, postcare_days: [7, 15, 30] } });
   ctx.serviceId = service.json.id;
   const professional = await api("/professionals", { method: "POST", body: { name: "Prof TX", specialty: "Piercing", phone: "11977776666" } });
   ctx.professionalId = professional.json.id;

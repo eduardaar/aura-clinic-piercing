@@ -31,6 +31,7 @@ const INDEXING_MODES = [
 
 // Somente hosts conhecidos são aceitos em campos que resultam em navegação ou
 // iframe. Nenhum plugin suporta script remoto, tag HTML ou código executável.
+/** @type {readonly CatalogBuilderPlugin[]} */
 export const CATALOG_BUILDER_PLUGIN_REGISTRY = Object.freeze([
   {
     id: "whatsapp_cta",
@@ -218,6 +219,7 @@ function hostAllowed(hostname, allowedHosts) {
   return allowedHosts.includes(hostname);
 }
 
+/** @param {unknown} value @param {unknown} [fallback] */
 function normalizeBoolean(value, fallback = false) {
   if (value === undefined) return Boolean(fallback);
   if (value === false || value === 0 || value === "0" || value === "false") return false;

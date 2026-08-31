@@ -38,6 +38,7 @@ function normalizeManagedCategory(item = {}, index = 0) {
 // O `Input` de Ui.jsx é compartilhado com outras telas e não repassa
 // `placeholder` — o exemplo de preenchimento sumia sem aviso. Aqui o campo é
 // escrito à mão para preservar a dica.
+/** @param {{ label?: React.ReactNode, value?: any, onChange?: (value: any) => any, placeholder?: string, type?: string, required?: boolean }} props */
 function HintedInput({ label, value, onChange, placeholder, type = "text", required }) {
   return (
     <label>
@@ -760,6 +761,7 @@ function ProductGalleryManager({ images = [], productName = "", onChange }) {
   );
 }
 
+/** @param {{ options?: any, categoryOptions?: any[], categories?: any[], pricingSettings?: Record<string, any>, editing?: any, onSaved?: (...args: any[]) => any, onMovementOpen?: (...args: any[]) => any }} props */
 export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTIONS, categories = [], pricingSettings = {}, editing, onSaved, onMovementOpen }) {
   const [form, setForm] = useState(defaultJewelry());
   const [error, setError] = useState("");
@@ -1123,6 +1125,7 @@ export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTI
   );
 }
 
+/** @param {{ category?: any, variant?: any, pricingSettings?: Record<string, any>, onChange?: (...args: any[]) => any, onClose?: () => any }} props */
 export function VariantEditModal({ category, variant, pricingSettings = {}, onChange, onClose }) {
   const normalizedCategory = removeAccents(String(category || "").toLowerCase());
   const usesDiameter = normalizedCategory.includes("argola");
@@ -1294,12 +1297,12 @@ export function StockMovementHistory({ jewelryId }) {
 }
 
 export function StockMovementModal({ item, initialType = "Entrada", onClose, onSave }) {
-  const [form, setForm] = useState({
+  const [form, setForm] = useState(/** @type {Record<string, any>} */ ({
     quantity: 1,
     movement_type: initialType,
     variant_id: item?.variants?.[0]?.id || "",
     notes: ""
-  });
+  }));
 
   useEffect(() => {
     setForm({

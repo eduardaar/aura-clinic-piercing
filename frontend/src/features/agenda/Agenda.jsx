@@ -122,7 +122,7 @@ function PublicBookingLink() {
 
 function priceAppointmentDraft(draft, services = [], jewelryList = []) {
   const items = normalizeAppointmentFormItems(draft, services, jewelryList);
-  const firstItem = items[0] || {};
+  const firstItem = /** @type {Record<string, any>} */ (items[0] || {});
   const procedureValue = items.reduce((sum, item) => sum + asNumber(item.procedure_price), 0);
   const jewelryValue = items.reduce((sum, item) => sum + asNumber(item.jewelry_unit_price) * Math.max(1, asNumber(item.quantity, 1)), 0);
   const totalValue = procedureValue + jewelryValue;
@@ -379,7 +379,7 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
   const todayRows = operationalRows.filter((item) => String(item.appointment_date).slice(0, 10) === today);
   const completedWithTiming = operationalRows.filter((item) => item.arrived_at && item.started_at);
   const averageDelay = completedWithTiming.length
-    ? Math.round(completedWithTiming.reduce((sum, item) => sum + Math.max(0, (new Date(item.started_at) - new Date(item.arrived_at)) / 60000), 0) / completedWithTiming.length)
+    ? Math.round(completedWithTiming.reduce((sum, item) => sum + Math.max(0, (new Date(item.started_at).getTime() - new Date(item.arrived_at).getTime()) / 60000), 0) / completedWithTiming.length)
     : 0;
   const cancellationRate = operationalRows.length
     ? Math.round(operationalRows.filter((item) => ["cancelado", "nao_compareceu"].includes(item.status)).length / operationalRows.length * 100)
@@ -561,6 +561,7 @@ function Waitlist({ onSchedule }) {
   const { data: professionals } = useFetch("/professionals");
   const invalidate = useApiInvalidate();
   const [open, setOpen] = useState(false);
+  /** @returns {Record<string, any>} */
   const emptyForm = () => ({ client_id: "", client_name: "", contact: "", service_id: "", professional_id: "", preferred_date_from: "", preferred_date_to: "", preferred_period: "qualquer", priority: 0, notes: "" });
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState("");
@@ -618,6 +619,7 @@ function Waitlist({ onSchedule }) {
 function AgendaResources() {
   const { data } = useFetch("/agenda/resources");
   const invalidate = useApiInvalidate();
+  /** @returns {Record<string, any>} */
   const emptyForm = () => ({ name: "", resource_type: "station", capacity: 1, notes: "", active: true });
   const [form, setForm] = useState(emptyForm);
   const [open, setOpen] = useState(false);
@@ -806,7 +808,6 @@ export function CalendarEvent({ item, refresh, onSelect }) {
       <small>{item.professional_name}</small>
       <div className="event-actions" onClick={(event) => event.stopPropagation()}>
         <RowActions
-          menuOnly
           actions={[
             { label: "Remarcar", onClick: () => updateAppointment(item.id, { status: "remarcado" }, refresh) },
             { label: "Cancelar com resolução", danger: true, onClick: () => onSelect?.(item) },
@@ -987,7 +988,7 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
   const [occurrences, setOccurrences] = useState("");
   const [aftercareNotes, setAftercareNotes] = useState("");
   const [operationalChecklist, setOperationalChecklist] = useState([]);
-  const [biosafety, setBiosafety] = useState({ material_lots: [], sterilization_cycle: "", sterilization_record: "", applied_jewelry_id: "", applied_jewelry_variant_id: "", notes: "" });
+  const [biosafety, setBiosafety] = useState(/** @type {Record<string, any>} */ ({ material_lots: [], sterilization_cycle: "", sterilization_record: "", applied_jewelry_id: "", applied_jewelry_variant_id: "", notes: "" }));
   const [error, setError] = useState("");
   const [deletion, setDeletion] = useState(null);
   const [cancellation, setCancellation] = useState(null);
@@ -1805,6 +1806,7 @@ export function BookingAdmin({ onBack, initialTab }) {
   );
 }
 
+/** @param {{ appointments?: any[], onChanged?: () => any, compact?: boolean }} props */
 export function AppointmentList({ appointments = [], onChanged, compact }) {
   const safeAppointments = asArray(appointments);
 

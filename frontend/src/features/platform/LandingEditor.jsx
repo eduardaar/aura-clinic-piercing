@@ -516,6 +516,7 @@ function ImageField({ label, value, alt, onChange, onAltChange, upload }) {
 
 // Cabeçalho de um item de lista (card, imagem, link): título + reordenar e,
 // quando permitido, remover.
+/** @param {{ title?: React.ReactNode, index?: number, total?: number, onMove?: (direction: number) => any, onRemove?: () => any }} props */
 function ItemHeading({ title, index, total, onMove, onRemove }) {
   return (
     <div className="panel-heading">

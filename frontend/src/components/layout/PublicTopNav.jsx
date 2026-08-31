@@ -6,6 +6,7 @@ import { BrandMark } from "../common/BrandMark";
 //
 // `current` marca a tela atual (aria-current + destaque visual), para o menu
 // não parecer que oferece um caminho onde o usuário já está.
+/** @param {{ current?: string }} props */
 export function PublicTopNav({ current }) {
   return (
     <header className="au-nav au-nav-dark">

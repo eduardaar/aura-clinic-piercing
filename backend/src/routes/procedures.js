@@ -10,6 +10,14 @@ router.get("/api/procedures", withFeature("procedures", async (req, res, db) => 
   const clauses = [];
   const params = [];
   if (req.query.service_id) { clauses.push("p.service_id=?"); params.push(req.query.service_id); }
+  // `status` é "active"/"inactive" (a coluna é o booleano is_active). Busca e
+  // status existiam antes de a rota virar alias somente-leitura; sem eles a
+  // listagem devolvia o histórico inteiro e o `total` ignorava o filtro.
+  if (req.query.status) { clauses.push("p.is_active=?"); params.push(req.query.status === "active" ? 1 : 0); }
+  if (req.query.search) {
+    clauses.push("(p.name ILIKE ? OR p.body_area ILIKE ? OR p.description ILIKE ?)");
+    params.push(...Array(3).fill(`%${req.query.search}%`));
+  }
   const paging = parsePaging(req.query, { sortable: { name: "p.name", service: "s.name", created_at: "p.created_at" }, tieBreak: "p.id", defaultOrderBy: "ORDER BY p.id" });
   const { rows, total } = await fetchPage(db, {
     select: "p.*,s.name AS service_name",

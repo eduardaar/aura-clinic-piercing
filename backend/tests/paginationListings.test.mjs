@@ -12,6 +12,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { req, createTenant, loginTenant, platformLogin, deleteTenant } from "./helpers.mjs";
+import { query } from "../src/database/connection.js";
 
 const ctx = {
   slug: null, token: null, tenant: null, platformToken: null,
@@ -47,19 +48,25 @@ before(async () => {
     await api("/professionals", { method: "POST", body: { name: `Prof Lista ${String(i).padStart(2, "0")}` } });
   }
 
-  const servico = await api("/services", { method: "POST", body: { name: "Servico Lista 00", price: 120, duration_minutes: 30 } });
+  // `postcare_enabled` nasce false (migration 0032): sem ligar aqui, concluir
+  // o atendimento não gera lembrete nenhum e a massa de pós-atendimento some.
+  const servico = await api("/services", { method: "POST", body: { name: "Servico Lista 00", price: 120, duration_minutes: 30, postcare_enabled: true, postcare_days: [7, 15, 30] } });
   assert.equal(servico.status, 201, JSON.stringify(servico.json));
   ctx.serviceId = servico.json.id;
   for (let i = 1; i < 4; i += 1) {
     await api("/services", { method: "POST", body: { name: `Servico Lista ${String(i).padStart(2, "0")}`, price: 50 + i, duration_minutes: 30 } });
   }
 
+  // `POST /api/procedures` foi aposentado pelo cadastro unificado e responde
+  // 410: tipos de atendimento nascem em /api/services. O alias `/procedures`
+  // sobrevive apenas para LER registros históricos — e é a paginação desse
+  // alias que este arquivo cobre. Por isso a semente vai direto ao schema.
+  const schema = `tenant_${ctx.slug.replace(/-/g, "_")}`;
   for (let i = 0; i < 4; i += 1) {
-    const proc = await api("/procedures", {
-      method: "POST",
-      body: { service_id: ctx.serviceId, name: `Procedimento Lista ${String(i).padStart(2, "0")}`, body_area: "Orelha", price: 90 + i }
-    });
-    assert.equal(proc.status, 201, JSON.stringify(proc.json));
+    await query(
+      `INSERT INTO ${schema}.procedures (service_id, name, body_area, price) VALUES ($1, $2, $3, $4)`,
+      [ctx.serviceId, `Procedimento Lista ${String(i).padStart(2, "0")}`, "Orelha", 90 + i]
+    );
   }
 
   const cliente = await api("/clients", { method: "POST", body: { full_name: "Cliente Lista 00", whatsapp: "11955550000" } });

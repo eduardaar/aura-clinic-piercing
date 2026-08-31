@@ -279,10 +279,10 @@ export function StatusBadge({ status, tone, children, className = "" }) {
   return <span className={`status-badge tone-${resolved}${className ? ` ${className}` : ""}`}>{label}</span>;
 }
 
-/** @typedef {Omit<React.ComponentPropsWithoutRef<"textarea">, "onChange" | "value"> & { label?: React.ReactNode, value?: string | number, onChange?: (value: string) => void, fieldClassName?: string }} TextareaProps */
+/** @typedef {Omit<React.ComponentPropsWithoutRef<"textarea">, "onChange" | "value"> & { label?: React.ReactNode, value?: string | number, onChange?: (value: string) => void, hint?: React.ReactNode, fieldClassName?: string }} TextareaProps */
 export const Textarea = React.forwardRef(
   /** @param {TextareaProps} props @param {React.ForwardedRef<HTMLTextAreaElement>} ref */
-  function Textarea({ label, value, onChange, rows = 3, fieldClassName = "", className = "", ...textareaProps }, ref) {
+  function Textarea({ label, value, onChange, rows = 3, hint, fieldClassName = "", className = "", ...textareaProps }, ref) {
   return (
     <label className={`ui-textarea-field${fieldClassName ? ` ${fieldClassName}` : ""}`}>
       {label && <span className="ui-textarea-label">{label}</span>}
@@ -294,6 +294,7 @@ export const Textarea = React.forwardRef(
         value={value ?? ""}
         onChange={onChange ? (event) => onChange(event.target.value) : undefined}
       />
+      {hint && <small className="field-hint">{hint}</small>}
     </label>
   );
   }
@@ -399,6 +400,7 @@ Accordion.Content = function AccordionContent({ className = "", children, ...pro
  * Toggle booleano acessível. `onChange` recebe booleano; `className` estiliza
  * o invólucro e `switchClassName` o controle Radix.
  */
+/** @param {{ label?: React.ReactNode, description?: React.ReactNode, checked?: boolean, defaultChecked?: boolean, onChange?: (checked: boolean) => void, disabled?: boolean, id?: string, className?: string, switchClassName?: string, [key: string]: any }} props */
 export function Switch({ label, description, checked, defaultChecked, onChange, disabled = false, id, className = "", switchClassName = "", ...props }) {
   const generatedId = React.useId();
   const controlId = id || generatedId;

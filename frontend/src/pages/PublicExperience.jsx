@@ -546,6 +546,7 @@ function catalogIsActive(value, fallback = true) {
   return Boolean(value);
 }
 
+/** @returns {Record<string, any>} */
 function catalogComponent(component, index) {
   const source = asObject(component);
   const nested = asObject(source.config || source.settings);
@@ -565,7 +566,7 @@ function catalogComponent(component, index) {
  */
 function catalogLayoutRows(sections) {
   return asArray(sections)
-    .map((row, index) => ({ ...asObject(row), _sourceIndex: index }))
+    .map((row, index) => /** @type {Record<string, any>} */ ({ ...asObject(row), _sourceIndex: index }))
     .filter((row) => String(row.section_type || row.type) === "layout_row" && catalogIsActive(row.is_active))
     .map((row) => {
       const rawColumns = asArray(row.columns);
@@ -582,13 +583,17 @@ function catalogLayoutRows(sections) {
           components
         };
       });
-      return {
+      return /** @type {Record<string, any>} */ ({
         ...row,
-        section_key: String(row.section_key || `row-${index + 1}`),
-        sort_order: Number(row.sort_order ?? index + 1),
+        // `_sourceIndex` guarda a posição da linha ANTES do filtro — o mesmo
+        // critério que `catalogComponent` usa. Antes daqui saía `index`, que
+        // não existe neste callback: linha sem `section_key` ou sem
+        // `sort_order` estourava ReferenceError ao montar a vitrine.
+        section_key: String(row.section_key || `row-${row._sourceIndex + 1}`),
+        sort_order: Number(row.sort_order ?? row._sourceIndex + 1),
         columns_count: columnsCount,
         columns
-      };
+      });
     })
     .sort((left, right) => left.sort_order - right.sort_order || left._sourceIndex - right._sourceIndex);
 }
@@ -598,7 +603,7 @@ function CatalogLayoutRow({ row, ...blockProps }) {
   return (
     <section
       className={`catalog-layout-row catalog-layout-row--${row.columns_count}`}
-      style={{ ...rowStyle, "--catalog-row-columns": row.columns_count }}
+      style={/** @type {React.CSSProperties} */ ({ ...rowStyle, "--catalog-row-columns": row.columns_count })}
       data-layout-row={row.section_key}
     >
       {row.columns.map((column) => (
@@ -612,9 +617,10 @@ function CatalogLayoutRow({ row, ...blockProps }) {
   );
 }
 
+/** @param {Record<string, any>} props */
 function CatalogMenuBlock({ section, data, settings, theme, search, setSearch, recentSearches, setRecentSearches, favoriteIds, orderCount, onOpenFavorites, onOpenOrder }) {
   const items = asArray(section.menu_items)
-    .map((item, index) => ({ ...asObject(item), _sourceIndex: index }))
+    .map((item, index) => /** @type {Record<string, any>} */ ({ ...asObject(item), _sourceIndex: index }))
     .filter((item) => catalogIsActive(item.is_active))
     .filter((item) => String(item.label || "").trim());
   const logo = String(section.logo_url || theme.logo_url || "").trim();
@@ -665,7 +671,7 @@ function catalogLayoutSections(sections) {
     ? asArray(sections)
     : DEFAULT_CATALOG_LAYOUT_TYPES.map((section_type, index) => ({ section_key: `${section_type}-${index + 1}`, section_type, sort_order: index + 1, is_active: 1 }));
   return source
-    .map((section, index) => ({ ...asObject(section), section_type: String(section?.section_type || "custom_content"), sort_order: Number(section?.sort_order ?? index + 1), _sourceIndex: index }))
+    .map((section, index) => /** @type {Record<string, any>} */ ({ ...asObject(section), section_type: String(section?.section_type || "custom_content"), sort_order: Number(section?.sort_order ?? index + 1), _sourceIndex: index }))
     .filter((section) => section.is_active === undefined || section.is_active === null || Boolean(Number(section.is_active)))
     .sort((left, right) => left.sort_order - right.sort_order || left._sourceIndex - right._sourceIndex);
 }
@@ -721,6 +727,7 @@ function catalogSectionProducts(section, source, { category = "", forceSort = ""
   return items;
 }
 
+/** @param {Record<string, any>} props */
 function CatalogLayoutBlock({
   section, data, settings, theme, banners, activeBanner, activeBannerIndex, onBannerChange,
   categories, activeCategory, setActiveCategory, search, setSearch, recentSearches, setRecentSearches,
@@ -821,6 +828,7 @@ function CatalogLayoutBlock({
   }
 }
 
+/** @param {Record<string, any>} props */
 function CatalogDiscovery({ section, style, className, discoveryRef, productsRef, categories, activeCategory, setActiveCategory, search, setSearch, filters, setFilters, options, sort, setSort }) {
   return (
     <section ref={discoveryRef} className={className} style={style} aria-label={catalogSectionTitle(section, "Categorias e filtros")}>
@@ -957,6 +965,7 @@ function CatalogTextBlock({ section, style, className, eyebrow, text }) {
   );
 }
 
+/** @param {{ style?: React.CSSProperties, className?: string, icon?: React.ReactNode, eyebrow?: React.ReactNode, title?: React.ReactNode, text?: React.ReactNode, action?: any, actions?: any[] }} props */
 function CatalogInformationBlock({ style, className, icon, eyebrow, title, text, action, actions = [] }) {
   const availableActions = [...actions, action].filter(Boolean);
   return (
@@ -1033,7 +1042,7 @@ function PublicCatalogBanner({ banner, banners, activeIndex, layout, style, clas
           alt={banner.alt_text || banner.title || "Destaque do catálogo"}
           width="1600"
           height="500"
-          fetchpriority={activeIndex === 0 ? "high" : "auto"}
+          fetchPriority={activeIndex === 0 ? "high" : "auto"}
           loading={activeIndex === 0 ? "eager" : "lazy"}
           style={imageStyle}
         />
@@ -1119,6 +1128,7 @@ function professionalMatchesService(professional, serviceId) {
   return asArray(professional?.service_ids).some((id) => String(id) === String(serviceId));
 }
 
+/** @param {{ section?: Record<string, any>, style?: React.CSSProperties, className?: string }} [props] */
 function CatalogBookingWidget({ section = {}, style, className = "catalog-booking-widget" } = {}) {
   const { data } = usePublicFetch("/booking/config");
   const [form, setForm] = useState(() => {
@@ -1249,6 +1259,7 @@ function CatalogProductRail({ title, subtitle, items, data, theme, settings, fav
   );
 }
 
+/** @param {{ item?: Record<string, any>, favorite?: boolean, onToggleFavorite?: (item: any) => any, onAddToOrder?: (item: any) => any, theme?: Record<string, any>, settings?: Record<string, any>, promotion?: Record<string, any>, compact?: boolean }} props */
 function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, theme = {}, settings = {}, promotion }) {
   const productName = elegantProductName(item.name);
   const description = [elegantProductName(item.material), cleanDisplayText(item.size)].filter(Boolean).join(" · ");
@@ -1297,6 +1308,7 @@ function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, th
   );
 }
 
+/** @param {{ item?: Record<string, any>, data?: Record<string, any>, theme?: Record<string, any>, settings?: Record<string, any>, favorite?: boolean, onToggleFavorite?: (item: any) => any, onAddToOrder?: (item: any) => any, onScheduleWithJewelry?: (item: any) => any }} props */
 function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite, onToggleFavorite, onAddToOrder, onScheduleWithJewelry }) {
   const productName = elegantProductName(item.name);
   const availableVariants = asArray(item?.variants).filter((variant) => Boolean(asNumber(variant?.is_active, 1)));
@@ -1343,7 +1355,7 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
     .slice(0, 4);
 
   return (
-    <main className="catalog-page theme-detail" style={{ "--catalog-primary": theme.primary_color || "#C8A96A", "--catalog-secondary": theme.secondary_color || "#D8C3A5", "--catalog-bg": theme.background_color || "#F8F5F0", "--catalog-button": theme.button_color || "#C8A96A", fontFamily: theme.body_font || "Inter" }}>
+    <main className="catalog-page theme-detail" style={/** @type {React.CSSProperties} */ ({ "--catalog-primary": theme.primary_color || "#C8A96A", "--catalog-secondary": theme.secondary_color || "#D8C3A5", "--catalog-bg": theme.background_color || "#F8F5F0", "--catalog-button": theme.button_color || "#C8A96A", fontFamily: theme.body_font || "Inter" })}>
       <section className="catalog-main catalog-product-detail-page">
         <header className="catalog-topbar">
           <a className="catalog-client-brand" href={catalogUrl()}>
@@ -1747,7 +1759,7 @@ export function PublicBooking() {
   });
   // `cpf`/`email` ficam fora de `defaultPublicBooking()` porque nascem sempre
   // vazios: são digitados na etapa 5 e não vêm por query string como o resto.
-  const [form, setForm] = useState(() => ({ ...defaultPublicBooking(), cpf: "", email: "", birth_date: "", guardian_name: "", guardian_document: "" }));
+  const [form, setForm] = useState(() => ({ ...defaultPublicBooking(), cpf: "", email: "", birth_date: "", guardian_name: "", guardian_document: "", coupon_code: "" }));
   const [slots, setSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [submitting, setSubmitting] = useState(false);

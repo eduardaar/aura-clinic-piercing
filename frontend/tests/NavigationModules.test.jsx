@@ -50,26 +50,37 @@ describe("navegação por módulos", () => {
       "Configurações"
     ]);
     expect(screen.getByRole("button", { name: "Fornecedores" })).toBeInTheDocument();
+
+    // Categorias e centros de custo saíram do menu lateral na reorganização da
+    // navegação desta release: passaram a ser abertos de dentro das telas do
+    // financeiro (FinanceWorkspace, Payables, Receivables e Purchases). Clicar
+    // em "Financeiro" navega direto, sem expandir submenu nenhum.
     expect(screen.queryByRole("button", { name: "Categorias" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Centros de custo" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Financeiro" }));
-    expect(screen.getByRole("button", { name: "Categorias" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Centros de custo" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Categorias" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Centros de custo" })).not.toBeInTheDocument();
   });
 
-  it("abre filas e atalhos da agenda com destino explícito", async () => {
+  it("mantém o menu lateral plano: um clique navega, sem submenu", async () => {
     const user = userEvent.setup();
     const setPage = vi.fn();
-    render(<Sidebar page="dashboard" role="admin" user={{ role: "admin" }} features={allPlanFeatures} setPage={setPage} open />);
+    const { container } = render(
+      <Sidebar page="dashboard" role="admin" user={{ role: "admin" }} features={allPlanFeatures} setPage={setPage} open />
+    );
 
+    // O registro não pendura mais filas nem atalhos sob Clientes e Agenda, e
+    // as telas continuam alcançáveis pela própria rota.
     await user.click(screen.getByRole("button", { name: "Clientes" }));
-    expect(screen.getByRole("button", { name: /Termos pendentes/i })).toHaveTextContent("Fila");
-    expect(screen.getByRole("button", { name: /Pós-atendimentos pendentes/i })).toHaveTextContent("Fila");
+    expect(setPage).toHaveBeenCalledWith("client-center");
+    expect(container.querySelector(".nav-submenu")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Termos pendentes/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Pós-atendimentos pendentes/i })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Agenda" }));
-    await user.click(screen.getByRole("button", { name: "Procedimentos" }));
-    expect(setPage).toHaveBeenCalledWith("agenda", "procedimentos");
+    expect(setPage).toHaveBeenCalledWith("agenda");
+    expect(container.querySelector(".nav-submenu")).toBeNull();
   });
 
   it("oculta o onboarding assim que a configuração termina", () => {

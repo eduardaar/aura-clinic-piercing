@@ -120,14 +120,23 @@ test("limit e offset são saneados (clamp 1..200 e >= 0)", async () => {
 // ---------- total respeita os filtros ----------
 
 test("total reflete o filtro de busca, não a tabela inteira", async () => {
-  const res = await api("/clients?search=Cliente Pag 0&limit=3");
-  assert.equal(res.status, 200, JSON.stringify(res.json));
-  // "Cliente Pag 00".."Cliente Pag 09" -> 10 registros.
-  assert.equal(res.json.total, 10, "total deve considerar o filtro");
-  assert.equal(res.json.items.length, 3);
-  for (const item of res.json.items) {
-    assert.match(item.full_name, /^Cliente Pag 0/);
+  // A busca de clientes passou a extrair os dígitos do termo e casar também
+  // com telefone, CPF e CEP. Por isso "Cliente Pag 0" não é mais um filtro só
+  // de texto: o "0" alcança todos os WhatsApp da massa. O termo puramente
+  // textual continua sendo o caso que prova o contrato do `total`.
+  const texto = await api("/clients?search=Cliente Pag&limit=3");
+  assert.equal(texto.status, 200, JSON.stringify(texto.json));
+  assert.equal(texto.json.total, TOTAL_CLIENTES, "total deve considerar o filtro");
+  assert.equal(texto.json.items.length, 3);
+  for (const item of texto.json.items) {
+    assert.match(item.full_name, /^Cliente Pag /);
   }
+
+  // Filtro seletivo pelo caminho dos dígitos: o WhatsApp de um único cliente.
+  const porTelefone = await api("/clients?search=11988880500&limit=3");
+  assert.equal(porTelefone.status, 200, JSON.stringify(porTelefone.json));
+  assert.equal(porTelefone.json.total, 1, "total deve considerar o filtro");
+  assert.equal(porTelefone.json.items[0].full_name, "Cliente Pag 05");
 });
 
 test("total de agendamentos respeita o filtro de status", async () => {

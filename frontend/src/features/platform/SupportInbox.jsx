@@ -166,6 +166,7 @@ export function SupportInbox({ token, onUnauthorized, onChanged }) {
   const [search, setSearch] = useState("");
   // Termo com atraso: buscar a cada tecla dispararia uma requisição por letra.
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  /** @type {[Record<string, any>, React.Dispatch<React.SetStateAction<Record<string, any>>>]} */
   const [filterValues, setFilterValues] = useState({ status: "abertos" });
 
   const [openId, setOpenId] = useState(null);

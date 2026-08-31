@@ -24,6 +24,7 @@ const distinctOptions = (rows, pick, label = (value) => value) =>
 /** Lista operacional de recebíveis manuais e originados por vendas/serviços. */
 export function AccountsReceivable({ onNavigate }) {
   const today = new Date().toISOString().slice(0, 10);
+  /** @type {[Record<string, any>, React.Dispatch<React.SetStateAction<Record<string, any>>>]} */
   const [listFilters, setListFilters] = useState({
     period_from: `${today.slice(0, 4)}-01-01`,
     period_to: `${Number(today.slice(0, 4)) + 1}-12-31`,
@@ -41,6 +42,7 @@ export function AccountsReceivable({ onNavigate }) {
     return created?.name ? { id: created.name, name: created.name } : created;
   }
 
+  /** @returns {Record<string, any>} */
   const initialForm = () => ({
     entry_type: "receivable",
     description: "",

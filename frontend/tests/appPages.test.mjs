@@ -41,13 +41,17 @@ test("menu e páginas públicas preservam agrupamento e correspondência", () =>
   assert.deepEqual(menu.find(({ group }) => group === "Gestão").pages.map(({ id }) => id), ["reports", "audit"]);
   assert.deepEqual(menu.find(({ group }) => group === "Financeiro").pages.map(({ id }) => id), ["receivables"]);
   assert.equal(menuPages({ onboardingComplete: true }).flatMap(({ pages }) => pages).some(({ id }) => id === "onboarding"), false);
-  assert.deepEqual(appPageById("client-center").menuChildren.filter(({ queue }) => queue).map(({ page }) => page), ["terms", "postcare"]);
-  assert.deepEqual(appPageById("agenda").menuChildren.find(({ id }) => id === "agenda-procedures"), {
-    id: "agenda-procedures", label: "Procedimentos", page: "agenda", target: "procedimentos", feature: "procedures"
-  });
-  assert.equal(appPageById("agenda").menuChildren.find(({ id }) => id === "agenda-waitlist").queue, true);
-  assert.deepEqual(appPageById("sales").menuChildren.map(({ target }) => target), ["nova", "aberto", "historico"]);
-  assert.deepEqual(appPageById("receivables").menuChildren.slice(0, 3).map(({ target }) => target), ["visao", "caixa", undefined]);
+  // A navegação foi simplificada ao longo da release (a575523f, da8f96ca e
+  // seguintes): o registro não pendura mais submenus (`menuChildren`) sob
+  // Clientes, Agenda, Vendas e Financeiro. Cada tela permanece no registro e é
+  // alcançada pela própria rota canônica — é isso que precisa continuar valendo.
+  assert.equal(APP_PAGES.some((page) => page.menuChildren), false);
+  assert.equal(pageForAppPath("/app/clientes/termos"), "terms");
+  assert.equal(pageForAppPath("/app/clientes/pos-atendimento"), "postcare");
+  assert.equal(pageForAppPath("/app/agenda"), "agenda");
+  assert.equal(pageForAppPath("/app/servicos"), "services");
+  assert.equal(pageForAppPath("/app/vendas"), "sales");
+  assert.equal(pageForAppPath("/app/financeiro/receber"), "receivables");
   assert.equal(publicPageForPath("/catalogo/produto/42").id, "public-catalog");
   assert.equal(publicPageForPath("/politica-de-privacidade").documentKey, "privacy_policy");
   assert.equal(publicPageForPath("/novidades/agenda-renovada").id, "news");

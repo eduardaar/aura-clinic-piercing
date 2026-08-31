@@ -251,6 +251,7 @@ export function RevenueLineChart({ data = [], mode = "mensal" }) {
   );
 }
 
+/** @param {{ data?: any[], valueKey?: string, labelKey?: string, currencyValue?: boolean }} props */
 export function MiniBarChart({ data = [], valueKey, labelKey, currencyValue }) {
   const safeData = asArray(data);
   const max = Math.max(...safeData.map((item) => asNumber(item?.[valueKey])), 1);

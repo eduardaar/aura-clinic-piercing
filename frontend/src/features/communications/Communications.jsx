@@ -310,7 +310,7 @@ export function Communications({ initialTab = "service" }) {
                   <article className="detail-card communication-rule-card" key={rule.id}>
                     <header className="communication-rule-heading">
                       <div><strong>{rule.name}</strong><small>{rule.template_name || rule.template_key}</small></div>
-                      <StatusBadge tone={Number(rule.is_active) ? "ok" : "muted"}>{Number(rule.is_active) ? "Ativa" : "Inativa"}</StatusBadge>
+                      <StatusBadge tone={Number(rule.is_active) ? "ok" : "neutral"}>{Number(rule.is_active) ? "Ativa" : "Inativa"}</StatusBadge>
                     </header>
                     <Input label="Nome" value={rule.name || ""} onChange={(value) => updateRule(rule.id, "name", value)} />
                     <div className="communication-rule-timing">

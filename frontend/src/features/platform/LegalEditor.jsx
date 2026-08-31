@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Button, Input, Textarea } from "../../components/common/Ui";
+import { Accordion, Button, Input, Textarea } from "../../components/common/Ui";
 import { ArticleContent } from "../../components/common/ArticleContent";
 import { API } from "../../lib/api";
 
@@ -131,27 +131,38 @@ export function LegalEditor({ token, onUnauthorized }) {
                   {saving === document.key ? "Publicando…" : "Publicar nova versão"}
                 </Button>
               </div>
-              <details
+              <Accordion
+                type="single"
                 className="legal-history"
-                onToggle={(event) => event.currentTarget.open && loadHistory(document.key)}
+                onValueChange={(value) => { if (value === "historico") loadHistory(document.key); }}
               >
-                <summary>Histórico de versões ({document.version_count || document.version})</summary>
-                {history.length ? (
-                  <div className="stack">
-                    {history.map((version) => (
-                      <details key={version.version} className="panel legal-history-version">
-                        <summary>
-                          Versão {version.version} · {new Date(version.published_at).toLocaleDateString("pt-BR")}
-                        </summary>
-                        <h4>{version.title}</h4>
-                        <ArticleContent content={version.content} className="legal-history-content" />
-                      </details>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="muted">Carregando histórico…</p>
-                )}
-              </details>
+                <Accordion.Item value="historico">
+                  <Accordion.Header>
+                    <Accordion.Trigger>Histórico de versões ({document.version_count || document.version})</Accordion.Trigger>
+                  </Accordion.Header>
+                  <Accordion.Content>
+                    {history.length ? (
+                      <Accordion type="multiple" className="stack">
+                        {history.map((version) => (
+                          <Accordion.Item key={version.version} value={`versao-${version.version}`} className="panel legal-history-version">
+                            <Accordion.Header>
+                              <Accordion.Trigger>
+                                Versão {version.version} · {new Date(version.published_at).toLocaleDateString("pt-BR")}
+                              </Accordion.Trigger>
+                            </Accordion.Header>
+                            <Accordion.Content>
+                              <h4>{version.title}</h4>
+                              <ArticleContent content={version.content} className="legal-history-content" />
+                            </Accordion.Content>
+                          </Accordion.Item>
+                        ))}
+                      </Accordion>
+                    ) : (
+                      <p className="muted">Carregando histórico…</p>
+                    )}
+                  </Accordion.Content>
+                </Accordion.Item>
+              </Accordion>
             </section>
           );
         })

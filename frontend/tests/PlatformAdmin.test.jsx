@@ -39,12 +39,21 @@ describe("navegação do painel da plataforma", () => {
     expect(screen.queryByText("Conteúdo Clínicas")).not.toBeInTheDocument();
     expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
 
-    await user.click(screen.getByRole("tab", { name: "E-mail" }));
+    // O painel foi reorganizado em d3147a23: e-mail e segurança saíram das abas
+    // primárias para "Mais opções", e landing/notícias/legal passaram a viver
+    // sob a aba "Conteúdo da plataforma". Uma tela por vez continua valendo.
+    await user.click(screen.getByRole("button", { name: "Mais opções" }));
+    await user.click(screen.getByRole("menuitem", { name: "Configuração de e-mail" }));
     expect(screen.getByText("Conteúdo E-mail")).toBeInTheDocument();
     expect(screen.queryByText("Conteúdo Planos")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("tab", { name: "Conteúdo e ajuda" }));
+    await user.click(screen.getByRole("tab", { name: "Conteúdo da plataforma" }));
+    expect(screen.getByText("Conteúdo Landing")).toBeInTheDocument();
+    expect(screen.queryByText("Conteúdo E-mail")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Notícias e manual" }));
     expect(screen.getByText("Conteúdo e Ajuda")).toBeInTheDocument();
+    expect(screen.queryByText("Conteúdo Landing")).not.toBeInTheDocument();
   });
 
   it("permite voltar do login restrito para a tela inicial", () => {

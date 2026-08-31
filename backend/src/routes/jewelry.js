@@ -178,17 +178,45 @@ router.get("/api/inventory/movements", withFeature("basic_inventory", async (req
     ORDER BY m.movement_date DESC,m.id DESC LIMIT 500`));
 }));
 
+// A soma dos lotes de um item NUNCA pode passar do saldo dele. A unificação do
+// estoque trouxe a rota sem essa guarda (e sem `increase_stock`), o que deixava
+// cadastrar lote a mais e a conciliação passava a mentir. A trava volta aqui,
+// com o item travado na transação, como era em /api/consumables.
 router.post("/api/jewelry/:id/lots", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_ADJUST)) return;
   try {
     const quantity = movementQuantity(req.body?.quantity);
-    const item = await db.get("SELECT * FROM jewelry_inventory WHERE id=? AND status!='arquivado'", [req.params.id]);
-    if (!item || !item.track_lots) return res.status(409).json({ error: "O item não está configurado para controlar lotes." });
-    const result = await db.run(`INSERT INTO inventory_item_lots
-      (inventory_item_id,product_variant_id,batch_code,expiry_date,received_quantity,remaining_quantity,unit_cost,notes)
-      VALUES (?,?,?,?,?,?,?,?) RETURNING id`, [item.id, req.body?.product_variant_id || null, String(req.body?.batch_code || "").trim(),
-      req.body?.expiry_date || null, quantity, quantity, Number(req.body?.unit_cost || item.cost_value || 0), String(req.body?.notes || "").trim()]);
-    res.status(201).json(await db.get("SELECT * FROM inventory_item_lots WHERE id=?", [result.returnedId]));
+    const increaseStock = req.body?.increase_stock === true || req.body?.increase_stock === "true";
+    let lotId = null;
+    const conflito = await db.transaction(async (tx) => {
+      const item = await tx.get("SELECT * FROM jewelry_inventory WHERE id=? AND status!='arquivado' FOR UPDATE", [req.params.id]);
+      if (!item || !item.track_lots) return "O item não está configurado para controlar lotes.";
+      if (!increaseStock) {
+        const comLote = await tx.get(
+          "SELECT COALESCE(SUM(remaining_quantity), 0) AS quantity FROM inventory_item_lots WHERE inventory_item_id=?",
+          [item.id]
+        );
+        const semLote = Number(item.quantity || 0) - Number(comLote?.quantity || 0);
+        if (quantity > semLote) {
+          throw new Error(`O lote informado supera o saldo ainda sem lote (${Math.max(0, semLote)}). Marque entrada de estoque para somar ao saldo.`);
+        }
+      }
+      const result = await tx.run(`INSERT INTO inventory_item_lots
+        (inventory_item_id,product_variant_id,batch_code,expiry_date,received_quantity,remaining_quantity,unit_cost,notes)
+        VALUES (?,?,?,?,?,?,?,?) RETURNING id`, [item.id, req.body?.product_variant_id || null, String(req.body?.batch_code || "").trim(),
+        req.body?.expiry_date || null, quantity, quantity, Number(req.body?.unit_cost || item.cost_value || 0), String(req.body?.notes || "").trim()]);
+      lotId = result.returnedId;
+      if (increaseStock) {
+        await tx.run("UPDATE jewelry_inventory SET quantity=quantity+?, updated_at=CURRENT_TIMESTAMP WHERE id=?", [quantity, item.id]);
+        await tx.run(
+          "INSERT INTO stock_movements (jewelry_id, variant_id, movement_type, quantity, notes, movement_date) VALUES (?, ?, 'Entrada', ?, ?, ?)",
+          [item.id, req.body?.product_variant_id || null, quantity, `Entrada do lote ${String(req.body?.batch_code || "").trim()}`.trim(), new Date().toISOString().slice(0, 10)]
+        );
+      }
+      return null;
+    });
+    if (conflito) return res.status(409).json({ error: conflito });
+    res.status(201).json(await db.get("SELECT * FROM inventory_item_lots WHERE id=?", [lotId]));
   } catch (error) {
     res.status(400).json({ error: error.message || "Não foi possível registrar o lote." });
   }
@@ -759,6 +787,23 @@ router.post("/api/jewelry/:id/movements", withFeature("basic_inventory", async (
       const criticalThreshold = Number(jewelry.critical_stock_threshold || 3);
       const lowThreshold = Number(jewelry.low_stock_threshold || 5);
       const status = nextQuantity <= 0 ? "esgotado" : nextQuantity <= criticalThreshold ? "crítico" : nextQuantity <= lowThreshold ? "baixo estoque" : "disponível";
+      // Saída num item com lote precisa baixar o lote que vence primeiro. Sem
+      // isto a soma dos lotes fica maior que o saldo do item e a conciliação
+      // passa a mentir — era o que /api/consumables fazia antes da unificação.
+      if (outgoing && jewelry.track_lots) {
+        let porBaixar = quantity;
+        const lotes = await tx.all(`SELECT id, remaining_quantity FROM inventory_item_lots
+           WHERE inventory_item_id=? AND active=true AND remaining_quantity > 0
+           ORDER BY CASE WHEN expiry_date IS NULL THEN 1 ELSE 0 END, expiry_date NULLS LAST, id
+           FOR UPDATE`, [jewelry.id]);
+        for (const lote of lotes) {
+          if (porBaixar <= 0) break;
+          const baixa = Math.min(porBaixar, Number(lote.remaining_quantity || 0));
+          if (baixa <= 0) continue;
+          await tx.run("UPDATE inventory_item_lots SET remaining_quantity=remaining_quantity-?, updated_at=CURRENT_TIMESTAMP WHERE id=?", [baixa, lote.id]);
+          porBaixar -= baixa;
+        }
+      }
       await tx.run("INSERT INTO stock_movements (jewelry_id, variant_id, movement_type, quantity, notes, movement_date) VALUES (?, ?, ?, ?, ?, ?)", [
         jewelry.id,
         variants[0]?.id || null,

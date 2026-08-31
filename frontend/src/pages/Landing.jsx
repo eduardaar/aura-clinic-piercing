@@ -64,7 +64,7 @@ function contentItems(content, field, requiredField) {
       const base = String(item[requiredField]);
       const repeated = (seen.get(base) || 0) + 1;
       seen.set(base, repeated);
-      return { ...item, key: repeated > 1 ? `${base}#${repeated}` : base };
+      return /** @type {Record<string, any>} */ ({ ...item, key: repeated > 1 ? `${base}#${repeated}` : base });
     });
 }
 
@@ -355,6 +355,7 @@ const SECTION_COMPONENTS = {
 };
 
 export function AboutPage() {
+  /** @type {[Record<string, any>, React.Dispatch<React.SetStateAction<Record<string, any>>>]} */
   const [content, setContent] = useState(LANDING_DEFAULTS.about);
   useEffect(() => {
     let active = true;
@@ -400,6 +401,7 @@ export function Landing() {
   // de entrada de quem vai assinar: API fora, lenta ou devolvendo lista vazia
   // não pode virar tela branca — isso é venda perdida na hora. Quando a resposta
   // chega, ela substitui o embutido; até lá a página está inteira.
+  /** @type {[Record<string, any>[], React.Dispatch<React.SetStateAction<Record<string, any>[]>>]} */
   const [sections, setSections] = useState(DEFAULT_LANDING_SECTIONS);
   const [plans, setPlans] = useState([]);
   const [news, setNews] = useState([]);

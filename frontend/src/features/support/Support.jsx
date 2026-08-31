@@ -103,6 +103,7 @@ function ThreadMessage({ message }) {
 export function Support() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  /** @type {[Record<string, any>, React.Dispatch<React.SetStateAction<Record<string, any>>>]} */
   const [filterValues, setFilterValues] = useState({});
   const [openId, setOpenId] = useState(null);
   const [showNew, setShowNew] = useState(false);

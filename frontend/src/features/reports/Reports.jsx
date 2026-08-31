@@ -271,7 +271,7 @@ function buildColumns(rows, declaredColumns = []) {
     return {
       key,
       label: definition.label || columnLabel(key),
-      align: numeric ? "right" : undefined,
+      align: /** @type {"right" | undefined} */ (numeric ? "right" : undefined),
       // Buscar por valor numérico gera mais falso positivo do que acerto.
       searchable: !numeric,
       value: (row) => sortValue(kind, row[key]),
@@ -282,6 +282,7 @@ function buildColumns(rows, declaredColumns = []) {
 
 export function Reports() {
   const today = new Date().toISOString().slice(0, 10);
+  /** @type {[Record<string, any>, React.Dispatch<React.SetStateAction<Record<string, any>>>]} */
   const [filters, setFilters] = useState({ type: "sales", from: `${today.slice(0, 7)}-01`, to: today, status: "", professional_id: "" });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);

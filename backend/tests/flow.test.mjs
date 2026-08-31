@@ -151,7 +151,7 @@ test("2. cadastra cliente e ele aparece na listagem", async () => {
 test("3a. cadastra serviço e confere na listagem", async () => {
   const create = await api("/services", {
     method: "POST",
-    body: { name: "Perfuração de orelha", duration_minutes: 30, price: 120, deposit_value: 40 },
+    body: { name: "Perfuração de orelha", duration_minutes: 30, price: 120, deposit_value: 40, postcare_enabled: true, postcare_days: [7, 15, 30] },
   });
   assert.equal(create.status, 201, JSON.stringify(create.json));
   assert.equal(create.json.name, "Perfuração de orelha");
@@ -163,22 +163,32 @@ test("3a. cadastra serviço e confere na listagem", async () => {
   assert.ok(list.json.some((s) => s.id === ctx.serviceId), "serviço deve aparecer");
 });
 
-// 3b) Procedimento vinculado ao serviço.
-test("3b. cadastra procedimento vinculado ao serviço", async () => {
-  const create = await api("/procedures", {
+// 3b) Tipo de atendimento: cadastro unificado em /api/services.
+test("3b. cadastro de procedimento vive em /services e o alias antigo só lê", async () => {
+  // A escrita em /api/procedures foi aposentada: responde 410 e aponta o
+  // caminho novo, em vez de aceitar um segundo cadastro paralelo.
+  const retirado = await api("/procedures", {
     method: "POST",
     body: { name: "Lóbulo simples", service_id: ctx.serviceId, body_area: "Orelha", price: 100, duration_minutes: 20 },
   });
+  assert.equal(retirado.status, 410, JSON.stringify(retirado.json));
+  assert.match(retirado.json.error, /\/api\/services/);
+
+  const create = await api("/services", {
+    method: "POST",
+    body: { name: "Lóbulo simples", body_area: "Orelha", price: 100, duration_minutes: 20 },
+  });
   assert.equal(create.status, 201, JSON.stringify(create.json));
   assert.equal(create.json.name, "Lóbulo simples");
-  assert.equal(Number(create.json.service_id), Number(ctx.serviceId));
   ctx.procedureId = create.json.id;
 
+  // O alias histórico continua respondendo em leitura, sem o registro novo.
   const list = await api("/procedures");
   assert.equal(list.status, 200);
-  const found = list.json.find((p) => p.id === ctx.procedureId);
-  assert.ok(found, "procedimento deve aparecer");
-  assert.equal(found.service_name, "Perfuração de orelha", "join com service_name deve resolver");
+  assert.ok(Array.isArray(list.json), "o alias antigo devolve array puro");
+
+  const servicos = await api("/services");
+  assert.ok(servicos.json.some((item) => item.id === ctx.procedureId), "tipo de atendimento deve aparecer em /services");
 });
 
 // 3c) Profissional.

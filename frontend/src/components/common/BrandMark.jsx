@@ -6,6 +6,7 @@
 //
 // Desenhada em SVG inline de propósito: escala sem perder nitidez em qualquer
 // densidade de tela e herda a paleta sem precisar de arquivo de imagem.
+/** @param {{ size?: number, className?: string, title?: string }} props */
 export function BrandMark({ size = 36, className, title = "Aura" }) {
   return (
     <svg

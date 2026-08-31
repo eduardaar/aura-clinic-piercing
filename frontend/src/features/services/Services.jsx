@@ -47,6 +47,7 @@ function ToggleList({ title, hint, items, selected, onChange }) {
   </div>;
 }
 
+/** @param {{ checklist?: any[], biosafety?: Record<string, any>, onChange?: (...args: any[]) => any }} props */
 function OperationalEditor({ checklist = [], biosafety = {}, onChange }) {
   const rows = Array.isArray(checklist) ? checklist : [];
   const requiredFields = asArray(biosafety.required_fields);

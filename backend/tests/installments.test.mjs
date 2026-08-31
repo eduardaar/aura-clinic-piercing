@@ -55,7 +55,7 @@ before(async () => {
   Object.assign(context, await createTenantWithCurrentLegal());
   const supplier = await api("/finance/suppliers", {
     method: "POST",
-    body: { name: "Fornecedor Parcelas QA", person_type: "PJ", document: "12345678000190" }
+    body: { name: "Fornecedor Parcelas QA", person_type: "PJ", document: "12345678000195" }
   });
   assert.equal(supplier.status, 201, JSON.stringify(supplier.json));
   context.supplierId = supplier.json.id;

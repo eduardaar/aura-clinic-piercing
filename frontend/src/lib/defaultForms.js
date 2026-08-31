@@ -245,6 +245,7 @@ export function nextBookingDates(total = 10) {
   });
 }
 
+/** @returns {Record<string, any>} */
 export function defaultServiceForm() {
   return {
     name: "",
@@ -377,6 +378,7 @@ export const JEWELRY_CATEGORY_OPTIONS = [
   "Ouro 18k"
 ];
 
+/** @returns {Record<string, any>} */
 export function defaultJewelry() {
   return {
     name: "",

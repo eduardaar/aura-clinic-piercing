@@ -1,3 +1,4 @@
+/** @param {{ content?: any, className?: string }} props */
 export function ArticleContent({ content, className = "" }) {
   const blocks = String(content || "")
     .split(/\n\s*\n/)

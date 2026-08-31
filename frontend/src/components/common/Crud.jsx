@@ -129,7 +129,7 @@ export function ConfirmDeleteModal({
  * @param {object} props
  * @param {React.ReactNode} [props.title]
  * @param {React.ReactNode} [props.subtitle]
- * @param {{ label: string, icon?: React.ComponentType<{size?: number}>, onClick: () => void }[]} [props.actions]
+ * @param {{ label: string, icon?: React.ComponentType<any>, onClick: () => void }[]} [props.actions]
  *   Ações secundárias, agrupadas em "Mais opções" antes do botão principal.
  * @param {string} [props.actionLabel] Padrão: "Novo".
  * @param {() => void} [props.onAction] Sem ele, o botão de ação não é renderizado.

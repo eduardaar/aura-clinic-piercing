@@ -148,6 +148,7 @@ export function CatalogCustomization({ initialSection = "layout" }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [templateToApply, setTemplateToApply] = useState("");
+  /** @type {[{ draft?: number, published?: number }, React.Dispatch<React.SetStateAction<{ draft?: number, published?: number }>>]} */
   const [version, setVersion] = useState({});
   const [resetOpen, setResetOpen] = useState(false);
   const [rollbackVersion, setRollbackVersion] = useState(null);
@@ -737,8 +738,8 @@ function CatalogPublishChecklist({ checklist }) {
   const warnings = asArray(safeChecklist.warnings);
   if (!checklist) return null;
   const items = [
-    ...errors.map((item) => ({ ...asObject(item), tone: "danger" })),
-    ...warnings.map((item) => ({ ...asObject(item), tone: "warn" }))
+    ...errors.map((item) => /** @type {Record<string, any>} */ ({ ...asObject(item), tone: "danger" })),
+    ...warnings.map((item) => /** @type {Record<string, any>} */ ({ ...asObject(item), tone: "warn" }))
   ];
   return (
     <section className={`catalog-publish-checklist ${errors.length ? "has-errors" : ""}`} aria-live="polite">
@@ -845,6 +846,7 @@ function bestTextColor(background) {
   return contrastRatio(background, "#ffffff") >= contrastRatio(background, "#111111") ? "#ffffff" : "#111111";
 }
 
+/** @param {{ title?: React.ReactNode, subtitle?: React.ReactNode, action?: React.ReactNode, children?: React.ReactNode }} props */
 function CustomizationCard({ title, subtitle, action, children }) {
   return (
     <article className="panel customization-card">
@@ -857,6 +859,7 @@ function CustomizationCard({ title, subtitle, action, children }) {
   );
 }
 
+/** @param {{ title?: React.ReactNode, meta?: React.ReactNode, children?: React.ReactNode, actions?: React.ReactNode, onDelete?: () => any, deleteMessage?: React.ReactNode, deleteLabel?: string }} props */
 function CatalogConfigItem({ title, meta, children, actions, onDelete, deleteMessage, deleteLabel = "Excluir" }) {
   const [open, setOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -1051,14 +1054,14 @@ function CatalogLayoutBuilder({ form, setForm }) {
             className={`catalog-layout-card catalog-layout-row${row.is_active ? "" : " is-hidden"}${draggedKey === row.section_key ? " is-dragging" : ""}${dropTargetKey === row.section_key && draggedKey !== row.section_key ? " is-drop-target" : ""}`}
             draggable
             onDragStart={(event) => {
-              if (!event.target.closest?.(".catalog-drag-handle")) { event.preventDefault(); return; }
+              if (!(/** @type {Element} */ (event.target)).closest?.(".catalog-drag-handle")) { event.preventDefault(); return; }
               event.dataTransfer.effectAllowed = "move";
               event.dataTransfer.setData("text/plain", row.section_key);
               setDraggedKey(row.section_key);
             }}
             onDragEnd={() => { setDraggedKey(""); setDropTargetKey(""); }}
             onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDropTargetKey(row.section_key); }}
-            onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDropTargetKey(""); }}
+            onDragLeave={(event) => { if (!event.currentTarget.contains(/** @type {Node} */ (event.relatedTarget))) setDropTargetKey(""); }}
             onDrop={(event) => { event.preventDefault(); dropOn(row.section_key); }}
           >
             <header className="catalog-layout-row-header">
@@ -1598,7 +1601,7 @@ function CatalogCustomizationPreview({ form, products, device = "desktop", onDev
   }, [sendPreview]);
 
   return (
-    <section className={`catalog-live-preview preview-${device}${modal ? " preview-modal" : ""}`} style={{ "--preview-primary": theme.primary_color }}>
+    <section className={`catalog-live-preview preview-${device}${modal ? " preview-modal" : ""}`} style={/** @type {React.CSSProperties} */ ({ "--preview-primary": theme.primary_color })}>
       <div className="preview-browser-bar">
         <span />
         <strong>Prévia fiel do rascunho</strong>
@@ -1770,6 +1773,7 @@ function defaultPromotion() {
   };
 }
 
+/** @returns {Record<string, any>} */
 function defaultCoupon() {
   return {
     code: "",
@@ -1793,6 +1797,7 @@ function defaultCoupon() {
   };
 }
 
+/** @returns {Record<string, any>} */
 function defaultAdvancedPromotion() {
   return {
     name: "", description: "", status: "active", discount_type: "percent", discount_value: 10,
@@ -1910,7 +1915,7 @@ function defaultCatalogCustomization() {
     },
     banners: [defaultCatalogBanner(1)],
     contentSections: [defaultContentSection(1)],
-    featuredCategories: JEWELRY_CATEGORY_OPTIONS.map((name, index) => ({ category_id: name, public_name: name, icon: "gem", image_url: "", is_active: true, sort_order: index + 1 })),
+    featuredCategories: JEWELRY_CATEGORY_OPTIONS.map((name, index) => /** @type {Record<string, any>} */ ({ category_id: name, public_name: name, icon: "gem", image_url: "", is_active: true, sort_order: index + 1 })),
     featuredProducts: [],
     promotions: []
     ,
@@ -2114,7 +2119,7 @@ function CatalogTemplatePicker({ activeTemplate, onSelect }) {
       <div className="catalog-template-grid">
         {CATALOG_TEMPLATES.map((template) => (
           <button type="button" key={template.key} className={activeTemplate === template.key ? "active" : ""} onClick={() => onSelect(template.key)}>
-            <span className="catalog-template-swatch" style={{ "--template-primary": template.colors[0], "--template-surface": template.colors[1] }} aria-hidden="true"><i /><i /><i /></span>
+            <span className="catalog-template-swatch" style={/** @type {React.CSSProperties} */ ({ "--template-primary": template.colors[0], "--template-surface": template.colors[1] })} aria-hidden="true"><i /><i /><i /></span>
             <strong>{template.name}</strong>
             <small>{template.description}</small>
             <em>{activeTemplate === template.key ? "Em uso" : "Aplicar"}</em>
@@ -2201,6 +2206,7 @@ function CatalogMediaPicker({ onClose, onSelect }) {
   );
 }
 
+/** @param {{ label?: string, value?: any, onChange?: (value: any, asset?: any) => any, onTransformChange?: (transform: any, url?: any) => any, transform?: any, aspectRatio?: string, contextLabel?: any }} props */
 export function ImageUploadField({ label, value, onChange, onTransformChange, transform, aspectRatio = "1/1", contextLabel = label }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");

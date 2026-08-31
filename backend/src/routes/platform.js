@@ -24,7 +24,7 @@ import {
 import { validateBody } from "../middleware/validate.js";
 import { signupSchema, platformLoginSchema, tenantStatusSchema } from "../schemas/index.js";
 import { isProduction } from "../config/index.js";
-import { PLAN_FEATURES, listPlans, normalizePlanCode, planByCode } from "../services/plans.js";
+import { PLAN_FEATURES, listPlans, normalizePlanCode } from "../services/plans.js";
 import { subscriptionSyncWarning, syncSubscriptionPrice } from "../services/platformBilling.js";
 import { invalidateSubscriptionCache } from "../services/subscriptions.js";
 import { decryptTotpSecret, encryptTotpSecret, generateTotpSecret, otpauthUri, verifyTotp } from "../services/totp.js";

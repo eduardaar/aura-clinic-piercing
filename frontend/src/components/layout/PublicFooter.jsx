@@ -17,6 +17,7 @@ const whatsappUrl = (phone) => {
   return digits ? `https://wa.me/${digits}` : "";
 };
 
+/** @param {{ content?: any }} props */
 export function PublicFooter({ content }) {
   const [remote, setRemote] = useState(null);
   const [openLegalDocument, setOpenLegalDocument] = useState(null);

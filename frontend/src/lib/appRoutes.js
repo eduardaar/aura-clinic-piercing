@@ -1,10 +1,10 @@
 import { INTERNAL_APP_PAGES } from "./appPages.js";
 
 const PAGE_BY_ID = new Map(INTERNAL_APP_PAGES.map((page) => [page.id, page]));
-const PAGE_BY_PATH = new Map(INTERNAL_APP_PAGES.flatMap((page) => [
+const PAGE_BY_PATH = new Map(/** @type {[string, string][]} */ (INTERNAL_APP_PAGES.flatMap((page) => [
   [page.path, page.id],
   ...(page.aliases || []).map((alias) => [alias, page.id])
-]));
+])));
 
 export function appPathForPage(page) {
   return PAGE_BY_ID.get(page)?.path || PAGE_BY_ID.get("dashboard").path;

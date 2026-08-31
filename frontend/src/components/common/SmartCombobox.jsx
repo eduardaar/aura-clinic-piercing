@@ -60,6 +60,7 @@ function stockStatus(item) {
   return { label: "Disponível", tone: "stock-ok", text: `Disponível · ${quantity} ${quantity === 1 ? "unidade" : "unidades"}` };
 }
 
+/** @param {{ label?: React.ReactNode, value?: any, onChange?: (value: any) => any, onSelect?: (item: any) => any, options?: any[], placeholder?: string, emptyLabel?: string, required?: boolean, loading?: boolean, getLabel?: (item: any) => any, getMeta?: (item: any) => any, isDisabled?: (item: any) => boolean }} props */
 export function SmartCombobox({ label, value, onChange, onSelect, options = [], placeholder = "Buscar joia, SKU ou medida", emptyLabel = "Nenhuma joia encontrada", required = false, loading = false, getLabel = (item) => item.name, getMeta, isDisabled = (item) => stock(item) <= 0 }) {
   const id = useId();
   const root = useRef(null);

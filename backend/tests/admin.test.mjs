@@ -261,9 +261,12 @@ test("script restore-admin restaura conta existente sem duplicar usuário", asyn
   assert.equal(usersAfter.json.filter((user) => user.email === ctx.tenantAdminEmail).length, 1);
   assert.ok(usersAfter.json.some((user) => user.email === ctx.tenantAdminEmail && user.role === "admin"));
 
+  // Excluir usuário passou a exigir motivo: a remoção é crítica e vai para a
+  // trilha de auditoria com a justificativa.
   const removeReserve = await req(`/users/${reserve.json.id}`, {
     token: ctx.tenantToken,
-    method: "DELETE"
+    method: "DELETE",
+    body: { reason: "Conta de reserva criada apenas para este teste." }
   });
   assert.equal(removeReserve.status, 200, JSON.stringify(removeReserve.json));
 });

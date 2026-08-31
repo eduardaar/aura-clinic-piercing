@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ArrowLeft, ChevronRight, Eye, EyeOff, LogOut, Mail, MoreHorizontal, ShieldCheck } from "lucide-react";
 import { Button, Input, Tabs } from "../../components/common/Ui";
-import { Modal } from "../../components/common/Crud";
+import { DropdownMenu, Modal } from "../../components/common/Crud";
 import { API } from "../../lib/api";
 import { BrandMark } from "../../components/common/BrandMark";
 import "../../styles/platform-panel.css";
