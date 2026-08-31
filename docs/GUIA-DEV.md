@@ -4,7 +4,7 @@ Como configurar, rodar, testar e evoluir a **Aura Clinic Piercing** localmente. 
 
 ## Pré-requisitos
 
-- **Node.js 18+**
+- **Node.js 20.19+**
 - **PostgreSQL 14+** em execução
 - Cliente PostgreSQL (`createdb`, `psql`, `pg_dump`) no PATH — necessário para o script de backup.
 
@@ -82,6 +82,20 @@ Testes de integração de endpoint (caixa-preta via HTTP), com o runner nativo `
 
 ```bash
 npm --prefix backend test
+```
+
+Durante o desenvolvimento, use os atalhos da raiz conforme o alcance da mudança:
+
+```bash
+npm run check:changed   # Biome apenas nos arquivos alterados em relação à main
+npm run verify:static   # Biome nos alterados, typecheck e build do frontend
+npm run verify:full     # verificação estática e todas as suítes backend/frontend
+```
+
+O runner aceita vários testes backend com uma única subida da API:
+
+```bash
+npm --prefix backend test -- tests/auth.test.mjs tests/users.test.mjs
 ```
 
 O runner (`backend/tests/run-suite.mjs`):

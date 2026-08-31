@@ -9,6 +9,7 @@ import { Modal } from "./Crud";
  * onde ela é usada. `onCreate(name)` deve devolver o registro criado
  * (`{ id, name, ... }`); a opção nova já entra selecionada.
  */
+/** @param {{ label?: React.ReactNode, value?: any, onChange?: (value: any) => any, options?: any[], emptyLabel?: string, createTitle?: string, createLabel?: string, onCreate?: (name: string) => any }} props */
 export function SelectWithCreate({ label, value, onChange, options, emptyLabel = "Nenhum", createTitle, createLabel = "Nome", onCreate }) {
   const formId = useId();
   const [creating, setCreating] = useState(null);

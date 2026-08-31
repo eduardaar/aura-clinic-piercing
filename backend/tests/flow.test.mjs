@@ -151,7 +151,7 @@ test("2. cadastra cliente e ele aparece na listagem", async () => {
 test("3a. cadastra serviço e confere na listagem", async () => {
   const create = await api("/services", {
     method: "POST",
-    body: { name: "Perfuração de orelha", duration_minutes: 30, price: 120, deposit_value: 40 },
+    body: { name: "Perfuração de orelha", duration_minutes: 30, price: 120, deposit_value: 40, postcare_enabled: true, postcare_days: [7, 15, 30] },
   });
   assert.equal(create.status, 201, JSON.stringify(create.json));
   assert.equal(create.json.name, "Perfuração de orelha");
@@ -163,22 +163,32 @@ test("3a. cadastra serviço e confere na listagem", async () => {
   assert.ok(list.json.some((s) => s.id === ctx.serviceId), "serviço deve aparecer");
 });
 
-// 3b) Procedimento vinculado ao serviço.
-test("3b. cadastra procedimento vinculado ao serviço", async () => {
-  const create = await api("/procedures", {
+// 3b) Tipo de atendimento: cadastro unificado em /api/services.
+test("3b. cadastro de procedimento vive em /services e o alias antigo só lê", async () => {
+  // A escrita em /api/procedures foi aposentada: responde 410 e aponta o
+  // caminho novo, em vez de aceitar um segundo cadastro paralelo.
+  const retirado = await api("/procedures", {
     method: "POST",
     body: { name: "Lóbulo simples", service_id: ctx.serviceId, body_area: "Orelha", price: 100, duration_minutes: 20 },
   });
+  assert.equal(retirado.status, 410, JSON.stringify(retirado.json));
+  assert.match(retirado.json.error, /\/api\/services/);
+
+  const create = await api("/services", {
+    method: "POST",
+    body: { name: "Lóbulo simples", body_area: "Orelha", price: 100, duration_minutes: 20 },
+  });
   assert.equal(create.status, 201, JSON.stringify(create.json));
   assert.equal(create.json.name, "Lóbulo simples");
-  assert.equal(Number(create.json.service_id), Number(ctx.serviceId));
   ctx.procedureId = create.json.id;
 
+  // O alias histórico continua respondendo em leitura, sem o registro novo.
   const list = await api("/procedures");
   assert.equal(list.status, 200);
-  const found = list.json.find((p) => p.id === ctx.procedureId);
-  assert.ok(found, "procedimento deve aparecer");
-  assert.equal(found.service_name, "Perfuração de orelha", "join com service_name deve resolver");
+  assert.ok(Array.isArray(list.json), "o alias antigo devolve array puro");
+
+  const servicos = await api("/services");
+  assert.ok(servicos.json.some((item) => item.id === ctx.procedureId), "tipo de atendimento deve aparecer em /services");
 });
 
 // 3c) Profissional.
@@ -804,22 +814,24 @@ test("5c. muda status do agendamento até 'atendido'", async () => {
   assert.equal(patch.status, 200, JSON.stringify(patch.json));
   assert.equal(patch.json.status, "atendido");
 
-  const orders = await api("/sales-orders?include_agenda=true");
-  assert.equal(orders.status, 200, JSON.stringify(orders.json));
-  const serviceOrders = orders.json.filter((order) => Number(order.appointment_id) === Number(ctx.appointmentId) && order.order_type === "ordem_servico");
-  assert.equal(serviceOrders.length, 1, "agendamento atendido deve gerar uma unica ordem de servico");
-  assert.ok(serviceOrders[0].items.some((item) => item.item_type === "servico"), "ordem deve conter item de servico");
+  const executions = await api("/service-executions");
+  assert.equal(executions.status, 200, JSON.stringify(executions.json));
+  const execution = executions.json.find((item) => Number(item.appointment_id) === Number(ctx.appointmentId));
+  assert.ok(execution, "agendamento atendido deve gerar uma única execução de serviço");
+  const executionDetail = await api(`/service-executions/${execution.id}`);
+  assert.equal(executionDetail.status, 200, JSON.stringify(executionDetail.json));
+  assert.ok(executionDetail.json.items.some((item) => item.item_type === "service"), "execução deve conter item de serviço");
 
   // O sinal (pago na reserva) e o restante (pago aqui, ao concluir) existiam
-  // em `payments` antes deste título existir — o vínculo retroativo feito por
-  // ensureSalesOrderForAppointment precisa alcançar os dois.
+  // em `payments` antes da execução existir; o vínculo retroativo precisa
+  // alcançar todos sem criar uma venda artificial.
   const payments = await withTenantSchema(ctx.tenant.id, (db) =>
-    db.all("SELECT payment_type, sales_order_id FROM payments WHERE appointment_id = ?", [ctx.appointmentId])
+    db.all("SELECT payment_type, sales_order_id, service_execution_id FROM payments WHERE appointment_id = ?", [ctx.appointmentId])
   );
   assert.ok(payments.length >= 1, "deveria haver ao menos um pagamento vinculado ao atendimento");
   assert.ok(
-    payments.every((payment) => Number(payment.sales_order_id) === Number(serviceOrders[0].id)),
-    `todo pagamento do atendimento deve apontar para o título gerado: ${JSON.stringify(payments)}`
+    payments.every((payment) => Number(payment.service_execution_id) === Number(execution.id) && payment.sales_order_id == null),
+    `todo pagamento deve apontar para a execução e não para venda: ${JSON.stringify(payments)}`
   );
 });
 

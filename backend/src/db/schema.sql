@@ -64,19 +64,6 @@ CREATE INDEX IF NOT EXISTS idx_user_sessions_user_active
 ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_totp_secret_encrypted TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_enabled BOOLEAN NOT NULL DEFAULT false;
 
-CREATE TABLE IF NOT EXISTS admin_audit_logs (
-  id SERIAL PRIMARY KEY,
-  user_id INTEGER,
-  user_email TEXT,
-  tenant_slug TEXT,
-  action TEXT NOT NULL,
-  reset_type TEXT,
-  result TEXT NOT NULL,
-  removed_counts TEXT,
-  error_message TEXT,
-  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
-);
-
 CREATE TABLE IF NOT EXISTS administrative_audit_logs (
   id SERIAL PRIMARY KEY,
   entity_type TEXT NOT NULL,
@@ -109,6 +96,55 @@ CREATE TABLE IF NOT EXISTS professionals (
   notification_opt_in INTEGER NOT NULL DEFAULT 1
 );
 
+CREATE TABLE IF NOT EXISTS access_profiles (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  base_role TEXT NOT NULL DEFAULT 'reception',
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT access_profiles_base_role_check CHECK (base_role IN ('piercer', 'reception', 'finance'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_access_profiles_name ON access_profiles(lower(name));
+CREATE TABLE IF NOT EXISTS access_profile_permissions (
+  profile_id INTEGER NOT NULL REFERENCES access_profiles(id) ON DELETE CASCADE,
+  permission TEXT NOT NULL,
+  allowed BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (profile_id, permission)
+);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS access_profile_id INTEGER REFERENCES access_profiles(id) ON DELETE SET NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS professional_id INTEGER REFERENCES professionals(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_users_access_profile ON users(access_profile_id);
+CREATE INDEX IF NOT EXISTS idx_users_professional ON users(professional_id);
+
+CREATE TABLE IF NOT EXISTS audit_events (
+  id BIGSERIAL PRIMARY KEY,
+  actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  actor_name TEXT,
+  actor_email TEXT,
+  actor_role TEXT,
+  module TEXT NOT NULL,
+  action TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT,
+  reason TEXT,
+  before_data JSONB,
+  after_data JSONB,
+  metadata JSONB,
+  severity TEXT NOT NULL DEFAULT 'info' CHECK (severity IN ('info', 'warning', 'critical')),
+  ip_address TEXT,
+  user_agent TEXT,
+  request_id TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_events_actor ON audit_events(actor_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_events_module ON audit_events(module, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_events_entity ON audit_events(entity_type, entity_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS services (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
@@ -124,15 +160,49 @@ CREATE TABLE IF NOT EXISTS services (
 CREATE TABLE IF NOT EXISTS clients (
   id SERIAL PRIMARY KEY,
   full_name TEXT NOT NULL,
+  social_name TEXT,
+  phone TEXT,
   whatsapp TEXT NOT NULL,
   instagram TEXT,
+  email TEXT,
   notes TEXT,
   birth_date TEXT,
+  cpf TEXT,
+  tax_id TEXT,
+  preferred_contact TEXT NOT NULL DEFAULT 'whatsapp',
+  postal_code TEXT,
+  address_line TEXT,
+  address_number TEXT,
+  address_complement TEXT,
+  neighborhood TEXT,
+  city TEXT,
+  state TEXT,
   created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS social_name TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS preferred_contact TEXT NOT NULL DEFAULT 'whatsapp';
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS postal_code TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS address_line TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS address_number TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS address_complement TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS neighborhood TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS city TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS state TEXT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS deleted_at TEXT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS anonymized_at TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS merged_into_client_id INTEGER REFERENCES clients(id) ON DELETE RESTRICT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS merged_at TIMESTAMPTZ;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS merged_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS merge_reason TEXT;
+DO $$ BEGIN
+  ALTER TABLE clients ADD CONSTRAINT clients_merge_not_self_check
+    CHECK (merged_into_client_id IS NULL OR merged_into_client_id <> id);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+CREATE INDEX IF NOT EXISTS idx_clients_merged_into ON clients(merged_into_client_id) WHERE merged_into_client_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_clients_active_name ON clients(full_name) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_clients_active_social_name ON clients(social_name) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_clients_active_cpf ON clients(cpf) WHERE deleted_at IS NULL AND cpf IS NOT NULL AND cpf <> '';
+CREATE INDEX IF NOT EXISTS idx_clients_active_whatsapp ON clients(whatsapp) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_administrative_audit_entity ON administrative_audit_logs(entity_type, entity_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS jewelry_inventory (
@@ -436,6 +506,9 @@ ON CONFLICT (template_key) DO NOTHING;
 
 INSERT INTO automation_rules (rule_key, name, event_type, template_key, offset_minutes, is_active) VALUES
   ('booking_received', 'Solicitação recebida', 'booking_created', 'booking_received', 0, 1),
+  ('booking_confirmed', 'Agendamento confirmado', 'appointment_confirmed', 'booking_confirmed', 0, 1),
+  ('booking_rescheduled', 'Agendamento reagendado', 'appointment_rescheduled', 'booking_rescheduled', 0, 1),
+  ('booking_cancelled', 'Agendamento cancelado', 'appointment_cancelled', 'booking_cancelled', 0, 1),
   ('reminder_24h', 'Lembrete 24h', 'appointment_upcoming', 'reminder_24h', -1440, 1),
   ('reminder_2h', 'Lembrete 2h', 'appointment_upcoming', 'reminder_2h', -120, 1),
   ('payment_pending', 'Pagamento pendente', 'payment_pending', 'payment_pending', 60, 1),
@@ -606,6 +679,54 @@ ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS sales_order_item_id INTEGER
 CREATE UNIQUE INDEX IF NOT EXISTS ux_stock_movements_sales_order_item
   ON stock_movements(sales_order_id, sales_order_item_id, movement_type)
   WHERE sales_order_id IS NOT NULL AND sales_order_item_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS service_executions (
+  id SERIAL PRIMARY KEY,
+  appointment_id INTEGER NOT NULL UNIQUE REFERENCES appointments(id) ON DELETE RESTRICT,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE RESTRICT,
+  professional_id INTEGER NOT NULL REFERENCES professionals(id) ON DELETE RESTRICT,
+  service_id INTEGER REFERENCES services(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('completed', 'cancelled')),
+  snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+  service_subtotal NUMERIC(12,2) NOT NULL DEFAULT 0,
+  product_subtotal NUMERIC(12,2) NOT NULL DEFAULT 0,
+  discount_total NUMERIC(12,2) NOT NULL DEFAULT 0,
+  total_value NUMERIC(12,2) NOT NULL DEFAULT 0,
+  paid_value NUMERIC(12,2) NOT NULL DEFAULT 0,
+  receivable_value NUMERIC(12,2) NOT NULL DEFAULT 0,
+  payment_method TEXT,
+  installment_count INTEGER NOT NULL DEFAULT 1 CHECK (installment_count BETWEEN 1 AND 120),
+  first_due_date TEXT,
+  installments_json JSONB,
+  executed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  clinical_notes TEXT,
+  occurrences TEXT,
+  aftercare_notes TEXT,
+  completed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  cancelled_at TIMESTAMPTZ,
+  cancellation_reason TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS service_execution_items (
+  id SERIAL PRIMARY KEY,
+  service_execution_id INTEGER NOT NULL REFERENCES service_executions(id) ON DELETE CASCADE,
+  item_type TEXT NOT NULL CHECK (item_type IN ('service', 'product')),
+  service_id INTEGER REFERENCES services(id) ON DELETE SET NULL,
+  product_id INTEGER REFERENCES jewelry_inventory(id) ON DELETE SET NULL,
+  product_variant_id INTEGER REFERENCES jewelry_variants(id) ON DELETE SET NULL,
+  item_name TEXT NOT NULL,
+  quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
+  unit_price NUMERIC(12,2) NOT NULL DEFAULT 0,
+  total_value NUMERIC(12,2) NOT NULL DEFAULT 0,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS service_execution_id INTEGER REFERENCES service_executions(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_service_executions_completed ON service_executions(completed_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_service_executions_client ON service_executions(client_id, completed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_service_executions_professional ON service_executions(professional_id, completed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_service_execution_items_execution ON service_execution_items(service_execution_id, id);
+CREATE INDEX IF NOT EXISTS idx_payments_service_execution ON payments(service_execution_id);
 
 CREATE TABLE IF NOT EXISTS expenses (
   id SERIAL PRIMARY KEY,
@@ -841,13 +962,74 @@ CREATE TABLE IF NOT EXISTS suppliers (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   person_type TEXT NOT NULL DEFAULT 'PJ' CHECK (person_type IN ('PJ', 'PF')),
+  legal_name TEXT,
+  trade_name TEXT,
   document TEXT,
+  state_registration TEXT,
+  contact_name TEXT,
   phone TEXT,
+  whatsapp TEXT,
   email TEXT,
+  website TEXT,
+  postal_code TEXT,
+  street TEXT,
+  street_number TEXT,
+  address_complement TEXT,
+  neighborhood TEXT,
+  city TEXT,
+  state TEXT,
+  country TEXT NOT NULL DEFAULT 'Brasil',
+  categories JSONB NOT NULL DEFAULT '[]'::jsonb,
+  brands JSONB NOT NULL DEFAULT '[]'::jsonb,
+  certifications JSONB NOT NULL DEFAULT '[]'::jsonb,
+  material_references JSONB NOT NULL DEFAULT '[]'::jsonb,
+  lot_references JSONB NOT NULL DEFAULT '[]'::jsonb,
+  payment_terms TEXT,
+  payment_method TEXT,
+  payment_days INTEGER CHECK (payment_days BETWEEN 0 AND 3650),
+  lead_time_days INTEGER CHECK (lead_time_days BETWEEN 0 AND 3650),
+  minimum_order_value NUMERIC(12,2) CHECK (minimum_order_value >= 0),
+  freight_terms TEXT,
+  quality_status TEXT NOT NULL DEFAULT 'review' CHECK (quality_status IN ('approved', 'review', 'blocked')),
   notes TEXT,
   is_active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+  created_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS'),
+  updated_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
+
+-- O schema.sql ainda é aplicado antes das migrations em instalações locais.
+-- Garanta as colunas antes dos índices também quando a tabela já existia.
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS legal_name TEXT;
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS trade_name TEXT;
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS state_registration TEXT;
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS contact_name TEXT;
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS whatsapp TEXT;
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS website TEXT;
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS postal_code TEXT;
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS street TEXT;
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS street_number TEXT;
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS address_complement TEXT;
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS neighborhood TEXT;
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS city TEXT;
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS state TEXT;
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS country TEXT NOT NULL DEFAULT 'Brasil';
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS categories JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS brands JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS certifications JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS material_references JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS lot_references JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS payment_terms TEXT;
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS payment_method TEXT;
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS payment_days INTEGER CHECK (payment_days BETWEEN 0 AND 3650);
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS lead_time_days INTEGER CHECK (lead_time_days BETWEEN 0 AND 3650);
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS minimum_order_value NUMERIC(12,2) CHECK (minimum_order_value >= 0);
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS freight_terms TEXT;
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS quality_status TEXT NOT NULL DEFAULT 'review';
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS updated_at TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS');
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_suppliers_document ON suppliers(document) WHERE NULLIF(document, '') IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_suppliers_name_search ON suppliers(lower(name));
+CREATE INDEX IF NOT EXISTS idx_suppliers_categories ON suppliers USING GIN(categories);
 
 ALTER TABLE financial_entries ADD COLUMN IF NOT EXISTS supplier_id INTEGER REFERENCES suppliers(id);
 

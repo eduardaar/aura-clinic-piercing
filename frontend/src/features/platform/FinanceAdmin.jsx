@@ -193,6 +193,7 @@ function lerPagina(payload) {
  * desenhar "carregando" e erro dentro da própria tabela, e trocar a tabela por um
  * texto a cada virada de página faria a lista piscar inteira.
  */
+/** @param {{ titulo?: React.ReactNode, subtitulo?: React.ReactNode, carregando?: boolean, erro?: any, onRecarregar?: () => any, filtros?: React.ReactNode, acoes?: React.ReactNode, delegaEstado?: boolean, children?: React.ReactNode }} props */
 function Bloco({ titulo, subtitulo, carregando, erro, onRecarregar, filtros, acoes, delegaEstado = false, children }) {
   return (
     <section className="panel">
@@ -234,6 +235,7 @@ function Bloco({ titulo, subtitulo, carregando, erro, onRecarregar, filtros, aco
  * cada cartão: um selo por cartão repetido cinco vezes vira ruído, e o que
  * precisa ficar claro é a fronteira entre os dois blocos.
  */
+/** @param {{ titulo?: React.ReactNode, explicacao?: React.ReactNode, children?: React.ReactNode }} props */
 function Grupo({ titulo, explicacao, children }) {
   return (
     <section className="form-section">

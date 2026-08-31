@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Input, PaymentSelect, Switch } from "./Ui";
 import { buildInstallments, installmentSummary, moneyToCents } from "../../lib/installments";
+import { ResponsiveEditableList, TransactionTotals } from "./TransactionFields";
 
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -50,54 +51,30 @@ export function InstallmentGrid({
         />
       </div>
 
-      <div className="stack installment-grid-list">
-        {rows.map((installment, index) => (
-          <article className="soft-card" key={installment.installment_number || index + 1}>
-            <div className="section-inline-header">
-              <strong>Parcela {index + 1}</strong>
-              <span>{money.format((moneyToCents(installment.amount) ?? 0) / 100)}</span>
-            </div>
-            <div className="form-grid">
-              <Input
-                type="date"
-                label="Vencimento"
-                value={installment.due_date}
-                onChange={(due_date) => updateRow(index, "due_date", due_date)}
-                required
-              />
-              <Input
-                type="number"
-                min="0.01"
-                step="0.01"
-                label="Valor"
-                value={installment.amount}
-                onChange={(amount) => updateRow(index, "amount", amount)}
-                required
-              />
-              <PaymentSelect
-                label="Forma de pagamento"
-                value={installment.payment_method}
-                onChange={(payment_method) => updateRow(index, "payment_method", payment_method)}
-              />
-            </div>
-          </article>
-        ))}
-      </div>
+      <ResponsiveEditableList
+        items={rows}
+        ariaLabel={title}
+        getKey={(installment, index) => installment.installment_number || index + 1}
+        getError={(installment) => !installment.due_date || !installment.payment_method || moneyToCents(installment.amount) <= 0 ? "Preencha vencimento, valor e forma de pagamento." : ""}
+        columns={[
+          { key: "number", label: "Parcela", render: (_installment, index) => index + 1 },
+          { key: "due_date", label: "Vencimento", render: (installment, index) => {
+            return <Input type="date" label="Vencimento" value={installment.due_date} onChange={(value) => updateRow(index, "due_date", value)} required />;
+          } },
+          { key: "amount", label: "Valor", render: (installment, index) => {
+            return <Input type="number" min="0.01" step="0.01" label="Valor" value={installment.amount} onChange={(value) => updateRow(index, "amount", value)} required />;
+          } },
+          { key: "payment_method", label: "Forma", render: (installment, index) => {
+            return <PaymentSelect ariaLabel={`Forma da parcela ${index + 1}`} value={installment.payment_method} onChange={(value) => updateRow(index, "payment_method", value)} />;
+          } },
+        ]}
+      />
 
-      <div className="form-grid installment-grid-summary" aria-live="polite">
-        <div>
-          <small>Total da operação</small>
-          <strong>{money.format(summary.expectedCents / 100)}</strong>
-        </div>
-        <div>
-          <small>Soma das parcelas</small>
-          <strong>{money.format(summary.installmentCents / 100)}</strong>
-        </div>
-        <div>
-          <small>Divergência</small>
-          <strong>{money.format(Math.abs(summary.differenceCents) / 100)}</strong>
-        </div>
-      </div>
+      <TransactionTotals rows={[
+        { id: "expected", label: "Total da operação", value: money.format(summary.expectedCents / 100) },
+        { id: "installments", label: "Soma das parcelas", value: money.format(summary.installmentCents / 100) },
+        { id: "difference", label: "Divergência", value: money.format(Math.abs(summary.differenceCents) / 100), emphasis: true },
+      ]} />
       {!summary.isValid && (
         <span className="form-error">
           Revise as parcelas: a quantidade, os campos obrigatórios e a soma devem coincidir com o total da operação.

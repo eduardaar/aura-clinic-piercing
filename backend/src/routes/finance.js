@@ -11,6 +11,13 @@ import { ledgerReport, normalizeEntry } from "../services/financeLedger.js";
 import { installmentMoneyCents, resolveInstallmentSchedule } from "../services/receivables.js";
 import { parsePaging } from "../services/pagination.js";
 import { recordPrivacyAudit } from "../services/privacy.js";
+import { recordAudit } from "../services/audit.js";
+import {
+  normalizeSupplierInput,
+  SUPPLIER_COLUMNS,
+  SUPPLIER_JSON_COLUMNS,
+  SupplierValidationError
+} from "../services/suppliers.js";
 
 const router = Router();
 
@@ -65,7 +72,9 @@ router.post("/api/expenses", withFeature("basic_finance", async (req, res, db) =
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     [description.trim(), expense_type, category || "", Number(amount || 0), due_date, status || "pendente", payment_method || "", payment_account || "", status === "paga" ? new Date().toISOString() : null, status === "paga" ? req.user?.id || null : null, notes || ""]
   );
-  res.status(201).json(await db.get("SELECT * FROM expenses WHERE id = ?", [result.returnedId]));
+  const created = await db.get("SELECT * FROM expenses WHERE id = ?", [result.returnedId]);
+  await recordAudit(db, { req, module: "finance", action: "create", entityType: "expense", entityId: created.id, reason: "Despesa cadastrada", after: created });
+  res.status(201).json(created);
 }));
 
 router.patch("/api/expenses/:id", withFeature("basic_finance", async (req, res, db) => {
@@ -84,8 +93,10 @@ router.patch("/api/expenses/:id", withFeature("basic_finance", async (req, res, 
       req.body.payment_account ?? expense.payment_account, paidAt, paidBy, req.body.notes ?? expense.notes, expense.id
     ]);
     await db.run("INSERT INTO expense_audit_logs (expense_id, user_id, action, previous_status, next_status, details) VALUES (?, ?, ?, ?, ?, ?)", [expense.id, req.user?.id || null, status === "paga" ? "mark_paid" : "update", expense.status, status, req.body.notes || ""]);
+    const updated = await db.get("SELECT * FROM expenses WHERE id = ?", [expense.id]);
+    await recordAudit(db, { req, module: "finance", action: status === "paga" ? "mark_paid" : "update", entityType: "expense", entityId: expense.id, reason: String(req.body.reason || req.body.notes || "Despesa alterada"), before: expense, after: updated, severity: status === "paga" ? "warning" : "info" });
     await db.run("COMMIT");
-    res.json(await db.get("SELECT * FROM expenses WHERE id = ?", [expense.id]));
+    res.json(updated);
   } catch (error) {
     await db.run("ROLLBACK").catch(() => {});
     throw error;
@@ -94,7 +105,10 @@ router.patch("/api/expenses/:id", withFeature("basic_finance", async (req, res, 
 
 router.delete("/api/expenses/:id", withFeature("basic_finance", async (req, res, db) => {
   if (!authorizePermission(req, res, P.FINANCE_CANCEL)) return;
+  const expense = await db.get("SELECT * FROM expenses WHERE id = ?", [req.params.id]);
+  if (!expense) return res.status(404).json({ error: "Despesa não encontrada." });
   await db.run("DELETE FROM expenses WHERE id = ?", [req.params.id]);
+  await recordAudit(db, { req, module: "finance", action: "delete", entityType: "expense", entityId: expense.id, reason: String(req.body?.reason || "Despesa excluída"), before: expense, severity: "critical" });
   res.json({ ok: true });
 }));
 
@@ -161,6 +175,7 @@ router.post("/api/finance/entries/:id/lifecycle", withFeature("basic_finance", a
   await db.run("BEGIN");
   try {
     const updated = await changeLifecycle(db, entry, req.body?.action, req.body?.reason, req.user?.id);
+    await recordAudit(db, { req, module: "finance", action: `lifecycle_${req.body?.action}`, entityType: "financial_entry", entityId: entry.id, reason: req.body?.reason, before: entry, after: updated, severity: "critical" });
     await db.run("COMMIT");
     res.json(updated);
   } catch (error) {
@@ -181,6 +196,7 @@ router.post("/api/finance/entries/bulk-lifecycle", withFeature("basic_finance", 
     if (entries.length !== ids.length) throw new Error("Um ou mais lançamentos não foram encontrados.");
     const updated = [];
     for (const entry of entries) updated.push(await changeLifecycle(db, entry, req.body?.action || "test", req.body.reason, req.user?.id));
+    await recordAudit(db, { req, module: "finance", action: `bulk_lifecycle_${req.body?.action}`, entityType: "financial_entry_batch", reason: req.body.reason, before: { ids, lifecycle_statuses: entries.map((entry) => entry.lifecycle_status || "active") }, after: { ids, lifecycle_status: req.body?.action === "restore" ? "active" : req.body?.action }, severity: "critical" });
     await db.run("COMMIT");
     res.json({ ok: true, count: updated.length, entries: updated });
   } catch (error) {
@@ -284,8 +300,10 @@ router.post("/api/finance/entries", withFeature("basic_finance", async (req, res
       }
       created.push(result.returnedId);
     }
+    const createdEntries = await db.all(`SELECT * FROM financial_entries WHERE id IN (${created.map(() => "?").join(",")}) ORDER BY id`, created);
+    await recordAudit(db, { req, module: "finance", action: "create", entityType: "financial_entry_group", entityId: parentId, reason: "Lançamento financeiro cadastrado", after: { entries: createdEntries }, metadata: { installment_count: createdEntries.length } });
     await db.run("COMMIT");
-    res.status(201).json(await db.all(`SELECT * FROM financial_entries WHERE id IN (${created.map(() => "?").join(",")}) ORDER BY id`, created));
+    res.status(201).json(createdEntries);
   } catch (error) {
     await db.run("ROLLBACK").catch(() => {});
     if (idempotencyKey && error?.code === "23505") {
@@ -320,6 +338,7 @@ router.patch("/api/finance/entries/:id", withFeature("basic_finance", async (req
     await db.run("INSERT INTO financial_entry_audit (entry_id, user_id, action, before_data, after_data) VALUES (?, ?, 'update', ?, ?)", [
       current.id, req.user?.id || null, JSON.stringify(current), JSON.stringify(updated)
     ]);
+    await recordAudit(db, { req, module: "finance", action: "update", entityType: "financial_entry", entityId: current.id, reason: String(req.body.reason || "Lançamento financeiro alterado"), before: current, after: updated, severity: "warning" });
     await db.run("COMMIT");
     res.json(updated);
   } catch (error) {
@@ -346,7 +365,9 @@ router.post("/api/finance/cost-centers", withFeature("basic_finance", async (req
      RETURNING id`,
     [name, req.body?.description ?? null]
   );
-  res.status(201).json(await db.get("SELECT * FROM financial_cost_centers WHERE id = ?", [result.returnedId]));
+  const created = await db.get("SELECT * FROM financial_cost_centers WHERE id = ?", [result.returnedId]);
+  await recordAudit(db, { req, module: "finance", action: "upsert", entityType: "cost_center", entityId: created.id, reason: "Centro de custo cadastrado ou reativado", after: created });
+  res.status(201).json(created);
 }));
 
 router.patch("/api/finance/cost-centers/:id", withFeature("basic_finance", async (req, res, db) => {
@@ -359,7 +380,9 @@ router.patch("/api/finance/cost-centers/:id", withFeature("basic_finance", async
     "UPDATE financial_cost_centers SET name=?, description=?, is_active=? WHERE id=?",
     [name, req.body?.description ?? current.description, req.body?.is_active ?? current.is_active, current.id]
   );
-  res.json(await db.get("SELECT * FROM financial_cost_centers WHERE id = ?", [current.id]));
+  const updated = await db.get("SELECT * FROM financial_cost_centers WHERE id = ?", [current.id]);
+  await recordAudit(db, { req, module: "finance", action: updated.is_active ? "update" : "archive", entityType: "cost_center", entityId: current.id, reason: String(req.body.reason || "Centro de custo alterado"), before: current, after: updated });
+  res.json(updated);
 }));
 
 router.get("/api/finance/categories", withFeature("basic_finance", async (req, res, db) => {
@@ -379,7 +402,9 @@ router.post("/api/finance/categories", withFeature("basic_finance", async (req, 
      RETURNING id`,
     [name, req.body?.description ?? null]
   );
-  res.status(201).json(await db.get("SELECT * FROM financial_categories WHERE id = ?", [result.returnedId]));
+  const created = await db.get("SELECT * FROM financial_categories WHERE id = ?", [result.returnedId]);
+  await recordAudit(db, { req, module: "finance", action: "upsert", entityType: "financial_category", entityId: created.id, reason: "Categoria financeira cadastrada ou reativada", after: created });
+  res.status(201).json(created);
 }));
 
 router.patch("/api/finance/categories/:id", withFeature("basic_finance", async (req, res, db) => {
@@ -392,7 +417,9 @@ router.patch("/api/finance/categories/:id", withFeature("basic_finance", async (
     "UPDATE financial_categories SET name=?, description=?, is_active=? WHERE id=?",
     [name, req.body?.description ?? current.description, req.body?.is_active ?? current.is_active, current.id]
   );
-  res.json(await db.get("SELECT * FROM financial_categories WHERE id = ?", [current.id]));
+  const updated = await db.get("SELECT * FROM financial_categories WHERE id = ?", [current.id]);
+  await recordAudit(db, { req, module: "finance", action: updated.is_active ? "update" : "archive", entityType: "financial_category", entityId: current.id, reason: String(req.body.reason || "Categoria financeira alterada"), before: current, after: updated });
+  res.json(updated);
 }));
 
 router.get("/api/finance/suppliers", withFeature("basic_finance", async (req, res, db) => {
@@ -401,40 +428,92 @@ router.get("/api/finance/suppliers", withFeature("basic_finance", async (req, re
   const includeInactive = String(req.query?.include_inactive || "") === "1";
   const clauses = [];
   const params = [];
-  if (!includeInactive) clauses.push("is_active = 1");
+  if (!includeInactive) clauses.push("s.is_active = 1 AND s.quality_status <> 'blocked'");
   if (search) {
-    clauses.push("name ILIKE ?");
-    params.push(`%${search}%`);
+    clauses.push(`(s.name ILIKE ? OR s.legal_name ILIKE ? OR s.trade_name ILIKE ? OR s.document ILIKE ?
+      OR s.contact_name ILIKE ? OR s.phone ILIKE ? OR s.whatsapp ILIKE ? OR s.email ILIKE ?
+      OR s.website ILIKE ? OR s.categories::text ILIKE ? OR s.brands::text ILIKE ?
+      OR s.material_references::text ILIKE ? OR s.certifications::text ILIKE ? OR s.lot_references::text ILIKE ?
+      OR s.city ILIKE ?)`);
+    params.push(...Array(15).fill(`%${search}%`));
   }
-  res.json(await db.all(`SELECT * FROM suppliers ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""} ORDER BY name`, params));
+  res.json(await db.all(`
+    SELECT s.*,
+      (SELECT MAX(po.purchase_date) FROM purchase_orders po WHERE po.supplier_id=s.id AND po.status='confirmed') AS last_purchase_date,
+      COALESCE((SELECT SUM(po.total_value) FROM purchase_orders po WHERE po.supplier_id=s.id AND po.status='confirmed'), 0) AS total_purchased,
+      COALESCE((SELECT SUM(GREATEST(fe.amount-fe.paid_amount, 0)) FROM financial_entries fe
+        WHERE fe.supplier_id=s.id AND fe.entry_type='payable' AND fe.lifecycle_status='active'
+          AND fe.status IN ('pending', 'overdue', 'partially_paid')), 0) AS pending_payables
+    FROM suppliers s ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""} ORDER BY s.name`, params));
 }));
+
+function supplierWriteValues(supplier) {
+  return SUPPLIER_COLUMNS.map((column) => {
+    if (SUPPLIER_JSON_COLUMNS.has(column)) return JSON.stringify(supplier[column] || []);
+    if (column === "is_active") return supplier[column] ? 1 : 0;
+    return supplier[column];
+  });
+}
+
+async function ensureUniqueSupplierDocument(db, document, excludedId = null) {
+  if (!document) return;
+  const duplicate = await db.get(
+    `SELECT id FROM suppliers WHERE document=?${excludedId ? " AND id<>?" : ""}`,
+    excludedId ? [document, excludedId] : [document]
+  );
+  if (duplicate) throw new SupplierValidationError("Já existe um fornecedor com este CPF/CNPJ.", 409);
+}
+
+function sendSupplierError(res, error) {
+  if (error instanceof SupplierValidationError) return res.status(error.status).json({ error: error.message });
+  if (error?.code === "23505") return res.status(409).json({ error: "Já existe um fornecedor com este CPF/CNPJ." });
+  throw error;
+}
 
 router.post("/api/finance/suppliers", withFeature("basic_finance", async (req, res, db) => {
   if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
-  const name = String(req.body?.name || "").trim();
-  if (!name) return res.status(400).json({ error: "Informe o nome do fornecedor." });
-  const personType = String(req.body?.person_type || "PJ").toUpperCase();
-  if (!new Set(["PJ", "PF"]).has(personType)) return res.status(400).json({ error: "Tipo de pessoa inválido." });
-  const result = await db.run(
-    "INSERT INTO suppliers (name, person_type, document, phone, email, notes) VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
-    [name, personType, req.body?.document || "", req.body?.phone || "", req.body?.email || "", req.body?.notes || ""]
-  );
-  res.status(201).json(await db.get("SELECT * FROM suppliers WHERE id = ?", [result.returnedId]));
+  try {
+    const supplier = normalizeSupplierInput(req.body);
+    await ensureUniqueSupplierDocument(db, supplier.document);
+    const placeholders = SUPPLIER_COLUMNS.map((column) => SUPPLIER_JSON_COLUMNS.has(column) ? "?::jsonb" : "?");
+    const result = await db.run(
+      `INSERT INTO suppliers (${SUPPLIER_COLUMNS.join(", ")}) VALUES (${placeholders.join(", ")}) RETURNING id`,
+      supplierWriteValues(supplier)
+    );
+    const created = await db.get("SELECT * FROM suppliers WHERE id = ?", [result.returnedId]);
+    await recordAudit(db, {
+      req, module: "suppliers", action: "create", entityType: "supplier", entityId: created.id,
+      reason: "Fornecedor criado", after: { id: created.id, name: created.name, is_active: created.is_active, supplier_type: created.supplier_type }
+    });
+    res.status(201).json(created);
+  } catch (error) {
+    return sendSupplierError(res, error);
+  }
 }));
 
 router.patch("/api/finance/suppliers/:id", withFeature("basic_finance", async (req, res, db) => {
   if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
   const current = await db.get("SELECT * FROM suppliers WHERE id = ?", [req.params.id]);
   if (!current) return res.status(404).json({ error: "Fornecedor não encontrado." });
-  const name = String(req.body?.name ?? current.name).trim();
-  if (!name) return res.status(400).json({ error: "Informe o nome do fornecedor." });
-  const personType = String(req.body?.person_type ?? current.person_type ?? "PJ").toUpperCase();
-  if (!new Set(["PJ", "PF"]).has(personType)) return res.status(400).json({ error: "Tipo de pessoa inválido." });
-  await db.run(
-    "UPDATE suppliers SET name=?, person_type=?, document=?, phone=?, email=?, notes=?, is_active=? WHERE id=?",
-    [name, personType, req.body?.document ?? current.document, req.body?.phone ?? current.phone, req.body?.email ?? current.email, req.body?.notes ?? current.notes, req.body?.is_active ?? current.is_active, current.id]
-  );
-  res.json(await db.get("SELECT * FROM suppliers WHERE id = ?", [current.id]));
+  try {
+    const supplier = normalizeSupplierInput(req.body, current);
+    await ensureUniqueSupplierDocument(db, supplier.document, current.id);
+    const assignments = SUPPLIER_COLUMNS.map((column) => `${column}=${SUPPLIER_JSON_COLUMNS.has(column) ? "?::jsonb" : "?"}`);
+    await db.run(
+      `UPDATE suppliers SET ${assignments.join(", ")}, updated_at=to_char(now(), 'YYYY-MM-DD HH24:MI:SS') WHERE id=?`,
+      [...supplierWriteValues(supplier), current.id]
+    );
+    const updated = await db.get("SELECT * FROM suppliers WHERE id = ?", [current.id]);
+    await recordAudit(db, {
+      req, module: "suppliers", action: !Number(updated.is_active) && Number(current.is_active) ? "archive" : "update",
+      entityType: "supplier", entityId: current.id, reason: String(req.body?.reason || "Fornecedor alterado"),
+      before: { id: current.id, name: current.name, is_active: current.is_active, quality_status: current.quality_status },
+      after: { id: updated.id, name: updated.name, is_active: updated.is_active, quality_status: updated.quality_status }, severity: "warning"
+    });
+    res.json(updated);
+  } catch (error) {
+    return sendSupplierError(res, error);
+  }
 }));
 
 router.get("/api/finance/export.csv", withFeature("basic_finance", async (req, res, db) => {

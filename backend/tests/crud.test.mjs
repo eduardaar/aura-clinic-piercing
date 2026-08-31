@@ -52,7 +52,7 @@ test("sem header de clínica e sem token → rejeitado antes de acessar dados", 
 test("cliente sem full_name → 400", async () => {
   const res = await api("/clients", { method: "POST", body: { whatsapp: "11988887777" } });
   assert.equal(res.status, 400, JSON.stringify(res.json));
-  assert.match(res.json.error, /Nome do cliente/i);
+  assert.match(res.json.error, /nome civil completo/i);
 });
 
 test("cliente sem whatsapp → 400", async () => {
@@ -76,16 +76,19 @@ test("serviço sem name → 400", async () => {
 
 // ---------- Procedimentos ----------
 
-test("procedimento sem service_id → 400", async () => {
-  const res = await api("/procedures", { method: "POST", body: { name: "Solto" } });
-  assert.equal(res.status, 400, JSON.stringify(res.json));
-  assert.match(res.json.error, /Serviço vinculado/i);
+test("escrita em /procedures foi aposentada → 410 apontando /api/services", async () => {
+  for (const body of [{ name: "Solto" }, { service_id: 1 }, { name: "Lóbulo", service_id: 1 }]) {
+    const res = await api("/procedures", { method: "POST", body });
+    assert.equal(res.status, 410, JSON.stringify(res.json));
+    assert.match(res.json.error, /\/api\/services/);
+  }
 });
 
-test("procedimento sem name → 400", async () => {
-  const res = await api("/procedures", { method: "POST", body: { service_id: 1 } });
-  assert.equal(res.status, 400, JSON.stringify(res.json));
-  assert.match(res.json.error, /Nome do procedimento/i);
+test("update e delete de /procedures também respondem 410", async () => {
+  for (const method of ["PUT", "PATCH", "DELETE"]) {
+    const res = await api("/procedures/1", { method, body: { name: "Qualquer" } });
+    assert.equal(res.status, 410, `${method}: ${JSON.stringify(res.json)}`);
+  }
 });
 
 // ---------- Profissionais ----------

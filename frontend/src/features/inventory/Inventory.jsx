@@ -4,6 +4,7 @@ import { CheckCircle2, ImageIcon, LayoutGrid, ListFilter, Pencil, SlidersHorizon
 import { Button, Input, Metric, Select, StatusBadge, Switch, Tabs, Textarea } from "../../components/common/Ui";
 import { Modal, CrudHeader, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
+import { CollapsibleIndicators } from "../../components/common/CollapsibleIndicators";
 import { asArray, asObject, formatDate, removeAccents } from "../../lib/utils";
 import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
 import { useDebouncedValue } from "../../lib/smartSearch";
@@ -37,6 +38,7 @@ function normalizeManagedCategory(item = {}, index = 0) {
 // O `Input` de Ui.jsx é compartilhado com outras telas e não repassa
 // `placeholder` — o exemplo de preenchimento sumia sem aviso. Aqui o campo é
 // escrito à mão para preservar a dica.
+/** @param {{ label?: React.ReactNode, value?: any, onChange?: (value: any) => any, placeholder?: string, type?: string, required?: boolean }} props */
 function HintedInput({ label, value, onChange, placeholder, type = "text", required }) {
   return (
     <label>
@@ -55,6 +57,10 @@ function HintedInput({ label, value, onChange, placeholder, type = "text", requi
 export function CatalogWorkspace({ area = "catalogo", initialTab = "produtos" }) {
   if (area === "catalogo") return <CatalogCustomization />;
   return <Inventory2 initialTab={initialTab} />;
+}
+
+export function InventoryMaterialsWorkspace() {
+  return <Inventory2 initialTab="materiais" />;
 }
 
 export function JewelryCards({ items, onOpen, onEdit, onMovement, onArchive }) {
@@ -98,7 +104,7 @@ export function JewelryCards({ items, onOpen, onEdit, onMovement, onArchive }) {
 }
 
 export function Inventory2({ initialTab = "produtos" }) {
-  const inventoryWorkspace = ["unidades", "inteligencia"].includes(initialTab);
+  const inventoryWorkspace = initialTab !== "produtos";
   const [view, setView] = useState("table");
   const [sectionTab, setSectionTab] = useState(initialTab);
   const [inventoryMode] = useState("internal");
@@ -111,6 +117,8 @@ export function Inventory2({ initialTab = "produtos" }) {
   const { data: options } = useFetch("/options");
   const { data: intelligence } = useFetch("/inventory/intelligence?days=90");
   const { data: inventorySuggestions } = useFetch("/inventory/suggestions");
+  const { data: inventoryLots } = useFetch("/inventory/lots");
+  const { data: inventoryMovements } = useFetch("/inventory/movements");
   const debouncedSearch = useDebouncedValue(filters.search);
   const { status: _statusFilter, ...queryFilters } = filters;
   queryFilters.search = debouncedSearch;
@@ -191,6 +199,11 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
   const displayItems = filteredItems.filter((item) => inventoryMode === "virtual" ? (
     Boolean(Number(item.is_catalog_active)) && Boolean(Number(item.is_published)) && Boolean(Number(item.virtual_store_active))
   ) : true);
+  const sectionItems = sectionTab === "vendaveis"
+    ? displayItems.filter((item) => Boolean(Number(item.can_sell)))
+    : sectionTab === "materiais"
+      ? displayItems.filter((item) => Boolean(Number(item.can_use_in_service)))
+      : displayItems;
   const stockSummary = {
     totalProducts: allJewelry.length,
     totalPieces: allJewelry.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
@@ -201,7 +214,11 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
     potential: allJewelry.reduce((sum, item) => sum + Number(item.sale_value || 0) * Number(item.quantity || 0), 0)
   };
   const allTabs = [
-    { id: "unidades", label: "Estoque", icon: Table2 },
+    { id: "todos", label: "Todos os itens", icon: Table2 },
+    { id: "vendaveis", label: "Produtos para venda", icon: LayoutGrid },
+    { id: "materiais", label: "Materiais de procedimento", icon: ListFilter },
+    { id: "lotes", label: "Lotes e validades", icon: CheckCircle2 },
+    { id: "movimentacoes", label: "Movimentações", icon: Table2 },
     { id: "inteligencia", label: "Inteligência", icon: SlidersHorizontal }
   ];
   useEffect(() => setSectionTab(initialTab), [initialTab]);
@@ -253,7 +270,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
   function openNewProduct() {
     setEditingJewelry(null);
     setShowEditor(true);
-    setSectionTab("produtos");
+    if (!inventoryWorkspace) setSectionTab("produtos");
   }
 
   function closeProduct({ keepCategory = true } = {}) {
@@ -271,7 +288,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
         {(inventoryWorkspace || sectionTab === "produtos") && (
           <div className="panel products-crud-header">
             {inventoryWorkspace ? (
-              <CrudHeader title="Estoque" subtitle="Acompanhe o saldo das peças e os indicadores de reposição." />
+              <CrudHeader title="Itens de estoque" subtitle="Uma única origem para produtos, materiais, saldos, custos e movimentações." actionLabel="Novo item" onAction={openNewProduct} />
             ) : (
               <CrudHeader
                 title="Produtos"
@@ -302,13 +319,13 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
         )}
 
         <div className="inventory-panel-shell">
-          {sectionTab === "produtos" && (
+          {["produtos", "todos", "vendaveis", "materiais"].includes(sectionTab) && (
             <>
               {view === "cards" ? (
-                <JewelryCards items={displayItems} onOpen={openProduct} onEdit={openProduct} onMovement={openMovement} onArchive={archiveJewelry} />
+                <JewelryCards items={sectionItems} onOpen={openProduct} onEdit={openProduct} onMovement={openMovement} onArchive={archiveJewelry} />
               ) : (
                 <JewelryTable
-                  items={displayItems}
+                  items={sectionItems}
                   search={filters.search}
                   onSearchChange={(search) => setFilters((current) => ({ ...current, search }))}
                   filters={productFilters}
@@ -321,6 +338,26 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
                 />
               )}
             </>
+          )}
+
+          {sectionTab === "lotes" && (
+            <DataView rows={asArray(inventoryLots)} defaultSort={{ key: "expiry_date", dir: "asc" }} searchPlaceholder="Buscar item, SKU ou lote" columns={[
+              { key: "item_name", label: "Item" },
+              { key: "batch_code", label: "Lote", render: (item) => item.batch_code || "Sem código" },
+              { key: "expiry_date", label: "Validade", render: (item) => item.expiry_date ? formatDate(item.expiry_date) : "Sem validade" },
+              { key: "remaining_quantity", label: "Saldo do lote", render: (item) => `${item.remaining_quantity} ${item.stock_unit || "un"}` },
+              { key: "unit_cost", label: "Custo", render: (item) => currency.format(item.unit_cost || 0) }
+            ]} empty="Nenhum item controla lote ou validade." />
+          )}
+
+          {sectionTab === "movimentacoes" && (
+            <DataView rows={asArray(inventoryMovements)} defaultSort={{ key: "movement_date", dir: "desc" }} searchPlaceholder="Buscar item, SKU ou movimentação" columns={[
+              { key: "movement_date", label: "Data", render: (item) => formatDate(item.movement_date) },
+              { key: "item_name", label: "Item" },
+              { key: "movement_type", label: "Movimento" },
+              { key: "quantity", label: "Quantidade" },
+              { key: "notes", label: "Origem / observação", render: (item) => item.notes || "—" }
+            ]} empty="Nenhuma movimentação registrada." />
           )}
 
           {sectionTab === "categorias" && (
@@ -339,7 +376,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
                   <span>Resumo por peça com foco no que importa primeiro.</span>
                 </div>
               </div>
-              <div className="inventory-summary-grid compact">
+              <CollapsibleIndicators screenId="inventory-units"><div className="inventory-summary-grid compact">
                 <Metric label="Total de peças" value={String(stockSummary.totalPieces)} />
                 <Metric label="Total de produtos" value={String(stockSummary.totalProducts)} />
                 <Metric label="Críticas" value={String(stockSummary.critical)} />
@@ -347,7 +384,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
                 <Metric label="Valor investido" value={currency.format(stockSummary.invested)} />
                 <Metric label="Venda potencial" value={currency.format(stockSummary.potential)} />
                 <Metric label="Lucro potencial" value={currency.format(stockSummary.potential - stockSummary.invested)} />
-              </div>
+              </div></CollapsibleIndicators>
               <div className="inventory-quick-flags">
                 <span><strong>Visíveis no Catálogo</strong><small>{allJewelry.filter((item) => Boolean(Number(item.is_catalog_active)) && Boolean(Number(item.is_published)) && Boolean(Number(item.virtual_store_active))).length} peças visíveis na vitrine</small></span>
                 <span><strong>Destaques Comerciais</strong><small>Lançamentos, promoções e últimas unidades ficam na Loja Virtual</small></span>
@@ -389,13 +426,13 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
       <Modal
         open={showEditor}
         size="lg"
-        title={editingJewelry ? "Editar produto" : "Novo produto"}
-        subtitle="Dados, variações e estoque do produto."
+        title={editingJewelry ? "Editar item de estoque" : "Novo item de estoque"}
+        subtitle="Dados, comportamento, variações e saldo na mesma origem."
         onClose={() => closeProduct({ keepCategory: false })}
         footer={(
           <>
             <Button variant="secondary" onClick={() => closeProduct({ keepCategory: false })}>Cancelar</Button>
-            <Button variant="primary" type="submit" form="jewelry-editor-form">{editingJewelry ? "Salvar produto" : "Cadastrar produto"}</Button>
+            <Button variant="primary" type="submit" form="jewelry-editor-form">{editingJewelry ? "Salvar item" : "Cadastrar item"}</Button>
           </>
         )}
       >
@@ -473,11 +510,11 @@ function InventoryIntelligence({ data, suggestions, onRefresh, onReview }) {
         </div>
       </div>
       {countError && <span className="form-error">{countError}</span>}
-      <div className="inventory-summary-grid compact">
+      <CollapsibleIndicators screenId="inventory-intelligence"><div className="inventory-summary-grid compact">
         <Metric label="Rupturas em até 30 dias" value={String(summary.predicted_stockouts || 0)} />
         <Metric label="Unidades sugeridas" value={String(summary.suggested_units || 0)} />
         <Metric label="Produtos classe A" value={String(summary.class_a || 0)} />
-      </div>
+      </div></CollapsibleIndicators>
       <DataView
         rows={items}
         defaultSort={{ key: "suggested_purchase", dir: "desc" }}
@@ -724,6 +761,7 @@ function ProductGalleryManager({ images = [], productName = "", onChange }) {
   );
 }
 
+/** @param {{ options?: any, categoryOptions?: any[], categories?: any[], pricingSettings?: Record<string, any>, editing?: any, onSaved?: (...args: any[]) => any, onMovementOpen?: (...args: any[]) => any }} props */
 export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTIONS, categories = [], pricingSettings = {}, editing, onSaved, onMovementOpen }) {
   const [form, setForm] = useState(defaultJewelry());
   const [error, setError] = useState("");
@@ -751,7 +789,7 @@ export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTI
   async function submit(event) {
     event.preventDefault();
     setError("");
-    if (form.variants.some((variant) => Number(variant.quantity) < 0)) {
+    if (form.track_stock && form.variants.some((variant) => Number(variant.quantity) < 0)) {
       setError("A quantidade em estoque não pode ser negativa.");
       return;
     }
@@ -922,6 +960,19 @@ export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTI
           </div>
           <Textarea label="Descrição curta" value={form.description} onChange={(value) => setForm({ ...form, description: value })} />
           <Textarea label="Observações internas" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} />
+          <div className="form-grid">
+            <Input label="Unidade de estoque" value={form.stock_unit} onChange={(value) => setForm({ ...form, stock_unit: value })} />
+            <Input label="Unidade de compra" value={form.purchase_unit} onChange={(value) => setForm({ ...form, purchase_unit: value })} />
+            <Input label="Unidade de consumo" value={form.consumption_unit} onChange={(value) => setForm({ ...form, consumption_unit: value })} />
+            <Input type="number" label="Conversão compra → estoque" value={form.purchase_to_stock_factor} onChange={(value) => setForm({ ...form, purchase_to_stock_factor: value })} />
+          </div>
+          <div className="chip-toggle-grid">
+            <Switch className="toggle-chip" label="Pode ser vendido" checked={Boolean(form.can_sell)} onChange={(value) => setForm({ ...form, can_sell: value })} />
+            <Switch className="toggle-chip" label="Pode ser usado em procedimento" checked={Boolean(form.can_use_in_service)} onChange={(value) => setForm({ ...form, can_use_in_service: value })} />
+            <Switch className="toggle-chip" label="Controla estoque" checked={Boolean(form.track_stock)} onChange={(value) => setForm({ ...form, track_stock: value })} />
+            <Switch className="toggle-chip" label="Controla lote e validade" checked={Boolean(form.track_lots)} onChange={(value) => setForm({ ...form, track_lots: value })} />
+            <Switch className="toggle-chip" label="Pode aparecer no catálogo" checked={Boolean(form.can_publish)} onChange={(value) => setForm({ ...form, can_publish: value, is_catalog_active: value ? form.is_catalog_active : false, is_published: value ? form.is_published : false, virtual_store_active: value ? form.virtual_store_active : false })} />
+          </div>
         </div>
       )}
 
@@ -1074,6 +1125,7 @@ export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTI
   );
 }
 
+/** @param {{ category?: any, variant?: any, pricingSettings?: Record<string, any>, onChange?: (...args: any[]) => any, onClose?: () => any }} props */
 export function VariantEditModal({ category, variant, pricingSettings = {}, onChange, onClose }) {
   const normalizedCategory = removeAccents(String(category || "").toLowerCase());
   const usesDiameter = normalizedCategory.includes("argola");
@@ -1245,12 +1297,12 @@ export function StockMovementHistory({ jewelryId }) {
 }
 
 export function StockMovementModal({ item, initialType = "Entrada", onClose, onSave }) {
-  const [form, setForm] = useState({
+  const [form, setForm] = useState(/** @type {Record<string, any>} */ ({
     quantity: 1,
     movement_type: initialType,
     variant_id: item?.variants?.[0]?.id || "",
     notes: ""
-  });
+  }));
 
   useEffect(() => {
     setForm({

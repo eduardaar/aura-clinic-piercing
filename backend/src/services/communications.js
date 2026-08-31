@@ -21,17 +21,19 @@ export function renderTemplate(body, variables = {}) {
 
 export async function queueTemplateNotification(db, {
   templateKey, clientId = null, professionalId = null, appointmentId = null,
-  destination, variables = {}, scheduledAt = new Date().toISOString(), uniqueKey, automationRuleId = null
+  destination, variables = {}, scheduledAt = new Date().toISOString(), uniqueKey, automationRuleId = null,
+  channel = null
 }) {
   const template = await db.get("SELECT * FROM communication_templates WHERE template_key=? AND is_active=1", [templateKey]);
   if (!template) return null;
+  const deliveryChannel = channel || template.channel;
   // As automações existentes passam o WhatsApp do cliente como destino. Ao
   // trocar um modelo para e-mail, buscamos o e-mail cadastrado do mesmo
   // cliente, sem exigir que cada disparador saiba qual canal está ativo.
-  const emailRecipient = template.channel === "email" && clientId
+  const emailRecipient = deliveryChannel === "email" && clientId
     ? await db.get("SELECT email FROM clients WHERE id=?", [clientId])
     : null;
-  const normalizedDestination = template.channel === "email"
+  const normalizedDestination = deliveryChannel === "email"
     ? String(emailRecipient?.email || destination || "").trim().toLowerCase()
     : normalizeWhatsappNumber(destination);
   const message = renderTemplate(template.body, variables);
@@ -43,11 +45,11 @@ export async function queueTemplateNotification(db, {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
      ON CONFLICT DO NOTHING`,
     [
-      clientId, professionalId, appointmentId, automationRuleId, template.channel, normalizedDestination,
+      clientId, professionalId, appointmentId, automationRuleId, deliveryChannel, normalizedDestination,
       templateKey, JSON.stringify({
         variables,
         subject,
-        ...(template.channel === "whatsapp" ? { whatsapp_link: whatsappLink(normalizedDestination, message) } : {})
+        ...(deliveryChannel === "whatsapp" ? { whatsapp_link: whatsappLink(normalizedDestination, message) } : {})
       }),
       message, status, normalizedDestination ? "" : "Destino inválido.", scheduledAt, uniqueKey
     ]
@@ -130,6 +132,37 @@ export async function processDueCommunications(db, limit = 100, tenantId = null)
 }
 
 export async function scheduleAppointmentClientAutomations(db, appointmentId) {
+  return scheduleClientAutomationEvent(db, appointmentId, ["booking_created", "appointment_upcoming"]);
+}
+
+function appointmentVariables(appointment) {
+  return {
+    cliente: appointment.full_name,
+    profissional: appointment.professional_name,
+    estudio: appointment.brand_name || "Estúdio",
+    servico: appointment.procedure,
+    data: appointment.appointment_date,
+    horario: appointment.appointment_time,
+    total: appointment.total_value,
+    sinal: appointment.deposit_value,
+    restante: appointment.remaining_value,
+    endereco: appointment.company_address || "",
+    protocolo: appointment.public_booking_key || appointment.id
+  };
+}
+
+export async function cancelPendingAppointmentCommunications(db, appointmentId, { keepTemplates = [] } = {}) {
+  const keep = Array.isArray(keepTemplates) ? keepTemplates.filter(Boolean) : [];
+  await db.run(
+    `UPDATE notification_queue
+        SET status='cancelled', last_error='Substituída por mudança no agendamento.'
+      WHERE appointment_id=? AND status IN ('pending','ready')
+        ${keep.length ? `AND template NOT IN (${keep.map(() => "?").join(",")})` : ""}`,
+    [appointmentId, ...keep]
+  );
+}
+
+export async function scheduleClientAutomationEvent(db, appointmentId, eventTypes, { uniqueContext = "" } = {}) {
   const appointment = await db.get(`
     SELECT a.*, c.full_name, c.whatsapp, p.name AS professional_name, ct.brand_name,
       (SELECT value FROM catalog_settings WHERE key='company_address') AS company_address
@@ -141,24 +174,26 @@ export async function scheduleAppointmentClientAutomations(db, appointmentId) {
   `, [appointmentId]);
   if (!appointment) return [];
   const start = new Date(`${appointment.appointment_date}T${appointment.appointment_time}:00`);
-  const rules = await db.all("SELECT * FROM automation_rules WHERE is_active=1 AND event_type IN ('booking_created','appointment_upcoming')");
+  const events = [...new Set((Array.isArray(eventTypes) ? eventTypes : [eventTypes]).filter(Boolean).map(String))];
+  if (!events.length) return [];
+  const rules = await db.all(
+    `SELECT * FROM automation_rules WHERE is_active=1 AND event_type IN (${events.map(() => "?").join(",")})`,
+    events
+  );
   const queued = [];
   for (const rule of rules) {
     const scheduled = rule.event_type === "booking_created"
       ? new Date()
-      : new Date(start.getTime() + Number(rule.offset_minutes || 0) * 60_000);
-    if (scheduled < new Date() && rule.event_type !== "booking_created") continue;
-    const key = `appointment:${appointment.id}:client:${rule.rule_key}`;
+      : rule.event_type === "appointment_upcoming"
+        ? new Date(start.getTime() + Number(rule.offset_minutes || 0) * 60_000)
+        : new Date(Date.now() + Number(rule.offset_minutes || 0) * 60_000);
+    if (scheduled < new Date() && rule.event_type === "appointment_upcoming") continue;
+    const context = uniqueContext ? `:${String(uniqueContext).replace(/[^a-zA-Z0-9_-]/g, "-")}` : "";
+    const key = `appointment:${appointment.id}:client:${rule.rule_key}${context}`;
     await queueTemplateNotification(db, {
       templateKey: rule.template_key, clientId: appointment.client_id, appointmentId: appointment.id,
       automationRuleId: rule.id, destination: appointment.whatsapp, scheduledAt: scheduled.toISOString(), uniqueKey: key,
-      variables: {
-        cliente: appointment.full_name, profissional: appointment.professional_name,
-        estudio: appointment.brand_name || "Estúdio", servico: appointment.procedure,
-        data: appointment.appointment_date, horario: appointment.appointment_time,
-        total: appointment.total_value, sinal: appointment.deposit_value, restante: appointment.remaining_value,
-        endereco: appointment.company_address || "", protocolo: appointment.public_booking_key || appointment.id
-      }
+      variables: appointmentVariables(appointment), channel: rule.channel
     });
     queued.push(key);
   }

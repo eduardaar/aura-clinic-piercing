@@ -3,6 +3,7 @@ import { Tags } from "lucide-react";
 import { Button, Input, Metric, PaymentSelect, StatusBadge, Textarea } from "../../components/common/Ui";
 import { CrudHeader, Modal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
+import { CollapsibleIndicators } from "../../components/common/CollapsibleIndicators";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { SelectWithCreate } from "../../components/common/SelectWithCreate";
 import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
@@ -23,11 +24,12 @@ const distinctOptions = (rows, pick, label = (value) => value) =>
 /** Lista operacional de recebíveis manuais e originados por vendas/serviços. */
 export function AccountsReceivable({ onNavigate }) {
   const today = new Date().toISOString().slice(0, 10);
-  const [period, setPeriod] = useState({
-    from: `${today.slice(0, 4)}-01-01`,
-    to: `${Number(today.slice(0, 4)) + 1}-12-31`,
+  /** @type {[Record<string, any>, React.Dispatch<React.SetStateAction<Record<string, any>>>]} */
+  const [listFilters, setListFilters] = useState({
+    period_from: `${today.slice(0, 4)}-01-01`,
+    period_to: `${Number(today.slice(0, 4)) + 1}-12-31`,
   });
-  const query = new URLSearchParams(period).toString();
+  const query = new URLSearchParams({ from: listFilters.period_from || "", to: listFilters.period_to || "" }).toString();
   const { data } = useFetch(`/finance/ledger?${query}`);
   const { data: categoryList } = useFetch("/finance/categories");
   const invalidate = useApiInvalidate();
@@ -40,6 +42,7 @@ export function AccountsReceivable({ onNavigate }) {
     return created?.name ? { id: created.name, name: created.name } : created;
   }
 
+  /** @returns {Record<string, any>} */
   const initialForm = () => ({
     entry_type: "receivable",
     description: "",
@@ -128,37 +131,34 @@ export function AccountsReceivable({ onNavigate }) {
 
   return (
     <section className="stack finance-page">
-      <div className="metric-grid">
+      <CollapsibleIndicators screenId="finance-receivables"><div className="metric-grid">
         <Metric label="Em aberto" value={currency.format(asNumber(ledger.receivable))} />
         <Metric label="Recebido no período" value={currency.format(asNumber(ledger.cashflow?.received))} />
         <Metric label="Vencido" value={currency.format(asNumber(ledger.delinquency))} />
-      </div>
+      </div></CollapsibleIndicators>
       <section className="panel stack">
         <CrudHeader
           title="Contas a receber"
           subtitle="Vendas integradas, serviços e lançamentos manuais"
+          actions={[
+            { label: "Visão financeira", onClick: () => onNavigate?.("receivables", { target: "visao" }) },
+            { label: "Caixa", onClick: () => onNavigate?.("receivables", { target: "caixa" }) },
+            { label: "Contas a pagar", onClick: () => onNavigate?.("payables") },
+            { label: "Categorias", icon: Tags, onClick: () => onNavigate?.("finance-categories") },
+            { label: "Centros de custo", onClick: () => onNavigate?.("cost-centers") }
+          ]}
           actionLabel="Novo recebível"
           onAction={openNew}
         />
-        <div className="toolbar compact-actions">
-          <Button variant="secondary" type="button" onClick={() => onNavigate?.("finance-categories")}>
-            <Tags size={16} /> Categorias
-          </Button>
-        </div>
-        <div className="form-grid">
-          <Input
-            type="date"
-            label="De"
-            value={period.from}
-            onChange={(value) => setPeriod({ ...period, from: value })}
-          />
-          <Input type="date" label="Até" value={period.to} onChange={(value) => setPeriod({ ...period, to: value })} />
-        </div>
         <DataView
           rows={entries}
           defaultSort={{ key: "due_date", dir: "desc" }}
           searchPlaceholder="Buscar por venda, cliente, descrição ou categoria"
+          filterValues={listFilters}
+          onFilterChange={setListFilters}
           filters={[
+            { key: "period_from", label: "Período a partir de", type: "date", match: (item, value) => String(item.due_date || "").slice(0, 10) >= value },
+            { key: "period_to", label: "Período até", type: "date", match: (item, value) => String(item.due_date || "").slice(0, 10) <= value },
             { key: "status", label: "Status", type: "select", options: statusOptions },
             {
               key: "source_type",
@@ -166,18 +166,6 @@ export function AccountsReceivable({ onNavigate }) {
               type: "select",
               options: sourceOptions,
               match: (item, value) => (item.source_type || "manual") === value,
-            },
-            {
-              key: "due_from",
-              label: "Vencimento a partir de",
-              type: "date",
-              match: (item, value) => String(item.due_date || "").slice(0, 10) >= value,
-            },
-            {
-              key: "due_to",
-              label: "Vencimento até",
-              type: "date",
-              match: (item, value) => String(item.due_date || "").slice(0, 10) <= value,
             },
           ]}
           columns={[

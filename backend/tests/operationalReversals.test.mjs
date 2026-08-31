@@ -87,32 +87,42 @@ test("saida manual acima do saldo nao altera produto nem auditoria", async () =>
   assert.equal(Number(after.movements.count), Number(before.movements.count));
 });
 
+// Materiais de consumo deixaram de ter tabela e rota próprias: a unificação do
+// estoque (migration 0025) os trouxe para `jewelry_inventory`, com os lotes em
+// `inventory_item_lots` e as rotas em /api/jewelry. O que este teste garante
+// continua o mesmo: a soma dos lotes nunca passa do saldo, e a saída consome
+// pelo lote que vence primeiro.
 test("lotes nao excedem saldo e acompanham saida FEFO", async () => {
-  const material = await api("/consumables", { method: "POST", body: { name: "Agulha QA lotes", unit: "unidade", quantity: 10, minimum_quantity: 2, cost_value: 3 } });
-  assert.equal(material.status, 201);
+  const material = await api("/jewelry", { method: "POST", body: {
+    name: "Agulha QA lotes", category: "QA Reversoes", unit: "unidade",
+    quantity: 10, low_stock_threshold: 2, cost_value: 3,
+    track_stock: true, track_lots: true, can_sell: false, can_use_in_service: true,
+  } });
+  assert.equal(material.status, 201, JSON.stringify(material.json));
   const materialId = material.json.id;
 
-  const firstLot = await api(`/consumables/${materialId}/lots`, { method: "POST", body: { batch_code: "QA-A", quantity: 6, expiry_date: "2027-01-01", increase_stock: false } });
-  assert.equal(firstLot.status, 201);
-  const excessiveLot = await api(`/consumables/${materialId}/lots`, { method: "POST", body: { batch_code: "QA-B", quantity: 5, expiry_date: "2028-01-01", increase_stock: false } });
-  assert.equal(excessiveLot.status, 400);
+  const firstLot = await api(`/jewelry/${materialId}/lots`, { method: "POST", body: { batch_code: "QA-A", quantity: 6, expiry_date: "2027-01-01", increase_stock: false } });
+  assert.equal(firstLot.status, 201, JSON.stringify(firstLot.json));
+  // 6 + 5 passaria dos 10 de saldo: o excesso é recusado.
+  const excessiveLot = await api(`/jewelry/${materialId}/lots`, { method: "POST", body: { batch_code: "QA-B", quantity: 5, expiry_date: "2028-01-01", increase_stock: false } });
+  assert.equal(excessiveLot.status, 400, JSON.stringify(excessiveLot.json));
 
-  const output = await api(`/consumables/${materialId}/movements`, { method: "POST", body: { movement_type: "Saida", quantity: 4, notes: "Consumo QA" } });
-  assert.equal(output.status, 200);
+  const output = await api(`/jewelry/${materialId}/movements`, { method: "POST", body: { movement_type: "Saida", quantity: 4, notes: "Consumo QA" } });
+  assert.equal(output.status, 200, JSON.stringify(output.json));
   const afterOutput = await withTenantSchema(context.tenant.id, async (db) => ({
-    material: await db.get("SELECT quantity FROM consumables WHERE id=?", [materialId]),
-    lots: await db.get("SELECT COALESCE(SUM(remaining_quantity),0) AS quantity FROM consumable_lots WHERE consumable_id=?", [materialId]),
-    first: await db.get("SELECT remaining_quantity FROM consumable_lots WHERE id=?", [firstLot.json.id]),
+    material: await db.get("SELECT quantity FROM jewelry_inventory WHERE id=?", [materialId]),
+    lots: await db.get("SELECT COALESCE(SUM(remaining_quantity),0) AS quantity FROM inventory_item_lots WHERE inventory_item_id=?", [materialId]),
+    first: await db.get("SELECT remaining_quantity FROM inventory_item_lots WHERE id=?", [firstLot.json.id]),
   }));
   assert.equal(Number(afterOutput.material.quantity), 6);
   assert.equal(Number(afterOutput.lots.quantity), 2);
   assert.equal(Number(afterOutput.first.remaining_quantity), 2);
 
-  const remainingLot = await api(`/consumables/${materialId}/lots`, { method: "POST", body: { batch_code: "QA-B", quantity: 4, expiry_date: "2028-01-01", increase_stock: false } });
-  assert.equal(remainingLot.status, 201);
+  const remainingLot = await api(`/jewelry/${materialId}/lots`, { method: "POST", body: { batch_code: "QA-B", quantity: 4, expiry_date: "2028-01-01", increase_stock: false } });
+  assert.equal(remainingLot.status, 201, JSON.stringify(remainingLot.json));
   const reconciled = await withTenantSchema(context.tenant.id, async (db) => db.get(`
-    SELECT c.quantity, COALESCE(SUM(l.remaining_quantity),0) AS lot_quantity
-      FROM consumables c LEFT JOIN consumable_lots l ON l.consumable_id=c.id
-     WHERE c.id=? GROUP BY c.id`, [materialId]));
+    SELECT i.quantity, COALESCE(SUM(l.remaining_quantity),0) AS lot_quantity
+      FROM jewelry_inventory i LEFT JOIN inventory_item_lots l ON l.inventory_item_id=i.id
+     WHERE i.id=? GROUP BY i.id`, [materialId]));
   assert.equal(Number(reconciled.lot_quantity), Number(reconciled.quantity));
 });

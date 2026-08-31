@@ -6,13 +6,24 @@ export function hasPermission(user, permission) {
   if (user.role === "admin") return true;
   const denied = new Set(user.denied_permissions || []);
   if (denied.has(permission)) return false;
-  return new Set([...(ROLE_PERMISSIONS[user.role] || []), ...(user.granted_permissions || [])]).has(permission);
+  const basePermissions = Array.isArray(user.profile_permissions)
+    ? user.profile_permissions
+    : (ROLE_PERMISSIONS[user.role] || []);
+  return new Set([...basePermissions, ...(user.granted_permissions || [])]).has(permission);
 }
 
 export async function hydrateUserPermissions(db, user) {
   const rows = await db.all("SELECT permission, allowed FROM user_permissions WHERE user_id = ?", [user.id]);
+  const profile = user.access_profile_id
+    ? await db.get("SELECT id, name, base_role FROM access_profiles WHERE id = ? AND is_active = true", [user.access_profile_id])
+    : null;
+  const profilePermissions = profile
+    ? (await db.all("SELECT permission FROM access_profile_permissions WHERE profile_id = ? AND allowed = true", [profile.id])).map((row) => row.permission)
+    : null;
   return {
     ...user,
+    access_profile: profile,
+    profile_permissions: profilePermissions,
     granted_permissions: rows.filter((row) => row.allowed).map((row) => row.permission),
     denied_permissions: rows.filter((row) => !row.allowed).map((row) => row.permission)
   };

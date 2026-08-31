@@ -2,7 +2,7 @@
 import { Router } from "express";
 import { withFeature } from "../middleware/withDb.js";
 import { parseUpload, privateUpload, registerPrivateFiles } from "../middleware/upload.js";
-import { normalizeAppointment, addMinutesToTime, localTimestamp } from "../services/utils.js";
+import { normalizeAppointment, addMinutesToTime, localTimestamp, rangesOverlap, timeToMinutes } from "../services/utils.js";
 import { parsePaging, pageResponse } from "../services/pagination.js";
 import {
   listAppointments,
@@ -21,7 +21,6 @@ import { validateCoupon } from "../services/discounts.js";
 import { calculateOperationTotals, getAppointmentFinancialSnapshot } from "../services/finance.js";
 import { ensurePostCareFollowups } from "../services/postcare.js";
 import { awardLoyaltyForAppointment } from "../services/loyalty.js";
-import { ensureSalesOrderForAppointment } from "../services/sales.js";
 import { validateBody } from "../middleware/validate.js";
 import { appointmentCreateSchema } from "../schemas/index.js";
 import { queueAppointmentReminderNotifications } from "../services/notifications.js";
@@ -29,13 +28,23 @@ import { invalidateUsageCache, requireWithinLimit } from "../services/planLimits
 import { P } from "../config/permissions.js";
 import { authorizePermission } from "../middleware/requirePermission.js";
 import { hasPermission } from "../services/permissionService.js";
-import { cancelSalesOrderReceivables, configuresReceivableSchedule } from "../services/receivables.js";
+import { configuresReceivableSchedule } from "../services/receivables.js";
 import { requireFeature } from "../services/subscriptions.js";
 import { consumeAppointmentRecipe, restoreAppointmentConsumptions } from "../services/consumableUsage.js";
 import { cancelAppointmentWithResolution } from "../services/appointmentCancellations.js";
 import { applyCreditToAppointment } from "../services/clientCredits.js";
+import {
+  cancelPendingAppointmentCommunications,
+  scheduleAppointmentClientAutomations,
+  scheduleClientAutomationEvent
+} from "../services/communications.js";
+import { recordAudit } from "../services/audit.js";
+import { cancelServiceExecution, ensureServiceExecution } from "../services/serviceExecutions.js";
+import { assertCompletionServiceRules, parseServiceRulesSnapshot, validateAppointmentTimingRules, validateClientServiceRules } from "../services/serviceRules.js";
+import { mergeOperationalRequirements } from "../services/operationalRequirements.js";
 
 const router = Router();
+const APPOINTMENT_STATUSES = new Set(["pendente", "awaiting_deposit_proof", "confirmado", "chegou", "em_atendimento", "atendido", "cancelado", "nao_compareceu", "remarcado", "recusado"]);
 
 // Whitelist de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
 const APPOINTMENT_SORTABLE = {
@@ -150,7 +159,7 @@ router.post("/api/appointments", withFeature("agenda", async (req, res, db) => {
   const conflict = await db.get(
     `SELECT id FROM appointments
      WHERE professional_id = ? AND appointment_date = ? AND appointment_time = ?
-     AND status NOT IN ('cancelado', 'remarcado')`,
+     AND status NOT IN ('cancelado', 'remarcado', 'nao_compareceu')`,
     [body.professional_id, body.appointment_date, body.appointment_time]
   );
   if (conflict) {
@@ -161,6 +170,13 @@ router.post("/api/appointments", withFeature("agenda", async (req, res, db) => {
   const serviceId = optionalId(body.service_id);
   const service = serviceId ? await db.get("SELECT * FROM services WHERE id = ?", [serviceId]) : null;
   const items = await normalizeAppointmentItems(db, { ...body, service_id: serviceId });
+  const serviceRulesSnapshot = items.filter((item) => item.service_id || item.procedure_id).map((item) => item.service_rules_snapshot);
+  const operationalRequirementsSnapshot = mergeOperationalRequirements(items.map((item) => item.operational_requirements_snapshot));
+  const clientProfile = await db.get("SELECT * FROM clients WHERE id=?", [client.id]);
+  const clientRuleError = validateClientServiceRules({ rules: serviceRulesSnapshot, client: clientProfile, appointmentDate: body.appointment_date, guardianProvided: Boolean(body.guardian_name && body.guardian_document) });
+  if (clientRuleError) return res.status(400).json({ error: clientRuleError });
+  const timingRuleError = validateAppointmentTimingRules({ rules: serviceRulesSnapshot, appointmentDate: body.appointment_date, appointmentTime: body.appointment_time });
+  if (timingRuleError) return res.status(400).json({ error: timingRuleError });
   const stockError = await validateAppointmentItemsStock(db, items);
   if (stockError) return res.status(409).json({ error: stockError });
   const firstItem = items[0] || {};
@@ -190,14 +206,23 @@ router.post("/api/appointments", withFeature("agenda", async (req, res, db) => {
   const remainingValue = operationTotals.outstandingBalance;
   const duration = totals.durationMinutes || Number(service?.duration_minutes || body.duration_minutes || 40);
   const endTime = addMinutesToTime(body.appointment_time, duration);
+  const requestedInterval = Math.max(0, ...serviceRulesSnapshot.map((rule) => Number(rule.scheduling_interval_minutes || 0)));
+  const sameDayAppointments = await db.all(`SELECT appointment_time,end_time,service_rules_snapshot FROM appointments
+    WHERE professional_id=? AND appointment_date=? AND status NOT IN ('cancelado','remarcado','nao_compareceu')`, [body.professional_id, body.appointment_date]);
+  const overlapsInterval = sameDayAppointments.some((scheduled) => {
+    const scheduledInterval = Math.max(0, ...parseServiceRulesSnapshot(scheduled.service_rules_snapshot).map((rule) => Number(rule.scheduling_interval_minutes || 0)));
+    return rangesOverlap(timeToMinutes(body.appointment_time), timeToMinutes(endTime) + requestedInterval,
+      timeToMinutes(scheduled.appointment_time), timeToMinutes(scheduled.end_time || addMinutesToTime(scheduled.appointment_time, duration)) + scheduledInterval);
+  });
+  if (overlapsInterval) return res.status(409).json({ error: "O horário conflita com outro atendimento ou com seu intervalo obrigatório." });
   // Agendamento + itens + sinal formam um registro só: agendamento sem itens
   // (ou sem o pagamento do sinal) já entra torto na agenda e no financeiro.
   const appointmentId = await db.transaction(async (tx) => {
     const result = await tx.run(
       `INSERT INTO appointments
-      (client_id, professional_id, service_id, jewelry_id, jewelry_variant_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, total_value, service_value, jewelry_value, subtotal_value, discount_value, coupon_id, coupon_code, coupon_snapshot, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, deposit_status, deposit_paid_at, financial_notes, status, notes, reference_photo_url, duration_minutes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-      [client.id, body.professional_id, serviceId || firstItem.service_id || null, jewelryId, variantId, body.procedure || firstItem.procedure_name || service?.name || "Atendimento", body.description, body.piercing_region || firstItem.region || "Atendimento", body.appointment_date, body.appointment_time, endTime, totalValue, totals.procedureValue, totals.jewelryValue, totals.totalValue, discountValue, couponQuote?.coupon?.id || null, couponQuote?.coupon?.code || null, couponQuote ? JSON.stringify(couponQuote) : null, depositValue, remainingValue, body.deposit_payment_method, body.remaining_payment_method, depositStatus, depositReceived ? (body.deposit_paid_at || localTimestamp()) : null, body.financial_notes || "", body.status || "pendente", body.notes, photoUrl, duration]
+      (client_id, professional_id, service_id, jewelry_id, jewelry_variant_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, total_value, service_value, jewelry_value, subtotal_value, discount_value, coupon_id, coupon_code, coupon_snapshot, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, deposit_status, deposit_paid_at, financial_notes, status, notes, reference_photo_url, duration_minutes, service_rules_snapshot, operational_requirements_snapshot)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      [client.id, body.professional_id, serviceId || firstItem.service_id || null, jewelryId, variantId, body.procedure || firstItem.procedure_name || service?.name || "Atendimento", body.description, body.piercing_region || firstItem.region || "Atendimento", body.appointment_date, body.appointment_time, endTime, totalValue, totals.procedureValue, totals.jewelryValue, totals.totalValue, discountValue, couponQuote?.coupon?.id || null, couponQuote?.coupon?.code || null, couponQuote ? JSON.stringify(couponQuote) : null, depositValue, remainingValue, body.deposit_payment_method, body.remaining_payment_method, depositStatus, depositReceived ? (body.deposit_paid_at || localTimestamp()) : null, body.financial_notes || "", body.status || "pendente", body.notes, photoUrl, duration, JSON.stringify(serviceRulesSnapshot), JSON.stringify(operationalRequirementsSnapshot)]
     );
     await replaceAppointmentItems(tx, result.returnedId, items);
     if (couponQuote?.coupon?.id) {
@@ -209,9 +234,23 @@ router.post("/api/appointments", withFeature("agenda", async (req, res, db) => {
         [result.returnedId, client.id, depositValue, body.deposit_payment_method || "Pix", depositReceived ? "pago" : "pendente", depositReceived ? (body.deposit_paid_at || localTimestamp()) : localTimestamp()]
       );
     }
+    await recordAudit(tx, {
+      req, module: "appointments", action: "create", entityType: "appointment", entityId: result.returnedId,
+      reason: "Agendamento criado",
+      after: {
+        id: result.returnedId, client_id: client.id, professional_id: body.professional_id,
+        service_id: serviceId || firstItem.service_id || null, appointment_date: body.appointment_date,
+        appointment_time: body.appointment_time, status: body.status || "pendente", total_value: totalValue,
+        deposit_value: depositValue
+      }
+    });
     return result.returnedId;
   });
   const created = await listAppointments(db, "WHERE a.id = ?", [appointmentId]).then((rows) => rows[0]);
+  await scheduleAppointmentClientAutomations(db, appointmentId);
+  if (depositValue > 0 && !depositReceived) {
+    await scheduleClientAutomationEvent(db, appointmentId, "payment_pending");
+  }
   res.status(201).json(created);
 }));
 
@@ -231,20 +270,30 @@ router.post("/api/appointments/:id/complete", withFeature("agenda", async (req, 
       !(await requireFeature(req, res, "basic_finance"))) return;
   try {
     await db.transaction(async (tx) => {
+      await assertCompletionServiceRules(tx, req.params.id);
       await registerCompletionPayments(tx, req.params.id, req.body.payments, req.user?.id);
       await tx.run("UPDATE appointments SET status = 'atendido', financial_notes = ?, updated_at = ? WHERE id = ?", [req.body.financial_notes || before.financial_notes || "", localTimestamp(), req.params.id]);
       const after = await tx.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
       await tx.run("INSERT INTO appointment_financial_audit (appointment_id, user_id, action, reason, before_snapshot, after_snapshot) VALUES (?, ?, ?, ?, ?, ?)", [req.params.id, req.user?.id, before.status === "atendido" ? "reopen_financial_close" : "financial_close", req.body.reason || null, JSON.stringify(before), JSON.stringify(after)]);
       await deductJewelryStock(tx, req.params.id);
       await consumeAppointmentRecipe(tx, req.params.id, req.user?.id || null);
-      await ensureSalesOrderForAppointment(tx, req.params.id, req.user, req.body);
+      await ensureServiceExecution(tx, req.params.id, req.user, req.body);
       await ensurePostCareFollowups(tx, req.params.id);
       await awardLoyaltyForAppointment(tx, req.params.id);
+      const completed = await tx.get("SELECT id, client_id, professional_id, service_id, appointment_date, appointment_time, status, total_value, remaining_value FROM appointments WHERE id=?", [req.params.id]);
+      await recordAudit(tx, {
+        req, module: "appointments", action: "complete", entityType: "appointment", entityId: req.params.id,
+        reason: String(req.body?.reason || "Atendimento concluído"),
+        before: { id: before.id, status: before.status, total_value: before.total_value, remaining_value: before.remaining_value },
+        after: completed, severity: "warning"
+      });
     });
   } catch (error) {
     return res.status(400).json({ error: error.message || "Não foi possível concluir o atendimento." });
   }
   const updated = await listAppointments(db, "WHERE a.id = ?", [req.params.id]).then((rows) => rows[0]);
+  await cancelPendingAppointmentCommunications(db, req.params.id);
+  await scheduleClientAutomationEvent(db, req.params.id, "appointment_completed", { uniqueContext: updated?.updated_at || "completed" });
   res.json(updated);
 }));
 
@@ -255,7 +304,16 @@ router.post("/api/appointments/:id/cancel", withFeature("agenda", async (req, re
   const resolution = String(req.body?.resolution || "");
   if (["client_credit", "manual_refund"].includes(resolution) && !authorizePermission(req, res, P.FINANCE_EDIT)) return;
   try {
-    res.json(await cancelAppointmentWithResolution(db, req.params.id, req.body || {}, req.user?.id || null));
+    const result = await cancelAppointmentWithResolution(db, req.params.id, req.body || {}, req.user?.id || null);
+    await recordAudit(db, {
+      req, module: "appointments", action: result.outcome === "nao_compareceu" ? "no_show" : "cancel", entityType: "appointment", entityId: req.params.id,
+      reason: String(req.body?.reason || (result.outcome === "nao_compareceu" ? "Não compareceu" : "Cancelamento")),
+      after: { status: result.outcome, resolution: result.resolution, deposit_amount: result.deposit_amount },
+      severity: "critical"
+    });
+    await cancelPendingAppointmentCommunications(db, req.params.id);
+    await scheduleClientAutomationEvent(db, req.params.id, "appointment_cancelled", { uniqueContext: result.cancellation_id });
+    res.json(result);
   } catch (error) {
     const message = error.message || "Não foi possível cancelar o agendamento.";
     res.status(/não encontrado/i.test(message) ? 404 : /já |deve ser resolvido|Não há sinal|Há sinal/i.test(message) ? 409 : 400).json({ error: message });
@@ -284,6 +342,9 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
   if (req.body.status === "cancelado") {
     return res.status(409).json({ error: "Use o fluxo de cancelamento para registrar retenção, crédito, reembolso ou ausência de pagamento." });
   }
+  if (req.body.status !== undefined && !APPOINTMENT_STATUSES.has(String(req.body.status))) {
+    return res.status(400).json({ error: "Status do agendamento inválido." });
+  }
   const appointment = await db.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
   const financialFields = ["total_value", "discount_value", "deposit_value", "remaining_value", "deposit_payment_method", "remaining_payment_method", "deposit_status", "deposit_paid_at", "coupon_code", "coupon_id"];
   const leavingFinalized = appointment?.status === "atendido" && req.body.status && req.body.status !== "atendido";
@@ -295,6 +356,11 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
     if (!String(req.body.reason || "").trim()) return res.status(400).json({ error: "Informe o motivo da alteração financeira." });
   }
   if (!appointment) return res.status(404).json({ error: "Agendamento não encontrado." });
+  const scheduleChanged = (req.body.appointment_date !== undefined && req.body.appointment_date !== appointment.appointment_date)
+    || (req.body.appointment_time !== undefined && req.body.appointment_time !== appointment.appointment_time);
+  if (scheduleChanged && !String(req.body.reason || "").trim()) {
+    return res.status(400).json({ error: "Informe o motivo do reagendamento." });
+  }
   const willRecalculateReceivable = finalizedFinancialChange && !leavingFinalized &&
     String(req.body.status || appointment.status) === "atendido";
   if ((configuresReceivableSchedule(req.body) || willRecalculateReceivable) &&
@@ -363,22 +429,49 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
     req.body.coupon_snapshot = couponQuote ? JSON.stringify(couponQuote) : appointment.coupon_snapshot || null;
     req.body.discount_value = operationTotals.discountTotal;
     req.body.remaining_value = operationTotals.outstandingBalance;
+    const rules = items.filter((item) => item.service_id || item.procedure_id).map((item) => item.service_rules_snapshot);
+    const clientProfile = await db.get("SELECT * FROM clients WHERE id=?", [appointment.client_id]);
+    const clientRuleError = validateClientServiceRules({ rules, client: clientProfile, appointmentDate: req.body.appointment_date || appointment.appointment_date });
+    if (clientRuleError) return res.status(400).json({ error: clientRuleError });
+    if (req.body.appointment_date !== undefined || req.body.appointment_time !== undefined) {
+      const timingRuleError = validateAppointmentTimingRules({ rules, appointmentDate: req.body.appointment_date || appointment.appointment_date, appointmentTime: req.body.appointment_time || appointment.appointment_time });
+      if (timingRuleError) return res.status(400).json({ error: timingRuleError });
+    }
+    req.body.service_rules_snapshot = JSON.stringify(rules);
+    req.body.operational_requirements_snapshot = JSON.stringify(mergeOperationalRequirements(items.map((item) => item.operational_requirements_snapshot)));
     pendingItems = items;
   }
   if (req.body.status === "cancelado") {
     req.body.remaining_value = 0;
   }
 
-  const fields = ["status", "appointment_date", "appointment_time", "end_time", "professional_id", "service_id", "jewelry_id", "jewelry_variant_id", "procedure", "description", "piercing_region", "total_value", "discount_value", "deposit_value", "remaining_value", "deposit_payment_method", "remaining_payment_method", "deposit_status", "deposit_paid_at", "financial_notes", "coupon_code", "coupon_id", "coupon_snapshot", "notes"];
+  if (req.body.status === "chegou" && !appointment.arrived_at) req.body.arrived_at = localTimestamp();
+  if (req.body.status === "em_atendimento") {
+    if (!appointment.arrived_at) req.body.arrived_at = localTimestamp();
+    if (!appointment.started_at) req.body.started_at = localTimestamp();
+  }
+  const fields = ["status", "appointment_date", "appointment_time", "end_time", "professional_id", "service_id", "jewelry_id", "jewelry_variant_id", "procedure", "description", "piercing_region", "total_value", "discount_value", "deposit_value", "remaining_value", "deposit_payment_method", "remaining_payment_method", "deposit_status", "deposit_paid_at", "financial_notes", "coupon_code", "coupon_id", "coupon_snapshot", "notes", "arrived_at", "started_at", "service_rules_snapshot", "operational_requirements_snapshot"];
   const updates = fields.filter((field) => req.body[field] !== undefined);
 
   await db.transaction(async (tx) => {
-    if (pendingItems) await replaceAppointmentItems(tx, req.params.id, pendingItems);
+    if (pendingItems) {
+      await replaceAppointmentItems(tx, req.params.id, pendingItems);
+    }
     if (updates.length) {
       await tx.run(
         `UPDATE appointments SET ${updates.map((field) => `${field} = ?`).join(", ")} WHERE id = ?`,
         [...updates.map((field) => req.body[field]), req.params.id]
       );
+    }
+    if (scheduleChanged) {
+      await tx.run(`INSERT INTO appointment_reschedule_history
+        (appointment_id,previous_date,previous_time,new_date,new_time,reason,changed_by_user_id)
+        VALUES (?,?,?,?,?,?,?)`, [
+        appointment.id, appointment.appointment_date, appointment.appointment_time,
+        req.body.appointment_date || appointment.appointment_date,
+        req.body.appointment_time || appointment.appointment_time,
+        String(req.body.reason).trim(), req.user?.id || null
+      ]);
     }
 
     const depositChanged = ["deposit_value", "deposit_status", "deposit_payment_method", "deposit_paid_at"]
@@ -402,11 +495,12 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
     }
 
     if (req.body.status === "atendido") {
+      await assertCompletionServiceRules(tx, req.params.id);
       await deductJewelryStock(tx, req.params.id);
       await consumeAppointmentRecipe(tx, req.params.id, req.user?.id || null);
       const configuredReceivable = configuresReceivableSchedule(req.body);
       if (!configuredReceivable) await registerRemainingPayment(tx, req.params.id);
-      await ensureSalesOrderForAppointment(tx, req.params.id, req.user, req.body);
+      await ensureServiceExecution(tx, req.params.id, req.user, req.body);
       await ensurePostCareFollowups(tx, req.params.id);
       await awardLoyaltyForAppointment(tx, req.params.id);
     }
@@ -420,30 +514,42 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
     if (finalizedFinancialChange && req.body.status !== "atendido") {
       const after = await tx.get("SELECT * FROM appointments WHERE id=?", [req.params.id]);
       if (after?.status === "atendido") {
-        await ensureSalesOrderForAppointment(tx, req.params.id, req.user, req.body);
+        await ensureServiceExecution(tx, req.params.id, req.user, req.body);
       } else {
-        const serviceOrder = await tx.get(
-          "SELECT id FROM sales_orders WHERE appointment_id=? AND order_type='ordem_servico' FOR UPDATE",
-          [req.params.id]
-        );
-        if (serviceOrder) {
-          // A baixa física já foi desfeita por restoreJewelryStock. Manter o
-          // marcador como 1 faria uma conclusão futura pular a nova baixa.
-          await tx.run(
-            "UPDATE sales_orders SET status=?, stock_deducted=0 WHERE id=?",
-            [after?.status === "cancelado" ? "cancelado" : "aberta", serviceOrder.id]
-          );
-          await cancelSalesOrderReceivables(tx, serviceOrder.id);
-        }
+        await cancelServiceExecution(tx, req.params.id, req.body.reason || "Atendimento reaberto");
       }
     }
     if (finalizedFinancialChange) {
       const after = await tx.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
       await tx.run("INSERT INTO appointment_financial_audit (appointment_id, user_id, action, reason, before_snapshot, after_snapshot) VALUES (?, ?, 'financial_correction', ?, ?, ?)", [req.params.id, req.user.id, String(req.body.reason).trim(), JSON.stringify(appointment), JSON.stringify(after)]);
     }
+    if (updates.length || pendingItems) {
+      const after = await tx.get("SELECT id, client_id, professional_id, service_id, appointment_date, appointment_time, status, total_value, remaining_value FROM appointments WHERE id=?", [req.params.id]);
+      await recordAudit(tx, {
+        req, module: "appointments", action: "update", entityType: "appointment", entityId: req.params.id,
+        reason: String(req.body?.reason || "Alteração de agendamento"),
+        before: {
+          id: appointment.id, client_id: appointment.client_id, professional_id: appointment.professional_id,
+          service_id: appointment.service_id, appointment_date: appointment.appointment_date,
+          appointment_time: appointment.appointment_time, status: appointment.status,
+          total_value: appointment.total_value, remaining_value: appointment.remaining_value
+        },
+        after,
+        metadata: { changed_fields: updates.filter((field) => !["notes", "description", "financial_notes", "coupon_snapshot"].includes(field)) },
+        severity: finalizedFinancialChange ? "critical" : "info"
+      });
+    }
   });
 
   const updated = await listAppointments(db, "WHERE a.id = ?", [req.params.id]).then((rows) => rows[0]);
+  const justConfirmed = updated?.status === "confirmado" && appointment.status !== "confirmado";
+  if (scheduleChanged || justConfirmed) {
+    await cancelPendingAppointmentCommunications(db, req.params.id);
+    const context = `${updated.appointment_date}-${updated.appointment_time}`;
+    if (scheduleChanged) await scheduleClientAutomationEvent(db, req.params.id, "appointment_rescheduled", { uniqueContext: context });
+    if (justConfirmed) await scheduleClientAutomationEvent(db, req.params.id, "appointment_confirmed", { uniqueContext: context });
+    await scheduleClientAutomationEvent(db, req.params.id, "appointment_upcoming", { uniqueContext: context });
+  }
   if (["confirmado", "remarcado"].includes(updated?.status) || req.body.appointment_date || req.body.appointment_time) {
     await queueAppointmentReminderNotifications(db, updated);
   }
@@ -453,7 +559,7 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
 async function appointmentDeletionImpact(db, id) {
   const row = await db.get(`SELECT
     (SELECT COUNT(*) FROM payments WHERE appointment_id = ?) AS payments,
-    (SELECT COUNT(*) FROM sales_orders WHERE appointment_id = ?) AS sales,
+    (SELECT COUNT(*) FROM service_executions WHERE appointment_id = ?) AS executions,
     (SELECT COUNT(*) FROM client_medical_records WHERE appointment_id = ?) AS medical_records,
     (SELECT COUNT(*) FROM digital_terms WHERE appointment_id = ?) AS terms,
     (SELECT COUNT(*) FROM post_care_followups WHERE appointment_id = ?) AS followups,
@@ -486,7 +592,17 @@ router.delete("/api/appointments/:id", withFeature("agenda", async (req, res, db
   await db.transaction(async (tx) => {
     await tx.run("DELETE FROM notification_queue WHERE appointment_id = ?", [req.params.id]);
     await tx.run("DELETE FROM appointments WHERE id = ?", [req.params.id]);
-    await tx.run("INSERT INTO administrative_audit_logs (entity_type, entity_id, action, reason, user_id, snapshot) VALUES ('appointment', ?, 'hard_delete', ?, ?, ?)", [req.params.id, reason, req.user?.id || null, JSON.stringify({ appointment, impact })]);
+    await recordAudit(tx, {
+      req, module: "appointments", action: "delete", entityType: "appointment", entityId: req.params.id,
+      reason,
+      before: {
+        id: appointment.id, client_id: appointment.client_id, professional_id: appointment.professional_id,
+        service_id: appointment.service_id, appointment_date: appointment.appointment_date,
+        appointment_time: appointment.appointment_time, status: appointment.status,
+        total_value: appointment.total_value
+      },
+      metadata: { impact }, severity: "critical"
+    });
   });
   // A cota conta agendamentos CRIADOS no mês; apagar um do mês corrente devolve
   // a vaga, então a medição cacheada não serve mais.

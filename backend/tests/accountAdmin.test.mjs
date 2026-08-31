@@ -100,10 +100,12 @@ before(async () => {
   // Três clientes ANTES de qualquer cota: é o estado "clínica que cresceu no
   // plano grande" que depois vai ser rebaixada.
   const api = clinicApi(ctx.quota);
-  for (const nome of ["Ana Cota", "Bruno Cota", "Carla Cota"]) {
+  // Telefones distintos: a detecção de cliente duplicado casa por WhatsApp, e
+  // três cadastros com o mesmo número passaram a ser recusados com 409.
+  for (const [indice, nome] of ["Ana Cota", "Bruno Cota", "Carla Cota"].entries()) {
     const criado = await api("/clients", {
       method: "POST",
-      body: { full_name: nome, whatsapp: "11999990000" }
+      body: { full_name: nome, whatsapp: `1199999000${indice}` }
     });
     assert.equal(criado.status, 201, JSON.stringify(criado.json));
   }

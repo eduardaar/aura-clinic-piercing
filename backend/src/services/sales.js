@@ -1,4 +1,4 @@
-// Serviços de vendas (pedidos avulsos e vinculados a atendimentos).
+// Serviços de vendas de produtos (balcão e catálogo).
 import { normalizeSalesOrderItems, variantStatus, localTimestamp } from "./utils.js";
 import { upsertClient } from "./appointments.js";
 import { syncProductInventory } from "./inventory.js";
@@ -28,12 +28,13 @@ async function authoritativePublicItems(db, submitted) {
     let variantId = Number(raw.product_variant_id || 0) || null;
     const quantity = Number(raw.quantity || 0);
     if (!Number.isInteger(quantity) || quantity < 1) throw new SalesOrderValidationError("Quantidade inválida.");
-    const product = await db.get("SELECT id,name,category,sale_value,status,is_catalog_active,is_published FROM jewelry_inventory WHERE id=?", [productId]);
-    if (!product || Number(product.is_catalog_active) !== 1 || Number(product.is_published) !== 1 || product.status === "arquivado") {
+    const product = await db.get("SELECT id,name,category,sale_value,status,is_catalog_active,is_published,can_sell,can_publish,track_stock FROM jewelry_inventory WHERE id=?", [productId]);
+    if (!product || !product.can_sell || !product.can_publish || Number(product.is_catalog_active) !== 1 || Number(product.is_published) !== 1 || product.status === "arquivado") {
       throw new SalesOrderValidationError("Produto indisponível.", 409);
     }
     if (!variantId) {
-      const variants = await db.all("SELECT id FROM jewelry_variants WHERE jewelry_id=? AND is_active=1 AND quantity>0 ORDER BY id", [productId]);
+      const variants = await db.all(`SELECT id FROM jewelry_variants
+        WHERE jewelry_id=? AND is_active=1 AND (? = false OR quantity>0) ORDER BY id`, [productId, product.track_stock]);
       if (variants.length === 1) variantId = variants[0].id;
       else if (variants.length > 1) throw new SalesOrderValidationError("Selecione a variação do produto.");
     }
@@ -43,8 +44,10 @@ async function authoritativePublicItems(db, submitted) {
     if (variantId && (!variant || Number(variant.is_active) !== 1 || variant.status === "esgotado")) {
       throw new SalesOrderValidationError("Variação indisponível.", 409);
     }
-    const available = await availableStock(db, productId, variantId);
-    if (available === null || available < quantity) throw new SalesOrderValidationError("Estoque insuficiente para este item.", 409);
+    if (product.track_stock) {
+      const available = await availableStock(db, productId, variantId);
+      if (available === null || available < quantity) throw new SalesOrderValidationError("Estoque insuficiente para este item.", 409);
+    }
     const unitPrice = Number(variant?.sale_value || product.sale_value || 0);
     items.push({
       ...raw,
@@ -69,6 +72,8 @@ async function authoritativePublicItems(db, submitted) {
 async function resolveStockTarget(db, item) {
   if (item.item_type !== "produto" || !item.product_id) return null;
   const productId = Number(item.product_id);
+  const itemRecord = await db.get("SELECT id,name,quantity,can_sell,track_stock FROM jewelry_inventory WHERE id=?", [productId]);
+  if (!itemRecord || !itemRecord.can_sell || !itemRecord.track_stock) return null;
   let variantId = item.product_variant_id ? Number(item.product_variant_id) : null;
   if (!variantId) {
     const firstAvailable = await db.get(
@@ -79,12 +84,12 @@ async function resolveStockTarget(db, item) {
   }
   if (variantId) {
     const variant = await db.get(
-      `SELECT v.id, v.quantity, v.variation_name, v.sku, j.name AS product_name
+      `SELECT v.id, v.quantity, v.variation_name, v.sku, j.name AS product_name, j.can_sell
        FROM jewelry_variants v LEFT JOIN jewelry_inventory j ON j.id = v.jewelry_id
        WHERE v.id = ?`,
       [variantId]
     );
-    if (!variant) return null;
+    if (!variant || !variant.can_sell) return null;
     const variantLabel = variant.variation_name || variant.sku || "";
     return {
       key: `variant:${variant.id}`,
@@ -92,9 +97,7 @@ async function resolveStockTarget(db, item) {
       label: [variant.product_name, variantLabel].filter(Boolean).join(" - ")
     };
   }
-  const product = await db.get("SELECT id, name, quantity FROM jewelry_inventory WHERE id = ?", [productId]);
-  if (!product) return null;
-  return { key: `product:${product.id}`, available: Number(product.quantity || 0), label: product.name || "" };
+  return { key: `product:${itemRecord.id}`, available: Number(itemRecord.quantity || 0), label: itemRecord.name || "" };
 }
 
 function insufficientStockError(name, requested, available) {
@@ -131,6 +134,8 @@ export async function assertStockForSoldItems(db, items = []) {
 // precisa aparecer, não ser silenciada com um `Math.max(0, ...)`.
 export async function deductSoldProductStock(db, item, orderId) {
   if (item.item_type !== "produto" || !item.product_id) return;
+  const inventoryItem = await db.get("SELECT track_stock FROM jewelry_inventory WHERE id = ?", [item.product_id]);
+  if (!inventoryItem?.track_stock) return;
   const quantity = Number(item.quantity || 1);
   let variantId = item.product_variant_id;
   if (!variantId) {
@@ -212,12 +217,7 @@ export async function createSalesOrder(db, body, user) {
   const discount = Number(couponQuote?.discount_amount || 0);
   const total = Number(Math.max(subtotal - discount, 0).toFixed(2));
   const orderType = String(body.order_type || "produto");
-  // "ordem_servico" é reservado ao título gerado sozinho por
-  // ensureSalesOrderForAppointment ao concluir um atendimento da agenda —
-  // essa função nunca passa por createSalesOrder, então nenhuma chamada
-  // legítima chega aqui com este tipo. Bloquear evita que balcão/catálogo
-  // criem manualmente um "atendimento" que na verdade não existiu na agenda,
-  // a origem de duplicidade de baixa que este pacote corrige.
+  // Atendimentos possuem execução e financeiro próprios no fluxo da agenda.
   if (orderType === "ordem_servico") {
     throw new SalesOrderValidationError("Ordem de serviço é gerada automaticamente pela agenda ao concluir um atendimento — não pode ser criada manualmente.");
   }
@@ -400,194 +400,6 @@ export async function createSalesOrder(db, body, user) {
   return getSalesOrder(db, orderId);
 }
 
-export async function ensureSalesOrderForAppointment(db, appointmentId, user, options = {}) {
-  const appointment = await db.get(`
-    SELECT
-      a.*,
-      c.full_name,
-      c.whatsapp,
-      c.instagram,
-      s.name AS service_name,
-      s.price AS service_price,
-      j.name AS jewelry_name,
-      j.sale_value AS jewelry_sale_value,
-      v.variation_name AS variant_name,
-      v.sale_value AS variant_sale_value
-    FROM appointments a
-    JOIN clients c ON c.id = a.client_id
-    LEFT JOIN services s ON s.id = a.service_id
-    LEFT JOIN jewelry_inventory j ON j.id = a.jewelry_id
-    LEFT JOIN jewelry_variants v ON v.id = a.jewelry_variant_id
-    WHERE a.id = ?
-    FOR UPDATE OF a
-  `, [appointmentId]);
-  if (!appointment) return null;
-  const existing = await db.get(
-    "SELECT * FROM sales_orders WHERE appointment_id = ? AND order_type = 'ordem_servico' LIMIT 1 FOR UPDATE",
-    [appointmentId]
-  );
-
-  const appointmentItems = await db.all(`
-    SELECT ai.*, s.name AS service_name, p.name AS procedure_name,
-      j.name AS jewelry_name, v.variation_name AS variant_name
-    FROM appointment_items ai
-    LEFT JOIN services s ON s.id = ai.service_id
-    LEFT JOIN procedures p ON p.id = ai.procedure_id
-    LEFT JOIN jewelry_inventory j ON j.id = ai.jewelry_id
-    LEFT JOIN jewelry_variants v ON v.id = ai.jewelry_variant_id
-    WHERE ai.appointment_id = ?
-    ORDER BY ai.id
-  `, [appointmentId]);
-  const fallbackServiceValue = Number(appointment.service_price || 0);
-  const fallbackProductValue = appointment.jewelry_id ? Number(appointment.variant_sale_value || appointment.jewelry_sale_value || 0) : 0;
-  const grossTotal = appointmentItems.length
-    ? appointmentItems.reduce((sum, item) => sum + Number(item.procedure_price || 0) + Number(item.jewelry_unit_price || 0) * Number(item.quantity || 1), 0)
-    : fallbackServiceValue + fallbackProductValue;
-  // A ordem de serviço é o snapshot documental do atendimento, não uma nova
-  // receita. Seu total precisa preservar o líquido realizado do agendamento;
-  // os itens continuam registrando o bruto para explicar o desconto.
-  const total = Number(appointment.total_value || Math.max(0, grossTotal - Number(appointment.discount_value || 0)));
-  const outstanding = Math.max(0, Number(appointment.remaining_value || 0));
-  const explicitConfigProvided = Array.isArray(options.installments)
-    ? options.installments.length > 0
-    : options.installments !== undefined && options.installments !== null;
-  const automaticConfigProvided = ["installmentCount", "installment_count", "firstDueDate", "first_due_date", "paymentMethod", "payment_method"]
-    .some((key) => options[key] !== undefined);
-  const storedInstallments = existing && !explicitConfigProvided && !automaticConfigProvided
-    ? parseStoredInstallments(existing.installments_json)
-    : null;
-  const rawInstallments = explicitConfigProvided ? options.installments : storedInstallments;
-  const fallbackPaymentMethod = String(options.paymentMethod || options.payment_method || appointment.remaining_payment_method || appointment.deposit_payment_method || "Pix");
-  const explicitInstallments = normalizeExplicitInstallments(rawInstallments, {
-    total: outstanding,
-    defaultPaymentMethod: fallbackPaymentMethod
-  });
-  const paymentMethod = String(explicitInstallments?.[0]?.paymentMethod || fallbackPaymentMethod);
-  const installmentCount = explicitInstallments?.length || normalizeInstallmentCount(options.installmentCount ?? options.installment_count ?? existing?.installment_count ?? 1);
-  const firstDueDate = explicitInstallments?.[0]?.dueDate || String(options.firstDueDate || options.first_due_date || existing?.first_due_date || localTimestamp().slice(0, 10));
-  const installmentsJson = explicitInstallments ? JSON.stringify(serializeInstallments(explicitInstallments)) : null;
-  let orderId = existing?.id || null;
-  if (existing) {
-    await db.run(
-      `UPDATE sales_orders SET client_id=?, status='concluida', payment_method=?, receivable_mode=?,
-         installment_count=?, first_due_date=?, installments_json=?, subtotal_value=?, discount_value=?, total_value=?,
-         coupon_id=?, coupon_code=?, coupon_snapshot=?, stock_deducted=?, notes=? WHERE id=?`,
-      [
-        appointment.client_id, paymentMethod, outstanding > 0 ? "pending" : "paid", installmentCount,
-        firstDueDate, installmentsJson, grossTotal, Number(appointment.discount_value || 0), total,
-        appointment.coupon_id || null, appointment.coupon_code || null, appointment.coupon_snapshot || null,
-        Number(appointment.stock_deducted || 0),
-        `Ordem atualizada automaticamente ao finalizar o atendimento #${appointment.id}`, existing.id
-      ]
-    );
-  } else {
-    const result = await db.run(
-      `INSERT INTO sales_orders
-      (client_id, appointment_id, order_type, source, status, payment_method, receivable_mode,
-       installment_count, first_due_date, installments_json, stock_deducted, subtotal_value, discount_value,
-       total_value, coupon_id, coupon_code, coupon_snapshot, notes, created_by_user_id)
-      VALUES (?, ?, 'ordem_servico', 'agenda', 'concluida', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-      [
-        appointment.client_id,
-        appointment.id,
-        paymentMethod,
-        outstanding > 0 ? "pending" : "paid",
-        installmentCount,
-        firstDueDate,
-        installmentsJson,
-        Number(appointment.stock_deducted || 0),
-        grossTotal,
-        Number(appointment.discount_value || 0),
-        total,
-        appointment.coupon_id || null,
-        appointment.coupon_code || null,
-        appointment.coupon_snapshot || null,
-        `Ordem gerada automaticamente ao finalizar o atendimento #${appointment.id}`,
-        user?.id || null
-      ]
-    );
-    orderId = result.returnedId;
-  }
-
-  // O sinal (pago na reserva) e o restante (pago aqui, na finalização) já
-  // existem em `payments` antes deste título existir — o vínculo só pode ser
-  // feito agora, retroativo, pelo appointment_id que os dois compartilham.
-  await db.run(
-    "UPDATE payments SET sales_order_id = ? WHERE appointment_id = ? AND sales_order_id IS NULL",
-    [orderId, appointmentId]
-  );
-
-  if (!existing && appointmentItems.length) {
-    for (const item of appointmentItems) {
-      if (Number(item.procedure_price || 0) > 0 || item.service_id || item.procedure_id) {
-        await db.run(
-          `INSERT INTO sales_order_items (sales_order_id, item_type, service_id, item_name, quantity, unit_price, notes)
-           VALUES (?, 'servico', ?, ?, 1, ?, ?)`,
-          [
-            orderId,
-            item.service_id || null,
-            item.procedure_name || item.service_name || appointment.procedure || "Atendimento",
-            Number(item.procedure_price || 0),
-            item.region || ""
-          ]
-        );
-      }
-      if (item.jewelry_id) {
-        await db.run(
-          `INSERT INTO sales_order_items (sales_order_id, item_type, product_id, product_variant_id, item_name, quantity, unit_price, notes)
-           VALUES (?, 'produto', ?, ?, ?, ?, ?, ?)`,
-          [
-            orderId,
-            item.jewelry_id,
-            item.jewelry_variant_id || null,
-            item.variant_name ? `${item.jewelry_name} - ${item.variant_name}` : item.jewelry_name,
-            Number(item.quantity || 1),
-            Number(item.jewelry_unit_price || 0),
-            "Joia vinculada ao atendimento"
-          ]
-        );
-      }
-    }
-  } else if (!existing) {
-    await db.run(
-      `INSERT INTO sales_order_items (sales_order_id, item_type, service_id, item_name, quantity, unit_price, notes)
-       VALUES (?, 'servico', ?, ?, 1, ?, ?)`,
-      [
-        orderId,
-        appointment.service_id || null,
-        appointment.service_name || appointment.procedure || "Atendimento",
-        fallbackServiceValue,
-        appointment.piercing_region || ""
-      ]
-    );
-
-    if (appointment.jewelry_id) {
-      await db.run(
-      `INSERT INTO sales_order_items (sales_order_id, item_type, product_id, product_variant_id, item_name, quantity, unit_price, notes)
-       VALUES (?, 'produto', ?, ?, ?, 1, ?, ?)`,
-        [
-          orderId,
-          appointment.jewelry_id,
-          appointment.jewelry_variant_id || null,
-          appointment.variant_name ? `${appointment.jewelry_name} - ${appointment.variant_name}` : appointment.jewelry_name,
-          fallbackProductValue,
-          "Joia vinculada ao atendimento"
-        ]
-      );
-    }
-  }
-
-  await syncSalesOrderReceivables(db, {
-    salesOrderId: orderId,
-    amount: outstanding,
-    installmentCount,
-    firstDueDate,
-    paymentMethod,
-    installments: explicitInstallments,
-    description: `Atendimento #${appointment.id}`
-  });
-  return getSalesOrder(db, orderId);
-}
 
 const SALES_ORDER_COLUMNS = `
   so.*,

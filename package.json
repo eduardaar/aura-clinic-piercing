@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "description": "Monorepo da Aura Clinic Piercing: backend (Node/Express + Postgres) e frontend (React/Vite) como projetos independentes.",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
     "dev": "concurrently -n backend,frontend -c blue,magenta \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
     "start": "npm --prefix backend run start",
@@ -14,6 +17,9 @@
     "lint": "biome lint .",
     "lint:fix": "biome lint --write .",
     "check": "biome check .",
+    "check:changed": "biome lint --changed --no-errors-on-unmatched",
+    "verify:static": "npm run check:changed && npm run typecheck && npm run build",
+    "verify:full": "npm run verify:static && npm --prefix backend test && npm --prefix frontend test",
     "format:check": "biome format .",
     "format": "biome format --write --staged .",
     "format:branch": "biome format --write --changed .",

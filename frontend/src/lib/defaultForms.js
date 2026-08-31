@@ -245,18 +245,33 @@ export function nextBookingDates(total = 10) {
   });
 }
 
-export function legacyLocalDateValue(date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
-
+/** @returns {Record<string, any>} */
 export function defaultServiceForm() {
   return {
     name: "",
+    category: "Piercing",
+    body_area: "",
     description: "",
+    pre_service_notes: "",
     base_price: 0,
     deposit_value: 25,
     duration_minutes: 40,
-    is_active: true
+    is_active: true,
+    active_online_booking: true,
+    minimum_age_years: "",
+    requires_guardian: false,
+    requires_signed_term: false,
+    return_after_days: "",
+    scheduling_interval_minutes: 0,
+    minimum_advance_minutes: 0,
+    postcare_enabled: false,
+    postcare_days: "7, 15, 30",
+    aftercare_instructions: "",
+    checklist_config: null,
+    biosafety_config: null,
+    professional_ids: [],
+    inventory_items: [],
+    compatible_jewelry_ids: []
   };
 }
 
@@ -269,7 +284,18 @@ export function defaultProcedureForm() {
     price: 0,
     duration_minutes: 40,
     aftercare_instructions: "",
-    is_active: true
+    is_active: true,
+    minimum_age_years: "",
+    requires_guardian: "",
+    requires_signed_term: "",
+    return_after_days: "",
+    scheduling_interval_minutes: "",
+    minimum_advance_minutes: "",
+    postcare_enabled: "",
+    postcare_days: "",
+    available_online: "",
+    checklist_config: null,
+    biosafety_config: null
   };
 }
 
@@ -352,6 +378,7 @@ export const JEWELRY_CATEGORY_OPTIONS = [
   "Ouro 18k"
 ];
 
+/** @returns {Record<string, any>} */
 export function defaultJewelry() {
   return {
     name: "",
@@ -385,6 +412,15 @@ export function defaultJewelry() {
     seo_description: "",
     freight_notes: "",
     quantity: 0,
+    stock_unit: "unidade",
+    purchase_unit: "unidade",
+    consumption_unit: "unidade",
+    purchase_to_stock_factor: 1,
+    can_sell: true,
+    can_use_in_service: true,
+    track_stock: true,
+    track_lots: false,
+    can_publish: true,
     low_stock_threshold: 5,
     critical_stock_threshold: 3,
     cost_value: 0,

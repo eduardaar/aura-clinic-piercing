@@ -6,6 +6,7 @@ import { PublicFooter } from "../layout/PublicFooter";
 import { Button, Checkbox, Input } from "../common/Ui";
 
 export function Login({ onLogin }) {
+  const resetToken = new URLSearchParams(window.location.search).get("reset") || "";
   const [form, setForm] = useState({
     slug: tenantSlug(),
     // Pré-preenche só o último e-mail usado NESTE dispositivo. Nunca sugerimos
@@ -19,6 +20,9 @@ export function Login({ onLogin }) {
   const [mfaRequired, setMfaRequired] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [recoveryMode, setRecoveryMode] = useState(false);
+  const [recoveryMessage, setRecoveryMessage] = useState("");
+  const [resetForm, setResetForm] = useState({ password: "", confirmation: "" });
 
   async function submit(event) {
     event.preventDefault();
@@ -60,6 +64,99 @@ export function Login({ onLogin }) {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function requestRecovery(event) {
+    event.preventDefault();
+    setError("");
+    setRecoveryMessage("");
+    const slug = form.slug.trim().toLowerCase();
+    if (!/^[a-z0-9-]+$/.test(slug)) return setError("Informe o código válido da clínica.");
+    setTenantSlug(slug);
+    setLoading(true);
+    try {
+      const response = await apiFetch("/auth/forgot-password", {
+        method: "POST",
+        body: JSON.stringify({ email: form.email.trim().toLowerCase() }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) return setError(payload.error || "Não foi possível solicitar a recuperação.");
+      setRecoveryMessage(payload.message || "Confira seu e-mail para continuar.");
+    } catch {
+      setError("Não foi possível conectar ao servidor. Tente novamente.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function resetPassword(event) {
+    event.preventDefault();
+    setError("");
+    setRecoveryMessage("");
+    if (resetForm.password.length < 12) return setError("A nova senha deve ter pelo menos 12 caracteres.");
+    if (resetForm.password !== resetForm.confirmation) return setError("As senhas não conferem.");
+    setLoading(true);
+    try {
+      const response = await apiFetch("/auth/reset-password", {
+        method: "POST",
+        body: JSON.stringify({ token: resetToken, password: resetForm.password }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) return setError(payload.error || "Não foi possível redefinir a senha.");
+      setRecoveryMessage(payload.message || "Senha redefinida com sucesso.");
+    } catch {
+      setError("Não foi possível conectar ao servidor. Tente novamente.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (resetToken) {
+    return (
+      <div className="au-shell">
+        <PublicTopNav current="login" />
+        <main className="au-a-root au-a-login">
+          <section className="au-a-panel"><div className="au-a-inner">
+            <h1 className="au-a-title">Criar nova senha</h1>
+            {recoveryMessage ? (
+              <><p className="au-a-success" role="status">{recoveryMessage}</p><p className="au-a-alt"><a href="/login">Voltar para entrar</a></p></>
+            ) : (
+              <form className="au-a-form" onSubmit={resetPassword}>
+                <Input fieldClassName="au-a-field" label="Nova senha" type="password" autoComplete="new-password" minLength={12} required value={resetForm.password} onChange={(password) => setResetForm({ ...resetForm, password })} />
+                <Input fieldClassName="au-a-field" label="Confirmar nova senha" type="password" autoComplete="new-password" minLength={12} required value={resetForm.confirmation} onChange={(confirmation) => setResetForm({ ...resetForm, confirmation })} />
+                {error && <p className="au-a-error" role="alert">{error}</p>}
+                <Button type="submit" className="au-a-submit" disabled={loading}>{loading ? "Salvando…" : "Redefinir senha"}</Button>
+              </form>
+            )}
+          </div></section>
+          <aside className="au-a-aside" aria-hidden="true"><span className="au-a-aside-rule" /><p className="au-a-aside-quote">Acesso seguro à rotina da sua clínica.</p></aside>
+        </main>
+        <PublicFooter />
+      </div>
+    );
+  }
+
+  if (recoveryMode) {
+    return (
+      <div className="au-shell">
+        <PublicTopNav current="login" />
+        <main className="au-a-root au-a-login">
+          <section className="au-a-panel"><div className="au-a-inner">
+            <h1 className="au-a-title">Recuperar acesso</h1>
+            <form className="au-a-form" onSubmit={requestRecovery}>
+              <Input fieldClassName="au-a-field" label="Código da clínica" value={form.slug} required onChange={(slug) => setForm({ ...form, slug: slug.toLowerCase() })} placeholder="ex.: aura" />
+              <Input fieldClassName="au-a-field" label="E-mail" type="email" autoComplete="username" value={form.email} required onChange={(email) => setForm({ ...form, email })} placeholder="seu@email.com" />
+              {error && <p className="au-a-error" role="alert">{error}</p>}
+              {recoveryMessage && <p className="au-a-success" role="status">{recoveryMessage}</p>}
+              <Button type="submit" className="au-a-submit" disabled={loading}>{loading ? "Enviando…" : "Enviar instruções"}</Button>
+              <Button type="button" variant="ghost" onClick={() => { setRecoveryMode(false); setError(""); setRecoveryMessage(""); }}>Voltar para entrar</Button>
+            </form>
+          </div></section>
+          <aside className="au-a-aside" aria-hidden="true"><span className="au-a-aside-rule" /><p className="au-a-aside-quote">Recupere o acesso por um link seguro e temporário.</p></aside>
+        </main>
+        <PublicFooter />
+      </div>
+    );
   }
 
   return (
@@ -150,6 +247,10 @@ export function Login({ onLogin }) {
               )}
 
               <Checkbox className="au-a-check" label="Manter conectado" checked={rememberAccess} onChange={setRememberAccess} />
+
+              <Button type="button" variant="ghost" onClick={() => { setRecoveryMode(true); setError(""); }}>
+                Esqueci minha senha
+              </Button>
 
               {error && <p className="au-a-error" role="alert">{error}</p>}
 

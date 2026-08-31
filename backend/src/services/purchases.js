@@ -7,6 +7,7 @@ import {
   serializeInstallments
 } from "./receivables.js";
 import { localTimestamp } from "./utils.js";
+import { NfeImportError, parseNfeXml, registerPurchaseFiscalDocument } from "./nfeImport.js";
 
 export class PurchaseValidationError extends Error {
   constructor(message, status = 400) {
@@ -55,7 +56,7 @@ export function splitInstallmentCents(totalCents, count) {
   return Array.from({ length: installments }, (_, index) => base + (index < remainder ? 1 : 0));
 }
 
-function normalizePurchase(body = {}, idempotencyKey = "") {
+export function normalizePurchase(body = {}, idempotencyKey = "") {
   const items = Array.isArray(body.items) ? body.items : [];
   if (!items.length) throw new PurchaseValidationError("Adicione ao menos um item à compra.");
   const seenTargets = new Set();
@@ -68,26 +69,39 @@ function normalizePurchase(body = {}, idempotencyKey = "") {
     if (unitCostCents <= 0) throw new PurchaseValidationError(`Custo unitário do item ${index + 1} deve ser maior que zero.`);
     const lineTotalCents = unitCostCents * quantity;
     if (!Number.isSafeInteger(lineTotalCents)) throw new PurchaseValidationError(`Total do item ${index + 1} fora do limite permitido.`);
-    const itemType = String(item.item_type || "product").toLowerCase() === "consumable" ? "consumable" : "product";
-    const productId = itemType === "product" ? requiredId(item.product_id, `Produto do item ${index + 1}`) : null;
-    const consumableId = itemType === "consumable" ? requiredId(item.consumable_id, `Material do item ${index + 1}`) : null;
-    const productVariantId = itemType === "product" && item.product_variant_id ? requiredId(item.product_variant_id, `Variação do item ${index + 1}`) : null;
-    const target = itemType === "consumable" ? `consumable:${consumableId}` : `product:${productId}:${productVariantId || 0}`;
-    if (seenTargets.has(target)) throw new PurchaseValidationError(`O item ${index + 1} repete o mesmo produto/variação na compra.`);
+    const newInventoryItem = item.new_inventory_item && typeof item.new_inventory_item === "object"
+      ? {
+        name: String(item.new_inventory_item.name || "").trim(),
+        kind: item.new_inventory_item.kind === "consumable" ? "consumable" : "product",
+        gtin: String(item.new_inventory_item.gtin || "").trim(),
+        supplier_item_code: String(item.new_inventory_item.supplier_item_code || "").trim(),
+        stock_unit: String(item.new_inventory_item.stock_unit || "unidade").trim() || "unidade"
+      }
+      : null;
+    if (newInventoryItem && !newInventoryItem.name) throw new PurchaseValidationError(`Informe o nome do novo item ${index + 1}.`);
+    const itemType = "product";
+    const productId = newInventoryItem ? null : requiredId(item.product_id ?? item.inventory_item_id, `Item de estoque ${index + 1}`);
+    const productVariantId = item.product_variant_id ? requiredId(item.product_variant_id, `Variação do item ${index + 1}`) : null;
+    const target = newInventoryItem ? `new:${index}` : `product:${productId}:${productVariantId || 0}`;
+    if (seenTargets.has(target)) throw new PurchaseValidationError(`O item ${index + 1} repete o mesmo item/variação na compra.`);
     seenTargets.add(target);
     return {
       item_type: itemType,
       product_id: productId,
-      consumable_id: consumableId,
       product_variant_id: productVariantId,
+      new_inventory_item: newInventoryItem,
       quantity,
       unit_cost_cents: unitCostCents,
       line_total_cents: lineTotalCents,
-      batch_code: itemType === "consumable" ? String(item.batch_code || "").trim() : null,
-      expiry_date: itemType === "consumable" && item.expiry_date ? requiredDate(item.expiry_date, `Validade do item ${index + 1}`) : null
+      batch_code: String(item.batch_code || "").trim() || null,
+      expiry_date: item.expiry_date ? requiredDate(item.expiry_date, `Validade do item ${index + 1}`) : null
     };
   });
-  const totalCents = normalizedItems.reduce((sum, item) => sum + item.line_total_cents, 0);
+  const productsCents = normalizedItems.reduce((sum, item) => sum + item.line_total_cents, 0);
+  const freightCents = moneyToCents(body.freight_value || 0, "Frete");
+  const discountCents = moneyToCents(body.discount_value || 0, "Desconto");
+  if (discountCents > productsCents + freightCents) throw new PurchaseValidationError("Desconto maior que o valor da compra.");
+  const totalCents = productsCents + freightCents - discountCents;
   if (!Number.isSafeInteger(totalCents) || totalCents <= 0) throw new PurchaseValidationError("Total da compra inválido.");
   let explicitInstallments;
   try {
@@ -118,8 +132,35 @@ function normalizePurchase(body = {}, idempotencyKey = "") {
     idempotency_key: key,
     status: requestedStatus,
     items: normalizedItems,
+    products_cents: productsCents,
+    freight_cents: freightCents,
+    discount_cents: discountCents,
     total_cents: totalCents
   };
+}
+
+async function createMissingInventoryItems(tx, purchase) {
+  for (const item of purchase.items) {
+    const draft = item.new_inventory_item;
+    if (!draft) continue;
+    const consumable = draft.kind === "consumable";
+    const inserted = await tx.run(`
+      INSERT INTO jewelry_inventory
+        (name,description,category,material,color,quantity,cost_value,sale_value,supplier_id,
+         gtin,supplier_item_code,stock_unit,purchase_unit,consumption_unit,
+         can_sell,can_use_in_service,track_stock,track_lots,can_publish,is_catalog_active,is_published,notes)
+      VALUES (?,?,?,?,?,0,0,0,?,?,?,?,?,?,?,?,true,?,?,0,0,?) RETURNING id
+    `, [
+      draft.name, "Item criado durante a conferência da NF-e",
+      consumable ? "Material de consumo" : "Produto/joia", "Não informado", "Não informado",
+      purchase.supplier_id, draft.gtin || null, draft.supplier_item_code || null,
+      draft.stock_unit, draft.stock_unit, draft.stock_unit,
+      !consumable, consumable, consumable, false,
+      `Origem: NF-e. Revise o cadastro antes de publicar ou vender.`
+    ]);
+    item.product_id = inserted.returnedId;
+    item.product_variant_id = null;
+  }
 }
 
 export async function getPurchase(db, id) {
@@ -133,12 +174,11 @@ export async function getPurchase(db, id) {
   `, [id]);
   if (!purchase) return null;
   const items = await db.all(`
-    SELECT poi.*, COALESCE(j.name, cm.name) AS item_name, poi.item_type,
-      j.name AS product_name, cm.name AS consumable_name, cm.unit AS consumable_unit, j.sku AS product_sku,
+    SELECT poi.*, j.name AS item_name, poi.item_type,
+      j.name AS product_name, j.stock_unit, j.sku AS product_sku,
       v.variation_name, v.sku AS variant_sku
     FROM purchase_order_items poi
     LEFT JOIN jewelry_inventory j ON j.id = poi.product_id
-    LEFT JOIN consumables cm ON cm.id = poi.consumable_id
     LEFT JOIN jewelry_variants v ON v.id = poi.product_variant_id
     WHERE poi.purchase_order_id = ?
     ORDER BY poi.id
@@ -151,8 +191,13 @@ export async function getPurchase(db, id) {
     ORDER BY installment_number, id
   `, [id]);
   const storedInstallments = parseStoredInstallments(purchase.installments_json);
+  const fiscal_document = await db.get(`
+    SELECT access_key, document_number, series, protocol, authorization_status,
+      xml_hash, issuer_document, created_at
+    FROM purchase_fiscal_documents WHERE purchase_order_id=?
+  `, [id]);
   const { installments_json: _installmentsJson, ...purchaseData } = purchase;
-  return { ...purchaseData, installments: storedInstallments, items, payables };
+  return { ...purchaseData, installments: storedInstallments, items, payables, fiscal_document: fiscal_document || null };
 }
 
 export async function listPurchases(db, { status = "", supplierId = null } = {}) {
@@ -184,7 +229,7 @@ export async function listPurchases(db, { status = "", supplierId = null } = {})
 }
 
 async function validatePurchaseReferences(db, purchase) {
-  const supplier = await db.get("SELECT * FROM suppliers WHERE id = ? AND is_active = 1", [purchase.supplier_id]);
+  const supplier = await db.get("SELECT * FROM suppliers WHERE id = ? AND is_active = 1 AND quality_status <> 'blocked'", [purchase.supplier_id]);
   if (!supplier) throw new PurchaseValidationError("Fornecedor ativo não encontrado.", 404);
   if (purchase.cost_center_id) {
     const center = await db.get("SELECT id FROM financial_cost_centers WHERE id = ? AND is_active = 1", [purchase.cost_center_id]);
@@ -201,43 +246,20 @@ async function confirmPurchaseLocked(tx, purchase, userId) {
 
   const touchedProducts = new Set();
   for (const item of items) {
-    if (item.item_type === "consumable") {
-      const consumable = await tx.get("SELECT * FROM consumables WHERE id = ? FOR UPDATE", [item.consumable_id]);
-      if (!consumable || consumable.status === "archived") throw new PurchaseValidationError(`Material ${item.consumable_id} não está disponível para entrada.`, 409);
-      const previousQuantity = Number(consumable.quantity || 0);
-      const nextQuantity = previousQuantity + Number(item.quantity);
-      const previousCost = Number(consumable.cost_value || 0);
-      const incomingCost = Number(item.unit_cost || 0);
-      const averageCost = nextQuantity > 0 ? Number(((previousQuantity * previousCost + Number(item.quantity) * incomingCost) / nextQuantity).toFixed(2)) : incomingCost;
-      await tx.run("UPDATE consumables SET quantity=?, cost_value=?, updated_at=to_char(now(), 'YYYY-MM-DD HH24:MI:SS') WHERE id=?", [nextQuantity, averageCost, consumable.id]);
-      await tx.run(
-        `INSERT INTO consumable_stock_movements
-          (consumable_id, movement_type, quantity, notes, movement_date, purchase_order_id, purchase_order_item_id)
-         VALUES (?, 'Entrada', ?, ?, ?, ?, ?)`,
-        [consumable.id, item.quantity, `Entrada automática da compra #${purchase.id}`, purchase.purchase_date, purchase.id, item.id]
-      );
-      if (item.batch_code || item.expiry_date) {
-        await tx.run(`
-          INSERT INTO consumable_lots
-            (consumable_id, purchase_order_id, purchase_order_item_id, batch_code, expiry_date, received_quantity, remaining_quantity, unit_cost, notes)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [consumable.id, purchase.id, item.id, item.batch_code || "", item.expiry_date || null, item.quantity, item.quantity, item.unit_cost || 0,
-          `Lote criado automaticamente pela compra #${purchase.id}`]);
-      }
-      continue;
-    }
     const product = await tx.get("SELECT * FROM jewelry_inventory WHERE id = ? FOR UPDATE", [item.product_id]);
-    if (!product || product.status === "arquivado") throw new PurchaseValidationError(`Produto ${item.product_id} não está disponível para entrada.`, 409);
+    if (!product || product.status === "arquivado") throw new PurchaseValidationError(`Item ${item.product_id} não está disponível para entrada.`, 409);
+    if (!product.track_stock) continue;
+    const stockQuantity = Number(item.quantity) * Number(product.purchase_to_stock_factor || 1);
+    const incomingStockUnitCostCents = Math.round(moneyToCents(item.unit_cost, "Custo da compra") / Number(product.purchase_to_stock_factor || 1));
     if (item.product_variant_id) {
       const variant = await tx.get("SELECT * FROM jewelry_variants WHERE id = ? FOR UPDATE", [item.product_variant_id]);
       if (!variant || Number(variant.jewelry_id) !== Number(item.product_id) || Number(variant.is_active) !== 1) {
         throw new PurchaseValidationError(`Variação inválida para o produto ${product.name}.`, 409);
       }
       const previousQuantity = Number(variant.quantity || 0);
-      const nextQuantity = previousQuantity + Number(item.quantity);
+      const nextQuantity = previousQuantity + stockQuantity;
       const previousCostCents = Number(variant.purchase_cost_cents || 0) || moneyToCents(variant.cost_value || 0, "Custo anterior");
-      const incomingCostCents = moneyToCents(item.unit_cost, "Custo da compra");
-      const averageCostCents = Math.round((previousQuantity * previousCostCents + Number(item.quantity) * incomingCostCents) / nextQuantity);
+      const averageCostCents = Math.round((previousQuantity * previousCostCents + stockQuantity * incomingStockUnitCostCents) / nextQuantity);
       const totalCostCents = averageCostCents + Number(variant.allocated_freight_cents || 0) + Number(variant.additional_cost_cents || 0);
       const suggestedPriceCents = applyPriceRounding(Math.round(totalCostCents * Number(variant.price_multiplier || 3)), variant.price_rounding_mode || "exact");
       const manualPrice = Number(variant.price_manually_overridden || 0) === 1;
@@ -257,10 +279,9 @@ async function confirmPurchaseLocked(tx, purchase, userId) {
         throw new PurchaseValidationError(`Selecione a variação que recebeu estoque em ${product.name}.`, 409);
       }
       const previousQuantity = Number(product.quantity || 0);
-      const nextQuantity = previousQuantity + Number(item.quantity);
+      const nextQuantity = previousQuantity + stockQuantity;
       const previousCostCents = Number(product.purchase_cost_cents || 0) || moneyToCents(product.cost_value || 0, "Custo anterior");
-      const incomingCostCents = moneyToCents(item.unit_cost, "Custo da compra");
-      const averageCostCents = Math.round((previousQuantity * previousCostCents + Number(item.quantity) * incomingCostCents) / nextQuantity);
+      const averageCostCents = Math.round((previousQuantity * previousCostCents + stockQuantity * incomingStockUnitCostCents) / nextQuantity);
       const totalCostCents = averageCostCents + Number(product.allocated_freight_cents || 0) + Number(product.additional_cost_cents || 0);
       const suggestedPriceCents = applyPriceRounding(Math.round(totalCostCents * Number(product.price_multiplier || 3)), product.price_rounding_mode || "exact");
       const manualPrice = Number(product.price_manually_overridden || 0) === 1;
@@ -274,19 +295,25 @@ async function confirmPurchaseLocked(tx, purchase, userId) {
         [nextQuantity, averageCostCents / 100, averageCostCents, totalCostCents, suggestedPriceCents, salePriceCents, salePriceCents / 100, product.id]
       );
     }
-    await tx.run(`
+    if (product.track_stock) await tx.run(`
       INSERT INTO stock_movements
         (jewelry_id, variant_id, movement_type, quantity, notes, movement_date, purchase_order_id, purchase_order_item_id)
       VALUES (?, ?, 'Entrada', ?, ?, ?, ?, ?)
     `, [
       item.product_id,
       item.product_variant_id,
-      item.quantity,
+      stockQuantity,
       `Entrada automática da compra #${purchase.id}`,
       purchase.purchase_date,
       purchase.id,
       item.id
     ]);
+    if (product.track_lots && (item.batch_code || item.expiry_date)) {
+      await tx.run(`INSERT INTO inventory_item_lots
+        (inventory_item_id,product_variant_id,purchase_order_id,purchase_order_item_id,batch_code,expiry_date,received_quantity,remaining_quantity,unit_cost,notes)
+        VALUES (?,?,?,?,?,?,?,?,?,?)`, [product.id, item.product_variant_id || null, purchase.id, item.id, item.batch_code || "", item.expiry_date || null,
+        stockQuantity, stockQuantity, incomingStockUnitCostCents / 100, `Lote criado automaticamente pela compra #${purchase.id}`]);
+    }
   }
   for (const productId of touchedProducts) await syncProductInventory(tx, productId);
 
@@ -348,31 +375,36 @@ export async function confirmPurchase(db, id, userId = null) {
 
 export async function createPurchase(db, body, { idempotencyKey = "", userId = null } = {}) {
   const purchase = normalizePurchase(body, idempotencyKey);
+  const fiscalDocument = body.nfe_xml ? parseNfeXml(body.nfe_xml) : null;
   const existing = await db.get("SELECT id FROM purchase_orders WHERE idempotency_key = ?", [purchase.idempotency_key]);
   if (existing) return { ...(await getPurchase(db, existing.id)), idempotent: true };
 
   try {
     const result = await db.transaction(async (tx) => {
+      await createMissingInventoryItems(tx, purchase);
       await validatePurchaseReferences(tx, purchase);
       const inserted = await tx.run(`
         INSERT INTO purchase_orders
           (supplier_id, purchase_date, first_due_date, installment_count, payment_method, category,
-           installments_json, cost_center_id, total_value, status, idempotency_key, notes, created_by_user_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?) RETURNING id
+           installments_json, cost_center_id, products_value, freight_value, discount_value, total_value,
+           status, idempotency_key, notes, created_by_user_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?) RETURNING id
       `, [
         purchase.supplier_id, purchase.purchase_date, purchase.first_due_date, purchase.installment_count,
         purchase.payment_method, purchase.category,
         purchase.installments ? JSON.stringify(serializeInstallments(purchase.installments)) : null,
-        purchase.cost_center_id, purchase.total_cents / 100,
+        purchase.cost_center_id, purchase.products_cents / 100, purchase.freight_cents / 100,
+        purchase.discount_cents / 100, purchase.total_cents / 100,
         purchase.idempotency_key, purchase.notes, userId
       ]);
       for (const item of purchase.items) {
         await tx.run(`
           INSERT INTO purchase_order_items
-          (purchase_order_id, item_type, product_id, consumable_id, product_variant_id, quantity, unit_cost, line_total, batch_code, expiry_date)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [inserted.returnedId, item.item_type, item.product_id, item.consumable_id, item.product_variant_id, item.quantity, item.unit_cost_cents / 100, item.line_total_cents / 100, item.batch_code, item.expiry_date]);
+          (purchase_order_id, item_type, product_id, product_variant_id, quantity, unit_cost, line_total, batch_code, expiry_date)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [inserted.returnedId, item.item_type, item.product_id, item.product_variant_id, item.quantity, item.unit_cost_cents / 100, item.line_total_cents / 100, item.batch_code, item.expiry_date]);
       }
+      await registerPurchaseFiscalDocument(tx, inserted.returnedId, fiscalDocument, userId);
       if (purchase.status === "draft") return { purchaseId: inserted.returnedId, idempotent: false };
       const locked = await tx.get("SELECT * FROM purchase_orders WHERE id = ? FOR UPDATE", [inserted.returnedId]);
       return confirmPurchaseLocked(tx, locked, userId);
@@ -382,6 +414,9 @@ export async function createPurchase(db, body, { idempotencyKey = "", userId = n
     if (error?.code === "23505" && String(error.constraint || "").includes("purchase_orders_idempotency")) {
       const duplicate = await db.get("SELECT id FROM purchase_orders WHERE idempotency_key = ?", [purchase.idempotency_key]);
       if (duplicate) return { ...(await getPurchase(db, duplicate.id)), idempotent: true };
+    }
+    if (error?.code === "23505" && String(error.constraint || "").includes("purchase_fiscal_documents")) {
+      throw new NfeImportError("Esta NF-e já foi importada em outra compra.", 409);
     }
     throw error;
   }

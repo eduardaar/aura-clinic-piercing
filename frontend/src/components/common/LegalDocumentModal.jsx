@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { API } from "../../lib/api";
 import { asArray } from "../../lib/utils";
 import { Modal } from "./Crud";
+import { ArticleContent } from "./ArticleContent";
 
 /**
  * Busca os documentos legais publicados (Termos de Uso, Política de
@@ -40,12 +41,7 @@ export function LegalDocumentModal({ documentKey, documents, onClose }) {
       size="lg"
       onClose={onClose}
     >
-      <div className="au-a-legal-modal-content">
-        {String(document?.content || "Este documento está sendo carregado. Tente novamente em instantes.")
-          .split(/\n\s*\n/)
-          .filter(Boolean)
-          .map((paragraph, index) => <p key={index}>{paragraph}</p>)}
-      </div>
+      <ArticleContent className="au-a-legal-modal-content" content={document?.content || "Este documento está sendo carregado. Tente novamente em instantes."} />
     </Modal>
   );
 }

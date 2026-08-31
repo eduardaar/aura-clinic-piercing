@@ -546,6 +546,7 @@ function catalogIsActive(value, fallback = true) {
   return Boolean(value);
 }
 
+/** @returns {Record<string, any>} */
 function catalogComponent(component, index) {
   const source = asObject(component);
   const nested = asObject(source.config || source.settings);
@@ -565,7 +566,7 @@ function catalogComponent(component, index) {
  */
 function catalogLayoutRows(sections) {
   return asArray(sections)
-    .map((row, index) => ({ ...asObject(row), _sourceIndex: index }))
+    .map((row, index) => /** @type {Record<string, any>} */ ({ ...asObject(row), _sourceIndex: index }))
     .filter((row) => String(row.section_type || row.type) === "layout_row" && catalogIsActive(row.is_active))
     .map((row) => {
       const rawColumns = asArray(row.columns);
@@ -582,13 +583,17 @@ function catalogLayoutRows(sections) {
           components
         };
       });
-      return {
+      return /** @type {Record<string, any>} */ ({
         ...row,
-        section_key: String(row.section_key || `row-${index + 1}`),
-        sort_order: Number(row.sort_order ?? index + 1),
+        // `_sourceIndex` guarda a posição da linha ANTES do filtro — o mesmo
+        // critério que `catalogComponent` usa. Antes daqui saía `index`, que
+        // não existe neste callback: linha sem `section_key` ou sem
+        // `sort_order` estourava ReferenceError ao montar a vitrine.
+        section_key: String(row.section_key || `row-${row._sourceIndex + 1}`),
+        sort_order: Number(row.sort_order ?? row._sourceIndex + 1),
         columns_count: columnsCount,
         columns
-      };
+      });
     })
     .sort((left, right) => left.sort_order - right.sort_order || left._sourceIndex - right._sourceIndex);
 }
@@ -598,7 +603,7 @@ function CatalogLayoutRow({ row, ...blockProps }) {
   return (
     <section
       className={`catalog-layout-row catalog-layout-row--${row.columns_count}`}
-      style={{ ...rowStyle, "--catalog-row-columns": row.columns_count }}
+      style={/** @type {React.CSSProperties} */ ({ ...rowStyle, "--catalog-row-columns": row.columns_count })}
       data-layout-row={row.section_key}
     >
       {row.columns.map((column) => (
@@ -612,9 +617,10 @@ function CatalogLayoutRow({ row, ...blockProps }) {
   );
 }
 
+/** @param {Record<string, any>} props */
 function CatalogMenuBlock({ section, data, settings, theme, search, setSearch, recentSearches, setRecentSearches, favoriteIds, orderCount, onOpenFavorites, onOpenOrder }) {
   const items = asArray(section.menu_items)
-    .map((item, index) => ({ ...asObject(item), _sourceIndex: index }))
+    .map((item, index) => /** @type {Record<string, any>} */ ({ ...asObject(item), _sourceIndex: index }))
     .filter((item) => catalogIsActive(item.is_active))
     .filter((item) => String(item.label || "").trim());
   const logo = String(section.logo_url || theme.logo_url || "").trim();
@@ -665,7 +671,7 @@ function catalogLayoutSections(sections) {
     ? asArray(sections)
     : DEFAULT_CATALOG_LAYOUT_TYPES.map((section_type, index) => ({ section_key: `${section_type}-${index + 1}`, section_type, sort_order: index + 1, is_active: 1 }));
   return source
-    .map((section, index) => ({ ...asObject(section), section_type: String(section?.section_type || "custom_content"), sort_order: Number(section?.sort_order ?? index + 1), _sourceIndex: index }))
+    .map((section, index) => /** @type {Record<string, any>} */ ({ ...asObject(section), section_type: String(section?.section_type || "custom_content"), sort_order: Number(section?.sort_order ?? index + 1), _sourceIndex: index }))
     .filter((section) => section.is_active === undefined || section.is_active === null || Boolean(Number(section.is_active)))
     .sort((left, right) => left.sort_order - right.sort_order || left._sourceIndex - right._sourceIndex);
 }
@@ -721,6 +727,7 @@ function catalogSectionProducts(section, source, { category = "", forceSort = ""
   return items;
 }
 
+/** @param {Record<string, any>} props */
 function CatalogLayoutBlock({
   section, data, settings, theme, banners, activeBanner, activeBannerIndex, onBannerChange,
   categories, activeCategory, setActiveCategory, search, setSearch, recentSearches, setRecentSearches,
@@ -821,6 +828,7 @@ function CatalogLayoutBlock({
   }
 }
 
+/** @param {Record<string, any>} props */
 function CatalogDiscovery({ section, style, className, discoveryRef, productsRef, categories, activeCategory, setActiveCategory, search, setSearch, filters, setFilters, options, sort, setSort }) {
   return (
     <section ref={discoveryRef} className={className} style={style} aria-label={catalogSectionTitle(section, "Categorias e filtros")}>
@@ -957,6 +965,7 @@ function CatalogTextBlock({ section, style, className, eyebrow, text }) {
   );
 }
 
+/** @param {{ style?: React.CSSProperties, className?: string, icon?: React.ReactNode, eyebrow?: React.ReactNode, title?: React.ReactNode, text?: React.ReactNode, action?: any, actions?: any[] }} props */
 function CatalogInformationBlock({ style, className, icon, eyebrow, title, text, action, actions = [] }) {
   const availableActions = [...actions, action].filter(Boolean);
   return (
@@ -1033,7 +1042,7 @@ function PublicCatalogBanner({ banner, banners, activeIndex, layout, style, clas
           alt={banner.alt_text || banner.title || "Destaque do catálogo"}
           width="1600"
           height="500"
-          fetchpriority={activeIndex === 0 ? "high" : "auto"}
+          fetchPriority={activeIndex === 0 ? "high" : "auto"}
           loading={activeIndex === 0 ? "eager" : "lazy"}
           style={imageStyle}
         />
@@ -1119,6 +1128,7 @@ function professionalMatchesService(professional, serviceId) {
   return asArray(professional?.service_ids).some((id) => String(id) === String(serviceId));
 }
 
+/** @param {{ section?: Record<string, any>, style?: React.CSSProperties, className?: string }} [props] */
 function CatalogBookingWidget({ section = {}, style, className = "catalog-booking-widget" } = {}) {
   const { data } = usePublicFetch("/booking/config");
   const [form, setForm] = useState(() => {
@@ -1249,6 +1259,7 @@ function CatalogProductRail({ title, subtitle, items, data, theme, settings, fav
   );
 }
 
+/** @param {{ item?: Record<string, any>, favorite?: boolean, onToggleFavorite?: (item: any) => any, onAddToOrder?: (item: any) => any, theme?: Record<string, any>, settings?: Record<string, any>, promotion?: Record<string, any>, compact?: boolean }} props */
 function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, theme = {}, settings = {}, promotion }) {
   const productName = elegantProductName(item.name);
   const description = [elegantProductName(item.material), cleanDisplayText(item.size)].filter(Boolean).join(" · ");
@@ -1297,6 +1308,7 @@ function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, th
   );
 }
 
+/** @param {{ item?: Record<string, any>, data?: Record<string, any>, theme?: Record<string, any>, settings?: Record<string, any>, favorite?: boolean, onToggleFavorite?: (item: any) => any, onAddToOrder?: (item: any) => any, onScheduleWithJewelry?: (item: any) => any }} props */
 function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite, onToggleFavorite, onAddToOrder, onScheduleWithJewelry }) {
   const productName = elegantProductName(item.name);
   const availableVariants = asArray(item?.variants).filter((variant) => Boolean(asNumber(variant?.is_active, 1)));
@@ -1343,7 +1355,7 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
     .slice(0, 4);
 
   return (
-    <main className="catalog-page theme-detail" style={{ "--catalog-primary": theme.primary_color || "#C8A96A", "--catalog-secondary": theme.secondary_color || "#D8C3A5", "--catalog-bg": theme.background_color || "#F8F5F0", "--catalog-button": theme.button_color || "#C8A96A", fontFamily: theme.body_font || "Inter" }}>
+    <main className="catalog-page theme-detail" style={/** @type {React.CSSProperties} */ ({ "--catalog-primary": theme.primary_color || "#C8A96A", "--catalog-secondary": theme.secondary_color || "#D8C3A5", "--catalog-bg": theme.background_color || "#F8F5F0", "--catalog-button": theme.button_color || "#C8A96A", fontFamily: theme.body_font || "Inter" })}>
       <section className="catalog-main catalog-product-detail-page">
         <header className="catalog-topbar">
           <a className="catalog-client-brand" href={catalogUrl()}>
@@ -1747,7 +1759,7 @@ export function PublicBooking() {
   });
   // `cpf`/`email` ficam fora de `defaultPublicBooking()` porque nascem sempre
   // vazios: são digitados na etapa 5 e não vêm por query string como o resto.
-  const [form, setForm] = useState(() => ({ ...defaultPublicBooking(), cpf: "", email: "" }));
+  const [form, setForm] = useState(() => ({ ...defaultPublicBooking(), cpf: "", email: "", birth_date: "", guardian_name: "", guardian_document: "", coupon_code: "" }));
   const [slots, setSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -1767,6 +1779,14 @@ export function PublicBooking() {
   const selectedJewelryVariant = asArray(selectedJewelry?.variants).find((variant) => String(variant.id) === String(form.jewelry_variant_id));
   const selectedJewelryValue = form.jewelry_id ? asNumber(selectedJewelryVariant?.sale_value || selectedJewelry?.sale_value || 0) : 0;
   const selectedServices = services.filter((item) => effectiveServiceIds.some((id) => String(id) === String(item.id)));
+  const needsBirthDate = selectedServices.some((item) => (item.minimum_age_years !== null && item.minimum_age_years !== undefined) || Boolean(item.requires_guardian));
+  const minimumAge = Math.max(0, ...selectedServices.map((item) => asNumber(item.minimum_age_years, 0)));
+  const birthDate = form.birth_date ? new Date(`${form.birth_date}T12:00:00`) : null;
+  const appointmentDate = form.appointment_date ? new Date(`${form.appointment_date}T12:00:00`) : new Date();
+  const ageAtAppointment = birthDate && !Number.isNaN(birthDate.getTime()) ? appointmentDate.getFullYear() - birthDate.getFullYear() - (appointmentDate < new Date(appointmentDate.getFullYear(), birthDate.getMonth(), birthDate.getDate()) ? 1 : 0) : null;
+  const guardianRequired = selectedServices.some((item) => Boolean(item.requires_guardian)) && ageAtAppointment !== null && ageAtAppointment < 18;
+  const ageBlocked = minimumAge > 0 && ageAtAppointment !== null && ageAtAppointment < minimumAge;
+  const rulesDataMissing = (needsBirthDate && !form.birth_date) || (guardianRequired && (!form.guardian_name.trim() || !String(form.guardian_document || "").replace(/\D/g, "")));
   const selectedServiceValue = selectedServices.reduce((sum, item) => sum + asNumber(item.base_price || item.price || 0), 0);
   const bookingOrderItems = readCatalogStorage("aura-catalog-order", []);
   const orderJewelryValue = asArray(bookingOrderItems).reduce((sum, item) => sum + asNumber(item.sale_value) * asNumber(item.qty, 1), 0);
@@ -1808,6 +1828,8 @@ export function PublicBooking() {
     // Última barreira antes do envio: a etapa 5 pode ter sido pulada por link
     // com query string, e o backend devolveria 400 depois do resumo inteiro.
     if (cpfError) return setError(`${cpfError} Volte à etapa "Dados" para corrigir.`);
+    if (ageBlocked) return setError(`Este procedimento exige idade mínima de ${minimumAge} anos.`);
+    if (rulesDataMissing) return setError("Preencha os dados necessários para validar idade e responsável legal.");
     setError("");
     setSubmitting(true);
     const body = new FormData();
@@ -1868,6 +1890,7 @@ export function PublicBooking() {
                     setForm({ ...form, service_id: next[0] || "", professional_id: "", appointment_time: "" });
                   }}>
                     <strong>{item.name}</strong><p>{item.description}</p><span>{item.duration_minutes} min · {currency.format(item.base_price || item.price || 0)}</span>
+                    {(item.minimum_age_years != null || item.requires_guardian || item.requires_signed_term) && <small>{[item.minimum_age_years != null ? `${item.minimum_age_years}+ anos` : "", item.requires_guardian ? "responsável para menor" : "", item.requires_signed_term ? "termo obrigatório" : ""].filter(Boolean).join(" · ")}</small>}
                   </button>
                 );
               })}
@@ -1931,6 +1954,11 @@ export function PublicBooking() {
                   fatura e o recibo do sinal. */}
               <Input label="E-mail (opcional)" type="email" value={form.email} onChange={(value) => setForm({ ...form, email: value })} />
               <Input label="Instagram" value={form.instagram} onChange={(value) => setForm({ ...form, instagram: value })} />
+              {needsBirthDate && <Input label="Data de nascimento" type="date" value={form.birth_date} onChange={(value) => setForm({ ...form, birth_date: value })} required />}
+              {guardianRequired && <>
+                <Input label="Nome do responsável legal" value={form.guardian_name} onChange={(value) => setForm({ ...form, guardian_name: value })} required />
+                <Input label="Documento do responsável" value={form.guardian_document} onChange={(value) => setForm({ ...form, guardian_document: formatTaxId(value) })} required />
+              </>}
               <label>Foto de referência<input type="file" accept="image/*" onChange={(event) => setForm({ ...form, reference_photo: event.target.files?.[0] })} /></label>
             </div>
             <span className={cpfError && form.cpf ? "field-hint is-error" : "field-hint"}>
@@ -1941,7 +1969,8 @@ export function PublicBooking() {
                   : "Sem CPF o sinal não pode ser cobrado online: você envia o comprovante do Pix pelo WhatsApp e a equipe confirma na mão."}
             </span>
             <label>Observações<textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
-            <button className="primary-button booking-wide-button" disabled={!form.full_name || !form.whatsapp || Boolean(cpfError)} onClick={() => setStep(6)}>Ver Resumo</button>
+            {ageBlocked && <span className="field-hint is-error">Este procedimento exige idade mínima de {minimumAge} anos.</span>}
+            <button className="primary-button booking-wide-button" disabled={!form.full_name || !form.whatsapp || Boolean(cpfError) || rulesDataMissing || ageBlocked} onClick={() => setStep(6)}>Ver Resumo</button>
           </section>
         )}
         {step === 6 && (
@@ -1958,6 +1987,7 @@ export function PublicBooking() {
             {(selectedJewelry || bookingOrderItems.length > 0) && <p><strong>Valor das joias:</strong> {currency.format(bookingOrderItems.length ? orderJewelryValue : selectedJewelryValue)}</p>}
             <p><strong>Valor total:</strong> {currency.format(selectedTotal)}</p>
             <p><strong>Sinal obrigatório:</strong> {currency.format(selectedDeposit)}</p>
+            {selectedServices.some((item) => Boolean(item.requires_signed_term)) && <p><strong>Termo digital:</strong> deverá estar assinado antes da conclusão do atendimento.</p>}
             <p><strong>Valor restante:</strong> {currency.format(selectedRemaining)}</p>
             <p><strong>Regras:</strong> {data.rules?.cancellation}</p>
             <Input label="Cupom (opcional)" value={form.coupon_code || ""} onChange={(value) => setForm({ ...form, coupon_code: value.toUpperCase() })} />

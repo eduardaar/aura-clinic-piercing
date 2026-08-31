@@ -1,6 +1,5 @@
 // Componentes compartilhados para padronizar o CRUD do sistema:
 // - Modal: janela sobreposta (formulários abrem aqui, não mais inline).
-// - DataTable: lista/tabela padrão de registros, com ações por linha.
 // - CrudHeader: cabeçalho de página com título e botão "Novo".
 // Reaproveitam o CSS existente (.modal-backdrop, .table-wrap, .panel-heading).
 import React, { useEffect, useState } from "react";
@@ -21,14 +20,14 @@ export { DropdownMenu };
  * @param {() => void} [props.onClose]
  * @param {React.ReactNode} [props.children]
  * @param {React.ReactNode} [props.footer] Botões do rodapé.
- * @param {"sm" | "md" | "lg"} [props.size] Padrão: "md".
+ * @param {"sm" | "md" | "lg"} [props.size] Mantido apenas por compatibilidade; todos os modais usam largura média.
  */
-export function Modal({ open, title, subtitle, onClose, children, footer, size = "md" }) {
+export function Modal({ open, title, subtitle, onClose, children, footer }) {
   return (
     <Dialog.Root open={Boolean(open)} onOpenChange={(nextOpen) => { if (!nextOpen) onClose?.(); }}>
       <Dialog.Portal>
         <Dialog.Overlay className="modal-backdrop">
-          <Dialog.Content className={`modal-card modal-${size}`}>
+          <Dialog.Content className="modal-card modal-md">
             <div className="modal-header">
               <div>
                 <Dialog.Title>{title}</Dialog.Title>
@@ -130,7 +129,7 @@ export function ConfirmDeleteModal({
  * @param {object} props
  * @param {React.ReactNode} [props.title]
  * @param {React.ReactNode} [props.subtitle]
- * @param {{ label: string, icon?: React.ComponentType<{size?: number}>, onClick: () => void }[]} [props.actions]
+ * @param {{ label: string, icon?: React.ComponentType<any>, onClick: () => void }[]} [props.actions]
  *   Ações secundárias, agrupadas em "Mais opções" antes do botão principal.
  * @param {string} [props.actionLabel] Padrão: "Novo".
  * @param {() => void} [props.onAction] Sem ele, o botão de ação não é renderizado.
@@ -207,50 +206,6 @@ export function RowActions({ actions = [] }) {
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
-    </div>
-  );
-}
-
-// Tabela nua, sem busca/filtro/ordenação/paginação. Para listagem nova prefira
-// o `DataView` — este componente permanece para as telas ainda não migradas.
-/**
- * @param {object} props
- * @param {Array<Pick<import("./DataView.jsx").ColumnDef, "key" | "label" | "render" | "align">>} props.columns
- *   Só estas quatro chaves têm efeito aqui: sem ordenação e sem busca, `value`,
- *   `sortable` e `searchable` do `DataView` seriam ignorados em silêncio.
- * @param {import("./DataView.jsx").Row[]} [props.rows]
- * @param {(row: import("./DataView.jsx").Row) => React.ReactNode} [props.actions]
- * @param {(row: import("./DataView.jsx").Row) => React.Key} [props.rowKey] Padrão: `row.id`.
- * @param {string} [props.empty]
- */
-export function DataTable({ columns, rows = [], actions, rowKey = (row) => row.id, empty = "Nenhum registro cadastrado ainda." }) {
-  if (!rows || rows.length === 0) {
-    return <div className="data-empty">{empty}</div>;
-  }
-  return (
-    <div className="table-wrap data-table-wrap">
-      <table className="data-table">
-        <thead>
-          <tr>
-            {columns.map((col) => (
-              <th key={col.key} style={col.align ? { textAlign: col.align } : undefined}>{col.label}</th>
-            ))}
-            {actions && <th className="data-table-actions-head" aria-label="Ações" />}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={rowKey(row)}>
-              {columns.map((col) => (
-                <td key={col.key} data-label={col.label} style={col.align ? { textAlign: col.align } : undefined}>
-                  {col.render ? col.render(row) : row[col.key]}
-                </td>
-              ))}
-              {actions && <td className="table-actions" data-label="Ações">{actions(row)}</td>}
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }

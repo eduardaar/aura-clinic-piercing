@@ -34,7 +34,7 @@ before(async () => {
   Object.assign(context, await createTenantWithCurrentLegal());
   const supplier = await api("/finance/suppliers", {
     method: "POST",
-    body: { name: "Fornecedor Compra QA", person_type: "PJ", document: "12345678000190" }
+    body: { name: "Fornecedor Compra QA", person_type: "PJ", document: "11222333000181" }
   });
   assert.equal(supplier.status, 201, JSON.stringify(supplier.json));
   context.supplierId = supplier.json.id;
@@ -177,10 +177,27 @@ test("rascunho não movimenta nada até a confirmação", async () => {
 test("fornecedor aceita PF e cadastros financeiros possuem PATCH", async () => {
   const supplier = await api("/finance/suppliers", {
     method: "POST",
-    body: { name: "Fornecedor Pessoa Física", person_type: "PF" }
+    body: {
+      name: "Fornecedor Pessoa Física", person_type: "PF", document: "529.982.247-25",
+      contact_name: "Representante QA", whatsapp: "(11) 99999-8888", email: " COMERCIAL@EXEMPLO.COM ",
+      website: "@fornecedor.qa", postal_code: "01310-100", city: "São Paulo", state: "sp",
+      categories: ["Joias", "Materiais descartáveis"], brands: "Marca A, Marca B",
+      certifications: ["ASTM F-136"], material_references: ["Titânio"], lot_references: ["Lote obrigatório"],
+      payment_days: 30, lead_time_days: 7, minimum_order_value: 250, freight_terms: "CIF"
+    }
   });
   assert.equal(supplier.status, 201, JSON.stringify(supplier.json));
   assert.equal(supplier.json.person_type, "PF");
+  assert.equal(supplier.json.document, "52998224725");
+  assert.equal(supplier.json.whatsapp, "+5511999998888");
+  assert.equal(supplier.json.email, "comercial@exemplo.com");
+  assert.deepEqual(supplier.json.categories, ["Joias", "Materiais descartáveis"]);
+  assert.equal(supplier.json.state, "SP");
+  const found = await api("/finance/suppliers?include_inactive=1&search=Titânio");
+  assert.equal(found.status, 200, JSON.stringify(found.json));
+  assert.ok(found.json.some((item) => item.id === supplier.json.id));
+  const duplicate = await api("/finance/suppliers", { method: "POST", body: { name: "Duplicado QA", person_type: "PF", document: "52998224725" } });
+  assert.equal(duplicate.status, 409, JSON.stringify(duplicate.json));
   const updatedSupplier = await api(`/finance/suppliers/${supplier.json.id}`, {
     method: "PATCH",
     body: { phone: "11999998888", is_active: 0 }

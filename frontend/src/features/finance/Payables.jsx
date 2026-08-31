@@ -3,6 +3,7 @@ import { Landmark, Tags } from "lucide-react";
 import { Button, Input, Metric, PaymentSelect, Select, StatusBadge, Textarea } from "../../components/common/Ui";
 import { CrudHeader, Modal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
+import { CollapsibleIndicators } from "../../components/common/CollapsibleIndicators";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { InstallmentGrid } from "../../components/common/InstallmentGrid";
 import { SelectWithCreate } from "../../components/common/SelectWithCreate";
@@ -33,8 +34,9 @@ function emptyPayable() {
 export function PayablesAdmin({ onNavigate }) {
   const initialFrom = `${new Date().getFullYear() - 1}-01-01`;
   const initialTo = `${new Date().getFullYear() + 1}-12-31`;
-  const [period, setPeriod] = useState({ from: initialFrom, to: initialTo });
-  const query = new URLSearchParams(period).toString();
+  /** @type {[Record<string, any>, React.Dispatch<React.SetStateAction<Record<string, any>>>]} */
+  const [listFilters, setListFilters] = useState({ period_from: initialFrom, period_to: initialTo });
+  const query = new URLSearchParams({ from: listFilters.period_from || "", to: listFilters.period_to || "" }).toString();
   const { data } = useFetch(`/finance/ledger?${query}`);
   const { data: centers } = useFetch("/finance/cost-centers");
   const { data: categoryList } = useFetch("/finance/categories");
@@ -156,30 +158,36 @@ export function PayablesAdmin({ onNavigate }) {
   const openTotal = pending.reduce((total, entry) => total + Math.max(0, asNumber(entry.amount) - asNumber(entry.paid_amount)), 0);
 
   return <section className="stack payables-page">
-    <div className="metric-grid">
+    <CollapsibleIndicators screenId="finance-payables"><div className="metric-grid">
       <Metric label="Em aberto" value={currency.format(openTotal)} />
       <Metric label="Vencidas" value={currency.format(overdue.reduce((total, entry) => total + Math.max(0, asNumber(entry.amount) - asNumber(entry.paid_amount)), 0))} />
       <Metric label="A vencer" value={String(pending.length - overdue.length)} />
-    </div>
+    </div></CollapsibleIndicators>
     <section className="panel stack">
-      <CrudHeader title="Contas a pagar" subtitle="Despesas, empréstimos, parcelas e contas operacionais." actionLabel="Nova conta a pagar" onAction={openNew} />
-      <div className="toolbar compact-actions">
-        <Button variant="secondary" type="button" onClick={() => onNavigate?.("finance-categories")}><Tags size={16} /> Categorias</Button>
-        <Button variant="secondary" type="button" onClick={() => onNavigate?.("cost-centers")}><Landmark size={16} /> Centros de custo</Button>
-      </div>
-      <div className="form-grid finance-period-filter">
-        <Input type="date" label="De" value={period.from} onChange={(from) => setPeriod((current) => ({ ...current, from }))} />
-        <Input type="date" label="Até" value={period.to} onChange={(to) => setPeriod((current) => ({ ...current, to }))} />
-      </div>
+      <CrudHeader
+        title="Contas a pagar"
+        subtitle="Despesas, empréstimos, parcelas e contas operacionais."
+        actions={[
+          { label: "Visão financeira", onClick: () => onNavigate?.("receivables", { target: "visao" }) },
+          { label: "Caixa", onClick: () => onNavigate?.("receivables", { target: "caixa" }) },
+          { label: "Contas a receber", onClick: () => onNavigate?.("receivables") },
+          { label: "Categorias", icon: Tags, onClick: () => onNavigate?.("finance-categories") },
+          { label: "Centros de custo", icon: Landmark, onClick: () => onNavigate?.("cost-centers") }
+        ]}
+        actionLabel="Nova conta a pagar"
+        onAction={openNew}
+      />
       <DataView
         rows={entries}
         defaultSort={{ key: "due_date", dir: "asc" }}
         searchPlaceholder="Buscar por descrição ou categoria"
+        filterValues={listFilters}
+        onFilterChange={setListFilters}
         filters={[
+          { key: "period_from", label: "Período a partir de", type: "date", match: (item, value) => String(item.due_date || "").slice(0, 10) >= value },
+          { key: "period_to", label: "Período até", type: "date", match: (item, value) => String(item.due_date || "").slice(0, 10) <= value },
           { key: "status", label: "Status", type: "select", options: statusOptions },
-          { key: "category", label: "Categoria", type: "select", options: categories },
-          { key: "due_from", label: "Vencimento a partir de", type: "date", match: (item, value) => String(item.due_date || "").slice(0, 10) >= value },
-          { key: "due_to", label: "Vencimento até", type: "date", match: (item, value) => String(item.due_date || "").slice(0, 10) <= value }
+          { key: "category", label: "Categoria", type: "select", options: categories }
         ]}
         columns={[
           { key: "description", label: "Conta" },

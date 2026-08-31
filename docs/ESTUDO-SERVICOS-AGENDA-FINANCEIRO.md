@@ -149,15 +149,15 @@ Novo módulo `/app/servicos`, com duas áreas:
 
 ### Etapa B — separação de dados e financeiro
 
-- [ ] Migration: criar `service_executions` e adicionar
-  `service_execution_id` a pagamentos e títulos financeiros.
-- [ ] Substituir `ensureSalesOrderForAppointment` por
+- [x] Migration: criar `service_executions`, vincular pagamentos por
+  `service_execution_id` e títulos financeiros pela origem polimórfica.
+- [x] Substituir `ensureSalesOrderForAppointment` por
   `ensureServiceExecutionForAppointment`.
-- [ ] Criar recebíveis com `source_type='service_execution'` e chave idempotente
+- [x] Criar recebíveis com `source_type='service_execution'` e chave idempotente
   própria, sem depender de `sales_orders`.
 - [ ] Migrar ordens legadas `source='agenda'` de forma auditável e reversível por
   etapa; não apagar dados já pagos.
-- [ ] Adaptar cancelamento/reabertura, relatórios e exportações.
+- [x] Adaptar cancelamento/reabertura, relatórios e exportações.
 
 ### Etapa C — validação
 

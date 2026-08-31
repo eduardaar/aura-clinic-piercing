@@ -1,3 +1,5 @@
+import { appPageById, INTERNAL_APP_PAGES } from "./appPages.js";
+
 // --- Vocabulário de papéis e páginas ----------------------------------------
 //
 // Papel e página circulam como string solta por todo o app (rota, menu, guarda
@@ -18,8 +20,8 @@
  * Páginas do app autenticado.
  * @typedef {"dashboard" | "agenda" | "services" | "communications" | "catalog" | "products" | "inventory" | "consumables"
  *   | "catalog-customization" | "sales" | "purchases" | "receivables" | "payables" | "suppliers" | "finance-categories" | "cost-centers" | "reports" | "client-center"
- *   | "clients" | "terms" | "postcare" | "admin" | "integrations" | "support"
- *   | "meu-plano" | "settings" | "onboarding"} Page
+ *   | "clients" | "terms" | "postcare" | "admin" | "audit" | "integrations" | "support"
+ *   | "manual" | "product-news" | "meu-plano" | "settings" | "onboarding"} Page
  */
 
 /**
@@ -37,16 +39,11 @@
  * @returns {Page[]}
  */
 export function allowedPagesForRole(role) {
-  /** @type {Record<Role, Page[]>} */
-  const byRole = {
-    admin: ["dashboard", "agenda", "services", "communications", "products", "purchases", "inventory", "consumables", "catalog", "catalog-customization", "sales", "receivables", "payables", "suppliers", "finance-categories", "cost-centers", "reports", "client-center", "clients", "terms", "postcare", "admin", "integrations", "onboarding", "support", "meu-plano", "settings"],
-    reception: ["agenda", "services", "communications", "products", "inventory", "consumables", "sales", "reports", "client-center", "clients", "settings"],
-    finance: ["receivables", "payables", "purchases", "suppliers", "finance-categories", "cost-centers", "reports", "sales", "settings"],
-    piercer: ["agenda", "services", "communications", "products", "inventory", "consumables", "sales", "client-center", "clients", "terms", "postcare", "settings"]
-  };
-  // Fallback SEGURO para papéis desconhecidos: acesso mínimo, sem áreas
-  // administrativas (admin/finance).
-  return byRole[role] || ["dashboard", "agenda", "client-center", "clients", "settings"];
+  const ranked = INTERNAL_APP_PAGES
+    .filter((page) => Number.isFinite(page.roleRank?.[role]))
+    .sort((left, right) => left.roleRank[role] - right.roleRank[role])
+    .map((page) => page.id);
+  return /** @type {Page[]} */ (ranked.length > 0 ? ranked : ["dashboard", "agenda", "client-center", "clients", "settings"]);
 }
 
 // Espelha PAGE_FEATURE do backend (backend/src/services/plans.js): página -> feature
@@ -60,25 +57,9 @@ export function allowedPagesForRole(role) {
 // o recurso que só funciona configurado" (o backend a serve com `withDb`, não com
 // `withFeature`, pelo mesmo motivo).
 /** @type {Partial<Record<Page, Feature>>} */
-export const PAGE_FEATURE = {
-  services: "procedures",
-  receivables: "basic_finance",
-  payables: "basic_finance",
-  purchases: "basic_finance",
-  suppliers: "basic_finance",
-  "finance-categories": "basic_finance",
-  "cost-centers": "basic_finance",
-  terms: "digital_terms",
-  postcare: "automatic_followup",
-  communications: "message_templates",
-  products: "basic_inventory",
-  inventory: "basic_inventory",
-  consumables: "basic_inventory",
-  reports: "basic_reports",
-  catalog: "basic_catalog",
-  "catalog-customization": "public_catalog_customization",
-  sales: "basic_catalog"
-};
+export const PAGE_FEATURE = Object.freeze(Object.fromEntries(
+  INTERNAL_APP_PAGES.filter((page) => page.feature).map((page) => [page.id, page.feature])
+));
 
 // Algumas telas são úteis em planos mais simples, mas uma ação dentro delas
 // produz dados de um módulo contratado separadamente. A venda continua
@@ -120,19 +101,19 @@ export function planAllowsAction(features, action) {
 export function canAccessPage(role, page) {
   const value = /** @type {any} */ (role);
   const actualRole = value && typeof value === "object" ? value.role : value;
-  if (page === "reports") return ["reports.view_own", "reports.view_financial", "reports.view_all"].some((permission) => can(role, permission));
-  const permission = PAGE_PERMISSION[page];
-  return permission ? can(role, permission) : allowedPagesForRole(actualRole).includes(/** @type {Page} */ (page));
+  const definition = appPageById(page);
+  if (!definition || definition.public) return false;
+  const permissions = Array.isArray(definition.permission) ? definition.permission : definition.permission ? [definition.permission] : [];
+  return permissions.length > 0
+    ? permissions.some((permission) => can(role, permission))
+    : allowedPagesForRole(actualRole).includes(/** @type {Page} */ (page));
 }
 
-export const PAGE_PERMISSION = Object.freeze({
-  dashboard: "dashboard.view", agenda: "appointments.view", communications: "communication.view",
-  products: "inventory.view", inventory: "inventory.view", sales: "sales.view", purchases: "finance.create",
-  receivables: "finance.view", payables: "finance.expenses", suppliers: "finance.edit",
-  "finance-categories": "finance.edit", "cost-centers": "finance.edit",
-  "client-center": "clients.view", clients: "clients.view", terms: "anamnesis.view", postcare: "clinical_files.view",
-  admin: "users.view", settings: "settings.view"
-});
+export const PAGE_PERMISSION = Object.freeze(Object.fromEntries(
+  INTERNAL_APP_PAGES
+    .filter((page) => typeof page.permission === "string")
+    .map((page) => [page.id, page.permission])
+));
 
 const ROLE_PERMISSIONS = {
   admin: ["*"],
@@ -205,35 +186,5 @@ export function resolveAccessiblePage(userOrRole, requestedPage, features, planR
  * @returns {string}
  */
 export function pageTitle(page) {
-  /** @type {Record<Page, string>} */
-  const titles = {
-    dashboard: "Dashboard",
-    agenda: "Agenda",
-    services: "Serviços",
-    communications: "Comunicações",
-    catalog: "Catálogo",
-    products: "Produtos",
-    inventory: "Estoque",
-    consumables: "Materiais de consumo",
-    "catalog-customization": "Personalização do Catálogo",
-    sales: "Vendas e ordens",
-    purchases: "Compras",
-    receivables: "Contas a receber",
-    payables: "Contas a pagar",
-    suppliers: "Fornecedores",
-    "finance-categories": "Categorias financeiras",
-    "cost-centers": "Centros de custo",
-    reports: "Relatórios",
-    "client-center": "Clientes",
-    clients: "Clientes",
-    terms: "Termos digitais",
-    postcare: "Pós-atendimento",
-    admin: "Acessos administrativos",
-    integrations: "Integrações",
-    support: "Suporte",
-    "meu-plano": "Meu plano",
-    settings: "Configurações",
-    onboarding: "Onboarding"
-  };
-  return titles[page] || "Aura Clinic";
+  return appPageById(page)?.title || "Aura Clinic";
 }

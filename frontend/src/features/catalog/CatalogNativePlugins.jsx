@@ -134,13 +134,15 @@ function consentPurposesFor(instances) {
 
 function GoogleConsent({ purpose, granted }) {
   if (typeof window === "undefined") return;
-  const gtag = typeof window.gtag === "function"
-    ? window.gtag
+  // O script do Google define `gtag`/`dataLayer` no window em tempo de execução.
+  const janela = /** @type {any} */ (window);
+  const gtag = typeof janela.gtag === "function"
+    ? janela.gtag
     : (...args) => {
-      window.dataLayer = window.dataLayer || [];
-      window.dataLayer.push(args);
+      janela.dataLayer = janela.dataLayer || [];
+      janela.dataLayer.push(args);
     };
-  if (typeof window.gtag !== "function") window.gtag = gtag;
+  if (typeof janela.gtag !== "function") janela.gtag = gtag;
   const denied = {
     analytics_storage: "denied",
     ad_storage: "denied",
@@ -328,8 +330,9 @@ function GoogleAnalyticsPlugin({ config, consentGranted }) {
     script.dataset.auraGoogleAnalytics = measurementId;
     script.onload = () => {
       GoogleConsent({ purpose: "analytics", granted: true });
-      window.gtag?.("js", new Date());
-      window.gtag?.("config", measurementId, { anonymize_ip: true });
+      const carregado = /** @type {any} */ (window);
+      carregado.gtag?.("js", new Date());
+      carregado.gtag?.("config", measurementId, { anonymize_ip: true });
     };
     document.head.append(script);
     return () => {
@@ -379,7 +382,7 @@ export function CatalogNativePlugins({ plugins, settings = {}, theme = {} }) {
     const previousRobots = robots?.getAttribute("content") ?? null;
     if (!robots) {
       robots = document.createElement("meta");
-      robots.name = "robots";
+      /** @type {HTMLMetaElement} */ (robots).name = "robots";
       document.head.append(robots);
     }
     if (seo.title) document.title = seo.title;

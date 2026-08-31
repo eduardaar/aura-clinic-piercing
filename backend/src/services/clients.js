@@ -49,7 +49,8 @@ export async function listClientsWithDetails(db, clientId = null) {
   // ----- history (agendamentos) de todos os clientes, em uma query -----
   // Mesmos JOINs/campos de services/appointments.listAppointments, sem filtro
   // por cliente, ordenado igual (por data/hora). O agrupamento preserva a ordem.
-  const appointments = await db.all(`
+  const appointments = await db.all(
+    `
     SELECT a.*, c.full_name, c.whatsapp, c.instagram, p.name AS professional_name,
       j.name AS jewelry_name, j.photo_url AS jewelry_photo,
       v.variation_name AS jewelry_variation_name, v.sku AS jewelry_variant_sku,
@@ -62,7 +63,9 @@ export async function listClientsWithDetails(db, clientId = null) {
     LEFT JOIN services s ON s.id = a.service_id
     ${scope("a.client_id")}
     ORDER BY a.appointment_date, a.appointment_time
-  `, scoped());
+  `,
+    scoped(),
+  );
   const historyByClient = groupBy(appointments, "client_id");
 
   // ----- payments de todos os clientes -----
@@ -70,7 +73,8 @@ export async function listClientsWithDetails(db, clientId = null) {
   const paymentsByClient = groupBy(payments, "client_id");
 
   // ----- medicalRecords de todos os clientes (mesmos JOINs de listMedicalRecords) -----
-  const medicalRecords = await db.all(`
+  const medicalRecords = await db.all(
+    `
     SELECT
       r.*,
       a.procedure,
@@ -84,30 +88,68 @@ export async function listClientsWithDetails(db, clientId = null) {
     LEFT JOIN jewelry_inventory j ON j.id = a.jewelry_id
     ${scope("r.client_id")}
     ORDER BY r.record_date DESC, r.id DESC
-  `, scoped());
+  `,
+    scoped(),
+  );
   const recordsByClient = groupBy(medicalRecords, "client_id");
 
   // ----- loyalty (pontos e resgates) de todos os clientes -----
-  const loyaltyPoints = await db.all(`SELECT * FROM loyalty_points ${scope("client_id")} ORDER BY created_at DESC, id DESC`, scoped());
-  const redemptions = await db.all(`SELECT * FROM loyalty_redemptions ${scope("client_id")} ORDER BY redeemed_at DESC, id DESC`, scoped());
+  const loyaltyPoints = await db.all(
+    `SELECT * FROM loyalty_points ${scope("client_id")} ORDER BY created_at DESC, id DESC`,
+    scoped(),
+  );
+  const redemptions = await db.all(
+    `SELECT * FROM loyalty_redemptions ${scope("client_id")} ORDER BY redeemed_at DESC, id DESC`,
+    scoped(),
+  );
   const pointsByClient = groupBy(loyaltyPoints, "client_id");
   const redemptionsByClient = groupBy(redemptions, "client_id");
-  const terms = await db.all(`SELECT id,client_id,appointment_id,procedure,piercing_region,pdf_url,signed_at FROM digital_terms ${scope("client_id")} ORDER BY signed_at DESC`, scoped());
-  const followups = await db.all(`SELECT * FROM post_care_followups ${scope("client_id")} ORDER BY due_date DESC,id DESC`, scoped());
-  const sales = await db.all(`SELECT * FROM sales_orders ${scope("client_id")} ORDER BY created_at DESC,id DESC`, scoped());
-  const couponUses = await db.all(`
+  const terms = await db.all(
+    `SELECT id,client_id,appointment_id,procedure,piercing_region,pdf_url,signed_at FROM digital_terms ${scope("client_id")} ORDER BY signed_at DESC`,
+    scoped(),
+  );
+  const followups = await db.all(
+    `SELECT * FROM post_care_followups ${scope("client_id")} ORDER BY due_date DESC,id DESC`,
+    scoped(),
+  );
+  const sales = await db.all(
+    `SELECT * FROM sales_orders ${scope("client_id")} ORDER BY created_at DESC,id DESC`,
+    scoped(),
+  );
+  const couponUses = await db.all(
+    `
     SELECT u.*,c.code,c.internal_name FROM coupon_usages u JOIN coupons c ON c.id=u.coupon_id
     WHERE u.client_id IS NOT NULL ${one ? "AND u.client_id = ?" : ""} ORDER BY u.created_at DESC
-  `, scoped());
-  const promotionUses = await db.all(`
+  `,
+    scoped(),
+  );
+  const promotionUses = await db.all(
+    `
     SELECT u.*,p.name FROM promotion_usages u JOIN catalog_promotions p ON p.id=u.promotion_id
     WHERE u.client_id IS NOT NULL ${one ? "AND u.client_id = ?" : ""} ORDER BY u.created_at DESC
-  `, scoped());
+  `,
+    scoped(),
+  );
+  const pendingBalances = await db.all(
+    `
+    SELECT so.client_id,
+      COALESCE(SUM(GREATEST(fe.amount - fe.paid_amount, 0)), 0) AS pending_amount
+    FROM financial_entries fe
+    JOIN sales_orders so ON fe.source_type = 'sales_order' AND fe.source_id = so.id
+    WHERE fe.entry_type = 'receivable'
+      AND fe.status IN ('pending', 'overdue', 'partially_paid')
+      AND COALESCE(fe.lifecycle_status, 'active') = 'active'
+      ${one ? "AND so.client_id = ?" : ""}
+    GROUP BY so.client_id
+  `,
+    scoped(),
+  );
   const termsByClient = groupBy(terms, "client_id");
   const followupsByClient = groupBy(followups, "client_id");
   const salesByClient = groupBy(sales, "client_id");
   const couponsByClient = groupBy(couponUses, "client_id");
   const promotionsByClient = groupBy(promotionUses, "client_id");
+  const pendingByClient = new Map(pendingBalances.map((item) => [item.client_id, Number(item.pending_amount || 0)]));
 
   for (const client of clients) {
     client.history = historyByClient.get(client.id) || [];
@@ -119,15 +161,93 @@ export async function listClientsWithDetails(db, clientId = null) {
     client.sales = salesByClient.get(client.id) || [];
     client.couponsUsed = couponsByClient.get(client.id) || [];
     client.promotionsUsed = promotionsByClient.get(client.id) || [];
+    const today = new Date().toISOString().slice(0, 10);
+    const validAppointments = client.history.filter(
+      (item) => !["cancelado", "recusado"].includes(String(item.status || "").toLowerCase()),
+    );
+    const completedAppointments = new Set(["atendido", "concluido", "concluído"]);
+    client.summary = {
+      last_appointment:
+        [...validAppointments]
+          .filter(
+            (item) =>
+              item.appointment_date < today || completedAppointments.has(String(item.status || "").toLowerCase()),
+          )
+          .sort(
+            (a, b) =>
+              String(b.appointment_date).localeCompare(String(a.appointment_date)) ||
+              String(b.appointment_time).localeCompare(String(a.appointment_time)),
+          )[0] || null,
+      next_appointment:
+        [...validAppointments]
+          .filter(
+            (item) =>
+              item.appointment_date >= today && !completedAppointments.has(String(item.status || "").toLowerCase()),
+          )
+          .sort(
+            (a, b) =>
+              String(a.appointment_date).localeCompare(String(b.appointment_date)) ||
+              String(a.appointment_time).localeCompare(String(b.appointment_time)),
+          )[0] || null,
+      total_spent: client.payments
+        .filter((item) => ["pago", "confirmado", "credito_aplicado"].includes(String(item.status || "").toLowerCase()))
+        .reduce((sum, item) => sum + Number(item.amount || 0), 0),
+      pending_amount: pendingByClient.get(client.id) || 0,
+    };
     client.timeline = [
-      ...client.history.map((item) => ({ type: "appointment", date: item.appointment_date, title: item.procedure || "Atendimento", status: item.status, value: item.total_value })),
-      ...client.payments.map((item) => ({ type: "payment", date: item.paid_at, title: `Pagamento ${item.payment_type}`, status: item.status, value: item.amount })),
-      ...client.medicalRecords.map((item) => ({ type: "medical_record", date: item.record_date, title: "Registro de prontuário", status: "registrado" })),
-      ...client.terms.map((item) => ({ type: "term", date: item.signed_at, title: "Termo digital assinado", status: "assinado" })),
-      ...client.followups.map((item) => ({ type: "followup", date: item.due_date, title: `Pós-atendimento ${item.reminder_day}d`, status: item.status })),
-      ...client.sales.map((item) => ({ type: "sale", date: item.created_at, title: "Venda", status: item.status, value: item.total_value })),
-      ...client.couponsUsed.map((item) => ({ type: "coupon", date: item.created_at, title: `Cupom ${item.code}`, status: "usado", value: item.discount_amount })),
-      ...client.promotionsUsed.map((item) => ({ type: "promotion", date: item.created_at, title: `Promoção ${item.name}`, status: "usada", value: item.discount_amount }))
+      ...client.history.map((item) => ({
+        type: "appointment",
+        date: item.appointment_date,
+        title: item.procedure || "Atendimento",
+        status: item.status,
+        value: item.total_value,
+      })),
+      ...client.payments.map((item) => ({
+        type: "payment",
+        date: item.paid_at,
+        title: `Pagamento ${item.payment_type}`,
+        status: item.status,
+        value: item.amount,
+      })),
+      ...client.medicalRecords.map((item) => ({
+        type: "medical_record",
+        date: item.record_date,
+        title: "Registro de prontuário",
+        status: "registrado",
+      })),
+      ...client.terms.map((item) => ({
+        type: "term",
+        date: item.signed_at,
+        title: "Termo digital assinado",
+        status: "assinado",
+      })),
+      ...client.followups.map((item) => ({
+        type: "followup",
+        date: item.due_date,
+        title: `Pós-atendimento ${item.reminder_day}d`,
+        status: item.status,
+      })),
+      ...client.sales.map((item) => ({
+        type: "sale",
+        date: item.created_at,
+        title: "Venda",
+        status: item.status,
+        value: item.total_value,
+      })),
+      ...client.couponsUsed.map((item) => ({
+        type: "coupon",
+        date: item.created_at,
+        title: `Cupom ${item.code}`,
+        status: "usado",
+        value: item.discount_amount,
+      })),
+      ...client.promotionsUsed.map((item) => ({
+        type: "promotion",
+        date: item.created_at,
+        title: `Promoção ${item.name}`,
+        status: "usada",
+        value: item.discount_amount,
+      })),
     ].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
   }
   return clients;
@@ -147,6 +267,6 @@ function buildLoyalty(history, redemptions) {
     level,
     benefits: loyaltyBenefits(level),
     history,
-    redemptions
+    redemptions,
   };
 }

@@ -155,8 +155,12 @@ export function resolveInstallmentSchedule({ total, installments, installmentCou
   }));
 }
 
-export async function syncSalesOrderReceivables(db, {
-  salesOrderId,
+async function syncSourceReceivables(db, {
+  sourceType,
+  sourceId,
+  sourceKeyPrefix,
+  category,
+  defaultDescription,
   amount,
   installmentCount = 1,
   firstDueDate = localDate(),
@@ -165,17 +169,17 @@ export async function syncSalesOrderReceivables(db, {
   installments = null
 }) {
   await db.all(
-    "SELECT * FROM financial_entries WHERE source_type='sales_order' AND source_id=? AND entry_type='receivable' ORDER BY installment_number, id FOR UPDATE",
-    [salesOrderId]
+    "SELECT * FROM financial_entries WHERE source_type=? AND source_id=? AND entry_type='receivable' ORDER BY installment_number, id FOR UPDATE",
+    [sourceType, sourceId]
   );
   const cents = installmentMoneyCents(amount, "Valor a receber");
   if (cents === 0) {
     await db.run(
       `UPDATE financial_entries SET status='canceled', paid_amount=0,
          lifecycle_reason='Sem saldo pendente na origem', updated_at=CURRENT_TIMESTAMP
-       WHERE source_type='sales_order' AND source_id=? AND entry_type='receivable'
+       WHERE source_type=? AND source_id=? AND entry_type='receivable'
          AND status NOT IN ('paid','refunded')`,
-      [salesOrderId]
+      [sourceType, sourceId]
     );
     return [];
   }
@@ -188,12 +192,12 @@ export async function syncSalesOrderReceivables(db, {
     paymentMethod
   });
   for (const installment of schedule) {
-    const sourceKey = `sales-order:${salesOrderId}:receivable:${installment.number}`;
+    const sourceKey = `${sourceKeyPrefix}:${sourceId}:receivable:${installment.number}`;
     await db.run(
       `INSERT INTO financial_entries
         (entry_type, description, category, amount, paid_amount, due_date, competence_date, status,
          payment_method, installment_number, installment_count, source_type, source_id, source_key)
-       VALUES ('receivable', ?, 'Vendas', ?, 0, ?, ?, 'pending', ?, ?, ?, 'sales_order', ?, ?)
+       VALUES ('receivable', ?, ?, ?, 0, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
        ON CONFLICT (source_key) DO UPDATE SET
          description=EXCLUDED.description, amount=EXCLUDED.amount, due_date=EXCLUDED.due_date,
          competence_date=EXCLUDED.competence_date, payment_method=EXCLUDED.payment_method,
@@ -201,14 +205,16 @@ export async function syncSalesOrderReceivables(db, {
          status=CASE WHEN financial_entries.status IN ('paid','refunded') THEN financial_entries.status ELSE 'pending' END,
          updated_at=CURRENT_TIMESTAMP`,
       [
-        description || `Venda #${salesOrderId} - parcela ${installment.number}/${installment.count}`,
+        description || `${defaultDescription} #${sourceId} - parcela ${installment.number}/${installment.count}`,
+        category,
         installment.amount,
         installment.dueDate,
         installment.dueDate,
         installment.paymentMethod,
         installment.number,
         installment.count,
-        salesOrderId,
+        sourceType,
+        sourceId,
         sourceKey
       ]
     );
@@ -217,14 +223,36 @@ export async function syncSalesOrderReceivables(db, {
   await db.run(
     `UPDATE financial_entries SET status='canceled', paid_amount=0,
        lifecycle_reason='Parcela removida pela reconfiguração da origem', updated_at=CURRENT_TIMESTAMP
-     WHERE source_type='sales_order' AND source_id=? AND entry_type='receivable'
+     WHERE source_type=? AND source_id=? AND entry_type='receivable'
        AND installment_number > ? AND status NOT IN ('paid','refunded')`,
-    [salesOrderId, schedule.length]
+    [sourceType, sourceId, schedule.length]
   );
   return db.all(
-    "SELECT * FROM financial_entries WHERE source_type='sales_order' AND source_id=? AND entry_type='receivable' AND status!='canceled' ORDER BY installment_number, id",
-    [salesOrderId]
+    "SELECT * FROM financial_entries WHERE source_type=? AND source_id=? AND entry_type='receivable' AND status!='canceled' ORDER BY installment_number, id",
+    [sourceType, sourceId]
   );
+}
+
+export async function syncSalesOrderReceivables(db, options) {
+  return syncSourceReceivables(db, {
+    ...options,
+    sourceType: "sales_order",
+    sourceId: options.salesOrderId,
+    sourceKeyPrefix: "sales-order",
+    category: "Vendas",
+    defaultDescription: "Venda"
+  });
+}
+
+export async function syncServiceExecutionReceivables(db, options) {
+  return syncSourceReceivables(db, {
+    ...options,
+    sourceType: "service_execution",
+    sourceId: options.serviceExecutionId,
+    sourceKeyPrefix: "service-execution",
+    category: "Atendimentos",
+    defaultDescription: "Atendimento"
+  });
 }
 
 export async function settleSalesOrderReceivables(db, salesOrderId, { paymentMethod = "Pix", paidAt = null } = {}) {
@@ -243,5 +271,14 @@ export async function cancelSalesOrderReceivables(db, salesOrderId) {
      WHERE source_type='sales_order' AND source_id=? AND entry_type='receivable'
        AND status NOT IN ('paid','refunded','canceled')`,
     [salesOrderId]
+  );
+}
+
+export async function cancelServiceExecutionReceivables(db, serviceExecutionId) {
+  await db.run(
+    `UPDATE financial_entries SET status='canceled', updated_at=CURRENT_TIMESTAMP
+     WHERE source_type='service_execution' AND source_id=? AND entry_type='receivable'
+       AND status NOT IN ('paid','refunded','canceled')`,
+    [serviceExecutionId]
   );
 }

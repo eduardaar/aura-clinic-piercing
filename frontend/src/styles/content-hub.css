@@ -1,0 +1,319 @@
+@layer telas {
+  .content-type-switch {
+    display: inline-flex;
+    align-self: flex-start;
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface-muted, #f7f7f8);
+  }
+
+  .content-type-switch button {
+    min-height: 38px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .content-type-switch button.is-active {
+    background: var(--surface, #fff);
+    color: var(--text);
+    box-shadow: 0 1px 4px rgb(15 23 42 / 10%);
+  }
+
+  .content-admin-title {
+    display: grid;
+    gap: 3px;
+  }
+
+  .content-admin-title small,
+  .help-article-nav small,
+  .help-article-date,
+  .public-news-meta {
+    color: var(--muted);
+  }
+
+  .legal-history {
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+  }
+
+  .legal-history > summary,
+  .legal-history-version > summary {
+    font-weight: 750;
+    cursor: pointer;
+  }
+
+  .legal-history-version {
+    margin-top: 10px;
+  }
+
+  .legal-history-content {
+    max-height: 340px;
+    overflow: auto;
+  }
+
+  .help-center {
+    width: min(1180px, 100%);
+    margin: 0 auto;
+  }
+
+  .help-center-header {
+    display: grid;
+    gap: 10px;
+  }
+
+  .help-center-heading {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  .help-center-heading h1,
+  .public-news-header h1,
+  .public-news-article h1 {
+    margin: 0;
+  }
+
+  .help-center-heading p,
+  .public-news-header p {
+    margin: 6px 0 0;
+    color: var(--muted);
+  }
+
+  .help-center-icon {
+    display: grid;
+    flex: 0 0 46px;
+    width: 46px;
+    height: 46px;
+    place-items: center;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+    color: var(--primary);
+  }
+
+  .help-search {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: min(580px, 100%);
+    min-height: 44px;
+    padding: 0 13px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface);
+    color: var(--muted);
+  }
+
+  .help-search:focus-within {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 15%, transparent);
+  }
+
+  .help-search input {
+    width: 100%;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+  }
+
+  .help-center-layout {
+    display: grid;
+    grid-template-columns: minmax(240px, 330px) minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+  }
+
+  .help-article-nav {
+    display: grid;
+    gap: 8px;
+  }
+
+  .help-article-nav button {
+    display: grid;
+    gap: 4px;
+    width: 100%;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface);
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .help-article-nav button span {
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 0.86rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .help-article-nav button.is-active {
+    border-color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 7%, var(--surface));
+  }
+
+  .help-article {
+    min-width: 0;
+    padding: clamp(20px, 4vw, 36px);
+  }
+
+  .help-article > h2 {
+    margin: 8px 0;
+    font-size: clamp(1.5rem, 3vw, 2.1rem);
+  }
+
+  .help-article-summary,
+  .public-news-lead {
+    color: var(--muted);
+    font-size: 1.05rem;
+    line-height: 1.65;
+  }
+
+  .article-content {
+    color: var(--text);
+    line-height: 1.72;
+  }
+
+  .article-content h2 {
+    margin: 1.6em 0 0.55em;
+    font-size: 1.2rem;
+  }
+
+  .article-content p,
+  .article-content ul {
+    margin: 0 0 1em;
+    white-space: pre-line;
+  }
+
+  .au-l-news-grid,
+  .public-news-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 18px;
+  }
+
+  .au-l-news-card,
+  .public-news-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: clamp(20px, 3vw, 28px);
+    border: 1px solid var(--line, #ded9d2);
+    border-radius: 18px;
+    background: #fff;
+    color: var(--ink, #1e1c1a);
+    box-shadow: 0 14px 40px rgb(43 34 25 / 7%);
+  }
+
+  .au-l-news-card > span,
+  .public-news-card > span {
+    color: var(--primary, #bb9978);
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .au-l-news-card h3,
+  .public-news-card h2 {
+    margin: 0;
+  }
+
+  .au-l-news-card p,
+  .public-news-card p {
+    flex: 1;
+    margin: 0;
+    color: inherit;
+    opacity: 0.78;
+    line-height: 1.6;
+  }
+
+  .au-l-news-card a,
+  .public-news-card a,
+  .au-l-news-all {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: inherit;
+    font-weight: 800;
+  }
+
+  .au-l-news-all {
+    margin-top: 22px;
+  }
+
+  .public-news-page {
+    width: min(1180px, calc(100% - 40px));
+    min-height: 70vh;
+    margin: 0 auto;
+    padding: clamp(48px, 8vw, 90px) 0;
+  }
+
+  .public-news-header {
+    max-width: 720px;
+    margin-bottom: 34px;
+  }
+
+  .public-news-header h1,
+  .public-news-article h1 {
+    margin-top: 10px;
+    font-size: clamp(2rem, 5vw, 3.8rem);
+    line-height: 1.05;
+  }
+
+  .public-news-card {
+    border-color: #ded9d2;
+    background: #fff;
+    color: #1e1c1a;
+    box-shadow: 0 14px 40px rgb(43 34 25 / 7%);
+  }
+
+  .public-news-article {
+    width: min(760px, 100%);
+    margin: 30px auto 0;
+  }
+
+  .public-news-meta {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  @media (max-width: 800px) {
+    .help-center-layout,
+    .au-l-news-grid,
+    .public-news-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .help-article-nav {
+      display: flex;
+      margin-right: calc(var(--shell-gutter, 20px) * -1);
+      padding-right: var(--shell-gutter, 20px);
+      overflow-x: auto;
+    }
+
+    .help-article-nav button {
+      flex: 0 0 min(280px, 82vw);
+    }
+
+    .content-type-switch {
+      width: 100%;
+    }
+
+    .content-type-switch button {
+      flex: 1;
+    }
+  }
+}

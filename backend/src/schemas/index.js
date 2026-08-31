@@ -36,6 +36,14 @@ export const loginSchema = z
 
 // ---------- Usuários ----------
 const USER_ROLES = ["admin", "piercer", "reception", "finance"];
+const optionalReferenceId = z.preprocess(
+  (value) => value === "" || value === null ? null : value,
+  z.coerce.number().int().positive().nullable().optional()
+);
+const permissionOverrides = z.array(z.object({
+  permission: z.string().min(1),
+  allowed: z.boolean()
+})).optional();
 
 export const userCreateSchema = z
   .object({
@@ -44,7 +52,10 @@ export const userCreateSchema = z
     password: z
       .string({ error: "Senha é obrigatória." })
       .min(12, { message: "A senha deve ter no mínimo 12 caracteres." }),
-    role: z.enum(USER_ROLES, { message: "Nível de acesso inválido." })
+    role: z.enum(USER_ROLES, { message: "Nível de acesso inválido." }),
+    access_profile_id: optionalReferenceId,
+    professional_id: optionalReferenceId,
+    permission_overrides: permissionOverrides
   })
   .passthrough();
 
@@ -54,7 +65,9 @@ export const userUpdateSchema = z
     name: z.string().min(1, { message: "Nome não pode ser vazio." }).optional(),
     email: z.string().min(1, { message: "E-mail não pode ser vazio." }).optional(),
     password: z.string().min(12, { message: "A senha deve ter no mínimo 12 caracteres." }).optional(),
-    role: z.enum(USER_ROLES, { message: "Nível de acesso inválido." }).optional()
+    role: z.enum(USER_ROLES, { message: "Nível de acesso inválido." }).optional(),
+    access_profile_id: optionalReferenceId,
+    professional_id: optionalReferenceId
   })
   .passthrough();
 

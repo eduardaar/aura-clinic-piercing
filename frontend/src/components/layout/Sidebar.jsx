@@ -1,61 +1,36 @@
 import React, { useState } from "react";
-import { ArrowDownToLine, ArrowUpFromLine, BarChart3, Calendar, ContactRound, Gem, Home, Lock, Package, PackagePlus, ShieldCheck, ShoppingCart, Sparkles, Table2, UsersRound } from "lucide-react";
+import { ChevronDown, ChevronRight, Gem, Lock } from "lucide-react";
 import { canAccessPage, planAllowsPage } from "../../lib/permissions";
+import { menuPages } from "../../lib/appPages";
 import { Modal } from "../common/Crud";
 import { useFetch } from "../../lib/api";
 
-export function Sidebar({ page, role, user, brand, features, setPage, open }) {
+export function Sidebar({ page, navigationTarget, role, user, brand, features, setPage, open, collapsed = false }) {
   // Marca do tenant logado (com fallback para a marca-mãe "Aura").
   const brandName = brand?.name || "Aura";
   const brandShort = brand?.short || (brand?.name ? "" : "Clinic Piercing");
   const brandLogo = brand?.logoUrl || "";
   const { data: onboardingReadiness } = useFetch(user?.role === "admin" || role === "admin" ? "/booking/readiness" : "");
   const onboardingAtBottom = Boolean(onboardingReadiness?.deprioritize);
-  const onboardingEntry = ["onboarding", Sparkles, "Onboarding"];
-
-  // Módulos do produto. Cadastros auxiliares do financeiro permanecem como
-  // atalhos contextuais em Compras/Pagar/Receber, sem poluir a navegação.
-  const groups = [
-    ["Início", [
-      ["dashboard", Home, "Dashboard"],
-      ...(!onboardingAtBottom ? [onboardingEntry] : [])
-    ]],
-    ["Atendimento", [
-      ["agenda", Calendar, "Agenda"],
-      ["services", Sparkles, "Serviços"],
-      ["client-center", UsersRound, "Clientes"]
-    ]],
-    ["Comercial", [
-      ["catalog", Gem, "Catálogo"],
-      ["sales", ShoppingCart, "Vendas"]
-    ]],
-    ["Estoque e compras", [
-      ["products", Package, "Produtos"],
-      ["inventory", Table2, "Estoque"],
-      ["consumables", Package, "Materiais"],
-      ["purchases", PackagePlus, "Compras"],
-      ["suppliers", ContactRound, "Fornecedores"]
-    ]],
-    ["Financeiro", [
-      ["receivables", ArrowDownToLine, "Contas a receber"],
-      ["payables", ArrowUpFromLine, "Contas a pagar"]
-    ]],
-    ["Gestão", [
-      ["reports", BarChart3, "Relatórios"]
-    ]],
-    ["Sistema", [
-      ["admin", ShieldCheck, "Acessos"],
-      ...(onboardingAtBottom ? [onboardingEntry] : [])
-    ]]
-  ]
-    .map(([label, entries]) => [label, entries.filter(([id]) => canAccessPage(user || role, id))])
-    .filter(([, entries]) => entries.length > 0);
+  const onboardingComplete = Boolean(onboardingReadiness?.ready);
+  const activeFeatures = Array.isArray(features) ? features : [];
+  const groups = menuPages({ onboardingAtBottom, onboardingComplete })
+    .map(({ group, pages }) => [group, pages
+      .filter((entry) => canAccessPage(user || role, entry.id))
+      .map((entry) => ({ ...entry, visibleChildren: [] }))])
+    .filter(([, pages]) => pages.length > 0);
 
   const showPlan = canAccessPage(user || role, "meu-plano");
   // Quem não enxerga "Meu plano" (recepção, financeiro, piercer) não pode ser
   // levado para lá ao clicar num item cadeado — a navegação seria descartada e
   // o usuário voltaria para a tela inicial sem entender o motivo.
   const [lockedItem, setLockedItem] = useState("");
+  const [openMenus, setOpenMenus] = useState({});
+
+  function openLocked(label) {
+    if (showPlan) return setPage("meu-plano");
+    setLockedItem(label);
+  }
 
   return (
     <>
@@ -72,26 +47,55 @@ export function Sidebar({ page, role, user, brand, features, setPage, open }) {
         {groups.map(([groupLabel, entries]) => (
           <React.Fragment key={groupLabel || "principal"}>
             {groupLabel && <p className="nav-group-label">{groupLabel}</p>}
-            {entries.map(([id, Icon, label]) => {
+            {entries.map(({ id, icon: Icon, title, menuTitle, visibleChildren }) => {
+              const label = menuTitle || title;
               // Item fora do plano: mostra cadeado e leva para "Meu plano" (upgrade)
               // quem tem acesso a essa tela; para os demais, explica o bloqueio.
-              const locked = !planAllowsPage(features, id);
+              const locked = !planAllowsPage(activeFeatures, id);
+              const hasChildren = visibleChildren.length > 0;
+              const expanded = Boolean(openMenus[id]);
+              const parentActive = page === id || visibleChildren.some((child) => child.page === page);
               return (
-                <button
-                  key={id}
-                  className={`${page === id ? "active" : ""} ${locked ? "locked" : ""}`}
-                  onClick={() => {
-                    if (!locked) return setPage(id);
-                    if (showPlan) return setPage("meu-plano");
-                    setLockedItem(label);
-                  }}
-                  title={locked ? `${label} — disponível em planos superiores` : label}
-                  aria-current={page === id ? "page" : undefined}
-                >
-                  <Icon size={18} />
-                  <span className="nav-label">{label}</span>
-                  {locked && <Lock size={14} className="lock-icon" />}
-                </button>
+                <React.Fragment key={id}>
+                  <button
+                    className={`${parentActive ? "active" : ""} ${locked ? "locked" : ""} ${hasChildren ? "has-submenu" : ""}`}
+                    onClick={() => {
+                      if (locked) return openLocked(label);
+                      if (hasChildren && collapsed) return setPage(id);
+                      if (hasChildren) return setOpenMenus((current) => ({ ...current, [id]: !current[id] }));
+                      setPage(id);
+                    }}
+                    title={locked ? `${label} — disponível em planos superiores` : label}
+                    aria-current={page === id && !hasChildren ? "page" : undefined}
+                    aria-expanded={hasChildren ? expanded : undefined}
+                  >
+                    <Icon size={18} />
+                    <span className="nav-label">{label}</span>
+                    {locked ? <Lock size={14} className="lock-icon" /> : hasChildren && (expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />)}
+                  </button>
+                  {hasChildren && expanded && !collapsed && (
+                    <div className="nav-submenu" aria-label={`Atalhos de ${label}`}>
+                      {visibleChildren.map((child) => {
+                        const childLocked = !planAllowsPage(activeFeatures, child.page) || Boolean(child.feature && !activeFeatures.includes(child.feature));
+                        const childActive = page === child.page && (child.target ? navigationTarget === child.target : !navigationTarget);
+                        return (
+                          <button
+                            key={child.id}
+                            className={`${childActive ? "active" : ""} ${childLocked ? "locked" : ""}`}
+                            onClick={() => childLocked ? openLocked(child.label) : setPage(child.page, child.target)}
+                            title={childLocked ? `${child.label} — disponível em planos superiores` : child.queue ? `${child.label} — fila operacional` : child.label}
+                            aria-current={childActive ? "page" : undefined}
+                          >
+                            <span className="nav-submenu-dot" aria-hidden="true" />
+                            <span className="nav-label">{child.label}</span>
+                            {child.queue && <small>Fila</small>}
+                            {childLocked && <Lock size={13} className="lock-icon" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </React.Fragment>
               );
             })}
           </React.Fragment>

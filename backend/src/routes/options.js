@@ -20,9 +20,14 @@ router.get("/api/options", withFeature("basic_inventory", async (_req, res, db) 
   const inventoryOptions = await db.all("SELECT * FROM inventory_options ORDER BY type, name");
   const pricingSettings = await getPricingSettings(db);
   const categoryManagement = await listInventoryCategories(db);
+  const visibleJewelry = hasPermission(_req.user, P.INVENTORY_VIEW_COST) ? jewelry : redactInventoryCosts(jewelry);
   res.json({
     professionals,
-    jewelry: hasPermission(_req.user, P.INVENTORY_VIEW_COST) ? jewelry : redactInventoryCosts(jewelry),
+    jewelry: visibleJewelry,
+    inventoryItems: visibleJewelry,
+    serviceItems: visibleJewelry.filter((item) => Boolean(item.can_use_in_service)),
+    sellableItems: visibleJewelry.filter((item) => Boolean(item.can_sell)),
+    catalogItems: visibleJewelry.filter((item) => Boolean(item.can_publish)),
     jewelryCategories: JEWELRY_CATEGORIES,
     jewelrySubcategories: { Argolas: ARGOLA_SUBCATEGORIES },
     inventoryOptions: groupInventoryOptions(inventoryOptions),

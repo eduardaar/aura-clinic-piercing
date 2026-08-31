@@ -1,19 +1,24 @@
 ﻿// Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ChevronLeft, ChevronRight, Copy, ExternalLink, Plus, Settings2 } from "lucide-react";
-import { Accordion, Button, Checkbox, FinancialSummary, Input, PaymentSelect, Select, StatusBadge, StatusSelect, Switch, Tabs, Textarea } from "../../components/common/Ui";
-import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
+import { ArrowLeft, ChevronLeft, ChevronRight, Copy, ExternalLink, Filter, MoreHorizontal, Plus, Search, Settings2, X } from "lucide-react";
+import { Accordion, Button, Checkbox, FinancialSummary, Input, Metric, PaymentSelect, Select, StatusBadge, StatusSelect, Switch, Tabs, Textarea } from "../../components/common/Ui";
+import { Modal, CrudHeader, ConfirmDeleteModal, DropdownMenu, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { Loading } from "../../components/common/Feedback";
+import { FormSection, FormWorkflow, ReviewSummary, StepNavigator, ValidationSummary } from "../../components/common/FormWorkflow";
+import { ResponsiveEditableList } from "../../components/common/TransactionFields";
+import { CollapsibleIndicators } from "../../components/common/CollapsibleIndicators";
 import { asArray, asNumber, asObject, formatDate } from "../../lib/utils";
 import { apiFetch, readStoredSession, tenantSlug, useApiInvalidate, useFetch } from "../../lib/api";
 import { buildCalendar, buildTimeSlots, dateKey, movePeriod } from "../../lib/calendarUtils";
-import { defaultAppointment, defaultProcedureForm, defaultProfessionalForm, defaultScheduleBlock, defaultServiceForm } from "../../lib/defaultForms";
+import { defaultAppointment, defaultProfessionalForm, defaultScheduleBlock } from "../../lib/defaultForms";
 import { appointmentWhatsAppMessage, calcRemaining, currency, personName, statusClass, weekdayLabel, whatsappUrl } from "../../features/shared/helpers";
 import { SmartCombobox } from "../../components/common/SmartCombobox";
 import { publicLinkForTenant } from "../../lib/publicRoutes";
 import { PlanUpgradeNotice } from "../../components/common/PlanUpgradeNotice";
 import { can, planAllowsAction } from "../../lib/permissions";
+import { useFormDraft } from "../../lib/useFormDraft";
+import { ServicesWorkspace } from "../services/Services";
 import "../../styles/agenda-admin-responsive.css";
 
 // formatDate() de lib/utils devolve dd/MM sem ano, e a agenda lista atendimentos
@@ -27,17 +32,37 @@ function formatDateWithYear(date) {
   return parsed.toLocaleDateString("pt-BR");
 }
 
+function formatOperationalTime(value) {
+  if (!value) return "";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+}
+
+function operationalRequirements(value) {
+  if (!value) return { checklist: [], biosafety: { enabled: false, required_fields: [] } };
+  if (typeof value === "string") {
+    try { return operationalRequirements(JSON.parse(value)); } catch { return { checklist: [], biosafety: { enabled: false, required_fields: [] } }; }
+  }
+  return {
+    checklist: asArray(value.checklist),
+    biosafety: { enabled: Boolean(value.biosafety?.enabled), required_fields: asArray(value.biosafety?.required_fields) }
+  };
+}
+
 // Status canônicos de agendamento, com o rótulo que aparece na tela.
 const APPOINTMENT_STATUS_OPTIONS = [
   { value: "pendente", label: "Pendente" },
   { value: "awaiting_deposit_proof", label: "Aguardando sinal" },
   { value: "confirmado", label: "Confirmado" },
+  { value: "chegou", label: "Cliente chegou" },
+  { value: "em_atendimento", label: "Em atendimento" },
   { value: "atendido", label: "Atendido" },
   { value: "cancelado", label: "Cancelado" },
+  { value: "nao_compareceu", label: "Não compareceu" },
   { value: "remarcado", label: "Remarcado" },
   { value: "recusado", label: "Recusado" }
 ];
-const APPOINTMENT_EDITABLE_STATUSES = ["pendente", "confirmado", "recusado", "atendido", "remarcado"];
+const APPOINTMENT_EDITABLE_STATUSES = ["pendente", "confirmado", "chegou", "em_atendimento", "recusado", "atendido", "remarcado"];
 
 function appointmentStatusLabel(status) {
   return APPOINTMENT_STATUS_OPTIONS.find((option) => option.value === status)?.label || status || "Sem status";
@@ -56,11 +81,14 @@ function distinctOptions(values) {
   return [...new Set(values.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), "pt-BR"));
 }
 
-export function AgendaWorkspace({ initialScreen = "agenda", initialSettingsTab, onSettingsClosed, features = [], onUpgrade }) {
+export function AgendaWorkspace({ initialScreen = "agenda", initialSettingsTab, navigationTarget, onSettingsClosed, features = [], onUpgrade, createSignal = 0 }) {
   const [screen, setScreen] = useState(initialScreen);
+  const [settingsTab, setSettingsTab] = useState(initialSettingsTab);
+  useEffect(() => setScreen(initialScreen), [initialScreen]);
+  useEffect(() => setSettingsTab(initialSettingsTab), [initialSettingsTab]);
   return screen === "settings"
-    ? <BookingAdmin initialTab={initialSettingsTab} onBack={() => { setScreen("agenda"); onSettingsClosed?.(); }} />
-    : <VisualCalendar features={features} onUpgrade={onUpgrade} onOpenSettings={() => setScreen("settings")} />;
+    ? <BookingAdmin initialTab={settingsTab} onBack={() => { setScreen("agenda"); onSettingsClosed?.(); }} />
+    : <VisualCalendar navigationTarget={navigationTarget} features={features} onUpgrade={onUpgrade} onOpenSettings={(tab) => { setSettingsTab(tab); setScreen("settings"); }} createSignal={createSignal} />;
 }
 
 function PublicBookingLink() {
@@ -94,7 +122,7 @@ function PublicBookingLink() {
 
 function priceAppointmentDraft(draft, services = [], jewelryList = []) {
   const items = normalizeAppointmentFormItems(draft, services, jewelryList);
-  const firstItem = items[0] || {};
+  const firstItem = /** @type {Record<string, any>} */ (items[0] || {});
   const procedureValue = items.reduce((sum, item) => sum + asNumber(item.procedure_price), 0);
   const jewelryValue = items.reduce((sum, item) => sum + asNumber(item.jewelry_unit_price) * Math.max(1, asNumber(item.quantity, 1)), 0);
   const totalValue = procedureValue + jewelryValue;
@@ -204,6 +232,15 @@ function AppointmentItemsEditor({ form, services, procedures = [], jewelry, onCh
         const selectedVariant = asArray(selectedJewelry?.variants).find((variant) => String(variant.id) === String(item.jewelry_variant_id));
         const selectedStock = selectedVariant ? asNumber(selectedVariant.quantity) : asNumber(selectedJewelry?.inventory_quantity ?? selectedJewelry?.quantity);
         const selectedService = asArray(services).find((service) => String(service.id) === String(item.service_id));
+        const selectedProcedure = asArray(procedures).find((procedure) => String(procedure.id) === String(item.procedure_id));
+        const ruleValue = (field) => selectedProcedure?.[field] ?? selectedService?.[field];
+        const ruleSummary = [
+          ruleValue("minimum_age_years") != null ? `idade mínima ${ruleValue("minimum_age_years")} anos` : "",
+          ruleValue("requires_guardian") ? "responsável para menor" : "",
+          ruleValue("requires_signed_term") ? "termo obrigatório" : "",
+          asNumber(ruleValue("return_after_days")) > 0 ? `retorno em ${ruleValue("return_after_days")} dias` : "",
+          asNumber(ruleValue("minimum_advance_minutes")) > 0 ? `${ruleValue("minimum_advance_minutes")} min de antecedência` : ""
+        ].filter(Boolean);
         return (
           <div className={`appointment-item-row ${compact ? "compact" : ""}`} key={`${index}-${item.service_id}-${item.jewelry_id}`}>
             <Select label="Serviço" value={item.service_id} onChange={(value) => {
@@ -246,6 +283,7 @@ function AppointmentItemsEditor({ form, services, procedures = [], jewelry, onCh
             </Select>
             <Input type="number" label="Qtd." value={item.quantity} onChange={(value) => updateItem(index, { quantity: value })} />
             <Button variant="secondary" className="danger" onClick={() => removeItem(index)} disabled={items.length === 1}>Remover</Button>
+            {ruleSummary.length > 0 && <span className="field-hint">Regras: {ruleSummary.join(" · ")}</span>}
             {selectedJewelry && <div className="appointment-jewelry-selected" data-product-id={selectedJewelry.id}>
               <strong>{selectedJewelry.name}</strong><span>ID {selectedJewelry.id}</span>
               <span>{selectedVariant ? `Variação: ${selectedVariant.variation_name || selectedVariant.sku}` : "Sem variação"}</span>
@@ -307,57 +345,178 @@ function AppointmentValueSummary({ form, services, jewelry }) {
   );
 }
 
-export function VisualCalendar({ onOpenSettings, features = [], onUpgrade }) {
+export function VisualCalendar({ navigationTarget, onOpenSettings, features = [], onUpgrade, createSignal = 0 }) {
   const { data: options } = useFetch("/options");
   const { data: clients } = useFetch("/clients");
   const { data: services } = useFetch("/services");
   const { data: procedures } = useFetch("/procedures");
-  const [filters, setFilters] = useState({ mode: "mensal", professional_id: "", status: "" });
+  const [filters, setFilters] = useState({ mode: "diario", search: "", professional_id: "", status: "", from: "", to: "" });
+  const [filterModalOpen, setFilterModalOpen] = useState(false);
+  const [draftFilters, setDraftFilters] = useState({ professional_id: "", status: "" });
+  const [periodModalOpen, setPeriodModalOpen] = useState(false);
+  const [draftPeriod, setDraftPeriod] = useState({ from: "", to: "" });
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [createSeed, setCreateSeed] = useState(null);
-  const { data } = useFetch(`/appointments?${new URLSearchParams(Object.fromEntries(Object.entries(filters).filter(([, v]) => v && !["mensal", "semanal", "diario", "lista"].includes(v))))}`);
+  useEffect(() => { if (createSignal) setCreateSeed({}); }, [createSignal]);
+  useEffect(() => {
+    if (navigationTarget === "historico") setFilters((current) => ({ ...current, mode: "realizados" }));
+    if (navigationTarget === "calendario") setFilters((current) => ({ ...current, mode: "mensal" }));
+    if (navigationTarget === "diario") setFilters((current) => ({ ...current, mode: "diario" }));
+    if (navigationTarget === "espera") setFilters((current) => ({ ...current, mode: "espera" }));
+  }, [navigationTarget]);
+  const appointmentQuery = new URLSearchParams(Object.fromEntries(Object.entries(filters).filter(([key, value]) => key !== "mode" && value)));
+  const { data } = useFetch(`/appointments?${appointmentQuery}`);
   // Invalidar "/appointments" alcança o calendário sob qualquer combinação de
   // filtros, não só a consulta que está montada agora.
   const invalidate = useApiInvalidate();
-  const refresh = () => invalidate("/appointments", "/clients", "/dashboard");
+  const refresh = () => invalidate("/appointments", "/service-executions", "/clients", "/dashboard");
   const refreshClients = refresh;
   const safeOptions = asObject(options);
-  const calendar = useMemo(() => filters.mode === "lista" ? null : buildCalendar(asArray(data), filters.mode, currentDate), [data, filters.mode, currentDate]);
+  const calendar = useMemo(() => ["lista", "realizados", "espera"].includes(filters.mode) ? null : buildCalendar(asArray(data), filters.mode, currentDate), [data, filters.mode, currentDate]);
+  const operationalRows = asArray(data);
+  const today = dateKey(new Date());
+  const todayRows = operationalRows.filter((item) => String(item.appointment_date).slice(0, 10) === today);
+  const completedWithTiming = operationalRows.filter((item) => item.arrived_at && item.started_at);
+  const averageDelay = completedWithTiming.length
+    ? Math.round(completedWithTiming.reduce((sum, item) => sum + Math.max(0, (new Date(item.started_at).getTime() - new Date(item.arrived_at).getTime()) / 60000), 0) / completedWithTiming.length)
+    : 0;
+  const cancellationRate = operationalRows.length
+    ? Math.round(operationalRows.filter((item) => ["cancelado", "nao_compareceu"].includes(item.status)).length / operationalRows.length * 100)
+    : 0;
+  const activeFilterCount = ["professional_id", "status"].filter((key) => filters[key]).length;
+  const hasPeriod = Boolean(filters.from || filters.to);
+  const periodLabel = filters.from && filters.to
+    ? `${formatDateWithYear(filters.from)} até ${formatDateWithYear(filters.to)}`
+    : formatDateWithYear(filters.from || filters.to);
+
+  function openFilters() {
+    setDraftFilters({ professional_id: filters.professional_id, status: filters.status });
+    setFilterModalOpen(true);
+  }
+
+  function applyFilters() {
+    setFilters({ ...filters, ...draftFilters });
+    setFilterModalOpen(false);
+  }
+
+  function clearFilters() {
+    const empty = { professional_id: "", status: "" };
+    setDraftFilters(empty);
+    setFilters({ ...filters, ...empty });
+    setFilterModalOpen(false);
+  }
+
+  function openPeriod() {
+    setDraftPeriod({ from: filters.from, to: filters.to });
+    setPeriodModalOpen(true);
+  }
+
+  function applyPeriod() {
+    const referenceDate = draftPeriod.from || draftPeriod.to;
+    if (referenceDate) setCurrentDate(new Date(`${referenceDate}T12:00:00`));
+    setFilters({ ...filters, ...draftPeriod });
+    setPeriodModalOpen(false);
+  }
+
+  function clearPeriod() {
+    setDraftPeriod({ from: "", to: "" });
+    setFilters({ ...filters, from: "", to: "" });
+    setCurrentDate(new Date());
+    setPeriodModalOpen(false);
+  }
 
   return (
-    <section className="stack">
-      <div className="panel agenda-page-heading">
+    <section className="stack agenda-visual-page">
+      <CollapsibleIndicators screenId="agenda">
+        <div className="metric-grid">
+          <Metric label="Agenda de hoje" value={todayRows.length} />
+          <Metric label="Aguardando início" value={todayRows.filter((item) => ["pendente", "confirmado", "chegou"].includes(item.status)).length} />
+          <Metric label="Atraso médio" value={`${averageDelay} min`} />
+          <Metric label="Cancelamentos/ausências" value={`${cancellationRate}%`} />
+        </div>
+      </CollapsibleIndicators>
+      <div className="agenda-sticky-controls">
+        <div className="panel agenda-page-heading">
         <div>
           <span className="eyebrow">Gestão de agenda</span>
           <h2>Agenda</h2>
         </div>
         <div className="agenda-page-actions">
           <PublicBookingLink />
-          <Button variant="secondary" onClick={onOpenSettings}><Settings2 size={16} /> Configurações</Button>
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild><Button variant="secondary"><MoreHorizontal size={16} /> Mais opções</Button></DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content className="crud-options-popover" align="end" sideOffset={6}>
+                <DropdownMenu.Item onSelect={() => onOpenSettings()}><Settings2 size={16} /> Configurações da Agenda</DropdownMenu.Item>
+                <DropdownMenu.Separator />
+                <DropdownMenu.Item onSelect={() => onOpenSettings("solicitacoes")}>Solicitações online</DropdownMenu.Item>
+                <DropdownMenu.Item onSelect={() => setFilters({ ...filters, mode: "espera" })}>Lista de espera</DropdownMenu.Item>
+                <DropdownMenu.Separator />
+                <DropdownMenu.Item onSelect={() => setFilters({ ...filters, mode: "realizados" })}>Histórico de atendimentos</DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
           <Button onClick={() => setCreateSeed({})}><Plus size={16} /> Novo agendamento</Button>
         </div>
-      </div>
-      <div className="toolbar">
-        <div className="segmented">
-          {[["mensal", "Mensal"], ["semanal", "Semanal"], ["diario", "Diário"], ["lista", "Lista"]].map(([mode, label]) => <button key={mode} className={filters.mode === mode ? "active" : ""} onClick={() => setFilters({ ...filters, mode })}>{label}</button>)}
         </div>
-        <Select label="Profissional" value={filters.professional_id} onChange={(v) => setFilters({ ...filters, professional_id: v })}>
-          <option value="">Todos</option>
-          {asArray(safeOptions.professionals).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-        </Select>
-        <Select label="Status" value={filters.status} onChange={(v) => setFilters({ ...filters, status: v })}>
-          <option value="">Todos</option>
-          {APPOINTMENT_STATUS_OPTIONS.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
-        </Select>
-        {calendar && <div className="calendar-nav">
-          <button aria-label="Período anterior" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, -1))}><ChevronLeft size={18} /></button>
-          <strong>{calendar.title}</strong>
-          <button aria-label="Próximo período" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, 1))}><ChevronRight size={18} /></button>
-          <button onClick={() => setCurrentDate(new Date())}>Hoje</button>
+        <div className="toolbar">
+        <div className="segmented">
+          {[["mensal", "Mensal"], ["semanal", "Semanal"], ["diario", "Diário"], ["lista", "Agendamentos"]].map(([mode, label]) => <button key={mode} className={filters.mode === mode ? "active" : ""} onClick={() => setFilters({ ...filters, mode })}>{label}</button>)}
+        </div>
+        {["mensal", "semanal", "diario", "lista"].includes(filters.mode) && <div className="calendar-nav">
+          {calendar && !hasPeriod && <button aria-label="Período anterior" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, -1))}><ChevronLeft size={18} /></button>}
+          <strong>{hasPeriod ? periodLabel : calendar?.title || "Todos os períodos"}</strong>
+          {calendar && !hasPeriod && <button aria-label="Próximo período" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, 1))}><ChevronRight size={18} /></button>}
+          {!hasPeriod && calendar && <button onClick={() => setCurrentDate(new Date())}>Hoje</button>}
+          <button onClick={openPeriod}>Período</button>
+          {hasPeriod && <button onClick={clearPeriod}>Limpar</button>}
+        </div>}
+        </div>
+        {["mensal", "semanal", "diario", "lista"].includes(filters.mode) && <div className="dataview-toolbar agenda-shared-filters">
+        <label className="dataview-search">
+          <Search size={16} aria-hidden="true" />
+          <input type="search" value={filters.search} placeholder="Buscar cliente, telefone ou procedimento" onChange={(event) => setFilters({ ...filters, search: event.target.value })} />
+          {filters.search && <button type="button" onClick={() => setFilters({ ...filters, search: "" })} aria-label="Limpar busca"><X size={14} /></button>}
+        </label>
+        <button type="button" className={`dataview-filter-toggle ${activeFilterCount ? "has-filters" : ""}`} onClick={openFilters} aria-haspopup="dialog">
+          <Filter size={15} /> Filtros
+          {activeFilterCount > 0 && <span className="dataview-filter-count">{activeFilterCount}</span>}
+        </button>
         </div>}
       </div>
-      {filters.mode === "lista" ? (
+      <Modal open={filterModalOpen} title="Filtros da Agenda" subtitle="Aplicados às quatro visualizações" onClose={() => setFilterModalOpen(false)} footer={<><Button variant="secondary" onClick={clearFilters}>Limpar</Button><Button onClick={applyFilters}>Aplicar filtros</Button></>}>
+        <div className="dataview-filter-modal-grid">
+          <Select label="Profissional" value={draftFilters.professional_id} onChange={(professional_id) => setDraftFilters({ ...draftFilters, professional_id })}>
+            <option value="">Todos</option>
+            {asArray(safeOptions.professionals).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </Select>
+          <Select label="Status" value={draftFilters.status} onChange={(status) => setDraftFilters({ ...draftFilters, status })}>
+            <option value="">Todos</option>
+            {APPOINTMENT_STATUS_OPTIONS.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+          </Select>
+        </div>
+      </Modal>
+      <Modal open={periodModalOpen} title="Período da Agenda" subtitle="O período será aplicado às quatro visualizações" onClose={() => setPeriodModalOpen(false)} footer={<><Button variant="secondary" onClick={clearPeriod}>Limpar</Button><Button onClick={applyPeriod}>Aplicar período</Button></>}>
+        <div className="dataview-filter-modal-grid">
+          <Input type="date" label="Data inicial" value={draftPeriod.from} onChange={(from) => setDraftPeriod({ ...draftPeriod, from })} />
+          <Input type="date" label="Data final" value={draftPeriod.to} onChange={(to) => setDraftPeriod({ ...draftPeriod, to })} />
+        </div>
+      </Modal>
+      {filters.mode === "espera" ? (
+        <Waitlist onSchedule={(item) => setCreateSeed({
+          waitlist_id: item.id,
+          client_id: item.client_id,
+          full_name: item.client_name,
+          whatsapp: item.contact,
+          service_id: item.service_id,
+          professional_id: item.professional_id,
+          appointment_date: item.preferred_date_from || today,
+          appointment_time: ""
+        })} />
+      ) : filters.mode === "realizados" ? (
+        <ServiceExecutionHistory />
+      ) : filters.mode === "lista" ? (
         <div className="panel"><AppointmentList appointments={asArray(data)} onChanged={refresh} /></div>
       ) : filters.mode === "diario" ? (
         <DailyAgenda day={calendar.days[0]} refresh={refresh} onSelect={setSelectedAppointment} onEmptySlot={setCreateSeed} />
@@ -372,6 +531,7 @@ export function VisualCalendar({ onOpenSettings, features = [], onUpgrade }) {
         procedures={procedures}
         onClose={() => setCreateSeed(null)}
         onSaved={() => {
+          if (createSeed?.waitlist_id) void apiFetch(`/agenda/waitlist/${createSeed.waitlist_id}`, { method: "PATCH", body: JSON.stringify({ status: "scheduled", reason: "Agendamento criado pela lista de espera" }) });
           setCreateSeed(null);
           refresh();
           refreshClients();
@@ -391,6 +551,201 @@ export function VisualCalendar({ onOpenSettings, features = [], onUpgrade }) {
         }}
       />
     </section>
+  );
+}
+
+function Waitlist({ onSchedule }) {
+  const { data } = useFetch("/agenda/waitlist");
+  const { data: clients } = useFetch("/clients");
+  const { data: services } = useFetch("/services");
+  const { data: professionals } = useFetch("/professionals");
+  const invalidate = useApiInvalidate();
+  const [open, setOpen] = useState(false);
+  /** @returns {Record<string, any>} */
+  const emptyForm = () => ({ client_id: "", client_name: "", contact: "", service_id: "", professional_id: "", preferred_date_from: "", preferred_date_to: "", preferred_period: "qualquer", priority: 0, notes: "" });
+  const [form, setForm] = useState(emptyForm);
+  const [error, setError] = useState("");
+  const rows = asArray(data);
+
+  async function save(event) {
+    event.preventDefault();
+    const response = await apiFetch("/agenda/waitlist", { method: "POST", body: JSON.stringify(form) });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return setError(payload.error || "Não foi possível adicionar à lista de espera.");
+    setOpen(false); setForm(emptyForm()); invalidate("/agenda/waitlist", "/dashboard");
+  }
+
+  async function changeStatus(item, status) {
+    await apiFetch(`/agenda/waitlist/${item.id}`, { method: "PATCH", body: JSON.stringify({ status, reason: "Fila operacional atualizada" }) });
+    invalidate("/agenda/waitlist", "/dashboard");
+  }
+
+  return (
+    <section className="panel stack">
+      <CrudHeader title="Lista de espera" subtitle="Priorize clientes e transforme uma vaga em agendamento sem perder o histórico." actionLabel="Adicionar à espera" onAction={() => { setForm(emptyForm()); setError(""); setOpen(true); }} />
+      <DataView
+        rows={rows}
+        defaultSort={{ key: "priority", dir: "desc" }}
+        searchPlaceholder="Buscar cliente, contato, serviço ou observação"
+        filters={[{ key: "status", label: "Status", type: "select", options: [{ value: "waiting", label: "Aguardando" }, { value: "contacted", label: "Contatado" }, { value: "scheduled", label: "Agendado" }, { value: "closed", label: "Encerrado" }] }]}
+        columns={[
+          { key: "client_name", label: "Cliente" },
+          { key: "service_name", label: "Procedimento", render: (item) => item.service_name || "Qualquer" },
+          { key: "preferred_date_from", label: "Preferência", render: (item) => [formatDateWithYear(item.preferred_date_from), item.preferred_period].filter(Boolean).join(" · ") || "Flexível" },
+          { key: "priority", label: "Prioridade", render: (item) => `${Number(item.priority || 0)}/5` },
+          { key: "status", label: "Status", render: (item) => <StatusBadge status={item.status} /> }
+        ]}
+        actions={(item) => <RowActions actions={[
+          item.status === "waiting" && { label: "Marcar contato", onClick: () => changeStatus(item, "contacted") },
+          !["scheduled", "closed"].includes(item.status) && { label: "Criar encaixe", primary: true, onClick: () => onSchedule?.(item) },
+          item.status !== "closed" && { label: "Encerrar", onClick: () => changeStatus(item, "closed") }
+        ].filter(Boolean)} />}
+        empty="Nenhum cliente aguardando uma vaga."
+      />
+      <Modal open={open} title="Adicionar à lista de espera" subtitle="Preferências são opcionais e ajudam a encontrar o melhor encaixe." onClose={() => setOpen(false)} footer={<><Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button><Button type="submit" form="waitlist-form">Salvar</Button></>}>
+        <form id="waitlist-form" className="stack" onSubmit={save}>
+          <Select label="Cliente cadastrado" value={form.client_id} onChange={(client_id) => { const client = asArray(clients).find((item) => String(item.id) === String(client_id)); setForm({ ...form, client_id, client_name: personName(client), contact: client?.whatsapp || "" }); }}><option value="">Contato avulso</option>{asArray(clients).map((item) => <option key={item.id} value={item.id}>{personName(item)}</option>)}</Select>
+          <div className="form-grid"><Input label="Nome" value={form.client_name} onChange={(client_name) => setForm({ ...form, client_name })} required /><Input label="Contato" value={form.contact} onChange={(contact) => setForm({ ...form, contact })} /></div>
+          <div className="form-grid"><Select label="Procedimento" value={form.service_id} onChange={(service_id) => setForm({ ...form, service_id })}><option value="">Qualquer</option>{asArray(services).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select><Select label="Profissional" value={form.professional_id} onChange={(professional_id) => setForm({ ...form, professional_id })}><option value="">Qualquer</option>{asArray(professionals).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></div>
+          <div className="form-grid"><Input type="date" label="A partir de" value={form.preferred_date_from} onChange={(preferred_date_from) => setForm({ ...form, preferred_date_from })} /><Input type="date" label="Até" value={form.preferred_date_to} onChange={(preferred_date_to) => setForm({ ...form, preferred_date_to })} /><Select label="Período" value={form.preferred_period} onChange={(preferred_period) => setForm({ ...form, preferred_period })}><option value="qualquer">Qualquer</option><option value="manha">Manhã</option><option value="tarde">Tarde</option><option value="noite">Noite</option></Select><Input type="number" min="0" max="5" label="Prioridade" value={form.priority} onChange={(priority) => setForm({ ...form, priority })} /></div>
+          <Textarea label="Observações" value={form.notes} onChange={(notes) => setForm({ ...form, notes })} />
+          {error && <span className="form-error">{error}</span>}
+        </form>
+      </Modal>
+    </section>
+  );
+}
+
+function AgendaResources() {
+  const { data } = useFetch("/agenda/resources");
+  const invalidate = useApiInvalidate();
+  /** @returns {Record<string, any>} */
+  const emptyForm = () => ({ name: "", resource_type: "station", capacity: 1, notes: "", active: true });
+  const [form, setForm] = useState(emptyForm);
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState("");
+
+  async function save(event) {
+    event.preventDefault();
+    const response = await apiFetch("/agenda/resources", { method: "POST", body: JSON.stringify(form) });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return setError(payload.error || "Não foi possível salvar o recurso.");
+    setOpen(false); setForm(emptyForm()); invalidate("/agenda/resources");
+  }
+
+  async function toggle(item) {
+    await apiFetch(`/agenda/resources/${item.id}`, { method: "PATCH", body: JSON.stringify({ active: !item.active }) });
+    invalidate("/agenda/resources");
+  }
+
+  const typeLabel = { room: "Sala", chair: "Cadeira", station: "Estação", equipment: "Equipamento" };
+  return (
+    <div className="panel stack">
+      <CrudHeader title="Salas e recursos" subtitle="Cadastro opcional para preparar a alocação operacional sem bloquear a agenda básica." actionLabel="Novo recurso" onAction={() => { setForm(emptyForm()); setError(""); setOpen(true); }} />
+      <DataView
+        rows={asArray(data)}
+        defaultSort={{ key: "name", dir: "asc" }}
+        searchPlaceholder="Buscar sala, cadeira, estação ou equipamento"
+        columns={[
+          { key: "name", label: "Recurso" },
+          { key: "resource_type", label: "Tipo", render: (item) => typeLabel[item.resource_type] || item.resource_type },
+          { key: "capacity", label: "Capacidade" },
+          { key: "active", label: "Status", render: (item) => <StatusBadge status={item.active ? "Ativo" : "Inativo"} /> }
+        ]}
+        actions={(item) => <RowActions actions={[{ label: item.active ? "Desativar" : "Ativar", onClick: () => toggle(item) }]} />}
+        empty="Nenhuma sala ou recurso cadastrado. A agenda continua funcionando normalmente."
+      />
+      <Modal open={open} title="Novo recurso da agenda" subtitle="Use para salas, cadeiras, estações ou equipamentos compartilhados." onClose={() => setOpen(false)} footer={<><Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button><Button type="submit" form="agenda-resource-form">Salvar</Button></>}>
+        <form id="agenda-resource-form" className="stack" onSubmit={save}>
+          <div className="form-grid"><Input label="Nome" value={form.name} onChange={(name) => setForm({ ...form, name })} required /><Select label="Tipo" value={form.resource_type} onChange={(resource_type) => setForm({ ...form, resource_type })}><option value="room">Sala</option><option value="chair">Cadeira</option><option value="station">Estação</option><option value="equipment">Equipamento</option></Select><Input type="number" min="1" max="100" label="Capacidade" value={form.capacity} onChange={(capacity) => setForm({ ...form, capacity })} /></div>
+          <Textarea label="Observações" value={form.notes} onChange={(notes) => setForm({ ...form, notes })} />
+          {error && <span className="form-error">{error}</span>}
+        </form>
+      </Modal>
+    </div>
+  );
+}
+
+function serviceExecutionRows(payload) {
+  return asArray(payload).length ? asArray(payload) : asArray(asObject(payload).items);
+}
+
+function ServiceExecutionHistory() {
+  const { data } = useFetch("/service-executions?limit=200");
+  const [selectedId, setSelectedId] = useState(null);
+  if (data == null) return <Loading />;
+  const rows = serviceExecutionRows(data);
+  return (
+    <div className="panel">
+      <CrudHeader title="Atendimentos realizados" subtitle="Histórico gerado automaticamente quando um agendamento é finalizado." />
+      <DataView
+        rows={rows}
+        defaultSort={{ key: "completed_at", dir: "desc" }}
+        searchPlaceholder="Buscar por cliente, serviço ou profissional"
+        filters={[
+          { key: "professional_name", label: "Profissional", type: "select", options: distinctOptions(rows.map((item) => item.professional_name)).map((value) => ({ value, label: value })) },
+          { key: "status", label: "Status", type: "select", options: [{ value: "completed", label: "Concluído" }, { value: "cancelled", label: "Cancelado" }] }
+        ]}
+        columns={[
+          { key: "completed_at", label: "Conclusão", render: (item) => formatDateWithYear(item.completed_at) },
+          { key: "client_name", label: "Cliente" },
+          { key: "service_name", label: "Serviço", render: (item) => item.service_name || "Atendimento" },
+          { key: "professional_name", label: "Profissional" },
+          { key: "total_value", label: "Valor", value: (item) => asNumber(item.total_value), render: (item) => currency.format(item.total_value || 0) },
+          { key: "status", label: "Status", render: (item) => <StatusBadge status={item.status === "completed" ? "Concluído" : "Cancelado"} /> }
+        ]}
+        actions={(item) => <RowActions actions={[{ label: "Ver atendimento", primary: true, onClick: () => setSelectedId(item.id) }]} />}
+        empty="Nenhum atendimento foi finalizado pela Agenda."
+        emptyFiltered="Nenhum atendimento corresponde aos filtros aplicados."
+      />
+      <ServiceExecutionDetail executionId={selectedId} onClose={() => setSelectedId(null)} />
+    </div>
+  );
+}
+
+function ServiceExecutionDetail({ executionId, onClose }) {
+  const { data } = useFetch(executionId ? `/service-executions/${executionId}` : null);
+  const execution = asObject(data);
+  const snapshot = asObject(execution.snapshot);
+  const checklist = asArray(execution.checklist_snapshot);
+  const biosafety = asObject(execution.biosafety_snapshot);
+  return (
+    <Modal open={Boolean(executionId)} title="Atendimento realizado" subtitle={executionId ? `Registro #${executionId}` : ""} size="lg" onClose={onClose} footer={<Button variant="secondary" onClick={onClose}>Fechar</Button>}>
+      {!data ? <Loading /> : <div className="stack">
+        <div className="summary-grid">
+          <span>Cliente <strong>{snapshot.client_name || "—"}</strong></span>
+          <span>Serviço <strong>{snapshot.procedure || "Atendimento"}</strong></span>
+          <span>Data <strong>{formatDateWithYear(snapshot.appointment_date || execution.completed_at)}</strong></span>
+          <span>Total <strong>{currency.format(execution.total_value || 0)}</strong></span>
+        </div>
+        {(execution.clinical_notes || execution.occurrences || execution.aftercare_notes) ? <div className="soft-card stack">
+          {execution.clinical_notes && <div><strong>Observações clínicas</strong><p>{execution.clinical_notes}</p></div>}
+          {execution.occurrences && <div><strong>Intercorrências</strong><p>{execution.occurrences}</p></div>}
+          {execution.aftercare_notes && <div><strong>Orientações pós-atendimento</strong><p>{execution.aftercare_notes}</p></div>}
+        </div> : <p className="empty-state">Nenhuma informação clínica opcional foi registrada.</p>}
+        {(checklist.length > 0 || biosafety.enabled) && <div className="soft-card stack">
+          <strong>Checklist e rastreabilidade</strong>
+          {checklist.length > 0 && <div>{checklist.map((item) => <p key={item.key}>{item.completed ? "✓" : "○"} {item.label}{item.required ? " (obrigatório)" : ""}</p>)}</div>}
+          {biosafety.enabled && <div>
+            {biosafety.sterilization_cycle && <p>Ciclo: <strong>{biosafety.sterilization_cycle}</strong></p>}
+            {biosafety.sterilization_record && <p>Registro: <strong>{biosafety.sterilization_record}</strong></p>}
+            {asArray(biosafety.material_lots).map((item, index) => <p key={`${item.batch_code}-${index}`}>Material/lote: <strong>{item.batch_code || item.inventory_item_lot_id}</strong> · qtd. {item.quantity}</p>)}
+            {biosafety.notes && <p>Observações: {biosafety.notes}</p>}
+          </div>}
+          {asArray(execution.operationalHistory).length > 1 && <small>{asArray(execution.operationalHistory).length} revisões preservadas no histórico.</small>}
+        </div>}
+        <DataView
+          rows={asArray(execution.items)}
+          columns={[
+            { key: "item_name", label: "Item" },
+            { key: "item_type", label: "Tipo", render: (item) => item.item_type === "service" ? "Serviço" : "Produto aplicado" },
+            { key: "quantity", label: "Quantidade" },
+            { key: "total_value", label: "Valor", render: (item) => currency.format(item.total_value || 0) }
+          ]}
+          empty="Nenhum item registrado."
+        />
+      </div>}
+    </Modal>
   );
 }
 
@@ -453,7 +808,6 @@ export function CalendarEvent({ item, refresh, onSelect }) {
       <small>{item.professional_name}</small>
       <div className="event-actions" onClick={(event) => event.stopPropagation()}>
         <RowActions
-          menuOnly
           actions={[
             { label: "Remarcar", onClick: () => updateAppointment(item.id, { status: "remarcado" }, refresh) },
             { label: "Cancelar com resolução", danger: true, onClick: () => onSelect?.(item) },
@@ -470,20 +824,38 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
   const safeClients = asArray(clients);
   const safeServices = asArray(services);
   const safeProcedures = asArray(procedures);
-  const safeJewelry = asArray(safeOptions.jewelry);
+  const safeJewelry = asArray(safeOptions.serviceItems);
   const safeProfessionals = asArray(safeOptions.professionals);
   const [form, setForm] = useState(defaultAppointment());
   const [error, setError] = useState("");
+  const [activeStep, setActiveStep] = useState("schedule");
+  const currentUser = readStoredSession()?.user || {};
+  const draft = useFormDraft({
+    tenantId: tenantSlug() || "tenant",
+    userId: currentUser.id || "user",
+    formId: "appointment-new",
+    schemaKey: "appointment-v1",
+    value: form,
+    enabled: Boolean(seed),
+    onRestore: setForm,
+  });
 
   useEffect(() => {
     if (!seed) return;
+    const seededClient = safeClients.find((item) => String(item.id) === String(seed.client_id));
     setForm({
       ...defaultAppointment(),
+      client_id: seed.client_id || "",
+      full_name: seed.full_name || personName(seededClient),
+      whatsapp: seed.whatsapp || seededClient?.whatsapp || "",
+      service_id: seed.service_id || "",
+      professional_id: seed.professional_id || "",
       appointment_date: seed.appointment_date || defaultAppointment().appointment_date,
       appointment_time: seed.appointment_time || "",
       status: "pendente"
     });
     setError("");
+    setActiveStep("schedule");
   }, [seed]);
 
   function setClient(clientId) {
@@ -516,10 +888,16 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
     });
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
-      setError(data.error || "Não foi possível criar o agendamento.");
+      setError(response.status === 409 ? `Alerta de conflito: ${data.error || "revise o horário antes de criar o encaixe."}` : data.error || "Não foi possível criar o agendamento.");
       return;
     }
+    draft.clearDraft();
     onSaved?.();
+  }
+
+  function closeCreate() {
+    draft.flushDraft();
+    onClose?.();
   }
 
   return (
@@ -528,15 +906,34 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
       title="Novo Agendamento"
       subtitle="Criação rápida pela agenda visual"
       size="lg"
-      onClose={onClose}
+      onClose={closeCreate}
       footer={(
         <>
-          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button type="submit" form="visual-appointment-form">Salvar agendamento</Button>
+          <Button variant="secondary" onClick={() => activeStep === "schedule" ? closeCreate() : setActiveStep("schedule")}>{activeStep === "schedule" ? "Cancelar" : "Voltar"}</Button>
+          {activeStep === "operation" ? <Button type="submit" form="visual-appointment-form">Salvar agendamento</Button> : <Button onClick={() => setActiveStep("operation")}>Continuar</Button>}
         </>
       )}
     >
-      <form id="visual-appointment-form" className="stack" onSubmit={submit}>
+      <FormWorkflow
+        as="form"
+        id="visual-appointment-form"
+        className="stack"
+        mobileFullscreen
+        title="Novo agendamento"
+        description="Identificação e horário primeiro; procedimento e valores na sequência."
+        draft={draft}
+        actions={draft.hasDraft ? <><Button type="button" variant="secondary" onClick={draft.restoreDraft}>Restaurar</Button><Button type="button" variant="ghost" onClick={draft.discardDraft}>Descartar</Button></> : null}
+        onSubmit={submit}
+      >
+        <StepNavigator
+          steps={[{ id: "schedule", label: "Agenda", description: "Cliente e horário" }, { id: "operation", label: "Atendimento", description: "Itens e valores" }]}
+          currentStep={activeStep}
+          onStepChange={setActiveStep}
+          canNavigateTo={undefined}
+        />
+        <ValidationSummary errors={error ? [error] : []} />
+        {activeStep === "schedule" && <FormWorkflow.Page title="Cliente e horário">
+        <FormSection title="Informações principais" badge="Obrigatório">
         <div className="form-grid">
           <Select label="Cliente cadastrado" value={form.client_id} onChange={setClient}>
             <option value="">Novo cliente</option>
@@ -552,6 +949,9 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
           <Input type="time" label="Horário" value={form.appointment_time} onChange={(value) => setForm({ ...form, appointment_time: value })} required />
           <StatusSelect value={form.status} options={APPOINTMENT_EDITABLE_STATUSES} onChange={(value) => setForm({ ...form, status: value })} />
         </div>
+        </FormSection>
+        </FormWorkflow.Page>}
+        {activeStep === "operation" && <FormWorkflow.Page title="Itens, valores e confirmação">
         <AppointmentItemsEditor
           form={form}
           services={safeServices}
@@ -562,16 +962,33 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
         />
         <AppointmentValueSummary form={form} services={safeServices} jewelry={safeJewelry} />
         <Textarea label="Observações" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} />
-        {error && <span className="form-error">{error}</span>}
-      </form>
+        <ReviewSummary
+          title="Resumo do agendamento"
+          description={undefined}
+          sections={undefined}
+          onEdit={undefined}
+          items={[
+            { label: "Cliente", value: form.full_name },
+            { label: "Data", value: formatDateWithYear(form.appointment_date) },
+            { label: "Horário", value: form.appointment_time },
+            { label: "Itens", value: rawAppointmentItems(form).length },
+          ]}
+        />
+        </FormWorkflow.Page>}
+      </FormWorkflow>
     </Modal>
   );
 }
 
 export function AppointmentQuickModal({ appointment, options, services, procedures, onClose, onSaved, features = [], onUpgrade }) {
-  const [form, setForm] = useState({ appointment_date: "", appointment_time: "", status: "pendente", notes: "" });
+  const [form, setForm] = useState({ appointment_date: "", appointment_time: "", status: "pendente", notes: "", reschedule_reason: "" });
   const [payments, setPayments] = useState([{ method: "Pix", amount: 0, status: "pago", installments: 1, fee_amount: 0, expected_receipt_date: "" }]);
   const [financialNotes, setFinancialNotes] = useState("");
+  const [clinicalNotes, setClinicalNotes] = useState("");
+  const [occurrences, setOccurrences] = useState("");
+  const [aftercareNotes, setAftercareNotes] = useState("");
+  const [operationalChecklist, setOperationalChecklist] = useState([]);
+  const [biosafety, setBiosafety] = useState(/** @type {Record<string, any>} */ ({ material_lots: [], sterilization_cycle: "", sterilization_record: "", applied_jewelry_id: "", applied_jewelry_variant_id: "", notes: "" }));
   const [error, setError] = useState("");
   const [deletion, setDeletion] = useState(null);
   const [cancellation, setCancellation] = useState(null);
@@ -582,7 +999,28 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
   const hasPaidDeposit = Number(appointment?.deposit_value || 0) > 0 && ["pago", "confirmado"].includes(String(appointment?.deposit_status || "").toLowerCase());
   const safeServices = asArray(services);
   const safeProcedures = asArray(procedures);
-  const safeJewelry = asArray(asObject(options).jewelry);
+  const safeJewelry = asArray(asObject(options).serviceItems);
+  const operationalRules = operationalRequirements(appointment?.operational_requirements_snapshot);
+  const quickDraftValue = useMemo(() => ({ form, payments, financialNotes, clinicalNotes, occurrences, aftercareNotes, operationalChecklist, biosafety }), [aftercareNotes, biosafety, clinicalNotes, financialNotes, form, occurrences, operationalChecklist, payments]);
+  const quickDraft = useFormDraft({
+    tenantId: tenantSlug() || "tenant",
+    userId: currentUser.id || "user",
+    formId: appointment?.id ? `appointment-${appointment.id}` : "appointment",
+    schemaKey: "appointment-attendance-v1",
+    value: quickDraftValue,
+    enabled: Boolean(appointment),
+    onRestore: (value) => {
+      const restored = asObject(value);
+      if (restored.form) setForm(restored.form);
+      if (restored.payments) setPayments(asArray(restored.payments));
+      setFinancialNotes(restored.financialNotes || "");
+      setClinicalNotes(restored.clinicalNotes || "");
+      setOccurrences(restored.occurrences || "");
+      setAftercareNotes(restored.aftercareNotes || "");
+      if (restored.operationalChecklist) setOperationalChecklist(asArray(restored.operationalChecklist));
+      if (restored.biosafety) setBiosafety(restored.biosafety);
+    },
+  });
 
   useEffect(() => {
     if (!appointment) return;
@@ -599,6 +1037,7 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
       appointment_time: appointment.appointment_time || "",
       status: appointment.status || "pendente",
       notes: appointment.notes || "",
+      reschedule_reason: "",
       deposit_value: appointment.deposit_value || 0,
       deposit_status: appointment.deposit_status || "pendente",
       coupon_code: appointment.coupon_code || "",
@@ -606,6 +1045,20 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
     }, safeServices, safeJewelry));
     setPayments([{ method: appointment.remaining_payment_method || "Pix", amount: Math.max(0, Number(appointment.remaining_value || 0)), status: "pago", installments: 1, fee_amount: 0, expected_receipt_date: "" }]);
     setFinancialNotes(appointment.financial_notes || "");
+    setClinicalNotes("");
+    setOccurrences("");
+    setAftercareNotes("");
+    const requirements = operationalRequirements(appointment.operational_requirements_snapshot);
+    setOperationalChecklist(requirements.checklist.map((item) => ({ ...item, completed: false })));
+    setBiosafety({
+      enabled: requirements.biosafety.enabled,
+      material_lots: [],
+      sterilization_cycle: "",
+      sterilization_record: "",
+      applied_jewelry_id: appointment.jewelry_id || "",
+      applied_jewelry_variant_id: appointment.jewelry_variant_id || "",
+      notes: ""
+    });
     setError("");
     setDeletion(null);
     setCancellation(null);
@@ -638,9 +1091,16 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
     if (!appointment?.id) return;
     setError("");
     const pricedForm = priceAppointmentDraft(form, safeServices, safeJewelry);
+    const scheduleChanged = pricedForm.appointment_date !== appointment.appointment_date
+      || pricedForm.appointment_time !== appointment.appointment_time;
+    if (scheduleChanged && !String(pricedForm.reschedule_reason || "").trim()) {
+      setError("Informe o motivo do reagendamento.");
+      return;
+    }
     const payload = {
       ...pricedForm,
       ...patch,
+      reason: scheduleChanged ? pricedForm.reschedule_reason : patch.reason,
       appointment_items: normalizeAppointmentFormItems(pricedForm, safeServices, safeJewelry)
     };
     const response = await apiFetch(`/appointments/${appointment.id}`, {
@@ -653,6 +1113,7 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
       setError(data.error || "Não foi possível atualizar o agendamento.");
       return;
     }
+    quickDraft.clearDraft();
     onSaved?.();
   }
 
@@ -675,10 +1136,16 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
       const updateData = await updateResponse.json().catch(() => ({}));
       return setError(updateData.error || "Não foi possível salvar os itens do atendimento.");
     }
-    const response = await apiFetch(`/appointments/${appointment.id}/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ payments, financial_notes: financialNotes }) });
+    const response = await apiFetch(`/appointments/${appointment.id}/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ payments, financial_notes: financialNotes, clinical_notes: clinicalNotes, occurrences, aftercare_notes: aftercareNotes, checklist: operationalChecklist, biosafety }) });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) return setError(data.error || "Não foi possível concluir o atendimento.");
+    quickDraft.clearDraft();
     onSaved?.();
+  }
+
+  function closeQuickModal() {
+    quickDraft.flushDraft();
+    onClose?.();
   }
 
   async function applyClientCredit() {
@@ -705,26 +1172,40 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
       title="Detalhes do Agendamento"
       subtitle={appointment ? `${personName(appointment)} · ${appointment.procedure || "Atendimento"}` : ""}
       size="lg"
-      onClose={onClose}
+      onClose={closeQuickModal}
       footer={(
         <>
-          <Button variant="secondary" onClick={onClose}>Fechar</Button>
+          <Button variant="secondary" onClick={closeQuickModal}>Fechar</Button>
           <Button onClick={() => saveAppointment()}>Salvar alterações</Button>
         </>
       )}
     >
       {appointment && (
-        <div className="stack appointment-details-content">
+        <FormWorkflow
+          className="stack appointment-details-content"
+          mobileFullscreen
+          title="Atendimento"
+          description="Dados operacionais, clínicos e financeiros no mesmo fluxo."
+          draft={quickDraft}
+          actions={quickDraft.hasDraft ? <><Button variant="secondary" onClick={quickDraft.restoreDraft}>Restaurar</Button><Button variant="ghost" onClick={quickDraft.discardDraft}>Descartar</Button></> : null}
+        >
+          <ValidationSummary errors={error ? [error] : []} />
           <div className="soft-card">
             <strong>{personName(appointment)}</strong>
             <p>{appointment.whatsapp || "WhatsApp não informado"}</p>
             <p>{appointment.service_name || appointment.procedure || "Procedimento não informado"} · {appointment.professional_name || "Sem profissional"}</p>
+            {appointment.arrived_at && <p>Chegada registrada: {formatOperationalTime(appointment.arrived_at)}</p>}
+            {appointment.started_at && <p>Atendimento iniciado: {formatOperationalTime(appointment.started_at)}</p>}
+            {appointment.no_show_at && <p>Ausência registrada: {formatOperationalTime(appointment.no_show_at)}</p>}
           </div>
           <div className="form-grid">
             <Input type="date" label="Data" value={form.appointment_date} onChange={(value) => setForm({ ...form, appointment_date: value })} />
             <Input type="time" label="Horário" value={form.appointment_time} onChange={(value) => setForm({ ...form, appointment_time: value })} />
-            <StatusSelect value={form.status} options={appointment.status === "cancelado" ? [...APPOINTMENT_EDITABLE_STATUSES, "cancelado"] : APPOINTMENT_EDITABLE_STATUSES} onChange={(value) => setForm({ ...form, status: value })} />
+            <StatusSelect value={form.status} options={["cancelado", "nao_compareceu"].includes(appointment.status) ? [...APPOINTMENT_EDITABLE_STATUSES, appointment.status] : APPOINTMENT_EDITABLE_STATUSES} onChange={(value) => setForm({ ...form, status: value })} />
           </div>
+          {(form.appointment_date !== appointment.appointment_date || form.appointment_time !== appointment.appointment_time) && (
+            <Textarea label="Motivo do reagendamento" value={form.reschedule_reason || ""} onChange={(reschedule_reason) => setForm({ ...form, reschedule_reason })} required />
+          )}
           <AppointmentItemsEditor
             form={form}
             services={safeServices}
@@ -736,14 +1217,44 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
           <AppointmentValueSummary form={form} services={safeServices} jewelry={safeJewelry} />
           <Textarea label="Observação" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} />
           {form.status !== "atendido" && <section className="soft-card stack">
+            <div className="section-inline-header"><strong>Registro clínico</strong><small>Campos opcionais</small></div>
+            <Textarea label="Observações clínicas (opcional)" value={clinicalNotes} onChange={setClinicalNotes} />
+            <Textarea label="Intercorrências (opcional)" value={occurrences} onChange={setOccurrences} />
+            <Textarea label="Orientações pós-atendimento (opcional)" value={aftercareNotes} onChange={setAftercareNotes} />
+            {operationalChecklist.length > 0 && <div className="soft-card stack">
+              <div className="section-inline-header"><strong>Checklist do atendimento</strong><small>Opcionais podem ficar em branco</small></div>
+              {operationalChecklist.map((item) => <Checkbox key={item.key} label={`${item.label}${item.required ? " *" : ""}`} checked={Boolean(item.completed)} onChange={(completed) => setOperationalChecklist(operationalChecklist.map((row) => row.key === item.key ? { ...row, completed } : row))} />)}
+            </div>}
+            {operationalRules.biosafety.enabled && <div className="soft-card stack">
+              <div className="section-inline-header"><strong>Rastreabilidade de biossegurança</strong><small>Dados preservados no histórico</small></div>
+              <div className="form-grid">
+                <Input label={`Ciclo de esterilização${operationalRules.biosafety.required_fields.includes("sterilization_cycle") ? " *" : ""}`} value={biosafety.sterilization_cycle} onChange={(sterilization_cycle) => setBiosafety({ ...biosafety, sterilization_cycle })} />
+                <Input label={`Registro/comprovante${operationalRules.biosafety.required_fields.includes("sterilization_record") ? " *" : ""}`} value={biosafety.sterilization_record} onChange={(sterilization_record) => setBiosafety({ ...biosafety, sterilization_record })} />
+                <Select label={`Joia aplicada${operationalRules.biosafety.required_fields.includes("applied_jewelry") ? " *" : ""}`} value={biosafety.applied_jewelry_id} onChange={(applied_jewelry_id) => setBiosafety({ ...biosafety, applied_jewelry_id })}><option value="">Não informar</option>{safeJewelry.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select>
+              </div>
+              {asArray(biosafety.material_lots).map((material, index) => <div className="form-grid" key={index}>
+                <Input label={`Material/lote${operationalRules.biosafety.required_fields.includes("material_lots") ? " *" : ""}`} value={material.batch_code} onChange={(batch_code) => setBiosafety({ ...biosafety, material_lots: biosafety.material_lots.map((row, rowIndex) => rowIndex === index ? { ...row, batch_code } : row) })} placeholder="Ex.: Agulha lote ABC123" />
+                <Input type="number" min="1" label="Quantidade" value={material.quantity} onChange={(quantity) => setBiosafety({ ...biosafety, material_lots: biosafety.material_lots.map((row, rowIndex) => rowIndex === index ? { ...row, quantity } : row) })} />
+                <Button variant="secondary" onClick={() => setBiosafety({ ...biosafety, material_lots: biosafety.material_lots.filter((_, rowIndex) => rowIndex !== index) })}>Remover</Button>
+              </div>)}
+              <Button variant="secondary" onClick={() => setBiosafety({ ...biosafety, material_lots: [...biosafety.material_lots, { batch_code: "", quantity: 1 }] })}>Adicionar material/lote</Button>
+              <Textarea label="Observações de biossegurança (opcional)" value={biosafety.notes} onChange={(notes) => setBiosafety({ ...biosafety, notes })} />
+            </div>}
             <div className="section-inline-header"><strong>Conferência financeira</strong><Button variant="secondary" onClick={() => setPayments([...payments, { method: "Pix", amount: 0, status: "pago", installments: 1, fee_amount: 0, expected_receipt_date: "" }])}>Dividir pagamento</Button></div>
-            {payments.map((payment, index) => <div className="form-grid" key={`${index}-${payment.method}`}>
-              <PaymentSelect label={`Forma ${index + 1}`} value={payment.method} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, method: value } : item))} />
-              <Input type="number" label="Valor" value={payment.amount} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, amount: value } : item))} />
-              <Select label="Status" value={payment.status} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, status: value } : item))}><option value="pago">Pago</option><option value="pendente" disabled={!canGenerateReceivables}>Pendente{canGenerateReceivables ? "" : " — Profissional"}</option></Select>
-              {String(payment.method).toLowerCase().includes("crédito") && <><Input type="number" label="Parcelas" value={payment.installments} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, installments: value } : item))} /><Input type="number" label="Taxa" value={payment.fee_amount} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, fee_amount: value } : item))} /><Input type="date" label="Previsão de recebimento" value={payment.expected_receipt_date} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, expected_receipt_date: value } : item))} /></>}
-              {payments.length > 1 && <Button variant="secondary" className="danger" onClick={() => setPayments(payments.filter((_, itemIndex) => itemIndex !== index))}>Remover</Button>}
-            </div>)}
+            <ResponsiveEditableList
+              items={payments}
+              ariaLabel="Pagamentos do atendimento"
+              getKey={(payment, index) => payment.row_key || `${payment.method}-${index}`}
+              columns={[
+                { key: "method", label: "Forma", render: (payment, index) => <PaymentSelect ariaLabel={`Forma ${index + 1}`} value={payment.method} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, method: value } : item))} /> },
+                { key: "amount", label: "Valor", render: (payment, index) => <Input type="number" aria-label={`Valor ${index + 1}`} value={payment.amount} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, amount: Number(value || 0) } : item))} /> },
+                { key: "status", label: "Status", render: (payment, index) => <Select ariaLabel={payments.length === 1 ? "Status" : `Status ${index + 1}`} value={payment.status} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, status: value } : item))}><option value="pago">Pago</option><option value="pendente" disabled={!canGenerateReceivables}>Pendente{canGenerateReceivables ? "" : " — Profissional"}</option></Select> },
+                { key: "installments", label: "Parcelas", render: (payment, index) => String(payment.method).toLowerCase().includes("crédito") ? <Input type="number" aria-label={`Parcelas ${index + 1}`} value={payment.installments} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, installments: Number(value || 1) } : item))} /> : "—" },
+                { key: "fee", label: "Taxa", render: (payment, index) => String(payment.method).toLowerCase().includes("crédito") ? <Input type="number" aria-label={`Taxa ${index + 1}`} value={payment.fee_amount} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, fee_amount: Number(value || 0) } : item))} /> : "—" },
+                { key: "receipt", label: "Previsão", render: (payment, index) => String(payment.method).toLowerCase().includes("crédito") ? <Input type="date" aria-label={`Previsão ${index + 1}`} value={payment.expected_receipt_date} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, expected_receipt_date: value } : item))} /> : "—" },
+              ]}
+              onRemove={payments.length > 1 ? (_payment, index) => setPayments(payments.filter((_, itemIndex) => itemIndex !== index)) : null}
+            />
             {!canGenerateReceivables && (
               <PlanUpgradeNotice title="Saldo pendente no plano Profissional" onUpgrade={onUpgrade}>
                 No Start, o atendimento pode ser finalizado com pagamentos recebidos. Gerar saldo a receber exige o Financeiro básico.
@@ -754,20 +1265,22 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
           </section>}
           <div className="toolbar compact-actions">
             <Button variant="secondary" onClick={() => saveAppointment({ status: "confirmado" })}>Confirmar</Button>
+            {form.status === "confirmado" && <Button variant="secondary" onClick={() => saveAppointment({ status: "chegou" })}>Registrar chegada</Button>}
+            {form.status === "chegou" && <Button variant="secondary" onClick={() => saveAppointment({ status: "em_atendimento" })}>Iniciar atendimento</Button>}
             <Button variant="secondary" onClick={() => saveAppointment({ status: "remarcado" })}>Reagendar</Button>
             {canCancel && <Button variant="secondary" className="danger" onClick={() => setCancellation({ resolution: hasPaidDeposit ? "retain_deposit" : "no_payment", refund_method: "Pix", reason: "" })}>Cancelar</Button>}
+            {canCancel && !["atendido", "cancelado", "nao_compareceu"].includes(form.status) && <Button variant="secondary" onClick={() => setCancellation({ outcome: "no_show", resolution: hasPaidDeposit ? "retain_deposit" : "no_payment", refund_method: "Pix", reason: "" })}>Não compareceu</Button>}
             <Button onClick={completeAppointment}>Revisar e finalizar</Button>
           </div>
           {canResolveFinance && form.status !== "atendido" && form.status !== "cancelado" && <Button variant="secondary" onClick={applyClientCredit}>Aplicar crédito disponível</Button>}
           {readStoredSession()?.user?.role === "admin" && <Button variant="secondary" className="danger" onClick={openDeletion}>Excluir definitivamente</Button>}
-          {error && <span className="form-error">{error}</span>}
           <Modal open={!!deletion} title="Excluir definitivamente" subtitle="Esta ação exige análise e confirmação" onClose={() => !deletion?.busy && setDeletion(null)} footer={<><Button variant="secondary" onClick={() => setDeletion(null)}>Voltar</Button><Button variant="danger" disabled={!deletion?.canDelete || deletion?.busy || deletion?.confirmation !== "EXCLUIR AGENDAMENTO" || !deletion?.reason?.trim()} onClick={deleteAppointment}>{deletion?.busy ? "Excluindo…" : "Excluir agendamento"}</Button></>}>
             {deletion && <div className="stack"><div className="soft-card"><strong>{deletion.canDelete ? "Agendamento de teste sem vínculos" : "Exclusão bloqueada"}</strong><p>{deletion.canDelete ? "A exclusão é irreversível e ficará registrada na auditoria." : "Existem vínculos financeiros, clínicos ou de estoque. Cancele o agendamento para preservar o histórico."}</p></div><div className="summary-grid">{Object.entries(deletion.impact).map(([key, value]) => <span key={key}>{key.replaceAll("_", " ")}: <strong>{value}</strong></span>)}</div><Input label="Motivo obrigatório" value={deletion.reason} onChange={(reason) => setDeletion({ ...deletion, reason })} /><Input label="Digite EXCLUIR AGENDAMENTO" value={deletion.confirmation} onChange={(confirmation) => setDeletion({ ...deletion, confirmation })} /></div>}
           </Modal>
-          <Modal open={!!cancellation} title="Cancelar agendamento" subtitle="Defina o destino do sinal; a decisão ficará auditada." onClose={() => setCancellation(null)} footer={<><Button variant="secondary" onClick={() => setCancellation(null)}>Voltar</Button><Button variant="danger" disabled={!cancellation?.reason?.trim()} onClick={cancelWithResolution}>Confirmar cancelamento</Button></>}>
+          <Modal open={!!cancellation} title={cancellation?.outcome === "no_show" ? "Registrar ausência" : "Cancelar agendamento"} subtitle="Defina o destino do sinal; a decisão ficará auditada." onClose={() => setCancellation(null)} footer={<><Button variant="secondary" onClick={() => setCancellation(null)}>Voltar</Button><Button variant="danger" disabled={!cancellation?.reason?.trim()} onClick={cancelWithResolution}>Confirmar</Button></>}>
             {cancellation && <div className="stack"><Select label="Resolução financeira" value={cancellation.resolution} onChange={(resolution) => setCancellation({ ...cancellation, resolution })}>{hasPaidDeposit ? <><option value="retain_deposit">Reter sinal</option>{canResolveFinance && <option value="client_credit">Converter sinal em crédito</option>}{canResolveFinance && <option value="manual_refund">Reembolso manual</option>}</> : <option value="no_payment">Sem pagamento recebido</option>}</Select>{cancellation.resolution === "manual_refund" && <PaymentSelect label="Forma do reembolso" value={cancellation.refund_method} onChange={(refund_method) => setCancellation({ ...cancellation, refund_method })} />}<Textarea label="Motivo obrigatório" value={cancellation.reason} onChange={(reason) => setCancellation({ ...cancellation, reason })} /></div>}
           </Modal>
-        </div>
+        </FormWorkflow>
       )}
     </Modal>
   );
@@ -775,33 +1288,23 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
 
 export function BookingAdmin({ onBack, initialTab }) {
   const { data: services } = useFetch("/services");
-  const { data: procedures } = useFetch("/procedures");
   const { data: professionalsData } = useFetch("/professionals");
   const { data: options } = useFetch("/options");
   const { data: availability } = useFetch("/availability");
   const { data: blocks } = useFetch("/schedule-blocks");
   const { data: appointments } = useFetch("/appointments?status=pendente");
-  // Serviço, procedimento e profissional alimentam também "/options" (usado nos
-  // Os cadastros daqui também alimentam o checklist do Onboarding.
+  // Serviço e profissional alimentam também "/options" e o checklist do onboarding.
   const invalidate = useApiInvalidate();
-  const refreshServices = () => invalidate("/services", "/options", "/booking/readiness");
-  const refreshProcedures = () => invalidate("/procedures", "/options", "/booking/readiness");
   const refreshProfessionals = () => invalidate("/professionals", "/options", "/booking/readiness");
   const refreshAvailability = () => invalidate("/availability", "/booking/readiness");
   const refreshBlocks = () => invalidate("/schedule-blocks", "/availability");
   const refreshAppointments = () => invalidate("/appointments", "/dashboard");
-  const [tab, setTab] = useState(initialTab === "servicos" ? "profissionais" : (initialTab || "profissionais"));
-  const [serviceForm, setServiceForm] = useState(defaultServiceForm());
-  const [editingServiceId, setEditingServiceId] = useState(null);
-  const [serviceModalOpen, setServiceModalOpen] = useState(false);
-  const [procedureForm, setProcedureForm] = useState(defaultProcedureForm());
-  const [editingProcedureId, setEditingProcedureId] = useState(null);
-  const [procedureModalOpen, setProcedureModalOpen] = useState(false);
+  const normalizeSettingsTab = (value) => ["procedimentos", "profissionais", "horarios", "recursos", "bloqueios", "solicitacoes"].includes(value) ? value : "procedimentos";
+  const [tab, setTab] = useState(normalizeSettingsTab(initialTab));
+  useEffect(() => setTab(normalizeSettingsTab(initialTab)), [initialTab]);
   const [professionalForm, setProfessionalForm] = useState(defaultProfessionalForm());
   const [editingProfessionalId, setEditingProfessionalId] = useState(null);
   const [professionalModalOpen, setProfessionalModalOpen] = useState(false);
-  const [serviceError, setServiceError] = useState("");
-  const [procedureError, setProcedureError] = useState("");
   const [professionalError, setProfessionalError] = useState("");
   const [weeklyProfessionalId, setWeeklyProfessionalId] = useState("");
   const [weeklyDays, setWeeklyDays] = useState([]);
@@ -814,13 +1317,11 @@ export function BookingAdmin({ onBack, initialTab }) {
   const professionals = asArray(asObject(options).professionals);
   const allProfessionals = asArray(professionalsData);
   const safeServices = asArray(services);
-  const safeProcedures = asArray(procedures);
   const safeAvailability = asArray(availability);
   const safeBlocks = asArray(blocks);
   const safeAppointments = asArray(appointments);
 
   const activeServices = safeServices.filter((service) => Boolean(Number(service.is_active ?? service.active_online_booking)));
-  const activeProcedures = safeProcedures.filter((procedure) => Boolean(Number(procedure.is_active)));
   const activeProfessionals = allProfessionals.filter((professional) => Boolean(Number(professional.active)));
   const weeklyWeekdays = [0, 1, 2, 3, 4, 5, 6];
 
@@ -874,143 +1375,7 @@ export function BookingAdmin({ onBack, initialTab }) {
     setWeeklyDays(weeklyDaysForProfessional(weeklyProfessionalId));
   }, [availability, weeklyProfessionalId, activeProfessionals.length]);
 
-  if (services == null || procedures == null || professionalsData == null || availability == null || blocks == null || appointments == null) return <Loading />;
-
-  function validateServiceForm() {
-    if (!serviceForm.name.trim()) return "Informe o nome do serviço.";
-    if (Number(serviceForm.base_price || 0) < 0) return "Preço não pode ser negativo.";
-    if (Number(serviceForm.duration_minutes || 0) <= 0) return "Duração deve ser um número positivo.";
-    return "";
-  }
-
-  function validateProcedureForm() {
-    if (!procedureForm.name.trim()) return "Informe o nome do procedimento.";
-    if (!procedureForm.service_id) return "Procedimento precisa ter um serviço vinculado.";
-    if (Number(procedureForm.price || 0) < 0) return "Preço não pode ser negativo.";
-    if (Number(procedureForm.duration_minutes || 0) <= 0) return "Duração deve ser um número positivo.";
-    return "";
-  }
-
-  function openNewService() {
-    setEditingServiceId(null);
-    setServiceForm(defaultServiceForm());
-    setServiceError("");
-    setServiceModalOpen(true);
-  }
-
-  async function saveService(event) {
-    event.preventDefault();
-    setServiceError("");
-    const error = validateServiceForm();
-    if (error) return setServiceError(error);
-    const response = await apiFetch(editingServiceId ? `/services/${editingServiceId}` : "/services", {
-      method: editingServiceId ? "PUT" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(serviceForm)
-    });
-    if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
-      return setServiceError(payload.error || "Não foi possível salvar o serviço.");
-    }
-    setServiceForm(defaultServiceForm());
-    setEditingServiceId(null);
-    setServiceModalOpen(false);
-    refreshServices();
-  }
-
-  function editService(service) {
-    setEditingServiceId(service.id);
-    setServiceError("");
-    setServiceForm({
-      name: service.name || "",
-      description: service.description || "",
-      base_price: service.base_price || 0,
-      deposit_value: Number(service.deposit_value || 25),
-      duration_minutes: service.duration_minutes || 40,
-      is_active: Boolean(service.is_active)
-    });
-    setServiceModalOpen(true);
-  }
-
-  function removeService(service) {
-    setDeleting({
-      message: `Excluir ${service.name}?`,
-      run: async () => {
-        const response = await apiFetch(`/services/${service.id}`, { method: "DELETE" });
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}));
-          return setServiceError(payload.error || "Não foi possível excluir o serviço.");
-        }
-        if (editingServiceId === service.id) {
-          setEditingServiceId(null);
-          setServiceForm(defaultServiceForm());
-        }
-        refreshServices();
-        refreshProcedures();
-      }
-    });
-  }
-
-  function openNewProcedure() {
-    setEditingProcedureId(null);
-    setProcedureForm(defaultProcedureForm());
-    setProcedureError("");
-    setProcedureModalOpen(true);
-  }
-
-  async function saveProcedure(event) {
-    event.preventDefault();
-    setProcedureError("");
-    const error = validateProcedureForm();
-    if (error) return setProcedureError(error);
-    const response = await apiFetch(editingProcedureId ? `/procedures/${editingProcedureId}` : "/procedures", {
-      method: editingProcedureId ? "PUT" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(procedureForm)
-    });
-    if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
-      return setProcedureError(payload.error || "Não foi possível salvar o procedimento.");
-    }
-    setProcedureForm(defaultProcedureForm());
-    setEditingProcedureId(null);
-    setProcedureModalOpen(false);
-    refreshProcedures();
-  }
-
-  function editProcedure(procedure) {
-    setEditingProcedureId(procedure.id);
-    setProcedureError("");
-    setProcedureForm({
-      service_id: procedure.service_id || "",
-      name: procedure.name || "",
-      body_area: procedure.body_area || "",
-      description: procedure.description || "",
-      price: procedure.price || 0,
-      duration_minutes: procedure.duration_minutes || 40,
-      aftercare_instructions: procedure.aftercare_instructions || "",
-      is_active: Boolean(procedure.is_active)
-    });
-    setProcedureModalOpen(true);
-  }
-
-  function removeProcedure(procedure) {
-    setDeleting({
-      message: `Excluir ${procedure.name}?`,
-      run: async () => {
-        const response = await apiFetch(`/procedures/${procedure.id}`, { method: "DELETE" });
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}));
-          return setProcedureError(payload.error || "Não foi possível excluir o procedimento.");
-        }
-        if (editingProcedureId === procedure.id) {
-          setEditingProcedureId(null);
-          setProcedureForm(defaultProcedureForm());
-        }
-        refreshProcedures();
-      }
-    });
-  }
+  if (services == null || professionalsData == null || availability == null || blocks == null || appointments == null) return <Loading />;
 
   function openNewProfessional() {
     setEditingProfessionalId(null);
@@ -1085,7 +1450,6 @@ export function BookingAdmin({ onBack, initialTab }) {
     setReadinessMessage("");
     if (!activeProfessionals.length) return setReadinessMessage("Cadastre e ative pelo menos um profissional antes de configurar a agenda semanal.");
     if (!activeServices.length) return setReadinessMessage("Cadastre e ative pelo menos um serviço antes de configurar a agenda semanal.");
-    if (!activeProcedures.length) return setReadinessMessage("Cadastre e ative pelo menos um procedimento vinculado ao serviço.");
     if (!weeklyProfessionalId) return setReadinessMessage("Escolha o profissional da agenda semanal.");
     const response = await apiFetch("/availability/generate-weekly", {
       method: "POST",
@@ -1173,13 +1537,19 @@ export function BookingAdmin({ onBack, initialTab }) {
       <Tabs value={tab} onValueChange={setTab}>
         <Tabs.List className="customization-tabs" aria-label="Configurações da agenda">
           {[
+            ["procedimentos", "Procedimentos"],
             ["profissionais", "Profissionais"],
             ["horarios", "Agenda semanal"],
+            ["recursos", "Salas e recursos"],
             ["bloqueios", "Disponibilidade avançada"],
             ["solicitacoes", "Solicitações pendentes"]
           ].map(([id, label]) => <Tabs.Trigger key={id} value={id}>{label}</Tabs.Trigger>)}
         </Tabs.List>
       </Tabs>
+
+      {tab === "procedimentos" && <ServicesWorkspace />}
+
+      {tab === "recursos" && <AgendaResources />}
 
       {tab === "profissionais" && (
         <div className="panel">
@@ -1265,150 +1635,6 @@ export function BookingAdmin({ onBack, initialTab }) {
         </div>
       )}
 
-      {tab === "servicos" && (
-        <div className="stack">
-          <div className="panel">
-            <CrudHeader
-              title="Serviços cadastrados"
-              subtitle="Cadastro real no PostgreSQL"
-              actionLabel="Novo serviço"
-              onAction={openNewService}
-            />
-            <DataView
-              rows={safeServices}
-              defaultSort={{ key: "name", dir: "asc" }}
-              searchPlaceholder="Buscar por nome do serviço"
-              filters={[
-                {
-                  key: "status",
-                  label: "Agendamento online",
-                  type: "select",
-                  options: [{ value: "ativo", label: "Ativo" }, { value: "inativo", label: "Inativo" }],
-                  match: (service, value) => (service.is_active ? "ativo" : "inativo") === value
-                }
-              ]}
-              columns={[
-                { key: "name", label: "Nome" },
-                { key: "duration_minutes", label: "Duração", value: (service) => asNumber(service.duration_minutes), render: (service) => `${service.duration_minutes} min` },
-                { key: "base_price", label: "Preço base", value: (service) => asNumber(service.base_price), render: (service) => currency.format(service.base_price || 0) },
-                { key: "is_active", label: "Status", value: (service) => service.is_active ? "Ativo" : "Inativo", render: (service) => <StatusBadge status={service.is_active ? "Ativo" : "Inativo"} /> },
-              ]}
-              actions={(service) => <RowActions actions={[
-                { label: "Editar", onClick: () => editService(service), primary: true },
-                { label: "Excluir", onClick: () => removeService(service), danger: true },
-              ]} />}
-              empty="Você ainda não possui serviços cadastrados."
-              emptyFiltered="Nenhum serviço corresponde aos filtros aplicados."
-            />
-          </div>
-
-          <div className="panel">
-            <CrudHeader
-              title="Procedimentos cadastrados"
-              subtitle="Vincule a um serviço"
-              actionLabel="Novo procedimento"
-              onAction={openNewProcedure}
-            />
-            <DataView
-              rows={safeProcedures}
-              defaultSort={{ key: "name", dir: "asc" }}
-              searchPlaceholder="Buscar por nome, serviço ou área do corpo"
-              filters={[
-                {
-                  key: "service_id",
-                  label: "Serviço vinculado",
-                  type: "select",
-                  options: safeServices.map((service) => ({ value: String(service.id), label: service.name })),
-                  match: (procedure, value) => String(procedure.service_id) === value
-                },
-                {
-                  key: "body_area",
-                  label: "Área do corpo",
-                  type: "select",
-                  options: distinctOptions(safeProcedures.map((procedure) => procedure.body_area)),
-                  match: (procedure, value) => procedure.body_area === value
-                },
-                {
-                  key: "status",
-                  label: "Status",
-                  type: "select",
-                  options: [{ value: "ativo", label: "Ativo" }, { value: "inativo", label: "Inativo" }],
-                  match: (procedure, value) => (procedure.is_active ? "ativo" : "inativo") === value
-                }
-              ]}
-              columns={[
-                { key: "name", label: "Nome" },
-                { key: "service_name", label: "Serviço", value: (procedure) => procedure.service_name || "Sem serviço", render: (procedure) => procedure.service_name || "Sem serviço" },
-                { key: "body_area", label: "Área do corpo", value: (procedure) => procedure.body_area || "Sem área", render: (procedure) => procedure.body_area || "Sem área" },
-                { key: "duration_minutes", label: "Duração", value: (procedure) => asNumber(procedure.duration_minutes), render: (procedure) => `${procedure.duration_minutes} min` },
-                { key: "price", label: "Preço", value: (procedure) => asNumber(procedure.price), render: (procedure) => currency.format(procedure.price || 0) },
-                { key: "is_active", label: "Status", value: (procedure) => procedure.is_active ? "Ativo" : "Inativo", render: (procedure) => <StatusBadge status={procedure.is_active ? "Ativo" : "Inativo"} /> },
-              ]}
-              actions={(procedure) => <RowActions actions={[
-                { label: "Editar", onClick: () => editProcedure(procedure), primary: true },
-                { label: "Excluir", onClick: () => removeProcedure(procedure), danger: true },
-              ]} />}
-              empty="Você ainda não possui procedimentos cadastrados."
-              emptyFiltered="Nenhum procedimento corresponde aos filtros aplicados."
-            />
-          </div>
-
-          <Modal
-            open={serviceModalOpen}
-            title={editingServiceId ? "Editar serviço" : "Novo serviço"}
-            subtitle="Cadastro real no PostgreSQL"
-            onClose={() => setServiceModalOpen(false)}
-            footer={(
-              <>
-                <Button variant="secondary" onClick={() => setServiceModalOpen(false)}>Cancelar</Button>
-                <Button type="submit" form="service-form">{editingServiceId ? "Salvar alterações" : "Salvar serviço"}</Button>
-              </>
-            )}
-          >
-            <form id="service-form" onSubmit={saveService}>
-              <div className="form-grid">
-                <Input label="Nome" value={serviceForm.name} onChange={(value) => setServiceForm({ ...serviceForm, name: value })} required />
-                <Input type="number" label="Duração em minutos" value={serviceForm.duration_minutes} onChange={(value) => setServiceForm({ ...serviceForm, duration_minutes: value })} />
-                <Input type="number" label="Preço base" value={serviceForm.base_price} onChange={(value) => setServiceForm({ ...serviceForm, base_price: value })} />
-                <Input type="number" label="Sinal obrigatório" value={serviceForm.deposit_value} onChange={(value) => setServiceForm({ ...serviceForm, deposit_value: value })} />
-              </div>
-              <Textarea label="Descrição" value={serviceForm.description} onChange={(value) => setServiceForm({ ...serviceForm, description: value })} />
-              <Switch label="Serviço ativo" checked={serviceForm.is_active} onChange={(value) => setServiceForm({ ...serviceForm, is_active: value })} />
-              {serviceError && <span className="form-error">{serviceError}</span>}
-            </form>
-          </Modal>
-
-          <Modal
-            open={procedureModalOpen}
-            title={editingProcedureId ? "Editar procedimento" : "Novo procedimento"}
-            subtitle="Vincule a um serviço"
-            onClose={() => setProcedureModalOpen(false)}
-            footer={(
-              <>
-                <Button variant="secondary" onClick={() => setProcedureModalOpen(false)}>Cancelar</Button>
-                <Button type="submit" form="procedure-form">{editingProcedureId ? "Salvar alterações" : "Salvar procedimento"}</Button>
-              </>
-            )}
-          >
-            <form id="procedure-form" onSubmit={saveProcedure}>
-              <div className="form-grid">
-                <Select label="Serviço" value={procedureForm.service_id} onChange={(value) => setProcedureForm({ ...procedureForm, service_id: value })} required>
-                  <option value="">Selecione</option>
-                  {safeServices.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
-                </Select>
-                <Input label="Nome" value={procedureForm.name} onChange={(value) => setProcedureForm({ ...procedureForm, name: value })} required />
-                <Input label="Área do corpo" value={procedureForm.body_area} onChange={(value) => setProcedureForm({ ...procedureForm, body_area: value })} />
-                <Input type="number" label="Preço" value={procedureForm.price} onChange={(value) => setProcedureForm({ ...procedureForm, price: value })} />
-                <Input type="number" label="Duração em minutos" value={procedureForm.duration_minutes} onChange={(value) => setProcedureForm({ ...procedureForm, duration_minutes: value })} />
-              </div>
-              <Textarea label="Descrição" value={procedureForm.description} onChange={(value) => setProcedureForm({ ...procedureForm, description: value })} />
-              <Textarea label="Orientações pós-atendimento" value={procedureForm.aftercare_instructions} onChange={(value) => setProcedureForm({ ...procedureForm, aftercare_instructions: value })} />
-              <Switch label="Procedimento ativo" checked={procedureForm.is_active} onChange={(value) => setProcedureForm({ ...procedureForm, is_active: value })} />
-              {procedureError && <span className="form-error">{procedureError}</span>}
-            </form>
-          </Modal>
-        </div>
-      )}
       {tab === "horarios" && (
         <article className="panel weekly-schedule-panel">
           <div className="panel-heading">
@@ -1580,48 +1806,15 @@ export function BookingAdmin({ onBack, initialTab }) {
   );
 }
 
+/** @param {{ appointments?: any[], onChanged?: () => any, compact?: boolean }} props */
 export function AppointmentList({ appointments = [], onChanged, compact }) {
   const safeAppointments = asArray(appointments);
-  // As opções de profissional saem da própria lista: o componente recebe só os
-  // agendamentos, sem acesso ao cadastro de profissionais.
-  const professionalOptions = useMemo(
-    () => distinctOptions(safeAppointments.map((item) => item.professional_name)),
-    [appointments]
-  );
 
   return (
     <DataView
       rows={safeAppointments}
       defaultSort={{ key: "appointment_date", dir: "asc" }}
-      searchPlaceholder="Buscar por cliente, procedimento, região, profissional ou data"
-      filters={[
-        {
-          key: "status",
-          label: "Status",
-          type: "select",
-          options: APPOINTMENT_STATUS_OPTIONS,
-          match: (item, value) => item.status === value
-        },
-        {
-          key: "professional_name",
-          label: "Profissional",
-          type: "select",
-          options: professionalOptions,
-          match: (item, value) => item.professional_name === value
-        },
-        {
-          key: "date_from",
-          label: "Data inicial",
-          type: "date",
-          match: (item, value) => String(item.appointment_date || "").slice(0, 10) >= value
-        },
-        {
-          key: "date_to",
-          label: "Data final",
-          type: "date",
-          match: (item, value) => String(item.appointment_date || "").slice(0, 10) <= value
-        }
-      ]}
+      searchable={false}
       columns={[
         {
           key: "appointment_date",
