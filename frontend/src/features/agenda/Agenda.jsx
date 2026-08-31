@@ -1,6 +1,6 @@
 ﻿// Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ChevronLeft, ChevronRight, Copy, ExternalLink, MoreHorizontal, Plus, Settings2 } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Copy, ExternalLink, Filter, MoreHorizontal, Plus, Search, Settings2, X } from "lucide-react";
 import { Accordion, Button, Checkbox, FinancialSummary, Input, Metric, PaymentSelect, Select, StatusBadge, StatusSelect, Switch, Tabs, Textarea } from "../../components/common/Ui";
 import { Modal, CrudHeader, ConfirmDeleteModal, DropdownMenu, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
@@ -349,7 +349,9 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
   const { data: clients } = useFetch("/clients");
   const { data: services } = useFetch("/services");
   const { data: procedures } = useFetch("/procedures");
-  const [filters, setFilters] = useState({ mode: "diario", professional_id: "", status: "" });
+  const [filters, setFilters] = useState({ mode: "diario", search: "", professional_id: "", status: "", from: "", to: "" });
+  const [filterModalOpen, setFilterModalOpen] = useState(false);
+  const [draftFilters, setDraftFilters] = useState({ professional_id: "", status: "", from: "", to: "" });
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [createSeed, setCreateSeed] = useState(null);
@@ -360,7 +362,8 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
     if (navigationTarget === "diario") setFilters((current) => ({ ...current, mode: "diario" }));
     if (navigationTarget === "espera") setFilters((current) => ({ ...current, mode: "espera" }));
   }, [navigationTarget]);
-  const { data } = useFetch(`/appointments?${new URLSearchParams(Object.fromEntries(Object.entries(filters).filter(([, v]) => v && !["mensal", "semanal", "diario", "lista", "realizados", "espera"].includes(v))))}`);
+  const appointmentQuery = new URLSearchParams(Object.fromEntries(Object.entries(filters).filter(([key, value]) => key !== "mode" && value)));
+  const { data } = useFetch(`/appointments?${appointmentQuery}`);
   // Invalidar "/appointments" alcança o calendário sob qualquer combinação de
   // filtros, não só a consulta que está montada agora.
   const invalidate = useApiInvalidate();
@@ -378,6 +381,24 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
   const cancellationRate = operationalRows.length
     ? Math.round(operationalRows.filter((item) => ["cancelado", "nao_compareceu"].includes(item.status)).length / operationalRows.length * 100)
     : 0;
+  const activeFilterCount = ["professional_id", "status", "from", "to"].filter((key) => filters[key]).length;
+
+  function openFilters() {
+    setDraftFilters({ professional_id: filters.professional_id, status: filters.status, from: filters.from, to: filters.to });
+    setFilterModalOpen(true);
+  }
+
+  function applyFilters() {
+    setFilters({ ...filters, ...draftFilters });
+    setFilterModalOpen(false);
+  }
+
+  function clearFilters() {
+    const empty = { professional_id: "", status: "", from: "", to: "" };
+    setDraftFilters(empty);
+    setFilters({ ...filters, ...empty });
+    setFilterModalOpen(false);
+  }
 
   return (
     <section className="stack">
@@ -414,16 +435,6 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
         <div className="segmented">
           {[["mensal", "Mensal"], ["semanal", "Semanal"], ["diario", "Diário"], ["lista", "Agendamentos"]].map(([mode, label]) => <button key={mode} className={filters.mode === mode ? "active" : ""} onClick={() => setFilters({ ...filters, mode })}>{label}</button>)}
         </div>
-        {!['realizados', 'espera'].includes(filters.mode) && <>
-          <Select label="Profissional" value={filters.professional_id} onChange={(v) => setFilters({ ...filters, professional_id: v })}>
-            <option value="">Todos</option>
-            {asArray(safeOptions.professionals).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </Select>
-          <Select label="Status" value={filters.status} onChange={(v) => setFilters({ ...filters, status: v })}>
-            <option value="">Todos</option>
-            {APPOINTMENT_STATUS_OPTIONS.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
-          </Select>
-        </>}
         {calendar && <div className="calendar-nav">
           <button aria-label="Período anterior" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, -1))}><ChevronLeft size={18} /></button>
           <strong>{calendar.title}</strong>
@@ -431,6 +442,31 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
           <button onClick={() => setCurrentDate(new Date())}>Hoje</button>
         </div>}
       </div>
+      {["mensal", "semanal", "diario", "lista"].includes(filters.mode) && <div className="dataview-toolbar agenda-shared-filters">
+        <label className="dataview-search">
+          <Search size={16} aria-hidden="true" />
+          <input type="search" value={filters.search} placeholder="Buscar cliente, telefone ou procedimento" onChange={(event) => setFilters({ ...filters, search: event.target.value })} />
+          {filters.search && <button type="button" onClick={() => setFilters({ ...filters, search: "" })} aria-label="Limpar busca"><X size={14} /></button>}
+        </label>
+        <button type="button" className={`dataview-filter-toggle ${activeFilterCount ? "has-filters" : ""}`} onClick={openFilters} aria-haspopup="dialog">
+          <Filter size={15} /> Filtros
+          {activeFilterCount > 0 && <span className="dataview-filter-count">{activeFilterCount}</span>}
+        </button>
+      </div>}
+      <Modal open={filterModalOpen} title="Filtros da Agenda" subtitle="Aplicados às quatro visualizações" onClose={() => setFilterModalOpen(false)} footer={<><Button variant="secondary" onClick={clearFilters}>Limpar</Button><Button onClick={applyFilters}>Aplicar filtros</Button></>}>
+        <div className="dataview-filter-modal-grid">
+          <Select label="Profissional" value={draftFilters.professional_id} onChange={(professional_id) => setDraftFilters({ ...draftFilters, professional_id })}>
+            <option value="">Todos</option>
+            {asArray(safeOptions.professionals).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </Select>
+          <Select label="Status" value={draftFilters.status} onChange={(status) => setDraftFilters({ ...draftFilters, status })}>
+            <option value="">Todos</option>
+            {APPOINTMENT_STATUS_OPTIONS.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+          </Select>
+          <Input type="date" label="Data inicial" value={draftFilters.from} onChange={(from) => setDraftFilters({ ...draftFilters, from })} />
+          <Input type="date" label="Data final" value={draftFilters.to} onChange={(to) => setDraftFilters({ ...draftFilters, to })} />
+        </div>
+      </Modal>
       {filters.mode === "espera" ? (
         <Waitlist onSchedule={(item) => setCreateSeed({
           waitlist_id: item.id,
@@ -1740,7 +1776,7 @@ export function AppointmentList({ appointments = [], onChanged, compact }) {
     <DataView
       rows={safeAppointments}
       defaultSort={{ key: "appointment_date", dir: "asc" }}
-      searchPlaceholder="Buscar por cliente, procedimento, região, profissional ou data"
+      searchable={false}
       columns={[
         {
           key: "appointment_date",
