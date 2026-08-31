@@ -11,6 +11,8 @@
   .agenda-visual-page .agenda-page-heading { padding: 10px 14px; }
   .agenda-visual-page > .toolbar { padding: 6px 8px; }
   .agenda-visual-page > .agenda-shared-filters { margin-top: -3px; padding: 0 2px; }
+  .agenda-indicators-control { display: flex; justify-content: flex-end; min-height: 24px; margin-top: -5px; }
+  .agenda-indicators-control .button { min-height: 26px; padding: 2px 7px; font-size: 12px; }
 
   .permission-grid {
     display: grid;

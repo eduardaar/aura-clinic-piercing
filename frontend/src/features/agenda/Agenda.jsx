@@ -448,7 +448,6 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
               </DropdownMenu.Content>
             </DropdownMenu.Portal>
           </DropdownMenu.Root>
-          <Button variant="ghost" onClick={() => setShowIndicators((visible) => !visible)}>{showIndicators ? <EyeOff size={16} /> : <Eye size={16} />}{showIndicators ? "Esconder indicadores" : "Mostrar indicadores"}</Button>
           <Button onClick={() => setCreateSeed({})}><Plus size={16} /> Novo agendamento</Button>
         </div>
       </div>
@@ -481,6 +480,9 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
           <Filter size={15} /> Filtros
           {activeFilterCount > 0 && <span className="dataview-filter-count">{activeFilterCount}</span>}
         </button>
+      </div>}
+      {["mensal", "semanal", "diario", "lista"].includes(filters.mode) && <div className="agenda-indicators-control">
+        <Button variant="ghost" onClick={() => setShowIndicators((visible) => !visible)}>{showIndicators ? <EyeOff size={14} /> : <Eye size={14} />}{showIndicators ? "Ocultar indicadores" : "Mostrar indicadores"}</Button>
       </div>}
       <Modal open={filterModalOpen} title="Filtros da Agenda" subtitle="Aplicados às quatro visualizações" onClose={() => setFilterModalOpen(false)} footer={<><Button variant="secondary" onClick={clearFilters}>Limpar</Button><Button onClick={applyFilters}>Aplicar filtros</Button></>}>
         <div className="dataview-filter-modal-grid">
