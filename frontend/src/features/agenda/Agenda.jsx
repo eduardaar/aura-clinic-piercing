@@ -426,7 +426,7 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
   }
 
   return (
-    <section className="stack">
+    <section className="stack agenda-visual-page">
       <div className="panel agenda-page-heading">
         <div>
           <span className="eyebrow">Gestão de agenda</span>
@@ -450,7 +450,7 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
           <Button onClick={() => setCreateSeed({})}><Plus size={16} /> Novo agendamento</Button>
         </div>
       </div>
-      <div className="metric-grid">
+      <div className="metric-grid agenda-metric-grid">
         <Metric label="Agenda de hoje" value={todayRows.length} />
         <Metric label="Aguardando início" value={todayRows.filter((item) => ["pendente", "confirmado", "chegou"].includes(item.status)).length} />
         <Metric label="Atraso médio" value={`${averageDelay} min`} />
