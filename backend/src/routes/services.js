@@ -3,7 +3,7 @@ import { Router } from "express";
 import { withFeature } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { boolNumber } from "../services/utils.js";
-import { listServices, countServices, getService, replaceProfessionalServices } from "../services/appointments.js";
+import { listServices, countServices, getService, replaceCompatibleServiceItems, replaceProfessionalServices } from "../services/appointments.js";
 import { validateBody } from "../middleware/validate.js";
 import { serviceCreateSchema, serviceUpdateSchema } from "../schemas/index.js";
 import { parsePaging, pageResponse } from "../services/pagination.js";
@@ -28,6 +28,15 @@ router.put("/api/service-operational-settings", withFeature("procedures", async 
   await db.run(`UPDATE service_operational_settings SET checklist_config=?,biosafety_config=?,updated_at=now(),updated_by_user_id=? WHERE id=1`,
     [JSON.stringify(checklist), JSON.stringify(biosafety), req.user?.id || null]);
   res.json({ checklist, biosafety });
+}));
+
+router.get("/api/service-catalog-options", withFeature("procedures", async (_req, res, db) => {
+  const [professionals, inventoryItems] = await Promise.all([
+    db.all("SELECT id,name FROM professionals WHERE active=1 ORDER BY name"),
+    db.all(`SELECT id,name,category,stock_unit,can_sell,can_use_in_service
+      FROM jewelry_inventory WHERE status!='arquivado' AND can_use_in_service=true ORDER BY name`)
+  ]);
+  res.json({ professionals, inventoryItems });
 }));
 
 // Whitelist de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
@@ -67,12 +76,14 @@ router.post("/api/services", withFeature("procedures", async (req, res, db) => {
   if (!validateBody(serviceCreateSchema, req, res)) return;
   const result = await db.run(
     `INSERT INTO services
-      (name,description,duration_minutes,price,deposit_value,is_active,active_online_booking,pre_service_notes,
+      (name,category,body_area,description,duration_minutes,price,deposit_value,is_active,active_online_booking,pre_service_notes,
        minimum_age_years,requires_guardian,requires_signed_term,return_after_days,scheduling_interval_minutes,
        minimum_advance_minutes,postcare_enabled,postcare_days,aftercare_instructions,checklist_config,biosafety_config)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`,
     [
       req.body.name,
+      String(req.body.category || "Piercing").trim(),
+      String(req.body.body_area || "").trim(),
       req.body.description || "",
       Number(req.body.duration_minutes || 40),
       Number(req.body.base_price ?? req.body.price ?? 0),
@@ -94,6 +105,8 @@ router.post("/api/services", withFeature("procedures", async (req, res, db) => {
     ]
   );
   await replaceProfessionalServices(db, result.returnedId, req.body.professional_ids || []);
+  if (req.body.inventory_items) await replaceServiceRecipe(db, result.returnedId, req.body.inventory_items);
+  await replaceCompatibleServiceItems(db, result.returnedId, req.body.compatible_jewelry_ids || []);
   res.status(201).json(await getService(db, result.returnedId));
 }));
 
@@ -103,11 +116,13 @@ async function updateService(req, res, db) {
   const service = await db.get("SELECT * FROM services WHERE id = ?", [req.params.id]);
   if (!service) return res.status(404).json({ error: "Servico nao encontrado." });
   await db.run(
-    `UPDATE services SET name=?,description=?,duration_minutes=?,price=?,deposit_value=?,is_active=?,active_online_booking=?,pre_service_notes=?,
+    `UPDATE services SET name=?,category=?,body_area=?,description=?,duration_minutes=?,price=?,deposit_value=?,is_active=?,active_online_booking=?,pre_service_notes=?,
       minimum_age_years=?,requires_guardian=?,requires_signed_term=?,return_after_days=?,scheduling_interval_minutes=?,
       minimum_advance_minutes=?,postcare_enabled=?,postcare_days=?,aftercare_instructions=?,checklist_config=?,biosafety_config=? WHERE id=?`,
     [
       req.body.name ?? service.name,
+      String(req.body.category ?? service.category ?? "Piercing").trim(),
+      String(req.body.body_area ?? service.body_area ?? "").trim(),
       req.body.description ?? service.description,
       Number(req.body.duration_minutes ?? service.duration_minutes),
       Number(req.body.base_price ?? req.body.price ?? service.price),
@@ -130,6 +145,8 @@ async function updateService(req, res, db) {
     ]
   );
   if (req.body.professional_ids) await replaceProfessionalServices(db, req.params.id, req.body.professional_ids);
+  if (req.body.inventory_items) await replaceServiceRecipe(db, req.params.id, req.body.inventory_items);
+  if (req.body.compatible_jewelry_ids) await replaceCompatibleServiceItems(db, req.params.id, req.body.compatible_jewelry_ids);
   res.json(await getService(db, req.params.id));
 }
 

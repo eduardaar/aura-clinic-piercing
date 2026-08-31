@@ -248,6 +248,8 @@ export function nextBookingDates(total = 10) {
 export function defaultServiceForm() {
   return {
     name: "",
+    category: "Piercing",
+    body_area: "",
     description: "",
     pre_service_notes: "",
     base_price: 0,
@@ -265,7 +267,10 @@ export function defaultServiceForm() {
     postcare_days: "7, 15, 30",
     aftercare_instructions: "",
     checklist_config: null,
-    biosafety_config: null
+    biosafety_config: null,
+    professional_ids: [],
+    inventory_items: [],
+    compatible_jewelry_ids: []
   };
 }
 

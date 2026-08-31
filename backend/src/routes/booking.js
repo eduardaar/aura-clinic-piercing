@@ -54,7 +54,6 @@ function parseItems(value) {
 async function bookingReadiness(db) {
   const [
     activeServices,
-    activeProcedures,
     activeProfessionals,
     weeklyAvailability,
     linkedProfessionals,
@@ -65,12 +64,6 @@ async function bookingReadiness(db) {
     catalogTheme
   ] = await Promise.all([
     db.get("SELECT COUNT(*) AS count FROM services WHERE is_active=true AND active_online_booking = 1"),
-    db.get(`
-      SELECT COUNT(*) AS count
-      FROM procedures p
-      JOIN services s ON s.id = p.service_id
-      WHERE p.is_active = 1 AND s.is_active=true AND s.active_online_booking = 1
-    `),
     db.get("SELECT COUNT(*) AS count FROM professionals WHERE active = 1"),
     db.get(`
       SELECT COUNT(*) AS count
@@ -96,8 +89,7 @@ async function bookingReadiness(db) {
   const catalogCustomized = Boolean(String(catalogTheme?.logo_url || "").trim() || String(catalogTheme?.slogan || "").trim());
   const checklist = [
     { key: "clinicProfile", label: "Completar dados da clínica", description: "Informe ao menos um canal de contato para seus clientes.", essential: true, done: clinicProfileReady },
-    { key: "services", label: "Cadastrar serviços", description: "Defina os serviços disponíveis para agendamento.", essential: true, done: Number(activeServices.count || 0) > 0 },
-    { key: "procedures", label: "Cadastrar procedimentos", description: "Organize os procedimentos oferecidos em cada serviço.", essential: true, done: Number(activeProcedures.count || 0) > 0 },
+    { key: "services", label: "Cadastrar tipos de atendimento", description: "Defina procedimento, valor, duração e regras em um único cadastro.", essential: true, done: Number(activeServices.count || 0) > 0 },
     { key: "professionals", label: "Cadastrar profissionais", description: "Inclua quem realiza os atendimentos.", essential: true, done: Number(activeProfessionals.count || 0) > 0 },
     { key: "links", label: "Vincular serviços aos profissionais", description: "Defina quem pode atender cada serviço.", essential: true, done: Number(linkedProfessionals.count || 0) > 0 },
     { key: "weeklySchedule", label: "Configurar horários", description: "Abra a agenda semanal de quem atende.", essential: true, done: Number(weeklyAvailability.count || 0) > 0 },
@@ -122,7 +114,7 @@ async function bookingReadiness(db) {
     missing: checklist.filter((item) => !item.done).map((item) => item.label),
     counts: {
       activeServices: Number(activeServices.count || 0),
-      activeProcedures: Number(activeProcedures.count || 0),
+      activeProcedures: Number(activeServices.count || 0),
       activeProfessionals: Number(activeProfessionals.count || 0),
       weeklyAvailability: Number(weeklyAvailability.count || 0),
       linkedProfessionals: Number(linkedProfessionals.count || 0),

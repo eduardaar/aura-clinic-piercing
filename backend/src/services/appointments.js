@@ -103,13 +103,14 @@ export async function normalizeAppointmentItems(db, body = {}) {
     const jewelryUnitPrice = jewelryId ? Number(raw.jewelry_unit_price || raw.unit_price || variant?.sale_value || jewelry?.sale_value || body.jewelry_value || 0) : 0;
     const duration = Number(raw.duration_minutes || procedure?.duration_minutes || service?.duration_minutes || body.duration_minutes || 0);
     const operationalRequirements = resolveOperationalRequirements({ clinic: clinicOperationalSettings, service: service || {}, variation: procedure });
-    const serviceRulesSnapshot = { ...resolveServiceRules(service || {}, procedure), operational_requirements: operationalRequirements };
+    const compatibleJewelryIds = serviceId ? (await db.all("SELECT inventory_item_id FROM service_compatible_inventory_items WHERE service_id=? ORDER BY inventory_item_id", [serviceId])).map((item) => item.inventory_item_id) : [];
+    const serviceRulesSnapshot = { ...resolveServiceRules(service || {}, procedure), operational_requirements: operationalRequirements, category: service?.category || null, body_area: service?.body_area || null, compatible_jewelry_ids: compatibleJewelryIds };
     items.push({
       procedure_id: procedureId,
       service_id: serviceId,
       service_name: service?.name || "",
       procedure_name: procedure?.name || raw.procedure || body.procedure || service?.name || "Atendimento",
-      region: raw.region || raw.piercing_region || procedure?.body_area || body.piercing_region || "",
+      region: raw.region || raw.piercing_region || procedure?.body_area || service?.body_area || body.piercing_region || "",
       jewelry_id: jewelryId,
       jewelry_variant_id: variantId,
       quantity,
@@ -200,6 +201,8 @@ async function decorateService(db, service) {
   service.base_price = service.price;
   service.online_booking_enabled = service.active_online_booking;
   service.professional_ids = (await db.all("SELECT professional_id FROM professional_services WHERE service_id = ?", [service.id])).map((item) => item.professional_id);
+  service.inventory_items = await db.all("SELECT inventory_item_id,quantity,notes FROM service_inventory_recipes WHERE service_id=? ORDER BY id", [service.id]);
+  service.compatible_jewelry_ids = (await db.all("SELECT inventory_item_id FROM service_compatible_inventory_items WHERE service_id=? ORDER BY inventory_item_id", [service.id])).map((item) => item.inventory_item_id);
   return service;
 }
 
@@ -217,11 +220,21 @@ export async function listServices(db, { where = "", params = [], paging = null 
     `SELECT service_id, professional_id FROM professional_services WHERE service_id IN (${services.map(() => "?").join(",")})`,
     services.map((service) => service.id)
   );
+  const recipes = await db.all(
+    `SELECT service_id,inventory_item_id,quantity,notes FROM service_inventory_recipes WHERE service_id IN (${services.map(() => "?").join(",")}) ORDER BY id`,
+    services.map((service) => service.id)
+  );
+  const compatible = await db.all(
+    `SELECT service_id,inventory_item_id FROM service_compatible_inventory_items WHERE service_id IN (${services.map(() => "?").join(",")}) ORDER BY inventory_item_id`,
+    services.map((service) => service.id)
+  );
   return services.map((service) => ({
     ...service,
     base_price: service.price,
     online_booking_enabled: service.active_online_booking,
-    professional_ids: links.filter((link) => link.service_id === service.id).map((link) => link.professional_id)
+    professional_ids: links.filter((link) => link.service_id === service.id).map((link) => link.professional_id),
+    inventory_items: recipes.filter((item) => item.service_id === service.id).map(({ inventory_item_id, quantity, notes }) => ({ inventory_item_id, quantity, notes })),
+    compatible_jewelry_ids: compatible.filter((item) => item.service_id === service.id).map((item) => item.inventory_item_id)
   }));
 }
 
@@ -239,6 +252,16 @@ export async function replaceProfessionalServices(db, serviceId, professionalIds
   await db.run("DELETE FROM professional_services WHERE service_id = ?", [serviceId]);
   for (const id of ids.filter(Boolean)) {
     await db.run("INSERT INTO professional_services (professional_id, service_id) VALUES (?, ?) ON CONFLICT (professional_id, service_id) DO NOTHING", [Number(id), Number(serviceId)]);
+  }
+}
+
+export async function replaceCompatibleServiceItems(db, serviceId, inventoryItemIds) {
+  const ids = [...new Set((Array.isArray(inventoryItemIds) ? inventoryItemIds : []).map(Number).filter(Number.isInteger))];
+  await db.run("DELETE FROM service_compatible_inventory_items WHERE service_id=?", [serviceId]);
+  for (const id of ids) {
+    const item = await db.get("SELECT id FROM jewelry_inventory WHERE id=? AND can_use_in_service=true AND status!='arquivado'", [id]);
+    if (!item) throw new Error(`Joia compatível ${id} não está disponível para atendimento.`);
+    await db.run("INSERT INTO service_compatible_inventory_items (service_id,inventory_item_id) VALUES (?,?) ON CONFLICT DO NOTHING", [serviceId, id]);
   }
 }
 
