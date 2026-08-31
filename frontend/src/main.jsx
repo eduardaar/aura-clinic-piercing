@@ -339,7 +339,7 @@ function App() {
     terms: { onBack: () => navigate("client-center") },
     postcare: { onBack: () => navigate("client-center") },
     "meu-plano": { subscription, plans, onChanged: loadStoreIdentity },
-    settings: { user: normalizedSession.user, theme: uiTheme, onThemeChange: changeUiTheme, navCollapsed, onNavCollapsedChange: changeNavCollapsed, onUserChanged: changeUser }
+    settings: { user: normalizedSession.user, theme: uiTheme, onThemeChange: changeUiTheme, navCollapsed, onNavCollapsedChange: changeNavCollapsed, onUserChanged: changeUser, onNavigate: navigate }
   }[activePage] || {};
   return (
     <div className={`app-shell ${navCollapsed ? "nav-collapsed" : ""}`}>

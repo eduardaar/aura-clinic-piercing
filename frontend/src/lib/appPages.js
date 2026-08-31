@@ -59,13 +59,6 @@ export const APP_PAGES = Object.freeze([
   {
     id: "inventory", path: "/app/produtos/estoque", title: "Estoque", group: "Estoque e compras", icon: Table2, menu: true, menuRank: 0,
     roleRank: { admin: 6, reception: 4, piercer: 4 }, permission: "inventory.view", feature: "basic_inventory",
-    menuChildren: [
-      { id: "inventory-all", label: "Todos os itens", page: "inventory", target: "todos" },
-      { id: "inventory-products", label: "Produtos e joias", page: "inventory", target: "vendaveis" },
-      { id: "inventory-materials", label: "Materiais de procedimento", page: "inventory", target: "materiais" },
-      { id: "inventory-lots", label: "Lotes e validades", page: "inventory", target: "lotes" },
-      { id: "inventory-movements", label: "Movimentações", page: "inventory", target: "movimentacoes" }
-    ],
     component: lazyNamed(() => import("../features/inventory/Inventory"), "CatalogWorkspace")
   },
   {
@@ -76,12 +69,6 @@ export const APP_PAGES = Object.freeze([
   {
     id: "catalog", path: "/app/catalogo", title: "Catálogo", group: "Comercial", icon: Gem, menu: true, menuRank: 0,
     roleRank: { admin: 8 }, feature: "basic_catalog",
-    menuChildren: [
-      { id: "catalog-online", label: "Catálogo online", page: "catalog" },
-      { id: "catalog-personalization", label: "Personalização", page: "catalog-customization", target: "layout" },
-      { id: "catalog-promotions", label: "Promoções", page: "catalog-customization", target: "promocoes", feature: "campaigns" },
-      { id: "catalog-coupons", label: "Cupons", page: "catalog-customization", target: "cupons", feature: "coupons" }
-    ],
     component: lazyNamed(() => import("../features/inventory/Inventory"), "CatalogWorkspace")
   },
   {
@@ -92,25 +79,12 @@ export const APP_PAGES = Object.freeze([
   {
     id: "sales", path: "/app/vendas", title: "Vendas", menuTitle: "Vendas", group: "Comercial", icon: ShoppingCart, menu: true, menuRank: 1,
     roleRank: { admin: 10, reception: 6, finance: 7, piercer: 6 }, permission: "sales.view", feature: "basic_catalog",
-    menuChildren: [
-      { id: "sales-new", label: "Nova venda", page: "sales", target: "nova" },
-      { id: "sales-open", label: "Vendas em aberto", page: "sales", target: "aberto", queue: true },
-      { id: "sales-history", label: "Histórico de vendas", page: "sales", target: "historico" }
-    ],
     component: lazyNamed(() => import("../features/sales/Sales"), "SalesWorkspace")
   },
   {
     id: "receivables", path: "/app/financeiro/receber", aliases: ["/app/financeiro"], title: "Contas a receber",
     menuTitle: "Financeiro", group: "Financeiro", icon: ArrowDownToLine, menu: true, menuRank: 0, roleRank: { admin: 11, finance: 0 },
     permission: "finance.view", feature: "basic_finance",
-    menuChildren: [
-      { id: "finance-overview", label: "Visão financeira", page: "receivables", target: "visao" },
-      { id: "finance-cash", label: "Caixa", page: "receivables", target: "caixa" },
-      { id: "finance-receivables", label: "Contas a receber", page: "receivables" },
-      { id: "finance-payables", label: "Contas a pagar", page: "payables" },
-      { id: "finance-categories", label: "Categorias", page: "finance-categories" },
-      { id: "finance-cost-centers", label: "Centros de custo", page: "cost-centers" }
-    ],
     component: lazyNamed(() => import("../features/finance/FinanceWorkspace"), "FinanceWorkspace")
   },
   {
@@ -203,12 +177,6 @@ export const APP_PAGES = Object.freeze([
   {
     id: "settings", path: "/app/configuracoes", title: "Dados e preferências", menuTitle: "Configurações", group: "Configurações", icon: Sparkles, menu: true, menuRank: 0,
     roleRank: { admin: 26, reception: 10, finance: 8, piercer: 11 }, permission: "settings.view",
-    menuChildren: [
-      { id: "settings-clinic", label: "Dados da clínica", page: "settings" },
-      { id: "settings-users", label: "Usuários e permissões", page: "admin" },
-      { id: "settings-integrations", label: "Integrações e automações", page: "integrations" },
-      { id: "settings-plan", label: "Meu plano", page: "meu-plano" }
-    ],
     component: lazyNamed(() => import("../features/settings/Settings"), "Settings")
   },
 

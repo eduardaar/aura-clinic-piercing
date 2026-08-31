@@ -1,4 +1,5 @@
-import { Button, Metric, StatusBadge } from "../../components/common/Ui";
+import { Metric, StatusBadge } from "../../components/common/Ui";
+import { CrudHeader } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { CollapsibleIndicators } from "../../components/common/CollapsibleIndicators";
 import { ApiError, Loading } from "../../components/common/Feedback";
@@ -34,16 +35,18 @@ function FinancialSummary({ view, onNavigate }) {
         {view !== "caixa" && <Metric label="Resultado" value={currency.format(asNumber(dre.result))} />}
       </div></CollapsibleIndicators>
       <section className="panel stack">
-        <div className="panel-heading">
-          <div>
-            <h2>{view === "caixa" ? "Caixa" : "Visão financeira"}</h2>
-            <span>{view === "caixa" ? "Entradas e saídas efetivamente pagas" : "Resumo do ano e lançamentos financeiros"}</span>
-          </div>
-          <div className="compact-actions">
-            <Button variant="secondary" onClick={() => onNavigate?.("receivables")}>Contas a receber</Button>
-            <Button variant="secondary" onClick={() => onNavigate?.("payables")}>Contas a pagar</Button>
-          </div>
-        </div>
+        <CrudHeader
+          title={view === "caixa" ? "Caixa" : "Visão financeira"}
+          subtitle={view === "caixa" ? "Entradas e saídas efetivamente pagas" : "Resumo do ano e lançamentos financeiros"}
+          actions={[
+            ...(view !== "visao" ? [{ label: "Visão financeira", onClick: () => onNavigate?.("receivables", { target: "visao" }) }] : []),
+            ...(view !== "caixa" ? [{ label: "Caixa", onClick: () => onNavigate?.("receivables", { target: "caixa" }) }] : []),
+            { label: "Contas a receber", onClick: () => onNavigate?.("receivables") },
+            { label: "Contas a pagar", onClick: () => onNavigate?.("payables") },
+            { label: "Categorias", onClick: () => onNavigate?.("finance-categories") },
+            { label: "Centros de custo", onClick: () => onNavigate?.("cost-centers") }
+          ]}
+        />
         <DataView
           rows={visibleRows}
           defaultSort={{ key: "due_date", dir: "desc" }}

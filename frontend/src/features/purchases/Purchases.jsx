@@ -371,17 +371,14 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
         <CrudHeader
           title="Compras"
           subtitle="Entrada de produtos e contas a pagar geradas no mesmo lançamento."
+          actions={[
+            { label: "Fornecedores", onClick: () => onNavigate?.("suppliers") },
+            { label: "Categorias", icon: Tags, onClick: () => onNavigate?.("finance-categories") },
+            { label: "Centros de custo", icon: Landmark, onClick: () => onNavigate?.("cost-centers") }
+          ]}
           actionLabel="Nova compra"
           onAction={openNew}
         />
-        <div className="toolbar compact-actions">
-          <Button variant="secondary" type="button" onClick={() => onNavigate?.("finance-categories")}>
-            <Tags size={16} /> Categorias
-          </Button>
-          <Button variant="secondary" type="button" onClick={() => onNavigate?.("cost-centers")}>
-            <Landmark size={16} /> Centros de custo
-          </Button>
-        </div>
         <DataView
           rows={purchases}
           loading={loading}

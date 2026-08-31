@@ -4,6 +4,7 @@ import { HeartPulse } from "lucide-react";
 import { Button, Checkbox, Input, SecureImage, Select, StatusBadge, Tabs, Textarea } from "../../components/common/Ui";
 import { ConfirmDeleteModal, Modal, CrudHeader, RowActions } from "../../components/common/Crud";
 import { DataView, MONTH_OPTIONS } from "../../components/common/DataView";
+import { CollapsibleIndicators } from "../../components/common/CollapsibleIndicators";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { AdvancedFields, FormSection, FormWorkflow, ValidationSummary } from "../../components/common/FormWorkflow";
 import { asArray, asObject, dateInputValue, formatDate, formatLongDate } from "../../lib/utils";
@@ -428,7 +429,7 @@ function ClientProfile({ client, onChanged, onNavigate, onEdit }) {
   const nextAppointment = client.summary?.next_appointment;
   return (
     <div className="stack client-360">
-      <div className="client-360-metrics">
+      <CollapsibleIndicators screenId="client-profile"><div className="client-360-metrics">
         <article>
           <span>Último atendimento</span>
           <strong>{lastAppointment ? formatDate(lastAppointment.appointment_date) : "Nenhum"}</strong>
@@ -449,7 +450,7 @@ function ClientProfile({ client, onChanged, onNavigate, onEdit }) {
           <span>Pendências</span>
           <strong>{currency.format(pending)}</strong>
         </article>
-      </div>
+      </div></CollapsibleIndicators>
 
       <Tabs value={tab} onValueChange={setTab}>
         <Tabs.List className="client-360-tabs" aria-label="Perfil do cliente">

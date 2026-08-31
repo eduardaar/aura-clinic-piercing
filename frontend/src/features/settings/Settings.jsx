@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Check, Palette, UserRound } from "lucide-react";
 import { Button, Checkbox, Input, Select } from "../../components/common/Ui";
+import { CrudHeader } from "../../components/common/Crud";
 import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
 import { asObject } from "../../lib/utils";
 import { PRICE_MULTIPLIER_OPTIONS, PRICE_ROUNDING_OPTIONS } from "../../lib/defaultForms";
@@ -8,7 +9,7 @@ import { UI_THEMES } from "../../lib/uiTheme";
 import { roleLabel } from "../shared/helpers";
 import "../../styles/agenda-admin-responsive.css";
 
-export function Settings({ user, theme, onThemeChange, navCollapsed, onNavCollapsedChange, onUserChanged }) {
+export function Settings({ user, theme, onThemeChange, navCollapsed, onNavCollapsedChange, onUserChanged, onNavigate }) {
   const [profile, setProfile] = useState({ name: user?.name || "", email: user?.email || "" });
   const [password, setPassword] = useState({ current_password: "", new_password: "", confirm_password: "" });
   const [message, setMessage] = useState("");
@@ -69,7 +70,15 @@ export function Settings({ user, theme, onThemeChange, navCollapsed, onNavCollap
     <section className="settings-page stack">
       <div className="panel settings-intro">
         <span className="settings-icon"><Palette size={22} /></span>
-        <div><h2>Preferências pessoais</h2><p>Estas escolhas valem somente para a sua conta e não alteram o catálogo público da clínica.</p></div>
+        <CrudHeader
+          title="Configurações"
+          subtitle="Preferências pessoais, dados de acesso e parâmetros da clínica."
+          actions={user?.role === "admin" ? [
+            { label: "Usuários e permissões", onClick: () => onNavigate?.("admin") },
+            { label: "Integrações e automações", onClick: () => onNavigate?.("integrations") },
+            { label: "Meu plano", onClick: () => onNavigate?.("meu-plano") }
+          ] : []}
+        />
       </div>
 
       <div className="panel">

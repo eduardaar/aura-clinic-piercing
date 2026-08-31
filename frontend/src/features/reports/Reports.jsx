@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Download } from "lucide-react";
-import { Button, Input, Select, StatusBadge } from "../../components/common/Ui";
+import { Button, Select, StatusBadge } from "../../components/common/Ui";
 import { DataView } from "../../components/common/DataView";
 import { asArray, asObject } from "../../lib/utils";
 import { downloadApiFile, useFetch } from "../../lib/api";
@@ -306,6 +306,14 @@ export function Reports() {
     }
   }, [filters.type, selectedReport?.type]);
   const { data: professionals } = useFetch("/professionals");
+  const reportFilterDefinitions = selectedFilters.map((item) => ({
+    key: item.key,
+    label: item.label,
+    type: item.type === "professional" || item.type === "select" ? "select" : item.type === "date" || item.type === "number" ? item.type : "text",
+    options: item.type === "professional"
+      ? asArray(professionals).map((professional) => ({ value: String(professional.id), label: professional.name }))
+      : asArray(item.options)
+  }));
   const params = new URLSearchParams();
   selectedFilters.forEach(({ key }) => {
     if (filters[key] !== undefined && filters[key] !== "") params.set(key, filters[key]);
@@ -339,10 +347,6 @@ export function Reports() {
     exportParams.set("format", format);
     return downloadApiFile(`/reports/${selectedReport.type}?${exportParams}`, `${selectedReport.type}-${filters.from || today}-${filters.to || today}.${format}`);
   };
-  const updateFilter = (key, value) => {
-    setPage(1);
-    setFilters((current) => ({ ...current, [key]: value }));
-  };
   const selectReport = (type) => {
     setPage(1);
     setSearch("");
@@ -357,25 +361,6 @@ export function Reports() {
           <div className="export-actions">
             {(selectedReport?.formats || ["pdf", "xlsx", "csv", "txt"]).map((format) => <Button key={format} variant="secondary" onClick={() => download(format)}><Download size={15} /> {format.toUpperCase()}</Button>)}
           </div>
-        </div>
-        <div className="form-grid">
-          <Select label="Relatório" value={filters.type} onChange={selectReport}>
-            {Object.entries(reportGroups).map(([category, reports]) => (
-              <optgroup label={category} key={category}>{reports.map((item) => <option value={item.type} key={item.type}>{item.label}</option>)}</optgroup>
-            ))}
-          </Select>
-          {selectedFilters.map((item) => {
-            if (item.type === "professional") {
-              return <Select key={item.key} label={item.label} value={filters[item.key] || ""} onChange={(value) => updateFilter(item.key, value)}><option value="">Todos</option>{asArray(professionals).map((professional) => <option value={professional.id} key={professional.id}>{professional.name}</option>)}</Select>;
-            }
-            if (item.type === "select") {
-              return <Select key={item.key} label={item.label} value={filters[item.key] || ""} onChange={(value) => updateFilter(item.key, value)}><option value="">Todos</option>{asArray(item.options).map((option) => {
-                const normalized = typeof option === "string" ? { value: option, label: option } : option;
-                return <option value={normalized.value} key={normalized.value}>{normalized.label}</option>;
-              })}</Select>;
-            }
-            return <Input key={item.key} type={item.type === "date" || item.type === "number" ? item.type : "text"} label={item.label} value={filters[item.key] || ""} onChange={(value) => updateFilter(item.key, value)} />;
-          })}
         </div>
       </div>
       <div className="panel">
@@ -403,6 +388,10 @@ export function Reports() {
           loading={loading}
           error={error}
           searchPlaceholder="Buscar no resultado"
+          filters={reportFilterDefinitions}
+          filterValues={filters}
+          onFilterChange={(values) => { setPage(1); setFilters((current) => ({ ...values, type: current.type })); }}
+          toolbar={<Select label="Relatório" value={filters.type} onChange={selectReport}>{Object.entries(reportGroups).map(([category, reports]) => <optgroup label={category} key={category}>{reports.map((item) => <option value={item.type} key={item.type}>{item.label}</option>)}</optgroup>)}</Select>}
           empty="Nenhum dado para o período selecionado."
           emptyFiltered="Nenhum registro corresponde à busca."
         />

@@ -4,6 +4,7 @@ import { CheckCircle2, ImageIcon, LayoutGrid, ListFilter, Pencil, SlidersHorizon
 import { Button, Input, Metric, Select, StatusBadge, Switch, Tabs, Textarea } from "../../components/common/Ui";
 import { Modal, CrudHeader, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
+import { CollapsibleIndicators } from "../../components/common/CollapsibleIndicators";
 import { asArray, asObject, formatDate, removeAccents } from "../../lib/utils";
 import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
 import { useDebouncedValue } from "../../lib/smartSearch";
@@ -374,7 +375,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
                   <span>Resumo por peça com foco no que importa primeiro.</span>
                 </div>
               </div>
-              <div className="inventory-summary-grid compact">
+              <CollapsibleIndicators screenId="inventory-units"><div className="inventory-summary-grid compact">
                 <Metric label="Total de peças" value={String(stockSummary.totalPieces)} />
                 <Metric label="Total de produtos" value={String(stockSummary.totalProducts)} />
                 <Metric label="Críticas" value={String(stockSummary.critical)} />
@@ -382,7 +383,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
                 <Metric label="Valor investido" value={currency.format(stockSummary.invested)} />
                 <Metric label="Venda potencial" value={currency.format(stockSummary.potential)} />
                 <Metric label="Lucro potencial" value={currency.format(stockSummary.potential - stockSummary.invested)} />
-              </div>
+              </div></CollapsibleIndicators>
               <div className="inventory-quick-flags">
                 <span><strong>Visíveis no Catálogo</strong><small>{allJewelry.filter((item) => Boolean(Number(item.is_catalog_active)) && Boolean(Number(item.is_published)) && Boolean(Number(item.virtual_store_active))).length} peças visíveis na vitrine</small></span>
                 <span><strong>Destaques Comerciais</strong><small>Lançamentos, promoções e últimas unidades ficam na Loja Virtual</small></span>
@@ -508,11 +509,11 @@ function InventoryIntelligence({ data, suggestions, onRefresh, onReview }) {
         </div>
       </div>
       {countError && <span className="form-error">{countError}</span>}
-      <div className="inventory-summary-grid compact">
+      <CollapsibleIndicators screenId="inventory-intelligence"><div className="inventory-summary-grid compact">
         <Metric label="Rupturas em até 30 dias" value={String(summary.predicted_stockouts || 0)} />
         <Metric label="Unidades sugeridas" value={String(summary.suggested_units || 0)} />
         <Metric label="Produtos classe A" value={String(summary.class_a || 0)} />
-      </div>
+      </div></CollapsibleIndicators>
       <DataView
         rows={items}
         defaultSort={{ key: "suggested_purchase", dir: "desc" }}

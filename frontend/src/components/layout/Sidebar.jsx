@@ -16,11 +16,8 @@ export function Sidebar({ page, navigationTarget, role, user, brand, features, s
   const activeFeatures = Array.isArray(features) ? features : [];
   const groups = menuPages({ onboardingAtBottom, onboardingComplete })
     .map(({ group, pages }) => [group, pages
-      .map((entry) => ({
-        ...entry,
-        visibleChildren: (entry.menuChildren || []).filter((child) => canAccessPage(user || role, child.page))
-      }))
-      .filter((entry) => canAccessPage(user || role, entry.id) || entry.visibleChildren.length > 0)])
+      .filter((entry) => canAccessPage(user || role, entry.id))
+      .map((entry) => ({ ...entry, visibleChildren: [] }))])
     .filter(([, pages]) => pages.length > 0);
 
   const showPlan = canAccessPage(user || role, "meu-plano");
