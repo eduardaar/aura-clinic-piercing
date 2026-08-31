@@ -23,6 +23,7 @@ export function FormWorkflow({
   draft = null,
   children = null,
   className = "",
+  mobileFullscreen = false,
   as: Component = "div",
   ...props
 }) {
@@ -38,7 +39,7 @@ export function FormWorkflow({
           : "";
 
   return (
-    <Root {...props} className={classNames("form-workflow", className)}>
+    <Root {...props} className={classNames("form-workflow", mobileFullscreen && "form-workflow--fullscreen-mobile", className)}>
       <header className="form-workflow__header">
         <div className="form-workflow__heading">
           {eyebrow && <span className="form-workflow__eyebrow">{eyebrow}</span>}

@@ -13,6 +13,7 @@ import { CrudHeader, Modal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { InstallmentGrid } from "../../components/common/InstallmentGrid";
+import { ResponsiveEditableList, TransactionTotals } from "../../components/common/TransactionFields";
 import { apiFetch, readStoredSession, tenantSlug, useApiInvalidate, useFetch } from "../../lib/api";
 import { useFormDraft } from "../../lib/useFormDraft";
 import { installmentSummary, installmentsForPayload } from "../../lib/installments";
@@ -78,6 +79,7 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
   const [nfePreview, setNfePreview] = useState(null);
   const [importingNfe, setImportingNfe] = useState(false);
   const [activeStep, setActiveStep] = useState("details");
+  const [editingItemKey, setEditingItemKey] = useState("");
   const sessionUser = readStoredSession()?.user || {};
   const draftValue = useMemo(
     () => ({ form, line, items, installments, automaticInstallments }),
@@ -127,6 +129,7 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
     if (!draft.savedAt || draft.hasDraft) {
       setForm(emptyPurchase());
       setLine(emptyItem());
+      setEditingItemKey("");
       setItems([]);
       setInstallments([]);
       setAutomaticInstallments(true);
@@ -185,13 +188,11 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
       : selectedVariant
       ? `${selectedProduct.name} - ${selectedVariant.variation_name || selectedVariant.sku}`
       : selectedProduct.name;
-    setItems((current) => [
-      ...current,
-      {
+    const nextItem = {
         row_key:
-          typeof crypto !== "undefined" && crypto.randomUUID
+          editingItemKey || (typeof crypto !== "undefined" && crypto.randomUUID
             ? crypto.randomUUID()
-            : `purchase-item-${Date.now()}-${Math.random()}`,
+            : `purchase-item-${Date.now()}-${Math.random()}`),
         item_type: isConsumable ? "consumable" : "product",
         product_id: isConsumable ? Number(selectedConsumable.id) : Number(selectedProduct.id),
         consumable_id: isConsumable ? Number(selectedConsumable.id) : null,
@@ -199,10 +200,26 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
         item_name: label,
         quantity: Number(line.quantity),
         unit_cost: Number(line.unit_cost),
-      },
-    ]);
+      };
+    setItems((current) => editingItemKey
+      ? current.map((item) => item.row_key === editingItemKey ? nextItem : item)
+      : [...current, nextItem]);
     setLine(emptyItem());
+    setEditingItemKey("");
     setError("");
+  }
+
+  function editPurchaseItem(item) {
+    setEditingItemKey(item.row_key);
+    setLine({
+      ...emptyItem(),
+      item_type: item.item_type,
+      product_id: String(item.product_id || ""),
+      consumable_id: item.consumable_id ? String(item.consumable_id) : "",
+      product_variant_id: item.product_variant_id ? String(item.product_variant_id) : "",
+      quantity: Number(item.quantity || 1),
+      unit_cost: item.unit_cost,
+    });
   }
 
   function fiscalTarget(match) {
@@ -441,6 +458,7 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
       >
         <form id="purchase-form" className="stack" onSubmit={save}>
           <FormWorkflow
+            mobileFullscreen
             title="Cadastro da compra"
             description="Preencha o essencial primeiro. Importação fiscal e classificações continuam opcionais."
             eyebrow="Compras"
@@ -560,36 +578,23 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
               />
             </div>
             <Button type="button" variant="secondary" onClick={addItem}>
-              Adicionar item
+              {editingItemKey ? "Salvar alteração" : "Adicionar item"}
             </Button>
-            <div className="sales-items-list">
-              {items.length ? (
-                items.map((item, index) => (
-                  <article key={item.row_key}>
-                    <div>
-                      <strong>{item.item_name}</strong>
-                      <span>
-                        {item.item_type === "consumable" ? "Material de consumo" : "Produto para revenda"} · {item.quantity} un. × {currency.format(item.unit_cost)}
-                      </span>
-                      <small>Subtotal: {currency.format(item.quantity * item.unit_cost)}</small>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}
-                    >
-                      Remover
-                    </Button>
-                  </article>
-                ))
-              ) : (
-                <p className="empty-state">Nenhum item adicionado.</p>
-              )}
-            </div>
-            <div className="profit-box">
-              <span>Total da compra</span>
-              <strong>{currency.format(total)}</strong>
-            </div>
+            <ResponsiveEditableList
+              items={items}
+              ariaLabel="Itens da compra"
+              getKey={(item) => item.row_key}
+              columns={[
+                { key: "item", label: "Item", render: (item) => item.item_name },
+                { key: "type", label: "Tipo", render: (item) => item.item_type === "consumable" ? "Material" : "Revenda" },
+                { key: "quantity", label: "Qtd.", value: (item) => item.quantity },
+                { key: "unit_cost", label: "Custo", align: "right", render: (item) => currency.format(item.unit_cost) },
+                { key: "subtotal", label: "Subtotal", align: "right", render: (item) => currency.format(item.quantity * item.unit_cost) },
+              ]}
+              onEdit={editPurchaseItem}
+              onRemove={(_item, index) => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+            />
+            <TransactionTotals rows={[{ id: "total", label: "Total da compra", value: currency.format(total), emphasis: true }]} />
           </FormSection>
             </FormWorkflow.Page>}
 

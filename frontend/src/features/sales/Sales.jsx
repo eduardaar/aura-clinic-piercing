@@ -12,6 +12,7 @@ import {
   ValidationSummary,
 } from "../../components/common/FormWorkflow";
 import { InstallmentGrid } from "../../components/common/InstallmentGrid";
+import { ResponsiveEditableList } from "../../components/common/TransactionFields";
 import { Loading } from "../../components/common/Feedback";
 import { asArray } from "../../lib/utils";
 import { apiFetch, readStoredSession, tenantSlug, useApiInvalidate, useFetch } from "../../lib/api";
@@ -74,6 +75,7 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
   const [returnForm, setReturnForm] = useState(null);
   const [activeStep, setActiveStep] = useState("customer");
   const [view, setView] = useState(initialView === "aberto" ? "aberto" : "historico");
+  const [editingItemKey, setEditingItemKey] = useState("");
   // biome-ignore lint/correctness/useExhaustiveDependencies: createSignal representa uma borda de evento externa.
   useEffect(() => { if (createSignal) openNew(); }, [createSignal]);
   useEffect(() => {
@@ -128,7 +130,7 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
   // O que já está no carrinho conta contra o mesmo saldo: duas linhas de 2 un.
   // sobre um estoque de 3 são recusadas pelo backend, então a tela também soma.
   const reservedInCart = items
-    .filter((item) => item.item_type === "produto" && item.stock_key === stockKey)
+    .filter((item) => item.item_type === "produto" && item.stock_key === stockKey && item.row_key !== editingItemKey)
     .reduce((sum, item) => sum + Number(item.quantity || 0), 0);
   const productStock = stockVariant
     ? Number(stockVariant.quantity || 0)
@@ -178,6 +180,7 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
       setInstallments([]);
       setAutomaticInstallments(true);
       setLine(defaultSalesLine());
+      setEditingItemKey("");
       setError("");
       setActiveStep("customer");
     }
@@ -210,8 +213,8 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
       return;
     }
     setError("");
-    setItems((current) => [...current, {
-      row_key: crypto.randomUUID?.() || `sale-${Date.now()}-${Math.random()}`,
+    const nextItem = {
+      row_key: editingItemKey || crypto.randomUUID?.() || `sale-${Date.now()}-${Math.random()}`,
       item_type: "produto",
       product_id: Number(entry.id),
       service_id: null,
@@ -223,8 +226,25 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
       stock_key: stockKey,
       unit_price: Number(line.unit_price || variant?.sale_value || entry.sale_value || 0),
       notes: line.notes || ""
-    }]);
+    };
+    setItems((current) => editingItemKey
+      ? current.map((item) => item.row_key === editingItemKey ? nextItem : item)
+      : [...current, nextItem]);
+    setEditingItemKey("");
     setLine((current) => ({ ...current, quantity: 1, notes: "" }));
+  }
+
+  function editSalesItem(item) {
+    setEditingItemKey(item.row_key);
+    setLine({
+      ...defaultSalesLine(),
+      item_type: item.item_type,
+      product_id: String(item.product_id || ""),
+      product_variant_id: item.product_variant_id ? String(item.product_variant_id) : "",
+      quantity: Number(item.quantity || 1),
+      unit_price: Number(item.unit_price || 0),
+      notes: item.notes || "",
+    });
   }
 
   function removeLine(index) {
@@ -488,6 +508,7 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
       >
         <form id="sales-order-form" className="stack" onSubmit={saveOrder}>
           <FormWorkflow
+            mobileFullscreen
             title="Cadastro da venda"
             description="Cliente, itens e pagamento em uma sequência curta e objetiva."
             eyebrow="Vendas"
@@ -560,23 +581,23 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
               <Input type="number" label="Valor unitário" value={line.unit_price} onChange={(value) => setLine({ ...line, unit_price: Number(value || 0) })} />
             </div>
             <Textarea label="Observações do item" value={line.notes} onChange={(value) => setLine({ ...line, notes: value })} />
-            <Button variant="secondary" type="button" onClick={addLineItem} disabled={exceedsStock}>Adicionar item</Button>
+            <Button variant="secondary" type="button" onClick={addLineItem} disabled={exceedsStock}>{editingItemKey ? "Salvar alteração" : "Adicionar item"}</Button>
           </div>
 
-          <div className="sales-items-list">
-            {items.length ? items.map((item, index) => (
-              <article key={item.row_key || `${item.stock_key}-${item.item_name}`}>
-                <div>
-                  <strong>{item.item_name}</strong>
-                  <span>{saleItemLabel(item.item_type)} · {item.quantity}x · {currency.format(item.unit_price)}</span>
-                  {item.product_id && <small>ID {item.product_id} · {item.variation_name ? `Variação: ${item.variation_name} · ` : ""}Estoque: {item.available_stock ?? "—"} un.</small>}
-                  <small>Subtotal: {currency.format(Number(item.unit_price) * Number(item.quantity))}</small>
-                  {item.notes && <small>{item.notes}</small>}
-                </div>
-                <Button type="button" variant="secondary" onClick={() => removeLine(index)}>Remover</Button>
-              </article>
-            )) : <p className="empty-state">Nenhum item adicionado ainda.</p>}
-          </div>
+          <ResponsiveEditableList
+            items={items}
+            ariaLabel="Itens da venda"
+            getKey={(item) => item.row_key || `${item.stock_key}-${item.item_name}`}
+            columns={[
+              { key: "item", label: "Item", render: (item) => item.item_name },
+              { key: "type", label: "Tipo", render: (item) => saleItemLabel(item.item_type) },
+              { key: "quantity", label: "Qtd.", value: (item) => item.quantity },
+              { key: "unit_price", label: "Unitário", align: "right", render: (item) => currency.format(item.unit_price) },
+              { key: "subtotal", label: "Subtotal", align: "right", render: (item) => currency.format(Number(item.unit_price) * Number(item.quantity)) },
+            ]}
+            onEdit={editSalesItem}
+            onRemove={(_item, index) => removeLine(index)}
+          />
               </FormSection>
             </FormWorkflow.Page>}
 

@@ -61,6 +61,11 @@ export function SupplierRegistry() {
     setModalOpen(true);
   }
 
+  function closeSupplierForm() {
+    draft.flushDraft();
+    setModalOpen(false);
+  }
+
   function change(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
     if (validationErrors.length) setValidationErrors((current) => current.filter((item) => item.field !== field));
@@ -173,10 +178,11 @@ export function SupplierRegistry() {
         size="lg"
         title={editing ? "Editar fornecedor" : "Novo fornecedor"}
         subtitle="Nome e tipo são os únicos campos obrigatórios."
-        onClose={() => setModalOpen(false)}
-        footer={<><Button variant="secondary" onClick={() => setModalOpen(false)}>Fechar</Button><Button type="submit" form="supplier-form">Salvar fornecedor</Button></>}
+        onClose={closeSupplierForm}
+        footer={<><Button variant="secondary" onClick={closeSupplierForm}>Fechar</Button><Button type="submit" form="supplier-form">Salvar fornecedor</Button></>}
       >
         <FormWorkflow
+          mobileFullscreen
           as="form"
           id="supplier-form"
           className="stack"

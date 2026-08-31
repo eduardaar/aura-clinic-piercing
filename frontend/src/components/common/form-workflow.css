@@ -312,6 +312,18 @@
 }
 
 @media (max-width: 640px) {
+  .modal-card:has(.form-workflow--fullscreen-mobile) {
+    border-radius: 0;
+    height: 100dvh;
+    max-height: 100dvh;
+    max-width: none;
+    width: 100vw;
+  }
+
+  .modal-backdrop:has(.form-workflow--fullscreen-mobile) { padding: 0; }
+  .modal-card:has(.form-workflow--fullscreen-mobile) .modal-body { flex: 1; overflow-y: auto; }
+  .modal-card:has(.form-workflow--fullscreen-mobile) .modal-actions { bottom: 0; position: sticky; z-index: 2; }
+
   .form-workflow__header,
   .form-workflow__page-header,
   .form-workflow__section-header {

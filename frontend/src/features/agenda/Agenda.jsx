@@ -5,6 +5,8 @@ import { Accordion, Button, Checkbox, FinancialSummary, Input, Metric, PaymentSe
 import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { Loading } from "../../components/common/Feedback";
+import { FormSection, FormWorkflow, ReviewSummary, StepNavigator, ValidationSummary } from "../../components/common/FormWorkflow";
+import { ResponsiveEditableList } from "../../components/common/TransactionFields";
 import { asArray, asNumber, asObject, formatDate } from "../../lib/utils";
 import { apiFetch, readStoredSession, tenantSlug, useApiInvalidate, useFetch } from "../../lib/api";
 import { buildCalendar, buildTimeSlots, dateKey, movePeriod } from "../../lib/calendarUtils";
@@ -14,6 +16,7 @@ import { SmartCombobox } from "../../components/common/SmartCombobox";
 import { publicLinkForTenant } from "../../lib/publicRoutes";
 import { PlanUpgradeNotice } from "../../components/common/PlanUpgradeNotice";
 import { can, planAllowsAction } from "../../lib/permissions";
+import { useFormDraft } from "../../lib/useFormDraft";
 import { ServicesWorkspace } from "../services/Services";
 import "../../styles/agenda-admin-responsive.css";
 
@@ -738,6 +741,17 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
   const safeProfessionals = asArray(safeOptions.professionals);
   const [form, setForm] = useState(defaultAppointment());
   const [error, setError] = useState("");
+  const [activeStep, setActiveStep] = useState("schedule");
+  const currentUser = readStoredSession()?.user || {};
+  const draft = useFormDraft({
+    tenantId: tenantSlug() || "tenant",
+    userId: currentUser.id || "user",
+    formId: "appointment-new",
+    schemaKey: "appointment-v1",
+    value: form,
+    enabled: Boolean(seed),
+    onRestore: setForm,
+  });
 
   useEffect(() => {
     if (!seed) return;
@@ -754,6 +768,7 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
       status: "pendente"
     });
     setError("");
+    setActiveStep("schedule");
   }, [seed]);
 
   function setClient(clientId) {
@@ -789,7 +804,13 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
       setError(response.status === 409 ? `Alerta de conflito: ${data.error || "revise o horário antes de criar o encaixe."}` : data.error || "Não foi possível criar o agendamento.");
       return;
     }
+    draft.clearDraft();
     onSaved?.();
+  }
+
+  function closeCreate() {
+    draft.flushDraft();
+    onClose?.();
   }
 
   return (
@@ -798,15 +819,34 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
       title="Novo Agendamento"
       subtitle="Criação rápida pela agenda visual"
       size="lg"
-      onClose={onClose}
+      onClose={closeCreate}
       footer={(
         <>
-          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button type="submit" form="visual-appointment-form">Salvar agendamento</Button>
+          <Button variant="secondary" onClick={() => activeStep === "schedule" ? closeCreate() : setActiveStep("schedule")}>{activeStep === "schedule" ? "Cancelar" : "Voltar"}</Button>
+          {activeStep === "operation" ? <Button type="submit" form="visual-appointment-form">Salvar agendamento</Button> : <Button onClick={() => setActiveStep("operation")}>Continuar</Button>}
         </>
       )}
     >
-      <form id="visual-appointment-form" className="stack" onSubmit={submit}>
+      <FormWorkflow
+        as="form"
+        id="visual-appointment-form"
+        className="stack"
+        mobileFullscreen
+        title="Novo agendamento"
+        description="Identificação e horário primeiro; procedimento e valores na sequência."
+        draft={draft}
+        actions={draft.hasDraft ? <><Button type="button" variant="secondary" onClick={draft.restoreDraft}>Restaurar</Button><Button type="button" variant="ghost" onClick={draft.discardDraft}>Descartar</Button></> : null}
+        onSubmit={submit}
+      >
+        <StepNavigator
+          steps={[{ id: "schedule", label: "Agenda", description: "Cliente e horário" }, { id: "operation", label: "Atendimento", description: "Itens e valores" }]}
+          currentStep={activeStep}
+          onStepChange={setActiveStep}
+          canNavigateTo={undefined}
+        />
+        <ValidationSummary errors={error ? [error] : []} />
+        {activeStep === "schedule" && <FormWorkflow.Page title="Cliente e horário">
+        <FormSection title="Informações principais" badge="Obrigatório">
         <div className="form-grid">
           <Select label="Cliente cadastrado" value={form.client_id} onChange={setClient}>
             <option value="">Novo cliente</option>
@@ -822,6 +862,9 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
           <Input type="time" label="Horário" value={form.appointment_time} onChange={(value) => setForm({ ...form, appointment_time: value })} required />
           <StatusSelect value={form.status} options={APPOINTMENT_EDITABLE_STATUSES} onChange={(value) => setForm({ ...form, status: value })} />
         </div>
+        </FormSection>
+        </FormWorkflow.Page>}
+        {activeStep === "operation" && <FormWorkflow.Page title="Itens, valores e confirmação">
         <AppointmentItemsEditor
           form={form}
           services={safeServices}
@@ -832,8 +875,20 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
         />
         <AppointmentValueSummary form={form} services={safeServices} jewelry={safeJewelry} />
         <Textarea label="Observações" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} />
-        {error && <span className="form-error">{error}</span>}
-      </form>
+        <ReviewSummary
+          title="Resumo do agendamento"
+          description={undefined}
+          sections={undefined}
+          onEdit={undefined}
+          items={[
+            { label: "Cliente", value: form.full_name },
+            { label: "Data", value: formatDateWithYear(form.appointment_date) },
+            { label: "Horário", value: form.appointment_time },
+            { label: "Itens", value: rawAppointmentItems(form).length },
+          ]}
+        />
+        </FormWorkflow.Page>}
+      </FormWorkflow>
     </Modal>
   );
 }
@@ -859,6 +914,26 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
   const safeProcedures = asArray(procedures);
   const safeJewelry = asArray(asObject(options).serviceItems);
   const operationalRules = operationalRequirements(appointment?.operational_requirements_snapshot);
+  const quickDraftValue = useMemo(() => ({ form, payments, financialNotes, clinicalNotes, occurrences, aftercareNotes, operationalChecklist, biosafety }), [aftercareNotes, biosafety, clinicalNotes, financialNotes, form, occurrences, operationalChecklist, payments]);
+  const quickDraft = useFormDraft({
+    tenantId: tenantSlug() || "tenant",
+    userId: currentUser.id || "user",
+    formId: appointment?.id ? `appointment-${appointment.id}` : "appointment",
+    schemaKey: "appointment-attendance-v1",
+    value: quickDraftValue,
+    enabled: Boolean(appointment),
+    onRestore: (value) => {
+      const restored = asObject(value);
+      if (restored.form) setForm(restored.form);
+      if (restored.payments) setPayments(asArray(restored.payments));
+      setFinancialNotes(restored.financialNotes || "");
+      setClinicalNotes(restored.clinicalNotes || "");
+      setOccurrences(restored.occurrences || "");
+      setAftercareNotes(restored.aftercareNotes || "");
+      if (restored.operationalChecklist) setOperationalChecklist(asArray(restored.operationalChecklist));
+      if (restored.biosafety) setBiosafety(restored.biosafety);
+    },
+  });
 
   useEffect(() => {
     if (!appointment) return;
@@ -951,6 +1026,7 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
       setError(data.error || "Não foi possível atualizar o agendamento.");
       return;
     }
+    quickDraft.clearDraft();
     onSaved?.();
   }
 
@@ -976,7 +1052,13 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
     const response = await apiFetch(`/appointments/${appointment.id}/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ payments, financial_notes: financialNotes, clinical_notes: clinicalNotes, occurrences, aftercare_notes: aftercareNotes, checklist: operationalChecklist, biosafety }) });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) return setError(data.error || "Não foi possível concluir o atendimento.");
+    quickDraft.clearDraft();
     onSaved?.();
+  }
+
+  function closeQuickModal() {
+    quickDraft.flushDraft();
+    onClose?.();
   }
 
   async function applyClientCredit() {
@@ -1003,16 +1085,24 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
       title="Detalhes do Agendamento"
       subtitle={appointment ? `${personName(appointment)} · ${appointment.procedure || "Atendimento"}` : ""}
       size="lg"
-      onClose={onClose}
+      onClose={closeQuickModal}
       footer={(
         <>
-          <Button variant="secondary" onClick={onClose}>Fechar</Button>
+          <Button variant="secondary" onClick={closeQuickModal}>Fechar</Button>
           <Button onClick={() => saveAppointment()}>Salvar alterações</Button>
         </>
       )}
     >
       {appointment && (
-        <div className="stack appointment-details-content">
+        <FormWorkflow
+          className="stack appointment-details-content"
+          mobileFullscreen
+          title="Atendimento"
+          description="Dados operacionais, clínicos e financeiros no mesmo fluxo."
+          draft={quickDraft}
+          actions={quickDraft.hasDraft ? <><Button variant="secondary" onClick={quickDraft.restoreDraft}>Restaurar</Button><Button variant="ghost" onClick={quickDraft.discardDraft}>Descartar</Button></> : null}
+        >
+          <ValidationSummary errors={error ? [error] : []} />
           <div className="soft-card">
             <strong>{personName(appointment)}</strong>
             <p>{appointment.whatsapp || "WhatsApp não informado"}</p>
@@ -1064,13 +1154,20 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
               <Textarea label="Observações de biossegurança (opcional)" value={biosafety.notes} onChange={(notes) => setBiosafety({ ...biosafety, notes })} />
             </div>}
             <div className="section-inline-header"><strong>Conferência financeira</strong><Button variant="secondary" onClick={() => setPayments([...payments, { method: "Pix", amount: 0, status: "pago", installments: 1, fee_amount: 0, expected_receipt_date: "" }])}>Dividir pagamento</Button></div>
-            {payments.map((payment, index) => <div className="form-grid" key={`${index}-${payment.method}`}>
-              <PaymentSelect label={`Forma ${index + 1}`} value={payment.method} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, method: value } : item))} />
-              <Input type="number" label="Valor" value={payment.amount} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, amount: value } : item))} />
-              <Select label="Status" value={payment.status} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, status: value } : item))}><option value="pago">Pago</option><option value="pendente" disabled={!canGenerateReceivables}>Pendente{canGenerateReceivables ? "" : " — Profissional"}</option></Select>
-              {String(payment.method).toLowerCase().includes("crédito") && <><Input type="number" label="Parcelas" value={payment.installments} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, installments: value } : item))} /><Input type="number" label="Taxa" value={payment.fee_amount} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, fee_amount: value } : item))} /><Input type="date" label="Previsão de recebimento" value={payment.expected_receipt_date} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, expected_receipt_date: value } : item))} /></>}
-              {payments.length > 1 && <Button variant="secondary" className="danger" onClick={() => setPayments(payments.filter((_, itemIndex) => itemIndex !== index))}>Remover</Button>}
-            </div>)}
+            <ResponsiveEditableList
+              items={payments}
+              ariaLabel="Pagamentos do atendimento"
+              getKey={(payment, index) => payment.row_key || `${payment.method}-${index}`}
+              columns={[
+                { key: "method", label: "Forma", render: (payment, index) => <PaymentSelect ariaLabel={`Forma ${index + 1}`} value={payment.method} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, method: value } : item))} /> },
+                { key: "amount", label: "Valor", render: (payment, index) => <Input type="number" aria-label={`Valor ${index + 1}`} value={payment.amount} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, amount: Number(value || 0) } : item))} /> },
+                { key: "status", label: "Status", render: (payment, index) => <Select ariaLabel={`Status ${index + 1}`} value={payment.status} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, status: value } : item))}><option value="pago">Pago</option><option value="pendente" disabled={!canGenerateReceivables}>Pendente{canGenerateReceivables ? "" : " — Profissional"}</option></Select> },
+                { key: "installments", label: "Parcelas", render: (payment, index) => String(payment.method).toLowerCase().includes("crédito") ? <Input type="number" aria-label={`Parcelas ${index + 1}`} value={payment.installments} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, installments: Number(value || 1) } : item))} /> : "—" },
+                { key: "fee", label: "Taxa", render: (payment, index) => String(payment.method).toLowerCase().includes("crédito") ? <Input type="number" aria-label={`Taxa ${index + 1}`} value={payment.fee_amount} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, fee_amount: Number(value || 0) } : item))} /> : "—" },
+                { key: "receipt", label: "Previsão", render: (payment, index) => String(payment.method).toLowerCase().includes("crédito") ? <Input type="date" aria-label={`Previsão ${index + 1}`} value={payment.expected_receipt_date} onChange={(value) => setPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, expected_receipt_date: value } : item))} /> : "—" },
+              ]}
+              onRemove={payments.length > 1 ? (_payment, index) => setPayments(payments.filter((_, itemIndex) => itemIndex !== index)) : null}
+            />
             {!canGenerateReceivables && (
               <PlanUpgradeNotice title="Saldo pendente no plano Profissional" onUpgrade={onUpgrade}>
                 No Start, o atendimento pode ser finalizado com pagamentos recebidos. Gerar saldo a receber exige o Financeiro básico.
@@ -1090,14 +1187,13 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
           </div>
           {canResolveFinance && form.status !== "atendido" && form.status !== "cancelado" && <Button variant="secondary" onClick={applyClientCredit}>Aplicar crédito disponível</Button>}
           {readStoredSession()?.user?.role === "admin" && <Button variant="secondary" className="danger" onClick={openDeletion}>Excluir definitivamente</Button>}
-          {error && <span className="form-error">{error}</span>}
           <Modal open={!!deletion} title="Excluir definitivamente" subtitle="Esta ação exige análise e confirmação" onClose={() => !deletion?.busy && setDeletion(null)} footer={<><Button variant="secondary" onClick={() => setDeletion(null)}>Voltar</Button><Button variant="danger" disabled={!deletion?.canDelete || deletion?.busy || deletion?.confirmation !== "EXCLUIR AGENDAMENTO" || !deletion?.reason?.trim()} onClick={deleteAppointment}>{deletion?.busy ? "Excluindo…" : "Excluir agendamento"}</Button></>}>
             {deletion && <div className="stack"><div className="soft-card"><strong>{deletion.canDelete ? "Agendamento de teste sem vínculos" : "Exclusão bloqueada"}</strong><p>{deletion.canDelete ? "A exclusão é irreversível e ficará registrada na auditoria." : "Existem vínculos financeiros, clínicos ou de estoque. Cancele o agendamento para preservar o histórico."}</p></div><div className="summary-grid">{Object.entries(deletion.impact).map(([key, value]) => <span key={key}>{key.replaceAll("_", " ")}: <strong>{value}</strong></span>)}</div><Input label="Motivo obrigatório" value={deletion.reason} onChange={(reason) => setDeletion({ ...deletion, reason })} /><Input label="Digite EXCLUIR AGENDAMENTO" value={deletion.confirmation} onChange={(confirmation) => setDeletion({ ...deletion, confirmation })} /></div>}
           </Modal>
           <Modal open={!!cancellation} title={cancellation?.outcome === "no_show" ? "Registrar ausência" : "Cancelar agendamento"} subtitle="Defina o destino do sinal; a decisão ficará auditada." onClose={() => setCancellation(null)} footer={<><Button variant="secondary" onClick={() => setCancellation(null)}>Voltar</Button><Button variant="danger" disabled={!cancellation?.reason?.trim()} onClick={cancelWithResolution}>Confirmar</Button></>}>
             {cancellation && <div className="stack"><Select label="Resolução financeira" value={cancellation.resolution} onChange={(resolution) => setCancellation({ ...cancellation, resolution })}>{hasPaidDeposit ? <><option value="retain_deposit">Reter sinal</option>{canResolveFinance && <option value="client_credit">Converter sinal em crédito</option>}{canResolveFinance && <option value="manual_refund">Reembolso manual</option>}</> : <option value="no_payment">Sem pagamento recebido</option>}</Select>{cancellation.resolution === "manual_refund" && <PaymentSelect label="Forma do reembolso" value={cancellation.refund_method} onChange={(refund_method) => setCancellation({ ...cancellation, refund_method })} />}<Textarea label="Motivo obrigatório" value={cancellation.reason} onChange={(reason) => setCancellation({ ...cancellation, reason })} /></div>}
           </Modal>
-        </div>
+        </FormWorkflow>
       )}
     </Modal>
   );
