@@ -1861,4 +1861,60 @@
   .inventory-product-list { grid-template-columns: 1fr; }
 }
 
+/* Comunicações ficam em um único módulo. A navegação interna permanece à mão
+   e as regras mostram estado, momento, referência e ação em blocos previsíveis. */
+.communications-navigation {
+  position: sticky;
+  top: 0;
+  z-index: 22;
+  padding-bottom: 8px;
+  background: var(--paper);
+}
+.communications-navigation::before {
+  content: "";
+  position: absolute;
+  inset: -8px -3px 0;
+  z-index: -1;
+  background: var(--paper);
+}
+.communication-rule-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); }
+.communication-rule-card { display: grid; align-content: start; gap: 14px; }
+.communication-rule-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.communication-rule-heading > div { display: grid; min-width: 0; gap: 3px; }
+.communication-rule-heading strong { overflow-wrap: anywhere; }
+.communication-rule-heading small { color: var(--muted); }
+.communication-rule-timing { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.communication-rule-reference {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 5px 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--paper);
+  font-size: 12px;
+}
+.communication-rule-reference span { color: var(--muted); }
+.communication-rule-reference strong { overflow-wrap: anywhere; }
+.communication-rule-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 4px;
+}
+.communication-rule-footer small { color: var(--muted); }
+
+@media (max-width: 560px) {
+  .communication-rule-timing { grid-template-columns: 1fr; }
+  .communication-rule-footer { align-items: stretch; flex-direction: column; }
+  .communication-rule-footer .button { width: 100%; }
+}
+
 } /* fim de @layer app */

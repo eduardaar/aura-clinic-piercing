@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { MessageCircle, Play, Save, Sparkles } from "lucide-react";
 import { apiFetch, useFetch } from "../../lib/api";
 import { asArray } from "../../lib/utils";
-import { Button, Checkbox, Input, Select, StatusBadge, Tabs, Textarea } from "../../components/common/Ui";
+import { Button, Checkbox, Input, Metric, Select, StatusBadge, Tabs, Textarea } from "../../components/common/Ui";
 import { RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
+import { CollapsibleIndicators } from "../../components/common/CollapsibleIndicators";
 
 // Opções vindas das próprias notificações: nenhum filtro oferecido devolve
 // lista vazia.
@@ -69,6 +70,8 @@ export function Communications({ initialTab = "service" }) {
   const variables = asArray(templatesRequest.data?.variables);
   const notifications = asArray(notificationsRequest.data);
   const ready = useMemo(() => notifications.filter((item) => item.status === "ready"), [notifications]);
+  const activeRules = rules.filter((rule) => Number(rule.is_active));
+  const activeTemplates = templates.filter((template) => Number(template.is_active));
   const communicationCredits = creditsRequest.data?.balance?.available || {};
   const creditProducts = asArray(creditsRequest.data?.products);
   const categorizedRules = useMemo(() => communicationCategories.map((category) => ({
@@ -86,6 +89,12 @@ export function Communications({ initialTab = "service" }) {
 
   function updateRule(id, field, value) {
     setRules((items) => items.map((item) => item.id === id ? { ...item, [field]: value } : item));
+  }
+
+  function updateRuleTiming(rule, field, value) {
+    const direction = field === "direction" ? value : Number(rule.offset_minutes || 0) < 0 ? "before" : "after";
+    const minutes = field === "minutes" ? Math.max(0, Number(value || 0)) : Math.abs(Number(rule.offset_minutes || 0));
+    updateRule(rule.id, "offset_minutes", direction === "before" ? -minutes : minutes);
   }
 
   async function saveTemplate(template) {
@@ -171,6 +180,14 @@ export function Communications({ initialTab = "service" }) {
 
   return (
     <div className="stack communications-page">
+      <CollapsibleIndicators screenId="communications">
+        <div className="metric-grid">
+          <Metric label="Prontas para envio" value={ready.length} />
+          <Metric label="Automações ativas" value={`${activeRules.length}/${rules.length}`} />
+          <Metric label="Modelos ativos" value={`${activeTemplates.length}/${templates.length}`} />
+          <Metric label="Mensagens registradas" value={notifications.length} />
+        </div>
+      </CollapsibleIndicators>
       <section className="panel communications-intro">
         <div>
           <span className="section-eyebrow">Relacionamento com clientes</span>
@@ -179,7 +196,7 @@ export function Communications({ initialTab = "service" }) {
         </div>
       </section>
 
-      <Tabs value={tab} onValueChange={setTab}>
+      <div className="communications-navigation"><Tabs value={tab} onValueChange={setTab}>
         <Tabs.List className="communication-tabs" aria-label="Áreas de comunicação">
         <Tabs.Trigger value="service">
           <strong>Atendimento</strong>
@@ -198,7 +215,7 @@ export function Communications({ initialTab = "service" }) {
           <span>Ajuda para redigir e resumir</span>
         </Tabs.Trigger>
         </Tabs.List>
-      </Tabs>
+      </Tabs></div>
 
       {feedback && <p className="form-message">{feedback}</p>}
 
@@ -212,11 +229,6 @@ export function Communications({ initialTab = "service" }) {
             <Button disabled={busy === "process"} onClick={processQueue}>
               <Play size={16} /> {busy === "process" ? "Processando…" : "Processar fila"}
             </Button>
-          </div>
-          <div className="metrics-grid">
-            <article className="metric-card"><span>Prontas para envio</span><strong>{ready.length}</strong></article>
-            <article className="metric-card"><span>Automações ativas</span><strong>{rules.filter((rule) => Number(rule.is_active)).length}</strong></article>
-            <article className="metric-card"><span>Modelos disponíveis</span><strong>{templates.length}</strong></article>
           </div>
         </section>
 
@@ -285,26 +297,34 @@ export function Communications({ initialTab = "service" }) {
       {tab === "automation" && <section className="communication-tab-panel">
         <section className="panel">
           <div className="panel-heading">
-          <div>
-              <h2>Regras automáticas</h2>
-              <span>O deslocamento é relativo ao horário do atendimento.</span>
+            <div>
+              <h2>Configuração das automações</h2>
+              <span>Defina quando cada mensagem entra na fila. Valores “antes” usam o horário do agendamento como referência.</span>
             </div>
+            <StatusBadge tone={activeRules.length ? "ok" : "warn"}>{activeRules.length} de {rules.length} ativas</StatusBadge>
           </div>
           {categorizedRules.map((category) => category.items.length > 0 && (
             <CommunicationCategory category={category} key={category.key}>
-              <div className="cards-grid">
+              <div className="cards-grid communication-rule-grid">
                 {category.items.map((rule) => (
-                  <article className="detail-card" key={rule.id}>
+                  <article className="detail-card communication-rule-card" key={rule.id}>
+                    <header className="communication-rule-heading">
+                      <div><strong>{rule.name}</strong><small>{rule.template_name || rule.template_key}</small></div>
+                      <StatusBadge tone={Number(rule.is_active) ? "ok" : "muted"}>{Number(rule.is_active) ? "Ativa" : "Inativa"}</StatusBadge>
+                    </header>
                     <Input label="Nome" value={rule.name || ""} onChange={(value) => updateRule(rule.id, "name", value)} />
-                    <Select label="Canal" value={rule.channel || "whatsapp"} onChange={(value) => updateRule(rule.id, "channel", value)}>
-                      <option value="whatsapp">WhatsApp</option>
-                    </Select>
-                    <Input label="Minutos antes/depois" type="number" value={rule.offset_minutes ?? 0} onChange={(value) => updateRule(rule.id, "offset_minutes", Number(value))} />
+                    <div className="communication-rule-timing">
+                      <Select label="Quando enviar" value={Number(rule.offset_minutes || 0) < 0 ? "before" : "after"} onChange={(value) => updateRuleTiming(rule, "direction", value)}>
+                        <option value="before">Antes do atendimento</option>
+                        <option value="after">Depois do evento</option>
+                      </Select>
+                      <Input label="Intervalo em minutos" type="number" min="0" value={Math.abs(Number(rule.offset_minutes || 0))} onChange={(value) => updateRuleTiming(rule, "minutes", value)} />
+                    </div>
+                    <div className="communication-rule-reference"><span>Canal</span><strong>{rule.channel === "email" ? "E-mail" : "WhatsApp"}</strong><span>Modelo</span><strong>{rule.template_name || rule.template_key}</strong></div>
                     <Checkbox label="Automação ativa" checked={Boolean(Number(rule.is_active))} onChange={(value) => updateRule(rule.id, "is_active", value ? 1 : 0)} />
-                    <small>Modelo: {rule.template_name || rule.template_key} · execuções: {rule.run_count || 0}</small>
-                    <Button variant="secondary" disabled={busy === `rule-${rule.id}`} onClick={() => saveRule(rule)}>
+                    <div className="communication-rule-footer"><small>{rule.run_count || 0} execução(ões) registrada(s)</small><Button variant="secondary" disabled={busy === `rule-${rule.id}`} onClick={() => saveRule(rule)}>
                       <Save size={15} /> Salvar automação
-                    </Button>
+                    </Button></div>
                   </article>
                 ))}
               </div>

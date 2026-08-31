@@ -44,11 +44,6 @@ export const APP_PAGES = Object.freeze([
   {
     id: "communications", path: "/app/comunicacoes", title: "Comunicações", group: "Atendimento", icon: MessageSquare, menu: true, menuRank: 3,
     roleRank: { admin: 3, reception: 2, piercer: 2 }, permission: "communication.view", feature: "message_templates",
-    menuChildren: [
-      { id: "communications-queue", label: "Fila de mensagens", page: "communications", target: "service" },
-      { id: "communications-history", label: "Histórico e automações", page: "communications", target: "automation" },
-      { id: "communications-templates", label: "Modelos", page: "communications", target: "templates" }
-    ],
     component: lazyNamed(() => import("../features/communications/Communications"), "Communications")
   },
   {
