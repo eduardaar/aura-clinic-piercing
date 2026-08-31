@@ -36,12 +36,16 @@ export const APP_PAGES = Object.freeze([
     roleRank: { admin: 1, reception: 0, piercer: 0 }, permission: "appointments.view",
     menuChildren: [
       { id: "agenda-calendar", label: "Calendário", page: "agenda", target: "calendario" },
+      { id: "agenda-day", label: "Visão diária", page: "agenda", target: "diario" },
       { id: "agenda-requests", label: "Solicitações online", page: "agenda", target: "solicitacoes" },
+      { id: "agenda-waitlist", label: "Lista de espera", page: "agenda", target: "espera", queue: true },
       { id: "agenda-history", label: "Histórico de atendimentos", page: "agenda", target: "historico" },
+      { id: "agenda-settings", label: "Configurações da agenda", page: "agenda", target: "configuracoes" },
       { id: "agenda-procedures", label: "Procedimentos", page: "agenda", target: "procedimentos", feature: "procedures" },
       { id: "agenda-professionals", label: "Profissionais", page: "agenda", target: "profissionais" },
       { id: "agenda-hours", label: "Horários", page: "agenda", target: "horarios" },
-      { id: "agenda-blocks", label: "Bloqueios", page: "agenda", target: "bloqueios" }
+      { id: "agenda-resources", label: "Salas e recursos", page: "agenda", target: "recursos" },
+      { id: "agenda-blocks", label: "Bloqueios, feriados e especiais", page: "agenda", target: "bloqueios" }
     ],
     component: lazyNamed(() => import("../features/agenda/Agenda"), "AgendaWorkspace")
   },
@@ -106,6 +110,11 @@ export const APP_PAGES = Object.freeze([
   {
     id: "sales", path: "/app/vendas", title: "Vendas", menuTitle: "Vendas", group: "Comercial", icon: ShoppingCart, menu: true, menuRank: 1,
     roleRank: { admin: 10, reception: 6, finance: 7, piercer: 6 }, permission: "sales.view", feature: "basic_catalog",
+    menuChildren: [
+      { id: "sales-new", label: "Nova venda", page: "sales", target: "nova" },
+      { id: "sales-open", label: "Vendas em aberto", page: "sales", target: "aberto", queue: true },
+      { id: "sales-history", label: "Histórico de vendas", page: "sales", target: "historico" }
+    ],
     component: lazyNamed(() => import("../features/sales/Sales"), "SalesWorkspace")
   },
   {
@@ -113,12 +122,14 @@ export const APP_PAGES = Object.freeze([
     menuTitle: "Financeiro", group: "Financeiro", icon: ArrowDownToLine, menu: true, menuRank: 0, roleRank: { admin: 11, finance: 0 },
     permission: "finance.view", feature: "basic_finance",
     menuChildren: [
+      { id: "finance-overview", label: "Visão financeira", page: "receivables", target: "visao" },
+      { id: "finance-cash", label: "Caixa", page: "receivables", target: "caixa" },
       { id: "finance-receivables", label: "Contas a receber", page: "receivables" },
       { id: "finance-payables", label: "Contas a pagar", page: "payables" },
       { id: "finance-categories", label: "Categorias", page: "finance-categories" },
       { id: "finance-cost-centers", label: "Centros de custo", page: "cost-centers" }
     ],
-    component: lazyNamed(() => import("../features/finance/Receivables"), "AccountsReceivable")
+    component: lazyNamed(() => import("../features/finance/FinanceWorkspace"), "FinanceWorkspace")
   },
   {
     id: "payables", path: "/app/financeiro/pagar", title: "Contas a pagar", group: null, icon: ArrowUpFromLine, menu: false, menuRank: 1,

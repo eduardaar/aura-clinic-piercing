@@ -53,7 +53,7 @@ const SALES_STEPS = [
   { id: "payment", label: "Pagamento", description: "Recebimento e conferência" },
 ];
 
-export function SalesWorkspace({ features = [], onUpgrade, createSignal = 0 }) {
+export function SalesWorkspace({ features = [], onUpgrade, initialView = "historico", createSignal = 0 }) {
   const { data: orders, loading: ordersLoading, error: ordersError } = useFetch("/sales-orders");
   const { data: jewelry } = useFetch("/jewelry");
   // Uma venda dá baixa no estoque e lança no financeiro: invalidar só a lista
@@ -73,8 +73,13 @@ export function SalesWorkspace({ features = [], onUpgrade, createSignal = 0 }) {
   const [returnOrder, setReturnOrder] = useState(null);
   const [returnForm, setReturnForm] = useState(null);
   const [activeStep, setActiveStep] = useState("customer");
+  const [view, setView] = useState(initialView === "aberto" ? "aberto" : "historico");
   // biome-ignore lint/correctness/useExhaustiveDependencies: createSignal representa uma borda de evento externa.
   useEffect(() => { if (createSignal) openNew(); }, [createSignal]);
+  useEffect(() => {
+    if (initialView === "nova") openNew();
+    else setView(initialView === "aberto" ? "aberto" : "historico");
+  }, [initialView]);
   const canGenerateReceivables = planAllowsAction(features, "sales.generate_receivables");
   const currentUser = readStoredSession()?.user || {};
   const draftValue = useMemo(
@@ -108,6 +113,9 @@ export function SalesWorkspace({ features = [], onUpgrade, createSignal = 0 }) {
   const typeOptions = distinctOptions(safeOrders, (order) => order.order_type, saleOrderTypeLabel);
   const sourceOptions = distinctOptions(safeOrders, (order) => order.source, saleSourceLabel);
   const paymentOptions = [...new Set(safeOrders.map((order) => order.payment_method || "Pix"))].sort();
+  const visibleOrders = view === "aberto"
+    ? safeOrders.filter((order) => ["pendente", "aberta", "aberto"].includes(order.status))
+    : safeOrders.filter((order) => !["pendente", "aberta", "aberto"].includes(order.status));
   const selectedProduct = safeJewelry.find((item) => String(item.id) === String(line.product_id));
   const selectedVariants = asArray(selectedProduct?.variants).filter((variant) => Number(variant.is_active ?? 1));
   // Espelha a regra de baixa do backend (`resolveStockTarget` em services/sales.js):
@@ -343,13 +351,17 @@ export function SalesWorkspace({ features = [], onUpgrade, createSignal = 0 }) {
 
       <div className="panel">
         <CrudHeader
-          title="Vendas"
-          subtitle="Pedidos internos com baixa financeira"
+          title={view === "aberto" ? "Vendas em aberto" : "Histórico de vendas"}
+          subtitle={view === "aberto" ? "Pedidos que ainda exigem conclusão operacional" : "Pedidos internos com baixa financeira"}
           actionLabel="Nova venda"
           onAction={openNew}
         />
+        <div className="toolbar compact-actions">
+          <Button variant={view === "aberto" ? "primary" : "secondary"} type="button" onClick={() => setView("aberto")}>Em aberto</Button>
+          <Button variant={view === "historico" ? "primary" : "secondary"} type="button" onClick={() => setView("historico")}>Histórico</Button>
+        </div>
         <DataView
-          rows={safeOrders}
+          rows={visibleOrders}
           loading={ordersLoading}
           error={ordersError}
           defaultSort={{ key: "created_at", dir: "desc" }}

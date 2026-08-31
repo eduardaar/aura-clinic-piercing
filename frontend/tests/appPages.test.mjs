@@ -45,6 +45,9 @@ test("menu e páginas públicas preservam agrupamento e correspondência", () =>
   assert.deepEqual(appPageById("agenda").menuChildren.find(({ id }) => id === "agenda-procedures"), {
     id: "agenda-procedures", label: "Procedimentos", page: "agenda", target: "procedimentos", feature: "procedures"
   });
+  assert.equal(appPageById("agenda").menuChildren.find(({ id }) => id === "agenda-waitlist").queue, true);
+  assert.deepEqual(appPageById("sales").menuChildren.map(({ target }) => target), ["nova", "aberto", "historico"]);
+  assert.deepEqual(appPageById("receivables").menuChildren.slice(0, 3).map(({ target }) => target), ["visao", "caixa", undefined]);
   assert.equal(publicPageForPath("/catalogo/produto/42").id, "public-catalog");
   assert.equal(publicPageForPath("/politica-de-privacidade").documentKey, "privacy_policy");
   assert.equal(publicPageForPath("/novidades/agenda-renovada").id, "news");

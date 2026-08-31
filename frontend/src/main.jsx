@@ -328,9 +328,9 @@ function App() {
     "catalog-customization": { initialSection: navigationTarget || "layout" },
     communications: { initialTab: navigationTarget || "service" },
     "client-center": { onNavigate: navigate, createSignal: quickCreate.page === "client-center" ? quickCreate.signal : 0 },
-    sales: { features: planFeatures, onUpgrade: openProfessionalPlan, createSignal: quickCreate.page === "sales" ? quickCreate.signal : 0 },
+    sales: { features: planFeatures, onUpgrade: openProfessionalPlan, initialView: navigationTarget || "historico", createSignal: quickCreate.page === "sales" ? quickCreate.signal : 0 },
     purchases: { onNavigate: navigate, createSignal: quickCreate.page === "purchases" ? quickCreate.signal : 0 },
-    receivables: { onNavigate: navigate },
+    receivables: { onNavigate: navigate, initialView: navigationTarget || "receivables" },
     payables: { onNavigate: navigate },
     suppliers: { registry: "suppliers" },
     "finance-categories": { registry: "categories" },
@@ -353,7 +353,7 @@ function App() {
           brand={{ name: identity?.store_name || "", short: identity?.short_name || identity?.slogan || "", logoUrl: brandLogoUrl }}
           features={planFeatures}
           setPage={(next, target = null) => {
-            const agendaSettingsTargets = ["procedimentos", "profissionais", "horarios", "bloqueios", "solicitacoes"];
+            const agendaSettingsTargets = ["configuracoes", "procedimentos", "profissionais", "horarios", "recursos", "bloqueios", "solicitacoes"];
             setAgendaTarget(next === "agenda" && agendaSettingsTargets.includes(target) ? target : null);
             navigate(next, { target });
             setSidebarOpen(false);

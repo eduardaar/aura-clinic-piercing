@@ -1,7 +1,7 @@
 ﻿// Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight, Copy, ExternalLink, Plus, Settings2 } from "lucide-react";
-import { Accordion, Button, Checkbox, FinancialSummary, Input, PaymentSelect, Select, StatusBadge, StatusSelect, Switch, Tabs, Textarea } from "../../components/common/Ui";
+import { Accordion, Button, Checkbox, FinancialSummary, Input, Metric, PaymentSelect, Select, StatusBadge, StatusSelect, Switch, Tabs, Textarea } from "../../components/common/Ui";
 import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { Loading } from "../../components/common/Feedback";
@@ -352,15 +352,27 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
   useEffect(() => {
     if (navigationTarget === "historico") setFilters((current) => ({ ...current, mode: "realizados" }));
     if (navigationTarget === "calendario") setFilters((current) => ({ ...current, mode: "mensal" }));
+    if (navigationTarget === "diario") setFilters((current) => ({ ...current, mode: "diario" }));
+    if (navigationTarget === "espera") setFilters((current) => ({ ...current, mode: "espera" }));
   }, [navigationTarget]);
-  const { data } = useFetch(`/appointments?${new URLSearchParams(Object.fromEntries(Object.entries(filters).filter(([, v]) => v && !["mensal", "semanal", "diario", "lista", "realizados"].includes(v))))}`);
+  const { data } = useFetch(`/appointments?${new URLSearchParams(Object.fromEntries(Object.entries(filters).filter(([, v]) => v && !["mensal", "semanal", "diario", "lista", "realizados", "espera"].includes(v))))}`);
   // Invalidar "/appointments" alcança o calendário sob qualquer combinação de
   // filtros, não só a consulta que está montada agora.
   const invalidate = useApiInvalidate();
   const refresh = () => invalidate("/appointments", "/service-executions", "/clients", "/dashboard");
   const refreshClients = refresh;
   const safeOptions = asObject(options);
-  const calendar = useMemo(() => ["lista", "realizados"].includes(filters.mode) ? null : buildCalendar(asArray(data), filters.mode, currentDate), [data, filters.mode, currentDate]);
+  const calendar = useMemo(() => ["lista", "realizados", "espera"].includes(filters.mode) ? null : buildCalendar(asArray(data), filters.mode, currentDate), [data, filters.mode, currentDate]);
+  const operationalRows = asArray(data);
+  const today = dateKey(new Date());
+  const todayRows = operationalRows.filter((item) => String(item.appointment_date).slice(0, 10) === today);
+  const completedWithTiming = operationalRows.filter((item) => item.arrived_at && item.started_at);
+  const averageDelay = completedWithTiming.length
+    ? Math.round(completedWithTiming.reduce((sum, item) => sum + Math.max(0, (new Date(item.started_at) - new Date(item.arrived_at)) / 60000), 0) / completedWithTiming.length)
+    : 0;
+  const cancellationRate = operationalRows.length
+    ? Math.round(operationalRows.filter((item) => ["cancelado", "nao_compareceu"].includes(item.status)).length / operationalRows.length * 100)
+    : 0;
 
   return (
     <section className="stack">
@@ -375,11 +387,17 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
           <Button onClick={() => setCreateSeed({})}><Plus size={16} /> Novo agendamento</Button>
         </div>
       </div>
+      <div className="metric-grid">
+        <Metric label="Agenda de hoje" value={todayRows.length} />
+        <Metric label="Aguardando início" value={todayRows.filter((item) => ["pendente", "confirmado", "chegou"].includes(item.status)).length} />
+        <Metric label="Atraso médio" value={`${averageDelay} min`} />
+        <Metric label="Cancelamentos/ausências" value={`${cancellationRate}%`} />
+      </div>
       <div className="toolbar">
         <div className="segmented">
-          {[["mensal", "Mensal"], ["semanal", "Semanal"], ["diario", "Diário"], ["lista", "Agendamentos"], ["realizados", "Atendimentos realizados"]].map(([mode, label]) => <button key={mode} className={filters.mode === mode ? "active" : ""} onClick={() => setFilters({ ...filters, mode })}>{label}</button>)}
+          {[["mensal", "Mensal"], ["semanal", "Semanal"], ["diario", "Diário"], ["lista", "Agendamentos"], ["espera", "Lista de espera"], ["realizados", "Atendimentos realizados"]].map(([mode, label]) => <button key={mode} className={filters.mode === mode ? "active" : ""} onClick={() => setFilters({ ...filters, mode })}>{label}</button>)}
         </div>
-        {filters.mode !== "realizados" && <>
+        {!['realizados', 'espera'].includes(filters.mode) && <>
           <Select label="Profissional" value={filters.professional_id} onChange={(v) => setFilters({ ...filters, professional_id: v })}>
             <option value="">Todos</option>
             {asArray(safeOptions.professionals).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
@@ -396,7 +414,18 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
           <button onClick={() => setCurrentDate(new Date())}>Hoje</button>
         </div>}
       </div>
-      {filters.mode === "realizados" ? (
+      {filters.mode === "espera" ? (
+        <Waitlist onSchedule={(item) => setCreateSeed({
+          waitlist_id: item.id,
+          client_id: item.client_id,
+          full_name: item.client_name,
+          whatsapp: item.contact,
+          service_id: item.service_id,
+          professional_id: item.professional_id,
+          appointment_date: item.preferred_date_from || today,
+          appointment_time: ""
+        })} />
+      ) : filters.mode === "realizados" ? (
         <ServiceExecutionHistory />
       ) : filters.mode === "lista" ? (
         <div className="panel"><AppointmentList appointments={asArray(data)} onChanged={refresh} /></div>
@@ -413,6 +442,7 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
         procedures={procedures}
         onClose={() => setCreateSeed(null)}
         onSaved={() => {
+          if (createSeed?.waitlist_id) void apiFetch(`/agenda/waitlist/${createSeed.waitlist_id}`, { method: "PATCH", body: JSON.stringify({ status: "scheduled", reason: "Agendamento criado pela lista de espera" }) });
           setCreateSeed(null);
           refresh();
           refreshClients();
@@ -432,6 +462,116 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
         }}
       />
     </section>
+  );
+}
+
+function Waitlist({ onSchedule }) {
+  const { data } = useFetch("/agenda/waitlist");
+  const { data: clients } = useFetch("/clients");
+  const { data: services } = useFetch("/services");
+  const { data: professionals } = useFetch("/professionals");
+  const invalidate = useApiInvalidate();
+  const [open, setOpen] = useState(false);
+  const emptyForm = () => ({ client_id: "", client_name: "", contact: "", service_id: "", professional_id: "", preferred_date_from: "", preferred_date_to: "", preferred_period: "qualquer", priority: 0, notes: "" });
+  const [form, setForm] = useState(emptyForm);
+  const [error, setError] = useState("");
+  const rows = asArray(data);
+
+  async function save(event) {
+    event.preventDefault();
+    const response = await apiFetch("/agenda/waitlist", { method: "POST", body: JSON.stringify(form) });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return setError(payload.error || "Não foi possível adicionar à lista de espera.");
+    setOpen(false); setForm(emptyForm()); invalidate("/agenda/waitlist", "/dashboard");
+  }
+
+  async function changeStatus(item, status) {
+    await apiFetch(`/agenda/waitlist/${item.id}`, { method: "PATCH", body: JSON.stringify({ status, reason: "Fila operacional atualizada" }) });
+    invalidate("/agenda/waitlist", "/dashboard");
+  }
+
+  return (
+    <section className="panel stack">
+      <CrudHeader title="Lista de espera" subtitle="Priorize clientes e transforme uma vaga em agendamento sem perder o histórico." actionLabel="Adicionar à espera" onAction={() => { setForm(emptyForm()); setError(""); setOpen(true); }} />
+      <DataView
+        rows={rows}
+        defaultSort={{ key: "priority", dir: "desc" }}
+        searchPlaceholder="Buscar cliente, contato, serviço ou observação"
+        filters={[{ key: "status", label: "Status", type: "select", options: [{ value: "waiting", label: "Aguardando" }, { value: "contacted", label: "Contatado" }, { value: "scheduled", label: "Agendado" }, { value: "closed", label: "Encerrado" }] }]}
+        columns={[
+          { key: "client_name", label: "Cliente" },
+          { key: "service_name", label: "Procedimento", render: (item) => item.service_name || "Qualquer" },
+          { key: "preferred_date_from", label: "Preferência", render: (item) => [formatDateWithYear(item.preferred_date_from), item.preferred_period].filter(Boolean).join(" · ") || "Flexível" },
+          { key: "priority", label: "Prioridade", render: (item) => `${Number(item.priority || 0)}/5` },
+          { key: "status", label: "Status", render: (item) => <StatusBadge status={item.status} /> }
+        ]}
+        actions={(item) => <RowActions actions={[
+          item.status === "waiting" && { label: "Marcar contato", onClick: () => changeStatus(item, "contacted") },
+          !["scheduled", "closed"].includes(item.status) && { label: "Criar encaixe", primary: true, onClick: () => onSchedule?.(item) },
+          item.status !== "closed" && { label: "Encerrar", onClick: () => changeStatus(item, "closed") }
+        ].filter(Boolean)} />}
+        empty="Nenhum cliente aguardando uma vaga."
+      />
+      <Modal open={open} title="Adicionar à lista de espera" subtitle="Preferências são opcionais e ajudam a encontrar o melhor encaixe." onClose={() => setOpen(false)} footer={<><Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button><Button type="submit" form="waitlist-form">Salvar</Button></>}>
+        <form id="waitlist-form" className="stack" onSubmit={save}>
+          <Select label="Cliente cadastrado" value={form.client_id} onChange={(client_id) => { const client = asArray(clients).find((item) => String(item.id) === String(client_id)); setForm({ ...form, client_id, client_name: personName(client), contact: client?.whatsapp || "" }); }}><option value="">Contato avulso</option>{asArray(clients).map((item) => <option key={item.id} value={item.id}>{personName(item)}</option>)}</Select>
+          <div className="form-grid"><Input label="Nome" value={form.client_name} onChange={(client_name) => setForm({ ...form, client_name })} required /><Input label="Contato" value={form.contact} onChange={(contact) => setForm({ ...form, contact })} /></div>
+          <div className="form-grid"><Select label="Procedimento" value={form.service_id} onChange={(service_id) => setForm({ ...form, service_id })}><option value="">Qualquer</option>{asArray(services).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select><Select label="Profissional" value={form.professional_id} onChange={(professional_id) => setForm({ ...form, professional_id })}><option value="">Qualquer</option>{asArray(professionals).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></div>
+          <div className="form-grid"><Input type="date" label="A partir de" value={form.preferred_date_from} onChange={(preferred_date_from) => setForm({ ...form, preferred_date_from })} /><Input type="date" label="Até" value={form.preferred_date_to} onChange={(preferred_date_to) => setForm({ ...form, preferred_date_to })} /><Select label="Período" value={form.preferred_period} onChange={(preferred_period) => setForm({ ...form, preferred_period })}><option value="qualquer">Qualquer</option><option value="manha">Manhã</option><option value="tarde">Tarde</option><option value="noite">Noite</option></Select><Input type="number" min="0" max="5" label="Prioridade" value={form.priority} onChange={(priority) => setForm({ ...form, priority })} /></div>
+          <Textarea label="Observações" value={form.notes} onChange={(notes) => setForm({ ...form, notes })} />
+          {error && <span className="form-error">{error}</span>}
+        </form>
+      </Modal>
+    </section>
+  );
+}
+
+function AgendaResources() {
+  const { data } = useFetch("/agenda/resources");
+  const invalidate = useApiInvalidate();
+  const emptyForm = () => ({ name: "", resource_type: "station", capacity: 1, notes: "", active: true });
+  const [form, setForm] = useState(emptyForm);
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState("");
+
+  async function save(event) {
+    event.preventDefault();
+    const response = await apiFetch("/agenda/resources", { method: "POST", body: JSON.stringify(form) });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return setError(payload.error || "Não foi possível salvar o recurso.");
+    setOpen(false); setForm(emptyForm()); invalidate("/agenda/resources");
+  }
+
+  async function toggle(item) {
+    await apiFetch(`/agenda/resources/${item.id}`, { method: "PATCH", body: JSON.stringify({ active: !item.active }) });
+    invalidate("/agenda/resources");
+  }
+
+  const typeLabel = { room: "Sala", chair: "Cadeira", station: "Estação", equipment: "Equipamento" };
+  return (
+    <div className="panel stack">
+      <CrudHeader title="Salas e recursos" subtitle="Cadastro opcional para preparar a alocação operacional sem bloquear a agenda básica." actionLabel="Novo recurso" onAction={() => { setForm(emptyForm()); setError(""); setOpen(true); }} />
+      <DataView
+        rows={asArray(data)}
+        defaultSort={{ key: "name", dir: "asc" }}
+        searchPlaceholder="Buscar sala, cadeira, estação ou equipamento"
+        columns={[
+          { key: "name", label: "Recurso" },
+          { key: "resource_type", label: "Tipo", render: (item) => typeLabel[item.resource_type] || item.resource_type },
+          { key: "capacity", label: "Capacidade" },
+          { key: "active", label: "Status", render: (item) => <StatusBadge status={item.active ? "Ativo" : "Inativo"} /> }
+        ]}
+        actions={(item) => <RowActions actions={[{ label: item.active ? "Desativar" : "Ativar", onClick: () => toggle(item) }]} />}
+        empty="Nenhuma sala ou recurso cadastrado. A agenda continua funcionando normalmente."
+      />
+      <Modal open={open} title="Novo recurso da agenda" subtitle="Use para salas, cadeiras, estações ou equipamentos compartilhados." onClose={() => setOpen(false)} footer={<><Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button><Button type="submit" form="agenda-resource-form">Salvar</Button></>}>
+        <form id="agenda-resource-form" className="stack" onSubmit={save}>
+          <div className="form-grid"><Input label="Nome" value={form.name} onChange={(name) => setForm({ ...form, name })} required /><Select label="Tipo" value={form.resource_type} onChange={(resource_type) => setForm({ ...form, resource_type })}><option value="room">Sala</option><option value="chair">Cadeira</option><option value="station">Estação</option><option value="equipment">Equipamento</option></Select><Input type="number" min="1" max="100" label="Capacidade" value={form.capacity} onChange={(capacity) => setForm({ ...form, capacity })} /></div>
+          <Textarea label="Observações" value={form.notes} onChange={(notes) => setForm({ ...form, notes })} />
+          {error && <span className="form-error">{error}</span>}
+        </form>
+      </Modal>
+    </div>
   );
 }
 
@@ -601,8 +741,14 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
 
   useEffect(() => {
     if (!seed) return;
+    const seededClient = safeClients.find((item) => String(item.id) === String(seed.client_id));
     setForm({
       ...defaultAppointment(),
+      client_id: seed.client_id || "",
+      full_name: seed.full_name || personName(seededClient),
+      whatsapp: seed.whatsapp || seededClient?.whatsapp || "",
+      service_id: seed.service_id || "",
+      professional_id: seed.professional_id || "",
       appointment_date: seed.appointment_date || defaultAppointment().appointment_date,
       appointment_time: seed.appointment_time || "",
       status: "pendente"
@@ -640,7 +786,7 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
     });
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
-      setError(data.error || "Não foi possível criar o agendamento.");
+      setError(response.status === 409 ? `Alerta de conflito: ${data.error || "revise o horário antes de criar o encaixe."}` : data.error || "Não foi possível criar o agendamento.");
       return;
     }
     onSaved?.();
@@ -970,8 +1116,9 @@ export function BookingAdmin({ onBack, initialTab }) {
   const refreshAvailability = () => invalidate("/availability", "/booking/readiness");
   const refreshBlocks = () => invalidate("/schedule-blocks", "/availability");
   const refreshAppointments = () => invalidate("/appointments", "/dashboard");
-  const [tab, setTab] = useState(initialTab === "servicos" ? "profissionais" : (initialTab || "profissionais"));
-  useEffect(() => setTab(initialTab === "servicos" ? "profissionais" : (initialTab || "profissionais")), [initialTab]);
+  const normalizeSettingsTab = (value) => ["procedimentos", "profissionais", "horarios", "recursos", "bloqueios", "solicitacoes"].includes(value) ? value : "procedimentos";
+  const [tab, setTab] = useState(normalizeSettingsTab(initialTab));
+  useEffect(() => setTab(normalizeSettingsTab(initialTab)), [initialTab]);
   const [professionalForm, setProfessionalForm] = useState(defaultProfessionalForm());
   const [editingProfessionalId, setEditingProfessionalId] = useState(null);
   const [professionalModalOpen, setProfessionalModalOpen] = useState(false);
@@ -1210,6 +1357,7 @@ export function BookingAdmin({ onBack, initialTab }) {
             ["procedimentos", "Procedimentos"],
             ["profissionais", "Profissionais"],
             ["horarios", "Agenda semanal"],
+            ["recursos", "Salas e recursos"],
             ["bloqueios", "Disponibilidade avançada"],
             ["solicitacoes", "Solicitações pendentes"]
           ].map(([id, label]) => <Tabs.Trigger key={id} value={id}>{label}</Tabs.Trigger>)}
@@ -1217,6 +1365,8 @@ export function BookingAdmin({ onBack, initialTab }) {
       </Tabs>
 
       {tab === "procedimentos" && <ServicesWorkspace />}
+
+      {tab === "recursos" && <AgendaResources />}
 
       {tab === "profissionais" && (
         <div className="panel">
