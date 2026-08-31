@@ -933,6 +933,30 @@
   display: grid;
   gap: 8px;
   padding-bottom: 8px;
+  isolation: isolate;
+  background: var(--paper);
+  box-shadow: 0 16px 18px -20px rgb(from var(--ink) r g b / .5);
+}
+
+/* Faixa opaca que mascara completamente o calendario enquanto ele passa por
+   baixo dos controles fixos, inclusive nos espacos entre os blocos. */
+.agenda-sticky-controls::before {
+  content: "";
+  position: absolute;
+  inset: -10px -4px 0;
+  z-index: -1;
+  background: var(--paper);
+}
+
+.agenda-sticky-controls > .agenda-page-heading,
+.agenda-sticky-controls > .toolbar,
+.agenda-sticky-controls > .agenda-shared-filters {
+  position: relative;
+  z-index: 1;
+  opacity: 1;
+}
+
+.agenda-sticky-controls > .agenda-shared-filters {
   background: var(--paper);
 }
 
