@@ -1,8 +1,8 @@
 ﻿// Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ChevronLeft, ChevronRight, Copy, ExternalLink, Plus, Settings2 } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Copy, ExternalLink, MoreHorizontal, Plus, Settings2 } from "lucide-react";
 import { Accordion, Button, Checkbox, FinancialSummary, Input, Metric, PaymentSelect, Select, StatusBadge, StatusSelect, Switch, Tabs, Textarea } from "../../components/common/Ui";
-import { Modal, CrudHeader, ConfirmDeleteModal, RowActions } from "../../components/common/Crud";
+import { Modal, CrudHeader, ConfirmDeleteModal, DropdownMenu, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { Loading } from "../../components/common/Feedback";
 import { FormSection, FormWorkflow, ReviewSummary, StepNavigator, ValidationSummary } from "../../components/common/FormWorkflow";
@@ -82,10 +82,12 @@ function distinctOptions(values) {
 
 export function AgendaWorkspace({ initialScreen = "agenda", initialSettingsTab, navigationTarget, onSettingsClosed, features = [], onUpgrade, createSignal = 0 }) {
   const [screen, setScreen] = useState(initialScreen);
+  const [settingsTab, setSettingsTab] = useState(initialSettingsTab);
   useEffect(() => setScreen(initialScreen), [initialScreen]);
+  useEffect(() => setSettingsTab(initialSettingsTab), [initialSettingsTab]);
   return screen === "settings"
-    ? <BookingAdmin initialTab={initialSettingsTab} onBack={() => { setScreen("agenda"); onSettingsClosed?.(); }} />
-    : <VisualCalendar navigationTarget={navigationTarget} features={features} onUpgrade={onUpgrade} onOpenSettings={() => setScreen("settings")} createSignal={createSignal} />;
+    ? <BookingAdmin initialTab={settingsTab} onBack={() => { setScreen("agenda"); onSettingsClosed?.(); }} />
+    : <VisualCalendar navigationTarget={navigationTarget} features={features} onUpgrade={onUpgrade} onOpenSettings={(tab) => { setSettingsTab(tab); setScreen("settings"); }} createSignal={createSignal} />;
 }
 
 function PublicBookingLink() {
@@ -386,7 +388,16 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
         </div>
         <div className="agenda-page-actions">
           <PublicBookingLink />
-          <Button variant="secondary" onClick={onOpenSettings}><Settings2 size={16} /> Configurações</Button>
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild><Button variant="secondary"><MoreHorizontal size={16} /> Mais opções</Button></DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content className="crud-options-popover" align="end" sideOffset={6}>
+                <DropdownMenu.Item onSelect={() => onOpenSettings("solicitacoes")}>Solicitações online</DropdownMenu.Item>
+                <DropdownMenu.Item onSelect={() => setFilters({ ...filters, mode: "espera" })}>Lista de espera</DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+          <Button variant="secondary" onClick={() => onOpenSettings()}><Settings2 size={16} /> Configurações</Button>
           <Button onClick={() => setCreateSeed({})}><Plus size={16} /> Novo agendamento</Button>
         </div>
       </div>
@@ -398,7 +409,7 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
       </div>
       <div className="toolbar">
         <div className="segmented">
-          {[["mensal", "Mensal"], ["semanal", "Semanal"], ["diario", "Diário"], ["lista", "Agendamentos"], ["espera", "Lista de espera"], ["realizados", "Atendimentos realizados"]].map(([mode, label]) => <button key={mode} className={filters.mode === mode ? "active" : ""} onClick={() => setFilters({ ...filters, mode })}>{label}</button>)}
+          {[["mensal", "Mensal"], ["semanal", "Semanal"], ["diario", "Diário"], ["lista", "Agendamentos"], ["realizados", "Atendimentos realizados"]].map(([mode, label]) => <button key={mode} className={filters.mode === mode ? "active" : ""} onClick={() => setFilters({ ...filters, mode })}>{label}</button>)}
         </div>
         {!['realizados', 'espera'].includes(filters.mode) && <>
           <Select label="Profissional" value={filters.professional_id} onChange={(v) => setFilters({ ...filters, professional_id: v })}>
