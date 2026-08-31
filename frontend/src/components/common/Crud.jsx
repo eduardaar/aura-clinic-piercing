@@ -20,14 +20,14 @@ export { DropdownMenu };
  * @param {() => void} [props.onClose]
  * @param {React.ReactNode} [props.children]
  * @param {React.ReactNode} [props.footer] Botões do rodapé.
- * @param {"sm" | "md" | "lg"} [props.size] Padrão: "md".
+ * @param {"sm" | "md" | "lg"} [props.size] Mantido apenas por compatibilidade; todos os modais usam largura média.
  */
-export function Modal({ open, title, subtitle, onClose, children, footer, size = "md" }) {
+export function Modal({ open, title, subtitle, onClose, children, footer }) {
   return (
     <Dialog.Root open={Boolean(open)} onOpenChange={(nextOpen) => { if (!nextOpen) onClose?.(); }}>
       <Dialog.Portal>
         <Dialog.Overlay className="modal-backdrop">
-          <Dialog.Content className={`modal-card modal-${size}`}>
+          <Dialog.Content className="modal-card modal-md">
             <div className="modal-header">
               <div>
                 <Dialog.Title>{title}</Dialog.Title>
