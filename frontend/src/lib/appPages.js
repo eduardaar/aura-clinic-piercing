@@ -39,13 +39,7 @@ export const APP_PAGES = Object.freeze([
       { id: "agenda-day", label: "Visão diária", page: "agenda", target: "diario" },
       { id: "agenda-requests", label: "Solicitações online", page: "agenda", target: "solicitacoes" },
       { id: "agenda-waitlist", label: "Lista de espera", page: "agenda", target: "espera", queue: true },
-      { id: "agenda-history", label: "Histórico de atendimentos", page: "agenda", target: "historico" },
-      { id: "agenda-settings", label: "Configurações da agenda", page: "agenda", target: "configuracoes" },
-      { id: "agenda-procedures", label: "Procedimentos", page: "agenda", target: "procedimentos", feature: "procedures" },
-      { id: "agenda-professionals", label: "Profissionais", page: "agenda", target: "profissionais" },
-      { id: "agenda-hours", label: "Horários", page: "agenda", target: "horarios" },
-      { id: "agenda-resources", label: "Salas e recursos", page: "agenda", target: "recursos" },
-      { id: "agenda-blocks", label: "Bloqueios, feriados e especiais", page: "agenda", target: "bloqueios" }
+      { id: "agenda-history", label: "Histórico de atendimentos", page: "agenda", target: "historico" }
     ],
     component: lazyNamed(() => import("../features/agenda/Agenda"), "AgendaWorkspace")
   },
