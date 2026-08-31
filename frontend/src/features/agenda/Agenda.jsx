@@ -394,6 +394,7 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
               <DropdownMenu.Content className="crud-options-popover" align="end" sideOffset={6}>
                 <DropdownMenu.Item onSelect={() => onOpenSettings("solicitacoes")}>Solicitações online</DropdownMenu.Item>
                 <DropdownMenu.Item onSelect={() => setFilters({ ...filters, mode: "espera" })}>Lista de espera</DropdownMenu.Item>
+                <DropdownMenu.Item onSelect={() => setFilters({ ...filters, mode: "realizados" })}>Histórico de atendimentos</DropdownMenu.Item>
               </DropdownMenu.Content>
             </DropdownMenu.Portal>
           </DropdownMenu.Root>
@@ -409,7 +410,7 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
       </div>
       <div className="toolbar">
         <div className="segmented">
-          {[["mensal", "Mensal"], ["semanal", "Semanal"], ["diario", "Diário"], ["lista", "Agendamentos"], ["realizados", "Atendimentos realizados"]].map(([mode, label]) => <button key={mode} className={filters.mode === mode ? "active" : ""} onClick={() => setFilters({ ...filters, mode })}>{label}</button>)}
+          {[["mensal", "Mensal"], ["semanal", "Semanal"], ["diario", "Diário"], ["lista", "Agendamentos"]].map(([mode, label]) => <button key={mode} className={filters.mode === mode ? "active" : ""} onClick={() => setFilters({ ...filters, mode })}>{label}</button>)}
         </div>
         {!['realizados', 'espera'].includes(filters.mode) && <>
           <Select label="Profissional" value={filters.professional_id} onChange={(v) => setFilters({ ...filters, professional_id: v })}>

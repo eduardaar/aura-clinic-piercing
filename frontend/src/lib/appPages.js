@@ -34,10 +34,6 @@ export const APP_PAGES = Object.freeze([
   {
     id: "agenda", path: "/app/agenda", title: "Agenda", group: "Atendimento", icon: Calendar, menu: true, menuRank: 0,
     roleRank: { admin: 1, reception: 0, piercer: 0 }, permission: "appointments.view",
-    menuChildren: [
-      { id: "agenda-calendar", label: "Calendário", page: "agenda", target: "calendario" },
-      { id: "agenda-history", label: "Histórico de atendimentos", page: "agenda", target: "historico" }
-    ],
     component: lazyNamed(() => import("../features/agenda/Agenda"), "AgendaWorkspace")
   },
   {
