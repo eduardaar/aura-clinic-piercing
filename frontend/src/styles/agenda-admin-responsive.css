@@ -7,7 +7,7 @@
   .premium-dashboard,
   .settings-page { min-width: 0; }
 
-  .agenda-visual-page { gap: 8px; }
+  .agenda-visual-page { gap: 8px; margin-top: -20px; }
   .agenda-visual-page .agenda-page-heading { padding: 10px 14px; }
   .agenda-sticky-controls > .toolbar { padding: 6px 8px; }
   .agenda-sticky-controls > .agenda-shared-filters { margin-top: -3px; padding: 0 2px; }
