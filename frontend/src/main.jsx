@@ -378,6 +378,13 @@ function App() {
             <Menu size={20} className="nav-toggle-mobile" />
             {navCollapsed ? <PanelLeftOpen size={20} className="nav-toggle-desk" /> : <PanelLeftClose size={20} className="nav-toggle-desk" />}
           </button>
+          {trialDays !== null && !subscriptionInactive && !subscriptionInGrace && activePage !== "meu-plano" && (
+            <div className="topbar-trial-notice" title={`Teste grátis: ${trialDays} dia(s) restante(s).`}>
+              <Sparkles size={14} aria-hidden="true" />
+              <span className="topbar-trial-full">Teste grátis: <strong>{trialDays} dia(s)</strong> restante(s).</span>
+              <span className="topbar-trial-compact">Teste: <strong>{trialDays} dias</strong></span>
+            </div>
+          )}
           <div className="topbar-page-context">
             <span>{brandName}</span>
             <strong>{activePage === "dashboard" ? "Visão geral" : pageTitle(activePage)}</strong>
@@ -428,7 +435,7 @@ function App() {
         </header>
         {/* Único elemento com rolagem: o menu lateral e o topo ficam fixos. */}
         <div className="content-scroll">
-        {(trialDays !== null || subscriptionInactive || subscriptionInGrace) && activePage !== "meu-plano" && (
+        {(subscriptionInactive || subscriptionInGrace) && activePage !== "meu-plano" && (
           <div className={`plan-banner ${subscriptionInactive ? "danger" : "warn"}`}>
             <span>
               {subscriptionInactive

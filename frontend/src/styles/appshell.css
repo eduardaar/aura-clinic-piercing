@@ -389,6 +389,23 @@
 /* A saudação do dashboard já vive no <h1>; a linha extra só rouba altura. */
 .topbar-title p { display: none; }
 
+.topbar-trial-notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid color-mix(in srgb, var(--gold) 42%, var(--line));
+  border-radius: 999px;
+  background: var(--gold-soft);
+  color: var(--gold-dark);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.topbar-trial-notice svg { flex: none; }
+.topbar-trial-notice strong { font-weight: 800; }
+.topbar-trial-compact { display: none; }
+
 .topbar-actions {
   display: flex;
   align-items: center;
@@ -1528,6 +1545,15 @@
     max-height: 62dvh;
     overflow-y: auto;
   }
+  .topbar-trial-notice + .topbar-page-context { display: none; }
+  .topbar-trial-notice {
+    max-width: 100%;
+    padding: 5px 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .topbar-trial-full { display: none; }
+  .topbar-trial-compact { display: inline; overflow: hidden; text-overflow: ellipsis; }
   .dataview-toolbar-extra { margin-left: 0; width: 100%; }
   .dataview-search { max-width: none; }
   .dataview-pagination { gap: 10px; }
