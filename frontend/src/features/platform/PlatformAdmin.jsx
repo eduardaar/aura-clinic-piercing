@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, ChevronRight, Eye, EyeOff, LogOut } from "lucide-react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { ArrowLeft, ChevronRight, Eye, EyeOff, LogOut, Mail, MoreHorizontal, ShieldCheck } from "lucide-react";
 import { Button, Input, Tabs } from "../../components/common/Ui";
 import { Modal } from "../../components/common/Crud";
 import { API } from "../../lib/api";
@@ -15,6 +16,7 @@ import { SupportInbox, SupportOpenBadge } from "./SupportInbox";
 import { PlatformFinance } from "./FinanceAdmin";
 import { EmailAdmin } from "./EmailAdmin";
 import { ContentAdmin } from "./ContentAdmin";
+import { PlatformSecurity } from "./PlatformSecurity";
 
 // Painel do super-admin da plataforma (/plataforma).
 // Sessão própria em aura-platform-session (separada da aura-session das clínicas)
@@ -32,21 +34,25 @@ function readPlatformSession() {
 
 const EMPTY_TENANT_FORM = { name: "", slug: "", admin_name: "", admin_email: "", admin_password: "" };
 
-// Áreas do painel. A landing é conteúdo público da plataforma, não cadastro de
-// clínica: são duas tarefas distintas e cada uma tem sua aba.
-const TABS = [
-  ["dashboard", "Dashboard"],
+// Rotas continuam independentes para permitir recarregar e compartilhar a URL,
+// mas a navegação agrupa áreas de baixa frequência em conteúdo e Mais opções.
+const ROUTE_TABS = ["dashboard", "contas", "planos", "suporte", "email", "landing", "conteudo", "legal", "seguranca"];
+const PRIMARY_TABS = [
+  ["dashboard", "Financeiro"],
   ["contas", "Clínicas"],
   ["planos", "Planos"],
   ["suporte", "Suporte"],
-  ["email", "E-mail"],
-  ["landing", "Landing pública"],
-  ["conteudo", "Conteúdo e ajuda"],
+  ["landing", "Conteúdo da plataforma"],
+];
+const CONTENT_TABS = [
+  ["landing", "Landing"],
+  ["conteudo", "Notícias e manual"],
   ["legal", "Termos e privacidade"],
 ];
+const CONTENT_TAB_IDS = new Set(CONTENT_TABS.map(([id]) => id));
 
 const PLATFORM_BASE_PATH = "/plataforma";
-const TAB_PATHS = Object.fromEntries(TABS.map(([id]) => [id, `${PLATFORM_BASE_PATH}/${id}`]));
+const TAB_PATHS = Object.fromEntries(ROUTE_TABS.map((id) => [id, `${PLATFORM_BASE_PATH}/${id}`]));
 const TAB_BY_PATH = Object.fromEntries(Object.entries(TAB_PATHS).map(([id, path]) => [path, id]));
 
 function tabFromLocation(pathname = window.location.pathname) {
@@ -54,7 +60,7 @@ function tabFromLocation(pathname = window.location.pathname) {
 }
 
 const TAB_HEADINGS = {
-  dashboard: { title: "Dashboard", subtitle: "Receita, caixa, cobranças e evolução financeira da plataforma." },
+  dashboard: { title: "Financeiro", subtitle: "Receita, caixa, cobranças e evolução financeira da plataforma." },
   contas: { title: "Clínicas", subtitle: "Cadastro, plano, assinatura, uso e faturas de cada cliente." },
   planos: { title: "Planos", subtitle: "Preço, recursos e limites dos planos vendidos pela plataforma." },
   suporte: { title: "Suporte", subtitle: "Chamados abertos pelas clínicas." },
@@ -62,6 +68,12 @@ const TAB_HEADINGS = {
   landing: { title: "Landing pública", subtitle: "Edite os blocos da página inicial em /." },
   conteudo: { title: "Conteúdo e ajuda", subtitle: "Notícias públicas e manual do usuário em uma gestão única." },
   legal: { title: "Termos e privacidade", subtitle: "Textos legais e versões aceitas durante o cadastro." },
+  seguranca: { title: "Segurança da conta", subtitle: "Proteção do acesso administrativo da plataforma." },
+};
+
+const CONTENT_HEADING = {
+  title: "Conteúdo da plataforma",
+  subtitle: "Landing pública, notícias, manual do usuário, termos e privacidade.",
 };
 
 export function PlatformAdmin() {
@@ -87,6 +99,11 @@ export function PlatformAdmin() {
   function clearPlatformSession() {
     localStorage.removeItem(PLATFORM_SESSION_KEY);
     setSession(null);
+  }
+
+  function updatePlatformSession(nextSession) {
+    localStorage.setItem(PLATFORM_SESSION_KEY, JSON.stringify(nextSession));
+    setSession(nextSession);
   }
 
   // Fetch da plataforma: Bearer do token de plataforma, sem X-Tenant.
@@ -168,8 +185,7 @@ export function PlatformAdmin() {
         return;
       }
       const nextSession = { token: payload.token, user: payload.user };
-      localStorage.setItem(PLATFORM_SESSION_KEY, JSON.stringify(nextSession));
-      setSession(nextSession);
+      updatePlatformSession(nextSession);
       setLoginForm({ email: "", password: "", mfa_code: "" });
       setMfaRequired(false);
     } catch {
@@ -304,20 +320,22 @@ export function PlatformAdmin() {
     );
   }
 
+  const activeHeading = CONTENT_TAB_IDS.has(tab) ? CONTENT_HEADING : TAB_HEADINGS[tab];
+
   return (
     <main className="main-content">
       <Tabs value={tab} onChange={navigateTo} className="platform-tabs-root">
       <header className="topbar platform-topbar">
         <div className="topbar-title">
           <span className="eyebrow">Aura Clinic · Plataforma</span>
-          <h1>{TAB_HEADINGS[tab].title}</h1>
-          <p>{TAB_HEADINGS[tab].subtitle}</p>
+          <h1>{activeHeading.title}</h1>
+          <p>{activeHeading.subtitle}</p>
         </div>
         <nav className="platform-tabs" aria-label="Áreas do painel">
           <Tabs.List asChild aria-label="Áreas do painel">
             <div className="platform-tabs-list">
-              {TABS.map(([id, label]) => (
-                <Tabs.Trigger key={id} value={id} asChild>
+              {PRIMARY_TABS.map(([id, label]) => (
+                <Tabs.Trigger key={id} value={id} className={id === "landing" && CONTENT_TAB_IDS.has(tab) ? "active" : ""} asChild>
                   <a href={TAB_PATHS[id]} onClick={(event) => event.preventDefault()}>
                     {label}
                     {id === "suporte" && (
@@ -332,9 +350,21 @@ export function PlatformAdmin() {
               ))}
             </div>
           </Tabs.List>
-          <Button type="button" variant="ghost" className="platform-logout" onClick={clearPlatformSession}>
-            <LogOut size={16} aria-hidden="true" /> Sair
-          </Button>
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <Button type="button" variant="ghost" className="platform-more-options" aria-label="Mais opções">
+                <MoreHorizontal size={17} aria-hidden="true" /> Mais opções
+              </Button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content className="crud-options-popover" align="end" sideOffset={6}>
+                <DropdownMenu.Item onSelect={() => navigateTo("email")}><Mail size={16} /> Configuração de e-mail</DropdownMenu.Item>
+                <DropdownMenu.Item onSelect={() => navigateTo("seguranca")}><ShieldCheck size={16} /> Segurança da conta</DropdownMenu.Item>
+                <DropdownMenu.Separator className="crud-options-separator" />
+                <DropdownMenu.Item className="danger" onSelect={clearPlatformSession}><LogOut size={16} /> Sair</DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
         </nav>
       </header>
 
@@ -349,6 +379,15 @@ export function PlatformAdmin() {
             painéis com `forceMount` fazia Planos/Landing continuarem visíveis e
             se acumularem com Clínicas, bloqueando inclusive a rolagem. */}
         <Tabs.Content key={tab} value={tab} className="platform-tab-content">
+          {CONTENT_TAB_IDS.has(tab) && (
+            <Tabs value={tab} onChange={navigateTo} className="platform-content-navigation">
+              <Tabs.List className="dashboard-section-tabs" aria-label="Conteúdo da plataforma">
+                {CONTENT_TABS.map(([id, label]) => (
+                  <Tabs.Trigger key={id} value={id}>{label}</Tabs.Trigger>
+                ))}
+              </Tabs.List>
+            </Tabs>
+          )}
           {tab === "landing" && <LandingEditor token={token} onUnauthorized={clearPlatformSession} />}
           {tab === "conteudo" && <ContentAdmin token={token} onUnauthorized={clearPlatformSession} />}
           {tab === "legal" && <LegalEditor token={token} onUnauthorized={clearPlatformSession} />}
@@ -356,6 +395,7 @@ export function PlatformAdmin() {
           {tab === "contas" && <AccountsAdmin token={token} onUnauthorized={clearPlatformSession} onCreate={openCreate} refreshKey={accountsRefresh} />}
           {tab === "dashboard" && <PlatformFinance token={token} onUnauthorized={clearPlatformSession} />}
           {tab === "email" && <EmailAdmin token={token} onUnauthorized={clearPlatformSession} />}
+          {tab === "seguranca" && <PlatformSecurity token={token} onUnauthorized={clearPlatformSession} onSessionUpdated={updatePlatformSession} />}
           {tab === "suporte" && (
             <SupportInbox
               token={token}

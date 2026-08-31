@@ -266,8 +266,36 @@ router.post("/api/platform/mfa/verify", requirePlatform, async (req, res) => {
     const result = await query("SELECT mfa_totp_secret_encrypted FROM platform.platform_users WHERE id = $1", [req.platformUser.sub]);
     const secret = decryptTotpSecret(result.rows[0]?.mfa_totp_secret_encrypted);
     if (!secret || !verifyTotp(secret, req.body?.code)) return res.status(400).json({ error: "Código do autenticador inválido." });
-    await query("UPDATE platform.platform_users SET mfa_enabled = true, session_version = session_version + 1 WHERE id = $1", [req.platformUser.sub]);
-    res.json({ ok: true, enabled: true });
+    const updated = await query("UPDATE platform.platform_users SET mfa_enabled = true, session_version = session_version + 1 WHERE id = $1 RETURNING *", [req.platformUser.sub]);
+    const user = updated.rows[0];
+    res.json({
+      ok: true,
+      enabled: true,
+      token: createPlatformToken(user),
+      user: { id: user.id, name: user.name, email: user.email, role: user.role }
+    });
+  } catch (error) { handleServiceError(res, error); }
+});
+
+router.post("/api/platform/mfa/disable", requirePlatform, async (req, res) => {
+  try {
+    const result = await query("SELECT * FROM platform.platform_users WHERE id = $1", [req.platformUser.sub]);
+    const user = result.rows[0];
+    const secret = decryptTotpSecret(user?.mfa_totp_secret_encrypted);
+    if (!user || !(await bcrypt.compare(String(req.body?.current_password || ""), user.password_hash)) || !verifyTotp(secret, req.body?.code)) {
+      return res.status(400).json({ error: "Senha ou código do autenticador inválido." });
+    }
+    const updated = await query(
+      "UPDATE platform.platform_users SET mfa_enabled = false, mfa_totp_secret_encrypted = NULL, session_version = session_version + 1 WHERE id = $1 RETURNING *",
+      [user.id]
+    );
+    const nextUser = updated.rows[0];
+    res.json({
+      ok: true,
+      enabled: false,
+      token: createPlatformToken(nextUser),
+      user: { id: nextUser.id, name: nextUser.name, email: nextUser.email, role: nextUser.role }
+    });
   } catch (error) { handleServiceError(res, error); }
 });
 

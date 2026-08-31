@@ -142,6 +142,10 @@
     color: #a33a3a;
   }
 
+  .platform-tabs .platform-more-options {
+    margin-left: auto;
+  }
+
   .platform-tabs .platform-logout:hover {
     color: #7d2424;
   }
@@ -156,6 +160,19 @@
     font-size: 11px;
     line-height: 18px;
     text-align: center;
+  }
+
+  .platform-content-navigation .dashboard-section-tabs {
+    margin-bottom: 16px;
+  }
+
+  .platform-security form {
+    max-width: 680px;
+  }
+
+  .platform-authenticator-link {
+    width: max-content;
+    max-width: 100%;
   }
 
   /* ---------------------------------------------------------------------
@@ -269,7 +286,8 @@
     .platform-tabs { margin: 0 -14px; padding: 0 max(14px, env(safe-area-inset-left)) 0 max(14px, env(safe-area-inset-right)); }
     .platform-tabs a,
     .platform-tabs button { min-height: 42px; padding: 0 12px; font-size: 13px; }
-    .platform-tabs .platform-logout { margin-left: 0; }
+    .platform-tabs .platform-logout,
+    .platform-tabs .platform-more-options { margin-left: 0; }
     .platform-metrics { grid-template-columns: 1fr; }
     .platform-facts { grid-template-columns: 1fr; }
     .platform-quota-head { align-items: flex-start; flex-direction: column; gap: 3px; }
