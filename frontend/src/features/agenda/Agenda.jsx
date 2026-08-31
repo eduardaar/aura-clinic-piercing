@@ -1,6 +1,6 @@
 ﻿// Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ChevronLeft, ChevronRight, Copy, ExternalLink, Filter, MoreHorizontal, Plus, Search, Settings2, X } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Copy, ExternalLink, Eye, EyeOff, Filter, MoreHorizontal, Plus, Search, Settings2, X } from "lucide-react";
 import { Accordion, Button, Checkbox, FinancialSummary, Input, Metric, PaymentSelect, Select, StatusBadge, StatusSelect, Switch, Tabs, Textarea } from "../../components/common/Ui";
 import { Modal, CrudHeader, ConfirmDeleteModal, DropdownMenu, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
@@ -357,6 +357,7 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [createSeed, setCreateSeed] = useState(null);
+  const [showIndicators, setShowIndicators] = useState(true);
   useEffect(() => { if (createSignal) setCreateSeed({}); }, [createSignal]);
   useEffect(() => {
     if (navigationTarget === "historico") setFilters((current) => ({ ...current, mode: "realizados" }));
@@ -447,15 +448,16 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
               </DropdownMenu.Content>
             </DropdownMenu.Portal>
           </DropdownMenu.Root>
+          <Button variant="ghost" onClick={() => setShowIndicators((visible) => !visible)}>{showIndicators ? <EyeOff size={16} /> : <Eye size={16} />}{showIndicators ? "Esconder indicadores" : "Mostrar indicadores"}</Button>
           <Button onClick={() => setCreateSeed({})}><Plus size={16} /> Novo agendamento</Button>
         </div>
       </div>
-      <div className="metric-grid agenda-metric-grid">
+      {showIndicators && <div className="metric-grid">
         <Metric label="Agenda de hoje" value={todayRows.length} />
         <Metric label="Aguardando início" value={todayRows.filter((item) => ["pendente", "confirmado", "chegou"].includes(item.status)).length} />
         <Metric label="Atraso médio" value={`${averageDelay} min`} />
         <Metric label="Cancelamentos/ausências" value={`${cancellationRate}%`} />
-      </div>
+      </div>}
       <div className="toolbar">
         <div className="segmented">
           {[["mensal", "Mensal"], ["semanal", "Semanal"], ["diario", "Diário"], ["lista", "Agendamentos"]].map(([mode, label]) => <button key={mode} className={filters.mode === mode ? "active" : ""} onClick={() => setFilters({ ...filters, mode })}>{label}</button>)}
