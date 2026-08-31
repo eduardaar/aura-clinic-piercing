@@ -436,7 +436,8 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
           <Metric label="Cancelamentos/ausências" value={`${cancellationRate}%`} />
         </div>
       </CollapsibleIndicators>
-      <div className="panel agenda-page-heading">
+      <div className="agenda-sticky-controls">
+        <div className="panel agenda-page-heading">
         <div>
           <span className="eyebrow">Gestão de agenda</span>
           <h2>Agenda</h2>
@@ -458,8 +459,8 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
           </DropdownMenu.Root>
           <Button onClick={() => setCreateSeed({})}><Plus size={16} /> Novo agendamento</Button>
         </div>
-      </div>
-      <div className="toolbar">
+        </div>
+        <div className="toolbar">
         <div className="segmented">
           {[["mensal", "Mensal"], ["semanal", "Semanal"], ["diario", "Diário"], ["lista", "Agendamentos"]].map(([mode, label]) => <button key={mode} className={filters.mode === mode ? "active" : ""} onClick={() => setFilters({ ...filters, mode })}>{label}</button>)}
         </div>
@@ -471,8 +472,8 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
           <button onClick={openPeriod}>Período</button>
           {hasPeriod && <button onClick={clearPeriod}>Limpar</button>}
         </div>}
-      </div>
-      {["mensal", "semanal", "diario", "lista"].includes(filters.mode) && <div className="dataview-toolbar agenda-shared-filters">
+        </div>
+        {["mensal", "semanal", "diario", "lista"].includes(filters.mode) && <div className="dataview-toolbar agenda-shared-filters">
         <label className="dataview-search">
           <Search size={16} aria-hidden="true" />
           <input type="search" value={filters.search} placeholder="Buscar cliente, telefone ou procedimento" onChange={(event) => setFilters({ ...filters, search: event.target.value })} />
@@ -482,7 +483,8 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
           <Filter size={15} /> Filtros
           {activeFilterCount > 0 && <span className="dataview-filter-count">{activeFilterCount}</span>}
         </button>
-      </div>}
+        </div>}
+      </div>
       <Modal open={filterModalOpen} title="Filtros da Agenda" subtitle="Aplicados às quatro visualizações" onClose={() => setFilterModalOpen(false)} footer={<><Button variant="secondary" onClick={clearFilters}>Limpar</Button><Button onClick={applyFilters}>Aplicar filtros</Button></>}>
         <div className="dataview-filter-modal-grid">
           <Select label="Profissional" value={draftFilters.professional_id} onChange={(professional_id) => setDraftFilters({ ...draftFilters, professional_id })}>
