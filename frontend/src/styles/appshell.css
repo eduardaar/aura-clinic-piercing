@@ -1537,6 +1537,7 @@
 .crud-options-popover [role="menuitem"][data-highlighted] {
   background: color-mix(in srgb, var(--gold) 15%, var(--white));
 }
+.crud-options-popover [role="separator"] { height: 1px; margin: 5px 2px; background: var(--line); }
 
 /* Catálogo: seções essenciais ficam em abas; configurações menos frequentes e
    operações de rascunho ficam em menus, sem uma faixa de 14 abas. */

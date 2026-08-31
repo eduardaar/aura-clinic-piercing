@@ -392,13 +392,15 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
             <DropdownMenu.Trigger asChild><Button variant="secondary"><MoreHorizontal size={16} /> Mais opções</Button></DropdownMenu.Trigger>
             <DropdownMenu.Portal>
               <DropdownMenu.Content className="crud-options-popover" align="end" sideOffset={6}>
+                <DropdownMenu.Item onSelect={() => onOpenSettings()}><Settings2 size={16} /> Configurações da Agenda</DropdownMenu.Item>
+                <DropdownMenu.Separator />
                 <DropdownMenu.Item onSelect={() => onOpenSettings("solicitacoes")}>Solicitações online</DropdownMenu.Item>
                 <DropdownMenu.Item onSelect={() => setFilters({ ...filters, mode: "espera" })}>Lista de espera</DropdownMenu.Item>
+                <DropdownMenu.Separator />
                 <DropdownMenu.Item onSelect={() => setFilters({ ...filters, mode: "realizados" })}>Histórico de atendimentos</DropdownMenu.Item>
               </DropdownMenu.Content>
             </DropdownMenu.Portal>
           </DropdownMenu.Root>
-          <Button variant="secondary" onClick={() => onOpenSettings()}><Settings2 size={16} /> Configurações</Button>
           <Button onClick={() => setCreateSeed({})}><Plus size={16} /> Novo agendamento</Button>
         </div>
       </div>
