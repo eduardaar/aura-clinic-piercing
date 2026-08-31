@@ -36,6 +36,12 @@ function formatDateWithYear(date) {
 
 const today = () => new Date().toISOString().slice(0, 10);
 const isOverdue = (item) => item.status !== "concluido" && String(item.due_date || "") <= today();
+const isCompleted = (item) => ["concluido", "concluído"].includes(String(item.status || "").toLowerCase());
+const dateInDays = (days) => {
+  const date = new Date(`${today()}T12:00:00`);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+};
 
 // Opções vindas dos próprios acompanhamentos: a base tem status que não estão
 // na lista fixa do formulário (ex.: "respondido", "cicatrizando bem"), e um
@@ -72,8 +78,39 @@ export function PostCare({ onBack }) {
           defaultSort={{ key: "due_date", dir: "asc" }}
           searchPlaceholder="Pesquisar cliente, WhatsApp, procedimento, joia ou status"
           filters={[
+            {
+              key: "priority",
+              label: "Prioridade do acompanhamento",
+              type: "select",
+              options: [
+                { value: "overdue", label: "Vencidos" },
+                { value: "today", label: "Para hoje" },
+                { value: "next_7", label: "Próximos 7 dias" },
+                { value: "attention", label: "Exigem atenção" },
+                { value: "pending", label: "Todos pendentes" },
+                { value: "completed", label: "Concluídos" }
+              ],
+              match: (item, value) => {
+                const dueDate = String(item.due_date || "").slice(0, 10);
+                if (value === "overdue") return !isCompleted(item) && dueDate < today();
+                if (value === "today") return !isCompleted(item) && dueDate === today();
+                if (value === "next_7") return !isCompleted(item) && dueDate > today() && dueDate <= dateInDays(7);
+                if (value === "attention") return ["atenção necessária", "intercorrência"].includes(String(item.healing_status || "").toLowerCase());
+                if (value === "completed") return isCompleted(item);
+                return !isCompleted(item);
+              }
+            },
             { key: "status", label: "Status do lembrete", type: "select", options: distinctOptions(followups, (item) => item.status) },
             { key: "healing_status", label: "Status da cicatrização", type: "select", options: distinctOptions(followups, (item) => item.healing_status) },
+            { key: "professional_name", label: "Profissional", type: "select", options: distinctOptions(followups, (item) => item.professional_name) },
+            { key: "reminder_day", label: "Prazo do retorno", type: "select", options: distinctOptions(followups, (item) => Number(item.reminder_day || 0)).map((value) => ({ value: String(value), label: `${value} dias` })) },
+            {
+              key: "photo",
+              label: "Foto do cliente",
+              type: "select",
+              options: [{ value: "received", label: "Foto recebida" }, { value: "missing", label: "Aguardando foto" }],
+              match: (item, value) => value === "received" ? Boolean(item.client_photo_url) : !item.client_photo_url
+            },
             {
               key: "from",
               label: "Vencimento a partir de",

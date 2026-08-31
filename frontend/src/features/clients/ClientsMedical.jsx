@@ -7,7 +7,7 @@ import { DataView, MONTH_OPTIONS } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { AdvancedFields, FormSection, FormWorkflow, ValidationSummary } from "../../components/common/FormWorkflow";
 import { asArray, asObject, dateInputValue, formatDate, formatLongDate } from "../../lib/utils";
-import { apiFetch, readStoredSession, tenantSlug, useApiInvalidate, useFetch } from "../../lib/api";
+import { apiFetch, openApiFile, readStoredSession, tenantSlug, useApiInvalidate, useFetch } from "../../lib/api";
 import {
   BRAZIL_STATE_OPTIONS,
   formatBrazilianPhone,
@@ -18,8 +18,9 @@ import {
   validateClientForm,
 } from "../../lib/clientFields";
 import { useFormDraft } from "../../lib/useFormDraft";
-import { defaultMedicalRecord } from "../../lib/defaultForms";
+import { DIGITAL_TERM_HEALTH_ITEMS, DIGITAL_TERM_LIFESTYLE_ITEMS, defaultDigitalTerm, defaultMedicalRecord } from "../../lib/defaultForms";
 import { currency, personName, whatsappUrl } from "../../features/shared/helpers";
+import { SignaturePad } from "../terms/DigitalTerms";
 import "./clients.css";
 
 const PostCareIcon = ({ size }) => <HeartPulse size={size} />;
@@ -417,6 +418,7 @@ function ClientProfileLoader({ clientId, fallback, onChanged, onNavigate, onEdit
 
 function ClientProfile({ client, onChanged, onNavigate, onEdit }) {
   const [tab, setTab] = useState("data");
+  const [termModalOpen, setTermModalOpen] = useState(false);
   const timeline = asArray(client.timeline);
   const paid = Number(client.summary?.total_spent || 0);
   const pending = Number(client.summary?.pending_amount || 0);
@@ -596,8 +598,8 @@ function ClientProfile({ client, onChanged, onNavigate, onEdit }) {
                 <p>Histórico de documentos assinados.</p>
               </div>
               {client.clinical_access && (
-                <Button variant="secondary" onClick={() => onNavigate?.("terms")}>
-                  Abrir termos
+                <Button variant="secondary" onClick={() => setTermModalOpen(true)}>
+                  Novo termo
                 </Button>
               )}
             </header>
@@ -611,7 +613,10 @@ function ClientProfile({ client, onChanged, onNavigate, onEdit }) {
                       <strong>{term.procedure || "Termo de consentimento"}</strong>
                       <span>{term.piercing_region || "Região não informada"}</span>
                     </div>
-                    <small>{formatLongDate(String(term.signed_at || "").slice(0, 10))}</small>
+                    <div>
+                      <small>{formatLongDate(String(term.signed_at || "").slice(0, 10))}</small>
+                      {term.pdf_url && <Button variant="ghost" onClick={() => openApiFile(String(term.pdf_url).replace(/^\/api/, ""))}>Abrir PDF</Button>}
+                    </div>
                   </article>
                 ))}
                 {!asArray(client.terms).length && <p className="empty-state">Nenhum termo digital assinado.</p>}
@@ -655,7 +660,173 @@ function ClientProfile({ client, onChanged, onNavigate, onEdit }) {
           </section>
         </Tabs.Content>
       </Tabs>
+      <ClientDigitalTermModal
+        open={termModalOpen}
+        client={client}
+        onClose={() => setTermModalOpen(false)}
+        onSaved={() => {
+          setTermModalOpen(false);
+          onChanged?.();
+        }}
+      />
     </div>
+  );
+}
+
+function initialClientDigitalTerm(client) {
+  const base = defaultDigitalTerm();
+  return {
+    ...base,
+    client_id: client.id,
+    full_name: client.full_name || "",
+    social_name: client.social_name || "",
+    document_number: client.cpf || "",
+    birth_date: dateInputValue(client.birth_date),
+    whatsapp: client.whatsapp || "",
+    phone: client.phone || "",
+    email: client.email || "",
+    instagram: client.instagram || "",
+    address: [client.address_line, client.address_number, client.address_complement, client.neighborhood, client.city, client.state].filter(Boolean).join(", ")
+  };
+}
+
+function ClientDigitalTermModal({ open, client, onClose, onSaved }) {
+  const [form, setForm] = useState(() => initialClientDigitalTerm(client));
+  const [formTab, setFormTab] = useState("dados");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const appointments = asArray(client.history);
+
+  useEffect(() => {
+    if (!open) return;
+    setForm(initialClientDigitalTerm(client));
+    setFormTab("dados");
+    setError("");
+    setBusy(false);
+  }, [open, client.id]);
+
+  function change(field, value) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function changeGroup(group, field, value) {
+    setForm((current) => ({
+      ...current,
+      form_data: {
+        ...current.form_data,
+        [group]: { ...current.form_data[group], [field]: value }
+      }
+    }));
+  }
+
+  function selectAppointment(appointmentId) {
+    const appointment = appointments.find((item) => String(item.id) === String(appointmentId));
+    setForm((current) => ({
+      ...current,
+      appointment_id: appointmentId,
+      procedure: appointment?.procedure || appointment?.service_name || current.procedure,
+      piercing_region: appointment?.piercing_region || current.piercing_region
+    }));
+  }
+
+  async function submit(event) {
+    event.preventDefault();
+    setError("");
+    if (!form.orientations_confirmed) return setError("Confirme que o cliente recebeu as orientações.");
+    if (!form.signature_data_url) return setError("A assinatura do cliente é obrigatória.");
+    if (form.form_data.minor.is_minor && (!form.form_data.minor.responsible_name.trim() || !form.form_data.minor.responsible_document.trim() || !form.guardian_signature_data_url)) {
+      return setError("Preencha os dados e a assinatura do responsável legal.");
+    }
+    setBusy(true);
+    const response = await apiFetch("/digital-terms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form)
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setError(payload.error || "Não foi possível salvar o termo digital.");
+      setBusy(false);
+      return;
+    }
+    onSaved?.(payload);
+  }
+
+  return (
+    <Modal
+      open={open}
+      size="lg"
+      title="Novo termo digital"
+      subtitle={`Cliente: ${personName(client)}`}
+      onClose={() => !busy && onClose()}
+      footer={<><Button variant="secondary" onClick={onClose} disabled={busy}>Cancelar</Button><Button type="submit" form="client-digital-term-form" disabled={busy}>{busy ? "Salvando…" : "Salvar termo"}</Button></>}
+    >
+      <form id="client-digital-term-form" className="term-form" onSubmit={submit}>
+        <Tabs value={formTab} onValueChange={setFormTab}>
+          <Tabs.List className="term-form-tabs" aria-label="Etapas do termo">
+            <Tabs.Trigger value="dados">Dados</Tabs.Trigger>
+            <Tabs.Trigger value="saude">Saúde</Tabs.Trigger>
+            <Tabs.Trigger value="consentimento">Consentimento</Tabs.Trigger>
+            <Tabs.Trigger value="assinatura">Assinatura</Tabs.Trigger>
+          </Tabs.List>
+        </Tabs>
+
+        {formTab === "dados" && <>
+          <section className="term-section">
+            <h3>Atendimento vinculado</h3>
+            <Select label="Agendamento" value={form.appointment_id} onChange={selectAppointment}>
+              <option value="">Sem agendamento específico</option>
+              {appointments.map((item) => <option key={item.id} value={item.id}>{formatDate(item.appointment_date)} · {item.appointment_time} · {item.procedure || item.service_name || "Atendimento"}</option>)}
+            </Select>
+          </section>
+          <section className="term-section">
+            <h3>Dados do cliente</h3>
+            <div className="form-grid">
+              <Input label="Nome completo" value={form.full_name} onChange={(value) => change("full_name", value)} required />
+              <Input label="Nome social" value={form.social_name} onChange={(value) => change("social_name", value)} />
+              <Input label="CPF / documento" value={form.document_number} onChange={(value) => change("document_number", value)} />
+              <Input type="date" label="Nascimento" value={form.birth_date} onChange={(value) => change("birth_date", value)} />
+              <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => change("whatsapp", value)} />
+              <Input type="email" label="E-mail" value={form.email} onChange={(value) => change("email", value)} />
+              <Input label="Procedimento" value={form.procedure} onChange={(value) => change("procedure", value)} />
+              <Input label="Região da perfuração" value={form.piercing_region} onChange={(value) => change("piercing_region", value)} />
+            </div>
+          </section>
+        </>}
+
+        {formTab === "saude" && <>
+          <section className="term-section">
+            <h3>Histórico de saúde</h3>
+            <div className="term-check-grid">
+              {DIGITAL_TERM_HEALTH_ITEMS.map((item) => <button key={item.key} type="button" className={`term-check-item ${form.form_data.health_history[item.key] ? "active" : ""}`} onClick={() => changeGroup("health_history", item.key, !form.form_data.health_history[item.key])}><span>{form.form_data.health_history[item.key] ? "Sim" : "Não"}</span><strong>{item.label}</strong></button>)}
+            </div>
+          </section>
+          <section className="term-section">
+            <h3>Estilo de vida</h3>
+            <div className="term-lifestyle-grid">
+              {DIGITAL_TERM_LIFESTYLE_ITEMS.map((item) => <Select key={item.key} label={item.label} value={form.form_data.lifestyle[item.key]} onChange={(value) => changeGroup("lifestyle", item.key, value)}><option value="">Não informado</option><option value="Sim">Sim</option><option value="Não">Não</option><option value="Às vezes">Às vezes</option>{item.key === "blood_pressure" && <option value="Normal">Normal</option>}{item.key === "blood_pressure" && <option value="Alterada">Alterada</option>}</Select>)}
+            </div>
+          </section>
+        </>}
+
+        {formTab === "consentimento" && <>
+          <section className="term-section term-consent-section">
+            <Checkbox checked={form.orientations_confirmed} onChange={(value) => change("orientations_confirmed", value)} label="Confirmo que o cliente recebeu orientações sobre cuidados, higienização, riscos, cicatrização e retornos." />
+            <Textarea label="Declaração de saúde e observações" value={form.health_declaration} onChange={(value) => change("health_declaration", value)} />
+          </section>
+          <section className="term-section">
+            <Checkbox checked={form.form_data.minor.is_minor} onChange={(value) => changeGroup("minor", "is_minor", value)} label="Cliente menor de idade" />
+            {form.form_data.minor.is_minor && <div className="form-grid"><Input label="Nome do responsável" value={form.form_data.minor.responsible_name} onChange={(value) => changeGroup("minor", "responsible_name", value)} required /><Input label="Documento do responsável" value={form.form_data.minor.responsible_document} onChange={(value) => changeGroup("minor", "responsible_document", value)} required /></div>}
+          </section>
+        </>}
+
+        {formTab === "assinatura" && <>
+          <SignaturePad label="Assinatura do cliente" onChange={(value) => change("signature_data_url", value)} clearKey={`${client.id}-${open}`} />
+          {form.form_data.minor.is_minor && <SignaturePad label="Assinatura do responsável legal" onChange={(value) => change("guardian_signature_data_url", value)} clearKey={`guardian-${client.id}-${open}`} />}
+        </>}
+        {error && <span className="form-error">{error}</span>}
+      </form>
+    </Modal>
   );
 }
 
