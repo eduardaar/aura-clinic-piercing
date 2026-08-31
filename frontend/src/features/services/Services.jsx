@@ -3,8 +3,10 @@ import { Button, Checkbox, Input, Select, StatusBadge, Switch, Textarea } from "
 import { ConfirmDeleteModal, CrudHeader, Modal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { Loading } from "../../components/common/Feedback";
-import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
+import { AdvancedFields, FormSection, FormWorkflow, ValidationSummary } from "../../components/common/FormWorkflow";
+import { apiFetch, readStoredSession, tenantSlug, useApiInvalidate, useFetch } from "../../lib/api";
 import { defaultServiceForm } from "../../lib/defaultForms";
+import { useFormDraft } from "../../lib/useFormDraft";
 import { asArray, asNumber, asObject } from "../../lib/utils";
 import { currency } from "../shared/helpers";
 
@@ -77,6 +79,16 @@ export function ServicesWorkspace() {
   const [deleting, setDeleting] = useState(null);
   const [settings, setSettings] = useState({ checklist: [], biosafety: { enabled: false, required_fields: [] } });
   const [settingsMessage, setSettingsMessage] = useState("");
+  const sessionUser = readStoredSession()?.user || {};
+  const draft = useFormDraft({
+    tenantId: tenantSlug() || "tenant",
+    userId: sessionUser.id || "user",
+    formId: editingId ? `service-${editingId}` : "service-new",
+    schemaKey: "service-v2",
+    value: form,
+    onRestore: setForm,
+    enabled: modalOpen
+  });
 
   useEffect(() => {
     if (settingsData) setSettings({ checklist: jsonValue(settingsData.checklist, []), biosafety: jsonValue(settingsData.biosafety, { enabled: false, required_fields: [] }) });
@@ -129,8 +141,14 @@ export function ServicesWorkspace() {
     const response = await apiFetch(editingId ? `/services/${editingId}` : "/services", { method: editingId ? "PUT" : "POST", body: JSON.stringify(payloadToSave) });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) return setError(payload.error || "Não foi possível salvar o tipo de atendimento.");
+    draft.clearDraft();
     setModalOpen(false);
     refresh();
+  }
+
+  function closeForm() {
+    draft.flushDraft();
+    setModalOpen(false);
   }
 
   function remove(item) {
@@ -165,21 +183,27 @@ export function ServicesWorkspace() {
       ]} actions={(item) => <RowActions actions={[{ label: "Editar cadastro", primary: true, onClick: () => openEdit(item) }, { label: "Excluir", danger: true, onClick: () => remove(item) }]} />} empty="Cadastre o primeiro tipo de atendimento para liberar a Agenda." />
     </div>
 
-    <Modal open={modalOpen} title={editingId ? "Editar tipo de atendimento" : "Novo tipo de atendimento"} subtitle="Cadastro único do procedimento" size="lg" onClose={() => setModalOpen(false)} footer={<><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button><Button type="submit" form="service-form">Salvar</Button></>}>
-      <form id="service-form" className="stack" onSubmit={save}>
+    <Modal open={modalOpen} title={editingId ? "Editar tipo de atendimento" : "Novo tipo de atendimento"} subtitle="Cadastro único do procedimento" size="lg" onClose={closeForm} footer={<><Button variant="secondary" onClick={closeForm}>Cancelar</Button><Button type="submit" form="service-form">Salvar</Button></>}>
+      <FormWorkflow as="form" id="service-form" className="stack" mobileFullscreen title="Tipo de atendimento" description="Dados principais primeiro; regras e operação ficam em seções opcionais." draft={draft} actions={draft.hasDraft ? <><Button type="button" variant="secondary" onClick={draft.restoreDraft}>Restaurar</Button><Button type="button" variant="ghost" onClick={draft.discardDraft}>Descartar</Button></> : null} onSubmit={save}>
+        <ValidationSummary errors={error ? [error] : []} />
+        <FormSection title="Informações principais" badge="Essencial">
         <div className="form-grid"><Select label="Categoria" value={form.category} onChange={(category) => setForm({ ...form, category })}>{CATEGORIES.map((item) => <option key={item}>{item}</option>)}</Select><Input label="Nome" value={form.name} onChange={(name) => setForm({ ...form, name })} required /><Input label="Região do corpo" value={form.body_area} onChange={(body_area) => setForm({ ...form, body_area })} /><Input type="number" min="1" label="Duração (min)" value={form.duration_minutes} onChange={(duration_minutes) => setForm({ ...form, duration_minutes })} /><Input type="number" min="0" label="Preço" value={form.base_price} onChange={(base_price) => setForm({ ...form, base_price })} /><Input type="number" min="0" label="Sinal" value={form.deposit_value} onChange={(deposit_value) => setForm({ ...form, deposit_value })} /></div>
         <Textarea label="Descrição" value={form.description} onChange={(description) => setForm({ ...form, description })} />
+        </FormSection>
+        <AdvancedFields title="Regras e orientações" description="Idade, responsável, termo, retornos e comunicação pós-atendimento.">
         <Textarea label="Orientações pré-atendimento" value={form.pre_service_notes} onChange={(pre_service_notes) => setForm({ ...form, pre_service_notes })} />
         <div className="form-grid"><Input type="number" min="0" max="120" label="Idade mínima" value={form.minimum_age_years} onChange={(minimum_age_years) => setForm({ ...form, minimum_age_years })} /><Input type="number" min="1" label="Retorno após dias" value={form.return_after_days} onChange={(return_after_days) => setForm({ ...form, return_after_days })} /><Input type="number" min="0" label="Intervalo após atendimento (min)" value={form.scheduling_interval_minutes} onChange={(scheduling_interval_minutes) => setForm({ ...form, scheduling_interval_minutes })} /><Input type="number" min="0" label="Antecedência mínima (min)" value={form.minimum_advance_minutes} onChange={(minimum_advance_minutes) => setForm({ ...form, minimum_advance_minutes })} /></div>
         <div className="chip-toggle-grid"><Switch id="type-guardian" label="Exigir responsável para menor" description="" checked={form.requires_guardian} onChange={(requires_guardian) => setForm({ ...form, requires_guardian })} /><Switch id="type-term" label="Exigir termo assinado" description="" checked={form.requires_signed_term} onChange={(requires_signed_term) => setForm({ ...form, requires_signed_term })} /><Switch id="type-postcare" label="Gerar pós-atendimento" description="" checked={form.postcare_enabled} onChange={(postcare_enabled) => setForm({ ...form, postcare_enabled })} /><Switch id="type-online" label="Disponível online" description="" checked={form.active_online_booking} onChange={(active_online_booking) => setForm({ ...form, active_online_booking })} /><Switch id="type-active" label="Ativo" description="" checked={form.is_active} onChange={(is_active) => setForm({ ...form, is_active })} /></div>
         {form.postcare_enabled && <><Input label="Dias do pós-atendimento" value={form.postcare_days} onChange={(postcare_days) => setForm({ ...form, postcare_days })} placeholder="7, 15, 30" /><Textarea label="Orientações pós-atendimento" value={form.aftercare_instructions} onChange={(aftercare_instructions) => setForm({ ...form, aftercare_instructions })} /></>}
+        </AdvancedFields>
+        <AdvancedFields title="Equipe, estoque e operação" description="Profissionais habilitados, materiais, joias, checklist e biossegurança.">
         <ToggleList title="Profissionais habilitados" hint="Somente profissionais marcados poderão ser escolhidos." items={professionals} selected={form.professional_ids} onChange={(professional_ids) => setForm({ ...form, professional_ids })} />
         <div className="soft-card stack"><div className="section-inline-header"><strong>Materiais previstos</strong><Button variant="secondary" onClick={addMaterial}>Adicionar material</Button></div><small>A ficha técnica baixa o estoque quando o atendimento é concluído.</small>{form.inventory_items.map((material, index) => <div className="form-grid" key={index}><Select label="Item de estoque" value={material.inventory_item_id} onChange={(inventory_item_id) => setForm({ ...form, inventory_items: form.inventory_items.map((row, rowIndex) => rowIndex === index ? { ...row, inventory_item_id } : row) })}><option value="">Selecione</option>{inventoryItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select><Input type="number" min="1" label="Quantidade" value={material.quantity} onChange={(quantity) => setForm({ ...form, inventory_items: form.inventory_items.map((row, rowIndex) => rowIndex === index ? { ...row, quantity } : row) })} /><Input label="Observação" value={material.notes} onChange={(notes) => setForm({ ...form, inventory_items: form.inventory_items.map((row, rowIndex) => rowIndex === index ? { ...row, notes } : row) })} /><Button variant="secondary" onClick={() => setForm({ ...form, inventory_items: form.inventory_items.filter((_, rowIndex) => rowIndex !== index) })}>Remover</Button></div>)}</div>
         <ToggleList title="Joias compatíveis" hint="Opcional: restringe a seleção às joias adequadas para este atendimento." items={compatibleItems} selected={form.compatible_jewelry_ids} onChange={(compatible_jewelry_ids) => setForm({ ...form, compatible_jewelry_ids })} />
         <Switch id="type-operational" label="Personalizar checklist e biossegurança deste atendimento" description="Desativado: usa o padrão da clínica." checked={form.checklist_config !== null || form.biosafety_config !== null} onChange={(checked) => setForm({ ...form, checklist_config: checked ? [] : null, biosafety_config: checked ? { enabled: false, required_fields: [] } : null })} />
         {(form.checklist_config !== null || form.biosafety_config !== null) && <OperationalEditor checklist={form.checklist_config || []} biosafety={form.biosafety_config || { enabled: false, required_fields: [] }} onChange={({ checklist, biosafety }) => setForm({ ...form, checklist_config: checklist, biosafety_config: biosafety })} />}
-        {error && <span className="form-error">{error}</span>}
-      </form>
+        </AdvancedFields>
+      </FormWorkflow>
     </Modal>
     <ConfirmDeleteModal open={Boolean(deleting)} message={deleting?.message} onClose={() => setDeleting(null)} onConfirm={async () => { await deleting.run(); setDeleting(null); }} />
   </section>;

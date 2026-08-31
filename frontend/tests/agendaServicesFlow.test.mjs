@@ -13,9 +13,11 @@ test("atendimento operacional nasce e permanece na Agenda", () => {
   assert.doesNotMatch(services, /Serviços realizados/);
 });
 
-test("serviços formam um catálogo único com variações opcionais", () => {
-  assert.match(services, /Catálogo de serviços/);
-  assert.match(services, /Variações clínicas/);
-  assert.match(services, /Este serviço não precisa de variações/);
+test("procedimentos formam um catálogo único de tipos de atendimento", () => {
+  assert.match(services, /Procedimentos e tipos de atendimento/);
+  assert.match(services, /Cadastro único do procedimento/);
+  assert.match(services, /Profissionais habilitados/);
+  assert.match(services, /Materiais previstos/);
+  assert.match(services, /Joias compatíveis/);
   assert.doesNotMatch(agenda, /tab === "servicos"/);
 });
