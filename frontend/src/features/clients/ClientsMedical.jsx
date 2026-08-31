@@ -1,6 +1,6 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useState } from "react";
-import { FileSignature, HeartPulse } from "lucide-react";
+import { HeartPulse } from "lucide-react";
 import { Button, Checkbox, Input, SecureImage, Select, StatusBadge, Tabs, Textarea } from "../../components/common/Ui";
 import { ConfirmDeleteModal, Modal, CrudHeader, RowActions } from "../../components/common/Crud";
 import { DataView, MONTH_OPTIONS } from "../../components/common/DataView";
@@ -22,7 +22,6 @@ import { defaultMedicalRecord } from "../../lib/defaultForms";
 import { currency, personName, whatsappUrl } from "../../features/shared/helpers";
 import "./clients.css";
 
-const TermsIcon = ({ size }) => <FileSignature size={size} />;
 const PostCareIcon = ({ size }) => <HeartPulse size={size} />;
 
 export function ClientWorkspace({ onNavigate, createSignal = 0 }) {
@@ -117,7 +116,6 @@ export function ClientsMedical({ onNavigate, createSignal = 0 }) {
           title="Clientes"
           subtitle="Base de clientes da Aura Clinic"
           actions={[
-            { label: "Termos digitais", icon: TermsIcon, onClick: () => onNavigate?.("terms") },
             { label: "Pós-atendimento", icon: PostCareIcon, onClick: () => onNavigate?.("postcare") },
           ]}
           actionLabel="Novo cliente"

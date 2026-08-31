@@ -153,11 +153,6 @@ export const APP_PAGES = Object.freeze([
   {
     id: "client-center", path: "/app/clientes", title: "Clientes", group: "Atendimento", icon: UsersRound, menu: true, menuRank: 2,
     roleRank: { admin: 17, reception: 8, piercer: 7 }, permission: "clients.view",
-    menuChildren: [
-      { id: "clients-list", label: "Lista de clientes", page: "client-center" },
-      { id: "clients-terms", label: "Termos pendentes", page: "terms", queue: true },
-      { id: "clients-postcare", label: "Pós-atendimentos pendentes", page: "postcare", queue: true }
-    ],
     component: lazyNamed(() => import("../features/clients/ClientsMedical"), "ClientWorkspace")
   },
   {
