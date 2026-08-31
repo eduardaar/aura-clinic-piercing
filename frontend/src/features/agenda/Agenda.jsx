@@ -351,7 +351,9 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
   const { data: procedures } = useFetch("/procedures");
   const [filters, setFilters] = useState({ mode: "diario", search: "", professional_id: "", status: "", from: "", to: "" });
   const [filterModalOpen, setFilterModalOpen] = useState(false);
-  const [draftFilters, setDraftFilters] = useState({ professional_id: "", status: "", from: "", to: "" });
+  const [draftFilters, setDraftFilters] = useState({ professional_id: "", status: "" });
+  const [periodModalOpen, setPeriodModalOpen] = useState(false);
+  const [draftPeriod, setDraftPeriod] = useState({ from: "", to: "" });
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [createSeed, setCreateSeed] = useState(null);
@@ -381,10 +383,14 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
   const cancellationRate = operationalRows.length
     ? Math.round(operationalRows.filter((item) => ["cancelado", "nao_compareceu"].includes(item.status)).length / operationalRows.length * 100)
     : 0;
-  const activeFilterCount = ["professional_id", "status", "from", "to"].filter((key) => filters[key]).length;
+  const activeFilterCount = ["professional_id", "status"].filter((key) => filters[key]).length;
+  const hasPeriod = Boolean(filters.from || filters.to);
+  const periodLabel = filters.from && filters.to
+    ? `${formatDateWithYear(filters.from)} até ${formatDateWithYear(filters.to)}`
+    : formatDateWithYear(filters.from || filters.to);
 
   function openFilters() {
-    setDraftFilters({ professional_id: filters.professional_id, status: filters.status, from: filters.from, to: filters.to });
+    setDraftFilters({ professional_id: filters.professional_id, status: filters.status });
     setFilterModalOpen(true);
   }
 
@@ -394,10 +400,29 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
   }
 
   function clearFilters() {
-    const empty = { professional_id: "", status: "", from: "", to: "" };
+    const empty = { professional_id: "", status: "" };
     setDraftFilters(empty);
     setFilters({ ...filters, ...empty });
     setFilterModalOpen(false);
+  }
+
+  function openPeriod() {
+    setDraftPeriod({ from: filters.from, to: filters.to });
+    setPeriodModalOpen(true);
+  }
+
+  function applyPeriod() {
+    const referenceDate = draftPeriod.from || draftPeriod.to;
+    if (referenceDate) setCurrentDate(new Date(`${referenceDate}T12:00:00`));
+    setFilters({ ...filters, ...draftPeriod });
+    setPeriodModalOpen(false);
+  }
+
+  function clearPeriod() {
+    setDraftPeriod({ from: "", to: "" });
+    setFilters({ ...filters, from: "", to: "" });
+    setCurrentDate(new Date());
+    setPeriodModalOpen(false);
   }
 
   return (
@@ -435,11 +460,13 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
         <div className="segmented">
           {[["mensal", "Mensal"], ["semanal", "Semanal"], ["diario", "Diário"], ["lista", "Agendamentos"]].map(([mode, label]) => <button key={mode} className={filters.mode === mode ? "active" : ""} onClick={() => setFilters({ ...filters, mode })}>{label}</button>)}
         </div>
-        {calendar && <div className="calendar-nav">
-          <button aria-label="Período anterior" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, -1))}><ChevronLeft size={18} /></button>
-          <strong>{calendar.title}</strong>
-          <button aria-label="Próximo período" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, 1))}><ChevronRight size={18} /></button>
-          <button onClick={() => setCurrentDate(new Date())}>Hoje</button>
+        {["mensal", "semanal", "diario", "lista"].includes(filters.mode) && <div className="calendar-nav">
+          {calendar && !hasPeriod && <button aria-label="Período anterior" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, -1))}><ChevronLeft size={18} /></button>}
+          <strong>{hasPeriod ? periodLabel : calendar?.title || "Todos os períodos"}</strong>
+          {calendar && !hasPeriod && <button aria-label="Próximo período" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, 1))}><ChevronRight size={18} /></button>}
+          {!hasPeriod && calendar && <button onClick={() => setCurrentDate(new Date())}>Hoje</button>}
+          <button onClick={openPeriod}>Período</button>
+          {hasPeriod && <button onClick={clearPeriod}>Limpar</button>}
         </div>}
       </div>
       {["mensal", "semanal", "diario", "lista"].includes(filters.mode) && <div className="dataview-toolbar agenda-shared-filters">
@@ -463,8 +490,12 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
             <option value="">Todos</option>
             {APPOINTMENT_STATUS_OPTIONS.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
           </Select>
-          <Input type="date" label="Data inicial" value={draftFilters.from} onChange={(from) => setDraftFilters({ ...draftFilters, from })} />
-          <Input type="date" label="Data final" value={draftFilters.to} onChange={(to) => setDraftFilters({ ...draftFilters, to })} />
+        </div>
+      </Modal>
+      <Modal open={periodModalOpen} title="Período da Agenda" subtitle="O período será aplicado às quatro visualizações" onClose={() => setPeriodModalOpen(false)} footer={<><Button variant="secondary" onClick={clearPeriod}>Limpar</Button><Button onClick={applyPeriod}>Aplicar período</Button></>}>
+        <div className="dataview-filter-modal-grid">
+          <Input type="date" label="Data inicial" value={draftPeriod.from} onChange={(from) => setDraftPeriod({ ...draftPeriod, from })} />
+          <Input type="date" label="Data final" value={draftPeriod.to} onChange={(to) => setDraftPeriod({ ...draftPeriod, to })} />
         </div>
       </Modal>
       {filters.mode === "espera" ? (
