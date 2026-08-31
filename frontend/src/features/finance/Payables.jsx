@@ -3,6 +3,7 @@ import { Landmark, Tags } from "lucide-react";
 import { Button, Input, Metric, PaymentSelect, Select, StatusBadge, Textarea } from "../../components/common/Ui";
 import { CrudHeader, Modal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
+import { CollapsibleIndicators } from "../../components/common/CollapsibleIndicators";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { InstallmentGrid } from "../../components/common/InstallmentGrid";
 import { SelectWithCreate } from "../../components/common/SelectWithCreate";
@@ -156,11 +157,11 @@ export function PayablesAdmin({ onNavigate }) {
   const openTotal = pending.reduce((total, entry) => total + Math.max(0, asNumber(entry.amount) - asNumber(entry.paid_amount)), 0);
 
   return <section className="stack payables-page">
-    <div className="metric-grid">
+    <CollapsibleIndicators screenId="finance-payables"><div className="metric-grid">
       <Metric label="Em aberto" value={currency.format(openTotal)} />
       <Metric label="Vencidas" value={currency.format(overdue.reduce((total, entry) => total + Math.max(0, asNumber(entry.amount) - asNumber(entry.paid_amount)), 0))} />
       <Metric label="A vencer" value={String(pending.length - overdue.length)} />
-    </div>
+    </div></CollapsibleIndicators>
     <section className="panel stack">
       <CrudHeader title="Contas a pagar" subtitle="Despesas, empréstimos, parcelas e contas operacionais." actionLabel="Nova conta a pagar" onAction={openNew} />
       <div className="toolbar compact-actions">

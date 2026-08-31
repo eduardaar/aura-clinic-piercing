@@ -751,6 +751,11 @@
 
 .metric-card strong { font-size: clamp(19px, 1.7vw, 25px); }
 
+.collapsible-indicators { display: grid; gap: 6px; }
+.collapsible-indicators__content { display: grid; gap: 12px; }
+.indicator-visibility-row { display: flex; justify-content: flex-end; min-height: 26px; }
+.indicator-visibility-row .button { min-height: 26px; padding: 2px 7px; font-size: 12px; }
+
 /* Ícone em cima do valor, não ao lado: lado a lado, o ícone de 58px comia
    metade da largura útil do cartão e o valor não tinha onde caber. */
 .premium-metric-card {
@@ -1167,6 +1172,25 @@
 
 .dataview { display: flex; flex-direction: column; gap: 14px; }
 
+/* O bloco de busca, filtros e atalhos permanece visivel; somente os registros
+   rolam. Este e o comportamento padrao de toda listagem baseada em DataView. */
+.dataview > .data-table-wrap {
+  max-height: clamp(320px, 58vh, 720px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.dataview-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+
+.dataview-table thead th {
+  box-shadow: 0 1px 0 var(--line);
+}
+
 /* ------------------------------------------------------- barra de ferramentas */
 
 .dataview-toolbar {
@@ -1466,6 +1490,10 @@
 .dataview :focus-visible { outline: 2px solid var(--nude-strong); outline-offset: 2px; }
 
 @media (max-width: 720px) {
+  .dataview > .data-table-wrap {
+    max-height: 62dvh;
+    overflow-y: auto;
+  }
   .dataview-toolbar-extra { margin-left: 0; width: 100%; }
   .dataview-search { max-width: none; }
   .dataview-pagination { gap: 10px; }

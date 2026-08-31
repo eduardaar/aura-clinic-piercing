@@ -1,12 +1,13 @@
 ﻿// Feature extraída de main.jsx durante a modularização. Comportamento preservado.
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ChevronLeft, ChevronRight, Copy, ExternalLink, Eye, EyeOff, Filter, MoreHorizontal, Plus, Search, Settings2, X } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Copy, ExternalLink, Filter, MoreHorizontal, Plus, Search, Settings2, X } from "lucide-react";
 import { Accordion, Button, Checkbox, FinancialSummary, Input, Metric, PaymentSelect, Select, StatusBadge, StatusSelect, Switch, Tabs, Textarea } from "../../components/common/Ui";
 import { Modal, CrudHeader, ConfirmDeleteModal, DropdownMenu, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { Loading } from "../../components/common/Feedback";
 import { FormSection, FormWorkflow, ReviewSummary, StepNavigator, ValidationSummary } from "../../components/common/FormWorkflow";
 import { ResponsiveEditableList } from "../../components/common/TransactionFields";
+import { CollapsibleIndicators } from "../../components/common/CollapsibleIndicators";
 import { asArray, asNumber, asObject, formatDate } from "../../lib/utils";
 import { apiFetch, readStoredSession, tenantSlug, useApiInvalidate, useFetch } from "../../lib/api";
 import { buildCalendar, buildTimeSlots, dateKey, movePeriod } from "../../lib/calendarUtils";
@@ -357,7 +358,6 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [createSeed, setCreateSeed] = useState(null);
-  const [showIndicators, setShowIndicators] = useState(true);
   useEffect(() => { if (createSignal) setCreateSeed({}); }, [createSignal]);
   useEffect(() => {
     if (navigationTarget === "historico") setFilters((current) => ({ ...current, mode: "realizados" }));
@@ -428,6 +428,14 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
 
   return (
     <section className="stack agenda-visual-page">
+      <CollapsibleIndicators screenId="agenda">
+        <div className="metric-grid">
+          <Metric label="Agenda de hoje" value={todayRows.length} />
+          <Metric label="Aguardando início" value={todayRows.filter((item) => ["pendente", "confirmado", "chegou"].includes(item.status)).length} />
+          <Metric label="Atraso médio" value={`${averageDelay} min`} />
+          <Metric label="Cancelamentos/ausências" value={`${cancellationRate}%`} />
+        </div>
+      </CollapsibleIndicators>
       <div className="panel agenda-page-heading">
         <div>
           <span className="eyebrow">Gestão de agenda</span>
@@ -451,12 +459,6 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
           <Button onClick={() => setCreateSeed({})}><Plus size={16} /> Novo agendamento</Button>
         </div>
       </div>
-      {showIndicators && <div className="metric-grid">
-        <Metric label="Agenda de hoje" value={todayRows.length} />
-        <Metric label="Aguardando início" value={todayRows.filter((item) => ["pendente", "confirmado", "chegou"].includes(item.status)).length} />
-        <Metric label="Atraso médio" value={`${averageDelay} min`} />
-        <Metric label="Cancelamentos/ausências" value={`${cancellationRate}%`} />
-      </div>}
       <div className="toolbar">
         <div className="segmented">
           {[["mensal", "Mensal"], ["semanal", "Semanal"], ["diario", "Diário"], ["lista", "Agendamentos"]].map(([mode, label]) => <button key={mode} className={filters.mode === mode ? "active" : ""} onClick={() => setFilters({ ...filters, mode })}>{label}</button>)}
@@ -480,9 +482,6 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
           <Filter size={15} /> Filtros
           {activeFilterCount > 0 && <span className="dataview-filter-count">{activeFilterCount}</span>}
         </button>
-      </div>}
-      {["mensal", "semanal", "diario", "lista"].includes(filters.mode) && <div className="agenda-indicators-control">
-        <Button variant="ghost" onClick={() => setShowIndicators((visible) => !visible)}>{showIndicators ? <EyeOff size={14} /> : <Eye size={14} />}{showIndicators ? "Ocultar indicadores" : "Mostrar indicadores"}</Button>
       </div>}
       <Modal open={filterModalOpen} title="Filtros da Agenda" subtitle="Aplicados às quatro visualizações" onClose={() => setFilterModalOpen(false)} footer={<><Button variant="secondary" onClick={clearFilters}>Limpar</Button><Button onClick={applyFilters}>Aplicar filtros</Button></>}>
         <div className="dataview-filter-modal-grid">

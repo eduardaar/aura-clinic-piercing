@@ -3,6 +3,7 @@ import { Tags } from "lucide-react";
 import { Button, Input, Metric, PaymentSelect, StatusBadge, Textarea } from "../../components/common/Ui";
 import { CrudHeader, Modal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
+import { CollapsibleIndicators } from "../../components/common/CollapsibleIndicators";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { SelectWithCreate } from "../../components/common/SelectWithCreate";
 import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
@@ -128,11 +129,11 @@ export function AccountsReceivable({ onNavigate }) {
 
   return (
     <section className="stack finance-page">
-      <div className="metric-grid">
+      <CollapsibleIndicators screenId="finance-receivables"><div className="metric-grid">
         <Metric label="Em aberto" value={currency.format(asNumber(ledger.receivable))} />
         <Metric label="Recebido no período" value={currency.format(asNumber(ledger.cashflow?.received))} />
         <Metric label="Vencido" value={currency.format(asNumber(ledger.delinquency))} />
-      </div>
+      </div></CollapsibleIndicators>
       <section className="panel stack">
         <CrudHeader
           title="Contas a receber"

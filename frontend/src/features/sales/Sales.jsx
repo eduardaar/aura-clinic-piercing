@@ -13,6 +13,7 @@ import {
 } from "../../components/common/FormWorkflow";
 import { InstallmentGrid } from "../../components/common/InstallmentGrid";
 import { ResponsiveEditableList } from "../../components/common/TransactionFields";
+import { CollapsibleIndicators } from "../../components/common/CollapsibleIndicators";
 import { Loading } from "../../components/common/Feedback";
 import { asArray } from "../../lib/utils";
 import { apiFetch, readStoredSession, tenantSlug, useApiInvalidate, useFetch } from "../../lib/api";
@@ -364,10 +365,10 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
 
   return (
     <section className="sales-page stack">
-      <div className="metric-grid">
+      <CollapsibleIndicators screenId="sales"><div className="metric-grid">
         <Metric label="Vendas no mês" value={currency.format(summary.total)} />
         <Metric label="Produtos" value={currency.format(summary.products)} />
-      </div>
+      </div></CollapsibleIndicators>
 
       <div className="panel">
         <CrudHeader

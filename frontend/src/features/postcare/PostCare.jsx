@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { Button, Metric, SecureImage, Select, StatusBadge, Textarea } from "../../components/common/Ui";
 import { Modal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
+import { CollapsibleIndicators } from "../../components/common/CollapsibleIndicators";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { asArray } from "../../lib/utils";
 import { apiFetch, useFetch } from "../../lib/api";
@@ -59,11 +60,11 @@ export function PostCare({ onBack }) {
   return (
     <section className="stack postcare-page">
       <div className="module-backbar"><Button variant="secondary" onClick={onBack}><ArrowLeft size={16} /> Voltar para clientes</Button></div>
-      <div className="metric-grid">
+      <CollapsibleIndicators screenId="postcare"><div className="metric-grid">
         <Metric label="Lembretes totais" value={followups.length} />
         <Metric label="Pendentes ou vencidos" value={dueCount} />
         <Metric label="Fotos recebidas" value={followups.filter((item) => item.client_photo_url).length} />
-      </div>
+      </div></CollapsibleIndicators>
 
       <div className="panel">
         <DataView

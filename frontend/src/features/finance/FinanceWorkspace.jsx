@@ -1,5 +1,6 @@
 import { Button, Metric, StatusBadge } from "../../components/common/Ui";
 import { DataView } from "../../components/common/DataView";
+import { CollapsibleIndicators } from "../../components/common/CollapsibleIndicators";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { useFetch } from "../../lib/api";
 import { asArray, asNumber, asObject } from "../../lib/utils";
@@ -26,12 +27,12 @@ function FinancialSummary({ view, onNavigate }) {
 
   return (
     <section className="stack finance-page">
-      <div className="metric-grid">
+      <CollapsibleIndicators screenId={`finance-${view}`}><div className="metric-grid">
         <Metric label="Recebido no período" value={currency.format(asNumber(cashflow.received))} />
         <Metric label="Pago no período" value={currency.format(asNumber(cashflow.paid))} />
         <Metric label="Saldo de caixa" value={currency.format(asNumber(cashflow.balance))} />
         {view !== "caixa" && <Metric label="Resultado" value={currency.format(asNumber(dre.result))} />}
-      </div>
+      </div></CollapsibleIndicators>
       <section className="panel stack">
         <div className="panel-heading">
           <div>

@@ -14,6 +14,7 @@ import { DataView } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { InstallmentGrid } from "../../components/common/InstallmentGrid";
 import { ResponsiveEditableList, TransactionTotals } from "../../components/common/TransactionFields";
+import { CollapsibleIndicators } from "../../components/common/CollapsibleIndicators";
 import { apiFetch, readStoredSession, tenantSlug, useApiInvalidate, useFetch } from "../../lib/api";
 import { useFormDraft } from "../../lib/useFormDraft";
 import { installmentSummary, installmentsForPayload } from "../../lib/installments";
@@ -361,11 +362,11 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
 
   return (
     <section className="stack purchases-page">
-      <div className="metric-grid">
+      <CollapsibleIndicators screenId="purchases"><div className="metric-grid">
         <Metric label="Compras no mês" value={currency.format(summary.monthValue)} />
         <Metric label="Pedidos no mês" value={String(summary.monthCount)} />
         <Metric label="Total registrado" value={currency.format(summary.totalValue)} />
-      </div>
+      </div></CollapsibleIndicators>
       <section className="panel stack">
         <CrudHeader
           title="Compras"
