@@ -1735,46 +1735,12 @@ export function BookingAdmin({ onBack, initialTab }) {
 
 export function AppointmentList({ appointments = [], onChanged, compact }) {
   const safeAppointments = asArray(appointments);
-  // As opções de profissional saem da própria lista: o componente recebe só os
-  // agendamentos, sem acesso ao cadastro de profissionais.
-  const professionalOptions = useMemo(
-    () => distinctOptions(safeAppointments.map((item) => item.professional_name)),
-    [appointments]
-  );
 
   return (
     <DataView
       rows={safeAppointments}
       defaultSort={{ key: "appointment_date", dir: "asc" }}
       searchPlaceholder="Buscar por cliente, procedimento, região, profissional ou data"
-      filters={[
-        {
-          key: "status",
-          label: "Status",
-          type: "select",
-          options: APPOINTMENT_STATUS_OPTIONS,
-          match: (item, value) => item.status === value
-        },
-        {
-          key: "professional_name",
-          label: "Profissional",
-          type: "select",
-          options: professionalOptions,
-          match: (item, value) => item.professional_name === value
-        },
-        {
-          key: "date_from",
-          label: "Data inicial",
-          type: "date",
-          match: (item, value) => String(item.appointment_date || "").slice(0, 10) >= value
-        },
-        {
-          key: "date_to",
-          label: "Data final",
-          type: "date",
-          match: (item, value) => String(item.appointment_date || "").slice(0, 10) <= value
-        }
-      ]}
       columns={[
         {
           key: "appointment_date",
