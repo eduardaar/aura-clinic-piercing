@@ -32,7 +32,9 @@ export function Login({ onLogin }) {
       // Autentica no backend e obtém um token assinado (necessário em produção).
       // Envia e-mail + senha do formulário: o backend suporta contas por usuário
       // com papéis (reception/finance/piercer/admin). Sem checagem de senha no cliente.
-      const email = form.email.trim();
+      // Minúsculas de propósito: a conta é gravada assim no servidor, e o campo
+      // vem pré-preenchido com o que a pessoa digitou da última vez.
+      const email = form.email.trim().toLowerCase();
       // Multi-tenant: grava o código da clínica ANTES do apiFetch para o header X-Tenant ir correto.
       const slug = form.slug.trim().toLowerCase();
       if (!/^[a-z0-9-]+$/.test(slug)) {

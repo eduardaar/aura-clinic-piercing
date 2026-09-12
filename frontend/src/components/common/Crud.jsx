@@ -2,7 +2,7 @@
 // - Modal: janela sobreposta (formulários abrem aqui, não mais inline).
 // - CrudHeader: cabeçalho de página com título e botão "Novo".
 // Reaproveitam o CSS existente (.modal-backdrop, .table-wrap, .panel-heading).
-import React, { useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { AlertTriangle, MoreHorizontal, Plus, X } from "lucide-react";
@@ -11,8 +11,41 @@ import { AlertTriangle, MoreHorizontal, Plus, X } from "lucide-react";
 // comum continua sendo a única dependente diretamente do Radix.
 export { DropdownMenu };
 
+// Camadas flutuantes que vivem FORA do conteúdo do diálogo no DOM (portais em
+// document.body), mas pertencem a ele: a lista do seletor de joias e os
+// popovers do Radix. Um clique nelas era lido como "clique fora" e fechava o
+// modal no meio do preenchimento — a queixa de "fecha em determinados pontos
+// dentro do próprio modal".
+const FLOATING_SELECTOR = ".smart-combobox-list, [data-modal-floating], [data-radix-popper-content-wrapper]";
+// Botões de rodapé que descartam o formulário. Interceptados só quando há
+// alteração pendente; qualquer outro rótulo (Limpar, Aplicar, Voltar de etapa)
+// segue direto. `data-modal-cancel` serve para rótulos fora desta lista.
+const CANCEL_LABEL = /^(cancelar|fechar)$/i;
+// Radix (Select, Checkbox, Switch) espelha o valor num campo escondido e
+// dispara um `change` sintético nele — inclusive quando o estado muda por
+// código, ao carregar dados no modal. Só conta como edição da pessoa se houve
+// um gesto (toque, clique ou tecla) dentro do modal instantes antes.
+const GESTURE_WINDOW_MS = 3000;
+const TOGGLE_ROLES = "[role='checkbox'], [role='switch'], [role='radio'], [role='menuitemcheckbox'], [role='menuitemradio']";
+
+const ModalContext = createContext(/** @type {null | { requestClose: () => void, markDirty: () => void, dirty: boolean, floatingContainer: HTMLElement | null }} */ (null));
+
+/** Acesso ao modal envolvente: fechar respeitando a guarda e marcar alteração feita por código. */
+export function useModal() {
+  return useContext(ModalContext);
+}
+
+function outsideTarget(event) {
+  const target = event?.detail?.originalEvent?.target || event?.target;
+  return target instanceof Element ? target : null;
+}
+
 /**
- * Janela sobreposta. Fecha no Esc, no clique fora e trava o scroll do body.
+ * Janela sobreposta. Trava o scroll do body e NÃO fecha no clique fora: quem
+ * está preenchendo um formulário e esbarra no fundo não pode perder o que
+ * digitou. Fecha pelo X, pelo Esc e pelos botões do rodapé; quando há
+ * alteração não salva num formulário, qualquer uma dessas saídas pede
+ * confirmação (Salvar, Sair sem salvar ou Continuar editando).
  * @param {object} props
  * @param {boolean} props.open
  * @param {React.ReactNode} [props.title]
@@ -21,28 +54,158 @@ export { DropdownMenu };
  * @param {React.ReactNode} [props.children]
  * @param {React.ReactNode} [props.footer] Botões do rodapé.
  * @param {"sm" | "md" | "lg"} [props.size] Mantido apenas por compatibilidade; todos os modais usam largura média.
+ * @param {boolean} [props.dismissible] Permite fechar no clique fora (só para modais sem dados a perder).
+ * @param {boolean} [props.confirmClose] `false` desliga a confirmação de saída.
+ * @param {boolean} [props.dirty] Estado "com alterações" controlado por fora; sem ele, o modal detecta edições nos campos.
+ * @param {string} [props.formId] Formulário a enviar no "Salvar" da confirmação; sem ele, o primeiro <form> do corpo.
  */
-export function Modal({ open, title, subtitle, onClose, children, footer }) {
+export function Modal({ open, title, subtitle, onClose, children, footer, dismissible = false, confirmClose = true, dirty: dirtyProp, formId }) {
+  const bodyRef = useRef(/** @type {HTMLDivElement | null} */ (null));
+  const continueRef = useRef(/** @type {HTMLButtonElement | null} */ (null));
+  const bypassGuard = useRef(false);
+  const pendingLeave = useRef(/** @type {null | (() => void)} */ (null));
+  const lastGestureAt = useRef(0);
+  const [touched, setTouched] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  // Onde camadas flutuantes (lista de joias, folhas inferiores) devem montar
+  // quando abertas de dentro do modal: DENTRO do conteúdo do diálogo. Fora
+  // dele o Radix trava o foco e os eventos de ponteiro, e a lista fica surda.
+  const [floatingContainer, setFloatingContainer] = useState(/** @type {HTMLElement | null} */ (null));
+  const guardTitleId = useId();
+  const guardTextId = useId();
+
+  useEffect(() => {
+    if (!open) return;
+    setTouched(false);
+    setConfirming(false);
+    pendingLeave.current = null;
+  }, [open]);
+  useEffect(() => { if (confirming) continueRef.current?.focus(); }, [confirming]);
+
+  const findForm = useCallback(() => {
+    if (formId) return document.getElementById(formId);
+    return bodyRef.current?.querySelector("form") || null;
+  }, [formId]);
+  const hasForm = () => Boolean(findForm());
+  const isDirty = dirtyProp !== undefined ? Boolean(dirtyProp) : touched;
+  const guarded = () => confirmClose && isDirty && (dirtyProp !== undefined || hasForm());
+
+  const markDirty = useCallback(() => setTouched(true), []);
+  function requestClose() {
+    if (guarded()) {
+      pendingLeave.current = null;
+      setConfirming(true);
+      return;
+    }
+    onClose?.();
+  }
+
+  function recordGesture() {
+    lastGestureAt.current = Date.now();
+  }
+  function onFieldInput() {
+    markDirty();
+  }
+  function onFieldChange(event) {
+    const target = event.target instanceof Element ? event.target : null;
+    const mirrored = target?.getAttribute("aria-hidden") === "true";
+    if (!mirrored || Date.now() - lastGestureAt.current < GESTURE_WINDOW_MS) markDirty();
+  }
+  function onBodyClick(event) {
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest(TOGGLE_ROLES)) markDirty();
+  }
+
+  function preventOutsideDismiss(event) {
+    const target = outsideTarget(event);
+    if (!dismissible || guarded() || target?.closest(FLOATING_SELECTOR)) event.preventDefault();
+  }
+
+  function guardFooterClick(event) {
+    if (bypassGuard.current || !guarded()) return;
+    const button = event.target instanceof Element ? event.target.closest("button, a") : null;
+    if (!button || button.getAttribute("type") === "submit") return;
+    const explicit = button.hasAttribute("data-modal-cancel");
+    if (!explicit && !CANCEL_LABEL.test((button.textContent || "").trim())) return;
+    event.preventDefault();
+    event.stopPropagation();
+    pendingLeave.current = () => {
+      bypassGuard.current = true;
+      try { /** @type {HTMLElement} */ (button).click(); } finally { bypassGuard.current = false; }
+    };
+    setConfirming(true);
+  }
+
+  function leaveWithoutSaving() {
+    const leave = pendingLeave.current;
+    pendingLeave.current = null;
+    setConfirming(false);
+    if (leave) leave();
+    else onClose?.();
+  }
+
+  function saveAndLeave() {
+    const form = /** @type {HTMLFormElement | null} */ (findForm());
+    setConfirming(false);
+    if (!form) return;
+    // requestSubmit respeita a validação nativa: campo obrigatório vazio mostra
+    // o aviso do navegador em vez de enviar pela metade.
+    if (typeof form.requestSubmit === "function") form.requestSubmit();
+    else form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  }
+
   return (
-    <Dialog.Root open={Boolean(open)} onOpenChange={(nextOpen) => { if (!nextOpen) onClose?.(); }}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="modal-backdrop">
-          <Dialog.Content className="modal-card modal-md">
-            <div className="modal-header">
-              <div>
-                <Dialog.Title>{title}</Dialog.Title>
-                {subtitle && <Dialog.Description asChild><span>{subtitle}</span></Dialog.Description>}
+    <ModalContext.Provider value={{ requestClose, markDirty, dirty: isDirty, floatingContainer }}>
+      <Dialog.Root open={Boolean(open)} onOpenChange={(nextOpen) => { if (!nextOpen) requestClose(); }}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="modal-backdrop">
+            <Dialog.Content
+              className="modal-card modal-md"
+              onPointerDownOutside={preventOutsideDismiss}
+              onInteractOutside={preventOutsideDismiss}
+              onEscapeKeyDown={(event) => { if (confirming) { event.preventDefault(); setConfirming(false); } }}
+            >
+              <div className="modal-header">
+                <div>
+                  <Dialog.Title>{title}</Dialog.Title>
+                  {subtitle && <Dialog.Description asChild><span>{subtitle}</span></Dialog.Description>}
+                </div>
+                <Dialog.Close asChild>
+                  <button type="button" className="modal-close" aria-label="Fechar"><X size={18} /></button>
+                </Dialog.Close>
               </div>
-              <Dialog.Close asChild>
-                <button type="button" className="modal-close" aria-label="Fechar"><X size={18} /></button>
-              </Dialog.Close>
-            </div>
-            <div className="modal-body">{children}</div>
-            {footer && <div className="modal-actions">{footer}</div>}
-          </Dialog.Content>
-        </Dialog.Overlay>
-      </Dialog.Portal>
-    </Dialog.Root>
+              <div
+                className="modal-body"
+                ref={bodyRef}
+                onPointerDownCapture={recordGesture}
+                onKeyDownCapture={recordGesture}
+                onInputCapture={onFieldInput}
+                onChangeCapture={onFieldChange}
+                onClickCapture={onBodyClick}
+              >
+                {children}
+              </div>
+              {footer && <div className="modal-actions" onClickCapture={guardFooterClick}>{footer}</div>}
+              <div className="modal-floating" ref={setFloatingContainer} />
+              {confirming && (
+                <div className="modal-guard" role="alertdialog" aria-modal="true" aria-labelledby={guardTitleId} aria-describedby={guardTextId}>
+                  <div className="modal-guard-card">
+                    <span className="modal-guard-icon" aria-hidden="true"><AlertTriangle size={22} /></span>
+                    <h3 id={guardTitleId}>Existem alterações não salvas</h3>
+                    <p id={guardTextId}>Deseja realmente sair? O que você preencheu será perdido.</p>
+                    <div className="modal-guard-actions">
+                      <button type="button" className="secondary-button" onClick={leaveWithoutSaving}>Sair sem salvar</button>
+                      {hasForm() && <button type="button" className="secondary-button" onClick={saveAndLeave}>Salvar</button>}
+                      <button type="button" className="primary-button" ref={continueRef} onClick={() => setConfirming(false)}>Continuar editando</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </Dialog.Content>
+          </Dialog.Overlay>
+        </Dialog.Portal>
+      </Dialog.Root>
+    </ModalContext.Provider>
   );
 }
 
@@ -96,6 +259,9 @@ export function ConfirmDeleteModal({
       title={title}
       size="sm"
       onClose={onClose}
+      // Não há preenchimento a perder: clicar fora equivale a "Cancelar".
+      dismissible
+      confirmClose={false}
       footer={(
         <>
           <button type="button" className="secondary-button" onClick={onClose} disabled={isLoading}>Cancelar</button>

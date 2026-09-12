@@ -3,9 +3,12 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ChevronDown, LoaderCircle, Search, X } from "lucide-react";
 import { smartSearchMatches, useDebouncedValue } from "../../lib/smartSearch";
 import { API_ORIGIN } from "../../lib/api";
+import { useModal } from "./Crud";
 
 const PAGE_SIZE = 40;
 const MAX_RESULTS = 200;
+// Mesmo ponto de corte do CSS (@media (max-width: 640px)), onde a lista vira folha inferior.
+const MOBILE_SHEET_MAX_WIDTH = 640;
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
 function optionText(item) {
@@ -64,6 +67,12 @@ function stockStatus(item) {
 export function SmartCombobox({ label, value, onChange, onSelect, options = [], placeholder = "Buscar joia, SKU ou medida", emptyLabel = "Nenhuma joia encontrada", required = false, loading = false, getLabel = (item) => item.name, getMeta, isDisabled = (item) => stock(item) <= 0 }) {
   const id = useId();
   const root = useRef(null);
+  const list = useRef(null);
+  const sheetInput = useRef(null);
+  // Dentro de um modal a lista monta no próprio diálogo (foco e ponteiro
+  // ficam presos lá pelo Radix); fora, no body.
+  const modal = useModal();
+  const portalTarget = modal?.floatingContainer || (typeof document !== "undefined" ? document.body : null);
   const selected = options.find((item) => String(item.id) === String(value));
   const selectedLabel = selected ? getLabel(selected) : "";
   const [query, setQuery] = useState(selectedLabel);
@@ -74,9 +83,23 @@ export function SmartCombobox({ label, value, onChange, onSelect, options = [], 
   const debounced = useDebouncedValue(query, 180);
 
   useEffect(() => { if (!open) setQuery(selectedLabel); }, [open, selectedLabel]);
-  useEffect(() => { setVisible(PAGE_SIZE); setActive(0); }, [debounced]);
+  // Cada termo novo recomeça a paginação e o destaque do topo da lista.
+  useEffect(() => { if (typeof debounced === "string") { setVisible(PAGE_SIZE); setActive(0); } }, [debounced]);
+  // No celular a folha inferior cobre o campo original; quem digita precisa
+  // ver o que digita, então a busca passa para o campo dentro da folha.
   useEffect(() => {
-    const close = (event) => { if (!root.current?.contains(event.target)) setOpen(false); };
+    if (!open || window.innerWidth > MOBILE_SHEET_MAX_WIDTH) return undefined;
+    const timer = window.setTimeout(() => sheetInput.current?.focus({ preventScroll: true }), 30);
+    return () => window.clearTimeout(timer);
+  }, [open]);
+  useEffect(() => {
+    // A lista mora num portal em document.body: um toque nela também está
+    // "fora" do campo, mas não pode fechar a lista antes de o clique chegar
+    // à opção — era isso que impedia escolher a joia com o mouse ou o dedo.
+    const close = (event) => {
+      if (root.current?.contains(event.target) || list.current?.contains(event.target)) return;
+      setOpen(false);
+    };
     document.addEventListener("pointerdown", close);
     return () => document.removeEventListener("pointerdown", close);
   }, []);
@@ -84,9 +107,12 @@ export function SmartCombobox({ label, value, onChange, onSelect, options = [], 
   useEffect(() => {
     if (!open || !root.current) return undefined;
     const updatePosition = () => {
-      const rect = root.current.getBoundingClientRect();
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
+      // No celular a lista vira uma folha inferior controlada pelo CSS; medidas
+      // em linha aqui venciam a regra e empurravam a lista para fora da tela.
+      if (viewportWidth <= MOBILE_SHEET_MAX_WIDTH) { setPopupStyle({}); return; }
+      const rect = root.current.getBoundingClientRect();
       const minWidth = Math.max(420, Math.min(rect.width, 520));
       const width = Math.min(minWidth, Math.max(420, viewportWidth - 16));
       const maxHeight = Math.min(520, Math.max(420, viewportHeight - 96));
@@ -114,9 +140,11 @@ export function SmartCombobox({ label, value, onChange, onSelect, options = [], 
     if (close) setOpen(false);
   }
 
-  function selectOnPress(event) {
+  // Só impede o campo de perder o foco no clique do mouse. Não cancela o
+  // pointerdown: em telas de toque isso engolia o clique seguinte, e a joia
+  // não era escolhida.
+  function keepFocusOnPress(event) {
     event.preventDefault();
-    event.stopPropagation();
   }
 
   function selectOnClick(event, item) {
@@ -142,9 +170,15 @@ export function SmartCombobox({ label, value, onChange, onSelect, options = [], 
         <input id={id} role="combobox" aria-expanded={open} aria-controls={`${id}-list`} aria-autocomplete="list" aria-activedescendant={open && filtered[active] ? `${id}-option-${filtered[active].id}` : undefined} required={required} value={query} placeholder={placeholder} onFocus={() => setOpen(true)} onChange={(event) => { setQuery(event.target.value); setOpen(true); }} onKeyDown={keyDown} />
         {loading ? <LoaderCircle className="smart-combobox-spinner" size={16} aria-label="Carregando" /> : (value || query) ? <button type="button" aria-label="Limpar seleção" onClick={() => { onChange(""); setQuery(""); setOpen(true); }}><X size={15} /></button> : <button type="button" aria-label="Abrir lista" tabIndex={-1} className="smart-combobox-chevron-button" onClick={() => setOpen(true)}><ChevronDown size={15} /></button>}
       </span>
-      {open && createPortal(
-        <div className="smart-combobox-list" id={`${id}-list`} role="listbox" style={popupStyle}>
-          <div className="smart-combobox-mobile-head"><strong>{label}</strong><button type="button" aria-label="Fechar" onClick={() => setOpen(false)}><X size={20} /></button></div>
+      {open && portalTarget && createPortal(
+        <div className="smart-combobox-list" id={`${id}-list`} role="listbox" style={popupStyle} ref={list} data-modal-floating="">
+          <div className="smart-combobox-mobile-head">
+            <div className="smart-combobox-mobile-title"><strong>{label}</strong><button type="button" aria-label="Fechar" onClick={() => setOpen(false)}><X size={20} /></button></div>
+            <span className="smart-combobox-mobile-search">
+              <Search size={16} aria-hidden="true" />
+              <input ref={sheetInput} value={query} placeholder={placeholder} aria-label={`Buscar ${typeof label === "string" ? label.toLowerCase() : "item"}`} onChange={(event) => setQuery(event.target.value)} onKeyDown={keyDown} />
+            </span>
+          </div>
           <p className="smart-combobox-status" aria-live="polite">{loading ? "Buscando joias…" : `${matches.length} resultado${matches.length === 1 ? "" : "s"} disponível${matches.length === 1 ? "" : "is"}`}</p>
           {loading ? <p className="smart-combobox-empty"><LoaderCircle className="smart-combobox-spinner" size={18} /> Buscando joias…</p> : filtered.length ? filtered.map((item, index) => {
             const disabled = isDisabled(item);
@@ -154,7 +188,7 @@ export function SmartCombobox({ label, value, onChange, onSelect, options = [], 
             const displayMeta = [meta, compactMeasure(item)].filter(Boolean).join(" • ");
             const labelText = getLabel(item) || "Joia sem nome";
             const picture = imageUrl(item);
-            return <button id={`${id}-option-${item.id}`} type="button" role="option" aria-selected={String(item.id) === String(value)} aria-disabled={disabled} disabled={disabled} className={index === active ? "active" : ""} key={item.id} onMouseEnter={() => setActive(index)} onPointerDown={selectOnPress} onClick={(event) => selectOnClick(event, item)}>
+            return <button id={`${id}-option-${item.id}`} type="button" role="option" aria-selected={String(item.id) === String(value)} aria-disabled={disabled} disabled={disabled} className={index === active ? "active" : ""} key={item.id} onMouseEnter={() => setActive(index)} onMouseDown={keepFocusOnPress} onClick={(event) => selectOnClick(event, item)}>
               <span className="smart-combobox-thumb">{picture ? <img src={picture} alt={labelText} /> : <span aria-hidden="true">◇</span>}</span>
               <span className="smart-combobox-copy">
                 <strong>{labelText}</strong>

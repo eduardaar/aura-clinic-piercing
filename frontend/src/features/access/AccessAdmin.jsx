@@ -400,7 +400,13 @@ export function AccessAdmin() {
           <div className="access-permissions-heading">
             <div>
               <h3>Permissões efetivas</h3>
-              <p>O perfil define a base. Marque ou desmarque apenas as exceções deste usuário.</p>
+              <p>
+                {selectedUserProfile
+                  ? `O perfil ${selectedUserProfile.name} define a base`
+                  : `O nível ${roleLabel(userForm.role)} já carrega o padrão da área`}
+                {userForm.role === "admin" ? ", com acesso total." : ` (${userBasePermissions.length} permissões liberadas).`}
+                {" "}Marque ou desmarque apenas as exceções deste usuário.
+              </p>
             </div>
             <Button type="button" variant="secondary" onClick={() => setPermissionOverrides({})} disabled={userForm.role === "admin"}>Remover exceções</Button>
           </div>

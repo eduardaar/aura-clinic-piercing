@@ -12,6 +12,21 @@ export function hasPermission(user, permission) {
   return new Set([...basePermissions, ...(user.granted_permissions || [])]).has(permission);
 }
 
+// Lista fechada do que o usuário pode fazer, já resolvida: cargo (ou perfil de
+// acesso) + concessões − bloqueios. Vai no login e no refresh para o frontend
+// montar menu e ações; assim a regra "Cargo → permissões padrão → ajustes
+// individuais" vive só aqui, e não numa cópia da tabela de cargos. Admin
+// recebe "*", o mesmo curinga que ROLE_PERMISSIONS usa.
+export function effectivePermissions(user) {
+  if (!user) return [];
+  if (user.role === "admin") return ["*"];
+  const denied = new Set(user.denied_permissions || []);
+  const base = Array.isArray(user.profile_permissions) ? user.profile_permissions : (ROLE_PERMISSIONS[user.role] || []);
+  return [...new Set([...base, ...(user.granted_permissions || [])])]
+    .filter((permission) => PERMISSION_SET.has(permission) && !denied.has(permission))
+    .sort();
+}
+
 export async function hydrateUserPermissions(db, user) {
   const rows = await db.all("SELECT permission, allowed FROM user_permissions WHERE user_id = ?", [user.id]);
   const profile = user.access_profile_id

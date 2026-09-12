@@ -37,6 +37,10 @@ export function requiresAuth(req) {
   // Ingestão de erros do frontend: pública (captura erros de telas sem sessão).
   // A leitura/gestão (GET/PATCH/DELETE) continua exigindo auth + papel admin.
   if (req.method === "POST" && req.path === "/api/error-logs") return false;
+  // Termo digital pelo link individual: o cliente lê e assina sem sessão. O
+  // token na URL é a credencial (hash conferido na rota); só GET e POST, e só
+  // com a forma exata do token — /api/term-requests (gestão) segue protegido.
+  if ((req.method === "GET" || req.method === "POST") && /^\/api\/public\/terms\/[A-Za-z0-9_-]{32,128}$/.test(req.path)) return false;
   // Webhooks de gateway: o provedor posta sem sessão e sem X-Tenant. A rota se
   // defende sozinha com o token compartilhado (ver routes/webhooks.js) e nem
   // passa pelo withDb — está aqui por completude, caso alguém a monte depois

@@ -17,7 +17,7 @@ import {
   setRefreshCookie
 } from "../services/sessions.js";
 import { decryptTotpSecret, encryptTotpSecret, generateTotpSecret, otpauthUri, verifyTotp } from "../services/totp.js";
-import { hydrateUserPermissions } from "../services/permissionService.js";
+import { effectivePermissions, hydrateUserPermissions } from "../services/permissionService.js";
 import { PUBLIC_APP_URL } from "../config/index.js";
 import { sendTransactionalEmail } from "../services/emailProvider.js";
 import { recordAudit } from "../services/audit.js";
@@ -97,7 +97,17 @@ router.post("/api/auth/reset-password", loginLimiter, withDb(async (req, res, db
 router.post("/api/login", loginLimiter, withDb(async (req, res, db) => {
   if (!validateBody(loginSchema, req, res)) return;
   const { email, password } = req.body;
-  const user = await db.get("SELECT * FROM users WHERE email = ?", [email]);
+  // O e-mail é comparado SEM diferenciar maiúsculas. O cadastro e a edição
+  // administrativa gravam em minúsculas, mas contas antigas ficaram com a
+  // grafia original — e o navegador lembra o que a pessoa digitou. Sem isto,
+  // editar as permissões de alguém (que normaliza o e-mail ao salvar)
+  // derrubava o login dela com "Credenciais inválidas". A grafia exata
+  // desempata, se houver duas contas que só diferem em maiúsculas.
+  const typedEmail = String(email || "").trim();
+  const user = await db.get(
+    "SELECT * FROM users WHERE lower(email) = lower(?) ORDER BY (email = ?) DESC, id LIMIT 1",
+    [typedEmail, typedEmail]
+  );
   if (!user || !(await bcrypt.compare(password, user.password_hash))) {
     await recordAudit(db, {
       req, actor: { email: String(email || "").trim().toLowerCase() }, module: "auth", action: "login_failed",
@@ -123,7 +133,15 @@ router.post("/api/login", loginLimiter, withDb(async (req, res, db) => {
   // Token amarrado à clínica resolvida (multi-tenant); devolve também a clínica.
   res.json({
     token: createToken(user, req.tenant, { sessionId: session.id }),
-    user: { id: user.id, name: user.name, email: user.email, role: user.role, status: user.status, granted_permissions: authorizedUser.granted_permissions, denied_permissions: authorizedUser.denied_permissions },
+    // `permissions` é a lista já resolvida (cargo ou perfil + exceções). O
+    // frontend monta menu e ações a partir dela, em vez de manter uma cópia da
+    // tabela de cargos que precisaria andar em sincronia com esta aqui.
+    user: {
+      id: user.id, name: user.name, email: user.email, role: user.role, status: user.status,
+      access_profile_id: user.access_profile_id || null,
+      permissions: effectivePermissions(authorizedUser),
+      granted_permissions: authorizedUser.granted_permissions, denied_permissions: authorizedUser.denied_permissions
+    },
     tenant: { id: req.tenant.id, name: req.tenant.name, slug: req.tenant.slug }
   });
 }));
@@ -141,7 +159,12 @@ router.post("/api/auth/refresh", withDb(async (req, res, db) => {
   const authorizedUser = await hydrateUserPermissions(db, rotated.user);
   res.json({
     token: createToken(rotated.user, req.tenant, { sessionId: rotated.sessionId }),
-    user: { id: rotated.user.id, name: rotated.user.name, email: rotated.user.email, role: rotated.user.role, granted_permissions: authorizedUser.granted_permissions, denied_permissions: authorizedUser.denied_permissions }
+    user: {
+      id: rotated.user.id, name: rotated.user.name, email: rotated.user.email, role: rotated.user.role,
+      access_profile_id: rotated.user.access_profile_id || null,
+      permissions: effectivePermissions(authorizedUser),
+      granted_permissions: authorizedUser.granted_permissions, denied_permissions: authorizedUser.denied_permissions
+    }
   });
 }));
 

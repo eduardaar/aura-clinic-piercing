@@ -103,7 +103,10 @@
     }
     .toolbar:has(.calendar-nav) .segmented button { min-width: 0; min-height: 42px; padding: 0 6px; font-size: 12px; }
 
-    .calendar-nav { display: grid; grid-template-columns: 42px minmax(0, 1fr) 42px; gap: 6px; }
+    /* Colunas automáticas: sem os botões de período (visão em lista), o rótulo
+       caía na coluna de 42px e virava "Tod…". */
+    .calendar-nav { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; }
+    .calendar-nav strong { grid-column: 2; }
     .calendar-nav strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .calendar-nav button:last-child { grid-column: 1 / -1; width: 100%; }
 

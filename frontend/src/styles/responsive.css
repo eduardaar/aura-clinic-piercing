@@ -136,6 +136,15 @@ select,
   .dataview-filters > * {
     width: 100%;
     max-width: none;
+    /* Com a barra em coluna, o eixo principal do flex vira a vertical: um
+     * `flex: 1 1 260px` (da busca) passava a ser ALTURA de 260px e crescia
+     * até encher o painel — a caixa de busca ocupava meia tela no celular. */
+    flex: 0 0 auto;
+  }
+
+  .dataview-search {
+    height: var(--responsive-control-height, 44px);
+    min-height: var(--responsive-control-height, 44px);
   }
 
   .crud-header-actions {

@@ -6062,8 +6062,10 @@ th {
 }
 
 @media (max-width: 520px) {
+  /* O layout compacto dos indicadores no celular vive em appshell.css (camada
+   * `app`), que vence as definições desta camada. */
   .metric-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .panel, .metric-card {
@@ -10864,6 +10866,51 @@ body,
   background: var(--white, #fff);
 }
 
+/* Ponto de montagem das camadas flutuantes abertas de dentro do modal (lista
+ * de joias, folha inferior). Não ocupa espaço; os filhos são `position: fixed`. */
+.modal-card .modal-floating { height: 0; overflow: visible; }
+
+/* Guarda de alterações não salvas: cobre o modal inteiro sem fechá-lo, para a
+ * pessoa decidir entre salvar, sair ou continuar. */
+.modal-card { position: relative; }
+.modal-guard {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(from var(--ink) r g b / .3);
+  backdrop-filter: blur(2px);
+}
+.modal-guard-card {
+  width: min(440px, 100%);
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  padding: 20px 22px;
+  border-radius: 16px;
+  border: 1px solid rgb(from var(--nude) r g b / .5);
+  background: var(--white, #fff);
+  box-shadow: 0 18px 48px rgb(from var(--ink) r g b / .25);
+}
+.modal-guard-card h3 { margin: 0; font-size: 1.05rem; }
+.modal-guard-card p { margin: 0; color: var(--muted); }
+.modal-guard-icon { display: grid; color: #b45309; }
+.modal-guard-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+  margin-top: 8px;
+}
+@media (max-width: 640px) {
+  .modal-guard { padding: 12px; }
+  .modal-guard-actions { flex-direction: column-reverse; }
+  .modal-guard-actions button { width: 100%; min-height: 46px; }
+}
+
 .crud-header {
   display: flex;
   align-items: center;
@@ -11421,42 +11468,47 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--gold); width: 
 } /* fim de @layer legado */
 .smart-combobox { position: relative; min-width: min(100%, 22rem); width: 100%; }
 .smart-combobox-label { display: block; margin-bottom: .35rem; }
-.smart-combobox-input { display: flex; align-items: center; gap: .45rem; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); padding: 0 .7rem; min-height: 2.85rem; box-shadow: inset 0 0 0 1px transparent; transition: border-color .2s ease, box-shadow .2s ease, background .2s ease; }
-.smart-combobox-input:focus-within { border-color: color-mix(in srgb, var(--accent) 58%, var(--border)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent); background: color-mix(in srgb, var(--surface) 88%, white); }
+.smart-combobox-input { display: flex; align-items: center; gap: .45rem; border: 1px solid var(--line); border-radius: 12px; background: var(--white, #fff); padding: 0 .7rem; min-height: 2.85rem; box-shadow: inset 0 0 0 1px transparent; transition: border-color .2s ease, box-shadow .2s ease, background .2s ease; }
+.smart-combobox-input:focus-within { border-color: color-mix(in srgb, var(--gold) 58%, var(--line)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 16%, transparent); background: color-mix(in srgb, var(--white, #fff) 88%, white); }
 .smart-combobox-search-icon { color: var(--muted); flex: none; }
 .smart-combobox-input input { min-width: 0; flex: 1; border: 0; padding-inline: 0; outline: 0; background: transparent; font-size: .96rem; }
 .smart-combobox-input button { border: 0; background: transparent; padding: .25rem; display: grid; place-items: center; color: var(--muted); }
 .smart-combobox-chevron-button { cursor: pointer; }
 .smart-combobox-list {
   position: fixed; z-index: 10020; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
-  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent); border-radius: 16px; background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent); border-radius: 16px; background: var(--white, #fff);
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.16); padding: .6rem; box-sizing: border-box;
+  /* Dentro de um modal o Radix desliga os eventos de ponteiro do body inteiro;
+   * a lista mora no body (portal) e herdava isso: dava para ver as joias, mas
+   * nenhum clique nelas chegava. */
+  pointer-events: auto;
 }
 .smart-combobox-list > button[role="option"] {
+  touch-action: manipulation;
   width: 100%; display: grid; grid-template-columns: 3.9rem minmax(0, 1fr) minmax(8.5rem, auto);
   gap: .65rem .8rem; align-items: start; text-align: left; border: 1px solid transparent; border-radius: 14px;
   padding: .75rem; background: transparent; color: inherit; min-height: 5.35rem; margin-bottom: .35rem;
 }
 .smart-combobox-list > button[role="option"]:last-child { margin-bottom: 0; }
-.smart-combobox-list > button.active { background: color-mix(in srgb, var(--surface-soft) 70%, white); border-color: color-mix(in srgb, var(--accent) 25%, var(--border)); }
-.smart-combobox-list > button:hover { background: color-mix(in srgb, var(--surface-soft) 70%, white); }
-.smart-combobox-list > button:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 30%, transparent); outline-offset: 2px; }
+.smart-combobox-list > button.active { background: color-mix(in srgb, var(--paper) 70%, white); border-color: color-mix(in srgb, var(--gold) 25%, var(--line)); }
+.smart-combobox-list > button:hover { background: color-mix(in srgb, var(--paper) 70%, white); }
+.smart-combobox-list > button:focus-visible { outline: 3px solid color-mix(in srgb, var(--gold) 30%, transparent); outline-offset: 2px; }
 .smart-combobox-list > button:disabled { opacity: .6; cursor: not-allowed; }
 .smart-combobox-thumb {
   width: 3.9rem; height: 3.9rem; display: grid; place-items: center; overflow: hidden; border-radius: 12px;
-  background: color-mix(in srgb, var(--surface-soft) 52%, transparent); font-size: 1.3rem; border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--paper) 52%, transparent); font-size: 1.3rem; border: 1px solid var(--line);
 }
 .smart-combobox-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .smart-combobox-copy, .smart-combobox-values { display: grid; min-width: 0; gap: .18rem; }
 .smart-combobox-copy { align-content: start; }
 .smart-combobox-copy strong {
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; line-height: 1.25rem;
-  font-size: .98rem; color: var(--text);
+  font-size: .98rem; color: var(--ink);
 }
 .smart-combobox-copy small, .smart-combobox-sku { color: var(--muted); }
 .smart-combobox-sku { font-size: .76rem; }
 .smart-combobox-values { text-align: right; justify-items: end; align-content: start; gap: .42rem; }
-.smart-combobox-values strong { font-size: 1rem; color: var(--text); }
+.smart-combobox-values strong { font-size: 1rem; color: var(--ink); }
 .smart-combobox-stock {
   display: inline-flex; align-items: center; justify-content: center; padding: .24rem .45rem; border-radius: 999px;
   font-size: .72rem; font-weight: 700; white-space: nowrap; min-height: 1.45rem; 
@@ -11467,7 +11519,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--gold); width: 
 .smart-combobox-list strong, .smart-combobox-list small { overflow-wrap: anywhere; }
 .smart-combobox-status { margin: 0 0 .45rem; padding: .1rem .2rem; font-size: .76rem; color: var(--muted); }
 .smart-combobox-empty, .smart-combobox-hint { display: flex; align-items: center; justify-content: center; gap: .4rem; padding: .9rem; color: var(--muted); text-align: center; }
-.smart-combobox-more { width: 100%; min-height: 2.75rem; border: 0; border-top: 1px solid var(--border); background: transparent; color: var(--accent, currentColor); font-weight: 700; }
+.smart-combobox-more { width: 100%; min-height: 2.75rem; border: 0; border-top: 1px solid var(--line); background: transparent; color: var(--gold-dark, var(--gold)); font-weight: 700; }
 .smart-combobox-mobile-head { display: none; }
 .smart-combobox-spinner { animation: smart-combobox-spin .8s linear infinite; }
 @keyframes smart-combobox-spin { to { transform: rotate(360deg); } }
@@ -11477,10 +11529,18 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--gold); width: 
     border-radius: 18px 18px 0 0; padding: .6rem; box-shadow: 0 -8px 40px #0005;
   }
   .smart-combobox-mobile-head {
-    position: sticky; top: -.6rem; z-index: 1; display: flex; justify-content: space-between; align-items: center;
-    min-height: 3rem; padding: .5rem; background: var(--surface); border-bottom: 1px solid var(--border);
+    position: sticky; top: -.6rem; z-index: 1; display: grid; gap: .5rem;
+    padding: .5rem .5rem .6rem; background: var(--white, #fff); border-bottom: 1px solid var(--line);
   }
-  .smart-combobox-mobile-head button { display: grid; place-items: center; border: 0; background: transparent; min-width: 2.75rem; min-height: 2.75rem; }
+  .smart-combobox-mobile-title { display: flex; justify-content: space-between; align-items: center; min-height: 2.75rem; }
+  .smart-combobox-mobile-title button { display: grid; place-items: center; border: 0; background: transparent; min-width: 2.75rem; min-height: 2.75rem; }
+  /* A folha cobre o campo original: a busca continua aqui, à vista. */
+  .smart-combobox-mobile-search {
+    display: flex; align-items: center; gap: .45rem; min-height: 2.85rem; padding: 0 .7rem;
+    border: 1px solid var(--line); border-radius: 12px; background: var(--paper);
+  }
+  .smart-combobox-mobile-search svg { flex: none; color: var(--muted); }
+  .smart-combobox-mobile-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 1rem; }
   .smart-combobox-list > button[role="option"] { grid-template-columns: 3.6rem minmax(0,1fr); min-height: 5.25rem; }
   .smart-combobox-thumb { width: 3.6rem; height: 3.6rem; }
   .smart-combobox-values { grid-column: 2; text-align: left; justify-items: start; grid-template-columns: auto auto; column-gap: .6rem; }

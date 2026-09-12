@@ -337,8 +337,34 @@
     width: 100%;
   }
 
+  /* Todas as etapas cabem na largura do celular: com 8,5rem fixos por etapa a
+   * terceira ("Pagamento") ficava cortada e a pessoa não sabia que existia. */
+  .form-workflow__steps ol {
+    min-width: 0;
+    width: 100%;
+    gap: 0.25rem;
+  }
+
   .form-workflow__steps li {
-    min-width: 8.5rem;
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .form-workflow__steps button {
+    gap: 0.4rem;
+    padding: 0.4rem 0.2rem;
+    align-items: center;
+  }
+
+  .form-workflow__step-marker {
+    flex-basis: 1.75rem;
+    height: 1.75rem;
+    font-size: 0.75rem;
+  }
+
+  .form-workflow__step-copy strong {
+    font-size: 0.86rem;
+    line-height: 1.15;
   }
 
   .form-workflow__step-copy small {
@@ -350,5 +376,34 @@
   .form-workflow__review > header,
   .form-workflow__review-sections {
     padding: 1rem;
+  }
+}
+
+/* Telas estreitas (360–400px): marcador em cima do rótulo, centralizado. Lado
+ * a lado, "Pagamento" quebrava no meio da palavra. */
+@media (max-width: 480px) {
+  .form-workflow__steps button {
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.35rem 0.1rem;
+    text-align: center;
+  }
+
+  /* Em coluna, `flex-basis` vira altura e o círculo virava um oval. */
+  .form-workflow__step-marker {
+    flex: 0 0 auto;
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+
+  .form-workflow__step-copy {
+    justify-items: center;
+  }
+
+  .form-workflow__step-copy strong {
+    font-size: 0.8rem;
+    overflow-wrap: normal;
+    hyphens: manual;
   }
 }

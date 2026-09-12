@@ -23,7 +23,7 @@
 
   .content-type-switch button.is-active {
     background: var(--surface, #fff);
-    color: var(--text);
+    color: var(--ink);
     box-shadow: 0 1px 4px rgb(15 23 42 / 10%);
   }
 
@@ -107,7 +107,7 @@
     padding: 0 13px;
     border: 1px solid var(--line);
     border-radius: 12px;
-    background: var(--surface);
+    background: var(--white, #fff);
     color: var(--muted);
   }
 
@@ -121,7 +121,7 @@
     border: 0;
     outline: 0;
     background: transparent;
-    color: var(--text);
+    color: var(--ink);
     font: inherit;
   }
 
@@ -144,8 +144,8 @@
     padding: 14px;
     border: 1px solid var(--line);
     border-radius: 12px;
-    background: var(--surface);
-    color: var(--text);
+    background: var(--white, #fff);
+    color: var(--ink);
     text-align: left;
     cursor: pointer;
   }
@@ -160,7 +160,7 @@
 
   .help-article-nav button.is-active {
     border-color: var(--primary);
-    background: color-mix(in srgb, var(--primary) 7%, var(--surface));
+    background: color-mix(in srgb, var(--primary) 7%, var(--white, #fff));
   }
 
   .help-article {
@@ -181,7 +181,7 @@
   }
 
   .article-content {
-    color: var(--text);
+    color: var(--ink);
     line-height: 1.72;
   }
 

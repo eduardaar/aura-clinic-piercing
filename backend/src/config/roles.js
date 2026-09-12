@@ -18,11 +18,17 @@ export const ROLE_PERMISSIONS = Object.freeze({
     P.INVENTORY_VIEW, P.INVENTORY_SELL, P.CASH_VIEW, P.CASH_OPEN, P.CASH_RECEIVE_PAYMENT,
     P.COMMUNICATION_VIEW, P.COMMUNICATION_SEND, P.COUPONS_VIEW, P.COUPONS_APPLY, P.SETTINGS_VIEW
   ]),
+  // Financeiro: o cargo sozinho já cobre a área toda — resumo financeiro,
+  // receitas, despesas, pagamentos e sinais, vendas, movimentações de estoque
+  // (com custo), relatórios, cupons e a leitura das configurações (formas de
+  // pagamento). Estornos e cancelamentos entram como regra do cargo. As
+  // exceções por usuário existem só para personalização; nunca para "ligar" a
+  // área de atuação que o cargo já define.
   finance: Object.freeze([
     P.DASHBOARD_VIEW, P.DASHBOARD_FINANCIAL, P.APPOINTMENTS_VIEW, P.CLIENTS_VIEW, P.SALES_VIEW, P.SALES_EDIT_CLOSED,
     P.SALES_CANCEL, P.INVENTORY_VIEW, P.INVENTORY_VIEW_COST, P.CASH_VIEW, P.CASH_OPEN, P.CASH_RECEIVE_PAYMENT,
     P.CASH_CLOSE, P.CASH_WITHDRAW, P.CASH_ADJUST, P.FINANCE_VIEW, P.FINANCE_CREATE, P.FINANCE_EDIT,
     P.FINANCE_CANCEL, P.FINANCE_MARK_TEST, P.FINANCE_EXPENSES, P.FINANCE_REFUND, P.REPORTS_VIEW_FINANCIAL,
-    P.COMMISSION_VIEW_ALL, P.AUDIT_VIEW, P.SETTINGS_VIEW
+    P.REPORTS_VIEW_ALL, P.COMMISSION_VIEW_ALL, P.COUPONS_VIEW, P.AUDIT_VIEW, P.SETTINGS_VIEW
   ])
 });

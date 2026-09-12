@@ -1555,7 +1555,9 @@
   .topbar-trial-full { display: none; }
   .topbar-trial-compact { display: inline; overflow: hidden; text-overflow: ellipsis; }
   .dataview-toolbar-extra { margin-left: 0; width: 100%; }
-  .dataview-search { max-width: none; }
+  /* A barra vira coluna no celular (responsive.css): o `flex-basis: 260px`
+   * da busca passava a valer como ALTURA e a caixa ocupava meia tela. */
+  .dataview-search { max-width: none; flex: 1 1 auto; height: 44px; }
   .dataview-pagination { gap: 10px; }
   .dataview-pager { margin-left: 0; width: 100%; justify-content: space-between; }
   .dataview-toolbar { align-items: stretch; }
@@ -1915,6 +1917,89 @@
   .communication-rule-timing { grid-template-columns: 1fr; }
   .communication-rule-footer { align-items: stretch; flex-direction: column; }
   .communication-rule-footer .button { width: 100%; }
+}
+
+/* Termos digitais: link gerado para o cliente e filas de solicitação. */
+/* `align-content: start`: no modal em tela cheia (celular) a grade esticava as
+ * linhas e abria um vão entre o texto e o link. */
+.term-link-panel { display: grid; gap: 12px; align-content: start; }
+.term-link-panel p { margin: 0; }
+.term-link-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.term-link-actions a, .term-link-actions button { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+.term-link-message summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.term-link-message pre { margin: 8px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--paper); white-space: pre-wrap; font: inherit; font-size: 13px; }
+.term-request-list { display: grid; gap: 8px; }
+.term-request-list article {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper);
+}
+.term-request-list article > div { display: grid; gap: 2px; min-width: 0; }
+.term-request-list article small { color: var(--muted); }
+.term-request-list-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+@media (max-width: 640px) {
+  .term-link-actions a, .term-link-actions button { width: 100%; justify-content: center; }
+}
+
+/* Indicadores no celular: duas colunas compactas. Em coluna única, com 134px
+ * de altura mínima cada, quatro cartões empurravam a agenda, a lista ou o
+ * formulário para fora da primeira tela. */
+@media (max-width: 620px) {
+  /* Dashboard: período, abas e indicadores encostam; o respiro de desktop
+   * (24px de grade + 22px de margem) virava uma tela quase vazia no celular. */
+  .premium-dashboard { gap: 12px; }
+  .dashboard-period-heading { padding-bottom: 6px; }
+  .dashboard-section-tabs { margin-bottom: 4px; }
+
+  .metric-grid,
+  .premium-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .metric-grid .metric-card,
+  .premium-metric-grid .premium-metric-card,
+  .metric-grid .premium-metric-card {
+    min-height: 0;
+    padding: 12px 14px;
+    gap: 6px;
+  }
+  .metric-grid .metric-card > span,
+  .metric-grid .metric-card span,
+  .premium-metric-grid .premium-metric-card span {
+    font-size: 12px;
+    line-height: 1.25;
+    /* "Cancelamentos/ausências" não tem espaço para quebrar e era cortado. */
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .metric-grid .metric-card > strong,
+  .metric-grid .metric-card strong,
+  .premium-metric-grid .premium-metric-card strong {
+    font-size: 1.15rem;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+  }
+  .metric-grid .metric-card svg { width: 16px; height: 16px; }
+  /* Seletor de visão (Mensal, Semanal, Diário, Agendamentos): quatro botões
+   * numa linha só estouravam a largura e o último ficava cortado. */
+  .segmented:not(.compact) {
+    display: flex;
+    flex-wrap: wrap;
+    height: auto;
+    width: 100%;
+  }
+  .segmented:not(.compact) button {
+    flex: 1 1 45%;
+    min-height: 42px;
+    white-space: nowrap;
+  }
+  /* O círculo decorativo do canto (legado) encolhe junto com o cartão. O
+   * ::after dos cartões premium é a barra dourada do rodapé e fica como está. */
+  .metric-grid .metric-card:not(.premium-metric-card)::after {
+    width: 52px;
+    height: 52px;
+    right: -18px;
+    top: -18px;
+  }
 }
 
 } /* fim de @layer app */

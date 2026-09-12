@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { SmartCombobox } from "../src/components/common/SmartCombobox";
+import { Modal } from "../src/components/common/Crud";
 
 const options = [
   { id: 1, name: "Argola Coração", category: "Argolas", material: "Titânio", sku: "ARG-001", quantity: 3 },
@@ -64,5 +65,39 @@ describe("SmartCombobox", () => {
     expect(screen.getAllByRole("option")).toHaveLength(200);
     expect(screen.queryByText("Joia 201")).not.toBeInTheDocument();
     expect(screen.getByText(/Refine a busca/)).toBeInTheDocument();
+  });
+
+  // O caso real do atendimento: o seletor vive dentro de um modal, mas a lista
+  // é um portal no body. Tocar numa joia era lido como "clique fora" e fechava
+  // o modal inteiro — e o toque nem chegava a selecionar.
+  it("dentro de um modal, o clique na joia seleciona sem fechar o modal", async () => {
+    const onChange = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <Modal open title="Novo Agendamento" onClose={onClose}>
+        <form><SmartCombobox label="Joia" value="" onChange={onChange} options={options} /></form>
+      </Modal>
+    );
+    // O Radix só passa a ouvir cliques fora depois de um tick.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    fireEvent.focus(screen.getByRole("combobox"));
+    const option = screen.getByRole("option", { name: /Argola Coração/ });
+    expect(option.closest(".smart-combobox-list")).toHaveAttribute("data-modal-floating");
+    fireEvent.pointerDown(option);
+    fireEvent.mouseDown(option);
+    fireEvent.click(option);
+    expect(onChange).toHaveBeenCalledWith("1");
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Novo Agendamento" })).toBeInTheDocument();
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
+  it("a lista só fecha por toque fora dela e do campo", async () => {
+    render(<SmartCombobox label="Joia" value="" onChange={() => {}} options={options} />);
+    fireEvent.focus(screen.getByRole("combobox"));
+    fireEvent.pointerDown(screen.getByRole("listbox"));
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 });

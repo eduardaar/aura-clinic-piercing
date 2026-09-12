@@ -119,12 +119,25 @@ const ROLE_PERMISSIONS = {
   admin: ["*"],
   piercer: ["dashboard.view", "appointments.view", "appointments.create", "appointments.edit", "appointments.reschedule", "appointments.cancel", "appointments.review", "appointments.finalize", "appointments.apply_discount", "appointments.apply_coupon", "appointments.edit_final_value", "clients.view", "clients.create", "clients.edit", "anamnesis.view", "anamnesis.edit", "anamnesis.review", "clinical_files.view", "clinical_files.edit", "sales.view", "sales.create", "sales.edit_open", "inventory.view", "inventory.sell", "inventory.adjust", "cash.view", "cash.open", "cash.receive_payment", "cash.close", "communication.view", "communication.send", "coupons.view", "coupons.apply", "settings.view"],
   reception: ["dashboard.view", "appointments.view", "appointments.create", "appointments.edit", "appointments.reschedule", "appointments.cancel", "appointments.apply_discount", "appointments.apply_coupon", "clients.view", "clients.create", "clients.edit", "anamnesis.view", "anamnesis.edit", "sales.view", "sales.create", "sales.edit_open", "inventory.view", "inventory.sell", "cash.view", "cash.open", "cash.receive_payment", "communication.view", "communication.send", "coupons.view", "coupons.apply", "settings.view"],
-  finance: ["dashboard.view", "dashboard.financial", "appointments.view", "clients.view", "sales.view", "sales.edit_closed", "sales.cancel", "inventory.view", "inventory.view_cost", "cash.view", "cash.open", "cash.receive_payment", "cash.close", "cash.withdraw", "cash.adjust", "finance.view", "finance.create", "finance.edit", "finance.cancel", "finance.mark_test", "finance.expenses", "finance.refund", "reports.view_financial", "commission.view_all", "audit.view", "settings.view"]
+  finance: ["dashboard.view", "dashboard.financial", "appointments.view", "clients.view", "sales.view", "sales.edit_closed", "sales.cancel", "inventory.view", "inventory.view_cost", "cash.view", "cash.open", "cash.receive_payment", "cash.close", "cash.withdraw", "cash.adjust", "finance.view", "finance.create", "finance.edit", "finance.cancel", "finance.mark_test", "finance.expenses", "finance.refund", "reports.view_financial", "reports.view_all", "commission.view_all", "coupons.view", "audit.view", "settings.view"]
 };
 
+/**
+ * O backend devolve no login e no refresh a lista JÁ RESOLVIDA (cargo ou
+ * perfil de acesso + exceções). Quando ela existe, é a fonte da verdade: cobre
+ * inclusive perfis de acesso personalizados, que a tabela local por cargo não
+ * conhece. A tabela local fica só como fallback para sessões antigas, sem a
+ * lista, e para chamadas que passam apenas o nome do cargo.
+ * @param {Role | string | undefined | { role?: Role | string, permissions?: string[], granted_permissions?: string[], denied_permissions?: string[] }} userOrRole
+ * @param {string} permission
+ * @returns {boolean}
+ */
 export function can(userOrRole, permission) {
   const user = typeof userOrRole === "object" ? userOrRole : { role: userOrRole };
   if (user?.role === "admin") return true;
+  if (Array.isArray(user?.permissions)) {
+    return user.permissions.includes("*") || user.permissions.includes(permission);
+  }
   if ((user?.denied_permissions || []).includes(permission)) return false;
   return [...(ROLE_PERMISSIONS[user?.role] || []), ...(user?.granted_permissions || [])].includes(permission);
 }
