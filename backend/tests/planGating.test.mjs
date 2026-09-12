@@ -3,7 +3,7 @@
 // funcionar. Também cobre a troca self-service e a troca/ativação pela plataforma.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { req, platformLogin, deleteTenant } from "./helpers.mjs";
+import { req, platformLogin, deleteTenant, currentLegalAcceptances } from "./helpers.mjs";
 
 const ctx = { platformToken: null, slug: null, tenantId: null, token: null, email: null, password: null };
 
@@ -16,7 +16,7 @@ before(async () => {
   ctx.password = "SenhaForte123";
   const signup = await req("/signup", {
     method: "POST",
-    body: { name: `Clinica Gate ${suffix}`, slug: ctx.slug, admin_email: ctx.email, admin_password: ctx.password, plan_code: "start", legal_acceptances: { terms_of_use: 1, privacy_policy: 1 } },
+    body: { name: `Clinica Gate ${suffix}`, slug: ctx.slug, admin_email: ctx.email, admin_password: ctx.password, plan_code: "start", legal_acceptances: await currentLegalAcceptances() },
   });
   assert.equal(signup.status, 201, JSON.stringify(signup.json));
   ctx.tenantId = signup.json.tenant.id;

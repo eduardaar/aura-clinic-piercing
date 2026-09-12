@@ -23,7 +23,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { query } from "../src/database/connection.js";
-import { req, platformLogin, deleteTenant } from "./helpers.mjs";
+import { req, platformLogin, deleteTenant, currentLegalAcceptances } from "./helpers.mjs";
 import { PLAN_FEATURES, loadPlansFromDb } from "../src/services/plans.js";
 import {
   checkLimit,
@@ -61,7 +61,7 @@ async function novaClinica(prefixo, plano) {
   const password = "SenhaForte123";
   const signup = await req("/signup", {
     method: "POST",
-    body: { name: `Clinica ${slug}`, slug, admin_email: email, admin_password: password, plan_code: plano, legal_acceptances: { terms_of_use: 1, privacy_policy: 1 } }
+    body: { name: `Clinica ${slug}`, slug, admin_email: email, admin_password: password, plan_code: plano, legal_acceptances: await currentLegalAcceptances() }
   });
   assert.equal(signup.status, 201, JSON.stringify(signup.json));
   return { slug, email, password, id: signup.json.tenant.id, token: signup.json.token };

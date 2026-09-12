@@ -26,20 +26,27 @@ export function testSlug(prefix = "qa") {
   return `${prefix}-${rand}`.toLowerCase().replace(/[^a-z0-9-]/g, "");
 }
 
+// Aceite jurídico na versão VIGENTE de cada documento. As versões são
+// administráveis pelo painel: fixar `{ terms_of_use: 1, privacy_policy: 1 }`
+// fazia o setup de várias suítes parar assim que um documento novo era
+// publicado (o banco passa a ter a versão 2 e o cadastro responde 400
+// `legal_acceptance_required`), enquanto a CI, com o seed da migration, seguia verde.
+export async function currentLegalAcceptances() {
+  const legal = await req("/legal-documents");
+  if (legal.status !== 200) throw new Error(`Falha ao carregar documentos legais: ${legal.status}`);
+  return Object.fromEntries(
+    (legal.json?.documents || [])
+      .filter((item) => ["terms_of_use", "privacy_policy"].includes(item.key))
+      .map((item) => [item.key, item.version])
+  );
+}
+
 // Cria uma clínica (tenant) via signup público. Retorna { slug, adminEmail, adminPassword, tenant }.
 export async function createTenant(prefix = "qa") {
   const slug = testSlug(prefix);
   const adminEmail = `admin@${slug}.test`;
   const adminPassword = "SenhaForte123";
-  // As versões jurídicas são administráveis. Fixar `1` fazia toda suíte de
-  // integração parar no setup assim que um documento novo era publicado.
-  const legal = await req("/legal-documents");
-  if (legal.status !== 200) throw new Error(`Falha ao carregar documentos legais: ${legal.status}`);
-  const legalAcceptances = Object.fromEntries(
-    (legal.json?.documents || [])
-      .filter((item) => ["terms_of_use", "privacy_policy"].includes(item.key))
-      .map((item) => [item.key, item.version])
-  );
+  const legalAcceptances = await currentLegalAcceptances();
   const { status, json } = await req("/signup", {
     method: "POST",
     body: {

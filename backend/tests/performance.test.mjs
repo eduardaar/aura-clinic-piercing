@@ -1,6 +1,6 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { req, platformLogin, deleteTenant } from "./helpers.mjs";
+import { req, platformLogin, deleteTenant, currentLegalAcceptances } from "./helpers.mjs";
 
 const ctx = {};
 
@@ -16,7 +16,7 @@ before(async () => {
       admin_email: `admin@${ctx.slug}.test`,
       admin_password: "SenhaForte123",
       plan_code: "studio",
-      legal_acceptances: { terms_of_use: 1, privacy_policy: 1 }
+      legal_acceptances: await currentLegalAcceptances()
     }
   });
   assert.equal(signup.status, 201, JSON.stringify(signup.json));

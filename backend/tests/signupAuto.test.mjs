@@ -3,7 +3,7 @@
 // autentica o admin recém-criado (login automático — Epic C).
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { req, platformLogin, deleteTenant } from "./helpers.mjs";
+import { req, platformLogin, deleteTenant, currentLegalAcceptances } from "./helpers.mjs";
 
 const ctx = { platformToken: null, tenantId: null, slug: null, email: null, name: null };
 
@@ -46,7 +46,7 @@ test("signup sem slug deriva o código do nome e retorna token que autentica", a
   // Cadastro SEM enviar slug.
   const signup = await req("/signup", {
     method: "POST",
-    body: { name, admin_email: adminEmail, admin_password: adminPassword, plan_code: "profissional", legal_acceptances: { terms_of_use: 1, privacy_policy: 1 } },
+    body: { name, admin_email: adminEmail, admin_password: adminPassword, plan_code: "profissional", legal_acceptances: await currentLegalAcceptances() },
   });
   assert.equal(signup.status, 201, `esperava 201, veio ${signup.status} ${JSON.stringify(signup.json)}`);
 
@@ -85,7 +85,7 @@ test("o mesmo e-mail não cria uma segunda clínica", async () => {
       admin_email: ctx.email,
       admin_password: "SenhaForte123",
       plan_code: "start",
-      legal_acceptances: { terms_of_use: 1, privacy_policy: 1 }
+      legal_acceptances: await currentLegalAcceptances()
     }
   });
   assert.equal(duplicate.status, 409, JSON.stringify(duplicate.json));
@@ -95,7 +95,7 @@ test("o mesmo e-mail não cria uma segunda clínica", async () => {
 test("dois cadastros com o mesmo nome geram slugs distintos", async () => {
   const suffix = Math.floor(performance.now() * 1000) % 1000000;
   const name = `Clinica Repetida ${suffix}`;
-  const base = { admin_password: "SenhaForte123", plan_code: "start", legal_acceptances: { terms_of_use: 1, privacy_policy: 1 } };
+  const base = { admin_password: "SenhaForte123", plan_code: "start", legal_acceptances: await currentLegalAcceptances() };
 
   const a = await req("/signup", { method: "POST", body: { ...base, name, admin_email: `a${suffix}@rep.test` } });
   const b = await req("/signup", { method: "POST", body: { ...base, name, admin_email: `b${suffix}@rep.test` } });
