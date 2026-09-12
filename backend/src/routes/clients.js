@@ -386,7 +386,7 @@ router.get(
     // Recepção não enxerga prontuário nem termo (mesma regra da listagem antiga).
     const canReadClinical = hasPermission(req.user, P.CLINICAL_FILES_VIEW);
     const visible = !canReadClinical
-      ? { ...client, medicalRecords: [], terms: [], followups: [], clinical_access: false }
+      ? { ...client, medicalRecords: [], terms: [], termRequests: [], followups: [], clinical_access: false }
       : { ...client, clinical_access: true };
     await recordPrivacyAudit(db, {
       req,

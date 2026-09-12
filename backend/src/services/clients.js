@@ -105,9 +105,23 @@ export async function listClientsWithDetails(db, clientId = null) {
   const pointsByClient = groupBy(loyaltyPoints, "client_id");
   const redemptionsByClient = groupBy(redemptions, "client_id");
   const terms = await db.all(
-    `SELECT id,client_id,appointment_id,procedure,piercing_region,pdf_url,signed_at FROM digital_terms ${scope("client_id")} ORDER BY signed_at DESC`,
+    `SELECT id,client_id,appointment_id,procedure,piercing_region,pdf_url,signed_at,template_name,channel,content_hash,term_request_id
+       FROM digital_terms ${scope("client_id")} ORDER BY signed_at DESC`,
     scoped(),
   );
+  // Solicitações de termo por link (pendentes, concluídas, canceladas): o
+  // histórico do cliente mostra o que ainda aguarda assinatura.
+  const termRequests = await db.all(
+    `SELECT r.id, r.client_id, r.appointment_id, r.template_id, r.channel, r.status, r.expires_at, r.completed_at,
+            r.created_at, r.message, r.digital_term_id, t.name AS template_name
+       FROM term_requests r LEFT JOIN term_templates t ON t.id = r.template_id
+       ${scope("r.client_id")} ORDER BY r.created_at DESC, r.id DESC`,
+    scoped(),
+  );
+  const now = Date.now();
+  for (const request of termRequests) {
+    if (request.status === "pending" && new Date(request.expires_at).getTime() < now) request.status = "expired";
+  }
   const followups = await db.all(
     `SELECT * FROM post_care_followups ${scope("client_id")} ORDER BY due_date DESC,id DESC`,
     scoped(),
@@ -145,6 +159,7 @@ export async function listClientsWithDetails(db, clientId = null) {
     scoped(),
   );
   const termsByClient = groupBy(terms, "client_id");
+  const termRequestsByClient = groupBy(termRequests, "client_id");
   const followupsByClient = groupBy(followups, "client_id");
   const salesByClient = groupBy(sales, "client_id");
   const couponsByClient = groupBy(couponUses, "client_id");
@@ -157,6 +172,7 @@ export async function listClientsWithDetails(db, clientId = null) {
     client.medicalRecords = recordsByClient.get(client.id) || [];
     client.loyalty = buildLoyalty(pointsByClient.get(client.id) || [], redemptionsByClient.get(client.id) || []);
     client.terms = termsByClient.get(client.id) || [];
+    client.termRequests = termRequestsByClient.get(client.id) || [];
     client.followups = followupsByClient.get(client.id) || [];
     client.sales = salesByClient.get(client.id) || [];
     client.couponsUsed = couponsByClient.get(client.id) || [];

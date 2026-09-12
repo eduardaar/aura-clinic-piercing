@@ -21,7 +21,11 @@ import {
 import { useFormDraft } from "../../lib/useFormDraft";
 import { DIGITAL_TERM_HEALTH_ITEMS, DIGITAL_TERM_LIFESTYLE_ITEMS, defaultDigitalTerm, defaultMedicalRecord } from "../../lib/defaultForms";
 import { currency, personName, whatsappUrl } from "../../features/shared/helpers";
-import { SignaturePad } from "../terms/DigitalTerms";
+import { SignaturePad } from "../../components/common/SignaturePad";
+import {
+  TERM_REQUEST_CHANNEL_LABELS, TERM_REQUEST_STATUS_LABELS, TERM_REQUEST_STATUS_TONES,
+  TermLinkPanel, TermRequestModal, formatExpiry, requestTermJson
+} from "../terms/TermRequestModal";
 import "./clients.css";
 
 const PostCareIcon = ({ size }) => <HeartPulse size={size} />;
@@ -420,6 +424,28 @@ function ClientProfileLoader({ clientId, fallback, onChanged, onNavigate, onEdit
 function ClientProfile({ client, onChanged, onNavigate, onEdit }) {
   const [tab, setTab] = useState("data");
   const [termModalOpen, setTermModalOpen] = useState(false);
+  const [termRequestOpen, setTermRequestOpen] = useState(false);
+  const [termLink, setTermLink] = useState(null);
+  const [termActionError, setTermActionError] = useState("");
+
+  async function renewTermRequest(request) {
+    setTermActionError("");
+    try {
+      setTermLink(await requestTermJson(`/term-requests/${request.id}/renew`, { method: "POST", body: JSON.stringify({}) }));
+    } catch (caught) {
+      setTermActionError(caught.message);
+    }
+  }
+
+  async function cancelTermRequest(request) {
+    setTermActionError("");
+    try {
+      await requestTermJson(`/term-requests/${request.id}/cancel`, { method: "POST", body: JSON.stringify({}) });
+      onChanged?.();
+    } catch (caught) {
+      setTermActionError(caught.message);
+    }
+  }
   const timeline = asArray(client.timeline);
   const paid = Number(client.summary?.total_spent || 0);
   const pending = Number(client.summary?.pending_amount || 0);
@@ -596,32 +622,56 @@ function ClientProfile({ client, onChanged, onNavigate, onEdit }) {
             <header>
               <div>
                 <h3>Termos digitais</h3>
-                <p>Histórico de documentos assinados.</p>
+                <p>Consentimentos e autorizações assinados, no estúdio ou por link.</p>
               </div>
               {client.clinical_access && (
-                <Button variant="secondary" onClick={() => setTermModalOpen(true)}>
-                  Novo termo
-                </Button>
+                <div className="term-request-list-actions">
+                  <Button onClick={() => setTermRequestOpen(true)}>Enviar para assinar</Button>
+                  <Button variant="secondary" onClick={() => setTermModalOpen(true)}>Novo termo</Button>
+                </div>
               )}
             </header>
             {!client.clinical_access ? (
               <p className="empty-state">Seu perfil não possui acesso aos termos clínicos.</p>
             ) : (
-              <div className="client-360-list">
-                {asArray(client.terms).map((term) => (
-                  <article key={term.id}>
-                    <div>
-                      <strong>{term.procedure || "Termo de consentimento"}</strong>
-                      <span>{term.piercing_region || "Região não informada"}</span>
-                    </div>
-                    <div>
-                      <small>{formatLongDate(String(term.signed_at || "").slice(0, 10))}</small>
-                      {term.pdf_url && <Button variant="ghost" onClick={() => openApiFile(String(term.pdf_url).replace(/^\/api/, ""))}>Abrir PDF</Button>}
-                    </div>
-                  </article>
-                ))}
-                {!asArray(client.terms).length && <p className="empty-state">Nenhum termo digital assinado.</p>}
-              </div>
+              <>
+                {asArray(client.termRequests).filter((request) => request.status !== "completed").length > 0 && (
+                  <div className="term-request-list">
+                    {asArray(client.termRequests).filter((request) => request.status !== "completed").map((request) => (
+                      <article key={request.id}>
+                        <div>
+                          <strong>{request.template_name || "Termo digital"}</strong>
+                          <small>
+                            {TERM_REQUEST_CHANNEL_LABELS[request.channel] || request.channel} · criado em {formatLongDate(String(request.created_at || "").slice(0, 10))}
+                            {request.status === "pending" ? ` · válido até ${formatExpiry(request.expires_at)}` : ""}
+                          </small>
+                        </div>
+                        <div className="term-request-list-actions">
+                          <StatusBadge tone={TERM_REQUEST_STATUS_TONES[request.status]} status={TERM_REQUEST_STATUS_LABELS[request.status] || request.status} />
+                          <Button variant="ghost" onClick={() => renewTermRequest(request)}>Gerar novo link</Button>
+                          {request.status === "pending" && <Button variant="ghost" onClick={() => cancelTermRequest(request)}>Cancelar</Button>}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
+                <div className="client-360-list">
+                  {asArray(client.terms).map((term) => (
+                    <article key={term.id}>
+                      <div>
+                        <strong>{term.template_name || term.procedure || "Termo de consentimento"}</strong>
+                        <span>{[term.procedure && term.template_name ? term.procedure : "", term.piercing_region || "", term.channel === "remote" ? "Assinado por link" : term.channel === "in_studio" ? "Assinado no estúdio" : ""].filter(Boolean).join(" · ") || "Assinado pela equipe"}</span>
+                      </div>
+                      <div>
+                        <small>{formatLongDate(String(term.signed_at || "").slice(0, 10))}</small>
+                        {term.pdf_url && <Button variant="ghost" onClick={() => openApiFile(String(term.pdf_url).replace(/^\/api/, ""))}>Abrir PDF</Button>}
+                      </div>
+                    </article>
+                  ))}
+                  {!asArray(client.terms).length && <p className="empty-state">Nenhum termo digital assinado.</p>}
+                </div>
+                {termActionError && <span className="form-error">{termActionError}</span>}
+              </>
             )}
           </section>
         </Tabs.Content>
@@ -670,6 +720,15 @@ function ClientProfile({ client, onChanged, onNavigate, onEdit }) {
           onChanged?.();
         }}
       />
+      <TermRequestModal
+        open={termRequestOpen}
+        client={client}
+        appointments={asArray(client.history)}
+        onClose={() => { setTermRequestOpen(false); onChanged?.(); }}
+      />
+      <Modal open={Boolean(termLink)} title="Novo link gerado" subtitle="O link anterior deixou de valer." onClose={() => { setTermLink(null); onChanged?.(); }} footer={<Button onClick={() => { setTermLink(null); onChanged?.(); }}>Concluir</Button>}>
+        <TermLinkPanel result={termLink} />
+      </Modal>
     </div>
   );
 }

@@ -96,6 +96,7 @@ function App() {
   const legalDocumentKey = publicRoute?.documentKey || null;
   const isLegalPage = Boolean(legalDocumentKey);
   const isPlatform = publicRoute?.id === "platform";
+  const isPublicTerm = publicRoute?.id === "public-term";
   const isInternalApp = isAppPath(currentPathname);
   // Landing de marketing: raiz "/" sem sessão. Com sessão, "/" é o app.
   const isLanding = publicRoute?.id === "landing";
@@ -259,10 +260,10 @@ function App() {
   // Se não tem sessão e não está em rota pública (nem na landing "/"),
   // redireciona para login.
   useEffect(() => {
-    if (!normalizedSession && !isLanding && !isAbout && !isPlansPage && !isNewsPage && !isPublicCatalog && !isPublicBooking && !isPublicCheckout && !isSignup && !isPlatform && !isLegalPage && !isLoginPath) {
+    if (!normalizedSession && !isLanding && !isAbout && !isPlansPage && !isNewsPage && !isPublicCatalog && !isPublicBooking && !isPublicCheckout && !isSignup && !isPlatform && !isLegalPage && !isPublicTerm && !isLoginPath) {
       window.location.href = "/login";
     }
-  }, [normalizedSession, isLanding, isAbout, isPlansPage, isNewsPage, isPublicCatalog, isPublicBooking, isPublicCheckout, isSignup, isPlatform, isLegalPage, isLoginPath]);
+  }, [normalizedSession, isLanding, isAbout, isPlansPage, isNewsPage, isPublicCatalog, isPublicBooking, isPublicCheckout, isSignup, isPlatform, isLegalPage, isPublicTerm, isLoginPath]);
 
   // Landing pública na raiz "/" quando não há sessão.
   if (isLanding && !normalizedSession) {
@@ -302,7 +303,7 @@ function App() {
     const BookingPage = hasTenant ? publicRoute.component : appPageById("booking-directory").component;
     return <Suspense fallback={<Loading />}><BookingPage /></Suspense>;
   }
-  if (isPublicCheckout || isSignup || isPlatform || isNewsPage || legalDocumentKey) {
+  if (isPublicCheckout || isSignup || isPlatform || isNewsPage || legalDocumentKey || isPublicTerm) {
     const PublicPage = publicRoute.component;
     return <Suspense fallback={<Loading />}><PublicPage {...(legalDocumentKey ? { documentKey: legalDocumentKey } : {})} /></Suspense>;
   }

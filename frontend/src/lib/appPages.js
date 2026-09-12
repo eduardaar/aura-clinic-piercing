@@ -195,7 +195,10 @@ export const APP_PAGES = Object.freeze([
   { id: "platform", path: "/plataforma", title: "Acesso restrito", public: true, match: "prefix", component: lazyNamed(() => import("../features/platform/PlatformAdmin"), "PlatformAdmin") },
   { id: "terms-of-use", path: "/termos-de-uso", title: "Termos de uso", public: true, match: "exact", documentKey: "terms_of_use", component: lazyNamed(() => import("../pages/LegalDocument"), "LegalDocument") },
   { id: "privacy-policy", path: "/politica-de-privacidade", title: "Política de privacidade", public: true, match: "exact", documentKey: "privacy_policy", component: lazyNamed(() => import("../pages/LegalDocument"), "LegalDocument") },
-  { id: "news", path: "/novidades", title: "Notícias e novidades", public: true, match: "prefix", component: lazyNamed(() => import("../pages/News"), "NewsPage") }
+  { id: "news", path: "/novidades", title: "Notícias e novidades", public: true, match: "prefix", component: lazyNamed(() => import("../pages/News"), "NewsPage") },
+  // Termo digital pelo link individual (/termo/<token>?t=<clínica>): o cliente
+  // lê e assina no próprio celular, no estúdio ou à distância, sem sessão.
+  { id: "public-term", path: "/termo", title: "Termo digital", public: true, match: "prefix", component: lazyNamed(() => import("../pages/PublicTerm"), "PublicTerm") }
 ]);
 
 export const INTERNAL_APP_PAGES = Object.freeze(APP_PAGES.filter((page) => !page.public));

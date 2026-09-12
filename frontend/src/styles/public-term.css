@@ -1,0 +1,53 @@
+/* Página pública do termo digital (/termo/<token>). Mobile-first: é aberta no
+   celular do cliente, no estúdio ou pelo WhatsApp. */
+@layer telas {
+  .term-public { min-height: 100dvh; background: var(--paper, #f6f8fb); color: var(--ink, #102033); }
+  .term-public-header {
+    padding: 18px 16px 14px; background: var(--ink, #102033); color: #fff;
+  }
+  .term-public-header-inner { width: min(100%, 720px); margin: 0 auto; display: grid; gap: 4px; }
+  .term-public-kicker { font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--gold, #C9A86A); }
+  .term-public-header h1 { margin: 0; font-family: var(--title-font, inherit); font-size: clamp(20px, 4.5vw, 28px); line-height: 1.2; }
+  .term-public-header p { margin: 0; font-size: 14px; opacity: .85; }
+
+  .term-public-main { width: min(100%, 720px); margin: 0 auto; padding: 16px 16px 40px; display: grid; gap: 14px; }
+  .term-public-card {
+    background: #fff; border: 1px solid var(--line, #e2e8f0); border-radius: 16px; padding: 16px;
+    box-shadow: 0 10px 30px rgb(16 32 51 / .06); display: grid; gap: 12px;
+  }
+  .term-public-card h2 { margin: 0; font-size: 1.05rem; }
+  .term-public-card p { margin: 0; }
+  .term-public-card .field-hint, .term-public-muted { color: var(--muted, #68778a); font-size: 13px; }
+
+  .term-public-content {
+    max-height: 46dvh; overflow-y: auto; padding: 14px; border: 1px solid var(--line, #e2e8f0); border-radius: 12px;
+    background: var(--paper, #f6f8fb); white-space: pre-line; line-height: 1.6; font-size: 15px; overscroll-behavior: contain;
+  }
+
+  .term-public-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .term-public-grid .field { min-width: 0; }
+  .term-public-check-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .term-public-check {
+    display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 8px 12px; border: 1px solid var(--line, #e2e8f0);
+    border-radius: 12px; background: #fff; text-align: left; font: inherit; color: inherit; cursor: pointer;
+  }
+  .term-public-check[aria-pressed="true"] { border-color: var(--gold, #C9A86A); background: color-mix(in srgb, var(--gold, #C9A86A) 12%, white); }
+  .term-public-check span { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--line, #cbd5e1); font-size: 13px; font-weight: 700; flex: none; }
+  .term-public-check[aria-pressed="true"] span { background: var(--gold-dark, #A87A34); border-color: var(--gold-dark, #A87A34); color: #fff; }
+
+  .term-public .checkbox-field.term-public-consent { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border: 1px solid var(--line, #e2e8f0); border-radius: 12px; background: var(--paper, #f6f8fb); cursor: pointer; }
+  .term-public .term-public-consent .ui-checkbox { flex: none; margin-top: 2px; }
+  .term-public .term-public-consent strong { display: block; }
+
+  .term-public .signature-box canvas { width: 100%; height: auto; border: 1px dashed var(--line, #cbd5e1); border-radius: 12px; background: #fffdfb; touch-action: none; }
+  .term-public .signature-heading { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 6px; }
+
+  .term-public-actions { display: grid; gap: 10px; position: sticky; bottom: 0; padding: 12px 0 calc(8px + env(safe-area-inset-bottom, 0px)); background: linear-gradient(to top, var(--paper, #f6f8fb) 70%, transparent); }
+  .term-public-actions button { min-height: 50px; font-size: 16px; }
+
+  .term-public-state { text-align: center; display: grid; gap: 10px; justify-items: center; padding: 28px 16px; }
+  .term-public-state .term-public-icon { width: 64px; height: 64px; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--gold, #C9A86A) 18%, white); color: var(--gold-dark, #A87A34); }
+  .term-public-state.is-error .term-public-icon { background: #fde8e8; color: #b42318; }
+  .term-public-state h2 { margin: 0; }
+  .term-public-error { color: #b42318; font-weight: 600; }
+}

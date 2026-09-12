@@ -1,6 +1,6 @@
 # Estado atual do projeto
 
-> Situação em **30/08/2026**, após a primeira rodada de testes e melhorias sobre a base `3d34c9b0`.
+> Situação em **12/09/2026**, após a primeira rodada de testes (30/08) e o relatório de resolução de problemas de setembro (seção 7).
 >
 > Este documento existe para responder uma pergunta só: **o que já está feito e o que ainda não está.** Ele não propõe roadmap nem assume compromisso de produto — para isso, use [IDEIAS.md](./IDEIAS.md). Quando o código e este documento discordarem, o código vence: registre a correção aqui.
 
@@ -60,6 +60,7 @@
 | Ficha técnica de materiais por serviço | **Entregue** | `GET/PUT /api/services/:id/consumables` |
 | Consumo automático e reversível ao concluir | **Entregue** | `appointment_consumptions` congela o que foi baixado; reabrir ou cancelar devolve exatamente aquilo |
 | Prontuário, termo digital e pós-atendimento | **Entregue** | `routes/clients.js`, `terms.js`, `postcare.js` |
+| Termos digitais assinados pelo cliente (no estúdio ou por link) | **Entregue** | migration `0037`; `services/termRequests.js`; `routes/terms.js` (modelos, solicitações, `GET/POST /api/public/terms/:token`); página `/termo/<token>`; termo concluído é imutável por gatilho; 7 testes em `termRequests.test.mjs` |
 
 ### Reversões financeiras
 
@@ -106,6 +107,19 @@
 Relatório completo, com as sete falhas encontradas e corrigidas: [RELATORIO-HOMOLOGACAO-CRITICA-2026-08-27.md](./RELATORIO-HOMOLOGACAO-CRITICA-2026-08-27.md).
 
 ---
+
+## 7. Ajustes de 12/09/2026 (relatório de resolução de problemas)
+
+| Item | Situação | Evidência |
+| --- | --- | --- |
+| Usuário perdia acesso ("Credenciais inválidas") após alteração de permissões | **Corrigido** | o login comparava o e-mail com a grafia exata e a edição administrativa gravava em minúsculas; `POST /api/login` passou a comparar sem diferenciar maiúsculas. `loginEmailCase.test.mjs` cobre conta legada com maiúsculas editada pelo admin |
+| Modais fechando com clique fora e perdendo dados | **Corrigido** | `Modal` não fecha mais no clique fora; com formulário alterado, X, Esc e Cancelar pedem confirmação (Salvar, Sair sem salvar, Continuar editando). `ModalGuard.test.jsx` |
+| Seleção de joias no atendimento | **Corrigido** | a lista usava variáveis CSS inexistentes (ficava transparente) e, dentro do modal, não recebia clique (Radix); agora monta dentro do diálogo, com fundo, e no celular vira folha inferior com campo de busca próprio. `SmartCombobox.test.jsx` |
+| Cargo Financeiro exigia permissões manuais | **Corrigido** | o backend devolve `permissions` resolvidas no login/refresh (cargo ou perfil + exceções) e o frontend usa essa lista; Financeiro ganhou relatórios completos e cupons no padrão. `rbac.test.mjs`, `sessionPermissions.test.mjs` |
+| Experiência no celular | **Corrigido (rodada 1)** | busca das listas ocupava meia tela (`flex-basis` em coluna), indicadores em coluna única, seletor de visão da agenda cortado, etapas dos formulários cortadas, abas do perfil sem quebra; viewport com `interactive-widget=resizes-content`. Validado por capturas em 360/390/430 px |
+| Termos digitais presenciais e por link | **Entregue** | ver seção 3 |
+
+Pendência operacional: as migrations de produção não são aplicadas pelo deploy. Depois de publicar, rode o workflow "Aplicar migrations em produção" (inclui a `0037`).
 
 ## Pendências abertas
 

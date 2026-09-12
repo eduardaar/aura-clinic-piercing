@@ -1,4 +1,5 @@
-// Serviços de termo digital (anamnese): geração de PDF e listagem.
+// Serviços de termo digital (anamnese): registro imutável, geração de PDF e listagem.
+import crypto from "node:crypto";
 import PDFDocument from "pdfkit";
 import { limitOffset, countRows } from "./pagination.js";
 import { buildKey, storage } from "./storage/index.js";
@@ -40,6 +41,11 @@ const DIGITAL_TERM_QUERY = `
       t.form_data,
       t.pdf_url,
       t.signed_at,
+      t.template_id,
+      t.template_name,
+      t.term_request_id,
+      t.channel,
+      t.content_hash,
       a.appointment_date,
       a.appointment_time,
       t.instagram AS term_instagram,
@@ -64,6 +70,124 @@ export async function getDigitalTerm(db, id) {
   return db.get(`${DIGITAL_TERM_QUERY} WHERE t.id = ?`, [id]);
 }
 
+function meaningful(value) {
+  return value !== null && value !== undefined && String(value).trim() !== "";
+}
+
+export function ageFromBirthDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
+  if (!match) return null;
+  const birth = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  if (Number.isNaN(birth.getTime())) return null;
+  const today = new Date();
+  let age = today.getUTCFullYear() - birth.getUTCFullYear();
+  const beforeBirthday = today.getUTCMonth() < birth.getUTCMonth()
+    || (today.getUTCMonth() === birth.getUTCMonth() && today.getUTCDate() < birth.getUTCDate());
+  if (beforeBirthday) age -= 1;
+  return age;
+}
+
+// Assinatura chega como data URL de PNG desenhado no canvas. Limite folgado
+// para o traço, apertado o bastante para não virar upload arbitrário.
+const MAX_SIGNATURE_LENGTH = 2 * 1024 * 1024;
+function validSignature(value) {
+  const text = String(value || "");
+  return /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(text) && text.length <= MAX_SIGNATURE_LENGTH;
+}
+
+// Regras do aceite, iguais no balcão e no link do cliente. Devolve a mensagem
+// de erro ou null.
+export function validateDigitalTermBody(body, { requireGuardianForMinors = true } = {}) {
+  if (!body?.full_name?.trim() || !body.signature_data_url) {
+    return "Dados obrigatorios do termo nao foram preenchidos.";
+  }
+  if (!validSignature(body.signature_data_url)) return "A assinatura digital é inválida.";
+  if (!body.orientations_confirmed) {
+    return "O cliente precisa confirmar que recebeu as orientacoes.";
+  }
+  const minor = body.form_data?.minor || {};
+  const age = ageFromBirthDate(body.birth_date);
+  if (age !== null && age < 18 && !minor.is_minor && requireGuardianForMinors) {
+    return "Cliente menor de idade: informe e valide o responsável legal.";
+  }
+  if (minor.is_minor) {
+    if (!meaningful(minor.responsible_name) || !meaningful(minor.responsible_document)) {
+      return "Nome e documento do responsável legal são obrigatórios.";
+    }
+    if (!body.guardian_signature_data_url) return "A assinatura do responsável legal é obrigatória.";
+    if (!validSignature(body.guardian_signature_data_url)) return "A assinatura do responsável legal é inválida.";
+  }
+  return null;
+}
+
+// Atualiza o cadastro do cliente com o que ele mesmo informou no termo
+// (documento, nascimento, contato). Só campos preenchidos sobrescrevem.
+export async function syncClientRegistration(db, client, body) {
+  const candidates = { full_name: body.full_name, phone: body.phone, whatsapp: body.whatsapp, instagram: body.instagram, email: body.email, birth_date: body.birth_date, cpf: body.document_number };
+  const next = { ...client };
+  for (const [field, value] of Object.entries(candidates)) if (meaningful(value)) next[field] = String(value).trim();
+  await db.run(`UPDATE clients SET full_name=?, phone=?, whatsapp=?, instagram=?, email=?, birth_date=?, cpf=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+    [next.full_name, next.phone || "", next.whatsapp || "", next.instagram || "", next.email || "", next.birth_date || "", next.cpf || "", client.id]);
+  return db.get("SELECT * FROM clients WHERE id=?", [client.id]);
+}
+
+// Impressão digital do aceite: qualquer alteração posterior no que foi assinado
+// deixa de bater com o hash gravado (e o gatilho do banco já recusa a alteração).
+export function digitalTermHash(fields) {
+  return crypto.createHash("sha256").update(JSON.stringify(fields), "utf8").digest("hex");
+}
+
+// Grava o termo, gera o PDF e devolve o registro. Serve ao balcão (usuário
+// autenticado) e ao link do cliente (sem usuário; `channel` diz de onde veio).
+export async function createDigitalTermRecord(db, {
+  body, client, appointment = null, userId = null, channel = "staff",
+  template = null, requestId = null, ip = null, userAgent = null
+}) {
+  const minor = body.form_data?.minor || {};
+  const signedAt = new Date().toISOString().slice(0, 19).replace("T", " ");
+  const persisted = {
+    appointment_id: body.appointment_id || appointment?.id || null,
+    client_id: client.id,
+    full_name: String(body.full_name).trim(),
+    social_name: body.social_name || "",
+    document_number: body.document_number || "",
+    birth_date: body.birth_date || "",
+    whatsapp: body.whatsapp || appointment?.whatsapp || "",
+    instagram: body.instagram || appointment?.instagram || "",
+    address: body.address || "",
+    procedure: body.procedure || appointment?.procedure || "",
+    piercing_region: body.piercing_region || appointment?.piercing_region || "",
+    orientations_confirmed: body.orientations_confirmed ? 1 : 0,
+    health_declaration: body.health_declaration || "",
+    form_data: JSON.stringify(body.form_data || {}),
+    signature_data_url: body.signature_data_url,
+    guardian_signature_data_url: minor.is_minor ? body.guardian_signature_data_url : null,
+    template_id: template?.id || null,
+    template_name: template?.name || null,
+    template_content: template?.content || null,
+    term_request_id: requestId,
+    channel,
+    signed_at: signedAt
+  };
+  const contentHash = digitalTermHash({
+    full_name: persisted.full_name, document_number: persisted.document_number, birth_date: persisted.birth_date,
+    orientations_confirmed: persisted.orientations_confirmed, health_declaration: persisted.health_declaration,
+    form_data: persisted.form_data, signature_data_url: persisted.signature_data_url,
+    guardian_signature_data_url: persisted.guardian_signature_data_url, template_content: persisted.template_content, signed_at: signedAt
+  });
+  const columns = [...Object.keys(persisted), "accepted_ip", "accepted_user_agent", "content_hash"];
+  const values = [...Object.values(persisted), ip ? String(ip).slice(0, 100) : null, userAgent ? String(userAgent).slice(0, 300) : null, contentHash];
+  const result = await db.run(
+    `INSERT INTO digital_terms (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")}) RETURNING id`,
+    values
+  );
+  const term = await db.get("SELECT * FROM digital_terms WHERE id = ?", [result.returnedId]);
+  const pdfUrl = await createTermPdf(db, term, appointment || {}, userId);
+  // `pdf_url` é a única coluna que o gatilho de imutabilidade deixa mudar.
+  await db.run("UPDATE digital_terms SET pdf_url = ? WHERE id = ?", [pdfUrl, result.returnedId]);
+  return getDigitalTerm(db, result.returnedId);
+}
+
 // Id da clínica a partir da própria conexão: o `search_path` da requisição já
 // aponta para `tenant_<id>` (ver middleware/withDb.js). Assim a chave do
 // arquivo sai certa sem exigir que a rota passe o tenant à mão.
@@ -72,6 +196,8 @@ async function tenantIdFromDb(db) {
   const match = /^tenant_(\d+)$/.exec(String(row?.schema_name || ""));
   return match ? Number(match[1]) : null;
 }
+
+const CHANNEL_LABELS = { staff: "Preenchido no balcão pela equipe", in_studio: "Preenchido pelo cliente no estúdio", remote: "Preenchido pelo cliente por link" };
 
 export async function createTermPdf(db, term, appointment = {}, userId = null) {
   const fileName = `termo-digital-${term.id}.pdf`;
@@ -88,7 +214,7 @@ export async function createTermPdf(db, term, appointment = {}, userId = null) {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
     doc.fontSize(20).text("Aura Clinic Piercing", { align: "center" });
-    doc.fontSize(14).text("Ficha De Anamnese", { align: "center" });
+    doc.fontSize(14).text(term.template_name || "Ficha De Anamnese", { align: "center" });
     doc.moveDown(0.5);
     doc.fontSize(10.5);
     doc.text(`Paciente: ${term.full_name}`, { continued: true });
@@ -118,8 +244,8 @@ export async function createTermPdf(db, term, appointment = {}, userId = null) {
     writeTermLine(doc, "Observação", formData.information?.observation || term.health_declaration || "Sem observações adicionais.");
     writeTermLine(doc, "Valor", formData.information?.value || "Não informado");
 
-    writeTermSection(doc, "Termo De Consentimento");
-    doc.text("Declaro que recebi orientações sobre o procedimento, cuidados, higienização, riscos, intercorrências, cicatrização e retornos. Também confirmo que os materiais utilizados são esterilizados, lacrados e descartados após o procedimento.", {
+    writeTermSection(doc, term.template_name ? `Termo Aceito: ${term.template_name}` : "Termo De Consentimento");
+    doc.text(term.template_content || "Declaro que recebi orientações sobre o procedimento, cuidados, higienização, riscos, intercorrências, cicatrização e retornos. Também confirmo que os materiais utilizados são esterilizados, lacrados e descartados após o procedimento.", {
       lineGap: 2
     });
 
@@ -135,6 +261,8 @@ export async function createTermPdf(db, term, appointment = {}, userId = null) {
     writeTermLine(doc, "Assinatura Da Cliente", "Assinatura digital anexada");
     writeTermLine(doc, "Assinatura Da Profissional", appointment.professional_name || "Profissional responsável");
     doc.text(`Assinado digitalmente em: ${new Date(term.signed_at).toLocaleString("pt-BR")}`);
+    if (term.channel) doc.text(`Origem: ${CHANNEL_LABELS[term.channel] || term.channel}`);
+    if (term.content_hash) doc.text(`Verificação: ${term.content_hash}`);
     if (signatureBuffer) {
       doc.moveDown(0.4);
       doc.text("Assinatura digital:");

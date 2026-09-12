@@ -179,3 +179,25 @@ export const tenantStatusSchema = z
     status: z.enum(["ativo", "suspenso"], { message: "Status deve ser 'ativo' ou 'suspenso'." })
   })
   .passthrough();
+
+// ---------- Termos digitais (modelos e solicitações por link) ----------
+export const termTemplateSchema = z
+  .object({
+    name: nonEmptyString("Nome do modelo"),
+    content: nonEmptyString("Texto do termo")
+  })
+  .passthrough();
+
+export const termTemplateUpdateSchema = z
+  .object({
+    name: z.string().min(1, { message: "Nome do modelo não pode ser vazio." }).optional(),
+    content: z.string().min(1, { message: "Texto do termo não pode ser vazio." }).optional()
+  })
+  .passthrough();
+
+export const termRequestSchema = z
+  .object({
+    client_id: requiredId("Cliente"),
+    template_id: requiredId("Modelo do termo")
+  })
+  .passthrough();
