@@ -483,12 +483,21 @@ function jewelryPayload(body, sku, pricing) {
     Boolean(body.track_stock ?? true),
     Boolean(body.track_lots ?? false),
     Boolean(body.can_publish ?? true),
-    body.supplier_id ? Number(body.supplier_id) : null
+    foreignKeyValue(body.supplier_id)
   ];
 }
 
+// Colunas de chave estrangeira aceitam NULL, mas não aceitam 0: valor vazio,
+// zero ou não numérico precisa virar NULL, senão o Postgres rejeita a escrita
+// com violação de FK (23503) e a edição quebra com erro interno.
+function foreignKeyValue(value) {
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
 function updateValue(field, body) {
-  if (["quantity", "top_size_mm", "cost_value", "sale_value", "purchase_cost_cents", "allocated_freight_cents", "additional_cost_cents", "total_cost_cents", "price_multiplier", "suggested_price_cents", "sale_price_cents", "price_manually_overridden", "cost_estimated", "low_stock_threshold", "critical_stock_threshold", "weight_grams", "package_length_cm", "package_width_cm", "package_height_cm", "preparation_days", "is_catalog_active", "is_featured", "is_new", "is_most_wanted", "is_promotion", "is_last_units", "virtual_store_active", "is_published", "purchase_to_stock_factor", "supplier_id"].includes(field)) {
+  if (field === "supplier_id") return foreignKeyValue(body[field]);
+  if (["quantity", "top_size_mm", "cost_value", "sale_value", "purchase_cost_cents", "allocated_freight_cents", "additional_cost_cents", "total_cost_cents", "price_multiplier", "suggested_price_cents", "sale_price_cents", "price_manually_overridden", "cost_estimated", "low_stock_threshold", "critical_stock_threshold", "weight_grams", "package_length_cm", "package_width_cm", "package_height_cm", "preparation_days", "is_catalog_active", "is_featured", "is_new", "is_most_wanted", "is_promotion", "is_last_units", "virtual_store_active", "is_published", "purchase_to_stock_factor"].includes(field)) {
     return Number(body[field] || 0);
   }
   if (field === "gallery_urls") {

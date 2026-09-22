@@ -141,6 +141,26 @@ test("joia com SKU manual duplicado → 409", async () => {
   assert.equal(duplicated.json.message, "Já existe uma joia com este SKU.");
 });
 
+// O editor de estoque devolve o item inteiro no PATCH, inclusive supplier_id
+// vazio quando não há fornecedor vinculado. Isso não pode virar 0 na escrita:
+// 0 não existe em suppliers e o Postgres derrubava o salvamento com 500.
+test("editar joia sem fornecedor (supplier_id vazio) → 200 e permanece nulo", async () => {
+  const created = await api("/jewelry", {
+    method: "POST",
+    body: { name: "Labret Sem Fornecedor", category: "Labret", material: "Titânio", color: "Natural", quantity: 2, sale_value: 120 },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.json));
+
+  for (const supplierId of [null, "", 0]) {
+    const updated = await api(`/jewelry/${created.json.id}`, {
+      method: "PATCH",
+      body: { ...created.json, supplier_id: supplierId, notes: `sem fornecedor: ${String(supplierId)}` },
+    });
+    assert.equal(updated.status, 200, `supplier_id=${String(supplierId)} → ${JSON.stringify(updated.json)}`);
+    assert.equal(updated.json.supplier_id, null);
+  }
+});
+
 // ---------- Agendamentos ----------
 
 test("agendamento sem professional_id → 400", async () => {

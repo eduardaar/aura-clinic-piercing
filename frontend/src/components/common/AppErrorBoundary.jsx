@@ -1,5 +1,5 @@
 import React from "react";
-import { reportError } from "../../lib/errorReporter";
+import { isStaleChunkError, reloadOnceForStaleChunk, reportError } from "../../lib/errorReporter";
 
 export class AppErrorBoundary extends React.Component {
   constructor(props) {
@@ -12,12 +12,16 @@ export class AppErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, info) {
+    const message = error?.message || "Erro de renderização (React)";
     console.error("Aura Clinic runtime error:", error, info);
     reportError({
-      message: error?.message || "Erro de renderização (React)",
+      message,
       stack: error?.stack,
       context: { componentStack: info?.componentStack, boundary: "AppErrorBoundary" }
     });
+    // Chunk defasado por deploy: a tela de falha não ajuda o usuário, que só
+    // precisa do index.html novo. O relato já foi enviado com keepalive.
+    if (isStaleChunkError(message)) reloadOnceForStaleChunk();
   }
 
   render() {
