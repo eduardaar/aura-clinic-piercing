@@ -171,7 +171,7 @@ Pendência operacional: as migrations de produção não são aplicadas pelo dep
 
 Validação em 01/10/2026: 377/377 testes de backend nos 38 arquivos afetados, 304/304 testes de componentes e 65/65 unitários do frontend, typecheck e build aprovados. Não houve validação em navegador real.
 
-**Pendências desta entrega:** a baixa de recebível feita em Contas a receber ainda não volta para o atendimento nem gera `payments` (decisão de produto: faturamento por caixa ou por ledger); a confirmação de sinal por intent marca como pago qualquer pagamento `sinal` do agendamento; o PDF de termo assinado segue a regra antiga de acesso por papel.
+**Pendências desta entrega:** P-05 a P-08, em [Pendências abertas](#pendências-abertas).
 
 ## Pendências abertas
 
@@ -204,6 +204,32 @@ R2, Asaas e o envio SMTP estão implementados e testados localmente, mas **nunca
 Enquanto isso não acontecer, trate qualquer afirmação sobre os três como "deve funcionar", não como "funciona".
 
 O commit `8b00e0fe` (21/08) registra que os secrets do R2 já estavam configurados no GitHub Actions; não há no repositório registro de uso contra o bucket real.
+
+### P-05 — baixa de recebível não volta para o atendimento
+
+**Severidade: alta para a leitura do faturamento; exige decisão de produto antes do código.**
+
+A baixa de um título em Contas a receber (`PATCH /api/finance/entries/:id`, `routes/finance.js`) altera só `financial_entries`. Ela não cria linha em `payments` e não atualiza `appointments.remaining_value` nem `service_executions.paid_value`/`receivable_value`. Como o dashboard e o relatório `payments` somam `payments`, a receita baixada pelo Financeiro não aparece no faturamento, e o atendimento continua "com saldo". Na prática alguém relança o pagamento à mão, e aí ele duplica no ledger.
+
+Decisão necessária: a fonte oficial de "faturamento" é `payments` (caixa) ou o ledger (`financial_entries`)? Com a resposta, o caminho é um serviço único de baixa que grave em `payments` com vínculo à origem e atualize execução e atendimento, ou passar dashboard e `/api/finance` a lerem o ledger.
+
+### P-06 — confirmação de sinal online marca qualquer sinal como pago
+
+**Severidade: baixa (caso raro).**
+
+`transitionPaymentIntent` (`services/payments.js`) marca como `pago` todo pagamento `sinal` do agendamento, inclusive um sinal já cancelado ou substituído no fechamento. Desde 01/10 ele também atualiza `deposit_status`/`deposit_paid_at` e recalcula o atendimento, o que torna o efeito visível no saldo. Correção: restringir o UPDATE ao pagamento ligado ao intent confirmado.
+
+### P-07 — PDF do termo assinado ainda usa a regra de acesso por papel
+
+**Severidade: média (dado clínico).**
+
+Em `GET /api/private-files/:filename` (`routes/uploads.js`), fotos de indicador químico, prontuário e pós-atendimento passaram a exigir `clinical_files.view`. Os arquivos com `purpose = 'digital_term'` (PDF do termo assinado, que pode conter respostas de anamnese) continuam na regra antiga: só a recepção é bloqueada. Decidir se o termo também passa a exigir `clinical_files.view`.
+
+### P-08 — entrega de 01/10 sem validação em navegador
+
+**Severidade: média.**
+
+Desconto, ajustes, indicador químico, comissões e o modal ampliado passaram nos testes automáticos (seção 9), mas não foram exercitados numa tela real. Pontos a conferir: tamanho do modal em 1366×768, 1920×1080 e no celular; foco e rolagem do card do calendário; altura da lista de joias no modal amplo; item "Comissões" no menu lateral; fluxo completo agendar → desconto → ajuste → indicador → "Revisar e finalizar" → comissão no extrato. Resíduos menores conhecidos: em atendimento de agendamento público com promoção, editar os itens recalcula só o cupom e descarta a parte da promoção; a guarda de "alterações não salvas" do modal de profissional pode perguntar de novo depois que a comissão é salva.
 
 ### Resíduos do cutover de agosto
 
