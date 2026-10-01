@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { ChevronDown, ChevronRight, Gem, Lock } from "lucide-react";
 import { canAccessPage, planAllowsPage } from "../../lib/permissions";
-import { menuPages } from "../../lib/appPages";
+import { appPageById, menuPages } from "../../lib/appPages";
 import { Modal } from "../common/Crud";
 import { useFetch } from "../../lib/api";
 
@@ -16,6 +16,11 @@ export function Sidebar({ page, navigationTarget, role, user, brand, features, s
   const activeFeatures = Array.isArray(features) ? features : [];
   const groups = menuPages({ onboardingAtBottom, onboardingComplete })
     .map(({ group, pages }) => [group, pages
+      // Item sem acesso pode ceder o lugar a uma página relacionada que a
+      // pessoa enxerga (Financeiro → Comissões para quem só vê a comissão).
+      .map((entry) => (!canAccessPage(user || role, entry.id) && entry.menuFallback && canAccessPage(user || role, entry.menuFallback)
+        ? appPageById(entry.menuFallback) || entry
+        : entry))
       .filter((entry) => canAccessPage(user || role, entry.id))
       .map((entry) => ({ ...entry, visibleChildren: [] }))])
     .filter(([, pages]) => pages.length > 0);

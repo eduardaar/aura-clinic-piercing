@@ -102,4 +102,20 @@ describe("navegação por módulos", () => {
     await user.click(screen.getByRole("button", { name: "Conhecer o Profissional" }));
     expect(onUpgrade).toHaveBeenCalledOnce();
   });
+
+  it("quem só vê a própria comissão encontra o extrato no lugar do Financeiro", async () => {
+    const user = userEvent.setup();
+    const setPage = vi.fn();
+    const piercer = { role: "piercer", permissions: ["dashboard.view", "appointments.view", "commission.view_own"] };
+    render(<Sidebar page="dashboard" role="piercer" user={piercer} features={[...allPlanFeatures, "commissions"]} setPage={setPage} open />);
+    expect(screen.queryByRole("button", { name: "Financeiro" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Comissões" }));
+    expect(setPage).toHaveBeenCalledWith("commissions");
+  });
+
+  it("quem acessa o Financeiro não ganha item extra de comissões no menu", () => {
+    render(<Sidebar page="dashboard" role="admin" user={{ role: "admin" }} features={[...allPlanFeatures, "commissions"]} setPage={vi.fn()} open />);
+    expect(screen.getByRole("button", { name: "Financeiro" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Comissões" })).not.toBeInTheDocument();
+  });
 });

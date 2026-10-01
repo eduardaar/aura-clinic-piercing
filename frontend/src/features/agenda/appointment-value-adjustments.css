@@ -1,0 +1,138 @@
+/* Ajustes de valor do atendimento (AppointmentValueAdjustments.jsx).
+ * Na camada "telas": vence o legado de styles.css e usa só classes próprias
+ * (.value-adjustments*), sem disputar seletores com outras telas. */
+@layer telas {
+  .value-adjustments {
+    display: grid;
+    gap: .75rem;
+    min-width: 0;
+    padding: 1rem;
+    border: 1px solid rgba(190, 139, 76, .25);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, .7);
+  }
+
+  .value-adjustments__header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem .75rem;
+  }
+
+  .value-adjustments__header > strong { display: inline-flex; align-items: center; gap: .45rem; }
+  .value-adjustments__header svg { color: #bd813b; }
+  .value-adjustments__total { color: var(--muted); font-size: .9rem; }
+  .value-adjustments__total b { color: var(--ink, #1f2933); font-variant-numeric: tabular-nums; }
+
+  .value-adjustments__hint,
+  .value-adjustments__note,
+  .value-adjustments__empty { margin: 0; color: var(--muted); font-size: .88rem; }
+
+  .value-adjustments__empty {
+    padding: .75rem 1rem;
+    border: 1px dashed rgb(from var(--gold) r g b / .55);
+    border-radius: 12px;
+  }
+
+  .value-adjustments__note.is-warning {
+    padding: .55rem .8rem;
+    border-radius: 10px;
+    background: rgba(214, 150, 40, .12);
+    color: #7a4f0d;
+  }
+
+  .value-adjustments__load-error {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    color: var(--danger, #cf5e5e);
+  }
+
+  .value-adjustments__list { display: grid; gap: .55rem; margin: 0; padding: 0; list-style: none; }
+
+  .value-adjustments__item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: .25rem .75rem;
+    padding: .7rem .85rem;
+    border: 1px solid var(--line, #e2e8f0);
+    border-radius: 12px;
+    background: var(--white, #fff);
+  }
+
+  .value-adjustments__item.is-voided { background: #faf8f6; }
+  .value-adjustments__item.is-voided .value-adjustments__amount { text-decoration: line-through; color: var(--muted); }
+
+  .value-adjustments__item-main {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .4rem .7rem;
+  }
+
+  .value-adjustments__type {
+    padding: .15rem .55rem;
+    border-radius: 999px;
+    font-size: .8rem;
+    font-weight: 700;
+  }
+
+  .value-adjustments__type.is-increase { background: rgba(214, 150, 40, .14); color: #8a5a10; }
+  .value-adjustments__type.is-decrease { background: rgba(194, 47, 69, .1); color: #a3283b; }
+  .value-adjustments__amount { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+
+  .value-adjustments__reason,
+  .value-adjustments__meta { grid-column: 1; margin: 0; min-width: 0; overflow-wrap: anywhere; }
+  .value-adjustments__reason span { color: var(--muted); }
+  .value-adjustments__meta { color: var(--muted); font-size: .82rem; }
+  .value-adjustments__meta.is-void { color: #a3283b; }
+
+  .value-adjustments__item-actions { grid-column: 2; grid-row: 2 / span 3; align-self: center; }
+  .value-adjustments__item-actions button { display: inline-flex; align-items: center; gap: .35rem; }
+
+  .value-adjustments__form {
+    display: grid;
+    gap: .6rem;
+    padding-top: .75rem;
+    border-top: 1px solid var(--line, #e2e8f0);
+  }
+
+  .value-adjustments__fields {
+    display: grid;
+    grid-template-columns: minmax(10rem, 13rem) minmax(8rem, 10rem) minmax(0, 1fr);
+    align-items: end;
+    gap: .6rem;
+  }
+
+  .value-adjustments__fields > * { min-width: 0; }
+
+  .value-adjustments__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: .5rem .75rem;
+  }
+
+  .value-adjustments__actions button { display: inline-flex; align-items: center; gap: .35rem; }
+
+  .value-adjustments__void-summary { display: grid; gap: .3rem; }
+
+  @media (max-width: 900px) {
+    .value-adjustments__fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .value-adjustments__reason-field { grid-column: 1 / -1; }
+  }
+
+  @media (max-width: 620px) {
+    .value-adjustments { padding: .8rem; }
+    .value-adjustments__fields { grid-template-columns: 1fr; }
+    .value-adjustments__item { grid-template-columns: 1fr; }
+    .value-adjustments__item-actions { grid-column: 1; grid-row: auto; justify-self: start; }
+    .value-adjustments__actions { justify-content: stretch; }
+    .value-adjustments__actions button { width: 100%; justify-content: center; }
+  }
+}

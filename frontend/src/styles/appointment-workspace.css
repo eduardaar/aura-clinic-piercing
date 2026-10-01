@@ -1,0 +1,103 @@
+/* Área de trabalho do agendamento ("Novo Agendamento" e "Detalhes do
+ * Agendamento"). É a ÚNICA exceção à largura média dos modais: o `Modal`
+ * aplica `modal-workspace` só com `size="workspace"`.
+ *
+ * Camada `telas`: vence o `.modal-card` do `legado` sem `!important`. No
+ * celular (até 620px) nada daqui muda o tamanho: a tela cheia do legado e de
+ * form-workflow.css (sem camada) continua valendo. As colunas internas seguem
+ * a largura do MODAL (container query), não a da janela — um modal largo num
+ * notebook não deve colapsar como um celular, nem um modal estreito estourar. */
+@layer telas {
+  @media (min-width: 621px) {
+    .modal-backdrop:has(.modal-card.modal-workspace) { padding: 16px; }
+
+    .modal-card.modal-workspace {
+      width: min(1280px, calc(100vw - 32px));
+      max-width: min(1280px, calc(100vw - 32px));
+      /* Altura fixa: trocar de etapa ou abrir o resumo não faz a janela
+         "pular". `100dvh` acompanha a barra do navegador; `100vh` é o
+         fallback de quem ainda não conhece a unidade. */
+      height: calc(100vh - 32px);
+      height: calc(100dvh - 32px);
+      max-height: calc(100vh - 32px);
+      max-height: calc(100dvh - 32px);
+    }
+
+    /* O corpo é grid com uma linha `auto`: com altura fixa, o padrão
+       `normal` esticaria o formulário até o rodapé. */
+    .modal-card.modal-workspace .modal-body {
+      align-content: start;
+      overflow-x: hidden;
+      overflow-y: auto;
+      container: appointment-workspace / inline-size;
+    }
+  }
+
+  .appointment-workspace-columns,
+  .appointment-workspace-pair { display: grid; gap: 16px; min-width: 0; }
+  .appointment-workspace-columns > *,
+  .appointment-workspace-pair > * { min-width: 0; }
+  .appointment-workspace-side { display: grid; gap: 14px; align-content: start; }
+
+  .appointment-deposit-fields { display: grid; gap: 12px; }
+  .appointment-deposit-fields .form-grid { align-items: end; }
+  .appointment-item-total {
+    display: grid;
+    gap: 4px;
+    align-content: end;
+    min-height: 44px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .appointment-item-total strong { color: var(--ink); font-size: 15px; }
+  .appointment-commission-cell small { display: block; color: var(--muted); }
+  .appointment-locked-note { margin: 0; color: var(--muted); font-size: 13px; }
+  .service-execution-composition {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+  }
+  .service-execution-composition > div {
+    display: grid;
+    gap: 4px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--paper);
+  }
+  .service-execution-composition span { color: var(--muted); font-size: 12px; }
+
+  /* Linhas de item: rótulos e campos alinhados em trilhas iguais; regras e
+     resumo da joia ocupam a linha inteira. */
+  .modal-workspace .appointment-item-row > .field-hint,
+  .modal-workspace .appointment-item-row > .appointment-jewelry-selected { grid-column: 1 / -1; }
+
+  @container appointment-workspace (min-width: 520px) {
+    .modal-workspace .appointment-item-row,
+    .modal-workspace .appointment-item-row.compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .modal-workspace .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+
+  @container appointment-workspace (min-width: 760px) {
+    .modal-workspace .appointment-item-row,
+    .modal-workspace .appointment-item-row.compact { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .modal-workspace .appointment-schedule-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+
+  @container appointment-workspace (min-width: 980px) {
+    .appointment-workspace-columns { grid-template-columns: minmax(0, 1fr) minmax(320px, 380px); align-items: start; }
+    .appointment-workspace-pair { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  }
+
+  /* Telas largas: serviço, procedimento, região, joia, variação, quantidade e
+     valor lado a lado numa única linha por item. */
+  @container appointment-workspace (min-width: 1150px) {
+    .modal-workspace .appointment-item-row,
+    .modal-workspace .appointment-item-row.compact {
+      grid-template-columns:
+        minmax(140px, 1.1fr) minmax(140px, 1.1fr) minmax(110px, .8fr) minmax(200px, 1.6fr)
+        minmax(130px, 1fr) 72px minmax(110px, .8fr) auto;
+    }
+    .modal-workspace .appointment-schedule-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  }
+}

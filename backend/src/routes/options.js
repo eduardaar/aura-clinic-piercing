@@ -15,7 +15,9 @@ const router = Router();
 
 router.get("/api/options", withFeature("basic_inventory", async (_req, res, db) => {
   if (!authorizePermission(_req, res, P.INVENTORY_VIEW)) return;
-  const professionals = await db.all("SELECT * FROM professionals WHERE active = 1 ORDER BY name");
+  // Colunas públicas do profissional (as que a tela de serviços usa): esta rota
+  // só exige inventory.view, então comissão, e-mail e telefone não saem daqui.
+  const professionals = await db.all("SELECT id, name, specialty, active, photo_url, calendar_color FROM professionals WHERE active = 1 ORDER BY name");
   const jewelry = await attachVariants(db, await db.all("SELECT * FROM jewelry_inventory ORDER BY name"));
   const inventoryOptions = await db.all("SELECT * FROM inventory_options ORDER BY type, name");
   const pricingSettings = await getPricingSettings(db);

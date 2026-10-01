@@ -53,13 +53,19 @@ function outsideTarget(event) {
  * @param {() => void} [props.onClose]
  * @param {React.ReactNode} [props.children]
  * @param {React.ReactNode} [props.footer] Botões do rodapé.
- * @param {"sm" | "md" | "lg"} [props.size] Mantido apenas por compatibilidade; todos os modais usam largura média.
+ * @param {"sm" | "md" | "lg" | "workspace"} [props.size] Todos os modais usam a largura média
+ *   (`modal-md`), exceto `"workspace"`: área de trabalho que ocupa quase a tela inteira
+ *   no desktop (agendamento e finalização). "sm"/"lg" seguem aceitos só por compatibilidade.
  * @param {boolean} [props.dismissible] Permite fechar no clique fora (só para modais sem dados a perder).
  * @param {boolean} [props.confirmClose] `false` desliga a confirmação de saída.
  * @param {boolean} [props.dirty] Estado "com alterações" controlado por fora; sem ele, o modal detecta edições nos campos.
  * @param {string} [props.formId] Formulário a enviar no "Salvar" da confirmação; sem ele, o primeiro <form> do corpo.
  */
-export function Modal({ open, title, subtitle, onClose, children, footer, dismissible = false, confirmClose = true, dirty: dirtyProp, formId }) {
+export function Modal({ open, title, subtitle, onClose, children, footer, size, dismissible = false, confirmClose = true, dirty: dirtyProp, formId }) {
+  // A padronização da largura média é deliberada (05c806e9). A única exceção
+  // nomeada é a área de trabalho do agendamento, que concentra itens, joias,
+  // valores e finalização e precisa da tela inteira no desktop.
+  const sizeClass = size === "workspace" ? "modal-workspace" : "modal-md";
   const bodyRef = useRef(/** @type {HTMLDivElement | null} */ (null));
   const continueRef = useRef(/** @type {HTMLButtonElement | null} */ (null));
   const bypassGuard = useRef(false);
@@ -103,15 +109,33 @@ export function Modal({ open, title, subtitle, onClose, children, footer, dismis
   function recordGesture() {
     lastGestureAt.current = Date.now();
   }
-  function onFieldInput() {
+  // Eventos de portais sobem pela árvore do React, não pela do DOM: digitar
+  // num modal aninhado (anular ajuste, cancelar) chegava aqui e marcava ESTE
+  // modal como alterado. O mesmo vale para painéis que gravam na hora
+  // (ajustes de valor, indicador químico, comissão), marcados com
+  // `data-modal-ignore-dirty`: o que se digita neles não fica pendente no
+  // formulário do modal. Listas flutuantes do próprio modal seguem contando,
+  // porque montam dentro do mesmo `.modal-card`.
+  function ignoresDirty(event) {
+    const target = event?.target instanceof Element ? event.target : null;
+    if (!target) return false;
+    const ownCard = bodyRef.current?.closest(".modal-card");
+    const targetCard = target.closest(".modal-card");
+    if (ownCard && targetCard && targetCard !== ownCard) return true;
+    return Boolean(target.closest("[data-modal-ignore-dirty]"));
+  }
+  function onFieldInput(event) {
+    if (ignoresDirty(event)) return;
     markDirty();
   }
   function onFieldChange(event) {
+    if (ignoresDirty(event)) return;
     const target = event.target instanceof Element ? event.target : null;
     const mirrored = target?.getAttribute("aria-hidden") === "true";
     if (!mirrored || Date.now() - lastGestureAt.current < GESTURE_WINDOW_MS) markDirty();
   }
   function onBodyClick(event) {
+    if (ignoresDirty(event)) return;
     const target = event.target instanceof Element ? event.target : null;
     if (target?.closest(TOGGLE_ROLES)) markDirty();
   }
@@ -160,7 +184,7 @@ export function Modal({ open, title, subtitle, onClose, children, footer, dismis
         <Dialog.Portal>
           <Dialog.Overlay className="modal-backdrop">
             <Dialog.Content
-              className="modal-card modal-md"
+              className={`modal-card ${sizeClass}`}
               onPointerDownOutside={preventOutsideDismiss}
               onInteractOutside={preventOutsideDismiss}
               onEscapeKeyDown={(event) => { if (confirming) { event.preventDefault(); setConfirming(false); } }}

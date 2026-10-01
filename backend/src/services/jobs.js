@@ -5,7 +5,7 @@
 // job duas vezes. Este módulo não é uma fila distribuída completa: depende de
 // Postgres disponível e o worker deve ser ligado explicitamente no ambiente.
 import crypto from "node:crypto";
-import { buildReport, validReportType } from "./reports.js";
+import { buildReport, getReportDefinition, reportExportColumns, reportExportValue, validReportType } from "./reports.js";
 import { csvEscape } from "./utils.js";
 import { buildKey, storage } from "./storage/index.js";
 
@@ -34,6 +34,15 @@ function publicJob(row) {
     id: row.id,
     type: row.type,
     report_type: payload?.type || null,
+    // Escopo gravado no enfileiramento (profissional próprio): o download
+    // confere que quem baixa tem o mesmo escopo de quem pediu.
+    report_professional_id: payload?.scope?.own_professional_id ?? null,
+    // Colunas opcionais (comissão, custo) liberadas para quem pediu: quem
+    // baixa precisa poder ver as mesmas colunas.
+    report_context: payload?.type ? {
+      commissionColumns: Boolean(payload?.scope?.context?.commissionColumns),
+      canViewCost: Boolean(payload?.scope?.context?.canViewCost)
+    } : null,
     requested_by: row.requested_by == null ? null : Number(row.requested_by),
     status: row.status,
     result: json(row.result, null),
@@ -64,33 +73,54 @@ function requestHash(type, payload) {
   return crypto.createHash("sha256").update(stableStringify({ type, payload }), "utf8").digest("hex");
 }
 
-function exportPayload(input = {}) {
+const ID_FILTERS = new Set(["professional_id", "product_id", "supplier_id", "consumable_id", "service_id", "appointment_id", "user_id", "profile_id", "days"]);
+
+// Só os filtros que o relatório declara (mais busca/ordenação) seguem para o
+// worker, já saneados. O que muda o ALCANCE do relatório — profissional
+// próprio e colunas de comissão/custo — vem de `scope`, calculado pela rota a
+// partir das permissões do usuário, nunca do corpo da requisição.
+function exportPayload(input = {}, scope = {}) {
   const type = String(input.type || "");
   if (!validReportType(type)) throw new JobError("Tipo de relatório inválido.");
   const format = String(input.format || "csv").toLowerCase();
   // XLSX/PDF podem ser adicionados depois, mas CSV é streaming-friendly e
   // evita prender heap do worker com uma planilha inteira.
   if (format !== "csv") throw new JobError("A exportação assíncrona aceita apenas CSV.");
-  const filters = input.filters && typeof input.filters === "object" ? input.filters : {};
+  const raw = input.filters && typeof input.filters === "object" ? input.filters : {};
+  const allowed = new Set([...(getReportDefinition(type)?.filters || []).map(({ key }) => key), "search", "sort"]);
+  const filters = {};
+  for (const key of [...allowed].sort()) {
+    const value = raw[key];
+    if (value === undefined || value === null || value === "") continue;
+    if (key === "from" || key === "to") {
+      if (typeof value === "string") filters[key] = value.slice(0, 10);
+    } else if (ID_FILTERS.has(key)) {
+      if (Number.isInteger(Number(value)) && Number(value) > 0) filters[key] = Number(value);
+    } else {
+      filters[key] = String(value).slice(0, 120);
+    }
+  }
+  const ownProfessionalId = Number(scope.ownProfessionalId) || null;
+  if (ownProfessionalId) filters.professional_id = ownProfessionalId;
   return {
     type,
     format,
-    filters: {
-      ...(typeof filters.from === "string" ? { from: filters.from.slice(0, 10) } : {}),
-      ...(typeof filters.to === "string" ? { to: filters.to.slice(0, 10) } : {}),
-      ...(filters.status != null ? { status: String(filters.status).slice(0, 40) } : {}),
-      ...(Number.isInteger(Number(filters.professional_id)) ? { professional_id: Number(filters.professional_id) } : {}),
-      ...(Number.isInteger(Number(filters.product_id)) ? { product_id: Number(filters.product_id) } : {}),
-      ...(filters.category != null ? { category: String(filters.category).slice(0, 120) } : {})
+    filters,
+    scope: {
+      own_professional_id: ownProfessionalId,
+      context: {
+        commissionColumns: Boolean(scope.context?.commissionColumns),
+        canViewCost: Boolean(scope.context?.canViewCost)
+      }
     }
   };
 }
 
-export async function enqueueJob(db, { type, payload, userId, idempotencyKey }) {
+export async function enqueueJob(db, { type, payload, userId, idempotencyKey, scope = {} }) {
   if (!JOB_TYPES.has(type)) throw new JobError("Tipo de job inválido.");
   const key = normalizedKey(idempotencyKey);
   if (!key) throw new JobError("Informe Idempotency-Key para criar um job.");
-  const jobPayload = type === "report_export" ? exportPayload(payload) : (payload || {});
+  const jobPayload = type === "report_export" ? exportPayload(payload, scope) : (payload || {});
   const hash = requestHash(type, jobPayload);
   const id = crypto.randomUUID();
   try {
@@ -179,12 +209,17 @@ export async function claimNextJob(db, workerId) {
 
 async function processReportExport(db, job, tenantId) {
   const payload = json(job.payload);
-  const report = await buildReport(db, payload.type, payload.filters || {});
-  const columns = report.rows.length ? Object.keys(report.rows[0]) : [];
-  const csv = [columns.join(","), ...report.rows.map((row) => columns.map((key) => csvEscape(row[key])).join(","))].join("\n");
+  // Exportação traz o período inteiro (sem a página de 25 linhas da tela) e
+  // os mesmos rótulos pt-BR da exportação síncrona.
+  const report = await buildReport(db, payload.type, { ...(payload.filters || {}), paginated: false }, payload.scope?.context || {});
+  const columns = reportExportColumns(report);
+  const csv = [
+    columns.map(({ label }) => csvEscape(label)).join(","),
+    ...report.rows.map((row) => columns.map((column) => csvEscape(reportExportValue(column, row[column.key]))).join(","))
+  ].join("\n");
   const filename = `export-${payload.type}-${job.id}.csv`;
   const key = buildKey({ scope: "private", tenantId, purpose: "report_export", filename });
-  await storage.putPrivate(key, Buffer.from(csv, "utf8"), { contentType: "text/csv; charset=utf-8" });
+  await storage.putPrivate(key, Buffer.from(`\uFEFF${csv}`, "utf8"), { contentType: "text/csv; charset=utf-8" });
   await db.run(
     `INSERT INTO private_files (filename, original_name, mime_type, purpose, uploaded_by)
      VALUES (?, ?, 'text/csv', 'report_export', ?) ON CONFLICT (filename) DO NOTHING`,

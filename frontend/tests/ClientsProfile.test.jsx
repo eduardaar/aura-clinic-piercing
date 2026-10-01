@@ -1,7 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ClientEditForm, ClientsMedical } from "../src/features/clients/ClientsMedical";
+import { apiFetch, readStoredSession } from "../src/lib/api";
 
 const client = {
   id: 1,
@@ -18,7 +19,7 @@ const client = {
 
 vi.mock("../src/lib/api", () => ({
   apiFetch: vi.fn(),
-  readStoredSession: () => ({ user: { id: 10, role: "admin" } }),
+  readStoredSession: vi.fn(() => ({ user: { id: 10, role: "admin" } })),
   tenantSlug: () => "clinica-teste",
   useApiInvalidate: () => vi.fn(),
   useFetch: (path) => {
@@ -47,7 +48,11 @@ vi.mock("../src/lib/api", () => ({
 }));
 
 describe("clientes e perfil 360", () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    apiFetch.mockReset();
+    readStoredSession.mockImplementation(() => ({ user: { id: 10, role: "admin" } }));
+  });
 
   it("abre o perfil com dados, histórico, termos e pós-atendimento em abas", async () => {
     const user = userEvent.setup();
@@ -62,6 +67,43 @@ describe("clientes e perfil 360", () => {
     expect(screen.getByText("Perfuração")).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "Pós-atendimento" }));
     expect(screen.getByText("Boa evolução")).toBeInTheDocument();
+  });
+
+  it("mostra no histórico os indicadores químicos dos procedimentos para quem vê arquivos clínicos", async () => {
+    apiFetch.mockImplementation(async (path) => ({
+      ok: path === "/clients/1/chemical-indicators",
+      status: path === "/clients/1/chemical-indicators" ? 200 : 404,
+      json: async () => path === "/clients/1/chemical-indicators"
+        ? {
+          client: { id: 1, full_name: "Maria Aparecida" },
+          indicators: [{
+            id: 3, appointment_id: 4, appointment_date: "2026-09-29", procedure_name: "Hélix",
+            jewelry_name: "Argola titânio", indicator_type: "Classe 4 — multiparâmetro", indicator_lot: "L123", result: "aprovado", status: "ativo",
+          }],
+        }
+        : {},
+    }));
+    const user = userEvent.setup();
+    render(<ClientsMedical onNavigate={() => {}} />);
+
+    await user.click(screen.getByRole("button", { name: "Ver perfil" }));
+    await user.click(screen.getByRole("tab", { name: "Histórico e atendimentos" }));
+    const section = screen.getByRole("region", { name: "Procedimentos e indicadores químicos" });
+    expect(await within(section).findByText("Lote L123")).toBeInTheDocument();
+    expect(within(section).getByText("Argola titânio")).toBeInTheDocument();
+    expect(apiFetch).toHaveBeenCalledWith("/clients/1/chemical-indicators");
+  });
+
+  it("esconde os indicadores químicos de quem não tem clinical_files.view", async () => {
+    readStoredSession.mockImplementation(() => ({ user: { id: 11, role: "reception", permissions: ["clients.view"] } }));
+    const user = userEvent.setup();
+    render(<ClientsMedical onNavigate={() => {}} />);
+
+    await user.click(screen.getByRole("button", { name: "Ver perfil" }));
+    await user.click(screen.getByRole("tab", { name: "Histórico e atendimentos" }));
+    expect(screen.getByText("Linha do tempo")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Procedimentos e indicadores químicos" })).not.toBeInTheDocument();
+    expect(apiFetch).not.toHaveBeenCalledWith("/clients/1/chemical-indicators");
   });
 
   it("oferece cadastro curto, máscaras brasileiras e endereço recolhível", async () => {

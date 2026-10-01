@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { confirmAppointmentReservations, releaseAppointmentReservations } from "./reservations.js";
+import { recalculateAppointmentFinancials } from "./finance.js";
 
 // Um link de pagamento é uma credencial de baixa entropia operacional: basta
 // encaminhá-lo para outra pessoa para ela acompanhar aquela cobrança. Por isso
@@ -114,7 +115,19 @@ export async function transitionPaymentIntent(db, { intentId, status, providerEv
     if (status === "confirmed") {
       await confirmAppointmentReservations(tx, intent.appointment_id);
       await tx.run("UPDATE appointments SET status='confirmado' WHERE id=?", [intent.appointment_id]);
-      await tx.run("UPDATE payments SET status='pago', paid_at=? WHERE appointment_id=? AND payment_type='sinal'", [paidAt || new Date().toISOString(), intent.appointment_id]);
+      const confirmedAt = paidAt || new Date().toISOString();
+      await tx.run("UPDATE payments SET status='pago', paid_at=? WHERE appointment_id=? AND payment_type='sinal'", [confirmedAt, intent.appointment_id]);
+      if (intent.appointment_id) {
+        // O sinal pago também precisa aparecer no próprio agendamento: sem
+        // isso a agenda seguia mostrando "sinal pendente" e o restante a
+        // receber ignorava o pagamento. O recálculo central, na mesma
+        // transação, deixa remaining_value e o snapshot iguais aos pagamentos.
+        await tx.run(
+          "UPDATE appointments SET deposit_status='pago', deposit_paid_at=COALESCE(deposit_paid_at, ?) WHERE id=?",
+          [confirmedAt, intent.appointment_id]
+        );
+        await recalculateAppointmentFinancials(tx, intent.appointment_id);
+      }
     }
     if (["cancelled", "failed", "expired", "refunded", "chargeback"].includes(status)) {
       await releaseAppointmentReservations(tx, intent.appointment_id, status === "expired" ? "expired" : "released");

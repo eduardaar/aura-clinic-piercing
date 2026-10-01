@@ -469,8 +469,19 @@ router.delete("/api/coupons/:id", withCatalogFeature("coupons", async (req, res,
   res.json({ ok: true });
 }));
 
+// Contexto do cupom com lista FECHADA de campos: estas rotas são públicas e o
+// corpo inteiro no contexto deixava o chamador injetar chaves que o validador
+// lê (ex.: exclusões da contagem de usos) e ganhar uma cotação "válida".
+function couponQuoteContext(body = {}, amount = body.amount) {
+  return {
+    amount,
+    items: Array.isArray(body.items) ? body.items : [],
+    client_id: body.client_id
+  };
+}
+
 router.post("/api/catalog/coupon-quote", withFeature("basic_catalog", async (req, res, db) => {
-  const result = await validateCoupon(db, req.body?.code, req.body || {});
+  const result = await validateCoupon(db, req.body?.code, couponQuoteContext(req.body || {}));
   res.status(result.valid ? 200 : 400).json(result);
 }));
 
@@ -483,10 +494,7 @@ router.post("/api/catalog/price-quote", withFeature("basic_catalog", async (req,
   const promotionQuote = await quotePromotions(db, body);
   let couponQuote = null;
   if (body.coupon_code) {
-    couponQuote = await validateCoupon(db, body.coupon_code, {
-      ...body,
-      amount: promotionQuote.final_amount
-    });
+    couponQuote = await validateCoupon(db, body.coupon_code, couponQuoteContext(body, promotionQuote.final_amount));
     if (!couponQuote.valid) return res.status(400).json(couponQuote);
   }
   const promotionsAllowCoupon = promotionQuote.promotions.every((promotion) => promotion.stackable_with_coupon);

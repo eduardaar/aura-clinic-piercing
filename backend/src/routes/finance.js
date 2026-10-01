@@ -518,16 +518,30 @@ router.patch("/api/finance/suppliers/:id", withFeature("basic_finance", async (r
 
 router.get("/api/finance/export.csv", withFeature("basic_finance", async (req, res, db) => {
   if (!authorizePermission(req, res, P.REPORTS_VIEW_FINANCIAL)) return;
+  // Uma linha por fato financeiro, sem contar a mesma venda duas vezes: toda
+  // venda paga já tem o seu `payments` (com sales_order_id), então a venda só
+  // entra como linha própria quando NÃO há pagamento ativo dela (venda a prazo
+  // ou em aberto). O espelho legado do atendimento (source='agenda') nunca
+  // entra: o valor dele já está nos pagamentos do atendimento.
   const rows = await db.all(`
-    SELECT p.id, c.full_name AS cliente, p.amount AS valor, p.payment_type AS tipo, p.method AS metodo, p.status, p.paid_at AS data, 'pagamento' AS origem
-    FROM payments p JOIN clients c ON c.id = p.client_id
-    UNION ALL
-    SELECT so.id, c.full_name AS cliente, so.total_value AS valor, so.order_type AS tipo, so.payment_method AS metodo, so.status, so.created_at AS data, 'venda' AS origem
-    FROM sales_orders so JOIN clients c ON c.id = so.client_id
-    ORDER BY data DESC
+    SELECT * FROM (
+      SELECT p.id, c.full_name AS cliente, p.amount AS valor, p.payment_type AS tipo, p.method AS metodo, p.status,
+        p.paid_at AS data, 'pagamento' AS origem
+      FROM payments p JOIN clients c ON c.id = p.client_id
+      UNION ALL
+      SELECT so.id, c.full_name AS cliente, so.total_value AS valor, so.order_type AS tipo, so.payment_method AS metodo, so.status,
+        so.created_at AS data, 'venda' AS origem
+      FROM sales_orders so JOIN clients c ON c.id = so.client_id
+      WHERE so.source <> 'agenda'
+        AND NOT EXISTS (
+          SELECT 1 FROM payments p
+           WHERE p.sales_order_id = so.id AND p.status NOT IN ('cancelado', 'canceled')
+        )
+    ) linhas
+    ORDER BY data DESC, origem, id DESC
   `);
   const header = "id,cliente,valor,tipo,metodo,status,data,origem";
-  const csv = [header, ...rows.map((row) => Object.values(row).map(csvEscape).join(","))].join("\n");
+  const csv = [header, ...rows.map((row) => [row.id, row.cliente, row.valor, row.tipo, row.metodo, row.status, row.data, row.origem].map(csvEscape).join(","))].join("\n");
   res.header("Content-Type", "text/csv; charset=utf-8");
   res.attachment("relatorio-aura-clinic.csv");
   await recordPrivacyAudit(db, { req, action: "financial_export", resourceType: "financial_report", detail: { format: "csv", row_count: rows.length } });

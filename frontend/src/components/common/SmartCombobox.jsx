@@ -115,7 +115,11 @@ export function SmartCombobox({ label, value, onChange, onSelect, options = [], 
       const rect = root.current.getBoundingClientRect();
       const minWidth = Math.max(420, Math.min(rect.width, 520));
       const width = Math.min(minWidth, Math.max(420, viewportWidth - 16));
-      const maxHeight = Math.min(520, Math.max(420, viewportHeight - 96));
+      // Na área de trabalho do agendamento (modal `workspace`, tela quase
+      // inteira) a lista de joias pode ser bem mais alta: mostra mais opções
+      // sem rolar. Nos demais modais segue o teto de 520px.
+      const inWorkspace = Boolean(root.current.closest(".modal-workspace"));
+      const maxHeight = Math.min(inWorkspace ? 720 : 520, Math.max(420, viewportHeight - 96));
       const top = Math.min(rect.bottom + 8, viewportHeight - maxHeight - 8);
       const left = Math.min(Math.max(rect.left, 8), Math.max(8, viewportWidth - width - 8));
       setPopupStyle({ top: `${Math.max(8, top)}px`, left: `${left}px`, width: `${width}px`, maxWidth: `${Math.max(420, Math.min(viewportWidth - 16, 520))}px`, maxHeight: `${maxHeight}px` });

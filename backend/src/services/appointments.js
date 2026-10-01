@@ -10,7 +10,15 @@ import {
 } from "./utils.js";
 import { syncProductInventory } from "./inventory.js";
 import { limitOffset, countRows } from "./pagination.js";
-import { getAppointmentFinancialSnapshot } from "./finance.js";
+import {
+  appointmentFinancialInput,
+  calculateOperationTotals,
+  listActiveAppointmentAdjustments,
+  recalculateAppointmentFinancials,
+  recalculatedAppointmentRow,
+  storedCouponDiscount
+} from "./finance.js";
+import { calculateDiscount, validateCoupon } from "./discounts.js";
 import { parseServiceRulesSnapshot, resolveServiceRules } from "./serviceRules.js";
 import { getClinicOperationalSettings, resolveOperationalRequirements } from "./operationalRequirements.js";
 
@@ -105,7 +113,11 @@ export async function normalizeAppointmentItems(db, body = {}) {
     const operationalRequirements = resolveOperationalRequirements({ clinic: clinicOperationalSettings, service: service || {}, variation: procedure });
     const compatibleJewelryIds = serviceId ? (await db.all("SELECT inventory_item_id FROM service_compatible_inventory_items WHERE service_id=? ORDER BY inventory_item_id", [serviceId])).map((item) => item.inventory_item_id) : [];
     const serviceRulesSnapshot = { ...resolveServiceRules(service || {}, procedure), operational_requirements: operationalRequirements, category: service?.category || null, body_area: service?.body_area || null, compatible_jewelry_ids: compatibleJewelryIds };
+    // O `id` do appointment_item vindo da tela é preservado: é ele que permite
+    // atualizar o item no lugar (indicador químico e comissão se ancoram nele).
+    const itemId = Number(raw.id);
     items.push({
+      id: submittedItems.length && Number.isInteger(itemId) && itemId > 0 ? itemId : null,
       procedure_id: procedureId,
       service_id: serviceId,
       service_name: service?.name || "",
@@ -144,30 +156,189 @@ export function appointmentTotalsFromItems(items = [], fallback = {}) {
   };
 }
 
+// Sincroniza os itens em vez de apagar e recriar (SPEC 9, item 12). Item com
+// `id` que pertence a este agendamento é atualizado no lugar; item sem `id`
+// (ou com id de outro agendamento) é inserido; item gravado que sumiu do
+// payload é removido. Assim a identidade do procedimento sobrevive aos
+// salvamentos que a tela faz antes de finalizar.
 export async function replaceAppointmentItems(db, appointmentId, items = []) {
-  await db.run("DELETE FROM appointment_items WHERE appointment_id = ?", [appointmentId]);
+  const existing = await db.all("SELECT id FROM appointment_items WHERE appointment_id = ? ORDER BY id FOR UPDATE", [appointmentId]);
+  const existingIds = new Set(existing.map((row) => Number(row.id)));
+  const kept = new Set();
   for (const item of Array.isArray(items) ? items : []) {
+    const values = [
+      item.procedure_id || null,
+      item.service_id || null,
+      item.region || "",
+      item.jewelry_id || null,
+      item.jewelry_variant_id || null,
+      Number(item.quantity || 1),
+      Number(item.procedure_price || 0),
+      Number(item.jewelry_unit_price || 0),
+      Number(item.duration_minutes || 0),
+      Number(item.subtotal || 0),
+      item.notes || "",
+      JSON.stringify(item.service_rules_snapshot || {})
+    ];
+    const itemId = Number(item.id);
+    if (Number.isInteger(itemId) && existingIds.has(itemId) && !kept.has(itemId)) {
+      kept.add(itemId);
+      await db.run(
+        `UPDATE appointment_items SET procedure_id = ?, service_id = ?, region = ?, jewelry_id = ?, jewelry_variant_id = ?,
+          quantity = ?, procedure_price = ?, jewelry_unit_price = ?, duration_minutes = ?, subtotal = ?, notes = ?,
+          service_rules_snapshot = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ? AND appointment_id = ?`,
+        [...values, itemId, appointmentId]
+      );
+      continue;
+    }
     await db.run(
       `INSERT INTO appointment_items
       (appointment_id, procedure_id, service_id, region, jewelry_id, jewelry_variant_id, quantity, procedure_price, jewelry_unit_price, duration_minutes, subtotal, notes, service_rules_snapshot)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        appointmentId,
-        item.procedure_id || null,
-        item.service_id || null,
-        item.region || "",
-        item.jewelry_id || null,
-        item.jewelry_variant_id || null,
-        Number(item.quantity || 1),
-        Number(item.procedure_price || 0),
-        Number(item.jewelry_unit_price || 0),
-        Number(item.duration_minutes || 0),
-        Number(item.subtotal || 0),
-        item.notes || "",
-        JSON.stringify(item.service_rules_snapshot || {})
-      ]
+      [appointmentId, ...values]
     );
   }
+  const removed = [...existingIds].filter((id) => !kept.has(id));
+  if (removed.length) {
+    await db.run(
+      `DELETE FROM appointment_items WHERE appointment_id = ? AND id IN (${removed.map(() => "?").join(",")})`,
+      [appointmentId, ...removed]
+    );
+  }
+}
+
+// Formato de itens que o validador de cupom entende.
+function couponItems(items = []) {
+  return items.map((item) => ({
+    service_id: item.service_id,
+    product_id: item.jewelry_id,
+    category: item.category,
+    unit_price: Number(item.jewelry_unit_price || 0),
+    quantity: Number(item.quantity || 1)
+  }));
+}
+
+function normalizeCouponCode(value) {
+  return String(value ?? "").trim().toUpperCase();
+}
+
+// Decide o cupom do agendamento. Só revalida (vigência, limites, cliente,
+// itens) quando o código muda — um cupom já aplicado não pode impedir o
+// salvamento porque expirou depois ou porque o próprio uso conta no limite.
+// Com o mesmo código e itens alterados, apenas recalcula o valor com a regra
+// do cupom gravado (tipo, valor e teto) sobre o novo bruto, sem revalidar.
+export async function resolveAppointmentCoupon(db, { appointment = null, body = {}, items = [], itemsChanged = false, gross = 0, clientId = null }) {
+  const storedCode = normalizeCouponCode(appointment?.coupon_code);
+  const requested = body.coupon_code === undefined || body.coupon_code === null ? storedCode : normalizeCouponCode(body.coupon_code);
+  const changed = requested !== storedCode;
+  const stored = {
+    couponId: appointment?.coupon_id || null,
+    couponCode: appointment?.coupon_code || null,
+    couponSnapshot: appointment?.coupon_snapshot ?? null,
+    couponDiscount: appointment ? storedCouponDiscount(appointment) : 0
+  };
+  if (!requested) {
+    return changed
+      ? { changed, couponId: null, couponCode: null, couponSnapshot: null, couponDiscount: 0, error: null }
+      : { changed, ...stored, error: null };
+  }
+  if (!changed) {
+    if (!itemsChanged) return { changed, ...stored, error: null };
+    return { changed, ...(await requoteStoredCoupon(db, stored, gross)), error: null };
+  }
+  // Exclusão do próprio uso pelo 4º argumento (o único que validateCoupon lê).
+  const quote = await validateCoupon(db, requested, {
+    amount: gross,
+    client_id: clientId,
+    items: couponItems(items)
+  }, { excludeAppointmentId: appointment?.id || null });
+  if (!quote?.valid) return { changed, ...stored, error: quote?.error || "Cupom inválido ou não aplicável." };
+  return {
+    changed,
+    couponId: quote.coupon?.id || null,
+    couponCode: quote.coupon?.code || requested,
+    couponSnapshot: quote,
+    couponDiscount: Number(quote.discount_amount || 0),
+    error: null
+  };
+}
+
+// Recalcula o valor de um cupom já aplicado sobre um novo bruto, com a regra
+// gravada no cadastro (inclusive de cupom pausado, expirado ou apagado depois),
+// sem checar vigência nem limites. Sem o cadastro, mantém o valor concedido.
+async function requoteStoredCoupon(db, stored, gross) {
+  const coupon = stored.couponId
+    ? await db.get("SELECT id, code, internal_name, is_stackable, discount_type, discount_value, maximum_discount FROM coupons WHERE id = ?", [stored.couponId])
+    : null;
+  if (!coupon) return stored;
+  const amounts = calculateDiscount({
+    amount: gross,
+    discountType: coupon.discount_type,
+    discountValue: coupon.discount_value,
+    maximumDiscount: coupon.maximum_discount
+  });
+  const previous = parseCouponSnapshot(stored.couponSnapshot);
+  return {
+    ...stored,
+    couponSnapshot: {
+      ...previous,
+      valid: true,
+      coupon: previous.coupon || { id: coupon.id, code: coupon.code, internal_name: coupon.internal_name, is_stackable: coupon.is_stackable },
+      ...amounts
+    },
+    couponDiscount: amounts.discount_amount
+  };
+}
+
+function parseCouponSnapshot(value) {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+// Prévia oficial (POST /api/appointments/financial-preview): mesma normalização
+// de itens, mesmo cupom e mesma conta da gravação, sem escrever nada. Com
+// agendamento existente, considera os pagamentos e ajustes já registrados.
+export async function previewAppointmentFinancials(db, { appointment = null, body = {}, manualDiscount }) {
+  const submitted = appointmentItemsFromBody(body);
+  const storedItems = appointment ? await db.all("SELECT * FROM appointment_items WHERE appointment_id = ? ORDER BY id", [appointment.id]) : [];
+  const items = submitted.length || !appointment
+    ? await normalizeAppointmentItems(db, { ...(appointment || {}), ...body, service_id: body.service_id ?? appointment?.service_id ?? null })
+    : storedItems;
+  const payments = appointment
+    ? await db.all("SELECT * FROM payments WHERE appointment_id = ? AND status IN ('pago', 'confirmado', 'credito_aplicado') ORDER BY id", [appointment.id])
+    : depositPreviewPayments(body);
+  const adjustments = appointment ? await listActiveAppointmentAdjustments(db, appointment.id) : [];
+  // Base = a linha como o recálculo da gravação a deixaria (o PATCH recalcula
+  // antes de aplicar a alteração): cupom e desconto legado saem da mesma conta.
+  const base = appointment ? recalculatedAppointmentRow(appointment, { items: storedItems, payments, adjustments }).row : {};
+  const grossOnly = calculateOperationTotals(appointmentFinancialInput(base, { items }, { couponDiscount: 0, manualDiscount: 0, adjustmentTotal: 0, payments: [] }));
+  const coupon = await resolveAppointmentCoupon(db, {
+    appointment: appointment ? base : null,
+    body,
+    items,
+    itemsChanged: submitted.length > 0,
+    gross: grossOnly.grossTotal,
+    clientId: appointment?.client_id ?? body.client_id ?? null
+  });
+  const totals = calculateOperationTotals(appointmentFinancialInput(base, { items, payments, adjustments }, {
+    couponDiscount: coupon.error ? 0 : coupon.couponDiscount,
+    manualDiscount: manualDiscount ?? Number(base.manual_discount_value || 0)
+  }));
+  return { totals, coupon, items, adjustments };
+}
+
+function depositPreviewPayments(body = {}) {
+  const amount = Number(body.deposit_value || 0);
+  const status = String(body.deposit_status || "pendente").toLowerCase();
+  if (!(amount > 0) || !["pago", "confirmado"].includes(status)) return [];
+  return [{ status: "pago", payment_type: "sinal", amount }];
 }
 
 async function attachAppointmentItems(db, rows = []) {
@@ -370,14 +541,42 @@ export async function getMedicalRecord(db, recordId) {
   return db.get(`${MEDICAL_RECORD_QUERY} WHERE r.id = ?`, [recordId]);
 }
 
-export async function upsertClient(db, body) {
-  if (body.client_id) {
+// `publicFlow`: chamada sem usuário autenticado (agendamento online, pedido do
+// catálogo). Nesse caso o cadastro é casado só pelo WhatsApp — que qualquer
+// pessoa pode saber —, então a ficha existente NÃO é sobrescrita: os dados
+// digitados só preenchem campos vazios. Antes, quem soubesse o WhatsApp de um
+// cliente trocava o CPF, o e-mail e o nome dele pelo formulário público.
+export async function upsertClient(db, body, { publicFlow = false } = {}) {
+  if (body.client_id && !publicFlow) {
     const selected = await db.get("SELECT * FROM clients WHERE id = ?", [body.client_id]);
     if (selected) return selected;
   }
 
   const existing = await db.get("SELECT * FROM clients WHERE whatsapp = ?", [body.whatsapp]);
   if (existing) {
+    const params = [
+      body.full_name ?? "",
+      body.instagram ?? "",
+      body.birth_date || null,
+      body.client_notes ?? "",
+      clientTaxId(body),
+      body.email ?? body.customer_email ?? "",
+      existing.id
+    ];
+    if (publicFlow) {
+      await db.run(
+        `UPDATE clients SET
+          full_name = COALESCE(NULLIF(full_name, ''), NULLIF(?, ''), full_name),
+          instagram = COALESCE(NULLIF(instagram, ''), NULLIF(?, ''), instagram),
+          birth_date = COALESCE(NULLIF(birth_date, ''), ?, birth_date),
+          notes = COALESCE(NULLIF(notes, ''), NULLIF(?, ''), notes),
+          tax_id = COALESCE(NULLIF(tax_id, ''), NULLIF(?, ''), tax_id),
+          email = COALESCE(NULLIF(email, ''), NULLIF(?, ''), email)
+         WHERE id = ?`,
+        params
+      );
+      return db.get("SELECT * FROM clients WHERE id = ?", [existing.id]);
+    }
     // Só sobrescreve campos que vieram preenchidos — antes um re-save por outro
     // fluxo (agenda/venda/termo) apagava instagram/notes do cliente existente.
     await db.run(
@@ -389,15 +588,7 @@ export async function upsertClient(db, body) {
         tax_id = COALESCE(NULLIF(?, ''), tax_id),
         email = COALESCE(NULLIF(?, ''), email)
        WHERE id = ?`,
-      [
-        body.full_name ?? "",
-        body.instagram ?? "",
-        body.birth_date || null,
-        body.client_notes ?? "",
-        clientTaxId(body),
-        body.email ?? body.customer_email ?? "",
-        existing.id
-      ]
+      params
     );
     return { ...existing, full_name: body.full_name || existing.full_name };
   }
@@ -558,18 +749,54 @@ export async function restoreJewelryStock(db, appointmentId) {
   await db.run("UPDATE appointments SET stock_deducted = 0 WHERE id = ?", [appointmentId]);
 }
 
+// Sinal ainda pendente no fechamento é substituído pelos pagamentos do
+// fechamento (SPEC 9, item 4): o saldo cobrado agora já inclui esse valor, e
+// manter a linha "pendente" criaria um "a receber" fantasma no ledger.
+const DEPOSIT_SUPERSEDED_NOTE = "Sinal pendente substituído pelos pagamentos do fechamento.";
+
+export async function supersedePendingDeposit(db, appointmentId) {
+  const result = await db.run(
+    `UPDATE payments SET status = 'cancelado',
+       notes = CASE WHEN COALESCE(notes, '') = '' THEN ? ELSE notes || ' | ' || ? END
+     WHERE appointment_id = ? AND payment_type = 'sinal' AND status = 'pendente'`,
+    [DEPOSIT_SUPERSEDED_NOTE, DEPOSIT_SUPERSEDED_NOTE, appointmentId]
+  );
+  if (result.changes > 0) {
+    await db.run("UPDATE appointments SET deposit_status = 'cancelado', updated_at = ? WHERE id = ? AND deposit_status = 'pendente'", [localTimestamp(), appointmentId]);
+  }
+  return result.changes;
+}
+
 export async function registerRemainingPayment(db, appointmentId) {
-  const appointment = await db.get("SELECT * FROM appointments WHERE id = ?", [appointmentId]);
+  await supersedePendingDeposit(db, appointmentId);
+  const current = await recalculateAppointmentFinancials(db, appointmentId);
+  const appointment = current?.appointment;
   if (!appointment || Number(appointment.remaining_value || 0) <= 0) return;
 
+  // A baixa automática usa uma chave fixa (`:remaining`). Se ela já existe,
+  // atualiza a mesma linha em vez de zerar o restante "no grito": antes, uma
+  // baixa antiga (inclusive cancelada numa reabertura) zerava o saldo sem
+  // nenhum pagamento que o cobrisse.
   const existing = await db.get(
-    "SELECT id FROM payments WHERE appointment_id = ? AND payment_type = 'restante'",
-    [appointmentId]
+    "SELECT id, status, amount FROM payments WHERE appointment_id = ? AND idempotency_key = ? FOR UPDATE",
+    [appointmentId, `appointment:${appointmentId}:remaining`]
   );
   if (existing) {
-    await db.run("UPDATE appointments SET remaining_value=0, updated_at=? WHERE id=?", [localTimestamp(), appointmentId]);
+    const active = ["pago", "confirmado"].includes(String(existing.status || ""));
+    const amount = (Math.round(Number(appointment.remaining_value || 0) * 100) + (active ? Math.round(Number(existing.amount || 0) * 100) : 0)) / 100;
+    await db.run("UPDATE payments SET amount = ?, status = 'pago', method = ?, paid_at = COALESCE(paid_at, ?) WHERE id = ?",
+      [amount, appointment.remaining_payment_method || "Pix", localTimestamp(), existing.id]);
+    await recalculateAppointmentFinancials(db, appointmentId);
     return;
   }
+  // Já houve fechamento com pagamentos próprios (POST /complete): não cria
+  // uma baixa a mais por cima deles. O saldo que sobrar fica no restante e
+  // vira recebível da execução, em vez de sumir.
+  const closing = await db.get(
+    "SELECT id FROM payments WHERE appointment_id = ? AND payment_type IN ('restante','final','complementar') AND status NOT IN ('cancelado','estornado','refunded') LIMIT 1",
+    [appointmentId]
+  );
+  if (closing) return;
 
   await db.run(
     `INSERT INTO payments
@@ -584,18 +811,29 @@ export async function registerRemainingPayment(db, appointmentId) {
       `appointment:${appointmentId}:remaining`
     ]
   );
-  await db.run("UPDATE appointments SET remaining_value=0, updated_at=? WHERE id=?", [localTimestamp(), appointmentId]);
+  await recalculateAppointmentFinancials(db, appointmentId);
+}
+
+// Teto do fechamento: líquido (já com desconto e ajustes) menos o que foi
+// recebido antes e NÃO é substituído pelo fechamento — sinal confirmado e
+// crédito do cliente aplicado (SPEC 9, item 3). Sem o crédito aqui, o
+// fechamento sobrava um recebível indevido no valor do crédito.
+export function completionCeiling(snapshot, fallbackTotal = 0) {
+  const cents = (value) => Math.round(Number(value || 0) * 100);
+  const net = snapshot ? cents(snapshot.netTotal) : cents(fallbackTotal);
+  return Math.max(0, net - cents(snapshot?.depositPaid) - cents(snapshot?.creditApplied)) / 100;
 }
 
 export async function registerCompletionPayments(db, appointmentId, rawPayments = [], userId = null) {
-  const appointment = await db.get("SELECT * FROM appointments WHERE id = ? FOR UPDATE", [appointmentId]);
-  if (!appointment) throw new Error("Agendamento não encontrado.");
-
-  const snapshot = await getAppointmentFinancialSnapshot(db, appointmentId);
+  const locked = await recalculateAppointmentFinancials(db, appointmentId);
+  if (!locked) throw new Error("Agendamento não encontrado.");
+  const appointment = locked.appointment;
+  const snapshot = locked.snapshot;
   // O fechamento substitui os pagamentos finais existentes. Portanto o teto é
-  // o líquido menos apenas o sinal realmente confirmado, e não o saldo do
-  // snapshot (que já descontaria as linhas finais que serão substituídas).
-  const maximum = Math.max(0, Number(snapshot?.netTotal ?? appointment.total_value ?? 0) - Number(snapshot?.depositPaid || 0));
+  // o líquido menos apenas o que foi recebido antes (sinal confirmado e
+  // crédito), e não o saldo do snapshot (que já descontaria as linhas finais
+  // que serão substituídas).
+  const maximum = completionCeiling(snapshot, appointment.total_value);
 
   const payments = (Array.isArray(rawPayments) ? rawPayments : []).map((item) => ({
     amount: Number(item.amount || 0), method: String(item.method || "Pix"), status: String(item.status || "pago"),
@@ -604,6 +842,7 @@ export async function registerCompletionPayments(db, appointmentId, rawPayments 
   })).filter((item) => item.amount > 0);
   const paid = payments.filter((item) => item.status === "pago" || item.status === "confirmado").reduce((sum, item) => sum + item.amount, 0);
   if (paid > maximum + 0.009) throw new Error("A soma dos pagamentos não pode superar o saldo do atendimento.");
+  await supersedePendingDeposit(db, appointmentId);
   // Preserva os ids das baixas ao refazer o fechamento. Apagar e reinserir
   // deixava para trás lançamentos espelhados no ledger e perdia sales_order_id.
   const existing = await db.all(
@@ -638,6 +877,9 @@ export async function registerCompletionPayments(db, appointmentId, rawPayments 
   for (const stale of existing.slice(payments.length)) {
     await db.run("UPDATE payments SET status='cancelado' WHERE id=? AND status!='cancelado'", [stale.id]);
   }
-  await db.run("UPDATE appointments SET remaining_value = ?, remaining_payment_method = ?, financial_closed_at = ?, financial_closed_by = ?, updated_at = ? WHERE id = ?", [Math.max(0, maximum - paid), payments[0]?.method || appointment.remaining_payment_method || "Pix", localTimestamp(), userId, localTimestamp(), appointmentId]);
-  return { paid, remaining: Math.max(0, maximum - paid) };
+  await db.run("UPDATE appointments SET remaining_payment_method = ?, financial_closed_at = ?, financial_closed_by = ?, updated_at = ? WHERE id = ?", [payments[0]?.method || appointment.remaining_payment_method || "Pix", localTimestamp(), userId, localTimestamp(), appointmentId]);
+  // O restante passa a ser exatamente líquido − tudo o que está confirmado,
+  // pela mesma conta do snapshot (igual a teto − pago neste fechamento).
+  const after = await recalculateAppointmentFinancials(db, appointmentId);
+  return { paid, remaining: Number(after?.appointment?.remaining_value || 0) };
 }

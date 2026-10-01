@@ -1,6 +1,6 @@
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
-import { createTenant, deleteTenant, loginTenant, platformLogin, req } from "./helpers.mjs";
+import { BASE, createTenant, deleteTenant, loginTenant, platformLogin, req } from "./helpers.mjs";
 
 const context = {};
 
@@ -19,7 +19,7 @@ test("central gera todos os relatórios suportados e CSV isolados no tenant", as
   const types = [
     "financial", "payables", "receivables", "payments", "sales", "purchases", "suppliers", "stock", "stock_movements", "lots", "abc",
     "services", "clients", "digital_terms", "postcare", "biosafety", "professionals", "appointments", "cancellations", "promotions", "coupons",
-    "commissions", "catalog_conversion", "users", "access_profiles", "permissions", "audit"
+    "commissions", "catalog_conversion", "users", "access_profiles", "permissions", "audit", "chemical_indicators", "value_adjustments"
   ];
   for (const type of types) {
     const response = await req(`/reports/${type}?from=2026-01-01&to=2026-12-31`, { tenant: context.slug, token: context.token });
@@ -63,14 +63,30 @@ test("analytics público valida sessão e aparece no relatório de conversão", 
   assert.ok(report.json.rows.some((row) => row.event_type === "catalog_view"));
 });
 
-test("desempenho por profissional expoe producao, disponibilidade e taxas", async () => {
-  const created = await req("/professionals", { method: "POST", tenant: context.slug, token: context.token, body: { name: "Profissional Relatorio", commission_percentage: 12, active: true } });
+test("desempenho por profissional expoe producao, disponibilidade, taxas e comissão dos lançamentos", async () => {
+  const created = await req("/professionals", { method: "POST", tenant: context.slug, token: context.token, body: { name: "Profissional Relatorio", active: true } });
   assert.equal(created.status, 201, JSON.stringify(created.json));
   const report = await req(`/reports/professionals?from=2026-08-01&to=2026-08-31&professional_id=${created.json.id}`, { tenant: context.slug, token: context.token });
   assert.equal(report.status, 200, JSON.stringify(report.json));
   assert.equal(report.json.rows.length, 1);
   const row = report.json.rows[0];
-  for (const field of ["worked_days", "available_hours", "occupied_hours", "completed_appointments", "cancellations", "no_shows", "jewelry_sold", "service_revenue", "revenue", "average_ticket", "commission", "occupancy_rate", "attendance_rate"]) {
+  for (const field of ["worked_days", "available_hours", "occupied_hours", "completed_appointments", "cancellations", "no_shows", "products_sold", "service_revenue", "jewelry_revenue", "discount_total", "adjustment_total", "revenue", "average_ticket", "commission_base", "commission", "occupancy_rate", "attendance_rate"]) {
     assert.ok(Object.hasOwn(row, field), `campo ausente: ${field}`);
   }
+  // Sem lançamento de comissão no período, a comissão é zero (não sai mais
+  // de receita × percentual do cadastro).
+  assert.equal(Number(row.commission), 0);
+  assert.equal(Object.hasOwn(row, "commission_percentage"), false);
+});
+
+test("todo relatório declara colunas com rótulo pt-BR e a exportação usa esses rótulos", async () => {
+  const catalog = await req("/reports", { tenant: context.slug, token: context.token });
+  for (const report of catalog.json.reports) {
+    assert.ok(Array.isArray(report.columns) && report.columns.length, `${report.type} sem colunas declaradas`);
+    assert.ok(report.columns.every((column) => column.key && column.label && !/_/.test(column.label)), `${report.type}: rótulo cru`);
+  }
+  const response = await fetch(`${BASE}/reports/payments?from=2026-01-01&to=2026-12-31&format=csv`, { headers: { Authorization: `Bearer ${context.token}`, "X-Tenant": context.slug } });
+  assert.equal(response.status, 200);
+  const header = (await response.text()).replace(/^\uFEFF/, "").split("\n")[0];
+  assert.equal(header, "ID,Data,Cliente,Operação,Tipo,Forma,Status,Valor,Recebido,Taxa,Recebido líquido");
 });

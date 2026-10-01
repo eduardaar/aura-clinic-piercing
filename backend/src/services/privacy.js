@@ -130,6 +130,16 @@ export async function subjectDataExport(db, clientId) {
   // dado. O PDF/arquivo permanece no cofre privado e seu acesso é auditado.
   const terms = await db.all("SELECT id, appointment_id, client_id, full_name, social_name, document_number, birth_date, whatsapp, instagram, address, procedure, piercing_region, orientations_confirmed, health_declaration, form_data, pdf_url, signed_at FROM digital_terms WHERE client_id = ? ORDER BY signed_at DESC", [clientId]);
   const followups = await db.all("SELECT * FROM post_care_followups WHERE client_id = ? ORDER BY due_date DESC, id DESC", [clientId]);
+  // Indicador químico por procedimento: dados da etiqueta e do procedimento
+  // são do titular. A foto segue a mesma regra dos demais arquivos privados
+  // (fica no cofre); a exportação diz apenas se ela existe.
+  const chemicalIndicators = await db.all(
+    `SELECT id, appointment_id, service_execution_id, appointment_item_id, procedure_name, body_region, jewelry_id,
+       jewelry_name, indicator_type, indicator_brand, indicator_lot, indicator_date, identification, result,
+       (photo_filename IS NOT NULL) AS has_photo, notes, status, created_at, voided_at, void_reason
+     FROM procedure_chemical_indicators WHERE client_id = ? ORDER BY created_at DESC, id DESC`,
+    [clientId]
+  );
   return {
     generated_at: new Date().toISOString(),
     format_version: 1,
@@ -140,6 +150,7 @@ export async function subjectDataExport(db, clientId) {
     medical_records: medicalRecords,
     digital_terms: terms,
     post_care_followups: followups,
+    chemical_indicators: chemicalIndicators,
     // Arquivos privados legados ainda não têm uma chave client_id obrigatória.
     // Eles não entram na exportação para evitar que um titular receba metadados
     // de outra pessoa; a vinculação e a exportação de anexos ficam pendentes.

@@ -5,8 +5,16 @@ import { requireRole } from "../middleware/auth.js";
 import { upload, parseUpload } from "../middleware/upload.js";
 import { buildKey, storage } from "../services/storage/index.js";
 import { recordPrivacyAudit } from "../services/privacy.js";
+import { hasPermission } from "../services/permissionService.js";
+import { P } from "../config/permissions.js";
 
 const router = Router();
+
+// Arquivos clínicos (foto de indicador químico, prontuário, foto de
+// pós-cuidado): o acesso segue a permissão `clinical_files.view`, e não só o
+// cargo. Assim a negação individual vale para o piercer e a concessão
+// individual vale para a recepção — a mesma regra da tela que mostra o link.
+const CLINICAL_FILE_PURPOSES = new Set(["chemical_indicator", "medical_record", "postcare_photo"]);
 
 // Upload genérico do painel da clínica. O arquivo vai para o bucket PÚBLICO,
 // sob `tenant_<id>/geral/`, e a resposta continua sendo `{ url }` — o que muda
@@ -33,7 +41,9 @@ router.get("/api/private-files/:filename", withDb(async (req, res, db) => {
   // não é encontrado aqui, e é isso que impede a leitura cruzada.
   const file = await db.get("SELECT id, purpose, original_name, mime_type FROM private_files WHERE filename=?", [filename]);
   if (!file) return res.status(404).json({ error: "Arquivo não encontrado." });
-  if (req.user?.role === "reception" && !["appointment_reference", "public_booking"].includes(file.purpose)) {
+  if (CLINICAL_FILE_PURPOSES.has(file.purpose)) {
+    if (!hasPermission(req.user, P.CLINICAL_FILES_VIEW)) return res.status(403).json({ error: "Acesso negado." });
+  } else if (req.user?.role === "reception" && !["appointment_reference", "public_booking"].includes(file.purpose)) {
     return res.status(403).json({ error: "Acesso negado." });
   }
   await recordPrivacyAudit(db, {

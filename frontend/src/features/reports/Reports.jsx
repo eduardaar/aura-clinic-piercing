@@ -2,7 +2,7 @@ import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Download } from "lucide-react";
 import { Button, Select, StatusBadge } from "../../components/common/Ui";
 import { DataView } from "../../components/common/DataView";
-import { asArray, asObject } from "../../lib/utils";
+import { asArray, asObject, localDateValue } from "../../lib/utils";
 import { downloadApiFile, useFetch } from "../../lib/api";
 import { currency } from "../shared/helpers";
 
@@ -76,8 +76,21 @@ const COLUMN_LABELS = {
   last_visit: "Última visita",
   // Profissionais e comissões
   professional: "Profissional",
-  commission_percentage: "Comissão",
-  commission: "Valor da comissão",
+  commission: "Comissão",
+  commission_base: "Base de comissão",
+  gross_amount: "Bruto",
+  discount_amount: "Desconto",
+  adjustment_amount: "Ajuste",
+  base_amount: "Base (líquido)",
+  commission_amount: "Comissão",
+  // Composição do valor da operação
+  gross_value: "Bruto",
+  coupon_discount: "Desconto (cupom/promoção)",
+  manual_discount: "Desconto manual",
+  adjustment_total: "Ajustes",
+  net_value: "Líquido",
+  returned_value: "Devolvido",
+  final_value: "Valor final da venda",
   worked_days: "Dias trabalhados",
   available_hours: "Horas disponíveis",
   occupied_hours: "Horas ocupadas",
@@ -86,8 +99,8 @@ const COLUMN_LABELS = {
   no_shows: "Faltas",
   jewelry_sold: "Joias vendidas",
   products_sold: "Produtos vendidos",
-  service_revenue: "Faturamento em serviços",
-  jewelry_revenue: "Faturamento em joias",
+  service_revenue: "Bruto em serviços",
+  jewelry_revenue: "Bruto em joias",
   occupancy_rate: "Taxa de ocupação",
   attendance_rate: "Taxa de comparecimento",
   // Agendamentos e cancelamentos
@@ -155,10 +168,18 @@ const COLUMN_KINDS = {
   worked_days: "count", available_hours: "count", occupied_hours: "count",
   completed_appointments: "count", cancellations: "count", no_shows: "count",
   jewelry_sold: "count", products_sold: "count", occupancy_rate: "percent", attendance_rate: "percent",
-  service_revenue: "money", jewelry_revenue: "money"
+  service_revenue: "money", jewelry_revenue: "money",
+  commission_base: "money", manual_discount: "money", coupon_discount: "money",
+  executions: "count", indicators: "count", indicators_approved: "count", indicators_failed: "count"
 };
 
 const NUMERIC_KINDS = new Set(["money", "count", "percent", "discount"]);
+
+// "AAAA-MM-DD HH:MM" (já no fuso da clínica, vindo do servidor) → dd/MM/aaaa HH:MM.
+function formatDateTime(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(value || ""));
+  return match ? `${match[3]}/${match[2]}/${match[1]} ${match[4]}:${match[5]}` : "";
+}
 
 // Os relatórios saem direto do banco, então trazem o vocabulário do banco. Os
 // valores que já estão em português passam adiante sem tradução; aqui ficam só
@@ -190,7 +211,14 @@ const VALUE_LABELS = {
   PJ: "Pessoa jurídica", PF: "Pessoa física", approved: "Aprovado", review: "Em análise", blocked: "Bloqueado",
   admin: "Administrador", reception: "Recepção", piercer: "Piercer", finance: "Financeiro",
   info: "Informativa", warning: "Atenção", critical: "Crítica", expired: "Vencido", expiring: "Próximo do vencimento",
-  exhausted: "Esgotado", available: "Disponível", draft: "Rascunho", confirmed: "Confirmada", cancelled: "Cancelada"
+  exhausted: "Esgotado", available: "Disponível", draft: "Rascunho", confirmed: "Confirmada", cancelled: "Cancelada",
+  // Atendimento, pagamentos, ajustes, indicadores e comissões
+  nao_compareceu: "Não compareceu", awaiting_deposit_proof: "Aguardando comprovante", devolvida: "Devolvida",
+  credito_aplicado: "Crédito aplicado", credito_cliente: "Crédito do cliente", refunded: "Estornado", estornado: "Estornado",
+  canceled: "Cancelado", ativo: "Ativo", anulado: "Anulado", ativa: "Ativa", estornada: "Estornada",
+  aprovado: "Aprovado", reprovado: "Reprovado", nao_informado: "Não informado",
+  acrescimo: "Acréscimo", abatimento: "Abatimento", service_execution: "Atendimento",
+  appointment_cancellation: "Cancelamento", purchase_order: "Compra", recurrence: "Recorrência"
 };
 
 const valueLabel = (value) => VALUE_LABELS[String(value)] || String(value);
@@ -235,6 +263,7 @@ function renderCell(kind, value, row) {
   if (kind === "percent") return percent(value);
   if (kind === "count") return count(value);
   if (kind === "date") return formatDateWithYear(value) || String(value);
+  if (kind === "datetime") return formatDateTime(value) || String(value);
   if (kind === "time") return String(value).slice(0, 5);
   if (kind === "boolean") return value === true || value === 1 ? "Sim" : "Não";
   // A cor do selo continua saindo do valor cru; só o texto é traduzido.
@@ -252,6 +281,7 @@ function sortValue(kind, value) {
   if (NUMERIC_KINDS.has(kind)) return asFinite(value) ?? String(value);
   // A data ISO ordena certo e o formato exibido deixa a busca achar "27/07".
   if (kind === "date") return `${String(value).slice(0, 10)} ${formatDateWithYear(value)}`;
+  if (kind === "datetime") return `${String(value)} ${formatDateTime(value)}`;
   if (kind === "boolean") return value === true || value === 1 ? "Sim" : "Não";
   // Busca e ordenação pelo texto que está na tela, não pelo código do banco.
   if (kind === "enum" || kind === "status") return valueLabel(value);
@@ -281,7 +311,7 @@ function buildColumns(rows, declaredColumns = []) {
 }
 
 export function Reports() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateValue(new Date());
   /** @type {[Record<string, any>, React.Dispatch<React.SetStateAction<Record<string, any>>>]} */
   const [filters, setFilters] = useState({ type: "sales", from: `${today.slice(0, 7)}-01`, to: today, status: "", professional_id: "" });
   const [page, setPage] = useState(1);
@@ -307,13 +337,18 @@ export function Reports() {
     }
   }, [filters.type, selectedReport?.type]);
   const { data: professionals } = useFetch("/professionals");
+  // Serviços só são buscados quando o relatório tem filtro por serviço.
+  const needsServices = selectedFilters.some((item) => item.type === "service");
+  const { data: servicesData } = useFetch(needsServices ? "/services" : null);
+  const serviceOptions = asArray(Array.isArray(servicesData) ? servicesData : asObject(servicesData).items)
+    .map((service) => ({ value: String(service.id), label: service.name }));
   const reportFilterDefinitions = selectedFilters.map((item) => ({
     key: item.key,
     label: item.label,
-    type: item.type === "professional" || item.type === "select" ? "select" : item.type === "date" || item.type === "number" ? item.type : "text",
+    type: ["professional", "service", "select"].includes(item.type) ? "select" : item.type === "date" || item.type === "number" ? item.type : "text",
     options: item.type === "professional"
       ? asArray(professionals).map((professional) => ({ value: String(professional.id), label: professional.name }))
-      : asArray(item.options)
+      : item.type === "service" ? serviceOptions : asArray(item.options)
   }));
   const params = new URLSearchParams();
   selectedFilters.forEach(({ key }) => {
@@ -332,7 +367,11 @@ export function Reports() {
   const report = asObject(data);
   const reportRows = asArray(report.rows);
 
-  const columns = useMemo(() => buildColumns(reportRows, selectedReport?.columns), [reportRows, selectedReport?.columns]);
+  // As colunas efetivas vêm na resposta (o servidor tira, por exemplo, as de
+  // comissão para quem não pode vê-las); o catálogo é o plano B.
+  const declaredColumns = asArray(report.columns).length ? report.columns : selectedReport?.columns;
+  const columns = useMemo(() => buildColumns(reportRows, declaredColumns), [reportRows, declaredColumns]);
+  const summary = asObject(report.summary);
 
   // Nem todo relatório traz `id` (serviços, financeiro e conversão são
   // agregações), então a chave da linha vem da posição quando falta.
@@ -369,6 +408,7 @@ export function Reports() {
           <h2>{selectedReport?.label}</h2>
           <span>{loading ? "Carregando…" : `${report.total_rows || 0} registro(s)`}</span>
         </div>
+        <ReportSummary type={selectedReport?.type} summary={summary} />
         <DataView
           // Cada relatório tem colunas próprias: remontar zera busca e ordenação
           // ao trocar de tipo, em vez de herdar uma coluna que não existe mais.
@@ -398,5 +438,21 @@ export function Reports() {
         />
       </div>
     </section>
+  );
+}
+
+// Totais do período inteiro (não só da página), somados no servidor.
+const SUMMARY_FIELDS = {
+  commissions: [["gross", "Bruto"], ["discount", "Desconto"], ["adjustment", "Ajustes"], ["base", "Base (líquido)"], ["commission", "Comissão"]],
+  value_adjustments: [["increases", "Acréscimos ativos"], ["decreases", "Abatimentos ativos"], ["net_effect", "Efeito líquido"]]
+};
+
+function ReportSummary({ type, summary }) {
+  const fields = SUMMARY_FIELDS[type];
+  if (!fields || !Object.keys(summary || {}).length) return null;
+  return (
+    <div className="metric-grid report-summary" aria-label="Totais do período">
+      {fields.map(([key, label]) => <article className="metric-card" key={key}><span>{label}</span><strong>{money(summary[key] ?? 0)}</strong></article>)}
+    </div>
   );
 }

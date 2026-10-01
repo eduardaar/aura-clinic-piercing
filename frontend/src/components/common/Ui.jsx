@@ -4,8 +4,10 @@ import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
 import * as SelectPrimitive from "@radix-ui/react-select";
 import * as SwitchPrimitive from "@radix-ui/react-switch";
 import * as TabsPrimitive from "@radix-ui/react-tabs";
-import { BadgeCheck, Banknote, Check, ChevronDown, CircleDollarSign, Clock3, CreditCard, FileChartColumn, ListFilter, Receipt, Tag } from "lucide-react";
+import { ArrowUpDown, BadgeCheck, Banknote, Check, ChevronDown, CircleDollarSign, Clock3, CreditCard, FileChartColumn, ListFilter, Receipt, Tag } from "lucide-react";
 import { API_ORIGIN, apiFetch } from "../../lib/api";
+import { discountFromPercent } from "../../lib/operationTotals";
+import "./financial-summary.css";
 
 /**
  * `<img>` que sabe buscar arquivo protegido: caminho `/api/private-files/…` vai
@@ -51,8 +53,181 @@ export function Metric({ label, value }) {
   );
 }
 
-/** @param {{ summary?: Record<string, any> }} props */
-export function FinancialSummary({ summary = {} }) {
+// ---------------------------------------------------------------------------
+// Resumo financeiro da operação (agendamento e venda).
+//
+// Só EXIBE o que recebe em `summary` (o cálculo é de lib/operationTotals.js ou
+// do backend). A equação segue a conta de verdade:
+//   Bruto − Descontos ± Ajustes = Líquido;  Líquido − Pago = Restante;  Saldo final.
+// Props novas são opcionais: sem elas (vendas, telas antigas) o resumo continua
+// somente leitura e o card "Ajustes" não aparece.
+// ---------------------------------------------------------------------------
+
+const FINANCIAL_STATUS_LABELS = {
+  pending: "Pendente", pendente: "Pendente",
+  nao_pago: "Não pago",
+  partial: "Parcial", parcial: "Parcial",
+  paid: "Pago", pago: "Pago",
+  liquidado: "Quitado",
+  overpaid: "Excedente", excedente: "Excedente",
+  canceled: "Cancelado", cancelado: "Cancelado"
+};
+const FINANCIAL_STATUS_TONE = {
+  paid: "ok", pago: "ok", liquidado: "ok",
+  overpaid: "warn", excedente: "warn",
+  canceled: "danger", cancelado: "danger"
+};
+
+const formatMoney = (value) => Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+/** Primeiro valor presente (não nulo nem vazio) entre os nomes aceitos. */
+function pickSummaryValue(summary, keys) {
+  for (const key of keys) {
+    const value = summary[key];
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+  return undefined;
+}
+
+/**
+ * Texto digitado → centavos; "" vale 0; `null` quando não é número.
+ * Mais de duas casas devolve `NaN`: o backend recusa, e arredondar em
+ * silêncio gravaria um valor diferente do que a pessoa vê no campo.
+ */
+function parseMoneyInput(text) {
+  const raw = String(text ?? "").trim().replace(",", ".");
+  if (!raw) return 0;
+  const number = Number(raw);
+  if (!Number.isFinite(number)) return null;
+  const cents = number * 100;
+  return Math.abs(cents - Math.round(cents)) > 1e-6 ? Number.NaN : Math.round(cents);
+}
+
+const moneyInputText = (value) => (Number(value || 0) > 0 ? (Math.round(Number(value) * 100) / 100).toFixed(2) : "");
+
+/**
+ * Card da equação. Componente de topo (e não função criada no render) para o
+ * campo de desconto não ser remontado — e perder o foco — a cada tecla.
+ * @param {{ icon: React.ElementType, label: React.ReactNode, value: React.ReactNode, operator?: string, variant?: string, children?: React.ReactNode }} props
+ */
+function FinancialFlowCard({ icon: Icon, label, value, operator, variant = "", children }) {
+  return (
+    <article className={`financial-flow__card${variant ? ` ${variant}` : ""}`}>
+      <span className="financial-flow__label">
+        {operator && <span className="financial-flow__operator" aria-hidden="true">{operator}</span>}
+        <Icon size={18} aria-hidden="true" />
+        {label}
+      </span>
+      <strong className="financial-flow__value">{value}</strong>
+      {children}
+    </article>
+  );
+}
+
+/**
+ * Campo monetário do desconto manual, com atalho em % e validação de teto.
+ * Mantém o texto digitado localmente ("10," ou "10.5" não podem virar número
+ * a cada tecla) e só reescreve o campo quando o valor muda por fora.
+ * @param {{ value: number, percentBase: number, max?: number, onChange: (value: number) => void }} props
+ */
+function FinancialDiscountField({ value, percentBase, max, onChange }) {
+  const errorId = React.useId();
+  const [text, setText] = React.useState(() => moneyInputText(value));
+  const [percent, setPercent] = React.useState("");
+  const lastSentCents = React.useRef(Math.round(Number(value || 0) * 100));
+
+  const maxCents = Number.isFinite(Number(max)) && max !== null && max !== undefined ? Math.max(0, Math.round(Number(max) * 100)) : null;
+
+  React.useEffect(() => {
+    const cents = Math.round(Number(value || 0) * 100);
+    // Eco do que foi enviado — inclusive já limitado ao teto pelo cálculo
+    // (lib/operationTotals devolve o manual efetivo): não reescreve o campo,
+    // senão o valor digitado acima do teto sumiria junto com o aviso.
+    const echo = cents === lastSentCents.current || (maxCents !== null && lastSentCents.current > maxCents && cents === maxCents);
+    if (echo) return;
+    lastSentCents.current = cents;
+    setText(moneyInputText(value));
+    setPercent("");
+  }, [value, maxCents]);
+
+  const send = (cents) => {
+    lastSentCents.current = cents;
+    onChange(cents / 100);
+  };
+  const handleValue = (nextText) => {
+    setText(nextText);
+    setPercent("");
+    const cents = parseMoneyInput(nextText);
+    if (cents !== null && Number.isFinite(cents) && cents >= 0) send(cents);
+  };
+  const handlePercent = (nextPercent) => {
+    setPercent(nextPercent);
+    const cents = Math.round(discountFromPercent(percentBase, nextPercent) * 100);
+    setText(moneyInputText(cents / 100));
+    send(cents);
+  };
+
+  const cents = parseMoneyInput(text);
+  const error = cents === null
+    ? "Informe um valor válido."
+    : Number.isNaN(cents)
+      ? "Use no máximo duas casas decimais."
+      : cents < 0
+        ? "O desconto não pode ser negativo."
+        : maxCents !== null && cents > maxCents
+          ? `O desconto não pode ser maior que ${formatMoney(maxCents / 100)}.`
+          : "";
+
+  return (
+    <div className="financial-discount-field">
+      <div className="financial-discount-field__inputs">
+        <Input
+          label="Desconto (R$)"
+          type="number"
+          inputMode="decimal"
+          min="0"
+          step="0.01"
+          placeholder="0,00"
+          value={text}
+          onChange={handleValue}
+          aria-invalid={error ? "true" : undefined}
+          aria-describedby={error ? errorId : undefined}
+          fieldClassName="financial-discount-field__money"
+        />
+        <Input
+          label="Atalho %"
+          type="number"
+          inputMode="decimal"
+          min="0"
+          max="100"
+          step="0.01"
+          placeholder="%"
+          value={percent}
+          onChange={handlePercent}
+          title="Converte o percentual em reais sobre o valor bruto menos o cupom"
+          fieldClassName="financial-discount-field__percent"
+        />
+      </div>
+      {error && <small id={errorId} className="financial-discount-field__error" role="alert">{error}</small>}
+    </div>
+  );
+}
+
+/**
+ * @typedef {object} FinancialSummaryProps
+ * @property {Record<string, any>} [summary] Totais já calculados. Aceita os nomes
+ *   de `calculateOperationTotals` e os alternativos legados (`gross_total`,
+ *   `discount_value`…). Opcionais: `adjustmentTotal` (assinado; mostra o card
+ *   "Ajustes"), `couponDiscount` e `manualDiscount` (detalhamento do desconto).
+ * @property {boolean} [discountEditable] Transforma o card "Descontos" em campo.
+ * @property {(value: number) => void} [onDiscountChange] Recebe o desconto MANUAL em reais.
+ * @property {string} [discountReason]
+ * @property {(text: string) => void} [onDiscountReasonChange] Mostra o campo de motivo.
+ * @property {number} [discountMax] Teto do desconto manual (padrão: bruto − cupom).
+ */
+
+/** @param {FinancialSummaryProps} props */
+export function FinancialSummary({ summary = {}, discountEditable = false, onDiscountChange, discountReason, onDiscountReasonChange, discountMax }) {
   const gross = Number(summary.grossTotal ?? summary.gross_total ?? summary.total_bruto ?? 0);
   const discount = Number(summary.discountTotal ?? summary.discount_value ?? summary.discount ?? 0);
   const net = Number(summary.netTotal ?? summary.net_total ?? summary.total_liquido ?? 0);
@@ -64,38 +239,70 @@ export function FinancialSummary({ summary = {} }) {
   const status = String(summary.paymentStatus ?? summary.status ?? "pendente").toLowerCase();
   const couponCode = summary.couponCode ?? summary.coupon_code;
   const couponPercent = Number(summary.couponPercent ?? summary.coupon_percent ?? 0);
-  const money = (value) => Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-  const statusLabels = { pending: "Pendente", pendente: "Pendente", partial: "Parcial", parcial: "Parcial", paid: "Pago", pago: "Pago", overpaid: "Excedente", excedente: "Excedente", canceled: "Cancelado", cancelado: "Cancelado" };
-  const tone = ["paid", "pago"].includes(status) ? "ok" : ["canceled", "cancelado"].includes(status) ? "danger" : ["overpaid", "excedente"].includes(status) ? "warn" : "info";
-  const Card = ({ icon: Icon, label, value, variant = "" }) => <article className={`financial-metric ${variant}`}><span><Icon size={20} aria-hidden="true" />{label}</span><strong>{value}</strong></article>;
+
+  const adjustmentRaw = pickSummaryValue(summary, ["adjustmentTotal", "adjustment_total"]);
+  const showAdjustments = adjustmentRaw !== undefined;
+  const adjustment = Number(adjustmentRaw || 0);
+  const couponRaw = pickSummaryValue(summary, ["couponDiscount", "coupon_discount"]);
+  const manualRaw = pickSummaryValue(summary, ["manualDiscount", "manual_discount", "manual_discount_value"]);
+  const couponDiscount = Math.max(0, Number(couponRaw ?? 0));
+  const manualDiscount = manualRaw !== undefined ? Math.max(0, Number(manualRaw)) : Math.max(0, Math.round((discount - couponDiscount) * 100) / 100);
+  // Sem o detalhamento, o cupom é o desconto inteiro (comportamento antigo).
+  const couponShown = couponRaw !== undefined ? couponDiscount : discount;
+  const editable = Boolean(discountEditable && onDiscountChange);
+  const percentBase = Math.max(0, Math.round((gross - couponDiscount) * 100) / 100);
+  const maxDiscount = discountMax ?? percentBase;
+
+  const tone = FINANCIAL_STATUS_TONE[status] || "info";
+  const adjustmentLabel = adjustment > 0 ? `+ ${formatMoney(adjustment)}` : adjustment < 0 ? `− ${formatMoney(Math.abs(adjustment))}` : formatMoney(0);
+  const breakdown = [
+    couponDiscount > 0 && { key: "coupon", label: couponCode ? `Cupom ${couponCode}` : "Cupom/promoção", value: couponDiscount },
+    !editable && manualRaw !== undefined && manualDiscount > 0 && { key: "manual", label: "Desconto manual", value: manualDiscount }
+  ].filter(Boolean);
 
   return (
     <section className="soft-card financial-summary" aria-label="Resumo financeiro">
-      <div className="financial-summary-header"><strong><FileChartColumn size={22} aria-hidden="true" />Resumo financeiro</strong><span className={`status-badge tone-${tone}`}>{statusLabels[status] || status}</span></div>
-      <div className="financial-equation">
-        <Card icon={Receipt} label="Valor bruto" value={money(gross)} />
-        <span className="financial-operator" aria-hidden="true">−</span>
-        <Card icon={Tag} label="Descontos" value={`− ${money(discount)}`} variant="discount" />
-        <span className="financial-operator" aria-hidden="true">=</span>
-        <Card icon={CreditCard} label="Valor líquido" value={money(net)} variant="featured" />
-        <span className="financial-operator" aria-hidden="true">+</span>
-        <Card icon={Banknote} label="Sinal pago" value={money(deposit)} variant="paid" />
-        <span className="financial-operator" aria-hidden="true">→</span>
-        <Card icon={CircleDollarSign} label="Total pago" value={money(totalPaid)} variant="paid featured" />
+      <div className="financial-summary-header"><strong><FileChartColumn size={22} aria-hidden="true" />Resumo financeiro</strong><span className={`status-badge tone-${tone}`}>{FINANCIAL_STATUS_LABELS[status] || status}</span></div>
+      <div className="financial-flow" role="group" aria-label={`Composição do valor: bruto menos descontos${showAdjustments ? ", mais ou menos ajustes" : ""}, igual ao líquido; líquido menos o pago, igual ao restante`}>
+        <FinancialFlowCard icon={Receipt} label="Valor bruto" value={formatMoney(gross)} />
+        <FinancialFlowCard icon={Tag} operator="−" label="Descontos" value={`− ${formatMoney(discount)}`} variant={`is-discount${editable ? " is-editable" : ""}`}>
+          {editable && <FinancialDiscountField value={manualDiscount} percentBase={percentBase} max={maxDiscount} onChange={onDiscountChange} />}
+          {breakdown.length > 0 && (
+            <ul className="financial-flow__breakdown" aria-label="Detalhamento do desconto">
+              {breakdown.map((item) => <li key={item.key}><span>{item.label}</span><span>− {formatMoney(item.value)}</span></li>)}
+            </ul>
+          )}
+          {/* Somente leitura: o motivo gravado continua visível para quem confere. */}
+          {!editable && manualDiscount > 0 && String(discountReason ?? "").trim() && <small className="financial-flow__reason">Motivo: {String(discountReason).trim()}</small>}
+        </FinancialFlowCard>
+        {showAdjustments && <FinancialFlowCard icon={ArrowUpDown} operator="±" label="Ajustes" value={adjustmentLabel} variant={adjustment > 0 ? "is-increase" : adjustment < 0 ? "is-discount" : ""} />}
+        <FinancialFlowCard icon={CreditCard} operator="=" label="Valor líquido" value={formatMoney(net)} variant="is-featured" />
+        <FinancialFlowCard icon={CircleDollarSign} operator="−" label="Total pago" value={formatMoney(totalPaid)} variant="is-paid" />
+        <FinancialFlowCard icon={Clock3} operator="=" label="Valor restante" value={formatMoney(outstanding)} variant="is-featured" />
       </div>
-      <div className="financial-details">
-        <div><Clock3 size={19} /><span>Valor restante</span><strong>{money(outstanding)}</strong></div>
-        <div><CreditCard size={19} /><span>Outros pagamentos</span><strong>{money(otherPayments)}</strong></div>
-        <div><CircleDollarSign size={19} /><span>{overpayment > 0 ? "Excedente" : "Saldo final"}</span><strong>{money(overpayment > 0 ? overpayment : outstanding)}</strong></div>
-        {couponCode && <div><Tag size={19} /><span>Cupom aplicado</span><strong>{couponCode} <BadgeCheck size={17} aria-label="válido" /></strong><small>− {money(discount)}{couponPercent > 0 ? ` (${couponPercent}%)` : ""}</small></div>}
+      {editable && onDiscountReasonChange && (
+        <Input
+          label="Motivo do desconto (opcional)"
+          value={discountReason ?? ""}
+          onChange={onDiscountReasonChange}
+          maxLength={500}
+          placeholder="Ex.: cliente recorrente, cortesia da casa"
+          fieldClassName="financial-discount-reason"
+        />
+      )}
+      <div className="financial-balance">
+        <div><Banknote size={19} aria-hidden="true" /><span>Sinal pago</span><strong>{formatMoney(deposit)}</strong></div>
+        <div><CreditCard size={19} aria-hidden="true" /><span>Outros pagamentos</span><strong>{formatMoney(otherPayments)}</strong></div>
+        <div className={`financial-balance__final${overpayment > 0 ? " is-overpaid" : ""}`}><CircleDollarSign size={19} aria-hidden="true" /><span>{overpayment > 0 ? "Excedente" : "Saldo final"}</span><strong>{formatMoney(overpayment > 0 ? overpayment : outstanding)}</strong>{overpayment > 0 && <small>Pago acima do líquido</small>}</div>
+        {couponCode && <div><Tag size={19} aria-hidden="true" /><span>Cupom aplicado</span><strong>{couponCode} <BadgeCheck size={17} aria-label="válido" /></strong><small>− {formatMoney(couponShown)}{couponPercent > 0 ? ` (${couponPercent}%)` : ""}</small></div>}
       </div>
       <Accordion className="financial-composition">
         <Accordion.Item value="composition">
           <Accordion.Header><Accordion.Trigger>Ver composição do valor bruto</Accordion.Trigger></Accordion.Header>
-          <Accordion.Content><div className="financial-composition-values"><span>Serviços <strong>{money(summary.serviceSubtotal ?? summary.service_value)}</strong></span><span>Produtos <strong>{money(summary.productSubtotal ?? summary.product_value)}</strong></span></div></Accordion.Content>
+          <Accordion.Content><div className="financial-composition-values"><span>Serviços <strong>{formatMoney(summary.serviceSubtotal ?? summary.service_value)}</strong></span><span>Produtos <strong>{formatMoney(summary.productSubtotal ?? summary.product_value)}</strong></span></div></Accordion.Content>
         </Accordion.Item>
       </Accordion>
-      {couponCode && <div className="coupon-success"><BadgeCheck size={24} /><div><strong>Cupom aplicado com sucesso.</strong><span>Desconto de {money(discount)}{couponPercent > 0 ? ` (${couponPercent}%)` : ""} aplicado sobre o valor elegível.</span></div></div>}
+      {couponCode && <div className="coupon-success"><BadgeCheck size={24} aria-hidden="true" /><div><strong>Cupom aplicado com sucesso.</strong><span>Desconto de {formatMoney(couponShown)}{couponPercent > 0 ? ` (${couponPercent}%)` : ""} aplicado sobre o valor elegível.</span></div></div>}
     </section>
   );
 }
@@ -199,11 +406,31 @@ export function PaymentSelect(props) {
 // A lista padrão é a do STATUS de AGENDAMENTO. Outras entidades (venda, ordem,
 // assinatura) têm status próprios — passe `options` em vez de aceitar o padrão,
 // senão a tela oferece um status que aquela entidade não conhece.
-/** @param {{ value?: string, onChange: (value: string) => void, options?: string[] }} props */
+// Rótulos dos status de agendamento. O <option> mostrava o código cru
+// ("em_atendimento", "nao_compareceu"); o valor enviado continua o código.
+const STATUS_SELECT_LABELS = {
+  pendente: "Pendente",
+  confirmado: "Confirmado",
+  chegou: "Chegou",
+  em_atendimento: "Em atendimento",
+  recusado: "Recusado",
+  atendido: "Atendido",
+  cancelado: "Cancelado",
+  remarcado: "Remarcado",
+  nao_compareceu: "Não compareceu"
+};
+
+/**
+ * @param {{ value?: string, onChange: (value: string) => void, options?: Array<string | { value: string, label: string }> }} props
+ */
 export function StatusSelect({ value, onChange, options = ["pendente", "confirmado", "recusado", "atendido", "cancelado", "remarcado"] }) {
   return (
     <Select label="Status" value={value} onChange={onChange}>
-      {options.map((status) => <option key={status}>{status}</option>)}
+      {options.map((option) => {
+        const code = typeof option === "string" ? option : option.value;
+        const label = typeof option === "string" ? STATUS_SELECT_LABELS[option] || option.replace(/_/g, " ") : option.label;
+        return <option key={code} value={code}>{label}</option>;
+      })}
     </Select>
   );
 }

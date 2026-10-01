@@ -1,5 +1,6 @@
 import { localTimestamp, variantStatus } from "./utils.js";
 import { syncProductInventory } from "./inventory.js";
+import { proportionalReturnCents, salesItemDiscountCents, salesItemGrossCents } from "./discounts.js";
 
 const FINANCIAL_ACTIONS = new Set(["none", "client_credit", "manual_refund"]);
 const CONDITIONS = new Set(["sellable", "damaged", "discarded"]);
@@ -87,39 +88,90 @@ export async function createSalesReturn(db, orderId, body = {}, userId = null) {
     if (!order) throw new Error("Venda não encontrada.");
     if (order.source === "agenda") throw new Error("Atendimentos da agenda usam o cancelamento do atendimento, não devolução de venda avulsa.");
     if (!Number(order.stock_deducted)) throw new Error("A devolução só pode ocorrer depois da conclusão e baixa do estoque.");
+    // Desconto de cada item da venda (rateio gravado; venda antiga sem rateio
+    // recebe o proporcional calculado na hora). A devolução reembolsa o que o
+    // cliente PAGOU pelo item, não o preço de tabela: com cupom de 10% em
+    // 2 × R$ 60,00, devolver 1 unidade gera R$ 54,00, não R$ 60,00.
+    const orderItems = await tx.all("SELECT * FROM sales_order_items WHERE sales_order_id=? ORDER BY id", [order.id]);
+    const discountByItem = new Map(
+      salesItemDiscountCents(order.discount_value, orderItems).map((cents, index) => [Number(orderItems[index].id), cents])
+    );
     const resolved = [];
     for (const requested of items) {
       const item = await tx.get("SELECT * FROM sales_order_items WHERE id=? AND sales_order_id=? FOR UPDATE", [requested.itemId, order.id]);
       if (!item || item.item_type !== "produto" || !item.product_id) throw new Error("Item de produto da venda não encontrado.");
-      const returned = await tx.get(`SELECT COALESCE(SUM(ri.quantity),0) AS quantity
+      // `refunded`: o que este item já devolveu em R$. Devoluções anteriores a
+      // 0042 não têm `net_value` e foram registradas pelo bruto (preço × qtd).
+      const returned = await tx.get(`SELECT COALESCE(SUM(ri.quantity),0) AS quantity,
+          COALESCE(SUM(COALESCE(ri.net_value, ri.unit_price * ri.quantity)),0) AS refunded
         FROM sales_return_items ri JOIN sales_returns sr ON sr.id=ri.sales_return_id
         WHERE ri.sales_order_item_id=?`, [item.id]);
-      const available = Number(item.quantity || 0) - Number(returned?.quantity || 0);
+      const soldQuantity = Number(item.quantity || 0);
+      const alreadyReturned = Number(returned?.quantity || 0);
+      const available = soldQuantity - alreadyReturned;
       if (requested.quantity > available) throw new Error(`A devolução de ${item.item_name} supera a quantidade ainda devolvível (${available}).`);
+      const unitCents = Math.round(Number(item.unit_price || 0) * 100);
+      const itemGrossCents = salesItemGrossCents(item);
+      const itemNetCents = itemGrossCents - Math.min(itemGrossCents, discountByItem.get(Number(item.id)) || 0);
+      // Arredondamento ACUMULADO: as devoluções parciais de um item somam
+      // exatamente o líquido dele (ex.: 3 un. com líquido R$ 100,01 devolvidas
+      // uma a uma → 33,34 + 33,33 + 33,34).
+      //
+      // Teto: nunca devolver mais do que ainda resta do líquido do item. Para
+      // devoluções novas o teto coincide com o acumulado; ele só atua quando
+      // uma devolução antiga (pelo bruto) já restituiu mais que a cota líquida
+      // — sem isso a soma das devoluções passaria do que o cliente pagou.
+      const refundedCents = Math.round(Number(returned?.refunded || 0) * 100);
+      const netCents = Math.min(
+        proportionalReturnCents(itemNetCents, soldQuantity, alreadyReturned, requested.quantity),
+        Math.max(0, itemNetCents - refundedCents)
+      );
+      const grossCents = unitCents * requested.quantity;
       // Preserve the requested partial quantity and return decisions. The sale
       // item carries the original sold quantity and must not overwrite them.
-      resolved.push({ ...item, ...requested, quantity: requested.quantity, unit_price: Number(item.unit_price || 0) });
+      resolved.push({
+        ...item,
+        ...requested,
+        quantity: requested.quantity,
+        unit_price: Number(item.unit_price || 0),
+        grossCents,
+        netCents,
+        discountCents: Math.max(0, grossCents - netCents)
+      });
     }
-    const totalValue = Number(resolved.reduce((sum, item) => sum + item.quantity * item.unit_price, 0).toFixed(2));
-    const pendingReduction = await reducePendingReceivables(tx, order.id, totalValue, `Redução pela devolução de venda #${order.id}`);
+    const sumCents = (key) => resolved.reduce((sum, item) => sum + item[key], 0);
+    const totalCents = sumCents("netCents");
+    const totalValue = totalCents / 100;
+    const grossValue = sumCents("grossCents") / 100;
+    const discountValue = sumCents("discountCents") / 100;
+    // Item 100% descontado não tem valor a restituir: devolve só o estoque e
+    // a ação financeira fica "nenhuma" (não há crédito nem reembolso de R$ 0).
+    const effectiveAction = totalCents === 0 ? "none" : financialAction;
+    const pendingReduction = totalCents > 0
+      ? await reducePendingReceivables(tx, order.id, totalValue, `Redução pela devolução de venda #${order.id}`)
+      : 0;
     const paidValue = Number((totalValue - pendingReduction).toFixed(2));
-    if (paidValue > 0 && financialAction === "none") throw new Error("A devolução alcança valor já recebido; escolha crédito do cliente ou reembolso manual.");
-    if (paidValue === 0 && financialAction !== "none") throw new Error("A devolução foi totalmente abatida de títulos pendentes; não há valor recebido para crédito ou reembolso.");
+    if (paidValue > 0 && effectiveAction === "none") throw new Error("A devolução alcança valor já recebido; escolha crédito do cliente ou reembolso manual.");
+    if (totalCents > 0 && paidValue === 0 && effectiveAction !== "none") throw new Error("A devolução foi totalmente abatida de títulos pendentes; não há valor recebido para crédito ou reembolso.");
+    // `total_value` = líquido devolvido; `gross_value`/`discount_value` guardam
+    // a composição. Por item, `unit_price` continua o preço unitário da venda e
+    // `net_value` é o que aquela linha devolveu.
     const created = await tx.run(`
-      INSERT INTO sales_returns (sales_order_id, client_id, financial_action, total_value, financial_value, refund_method, reason, created_by_user_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`, [order.id, order.client_id, financialAction, totalValue, paidValue,
-        financialAction === "manual_refund" ? requiredReason(body.refund_method) : null, reason, userId]);
+      INSERT INTO sales_returns (sales_order_id, client_id, financial_action, total_value, gross_value, discount_value, financial_value, refund_method, reason, created_by_user_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`, [order.id, order.client_id, effectiveAction, totalValue, grossValue, discountValue, paidValue,
+        effectiveAction === "manual_refund" ? requiredReason(body.refund_method) : null, reason, userId]);
     for (const item of resolved) {
       const inserted = await tx.run(`INSERT INTO sales_return_items
-        (sales_return_id, sales_order_item_id, quantity, unit_price, return_to_stock, condition, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`, [created.returnedId, item.id, item.quantity, item.unit_price, item.returnToStock, item.condition, item.notes]);
+        (sales_return_id, sales_order_item_id, quantity, unit_price, discount_value, net_value, return_to_stock, condition, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`, [created.returnedId, item.id, item.quantity, item.unit_price,
+        item.discountCents / 100, item.netCents / 100, item.returnToStock, item.condition, item.notes]);
       await restoreReturnedStock(tx, item, inserted.returnedId, created.returnedId);
     }
-    if (financialAction === "client_credit" && paidValue > 0) {
+    if (effectiveAction === "client_credit" && paidValue > 0) {
       await tx.run(`INSERT INTO client_credits (client_id, sales_return_id, amount, remaining_amount, reason, created_by_user_id)
         VALUES (?, ?, ?, ?, ?, ?)`, [order.client_id, created.returnedId, paidValue, paidValue, reason, userId]);
     }
-    if (financialAction === "manual_refund" && paidValue > 0) {
+    if (effectiveAction === "manual_refund" && paidValue > 0) {
       await tx.run(`INSERT INTO financial_entries
         (entry_type, description, category, amount, paid_amount, due_date, competence_date, status, payment_method, paid_at, responsible_user_id, notes, source_type, source_id, source_key)
         VALUES ('expense', ?, 'Estornos e reembolsos', ?, ?, ?, ?, 'paid', ?, ?, ?, ?, 'sales_return', ?, ?)

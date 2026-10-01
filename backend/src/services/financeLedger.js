@@ -1,4 +1,5 @@
 import { limitOffset } from "./pagination.js";
+import { localDate } from "./utils.js";
 
 const VALID_TYPES = new Set(["payable", "receivable", "income", "expense"]);
 const VALID_STATUSES = new Set(["pending", "paid", "overdue", "canceled", "partially_paid", "refunded"]);
@@ -39,26 +40,81 @@ export function normalizeEntry(body = {}, current = {}) {
   };
 }
 
+// Status do pagamento → status do lançamento espelhado. Mapeamento EXPLÍCITO:
+// antes só 'pago' virava pago e tudo o mais caía em "a receber pendente" —
+// inclusive sinal confirmado online, reembolso e crédito aplicado.
+// - pago / confirmado: dinheiro recebido → paid;
+// - refunded / estornado: o dinheiro ENTROU e depois foi devolvido; a devolução
+//   é uma despesa própria (reembolso), então a receita continua recebida, mas o
+//   lançamento fica marcado como estornado (e nunca como "a receber");
+// - cancelado: canceled;
+// - pendente (e qualquer status ainda não mapeado): pending, para não esconder
+//   valor em aberto.
+export const PAYMENT_LEDGER_STATUS_SQL = `CASE
+    WHEN p.status IN ('pago','confirmado') THEN 'paid'
+    WHEN p.status IN ('refunded','estornado') THEN 'refunded'
+    WHEN p.status IN ('cancelado','canceled','recusado') THEN 'canceled'
+    ELSE 'pending' END`;
+const PAYMENT_CASH_IN_SQL = "p.status IN ('pago','confirmado','refunded','estornado')";
+
+// Pagamentos que viram lançamento no razão. Ficam de fora:
+// - crédito aplicado: reaproveita um valor que já entrou (sinal convertido em
+//   crédito, devolução de venda); espelhar seria receita (ou "a receber") em
+//   dobro, sem entrada de caixa;
+// - pagamento de venda que já tem título próprio (recebível da venda);
+// - pagamento PENDENTE de atendimento cujo recebível já nasceu na execução
+//   (finalização): o saldo em aberto é o título da execução, e espelhar o
+//   pagamento pendente dobrava o "a receber".
+const MIRRORED_PAYMENT_CONDITION = `
+  p.status <> 'credito_aplicado'
+  AND NOT (
+    COALESCE(so.source, '') <> 'agenda'
+    AND EXISTS (
+      SELECT 1 FROM financial_entries title
+      WHERE title.source_type='sales_order' AND title.source_id=so.id AND title.entry_type='receivable'
+    )
+  )
+  AND NOT (
+    p.status NOT IN ('pago','confirmado','refunded','estornado','cancelado','canceled','recusado')
+    AND p.appointment_id IS NOT NULL
+    AND EXISTS (
+      SELECT 1 FROM service_executions se
+      JOIN financial_entries receivable ON receivable.source_type='service_execution' AND receivable.source_id=se.id
+        AND receivable.entry_type='receivable' AND receivable.status<>'canceled'
+      WHERE se.appointment_id=p.appointment_id
+    )
+  )`;
+
 export async function syncFinanceSources(db) {
   await db.run(`
     INSERT INTO financial_entries
       (entry_type, description, category, amount, paid_amount, due_date, competence_date, status, payment_method, paid_at, source_type, source_id, source_key)
     SELECT 'income', 'Pagamento ' || p.payment_type, p.payment_type, p.amount,
-      CASE WHEN p.status='pago' THEN p.amount ELSE 0 END, SUBSTRING(p.paid_at, 1, 10), SUBSTRING(p.paid_at, 1, 10),
-      CASE WHEN p.status='pago' THEN 'paid' WHEN p.status='cancelado' THEN 'canceled' ELSE 'pending' END,
-      p.method, CASE WHEN p.status='pago' THEN p.paid_at ELSE NULL END, 'payment', p.id, 'payment:' || p.id
+      CASE WHEN ${PAYMENT_CASH_IN_SQL} THEN p.amount ELSE 0 END, SUBSTRING(p.paid_at, 1, 10), SUBSTRING(p.paid_at, 1, 10),
+      ${PAYMENT_LEDGER_STATUS_SQL},
+      p.method, CASE WHEN ${PAYMENT_CASH_IN_SQL} THEN p.paid_at ELSE NULL END, 'payment', p.id, 'payment:' || p.id
     FROM payments p
     LEFT JOIN sales_orders so ON so.id=p.sales_order_id
-    WHERE NOT (
-      COALESCE(so.source, '') <> 'agenda'
-      AND EXISTS (
-        SELECT 1 FROM financial_entries title
-        WHERE title.source_type='sales_order' AND title.source_id=so.id AND title.entry_type='receivable'
-      )
-    )
+    WHERE ${MIRRORED_PAYMENT_CONDITION}
     ON CONFLICT (source_key) DO UPDATE SET
       amount=EXCLUDED.amount, paid_amount=EXCLUDED.paid_amount, status=EXCLUDED.status,
+      due_date=EXCLUDED.due_date, competence_date=EXCLUDED.competence_date,
       payment_method=EXCLUDED.payment_method, paid_at=EXCLUDED.paid_at, updated_at=CURRENT_TIMESTAMP
+  `);
+  // Espelho cujo pagamento não existe mais (o sinal era apagado e recriado a
+  // cada edição do agendamento) ou que deixou de ser espelhável (crédito
+  // aplicado, venda com título, pendente coberto pelo recebível da execução):
+  // cancela, nunca apaga — o lançamento pode ter auditoria e histórico.
+  await db.run(`
+    UPDATE financial_entries fe
+       SET status='canceled', paid_amount=0, paid_at=NULL,
+           lifecycle_reason=COALESCE(NULLIF(fe.lifecycle_reason,''), 'Espelho de pagamento sem origem válida'),
+           updated_at=CURRENT_TIMESTAMP
+     WHERE fe.source_type='payment' AND fe.source_key LIKE 'payment:%' AND fe.status<>'canceled'
+       AND NOT EXISTS (
+         SELECT 1 FROM payments p LEFT JOIN sales_orders so ON so.id=p.sales_order_id
+          WHERE p.id=fe.source_id AND ${MIRRORED_PAYMENT_CONDITION}
+       )
   `);
   await db.run(`
     INSERT INTO financial_entries
@@ -137,9 +193,12 @@ const LEDGER_TOTALS_AGGREGATE = `
 // texto do cliente); `paging` é opcional e só recorta a lista `entries`.
 export async function ledgerReport(db, { from, to, filters = [], filterParams = [], paging = null } = {}) {
   await syncFinanceSources(db);
-  const start = from || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
-  const end = to || new Date().toISOString().slice(0, 10);
-  await db.run("UPDATE financial_entries SET status='overdue', updated_at=CURRENT_TIMESTAMP WHERE status='pending' AND due_date < ?", [new Date().toISOString().slice(0, 10)]);
+  // Datas no fuso da clínica: toISOString() (UTC) já é "amanhã" depois das
+  // 21h em São Paulo e venceria títulos do dia antes da hora.
+  const today = localDate();
+  const start = from || `${today.slice(0, 7)}-01`;
+  const end = to || today;
+  await db.run("UPDATE financial_entries SET status='overdue', updated_at=CURRENT_TIMESTAMP WHERE status='pending' AND due_date < ?", [today]);
   const where = `WHERE ${["e.competence_date BETWEEN ? AND ?", ...filters].join(" AND ")}`;
   const params = [start, end, ...filterParams];
   const orderBy = paging?.orderBy || LEDGER_ORDER_BY;

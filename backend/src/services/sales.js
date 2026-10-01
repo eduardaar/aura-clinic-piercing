@@ -3,9 +3,14 @@ import { normalizeSalesOrderItems, variantStatus, localTimestamp } from "./utils
 import { upsertClient } from "./appointments.js";
 import { syncProductInventory } from "./inventory.js";
 import { limitOffset, countRows } from "./pagination.js";
-import { validateCoupon } from "./discounts.js";
+import { allocateCents, percentOfCents, salesItemDiscountCents, salesItemGrossCents, validateCoupon } from "./discounts.js";
 import { availableStock, releaseExpiredReservations } from "./reservations.js";
+import { calculateOperationTotals } from "./finance.js";
+import { recordAudit } from "./audit.js";
+import { hasPermission } from "./permissionService.js";
+import { P } from "../config/permissions.js";
 import {
+  installmentMoneyCents,
   normalizeExplicitInstallments,
   normalizeInstallmentCount,
   normalizeReceivableMode,
@@ -195,59 +200,322 @@ export async function deductSoldProductStock(db, item, orderId) {
   return true;
 }
 
-export async function createSalesOrder(db, body, user) {
-  const submittedItems = normalizeSalesOrderItems(body.items || []);
-  const publicOrder = !user;
-  if (publicOrder && !body.accepted_policies) throw new SalesOrderValidationError("É necessário aceitar as políticas.");
-  if (publicOrder && body.fulfillment_method === "delivery" && !String(body.delivery_address || "").trim()) {
-    throw new SalesOrderValidationError("Informe o endereço de entrega.");
-  }
-  const items = publicOrder ? await authoritativePublicItems(db, submittedItems) : submittedItems;
-  if (!items.length) return null;
-  const fullName = String(body.full_name || body.customer_name || body.name || "").trim();
-  const whatsapp = String(body.whatsapp || "").trim();
-  if (!fullName || !whatsapp) return null;
+// ---------------------------------------------------------------------------
+// Precificação oficial da venda (criação e cotação usam a MESMA função).
+// ---------------------------------------------------------------------------
 
-  const subtotal = Number(items.reduce((sum, item) => sum + Number(item.unit_price || 0) * Number(item.quantity || 1), 0).toFixed(2));
-  let couponQuote = null;
-  if (body.coupon_code) {
-    couponQuote = await validateCoupon(db, body.coupon_code, { amount: subtotal, items });
-    if (!couponQuote.valid) throw new SalesOrderValidationError(couponQuote.error);
+const MANUAL_DISCOUNT_FIELDS = ["manual_discount_value", "manual_discount_percent", "manual_discount_reason"];
+const MAX_DISCOUNT_REASON_LENGTH = 500;
+// Limites das colunas: INTEGER (quantidade) e NUMERIC(12,2) (dinheiro).
+const MAX_ITEM_QUANTITY = 2_147_483_647;
+const MAX_MONEY_CENTS = 999_999_999_999;
+
+const blank = (value) => value === undefined || value === null || String(value).trim() === "";
+const fromCents = (cents) => cents / 100;
+
+// Mesmo filtro de `normalizeSalesOrderItems` (linha sem nome é descartada),
+// para que a validação olhe exatamente as linhas que vão ser gravadas.
+const itemName = (item) => String(item?.item_name || item?.name || "").trim();
+
+// Venda interna: o preço digitado pela equipe vira valor da venda, então ele
+// precisa ser dinheiro de verdade. Antes, `unit_price` negativo ou NaN passava
+// direto (`Number(...)`) e quantidade fracionada quebrava só no INSERT.
+//
+// Devolve, para cada linha com nome (na mesma ordem de
+// `normalizeSalesOrderItems`), a quantidade e o preço já validados.
+function validatedInternalItems(rawItems) {
+  if (!Array.isArray(rawItems)) return [];
+  const validated = [];
+  for (const raw of rawItems) {
+    const name = itemName(raw);
+    if (!name) continue;
+    const quantity = blank(raw.quantity) ? 1 : Number(raw.quantity);
+    if (typeof raw.quantity === "boolean" || !Number.isSafeInteger(quantity) || quantity < 1) {
+      throw new SalesOrderValidationError(`Quantidade inválida em "${name}": informe um número inteiro maior ou igual a 1.`);
+    }
+    const price = blank(raw.unit_price) ? raw.price : raw.unit_price;
+    if (blank(price) || typeof price === "boolean" || !Number.isFinite(Number(price))) {
+      throw new SalesOrderValidationError(`Valor unitário inválido em "${name}": informe um valor em R$ maior ou igual a zero.`);
+    }
+    let unitCents;
+    try {
+      unitCents = installmentMoneyCents(price, "Valor unitário");
+    } catch {
+      throw new SalesOrderValidationError(`Valor unitário inválido em "${name}": use um valor maior ou igual a zero, com até 2 casas decimais.`);
+    }
+    // `sales_order_items.quantity` é INTEGER e os valores são NUMERIC(12,2):
+    // quantidade ou bruto acima disso passaria pela validação e estouraria só
+    // no INSERT (500) — ou perderia precisão no rateio em centavos.
+    if (quantity > MAX_ITEM_QUANTITY || unitCents * quantity > MAX_MONEY_CENTS) {
+      throw new SalesOrderValidationError(`Quantidade ou valor fora do limite permitido em "${name}".`);
+    }
+    validated.push({ quantity, unitCents });
   }
-  const discount = Number(couponQuote?.discount_amount || 0);
-  const total = Number(Math.max(subtotal - discount, 0).toFixed(2));
+  return validated;
+}
+
+function hasManualDiscountFields(body = {}) {
+  return MANUAL_DISCOUNT_FIELDS.some((field) => !blank(body[field]));
+}
+
+// Lê o desconto manual do corpo. O que se grava é sempre o valor em R$; o
+// percentual é só um atalho, convertido sobre (bruto − cupom) na precificação.
+// Se os dois vierem, o valor em R$ prevalece (é o que a tela mostra ao usuário).
+export function parseManualDiscount(body = {}) {
+  const reason = String(body.manual_discount_reason ?? "").trim();
+  if (reason.length > MAX_DISCOUNT_REASON_LENGTH) {
+    throw new SalesOrderValidationError(`O motivo do desconto deve ter no máximo ${MAX_DISCOUNT_REASON_LENGTH} caracteres.`);
+  }
+  let valueCents = null;
+  let percentHundredths = null;
+  if (!blank(body.manual_discount_value)) {
+    try {
+      valueCents = installmentMoneyCents(body.manual_discount_value, "Desconto manual");
+    } catch {
+      throw new SalesOrderValidationError("Desconto manual inválido: informe um valor em R$ maior ou igual a zero, com até 2 casas decimais.");
+    }
+  } else if (!blank(body.manual_discount_percent)) {
+    try {
+      percentHundredths = installmentMoneyCents(body.manual_discount_percent, "Percentual de desconto");
+    } catch {
+      percentHundredths = -1;
+    }
+    if (percentHundredths < 0 || percentHundredths > 10000) {
+      throw new SalesOrderValidationError("Percentual de desconto inválido: use um valor entre 0 e 100, com até 2 casas decimais.");
+    }
+  }
+  return {
+    valueCents,
+    percentHundredths,
+    reason,
+    requested: Number(valueCents || 0) > 0 || Number(percentHundredths || 0) > 0
+  };
+}
+
+// Permissões de preço da venda interna, conferidas na criação E na cotação
+// (a cotação não pode revelar/antecipar o que a criação recusaria).
+export function assertSalesPricingPermissions(user, body = {}, manual = parseManualDiscount(body)) {
+  if (manual.requested && !hasPermission(user, P.SALES_APPLY_DISCOUNT)) {
+    throw new SalesOrderValidationError("Você não tem permissão para aplicar desconto.", 403);
+  }
+  if (!blank(body.coupon_code) && !hasPermission(user, P.COUPONS_APPLY)) {
+    throw new SalesOrderValidationError("Você não tem permissão para aplicar cupom.", 403);
+  }
+}
+
+// Itens prontos para precificar: venda pública usa o preço do banco; venda
+// interna valida e normaliza o que a equipe digitou.
+async function prepareSalesOrderItems(db, body, publicOrder) {
+  const submittedItems = normalizeSalesOrderItems(body.items || []);
+  if (publicOrder) return authoritativePublicItems(db, submittedItems);
+  const validated = validatedInternalItems(body.items || []);
+  return submittedItems.map((item, index) => ({
+    ...item,
+    quantity: validated[index].quantity,
+    unit_price: fromCents(validated[index].unitCents)
+  }));
+}
+
+// Categoria do produto, para cupons restritos por categoria. A venda interna
+// não manda `category` (e não deve: viria do navegador), então lemos do banco.
+async function withProductCategories(db, items) {
+  const missing = [...new Set(items.filter((item) => item.product_id && !item.category).map((item) => Number(item.product_id)))];
+  if (!missing.length) return items;
+  const rows = await db.all(
+    `SELECT id, category FROM jewelry_inventory WHERE id IN (${missing.map(() => "?").join(",")})`,
+    missing
+  );
+  const categories = new Map(rows.map((row) => [Number(row.id), row.category]));
+  return items.map((item) => (item.product_id && !item.category
+    ? { ...item, category: categories.get(Number(item.product_id)) || "" }
+    : item));
+}
+
+// Cálculo oficial da venda, em centavos inteiros:
+//   bruto    = Σ unit_price × quantidade
+//   cupom    = desconto do cupom sobre o bruto (limitado ao bruto)
+//   manual   = valor em R$ (ou % convertido sobre bruto − cupom)
+//   desconto = cupom + manual   (recusado se passar do bruto)
+//   líquido  = bruto − desconto
+// O desconto TOTAL é rateado entre os itens proporcionalmente ao bruto de cada
+// um (maior resto), e a soma do rateio é exatamente o desconto.
+//
+// Promoções NÃO entram aqui: a venda nunca as aplicou, e a tela deixa de
+// exibi-las como desconto (a cotação oficial é esta função).
+export async function priceSalesOrder(db, {
+  items = [],
+  couponCode = "",
+  clientId = null,
+  manualDiscount = { valueCents: null, percentHundredths: null, reason: "", requested: false },
+  lockCoupon = false,
+  excludeSalesOrderId = null
+} = {}) {
+  const pricedItems = await withProductCategories(db, items);
+  const grossByItem = pricedItems.map(salesItemGrossCents);
+  const subtotalCents = grossByItem.reduce((sum, value) => sum + value, 0);
+  if (subtotalCents > MAX_MONEY_CENTS) {
+    throw new SalesOrderValidationError("O valor da venda está fora do limite permitido.");
+  }
+
+  let couponQuote = null;
+  let couponCents = 0;
+  const code = String(couponCode || "").trim();
+  if (code) {
+    couponQuote = await validateCoupon(db, code, {
+      amount: fromCents(subtotalCents),
+      client_id: clientId || null,
+      items: pricedItems
+    }, { forUpdate: lockCoupon, excludeSalesOrderId });
+    if (!couponQuote.valid) throw new SalesOrderValidationError(couponQuote.error);
+    couponCents = Math.min(subtotalCents, Math.max(0, Math.round(Number(couponQuote.discount_amount || 0) * 100)));
+  }
+
+  const manualCents = manualDiscount?.valueCents !== null && manualDiscount?.valueCents !== undefined
+    ? manualDiscount.valueCents
+    : manualDiscount?.percentHundredths
+      ? percentOfCents(subtotalCents - couponCents, manualDiscount.percentHundredths)
+      : 0;
+  const discountCents = couponCents + manualCents;
+  if (discountCents > subtotalCents) {
+    throw new SalesOrderValidationError("O desconto não pode ser maior que o valor bruto.");
+  }
+  const totalCents = subtotalCents - discountCents;
+  const discountByItem = allocateCents(discountCents, grossByItem);
+
+  return {
+    items: pricedItems.map((item, index) => ({
+      ...item,
+      gross_value: fromCents(grossByItem[index]),
+      discount_value: fromCents(discountByItem[index]),
+      net_value: fromCents(grossByItem[index] - discountByItem[index])
+    })),
+    coupon: couponQuote,
+    cents: { subtotal: subtotalCents, coupon: couponCents, manual: manualCents, discount: discountCents, total: totalCents },
+    subtotal_value: fromCents(subtotalCents),
+    coupon_discount_value: fromCents(couponCents),
+    manual_discount_value: fromCents(manualCents),
+    manual_discount_percent: manualDiscount?.valueCents === null || manualDiscount?.valueCents === undefined
+      ? (manualDiscount?.percentHundredths ? manualDiscount.percentHundredths / 100 : null)
+      : null,
+    manual_discount_reason: manualCents > 0 ? (manualDiscount?.reason || null) : null,
+    discount_value: fromCents(discountCents),
+    total_value: fromCents(totalCents)
+  };
+}
+
+// Resposta pública da precificação: mesmos nomes de `calculateOperationTotals`
+// no `summary` (o contrato do `FinancialSummary`), mais o detalhe por item.
+export function salesPricingPayload(pricing) {
+  const totals = calculateOperationTotals({
+    serviceSubtotal: 0,
+    productSubtotal: pricing.subtotal_value,
+    discountTotal: pricing.discount_value,
+    couponDiscount: pricing.coupon_discount_value,
+    manualDiscount: pricing.manual_discount_value
+  });
+  return {
+    subtotal_value: pricing.subtotal_value,
+    coupon_discount_value: pricing.coupon_discount_value,
+    manual_discount_value: pricing.manual_discount_value,
+    manual_discount_percent: pricing.manual_discount_percent,
+    manual_discount_reason: pricing.manual_discount_reason,
+    discount_value: pricing.discount_value,
+    total_value: pricing.total_value,
+    coupon_code: pricing.coupon?.coupon?.code || null,
+    coupon: pricing.coupon?.coupon
+      ? { ...pricing.coupon.coupon, discount_amount: pricing.coupon_discount_value }
+      : null,
+    items: pricing.items.map((item, index) => ({
+      index,
+      item_name: item.item_name,
+      product_id: item.product_id || null,
+      product_variant_id: item.product_variant_id || null,
+      quantity: Number(item.quantity || 1),
+      unit_price: Number(item.unit_price || 0),
+      gross_value: item.gross_value,
+      discount_value: item.discount_value,
+      net_value: item.net_value
+    })),
+    summary: {
+      ...totals,
+      couponDiscount: pricing.coupon_discount_value,
+      manualDiscount: pricing.manual_discount_value,
+      manualDiscountReason: pricing.manual_discount_reason,
+      adjustmentTotal: 0
+    }
+  };
+}
+
+// Cliente que a venda vai usar, SEM gravar nada: mesma regra de `upsertClient`
+// (id informado e existente; senão o cadastro com o mesmo WhatsApp). Cliente
+// novo ainda não tem id — e também não tem usos de cupom. Assim a cotação e a
+// criação validam o cupom contra os mesmos limites por cliente.
+async function resolveExistingClientId(db, body = {}, publicOrder = false) {
+  const requested = publicOrder ? null : Number(body.client_id) > 0 ? Number(body.client_id) : null;
+  if (requested && (await db.get("SELECT id FROM clients WHERE id=?", [requested]))) return requested;
+  const whatsapp = String(body.whatsapp || "").trim();
+  if (!whatsapp) return null;
+  return (await db.get("SELECT id FROM clients WHERE whatsapp=?", [whatsapp]))?.id || null;
+}
+
+// Venda registra só produto: atendimentos têm execução e financeiro próprios no
+// fluxo da agenda. Conferido na criação E na cotação, para a cotação nunca
+// aprovar um carrinho que a criação recusaria.
+function assertProductOnlyOrder(body, items) {
   const orderType = String(body.order_type || "produto");
-  // Atendimentos possuem execução e financeiro próprios no fluxo da agenda.
   if (orderType === "ordem_servico") {
     throw new SalesOrderValidationError("Ordem de serviço é gerada automaticamente pela agenda ao concluir um atendimento — não pode ser criada manualmente.");
   }
   if (orderType !== "produto" || items.some((item) => item.item_type !== "produto" || item.service_id)) {
     throw new SalesOrderValidationError("Vendas registram apenas produtos. Serviços são criados automaticamente ao finalizar um agendamento.");
   }
-  const source = String(body.source || "site");
-  const requestedOpenStatus = ["pendente", "aberta"].includes(String(body.status || ""));
-  let receivableMode;
-  let installmentCount;
-  let explicitInstallments;
-  try {
-    explicitInstallments = normalizeExplicitInstallments(body.installments, {
-      total,
-      defaultPaymentMethod: body.payment_method || "Pix"
-    });
-    receivableMode = normalizeReceivableMode(
-      body.receivable_mode,
-      explicitInstallments || publicOrder || requestedOpenStatus ? "pending" : "paid"
-    );
-    if (explicitInstallments && receivableMode !== "pending") {
-      throw new Error("Parcelas explícitas exigem recebimento pendente.");
-    }
-    installmentCount = explicitInstallments?.length || normalizeInstallmentCount(body.installment_count ?? 1);
-  } catch (error) {
-    throw new SalesOrderValidationError(error.message);
+  return orderType;
+}
+
+// Cotação oficial da venda interna (`POST /api/sales-orders/quote`): mesmo
+// cálculo da criação (`priceSalesOrder`), sem gravar nada.
+export async function quoteSalesOrder(db, body = {}, user) {
+  const manual = parseManualDiscount(body);
+  assertSalesPricingPermissions(user, body, manual);
+  const items = await prepareSalesOrderItems(db, body, false);
+  if (!items.length) throw new SalesOrderValidationError("Adicione ao menos um item à venda.");
+  assertProductOnlyOrder(body, items);
+  const pricing = await priceSalesOrder(db, {
+    items,
+    couponCode: body.coupon_code,
+    clientId: await resolveExistingClientId(db, body, false),
+    manualDiscount: manual
+  });
+  return salesPricingPayload(pricing);
+}
+
+export async function createSalesOrder(db, body, user, { req = null } = {}) {
+  const publicOrder = !user;
+  // Desconto manual é decisão da equipe, com autor e motivo: o pedido do
+  // catálogo público nunca pode trazê-lo (nem zerado).
+  if (publicOrder && hasManualDiscountFields(body)) {
+    throw new SalesOrderValidationError("Desconto manual não é permitido no pedido do catálogo.");
   }
-  const firstDueDate = explicitInstallments?.[0]?.dueDate || String(body.first_due_date || localTimestamp().slice(0, 10));
-  const paymentMethod = String(body.payment_method || explicitInstallments?.[0]?.paymentMethod || "Pix");
-  const installmentsJson = explicitInstallments ? JSON.stringify(serializeInstallments(explicitInstallments)) : null;
+  const manual = publicOrder ? parseManualDiscount({}) : parseManualDiscount(body);
+  if (!publicOrder) assertSalesPricingPermissions(user, body, manual);
+  if (publicOrder && !body.accepted_policies) throw new SalesOrderValidationError("É necessário aceitar as políticas.");
+  if (publicOrder && body.fulfillment_method === "delivery" && !String(body.delivery_address || "").trim()) {
+    throw new SalesOrderValidationError("Informe o endereço de entrega.");
+  }
+  const items = await prepareSalesOrderItems(db, body, publicOrder);
+  if (!items.length) return null;
+  const fullName = String(body.full_name || body.customer_name || body.name || "").trim();
+  const whatsapp = String(body.whatsapp || "").trim();
+  if (!fullName || !whatsapp) return null;
+
+  const orderType = assertProductOnlyOrder(body, items);
+  // O pedido público não escolhe origem nem vínculo com atendimento: com um
+  // `appointment_id` arbitrário a resposta pública devolvia procedimento e
+  // horário daquele atendimento (JOIN em SALES_ORDER_COLUMNS), e `source`
+  // livre deixava o pedido se esconder da lista de vendas.
+  const source = publicOrder ? "site" : String(body.source || "site");
+  const appointmentId = !publicOrder && body.appointment_id ? Number(body.appointment_id) : null;
+  const requestedOpenStatus = ["pendente", "aberta"].includes(String(body.status || ""));
   // Chamadas públicas nunca podem escolher um estado financeiro conclusivo.
   // Pagamento só é confirmado por um usuário autenticado (ou, futuramente,
   // pelo webhook autenticado do gateway).
@@ -258,9 +526,9 @@ export async function createSalesOrder(db, body, user) {
     if (existing) return getSalesOrder(db, existing.id);
   }
 
-  // Cliente, pedido, itens, baixa de estoque e pagamento são uma coisa só:
-  // metade disso gravado deixaria estoque baixado sem venda (ou venda sem
-  // pagamento) e o financeiro do dia não fecharia.
+  // Cliente, pedido, itens, cupom, baixa de estoque, pagamento e auditoria são
+  // uma coisa só: metade disso gravado deixaria estoque baixado sem venda (ou
+  // venda sem pagamento) e o financeiro do dia não fecharia.
   const orderId = await db.transaction(async (tx) => {
     // Estoque é conferido ANTES da primeira escrita.
     //
@@ -273,8 +541,47 @@ export async function createSalesOrder(db, body, user) {
     // ativas do catálogo — checar duas vezes só duplicaria a recusa.
     if (!publicOrder) await assertStockForSoldItems(tx, items);
 
+    // Preço, cupom e desconto são calculados AQUI, dentro da transação e antes
+    // de qualquer escrita: o cupom fica travado (`FOR UPDATE`) até o uso ser
+    // gravado logo abaixo, então duas vendas simultâneas não consomem juntas a
+    // última vaga dele. É a mesma função da cotação.
+    const pricing = await priceSalesOrder(tx, {
+      items,
+      couponCode: body.coupon_code,
+      clientId: await resolveExistingClientId(tx, body, publicOrder),
+      manualDiscount: manual,
+      lockCoupon: true
+    });
+    const total = pricing.total_value;
+    const couponQuote = pricing.coupon;
+
+    let receivableMode;
+    let installmentCount;
+    let explicitInstallments;
+    try {
+      explicitInstallments = normalizeExplicitInstallments(body.installments, {
+        total,
+        defaultPaymentMethod: body.payment_method || "Pix"
+      });
+      receivableMode = normalizeReceivableMode(
+        body.receivable_mode,
+        explicitInstallments || publicOrder || requestedOpenStatus ? "pending" : "paid"
+      );
+      if (explicitInstallments && receivableMode !== "pending") {
+        throw new Error("Parcelas explícitas exigem recebimento pendente.");
+      }
+      installmentCount = explicitInstallments?.length || normalizeInstallmentCount(body.installment_count ?? 1);
+    } catch (error) {
+      throw new SalesOrderValidationError(error.message);
+    }
+    const firstDueDate = explicitInstallments?.[0]?.dueDate || String(body.first_due_date || localTimestamp().slice(0, 10));
+    const paymentMethod = String(body.payment_method || explicitInstallments?.[0]?.paymentMethod || "Pix");
+    const installmentsJson = explicitInstallments ? JSON.stringify(serializeInstallments(explicitInstallments)) : null;
+
     const client = await upsertClient(tx, {
-      client_id: body.client_id,
+      // Pedido público não escolhe a ficha por id: com um `client_id` qualquer
+      // o pedido (e o CPF/e-mail digitados) iria parar na ficha de outra pessoa.
+      client_id: publicOrder ? null : body.client_id,
       full_name: fullName,
       whatsapp,
       instagram: body.instagram || "",
@@ -286,19 +593,21 @@ export async function createSalesOrder(db, body, user) {
       // cobrança online do pedido não sai.
       tax_id: body.cpf || body.customer_cpf || body.tax_id || "",
       email: body.email || body.customer_email || ""
-    });
+    }, { publicFlow: publicOrder });
     if (!client?.id) return null;
 
+    const manualCents = pricing.cents.manual;
     const result = await tx.run(
       `INSERT INTO sales_orders
       (client_id, appointment_id, order_type, source, status, payment_method, receivable_mode, installment_count,
        first_due_date, installments_json, subtotal_value, discount_value,
        total_value, coupon_id, coupon_code, coupon_snapshot, fulfillment_method, delivery_address,
-       customer_email, customer_cpf, accepted_policies_at, idempotency_key, notes, created_by_user_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+       customer_email, customer_cpf, accepted_policies_at, idempotency_key, notes, created_by_user_id,
+       manual_discount_value, manual_discount_reason, manual_discount_updated_by, manual_discount_updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${manualCents > 0 ? "now()" : "NULL"}) RETURNING id`,
       [
         client.id,
-        body.appointment_id ? Number(body.appointment_id) : null,
+        appointmentId,
         orderType,
         source,
         status,
@@ -307,8 +616,8 @@ export async function createSalesOrder(db, body, user) {
         installmentCount,
         firstDueDate,
         installmentsJson,
-        subtotal,
-        discount,
+        pricing.subtotal_value,
+        pricing.discount_value,
         total,
         couponQuote?.coupon?.id || null,
         couponQuote?.coupon?.code || null,
@@ -320,17 +629,39 @@ export async function createSalesOrder(db, body, user) {
         body.accepted_policies ? localTimestamp() : null,
         idempotencyKey || null,
         body.notes || "",
-        user?.id || null
+        user?.id || null,
+        pricing.manual_discount_value,
+        pricing.manual_discount_reason,
+        manualCents > 0 ? user?.id || null : null
       ]
     );
+    const orderId = result.returnedId;
+
+    // Uso do cupom gravado com a venda: é o que faz o limite de usos, o limite
+    // por cliente, o relatório de Cupons e o histórico do cliente enxergarem
+    // vendas (antes só o agendamento gravava uso).
+    if (couponQuote?.coupon?.id) {
+      await tx.run(
+        `INSERT INTO coupon_usages (coupon_id, client_id, sale_id, original_amount, discount_amount, final_amount)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          couponQuote.coupon.id,
+          client.id,
+          orderId,
+          pricing.subtotal_value,
+          pricing.coupon_discount_value,
+          fromCents(pricing.cents.subtotal - pricing.cents.coupon)
+        ]
+      );
+    }
 
     let stockTouched = false;
-    for (const item of items) {
+    for (const item of pricing.items) {
       const itemResult = await tx.run(
-        `INSERT INTO sales_order_items (sales_order_id, item_type, product_id, product_variant_id, service_id, item_name, quantity, unit_price, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+        `INSERT INTO sales_order_items (sales_order_id, item_type, product_id, product_variant_id, service_id, item_name, quantity, unit_price, discount_value, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [
-          result.returnedId,
+          orderId,
           item.item_type || "produto",
           item.product_id ? Number(item.product_id) : null,
           item.product_variant_id ? Number(item.product_variant_id) : null,
@@ -338,6 +669,7 @@ export async function createSalesOrder(db, body, user) {
           item.item_name,
           Number(item.quantity || 1),
           Number(item.unit_price || 0),
+          item.discount_value,
           item.notes || ""
         ]
       );
@@ -351,16 +683,16 @@ export async function createSalesOrder(db, body, user) {
           `INSERT INTO inventory_reservations
            (reservation_key, sales_order_id, client_id, jewelry_id, jewelry_variant_id, quantity, expires_at)
            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP + INTERVAL '30 minutes')`,
-          [`order-${result.returnedId}-${item.product_id}-${item.product_variant_id || 0}`, result.returnedId, client.id, item.product_id, item.product_variant_id || null, item.quantity]
+          [`order-${orderId}-${item.product_id}-${item.product_variant_id || 0}`, orderId, client.id, item.product_id, item.product_variant_id || null, item.quantity]
         );
       }
       if (status === "concluida" || status === "pago") {
-        stockTouched = Boolean(await deductSoldProductStock(tx, { ...item, id: itemResult.returnedId }, result.returnedId)) || stockTouched;
+        stockTouched = Boolean(await deductSoldProductStock(tx, { ...item, id: itemResult.returnedId }, orderId)) || stockTouched;
       }
     }
 
     if (stockTouched) {
-      await tx.run("UPDATE sales_orders SET stock_deducted=1 WHERE id=?", [result.returnedId]);
+      await tx.run("UPDATE sales_orders SET stock_deducted=1 WHERE id=?", [orderId]);
     }
 
     if (total > 0 && (status === "concluida" || status === "pago") && receivableMode === "paid") {
@@ -372,20 +704,20 @@ export async function createSalesOrder(db, body, user) {
           (appointment_id, client_id, sales_order_id, amount, payment_type, method, status, paid_at, idempotency_key)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
         [
-          body.appointment_id ? Number(body.appointment_id) : null,
+          appointmentId,
           client.id,
-          result.returnedId,
+          orderId,
           total,
           orderType,
           paymentMethod,
           "pago",
           localTimestamp(),
-          `sales-order:${result.returnedId}:paid`
+          `sales-order:${orderId}:paid`
         ]
       );
     } else if (total > 0 && (status === "concluida" || status === "pago") && receivableMode === "pending") {
       await syncSalesOrderReceivables(tx, {
-        salesOrderId: result.returnedId,
+        salesOrderId: orderId,
         amount: total,
         installmentCount,
         firstDueDate,
@@ -393,7 +725,55 @@ export async function createSalesOrder(db, body, user) {
         installments: explicitInstallments
       });
     }
-    return result.returnedId;
+
+    // Auditoria na MESMA transação da venda: ou os dois existem, ou nenhum.
+    const totalsSnapshot = {
+      subtotal_value: pricing.subtotal_value,
+      coupon_code: couponQuote?.coupon?.code || null,
+      coupon_discount_value: pricing.coupon_discount_value,
+      manual_discount_value: pricing.manual_discount_value,
+      discount_value: pricing.discount_value,
+      total_value: total
+    };
+    await recordAudit(tx, {
+      req,
+      actor: user || null,
+      module: "sales",
+      action: publicOrder ? "public_create" : "create",
+      entityType: "sales_order",
+      entityId: orderId,
+      reason: publicOrder ? "Pedido criado pelo catálogo público" : "Venda interna criada",
+      after: { id: orderId, client_id: client.id, status, ...totalsSnapshot }
+    });
+    if (manualCents > 0) {
+      await recordAudit(tx, {
+        req,
+        actor: user,
+        module: "sales",
+        action: "discount",
+        entityType: "sales_order",
+        entityId: orderId,
+        reason: pricing.manual_discount_reason || "Desconto manual na venda",
+        before: { manual_discount_value: 0, manual_discount_reason: null },
+        after: {
+          manual_discount_value: pricing.manual_discount_value,
+          manual_discount_percent: pricing.manual_discount_percent,
+          manual_discount_reason: pricing.manual_discount_reason,
+          ...totalsSnapshot
+        },
+        metadata: {
+          items: pricing.items.map((item) => ({
+            item_name: item.item_name,
+            quantity: Number(item.quantity || 1),
+            gross_value: item.gross_value,
+            discount_value: item.discount_value,
+            net_value: item.net_value
+          }))
+        },
+        severity: "warning"
+      });
+    }
+    return orderId;
   });
 
   if (!orderId) return null;
@@ -435,10 +815,23 @@ async function attachSalesOrderItems(db, orders) {
   }, {});
   return orders.map((order) => {
     const { installments_json: installmentsJson, ...orderData } = order;
+    const orderItems = grouped[order.id] || [];
+    // Bruto, desconto e líquido por item. Venda antiga sem rateio gravado
+    // recebe o rateio proporcional calculado na hora (o mesmo da devolução);
+    // `discount_value` do item passa a refletir esse rateio na resposta.
+    const discounts = salesItemDiscountCents(order.discount_value, orderItems);
     return {
       ...orderData,
       installments: parseStoredInstallments(installmentsJson),
-      items: grouped[order.id] || []
+      items: orderItems.map((item, index) => {
+        const grossCents = salesItemGrossCents(item);
+        return {
+          ...item,
+          gross_value: fromCents(grossCents),
+          discount_value: fromCents(discounts[index]),
+          net_value: fromCents(grossCents - discounts[index])
+        };
+      })
     };
   });
 }

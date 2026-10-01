@@ -24,6 +24,10 @@ const router = Router();
 // no catch dá para separá-la de um erro real de banco (que continua virando 500).
 class ReservationConflict extends Error {}
 
+// Cupom que deixou de valer entre a cotação e a gravação (ex.: outra pessoa
+// usou a última vaga): aborta a transação e volta como 400 para o cliente.
+class CouponConflict extends Error {}
+
 function publicBookingKey(req, body) {
   const provided = String(req.get("Idempotency-Key") || body.idempotency_key || body.public_booking_token || "").trim();
   if (provided) return provided.slice(0, 180);
@@ -132,8 +136,10 @@ router.get("/api/booking/readiness", withDb(async (_req, res, db) => {
 router.get("/api/booking/config", withFeature("online_booking", async (req, res, db) => {
   console.info("[booking-config] tenant recebido", req.tenant);
   const services = await db.all("SELECT * FROM services WHERE is_active=true AND active_online_booking = 1 ORDER BY name");
+  // Rota PÚBLICA: só colunas que a página de agendamento exibe. `p.*`
+  // entregava a qualquer visitante comissão, e-mail, telefone e WhatsApp da equipe.
   const professionalsRows = await db.all(`
-    SELECT DISTINCT p.*
+    SELECT DISTINCT p.id, p.name, p.specialty, p.photo_url, p.calendar_color
     FROM professionals p
     JOIN professional_services ps ON ps.professional_id = p.id
     JOIN services s ON s.id = ps.service_id
@@ -148,7 +154,11 @@ router.get("/api/booking/config", withFeature("online_booking", async (req, res,
     WHERE p.active = 1 AND s.is_active=true AND s.active_online_booking = 1
   `);
   const professionals = professionalsRows.map((professional) => ({
-    ...professional,
+    id: professional.id,
+    name: professional.name,
+    specialty: professional.specialty,
+    photo_url: professional.photo_url,
+    calendar_color: professional.calendar_color,
     service_ids: links
       .filter((link) => Number(link.professional_id) === Number(professional.id))
       .map((link) => link.service_id)
@@ -265,6 +275,12 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
       ? Math.min(promotionQuote.final_amount, couponQuote.final_amount)
       : couponQuote.final_amount;
   }
+  // Bruto e desconto explícitos: o agendamento público passa a gravar as mesmas
+  // colunas da criação interna (subtotal, serviço, joia, desconto e cupom). O
+  // desconto de cupom/promoção é a diferença entre o bruto e o total cobrado —
+  // a mesma inferência que o recálculo central fazia nas linhas antigas.
+  const grossValue = serviceValue + jewelryValue;
+  const bookingDiscount = Math.max(0, Number((grossValue - totalValue).toFixed(2)));
   const depositValue = Math.min(bookingItems.filter((item) => item.item_type === "service").reduce((sum, item) => sum + Number(item.deposit_value || 0), 0), totalValue);
   const remainingValue = Math.max(totalValue - depositValue, 0);
   const serviceRulesSnapshot = bookingItems.filter((item) => item.item_type === "service").map((item) => item.service_rules_snapshot);
@@ -300,7 +316,7 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
     // mesmo documento gravado de três jeitos conforme a máscara do formulário.
     tax_id: taxId.value,
     email: body.email || ""
-  });
+  }, { publicFlow: true });
   const referencePhoto = req.files?.reference_photo?.[0] ? `/api/private-files/${req.files.reference_photo[0].filename}` : "";
   const paymentProof = req.files?.payment_proof?.[0] ? `/api/private-files/${req.files.payment_proof[0].filename}` : "";
   const durationMinutes = bookingItems.filter((item) => item.item_type === "service").reduce((sum, item) => sum + Number(item.duration_minutes || 0) * Number(item.quantity || 1), 0) || Number(service.duration_minutes || 40);
@@ -321,10 +337,24 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
   let outcome;
   try {
     outcome = await db.transaction(async (tx) => {
+      // Revalida o cupom com a linha travada e o cliente já resolvido: a
+      // contagem de usos e a gravação do uso ficam serializadas, e o limite
+      // por cliente passa a valer também no agendamento público.
+      let lockedCoupon = null;
+      if (couponQuote) {
+        const locked = await validateCoupon(tx, body.coupon_code, { amount: promotionQuote.final_amount, client_id: client.id, items: bookingItems }, { forUpdate: true });
+        if (!locked.valid) throw new CouponConflict(locked.error || "Cupom inválido ou não aplicável.");
+        // `discount_amount` do snapshot é o desconto de cupom/promoção que o
+        // recálculo central lê; o valor só do cupom fica guardado à parte.
+        lockedCoupon = {
+          coupon: locked.coupon,
+          snapshot: { ...locked, coupon_discount_amount: locked.discount_amount, original_amount: grossValue, discount_amount: bookingDiscount, final_amount: totalValue }
+        };
+      }
       const result = await tx.run(
         `INSERT INTO appointments
-          (client_id, professional_id, service_id, jewelry_id, jewelry_variant_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, duration_minutes, total_value, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, status, source, public_booking_key, notes, reference_photo_url, payment_proof_url, service_rules_snapshot, operational_requirements_snapshot)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+          (client_id, professional_id, service_id, jewelry_id, jewelry_variant_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, duration_minutes, total_value, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, status, source, public_booking_key, notes, reference_photo_url, payment_proof_url, service_rules_snapshot, operational_requirements_snapshot, subtotal_value, service_value, jewelry_value, discount_value, coupon_id, coupon_code, coupon_snapshot)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [
           client.id,
           professionalId,
@@ -350,9 +380,26 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
           referencePhoto,
           paymentProof,
           JSON.stringify(serviceRulesSnapshot),
-          JSON.stringify(operationalRequirementsSnapshot)
+          JSON.stringify(operationalRequirementsSnapshot),
+          grossValue,
+          serviceValue,
+          jewelryValue,
+          bookingDiscount,
+          lockedCoupon?.coupon?.id || null,
+          lockedCoupon?.coupon?.code || null,
+          lockedCoupon ? JSON.stringify(lockedCoupon.snapshot) : null
         ]
       );
+      if (lockedCoupon?.coupon?.id) {
+        // O uso guarda só o desconto do CUPOM (como a venda faz): o relatório
+        // de Cupons soma esta coluna, e somar a promoção junto inflaria o
+        // "desconto concedido" pelo cupom.
+        await tx.run(
+          `INSERT INTO coupon_usages (coupon_id, client_id, appointment_id, original_amount, discount_amount, final_amount)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [lockedCoupon.coupon.id, client.id, result.returnedId, grossValue, lockedCoupon.snapshot.coupon_discount_amount, totalValue]
+        );
+      }
       if (depositValue > 0) {
         await tx.run(
           "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, 'sinal', 'Pix', 'pendente', ?)",
@@ -404,6 +451,7 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
     });
   } catch (error) {
     if (error instanceof ReservationConflict) return res.status(409).json({ error: error.message });
+    if (error instanceof CouponConflict) return res.status(400).json({ valid: false, error: error.message });
     throw error;
   }
   const { appointmentId } = outcome;
@@ -437,7 +485,7 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
   const appointment = await listAppointments(db, "WHERE a.id = ?", [appointmentId]).then((rows) => rows[0]);
   const proofMessage = [
     `Olá, ${professional.name}. Tudo bem?`,
-    `Sou ${client.full_name || body.full_name} e acabei de solicitar meu agendamento na Aura Clinic.`,
+    `Sou ${String(body.full_name).trim()} e acabei de solicitar meu agendamento na Aura Clinic.`,
     `Serviço: ${service.name}`,
     jewelry ? `Joia: ${jewelry.name}${variant ? ` - ${variant.variation_name}` : ""}` : "",
     `Data: ${date} às ${time}`,
@@ -456,8 +504,14 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
     storeName: await getStoreName(db, req.tenant?.name)
   });
   await scheduleAppointmentClientAutomations(db, appointmentId);
+  // A ficha casada pelo WhatsApp pode ser de outra pessoa: a resposta (e o
+  // link de WhatsApp acima) devolve só o que o solicitante digitou, nunca o
+  // nome/Instagram cadastrados na clínica.
   res.status(201).json({
     ...appointment,
+    full_name: String(body.full_name).trim(),
+    whatsapp: String(body.whatsapp).trim(),
+    instagram: String(body.instagram || "").trim() || null,
     service_value: serviceValue,
     jewelry_value: jewelryValue,
     discount_value: Number((serviceValue + jewelryValue - totalValue).toFixed(2)),

@@ -178,12 +178,15 @@ router.put("/api/services/:id/consumables", putInventoryRecipe);
 
 router.delete("/api/services/:id", withFeature("procedures", async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
+  // appointment_items.service_id não tem FK: sem contar os itens, um serviço
+  // usado só em itens de atendimento era apagado e deixava o item órfão.
   const linked = await db.get(`
     SELECT
       (SELECT COUNT(*) FROM appointments WHERE service_id = ?) +
       (SELECT COUNT(*) FROM procedures WHERE service_id = ?) +
-      (SELECT COUNT(*) FROM sales_order_items WHERE service_id = ?) AS total
-  `, [req.params.id, req.params.id, req.params.id]);
+      (SELECT COUNT(*) FROM sales_order_items WHERE service_id = ?) +
+      (SELECT COUNT(*) FROM appointment_items WHERE service_id = ?) AS total
+  `, [req.params.id, req.params.id, req.params.id, req.params.id]);
   await db.run("DELETE FROM professional_services WHERE service_id = ?", [req.params.id]);
   if (Number(linked?.total || 0) === 0) {
     await db.run("DELETE FROM services WHERE id = ?", [req.params.id]);

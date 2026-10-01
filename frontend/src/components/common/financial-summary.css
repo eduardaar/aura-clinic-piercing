@@ -1,0 +1,154 @@
+/* Resumo financeiro (FinancialSummary, components/common/Ui.jsx).
+ *
+ * Fica fora de camada, como os demais CSS de components/common, porque as
+ * regras antigas de .financial-* em styles.css também estão fora de camada
+ * (após o fim de @layer legado) — dentro de uma camada este arquivo perderia
+ * para elas. Para não disputar seletores, a equação e o saldo usam classes
+ * próprias (.financial-flow, .financial-balance); o contêiner, o cabeçalho, a
+ * composição e o aviso de cupom seguem com o estilo de styles.css.
+ *
+ * Grade fluida: os cards quebram em quantas colunas couberem (5 ou 6 no modal
+ * largo, 3 no médio, 2 no celular, 1 em telas muito estreitas). Os operadores
+ * (−, ±, =) ficam dentro de cada card para a leitura não se perder na quebra.
+ */
+
+.financial-flow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr));
+  gap: .7rem;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.financial-flow__card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: .55rem;
+  padding: .9rem 1rem;
+  border: 1px solid rgba(190, 139, 76, .25);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .78);
+  box-shadow: 0 7px 24px rgba(87, 61, 32, .035);
+}
+
+.financial-flow__label {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  color: #645d56;
+  font-size: .85rem;
+  line-height: 1.25;
+}
+
+.financial-flow__label > svg { color: #c68b45; flex: none; }
+
+.financial-flow__operator {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 999px;
+  background: rgba(190, 139, 76, .14);
+  color: #504a45;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.financial-flow__value {
+  font-size: clamp(1.05rem, 1.5vw, 1.4rem);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.financial-flow__card.is-discount .financial-flow__value { color: #c22f45; }
+.financial-flow__card.is-increase .financial-flow__value { color: #9a5b12; }
+.financial-flow__card.is-paid .financial-flow__value { color: #197b49; }
+.financial-flow__card.is-featured { border-color: rgba(190, 128, 55, .62); background: var(--white, #fff); }
+
+/* Card de desconto editável: os campos R$ e % ficam lado a lado quando cabem
+ * e empilham quando a trilha é estreita (sem ocupar duas trilhas, que criaria
+ * coluna implícita e rolagem horizontal em contêiner estreito). */
+.financial-flow__card.is-editable { gap: .45rem; }
+
+.financial-flow__breakdown {
+  display: grid;
+  gap: .2rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: #6b625a;
+  font-size: .8rem;
+}
+
+.financial-flow__breakdown li { display: flex; justify-content: space-between; gap: .5rem; }
+.financial-flow__breakdown li span:last-child { color: #c22f45; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.financial-flow__reason { color: #6b625a; font-size: .8rem; overflow-wrap: anywhere; }
+
+.financial-discount-field { display: grid; gap: .4rem; }
+
+.financial-discount-field__inputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 5.5rem), 1fr));
+  gap: .5rem;
+}
+
+.financial-discount-field__inputs .ui-input-field { min-width: 0; }
+.financial-discount-field__inputs .ui-input-label { font-size: .78rem; color: #645d56; }
+.financial-discount-field__inputs .ui-input { width: 100%; min-width: 0; }
+.financial-discount-field__inputs .ui-input[aria-invalid="true"] { border-color: var(--danger, #cf5e5e); box-shadow: 0 0 0 3px rgba(207, 94, 94, .14); }
+
+.financial-discount-field__error { color: var(--danger, #cf5e5e); font-size: .8rem; font-weight: 600; }
+
+.financial-discount-reason { max-width: 42rem; }
+
+.financial-balance {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+  gap: 0;
+  border: 1px solid rgba(190, 139, 76, .22);
+  border-radius: 14px;
+  padding: .6rem;
+}
+
+.financial-balance > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: .3rem .6rem;
+  padding: .45rem .8rem;
+}
+
+.financial-balance svg { color: #bd813b; }
+.financial-balance span { color: #5f5954; }
+.financial-balance strong,
+.financial-balance small { grid-column: 2; }
+.financial-balance strong { display: flex; align-items: center; gap: .3rem; font-size: 1.1rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.financial-balance small { color: #c22f45; }
+
+.financial-balance__final {
+  border-radius: 10px;
+  background: rgba(190, 139, 76, .08);
+}
+
+.financial-balance__final strong { font-size: 1.2rem; }
+.financial-balance__final.is-overpaid { background: rgba(214, 150, 40, .12); }
+.financial-balance__final.is-overpaid small { color: #8a5a10; }
+
+@media (max-width: 620px) {
+  .financial-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; }
+  .financial-flow__card { padding: .8rem; }
+  .financial-flow__card.is-editable { grid-column: 1 / -1; }
+  .financial-discount-field__inputs { grid-template-columns: minmax(0, 1fr) minmax(0, 7rem); }
+  .financial-balance { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 360px) {
+  .financial-flow { grid-template-columns: 1fr; }
+}

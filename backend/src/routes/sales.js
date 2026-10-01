@@ -1,7 +1,7 @@
 // Rotas de vendas (pedidos).
 import { Router } from "express";
 import { withFeature } from "../middleware/withDb.js";
-import { createSalesOrder, listSalesOrders, countSalesOrders, getSalesOrder, SalesOrderValidationError, deductSoldProductStock } from "../services/sales.js";
+import { createSalesOrder, listSalesOrders, countSalesOrders, getSalesOrder, quoteSalesOrder, SalesOrderValidationError, deductSoldProductStock } from "../services/sales.js";
 import { localTimestamp } from "../services/utils.js";
 import { parsePaging, pageResponse } from "../services/pagination.js";
 import { tenantClient } from "../services/asaas/credentials.js";
@@ -121,24 +121,38 @@ router.post("/api/sales-orders/:id/apply-client-credit", withFeature("basic_cata
   }
 }));
 
+// Cotação OFICIAL da venda interna: a mesma função de preço da criação
+// (`priceSalesOrder`), sem gravar nada. A tela de vendas mostra este resultado
+// (bruto, cupom, desconto manual, líquido e rateio por item) em vez de somar
+// por conta própria — e promoções não entram, porque a venda nunca as aplicou.
+// Permissões de cupom/desconto são as mesmas da criação.
+router.post("/api/sales-orders/quote", withFeature("basic_catalog", async (req, res, db) => {
+  if (!authorizePermission(req, res, P.SALES_CREATE)) return;
+  try {
+    res.json(await quoteSalesOrder(db, req.body || {}, req.user));
+  } catch (error) {
+    if (error instanceof SalesOrderValidationError) return res.status(error.status).json({ error: error.message });
+    throw error;
+  }
+}));
+
 router.post("/api/sales-orders", withFeature("basic_catalog", async (req, res, db) => {
   if (!authorizePermission(req, res, P.SALES_CREATE)) return;
   if (req.body?.appointment_id) return res.status(409).json({ error: "Atendimentos são criados e finalizados pela Agenda, não por Vendas." });
   if (configuresReceivableSchedule(req.body) && !(await requireFeature(req, res, "basic_finance"))) return;
   let order;
   try {
-    order = await createSalesOrder(db, req.body || {}, req.user);
+    // A auditoria da criação (e a do desconto manual, ação `discount`) é
+    // gravada pelo serviço DENTRO da transação da venda.
+    order = await createSalesOrder(db, req.body || {}, req.user, { req });
   } catch (error) {
-    // Recusa de regra de negócio (estoque insuficiente, cupom inválido) é 400
-    // com o motivo em texto: sem isto virava 500 e a tela só dizia "erro".
+    // Recusa de regra de negócio (estoque insuficiente, cupom inválido,
+    // desconto acima do bruto) é 400 com o motivo em texto; falta de permissão
+    // para desconto/cupom é 403. Sem isto virava 500 e a tela só dizia "erro".
     if (error instanceof SalesOrderValidationError) return res.status(error.status).json({ error: error.message });
     throw error;
   }
   if (!order) return res.status(400).json({ error: "Não foi possível criar a venda." });
-  await recordAudit(db, {
-    req, module: "sales", action: "create", entityType: "sales_order", entityId: order.id,
-    reason: "Venda interna criada", after: { id: order.id, client_id: order.client_id, status: order.status, total_value: order.total_value }
-  });
   res.status(201).json(order);
 }));
 
@@ -146,16 +160,15 @@ router.post("/api/sales-orders/public", withFeature("basic_catalog", async (req,
   if (configuresReceivableSchedule(req.body) && !(await requireFeature(req, res, "basic_finance"))) return;
   let order;
   try {
-    order = await createSalesOrder(db, req.body || {}, null);
+    // `manual_discount_*` no corpo público é recusado com 400 pelo serviço; a
+    // auditoria `public_create` também é gravada lá, dentro da transação (e
+    // não se repete quando a chave de idempotência devolve o mesmo pedido).
+    order = await createSalesOrder(db, req.body || {}, null, { req });
   } catch (error) {
     if (error instanceof SalesOrderValidationError) return res.status(error.status).json({ error: error.message });
     throw error;
   }
   if (!order) return res.status(400).json({ error: "Não foi possível criar a venda." });
-  await recordAudit(db, {
-    req, actor: null, module: "sales", action: "public_create", entityType: "sales_order", entityId: order.id,
-    reason: "Pedido criado pelo catálogo público", after: { id: order.id, client_id: order.client_id, status: order.status, total_value: order.total_value }
-  });
 
   // Cobrança online do pedido, quando a clínica tem gateway configurado.
   //
@@ -186,8 +199,16 @@ router.post("/api/sales-orders/public", withFeature("basic_catalog", async (req,
     }
   }
 
+  // O pedido público cai na ficha já cadastrada com o mesmo WhatsApp. A
+  // resposta não pode devolver o nome/Instagram DESSA ficha: bastaria saber o
+  // telefone de alguém para descobrir como ele está cadastrado na clínica. O
+  // comprador recebe de volta só o que ele mesmo digitou.
+  const submitted = req.body || {};
   res.status(201).json({
     ...order,
+    full_name: String(submitted.full_name || submitted.customer_name || submitted.name || "").trim(),
+    whatsapp: String(submitted.whatsapp || "").trim(),
+    instagram: String(submitted.instagram || "").trim() || null,
     payment_intent: publicPaymentIntent(paymentIntent),
     payment_url: paymentIntent?.invoice_url || null,
     online_payment_available: Boolean(paymentIntent?.online_payment_available)

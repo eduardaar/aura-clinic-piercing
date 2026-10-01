@@ -9,6 +9,8 @@ export const P = Object.freeze({
   ANAMNESIS_VIEW: "anamnesis.view", ANAMNESIS_EDIT: "anamnesis.edit", ANAMNESIS_REVIEW: "anamnesis.review",
   CLINICAL_FILES_VIEW: "clinical_files.view", CLINICAL_FILES_EDIT: "clinical_files.edit",
   SALES_VIEW: "sales.view", SALES_CREATE: "sales.create", SALES_EDIT_OPEN: "sales.edit_open", SALES_EDIT_CLOSED: "sales.edit_closed", SALES_CANCEL: "sales.cancel",
+  // Desconto manual na venda (valor/percentual com motivo): conferido na criação e na cotação.
+  SALES_APPLY_DISCOUNT: "sales.apply_discount",
   INVENTORY_VIEW: "inventory.view", INVENTORY_SELL: "inventory.sell", INVENTORY_ADJUST: "inventory.adjust", INVENTORY_CREATE: "inventory.create",
   INVENTORY_EDIT: "inventory.edit", INVENTORY_VIEW_COST: "inventory.view_cost", INVENTORY_DELETE: "inventory.delete",
   CASH_VIEW: "cash.view", CASH_OPEN: "cash.open", CASH_RECEIVE_PAYMENT: "cash.receive_payment", CASH_CLOSE: "cash.close", CASH_WITHDRAW: "cash.withdraw", CASH_ADJUST: "cash.adjust",

@@ -690,4 +690,63 @@ test("duas confirmações simultâneas do mesmo sinal não duplicam o pagamento 
   const agenda = await api(`/appointments?client_id=${solicitacao.json.client_id}`);
   const agendamento = agenda.json.find((item) => Number(item.id) === Number(solicitacao.json.id));
   assert.equal(agendamento.status, "confirmado");
+  // O sinal confirmado aparece no próprio agendamento e o restante a receber
+  // é recalculado na mesma transação (120 − 40 de sinal).
+  assert.equal(agendamento.deposit_status, "pago");
+  assert.ok(agendamento.deposit_paid_at, "data do sinal pago gravada");
+  assert.equal(Number(agendamento.remaining_value), 80);
+});
+
+test("agendamento público grava bruto/desconto/cupom e não sobrescreve a ficha casada pelo WhatsApp", async () => {
+  const whatsapp = "11900003131";
+  const { couponId, clientId } = await withTenantSchema(ctx.tenant.id, async (db) => {
+    const coupon = await db.run(
+      "INSERT INTO coupons (code, internal_name, discount_type, discount_value, usage_limit, status) VALUES ('QATXPUB', 'Público TX', 'fixed', 10, 5, 'active') RETURNING id"
+    );
+    const client = await db.run(
+      "INSERT INTO clients (full_name, whatsapp, instagram, tax_id, email) VALUES ('Ficha Original TX', ?, '@original', '11144477735', 'original@tx.test') RETURNING id",
+      [whatsapp]
+    );
+    return { couponId: coupon.returnedId, clientId: client.returnedId };
+  });
+  const dia = nextDateForWeekday(2, 8);
+  const slots = await api(`/booking/slots?service_id=${ctx.serviceId}&professional_id=${ctx.professionalId}&date=${dia}`);
+  assert.ok(slots.json.slots?.length, "a clínica de teste precisa ter horários livres");
+  const solicitacao = await req(`/booking/requests?t=${ctx.slug}`, {
+    method: "POST",
+    body: {
+      service_id: ctx.serviceId, professional_id: ctx.professionalId, appointment_date: dia,
+      appointment_time: slots.json.slots[0].time, full_name: "Outra Pessoa TX", whatsapp,
+      cpf: "52998224725", email: "intruso@tx.test", coupon_code: "qatxpub",
+      idempotency_key: `tx-cupom-${ctx.slug}`,
+    },
+  });
+  assert.equal(solicitacao.status, 201, JSON.stringify(solicitacao.json));
+  // Resposta pública: só o que o solicitante digitou, nunca a ficha da clínica.
+  assert.equal(solicitacao.json.full_name, "Outra Pessoa TX");
+  assert.equal(solicitacao.json.instagram, null);
+  assert.doesNotMatch(solicitacao.json.professional_whatsapp_url || "", /Ficha%20Original/);
+
+  await withTenantSchema(ctx.tenant.id, async (db) => {
+    const ficha = await db.get("SELECT full_name, instagram, tax_id, email FROM clients WHERE id = ?", [clientId]);
+    assert.deepEqual(ficha, { full_name: "Ficha Original TX", instagram: "@original", tax_id: "11144477735", email: "original@tx.test" });
+    const row = await db.get("SELECT * FROM appointments WHERE id = ?", [solicitacao.json.id]);
+    assert.equal(Number(row.client_id), Number(clientId));
+    assert.equal(Number(row.subtotal_value), 120);
+    assert.equal(Number(row.service_value), 120);
+    assert.equal(Number(row.jewelry_value), 0);
+    assert.equal(Number(row.discount_value), 10);
+    assert.equal(Number(row.total_value), 110);
+    assert.equal(Number(row.coupon_id), Number(couponId));
+    assert.equal(row.coupon_code, "QATXPUB");
+    const usage = await db.get("SELECT * FROM coupon_usages WHERE appointment_id = ?", [row.id]);
+    assert.equal(Number(usage.coupon_id), Number(couponId));
+    assert.equal(Number(usage.discount_amount), 10);
+  });
+  // O recálculo central parte das colunas explícitas e chega ao mesmo líquido.
+  const preview = await api("/appointments/financial-preview", { method: "POST", body: { appointment_id: solicitacao.json.id } });
+  assert.equal(preview.status, 200, JSON.stringify(preview.json));
+  assert.equal(preview.json.grossTotal, 120);
+  assert.equal(preview.json.discountTotal, 10);
+  assert.equal(preview.json.netTotal, 110);
 });

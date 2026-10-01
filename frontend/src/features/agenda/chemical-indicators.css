@@ -1,0 +1,279 @@
+/* Indicador químico por procedimento (painel do atendimento e histórico). */
+
+.chem-panel .section-inline-header strong {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.4rem;
+}
+
+.chem-muted {
+  color: var(--muted);
+  margin: 0;
+}
+
+.chem-notice {
+  color: var(--ok);
+  font-weight: 600;
+  margin: 0;
+}
+
+.chem-error {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.chem-procedures {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.chem-procedure {
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0.85rem;
+}
+
+.chem-procedure > header {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.chem-procedure > header > div {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.chem-procedure > header span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.chem-procedure .empty-state {
+  margin: 0;
+}
+
+.chem-indicator-list,
+.chem-history-dates,
+.chem-history-procedures,
+.chem-history-indicators {
+  display: grid;
+  gap: 0.6rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.chem-indicator {
+  background: var(--paper);
+  border-radius: 0.6rem;
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.75rem;
+}
+
+.chem-indicator.is-voided,
+.chem-history-indicator.is-voided {
+  opacity: 0.72;
+}
+
+.chem-indicator.is-voided .chem-facts dd {
+  text-decoration: line-through;
+}
+
+.chem-indicator-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.chem-indicator-head small {
+  color: var(--muted);
+  flex: 1 1 12rem;
+}
+
+.chem-facts,
+.chem-history-chain {
+  display: grid;
+  gap: 0.5rem 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  margin: 0;
+}
+
+.chem-facts dt,
+.chem-history-chain dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.chem-facts dd,
+.chem-history-chain dd {
+  margin: 0.1rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.chem-notes,
+.chem-void-info {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.chem-void-info {
+  color: var(--danger);
+  font-size: 0.9rem;
+}
+
+.chem-photo-button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 0.6rem;
+  justify-self: start;
+  min-height: 44px;
+  padding: 0.3rem 0.6rem 0.3rem 0.3rem;
+}
+
+.chem-photo-button span {
+  align-items: center;
+  display: inline-flex;
+  font-size: 0.9rem;
+  gap: 0.3rem;
+}
+
+.chem-photo-thumb {
+  border-radius: 0.4rem;
+  height: 56px;
+  object-fit: cover;
+  width: 56px;
+}
+
+.chem-photo-full img {
+  border-radius: 0.6rem;
+  display: block;
+  height: auto;
+  max-height: 70vh;
+  margin: 0 auto;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.chem-file-field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.chem-file-field > span {
+  font-weight: 600;
+}
+
+.chem-file-field input[type="file"] {
+  max-width: 100%;
+}
+
+.chem-photo-preview {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.chem-photo-preview img {
+  border-radius: 0.5rem;
+  height: 72px;
+  object-fit: cover;
+  width: 72px;
+}
+
+.chem-photo-preview span {
+  overflow-wrap: anywhere;
+}
+
+/* Histórico: Cliente → Data → Procedimento → Joia → Indicador → Foto → Lote */
+
+.chem-history {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.chem-history-client {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+}
+
+.chem-history-client span {
+  color: var(--muted);
+}
+
+.chem-history-day {
+  border-left: 3px solid var(--gold);
+  display: grid;
+  gap: 0.5rem;
+  padding-left: 0.75rem;
+}
+
+.chem-history-date {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.chem-history-procedure {
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.75rem;
+}
+
+.chem-history-indicator {
+  background: var(--paper);
+  border-radius: 0.5rem;
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.6rem;
+}
+
+.chem-history.is-compact .chem-history-procedure {
+  padding: 0.6rem;
+}
+
+.chem-history.is-compact .chem-photo-thumb {
+  height: 44px;
+  width: 44px;
+}
+
+@media (max-width: 620px) {
+  .chem-procedure > header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .chem-procedure > header .secondary-button {
+    width: 100%;
+  }
+
+  .chem-facts,
+  .chem-history-chain {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .chem-history-day {
+    padding-left: 0.5rem;
+  }
+}

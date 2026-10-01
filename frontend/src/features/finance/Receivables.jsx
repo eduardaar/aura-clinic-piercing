@@ -6,10 +6,11 @@ import { DataView } from "../../components/common/DataView";
 import { CollapsibleIndicators } from "../../components/common/CollapsibleIndicators";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { SelectWithCreate } from "../../components/common/SelectWithCreate";
-import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
+import { apiFetch, readStoredSession, useApiInvalidate, useFetch } from "../../lib/api";
 import { asArray, asNumber, asObject } from "../../lib/utils";
 import { FINANCE_STATUS_LABELS, financeLabel } from "../../lib/financeLabels";
 import { currency } from "../shared/helpers";
+import { commissionAccess } from "./CommissionStatement";
 
 function formatDateWithYear(date) {
   const value = String(date || "").slice(0, 10);
@@ -143,6 +144,9 @@ export function AccountsReceivable({ onNavigate }) {
           actions={[
             { label: "Visão financeira", onClick: () => onNavigate?.("receivables", { target: "visao" }) },
             { label: "Caixa", onClick: () => onNavigate?.("receivables", { target: "caixa" }) },
+            // Contas a receber é a tela padrão do Financeiro: sem este atalho, o
+            // extrato de comissões só aparecia em Visão financeira e Caixa.
+            ...(commissionAccess(readStoredSession()?.user || {}).canView ? [{ label: "Comissões", onClick: () => onNavigate?.("receivables", { target: "comissoes" }) }] : []),
             { label: "Contas a pagar", onClick: () => onNavigate?.("payables") },
             { label: "Categorias", icon: Tags, onClick: () => onNavigate?.("finance-categories") },
             { label: "Centros de custo", onClick: () => onNavigate?.("cost-centers") }

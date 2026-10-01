@@ -1,5 +1,7 @@
 import { localTimestamp } from "./utils.js";
-import { getAppointmentFinancialSnapshot } from "./finance.js";
+import { FinancialRuleError, recalculateAppointmentFinancials } from "./finance.js";
+import { SETTLED_RECEIVABLE_MESSAGE } from "./appointmentValueAdjustments.js";
+import { hasSettledServiceExecutionReceivable, refreshServiceExecutionFinancials } from "./serviceExecutions.js";
 
 function requestedAmount(value, maximum) {
   const amount = value === undefined || value === null || value === "" ? maximum : Number(value);
@@ -33,11 +35,19 @@ async function availableCreditAmount(tx, clientId) {
 
 export async function applyCreditToAppointment(db, appointmentId, body = {}, userId = null) {
   return db.transaction(async (tx) => {
-    const appointment = await tx.get("SELECT * FROM appointments WHERE id=? FOR UPDATE", [appointmentId]);
-    if (!appointment) throw new Error("Agendamento não encontrado.");
-    if (appointment.status === "cancelado") throw new Error("Não é possível aplicar crédito em agendamento cancelado.");
-    const snapshot = await getAppointmentFinancialSnapshot(tx, appointment.id);
-    const outstanding = Number(snapshot?.outstandingBalance || 0);
+    // O recálculo central trava o agendamento e devolve o saldo pela mesma
+    // conta usada em todo o resto (desconto, ajustes e pagamentos confirmados).
+    const current = await recalculateAppointmentFinancials(tx, appointmentId);
+    if (!current) throw new Error("Agendamento não encontrado.");
+    const appointment = current.appointment;
+    if (["cancelado", "nao_compareceu"].includes(appointment.status)) throw new Error("Não é possível aplicar crédito em agendamento cancelado.");
+    // Atendimento fechado com parcela já baixada: o crédito reduziria o saldo
+    // do agendamento sem reduzir o título do Financeiro (cliente cobrado duas
+    // vezes pelo mesmo valor). A correção vai pelo Financeiro (SPEC 9, item 9).
+    if (appointment.status === "atendido" && await hasSettledServiceExecutionReceivable(tx, appointment.id)) {
+      throw new FinancialRuleError(SETTLED_RECEIVABLE_MESSAGE, 409);
+    }
+    const outstanding = Number(current.snapshot.outstandingBalance || 0);
     const amount = body.amount === undefined || body.amount === null || body.amount === ""
       ? Number(Math.min(outstanding, await availableCreditAmount(tx, appointment.client_id)).toFixed(2))
       : requestedAmount(body.amount, outstanding);
@@ -47,9 +57,11 @@ export async function applyCreditToAppointment(db, appointmentId, body = {}, use
       (appointment_id, client_id, amount, payment_type, method, status, paid_at, created_by_user_id, idempotency_key, notes)
       VALUES (?, ?, ?, 'credito_cliente', 'Crédito do cliente', 'credito_aplicado', ?, ?, ?, ?)` ,
       [appointment.id, appointment.client_id, amount, localTimestamp(), userId, `appointment:${appointment.id}:credit:${Date.now()}`, "Crédito de cliente aplicado; não representa nova entrada de caixa."]);
-    const after = await getAppointmentFinancialSnapshot(tx, appointment.id);
-    await tx.run("UPDATE appointments SET remaining_value=?, updated_at=? WHERE id=?", [after.outstandingBalance, localTimestamp(), appointment.id]);
-    return { appointment_id: appointment.id, applied_amount: amount, remaining_value: after.outstandingBalance };
+    const after = await recalculateAppointmentFinancials(tx, appointment.id);
+    // Atendimento já fechado (sem parcela baixada, checado acima): o crédito
+    // reduz o recebível da execução pelo mesmo caminho dos ajustes.
+    if (appointment.status === "atendido") await refreshServiceExecutionFinancials(tx, appointment.id);
+    return { appointment_id: appointment.id, applied_amount: amount, remaining_value: after.appointment.remaining_value };
   });
 }
 

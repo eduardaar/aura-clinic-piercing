@@ -58,3 +58,11 @@ test("menu e páginas públicas preservam agrupamento e correspondência", () =>
   assert.equal(pageForAppPath("/app/ajuda/manual"), "manual");
   assert.equal(publicPageForPath("/app/dashboard"), null);
 });
+
+test("extrato de comissões tem rota própria, aberta a quem vê comissão sem o Financeiro", () => {
+  assert.equal(pageForAppPath("/app/financeiro/comissoes"), "commissions");
+  assert.equal(appPathForPage("commissions"), "/app/financeiro/comissoes");
+  assert.equal(PAGE_FEATURE.commissions, "commissions");
+  assert.equal(appPageById("receivables").menuFallback, "commissions");
+  assert.equal(appPageById("commissions").menu, false);
+});

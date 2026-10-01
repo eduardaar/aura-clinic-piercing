@@ -15,10 +15,23 @@ import {
   appointmentTotalsFromItems,
   replaceAppointmentItems,
   appointmentItemsFromBody,
-  registerCompletionPayments
+  registerCompletionPayments,
+  supersedePendingDeposit,
+  completionCeiling,
+  previewAppointmentFinancials,
+  resolveAppointmentCoupon
 } from "../services/appointments.js";
-import { validateCoupon } from "../services/discounts.js";
-import { calculateOperationTotals, getAppointmentFinancialSnapshot } from "../services/finance.js";
+import {
+  DISCOUNT_ABOVE_GROSS_MESSAGE,
+  FinancialRuleError,
+  NEGATIVE_NET_MESSAGE,
+  appointmentFinancialInput,
+  calculateOperationTotals,
+  getAppointmentFinancialSnapshot,
+  parseMoneyInputCents,
+  recalculateAppointmentFinancials,
+  storedCouponDiscount
+} from "../services/finance.js";
 import { ensurePostCareFollowups } from "../services/postcare.js";
 import { awardLoyaltyForAppointment } from "../services/loyalty.js";
 import { validateBody } from "../middleware/validate.js";
@@ -39,7 +52,9 @@ import {
   scheduleClientAutomationEvent
 } from "../services/communications.js";
 import { recordAudit } from "../services/audit.js";
-import { cancelServiceExecution, ensureServiceExecution } from "../services/serviceExecutions.js";
+import { cancelServiceExecution, ensureServiceExecution, hasSettledServiceExecutionReceivable } from "../services/serviceExecutions.js";
+import { refreshAppointmentCommissions, reverseAppointmentCommissions } from "../services/commissions.js";
+import { SETTLED_RECEIVABLE_MESSAGE } from "../services/appointmentValueAdjustments.js";
 import { assertCompletionServiceRules, parseServiceRulesSnapshot, validateAppointmentTimingRules, validateClientServiceRules } from "../services/serviceRules.js";
 import { mergeOperationalRequirements } from "../services/operationalRequirements.js";
 
@@ -69,6 +84,133 @@ function validIsoDate(value) {
 
 function validTime(value) {
   return /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(String(value || ""));
+}
+
+const DISCOUNT_PERMISSION_MESSAGE = "Você não tem permissão para aplicar desconto.";
+const COUPON_PERMISSION_MESSAGE = "Você não tem permissão para aplicar cupom.";
+const DEPOSIT_STATUSES = new Set(["pendente", "pago", "confirmado", "parcial", "isento", "cancelado", "estornado", "retido", "creditado", "nao_aplicavel"]);
+
+const cents = (value) => Math.round(Number(value || 0) * 100);
+
+function couponCode(value) {
+  return String(value ?? "").trim().toUpperCase();
+}
+
+// Motivo do desconto manual: opcional, texto curto. `undefined` = não enviado.
+function discountReason(value) {
+  if (value === undefined) return undefined;
+  const text = String(value ?? "").trim();
+  if (text.length > 500) throw new FinancialRuleError("O motivo do desconto deve ter no máximo 500 caracteres.");
+  return text || null;
+}
+
+// Valor do sinal: mesmo parser estrito do desconto. Sem isso, texto virava
+// NaN (o NUMERIC do Postgres aceita 'NaN') e valor negativo era gravado, e as
+// duas coisas contaminavam o saldo. "50,00" vira 50.
+function normalizeDepositInput(body) {
+  const depositCents = parseMoneyInputCents(body.deposit_value, "O valor do sinal");
+  if (depositCents !== undefined) body.deposit_value = depositCents / 100;
+}
+
+// Regra de negócio do dinheiro (FinancialRuleError) vira resposta com o status
+// certo; qualquer outro erro sobe para o withDb (500 + error_logs).
+function financialError(res, error) {
+  if (!(error instanceof FinancialRuleError)) return false;
+  res.status(error.status).json({ error: error.message });
+  return true;
+}
+
+function jsonParam(value) {
+  if (value === null || value === undefined) return null;
+  return typeof value === "string" ? value : JSON.stringify(value);
+}
+
+// Sincroniza o pagamento do sinal com os campos deposit_* do agendamento
+// (SPEC 9, item 2). Antes, todo salvamento apagava e recriava a linha: o id
+// mudava (lançamento órfão no ledger) e um sinal já confirmado voltava a
+// "pendente". Agora só age quando valor/status/forma realmente mudam, e faz
+// UPDATE no lugar. Sinal recebido nunca volta a pendente por efeito colateral.
+async function syncDepositPayment(tx, appointmentId, userId) {
+  const current = await tx.get("SELECT * FROM appointments WHERE id = ? FOR UPDATE", [appointmentId]);
+  const expected = Math.max(0, Number(current.deposit_value || 0));
+  const requestedStatus = expected > 0 ? String(current.deposit_status || "pendente").toLowerCase() : "nao_aplicavel";
+  if (!DEPOSIT_STATUSES.has(requestedStatus)) throw new FinancialRuleError("Status do sinal inválido.");
+  const method = current.deposit_payment_method || "Pix";
+  const rows = await tx.all(
+    "SELECT * FROM payments WHERE appointment_id = ? AND payment_type = 'sinal' AND status NOT IN ('cancelado', 'refunded') ORDER BY id FOR UPDATE",
+    [appointmentId]
+  );
+  const isConfirmed = (status) => ["pago", "confirmado"].includes(String(status || "").toLowerCase());
+  const primary = rows.find((row) => isConfirmed(row.status)) || rows[0] || null;
+  // Linhas extras de sinal (herança da recriação antiga) que ainda estão
+  // pendentes são canceladas; recebidas ficam intactas.
+  for (const extra of rows.filter((row) => row !== primary && !isConfirmed(row.status))) {
+    await tx.run("UPDATE payments SET status = 'cancelado' WHERE id = ?", [extra.id]);
+  }
+  const wantsPayment = expected > 0 && !["isento", "cancelado", "estornado", "nao_aplicavel"].includes(requestedStatus);
+  let depositStatus = requestedStatus;
+  let paidAt = null;
+  if (primary && isConfirmed(primary.status)) {
+    if (!wantsPayment) {
+      throw new FinancialRuleError("O sinal já foi recebido e não pode ser removido por aqui. Use o cancelamento ou o Financeiro para devolvê-lo.", 409);
+    }
+    if (cents(primary.amount) !== cents(expected) || String(primary.method || "") !== method) {
+      await tx.run("UPDATE payments SET amount = ?, method = ? WHERE id = ?", [expected, method, primary.id]);
+    }
+    depositStatus = isConfirmed(requestedStatus) ? requestedStatus : "pago";
+    paidAt = current.deposit_paid_at || primary.paid_at || localTimestamp();
+  } else if (wantsPayment) {
+    const confirmed = isConfirmed(requestedStatus);
+    const paymentStatus = confirmed ? "pago" : "pendente";
+    paidAt = confirmed ? (current.deposit_paid_at || localTimestamp()) : null;
+    if (primary) {
+      const changed = cents(primary.amount) !== cents(expected) || primary.status !== paymentStatus || String(primary.method || "") !== method;
+      if (changed) {
+        await tx.run("UPDATE payments SET amount = ?, method = ?, status = ?, paid_at = ? WHERE id = ?",
+          [expected, method, paymentStatus, paidAt || primary.paid_at || localTimestamp(), primary.id]);
+      }
+    } else {
+      await tx.run(
+        "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at, created_by_user_id) VALUES (?, ?, ?, 'sinal', ?, ?, ?, ?)",
+        [current.id, current.client_id, expected, method, paymentStatus, paidAt || localTimestamp(), userId || null]
+      );
+    }
+  } else if (primary) {
+    // Sinal pendente que deixou de ser esperado: cancelado, não apagado.
+    await tx.run("UPDATE payments SET status = 'cancelado' WHERE id = ?", [primary.id]);
+  }
+  await tx.run("UPDATE appointments SET deposit_status = ?, deposit_paid_at = ?, updated_at = ? WHERE id = ?",
+    [depositStatus, paidAt, localTimestamp(), appointmentId]);
+}
+
+async function syncCouponUsage(tx, appointment, coupon, totals) {
+  if (coupon.changed) await tx.run("DELETE FROM coupon_usages WHERE appointment_id = ?", [appointment.id]);
+  if (!coupon.couponId) return;
+  await tx.run(
+    `INSERT INTO coupon_usages (coupon_id, client_id, appointment_id, original_amount, discount_amount, final_amount)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT (coupon_id, appointment_id) WHERE appointment_id IS NOT NULL
+     DO UPDATE SET original_amount = EXCLUDED.original_amount, discount_amount = EXCLUDED.discount_amount, final_amount = EXCLUDED.final_amount`,
+    [coupon.couponId, appointment.client_id, appointment.id, totals.grossTotal, totals.couponDiscount, totals.netTotal]
+  );
+}
+
+// Toda alteração do desconto manual fica registrada nas duas trilhas: a
+// central (audit_events) e a financeira do próprio agendamento.
+async function recordManualDiscountChange(tx, req, before, after) {
+  const pick = (row) => ({
+    manual_discount_value: Number(row.manual_discount_value || 0),
+    manual_discount_reason: row.manual_discount_reason || null,
+    discount_value: Number(row.discount_value || 0),
+    total_value: Number(row.total_value || 0)
+  });
+  const reason = after.manual_discount_reason || "Desconto manual alterado";
+  await tx.run("INSERT INTO appointment_financial_audit (appointment_id, user_id, action, reason, before_snapshot, after_snapshot) VALUES (?, ?, 'manual_discount', ?, ?, ?)",
+    [after.id, req.user?.id || null, reason, JSON.stringify(before), JSON.stringify(after)]);
+  await recordAudit(tx, {
+    req, module: "appointments", action: "discount", entityType: "appointment", entityId: after.id,
+    reason, before: pick(before), after: pick(after), severity: "warning"
+  });
 }
 
 async function validateAppointmentItemsStock(db, items = []) {
@@ -153,6 +295,23 @@ router.post("/api/appointments", withFeature("agenda", async (req, res, db) => {
   // consulta de negócio. Vale só para a agenda interna: o agendamento público
   // (routes/booking.js) não passa por aqui, e é de propósito — o 409 chegaria
   // ao cliente final da clínica, que não tem como resolver.
+  // Desconto manual e cupom são decisões com permissão própria (SPEC 2.3).
+  let manualDiscountCents = 0;
+  let manualDiscountReason = null;
+  try {
+    manualDiscountCents = parseMoneyInputCents(req.body.manual_discount_value, "O desconto") ?? 0;
+    manualDiscountReason = discountReason(req.body.manual_discount_reason) ?? null;
+    normalizeDepositInput(req.body);
+  } catch (error) {
+    if (financialError(res, error)) return;
+    throw error;
+  }
+  if (manualDiscountCents > 0 && !hasPermission(req.user, P.APPOINTMENTS_APPLY_DISCOUNT)) {
+    return res.status(403).json({ error: DISCOUNT_PERMISSION_MESSAGE });
+  }
+  if (couponCode(req.body.coupon_code) && !hasPermission(req.user, P.APPOINTMENTS_APPLY_COUPON)) {
+    return res.status(403).json({ error: COUPON_PERMISSION_MESSAGE });
+  }
   if (!(await requireWithinLimit(req, res, "appointments_month", db))) return;
   const body = normalizeAppointment(req.body);
   // Bloqueia horários já ocupados para o mesmo profissional.
@@ -184,24 +343,27 @@ router.post("/api/appointments", withFeature("agenda", async (req, res, db) => {
   const variantId = optionalId(firstItem.jewelry_variant_id || body.jewelry_variant_id);
   const depositValue = Number(body.deposit_value ?? service?.deposit_value ?? 0);
   const totals = appointmentTotalsFromItems(items, { total_value: body.total_value, deposit_value: depositValue });
-  const couponQuote = body.coupon_code ? await validateCoupon(db, body.coupon_code, { amount: totals.totalValue, client_id: client.id, items: items.map((item) => ({ product_id: item.jewelry_id, category: item.category, unit_price: item.jewelry_unit_price, quantity: item.quantity })) }) : null;
-  if (couponQuote && !couponQuote.valid) return res.status(400).json({ error: couponQuote.error });
-  const discountValue = Number(couponQuote?.discount_amount || 0);
+  // Itens sem preço caem no total informado (legado): ele vira o bruto do serviço.
+  const serviceGross = totals.procedureValue + totals.jewelryValue > 0 ? totals.procedureValue : totals.totalValue;
+  const coupon = await resolveAppointmentCoupon(db, { body, items, itemsChanged: true, gross: totals.totalValue, clientId: client.id });
+  if (coupon.error) return res.status(400).json({ error: coupon.error });
   // Compatibilidade com integrações legadas: se enviaram apenas deposit_value,
   // historicamente isso significava sinal já recebido. As telas atuais sempre
   // enviam deposit_status e conseguem distinguir expectativa de recebimento.
   const depositStatus = depositValue > 0 ? String(body.deposit_status || "pago").toLowerCase() : "nao_aplicavel";
   const depositReceived = ["pago", "confirmado"].includes(depositStatus);
   const operationTotals = calculateOperationTotals({
-    serviceSubtotal: totals.procedureValue,
+    serviceSubtotal: serviceGross,
     productSubtotal: totals.jewelryValue,
-    discountTotal: discountValue,
+    couponDiscount: coupon.couponDiscount,
+    manualDiscount: manualDiscountCents / 100,
     payments: [{
       status: depositReceived ? "pago" : "pendente",
       payment_type: "sinal",
       amount: depositValue
     }]
   });
+  if (operationTotals.discountExceedsGross) return res.status(400).json({ error: DISCOUNT_ABOVE_GROSS_MESSAGE });
   const totalValue = operationTotals.netTotal;
   const remainingValue = operationTotals.outstandingBalance;
   const duration = totals.durationMinutes || Number(service?.duration_minutes || body.duration_minutes || 40);
@@ -215,24 +377,29 @@ router.post("/api/appointments", withFeature("agenda", async (req, res, db) => {
       timeToMinutes(scheduled.appointment_time), timeToMinutes(scheduled.end_time || addMinutesToTime(scheduled.appointment_time, duration)) + scheduledInterval);
   });
   if (overlapsInterval) return res.status(409).json({ error: "O horário conflita com outro atendimento ou com seu intervalo obrigatório." });
+  const hasManualDiscount = manualDiscountCents > 0 || Boolean(manualDiscountReason);
   // Agendamento + itens + sinal formam um registro só: agendamento sem itens
   // (ou sem o pagamento do sinal) já entra torto na agenda e no financeiro.
   const appointmentId = await db.transaction(async (tx) => {
     const result = await tx.run(
       `INSERT INTO appointments
-      (client_id, professional_id, service_id, jewelry_id, jewelry_variant_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, total_value, service_value, jewelry_value, subtotal_value, discount_value, coupon_id, coupon_code, coupon_snapshot, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, deposit_status, deposit_paid_at, financial_notes, status, notes, reference_photo_url, duration_minutes, service_rules_snapshot, operational_requirements_snapshot)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-      [client.id, body.professional_id, serviceId || firstItem.service_id || null, jewelryId, variantId, body.procedure || firstItem.procedure_name || service?.name || "Atendimento", body.description, body.piercing_region || firstItem.region || "Atendimento", body.appointment_date, body.appointment_time, endTime, totalValue, totals.procedureValue, totals.jewelryValue, totals.totalValue, discountValue, couponQuote?.coupon?.id || null, couponQuote?.coupon?.code || null, couponQuote ? JSON.stringify(couponQuote) : null, depositValue, remainingValue, body.deposit_payment_method, body.remaining_payment_method, depositStatus, depositReceived ? (body.deposit_paid_at || localTimestamp()) : null, body.financial_notes || "", body.status || "pendente", body.notes, photoUrl, duration, JSON.stringify(serviceRulesSnapshot), JSON.stringify(operationalRequirementsSnapshot)]
+      (client_id, professional_id, service_id, jewelry_id, jewelry_variant_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, total_value, service_value, jewelry_value, subtotal_value, discount_value, coupon_id, coupon_code, coupon_snapshot, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, deposit_status, deposit_paid_at, financial_notes, status, notes, reference_photo_url, duration_minutes, service_rules_snapshot, operational_requirements_snapshot, manual_discount_value, manual_discount_reason, manual_discount_updated_by, manual_discount_updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      [client.id, body.professional_id, serviceId || firstItem.service_id || null, jewelryId, variantId, body.procedure || firstItem.procedure_name || service?.name || "Atendimento", body.description, body.piercing_region || firstItem.region || "Atendimento", body.appointment_date, body.appointment_time, endTime, totalValue, operationTotals.serviceSubtotal, operationTotals.productSubtotal, operationTotals.grossTotal, operationTotals.discountTotal, coupon.couponId, coupon.couponCode, jsonParam(coupon.couponSnapshot), depositValue, remainingValue, body.deposit_payment_method, body.remaining_payment_method, depositStatus, depositReceived ? (body.deposit_paid_at || localTimestamp()) : null, body.financial_notes || "", body.status || "pendente", body.notes, photoUrl, duration, JSON.stringify(serviceRulesSnapshot), JSON.stringify(operationalRequirementsSnapshot), manualDiscountCents / 100, manualDiscountReason, hasManualDiscount ? req.user?.id || null : null, hasManualDiscount ? new Date() : null]
     );
     await replaceAppointmentItems(tx, result.returnedId, items);
-    if (couponQuote?.coupon?.id) {
-      await tx.run("INSERT INTO coupon_usages (coupon_id, client_id, appointment_id, original_amount, discount_amount, final_amount) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (coupon_id, appointment_id) WHERE appointment_id IS NOT NULL DO NOTHING", [couponQuote.coupon.id, client.id, result.returnedId, totals.totalValue, discountValue, totalValue]);
-    }
     if (depositValue > 0) {
       await tx.run(
         "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, 'sinal', ?, ?, ?)",
         [result.returnedId, client.id, depositValue, body.deposit_payment_method || "Pix", depositReceived ? "pago" : "pendente", depositReceived ? (body.deposit_paid_at || localTimestamp()) : localTimestamp()]
       );
+    }
+    // Mesma conta usada em toda alteração posterior: o que a criação grava é
+    // exatamente o que o snapshot financeiro devolve.
+    const recalculated = await recalculateAppointmentFinancials(tx, result.returnedId);
+    await syncCouponUsage(tx, recalculated.appointment, coupon, recalculated.totals);
+    if (hasManualDiscount) {
+      await recordManualDiscountChange(tx, req, { ...recalculated.appointment, manual_discount_value: 0, manual_discount_reason: null, discount_value: recalculated.totals.couponDiscount, total_value: (cents(recalculated.totals.grossTotal) - cents(recalculated.totals.couponDiscount)) / 100 }, recalculated.appointment);
     }
     await recordAudit(tx, {
       req, module: "appointments", action: "create", entityType: "appointment", entityId: result.returnedId,
@@ -240,7 +407,9 @@ router.post("/api/appointments", withFeature("agenda", async (req, res, db) => {
       after: {
         id: result.returnedId, client_id: client.id, professional_id: body.professional_id,
         service_id: serviceId || firstItem.service_id || null, appointment_date: body.appointment_date,
-        appointment_time: body.appointment_time, status: body.status || "pendente", total_value: totalValue,
+        appointment_time: body.appointment_time, status: body.status || "pendente",
+        subtotal_value: recalculated.totals.grossTotal, discount_value: recalculated.totals.discountTotal,
+        manual_discount_value: recalculated.totals.manualDiscount, total_value: recalculated.totals.netTotal,
         deposit_value: depositValue
       }
     });
@@ -254,14 +423,57 @@ router.post("/api/appointments", withFeature("agenda", async (req, res, db) => {
   res.status(201).json(created);
 }));
 
+// Prévia oficial do dinheiro do agendamento (SPEC 9, item 7): mesma
+// normalização de itens, mesmo cupom e mesma conta da gravação, sem gravar.
+// A agenda usa esta rota (com debounce) no lugar de /catalog/price-quote, que
+// soma promoções que o agendamento interno não aplica.
+router.post("/api/appointments/financial-preview", withFeature("agenda", async (req, res, db) => {
+  if (!hasPermission(req.user, P.APPOINTMENTS_CREATE) && !authorizePermission(req, res, P.APPOINTMENTS_EDIT)) return;
+  const body = req.body || {};
+  const appointmentId = optionalId(body.appointment_id);
+  const appointment = appointmentId ? await db.get("SELECT * FROM appointments WHERE id = ?", [appointmentId]) : null;
+  if (appointmentId && !appointment) return res.status(404).json({ error: "Agendamento não encontrado." });
+  let manualDiscountCents;
+  try {
+    manualDiscountCents = parseMoneyInputCents(body.manual_discount_value, "O desconto");
+  } catch (error) {
+    if (financialError(res, error)) return;
+    throw error;
+  }
+  const preview = await previewAppointmentFinancials(db, {
+    appointment,
+    body,
+    manualDiscount: manualDiscountCents === undefined ? undefined : manualDiscountCents / 100
+  });
+  const { discountExceedsGross, negativeNet, ...totals } = preview.totals;
+  res.json({
+    ...totals,
+    manualDiscountReason: body.manual_discount_reason ?? appointment?.manual_discount_reason ?? null,
+    adjustments: preview.adjustments,
+    coupon: {
+      code: preview.coupon.couponCode || (couponCode(body.coupon_code) || null),
+      valid: !preview.coupon.error && Boolean(preview.coupon.couponId),
+      error: preview.coupon.error,
+      discount: totals.couponDiscount
+    },
+    validation: {
+      discount: discountExceedsGross ? DISCOUNT_ABOVE_GROSS_MESSAGE : null,
+      coupon: preview.coupon.error,
+      net: negativeNet ? NEGATIVE_NET_MESSAGE : null
+    }
+  });
+}));
+
 router.post("/api/appointments/:id/complete", withFeature("agenda", async (req, res, db) => {
   if (!authorizePermission(req, res, P.APPOINTMENTS_FINALIZE)) return;
   const before = await db.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
   if (!before) return res.status(404).json({ error: "Agendamento não encontrado." });
   if (before.status === "atendido" && !hasPermission(req.user, P.FINANCE_EDIT)) return res.status(403).json({ error: "Você não tem permissão para alterar um fechamento concluído." });
   if (before.status === "atendido" && !String(req.body.reason || "").trim()) return res.status(400).json({ error: "Informe o motivo da alteração financeira." });
+  // Mesmo teto do serviço de fechamento: líquido ajustado menos sinal
+  // confirmado e crédito aplicado.
   const financialSnapshot = await getAppointmentFinancialSnapshot(db, req.params.id);
-  const maximumAtCompletion = Math.max(0, Number(financialSnapshot?.netTotal || before.total_value || 0) - Number(financialSnapshot?.depositPaid || 0));
+  const maximumAtCompletion = completionCeiling(financialSnapshot, before.total_value);
   const paidAtCompletion = (Array.isArray(req.body?.payments) ? req.body.payments : [])
     .filter((item) => ["pago", "confirmado"].includes(String(item?.status || "pago")))
     .reduce((sum, item) => sum + Math.max(0, Number(item?.amount || 0)), 0);
@@ -277,7 +489,13 @@ router.post("/api/appointments/:id/complete", withFeature("agenda", async (req, 
       await tx.run("INSERT INTO appointment_financial_audit (appointment_id, user_id, action, reason, before_snapshot, after_snapshot) VALUES (?, ?, ?, ?, ?, ?)", [req.params.id, req.user?.id, before.status === "atendido" ? "reopen_financial_close" : "financial_close", req.body.reason || null, JSON.stringify(before), JSON.stringify(after)]);
       await deductJewelryStock(tx, req.params.id);
       await consumeAppointmentRecipe(tx, req.params.id, req.user?.id || null);
+      // A execução também vincula ajustes e indicadores químicos do atendimento.
       await ensureServiceExecution(tx, req.params.id, req.user, req.body);
+      await refreshAppointmentCommissions(tx, req.params.id, {
+        userId: req.user?.id || null,
+        // Motivo vazio não pode virar "Refechamento: " sem conteúdo na trilha.
+        reason: before.status === "atendido" ? `Refechamento: ${String(req.body.reason || "").trim() || "sem motivo informado"}` : "Atendimento finalizado"
+      });
       await ensurePostCareFollowups(tx, req.params.id);
       await awardLoyaltyForAppointment(tx, req.params.id);
       const completed = await tx.get("SELECT id, client_id, professional_id, service_id, appointment_date, appointment_time, status, total_value, remaining_value FROM appointments WHERE id=?", [req.params.id]);
@@ -325,9 +543,15 @@ router.post("/api/appointments/:id/apply-client-credit", withFeature("agenda", a
   try {
     res.json(await applyCreditToAppointment(db, req.params.id, req.body || {}, req.user?.id || null));
   } catch (error) {
+    if (financialError(res, error)) return;
     res.status(/não encontrado/i.test(error.message) ? 404 : 400).json({ error: error.message || "Não foi possível aplicar o crédito." });
   }
 }));
+
+// Valor do desconto manual a gravar (em reais), a partir dos centavos pedidos.
+function manualDiscountValue(requestedCents, appointment) {
+  return requestedCents === undefined ? Number(appointment.manual_discount_value || 0) : requestedCents / 100;
+}
 
 router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db) => {
   if (!authorizePermission(req, res, req.body.status === "cancelado" ? P.APPOINTMENTS_CANCEL : P.APPOINTMENTS_EDIT)) return;
@@ -346,16 +570,51 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
     return res.status(400).json({ error: "Status do agendamento inválido." });
   }
   const appointment = await db.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
-  const financialFields = ["total_value", "discount_value", "deposit_value", "remaining_value", "deposit_payment_method", "remaining_payment_method", "deposit_status", "deposit_paid_at", "coupon_code", "coupon_id"];
-  const leavingFinalized = appointment?.status === "atendido" && req.body.status && req.body.status !== "atendido";
-  const finalizedFinancialChange = appointment?.status === "atendido" && (
-    leavingFinalized || financialFields.some((field) => req.body[field] !== undefined) || appointmentItemsFromBody(req.body).length > 0
+  if (!appointment) return res.status(404).json({ error: "Agendamento não encontrado." });
+  // Marcar como atendido pelo PATCH faz a mesma finalização do /complete
+  // (baixa de estoque, execução, comissão, fidelidade): exige a mesma
+  // permissão de finalizar, além de editar. Um atendimento já fechado que
+  // reenvia o mesmo status é correção: segue a regra de finance.edit abaixo.
+  if (req.body.status === "atendido" && appointment.status !== "atendido" &&
+      !authorizePermission(req, res, P.APPOINTMENTS_FINALIZE)) return;
+
+  // Desconto manual: valida o formato e exige permissão só quando o valor (ou
+  // o motivo) realmente muda — a tela reenvia o formulário inteiro.
+  let manualDiscountCents;
+  let manualReason;
+  try {
+    manualDiscountCents = parseMoneyInputCents(req.body.manual_discount_value, "O desconto");
+    manualReason = discountReason(req.body.manual_discount_reason);
+    normalizeDepositInput(req.body);
+  } catch (error) {
+    if (financialError(res, error)) return;
+    throw error;
+  }
+  const discountValueChanged = manualDiscountCents !== undefined && manualDiscountCents !== cents(appointment.manual_discount_value);
+  const discountReasonChanged = manualReason !== undefined && (manualReason || "") !== (appointment.manual_discount_reason || "");
+  const discountChanged = discountValueChanged || discountReasonChanged;
+  if (discountChanged && !hasPermission(req.user, P.APPOINTMENTS_APPLY_DISCOUNT)) {
+    return res.status(403).json({ error: DISCOUNT_PERMISSION_MESSAGE });
+  }
+  const couponChanged = req.body.coupon_code !== undefined && req.body.coupon_code !== null &&
+    couponCode(req.body.coupon_code) !== couponCode(appointment.coupon_code);
+  if (couponChanged && !hasPermission(req.user, P.APPOINTMENTS_APPLY_COUPON)) {
+    return res.status(403).json({ error: COUPON_PERMISSION_MESSAGE });
+  }
+  // Trocar o profissional de um atendimento fechado muda a comissão: vale
+  // como alteração financeira (SPEC 9, item 5).
+  const professionalChanged = req.body.professional_id !== undefined && req.body.professional_id !== null && req.body.professional_id !== "" &&
+    Number(req.body.professional_id) !== Number(appointment.professional_id);
+
+  const financialFields = ["total_value", "discount_value", "deposit_value", "remaining_value", "deposit_payment_method", "remaining_payment_method", "deposit_status", "deposit_paid_at", "coupon_code", "coupon_id", "manual_discount_value", "manual_discount_reason"];
+  const leavingFinalized = appointment.status === "atendido" && req.body.status && req.body.status !== "atendido";
+  const finalizedFinancialChange = appointment.status === "atendido" && (
+    leavingFinalized || professionalChanged || financialFields.some((field) => req.body[field] !== undefined) || appointmentItemsFromBody(req.body).length > 0
   );
   if (finalizedFinancialChange) {
     if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
     if (!String(req.body.reason || "").trim()) return res.status(400).json({ error: "Informe o motivo da alteração financeira." });
   }
-  if (!appointment) return res.status(404).json({ error: "Agendamento não encontrado." });
   const scheduleChanged = (req.body.appointment_date !== undefined && req.body.appointment_date !== appointment.appointment_date)
     || (req.body.appointment_time !== undefined && req.body.appointment_time !== appointment.appointment_time);
   if (scheduleChanged && !String(req.body.reason || "").trim()) {
@@ -366,13 +625,11 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
   if ((configuresReceivableSchedule(req.body) || willRecalculateReceivable) &&
       !(await requireFeature(req, res, "basic_finance"))) return;
 
-  if (req.body.status === "cancelado") {
-    req.body.remaining_value = 0;
-  }
-
+  // Campos de dinheiro calculados NUNCA vêm do corpo: total, desconto total e
+  // restante saem do recálculo central dentro da transação.
+  const derived = {};
   const hasSubmittedItems = appointmentItemsFromBody(req.body).length > 0;
   let pendingItems = null;
-  let operationTotals = null;
   if (hasSubmittedItems) {
     const serviceId = optionalId(req.body.service_id ?? appointment.service_id);
     const service = serviceId ? await db.get("SELECT * FROM services WHERE id = ?", [serviceId]) : null;
@@ -380,55 +637,19 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
     const stockError = await validateAppointmentItemsStock(db, items);
     if (stockError) return res.status(409).json({ error: stockError });
     const firstItem = items[0] || {};
-    const totals = appointmentTotalsFromItems(items, {
-      total_value: req.body.total_value ?? appointment.total_value,
-      deposit_value: req.body.deposit_value ?? appointment.deposit_value
-    });
-    const couponCode = String(req.body.coupon_code ?? appointment.coupon_code ?? "").trim();
-    let couponQuote = null;
-    if (couponCode) {
-      couponQuote = await validateCoupon(db, couponCode, {
-        amount: totals.totalValue,
-        client_id: appointment.client_id,
-        items: items.map((item) => ({
-          service_id: item.service_id,
-          product_id: item.jewelry_id,
-          category: item.category,
-          unit_price: Number(item.jewelry_unit_price || 0),
-          quantity: Number(item.quantity || 1)
-        }))
-      });
-      if (!couponQuote?.valid) return res.status(400).json({ error: couponQuote?.error || "Cupom inválido ou não aplicável." });
+    const totals = appointmentTotalsFromItems(items, { total_value: req.body.total_value ?? appointment.total_value });
+    derived.service_id = serviceId || firstItem.service_id || null;
+    derived.jewelry_id = optionalId(firstItem.jewelry_id);
+    derived.jewelry_variant_id = optionalId(firstItem.jewelry_variant_id);
+    derived.procedure = req.body.procedure || firstItem.procedure_name || service?.name || appointment.procedure;
+    derived.piercing_region = req.body.piercing_region || firstItem.region || appointment.piercing_region;
+    derived.end_time = req.body.appointment_time ? addMinutesToTime(req.body.appointment_time, totals.durationMinutes || Number(service?.duration_minutes || appointment.duration_minutes || 40)) : req.body.end_time;
+    // Itens sem preço (legado): o total informado vira o bruto do serviço.
+    if (totals.procedureValue + totals.jewelryValue === 0 && Number(req.body.total_value) > 0) {
+      derived.service_value = Number(req.body.total_value);
+      derived.jewelry_value = 0;
+      derived.subtotal_value = Number(req.body.total_value);
     }
-    const existingPayments = await db.all("SELECT * FROM payments WHERE appointment_id = ? AND status IN ('pago', 'confirmado')", [req.params.id]);
-    const discountTotal = Number(couponQuote?.discount_amount ?? appointment.discount_value ?? 0);
-    operationTotals = calculateOperationTotals({
-      serviceSubtotal: totals.procedureValue,
-      productSubtotal: totals.jewelryValue,
-      discountTotal,
-      payments: existingPayments.map((payment) => ({
-        amount: Number(payment.amount || 0),
-        status: payment.status,
-        payment_type: payment.payment_type,
-        type: payment.payment_type
-      }))
-    });
-
-    req.body.service_id = serviceId || firstItem.service_id || null;
-    req.body.jewelry_id = optionalId(firstItem.jewelry_id);
-    req.body.jewelry_variant_id = optionalId(firstItem.jewelry_variant_id);
-    req.body.procedure = req.body.procedure || firstItem.procedure_name || service?.name || appointment.procedure;
-    req.body.piercing_region = req.body.piercing_region || firstItem.region || appointment.piercing_region;
-    req.body.total_value = operationTotals.netTotal;
-    req.body.discount_value = operationTotals.discountTotal;
-    req.body.deposit_value = Number(req.body.deposit_value ?? appointment.deposit_value ?? operationTotals.depositPaid ?? 0);
-    req.body.remaining_value = operationTotals.outstandingBalance;
-    req.body.end_time = req.body.appointment_time ? addMinutesToTime(req.body.appointment_time, totals.durationMinutes || Number(service?.duration_minutes || appointment.duration_minutes || 40)) : req.body.end_time;
-    req.body.coupon_code = couponCode || null;
-    req.body.coupon_id = couponQuote?.coupon?.id || appointment.coupon_id || null;
-    req.body.coupon_snapshot = couponQuote ? JSON.stringify(couponQuote) : appointment.coupon_snapshot || null;
-    req.body.discount_value = operationTotals.discountTotal;
-    req.body.remaining_value = operationTotals.outstandingBalance;
     const rules = items.filter((item) => item.service_id || item.procedure_id).map((item) => item.service_rules_snapshot);
     const clientProfile = await db.get("SELECT * FROM clients WHERE id=?", [appointment.client_id]);
     const clientRuleError = validateClientServiceRules({ rules, client: clientProfile, appointmentDate: req.body.appointment_date || appointment.appointment_date });
@@ -437,109 +658,168 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
       const timingRuleError = validateAppointmentTimingRules({ rules, appointmentDate: req.body.appointment_date || appointment.appointment_date, appointmentTime: req.body.appointment_time || appointment.appointment_time });
       if (timingRuleError) return res.status(400).json({ error: timingRuleError });
     }
-    req.body.service_rules_snapshot = JSON.stringify(rules);
-    req.body.operational_requirements_snapshot = JSON.stringify(mergeOperationalRequirements(items.map((item) => item.operational_requirements_snapshot)));
+    derived.service_rules_snapshot = JSON.stringify(rules);
+    derived.operational_requirements_snapshot = JSON.stringify(mergeOperationalRequirements(items.map((item) => item.operational_requirements_snapshot)));
     pendingItems = items;
   }
-  if (req.body.status === "cancelado") {
-    req.body.remaining_value = 0;
+
+  // Cupom: revalidado só quando o código muda (sem contar o uso do próprio
+  // agendamento); com o mesmo código e itens novos, só o valor é recalculado.
+  let coupon = null;
+  if (couponChanged || hasSubmittedItems) {
+    const couponBaseItems = pendingItems || await db.all("SELECT * FROM appointment_items WHERE appointment_id = ? ORDER BY id", [appointment.id]);
+    const grossOnly = calculateOperationTotals(appointmentFinancialInput(appointment, { items: couponBaseItems }, {
+      couponDiscount: 0, manualDiscount: 0, adjustmentTotal: 0, payments: []
+    }));
+    coupon = await resolveAppointmentCoupon(db, {
+      appointment, body: req.body, items: couponBaseItems, itemsChanged: hasSubmittedItems,
+      gross: derived.subtotal_value ?? grossOnly.grossTotal, clientId: appointment.client_id
+    });
+    if (coupon.error) return res.status(400).json({ error: coupon.error });
+    derived.coupon_code = coupon.couponCode;
+    derived.coupon_id = coupon.couponId;
+    derived.coupon_snapshot = jsonParam(coupon.couponSnapshot);
+  }
+  if (discountChanged) {
+    derived.manual_discount_value = manualDiscountValue(manualDiscountCents, appointment);
+    derived.manual_discount_reason = manualReason === undefined ? appointment.manual_discount_reason : manualReason;
+    derived.manual_discount_updated_by = req.user?.id || null;
+    derived.manual_discount_updated_at = new Date();
   }
 
-  if (req.body.status === "chegou" && !appointment.arrived_at) req.body.arrived_at = localTimestamp();
+  if (req.body.status === "chegou" && !appointment.arrived_at) derived.arrived_at = localTimestamp();
   if (req.body.status === "em_atendimento") {
-    if (!appointment.arrived_at) req.body.arrived_at = localTimestamp();
-    if (!appointment.started_at) req.body.started_at = localTimestamp();
+    if (!appointment.arrived_at) derived.arrived_at = localTimestamp();
+    if (!appointment.started_at) derived.started_at = localTimestamp();
   }
-  const fields = ["status", "appointment_date", "appointment_time", "end_time", "professional_id", "service_id", "jewelry_id", "jewelry_variant_id", "procedure", "description", "piercing_region", "total_value", "discount_value", "deposit_value", "remaining_value", "deposit_payment_method", "remaining_payment_method", "deposit_status", "deposit_paid_at", "financial_notes", "coupon_code", "coupon_id", "coupon_snapshot", "notes", "arrived_at", "started_at", "service_rules_snapshot", "operational_requirements_snapshot"];
-  const updates = fields.filter((field) => req.body[field] !== undefined);
+  const fields = ["status", "appointment_date", "appointment_time", "end_time", "professional_id", "service_id", "jewelry_id", "jewelry_variant_id", "procedure", "description", "piercing_region", "deposit_value", "deposit_payment_method", "remaining_payment_method", "deposit_status", "deposit_paid_at", "financial_notes", "notes", "arrived_at", "started_at", "service_rules_snapshot", "operational_requirements_snapshot"];
+  const values = { ...req.body, ...derived };
+  const updates = [
+    ...fields.filter((field) => values[field] !== undefined),
+    ...Object.keys(derived).filter((field) => !fields.includes(field))
+  ];
+  const depositTouched = ["deposit_value", "deposit_status", "deposit_payment_method", "deposit_paid_at"].some((field) => req.body[field] !== undefined);
+  const userId = req.user?.id || null;
+  const financialReason = String(req.body.reason || "").trim();
 
-  await db.transaction(async (tx) => {
-    if (pendingItems) {
-      await replaceAppointmentItems(tx, req.params.id, pendingItems);
-    }
-    if (updates.length) {
-      await tx.run(
-        `UPDATE appointments SET ${updates.map((field) => `${field} = ?`).join(", ")} WHERE id = ?`,
-        [...updates.map((field) => req.body[field]), req.params.id]
-      );
-    }
-    if (scheduleChanged) {
-      await tx.run(`INSERT INTO appointment_reschedule_history
-        (appointment_id,previous_date,previous_time,new_date,new_time,reason,changed_by_user_id)
-        VALUES (?,?,?,?,?,?,?)`, [
-        appointment.id, appointment.appointment_date, appointment.appointment_time,
-        req.body.appointment_date || appointment.appointment_date,
-        req.body.appointment_time || appointment.appointment_time,
-        String(req.body.reason).trim(), req.user?.id || null
-      ]);
-    }
-
-    const depositChanged = ["deposit_value", "deposit_status", "deposit_payment_method", "deposit_paid_at"]
-      .some((field) => req.body[field] !== undefined);
-    if (depositChanged) {
-      const current = await tx.get("SELECT * FROM appointments WHERE id = ? FOR UPDATE", [req.params.id]);
-      const expected = Math.max(0, Number(current.deposit_value || 0));
-      const status = expected > 0 ? String(current.deposit_status || "pendente").toLowerCase() : "nao_aplicavel";
-      if (!["pendente", "pago", "confirmado", "parcial", "isento", "cancelado", "estornado", "retido", "creditado", "nao_aplicavel"].includes(status)) {
-        throw new Error("Status do sinal inválido.");
+  try {
+    await db.transaction(async (tx) => {
+      // Trava antes de qualquer escrita: leitura, cálculo e gravação do
+      // dinheiro acontecem sob o mesmo FOR UPDATE. O recálculo de partida
+      // normaliza linhas antigas (ex.: agendamento público que só gravou o
+      // total com promoção) antes de a alteração ser aplicada.
+      const baseline = await recalculateAppointmentFinancials(tx, req.params.id);
+      const locked = baseline.appointment;
+      if (pendingItems) {
+        await replaceAppointmentItems(tx, req.params.id, pendingItems);
       }
-      await tx.run("DELETE FROM payments WHERE appointment_id = ? AND payment_type = 'sinal'", [req.params.id]);
-      if (expected > 0 && !["isento", "cancelado", "estornado", "nao_aplicavel"].includes(status)) {
+      if (updates.length) {
         await tx.run(
-          "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at, created_by_user_id) VALUES (?, ?, ?, 'sinal', ?, ?, ?, ?)",
-          [current.id, current.client_id, expected, current.deposit_payment_method || "Pix", ["pago", "confirmado"].includes(status) ? "pago" : "pendente", ["pago", "confirmado"].includes(status) ? (current.deposit_paid_at || localTimestamp()) : localTimestamp(), req.user?.id || null]
+          `UPDATE appointments SET ${updates.map((field) => `${field} = ?`).join(", ")}, updated_at = ? WHERE id = ?`,
+          [...updates.map((field) => values[field]), localTimestamp(), req.params.id]
         );
       }
-      const financial = await getAppointmentFinancialSnapshot(tx, req.params.id);
-      await tx.run("UPDATE appointments SET remaining_value = ?, deposit_paid_at = ?, updated_at = ? WHERE id = ?", [financial.outstandingBalance, ["pago", "confirmado"].includes(status) ? (current.deposit_paid_at || localTimestamp()) : null, localTimestamp(), req.params.id]);
-    }
-
-    if (req.body.status === "atendido") {
-      await assertCompletionServiceRules(tx, req.params.id);
-      await deductJewelryStock(tx, req.params.id);
-      await consumeAppointmentRecipe(tx, req.params.id, req.user?.id || null);
-      const configuredReceivable = configuresReceivableSchedule(req.body);
-      if (!configuredReceivable) await registerRemainingPayment(tx, req.params.id);
-      await ensureServiceExecution(tx, req.params.id, req.user, req.body);
-      await ensurePostCareFollowups(tx, req.params.id);
-      await awardLoyaltyForAppointment(tx, req.params.id);
-    }
-    if (leavingFinalized) {
-      await restoreJewelryStock(tx, req.params.id);
-      await restoreAppointmentConsumptions(tx, req.params.id, req.user?.id || null, req.body.reason || "Atendimento reaberto ou cancelado");
-    }
-    if (req.body.status === "cancelado") {
-      await tx.run("UPDATE payments SET status = 'cancelado' WHERE appointment_id = ? AND status != 'pago'", [req.params.id]);
-    }
-    if (finalizedFinancialChange && req.body.status !== "atendido") {
-      const after = await tx.get("SELECT * FROM appointments WHERE id=?", [req.params.id]);
-      if (after?.status === "atendido") {
-        await ensureServiceExecution(tx, req.params.id, req.user, req.body);
-      } else {
-        await cancelServiceExecution(tx, req.params.id, req.body.reason || "Atendimento reaberto");
+      if (scheduleChanged) {
+        await tx.run(`INSERT INTO appointment_reschedule_history
+          (appointment_id,previous_date,previous_time,new_date,new_time,reason,changed_by_user_id)
+          VALUES (?,?,?,?,?,?,?)`, [
+          appointment.id, appointment.appointment_date, appointment.appointment_time,
+          req.body.appointment_date || appointment.appointment_date,
+          req.body.appointment_time || appointment.appointment_time,
+          String(req.body.reason).trim(), userId
+        ]);
       }
-    }
-    if (finalizedFinancialChange) {
-      const after = await tx.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
-      await tx.run("INSERT INTO appointment_financial_audit (appointment_id, user_id, action, reason, before_snapshot, after_snapshot) VALUES (?, ?, 'financial_correction', ?, ?, ?)", [req.params.id, req.user.id, String(req.body.reason).trim(), JSON.stringify(appointment), JSON.stringify(after)]);
-    }
-    if (updates.length || pendingItems) {
-      const after = await tx.get("SELECT id, client_id, professional_id, service_id, appointment_date, appointment_time, status, total_value, remaining_value FROM appointments WHERE id=?", [req.params.id]);
-      await recordAudit(tx, {
-        req, module: "appointments", action: "update", entityType: "appointment", entityId: req.params.id,
-        reason: String(req.body?.reason || "Alteração de agendamento"),
-        before: {
-          id: appointment.id, client_id: appointment.client_id, professional_id: appointment.professional_id,
-          service_id: appointment.service_id, appointment_date: appointment.appointment_date,
-          appointment_time: appointment.appointment_time, status: appointment.status,
-          total_value: appointment.total_value, remaining_value: appointment.remaining_value
-        },
-        after,
-        metadata: { changed_fields: updates.filter((field) => !["notes", "description", "financial_notes", "coupon_snapshot"].includes(field)) },
-        severity: finalizedFinancialChange ? "critical" : "info"
-      });
-    }
-  });
+      if (depositTouched) await syncDepositPayment(tx, req.params.id, userId);
+      // `discount_value` é cupom + manual, e o recálculo deduz a parte do cupom
+      // (ou desconto legado) como `discount_value − manual`. Ao mudar o manual
+      // ou o cupom, regrava o total com a parte do cupom da linha de partida:
+      // sem isso, reduzir o manual ou remover o cupom deixava o valor antigo
+      // como "desconto de cupom" fantasma.
+      if (discountChanged || coupon) {
+        const couponPart = !coupon
+          ? storedCouponDiscount(locked)
+          : coupon.couponId || coupon.couponCode ? coupon.couponDiscount : (coupon.changed ? 0 : storedCouponDiscount(locked));
+        const manualPart = discountChanged ? derived.manual_discount_value : Number(locked.manual_discount_value || 0);
+        await tx.run("UPDATE appointments SET discount_value = ? WHERE id = ?", [(cents(couponPart) + cents(manualPart)) / 100, req.params.id]);
+      }
+
+      const recalculated = await recalculateAppointmentFinancials(tx, req.params.id);
+      if (recalculated.totals.discountExceedsGross) {
+        throw new FinancialRuleError(discountChanged || couponChanged
+          ? DISCOUNT_ABOVE_GROSS_MESSAGE
+          : `${DISCOUNT_ABOVE_GROSS_MESSAGE} Revise o desconto: os itens alterados reduziram o valor bruto.`);
+      }
+      if (recalculated.totals.negativeNet) {
+        throw new FinancialRuleError("Os abatimentos deixariam o valor líquido negativo. Anule o abatimento antes de reduzir os itens ou o valor.");
+      }
+      // Atendimento fechado com parcela já baixada: mudar o valor reescreveria
+      // um título recebido. A correção vai pelo Financeiro (SPEC 9, item 9).
+      if (locked.status === "atendido" && !leavingFinalized &&
+          cents(recalculated.appointment.total_value) !== cents(locked.total_value) &&
+          await hasSettledServiceExecutionReceivable(tx, req.params.id)) {
+        throw new FinancialRuleError(SETTLED_RECEIVABLE_MESSAGE, 409);
+      }
+      if (coupon) await syncCouponUsage(tx, recalculated.appointment, coupon, recalculated.totals);
+      if (discountChanged) await recordManualDiscountChange(tx, req, locked, recalculated.appointment);
+
+      if (req.body.status === "atendido") {
+        await assertCompletionServiceRules(tx, req.params.id);
+        await deductJewelryStock(tx, req.params.id);
+        await consumeAppointmentRecipe(tx, req.params.id, userId);
+        const configuredReceivable = configuresReceivableSchedule(req.body);
+        if (configuredReceivable) {
+          await supersedePendingDeposit(tx, req.params.id);
+          await recalculateAppointmentFinancials(tx, req.params.id);
+        } else {
+          await registerRemainingPayment(tx, req.params.id);
+        }
+        // ensureServiceExecution vincula ajustes e indicadores químicos.
+        await ensureServiceExecution(tx, req.params.id, req.user, req.body);
+        await refreshAppointmentCommissions(tx, req.params.id, { userId, reason: financialReason || "Atendimento finalizado" });
+        await ensurePostCareFollowups(tx, req.params.id);
+        await awardLoyaltyForAppointment(tx, req.params.id);
+      }
+      if (leavingFinalized) {
+        await restoreJewelryStock(tx, req.params.id);
+        await restoreAppointmentConsumptions(tx, req.params.id, userId, req.body.reason || "Atendimento reaberto ou cancelado");
+      }
+      if (finalizedFinancialChange && req.body.status !== "atendido") {
+        const after = await tx.get("SELECT status FROM appointments WHERE id=?", [req.params.id]);
+        if (after?.status === "atendido") {
+          await ensureServiceExecution(tx, req.params.id, req.user, req.body);
+          await refreshAppointmentCommissions(tx, req.params.id, { userId, reason: financialReason });
+        } else {
+          await cancelServiceExecution(tx, req.params.id, req.body.reason || "Atendimento reaberto");
+          await reverseAppointmentCommissions(tx, req.params.id, { userId, reason: financialReason || "Atendimento reaberto" });
+        }
+      }
+      if (finalizedFinancialChange) {
+        const after = await tx.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
+        await tx.run("INSERT INTO appointment_financial_audit (appointment_id, user_id, action, reason, before_snapshot, after_snapshot) VALUES (?, ?, 'financial_correction', ?, ?, ?)", [req.params.id, userId, financialReason, JSON.stringify(appointment), JSON.stringify(after)]);
+      }
+      if (updates.length || pendingItems || depositTouched) {
+        const after = await tx.get("SELECT id, client_id, professional_id, service_id, appointment_date, appointment_time, status, subtotal_value, discount_value, adjustment_total, total_value, remaining_value FROM appointments WHERE id=?", [req.params.id]);
+        await recordAudit(tx, {
+          req, module: "appointments", action: "update", entityType: "appointment", entityId: req.params.id,
+          reason: String(req.body?.reason || "Alteração de agendamento"),
+          before: {
+            id: appointment.id, client_id: appointment.client_id, professional_id: appointment.professional_id,
+            service_id: appointment.service_id, appointment_date: appointment.appointment_date,
+            appointment_time: appointment.appointment_time, status: appointment.status,
+            subtotal_value: appointment.subtotal_value, discount_value: appointment.discount_value,
+            adjustment_total: appointment.adjustment_total, total_value: appointment.total_value,
+            remaining_value: appointment.remaining_value
+          },
+          after,
+          metadata: { changed_fields: updates.filter((field) => !["notes", "description", "financial_notes", "coupon_snapshot"].includes(field)) },
+          severity: finalizedFinancialChange ? "critical" : "info"
+        });
+      }
+    });
+  } catch (error) {
+    if (financialError(res, error)) return;
+    throw error;
+  }
 
   const updated = await listAppointments(db, "WHERE a.id = ?", [req.params.id]).then((rows) => rows[0]);
   const justConfirmed = updated?.status === "confirmado" && appointment.status !== "confirmado";
@@ -556,6 +836,8 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
   res.json(updated);
 }));
 
+// Toda tabela com FK RESTRICT para appointments entra aqui: o bloqueio sai
+// como 409 explicando o vínculo, em vez de erro 500 na hora do DELETE.
 async function appointmentDeletionImpact(db, id) {
   const row = await db.get(`SELECT
     (SELECT COUNT(*) FROM payments WHERE appointment_id = ?) AS payments,
@@ -567,8 +849,11 @@ async function appointmentDeletionImpact(db, id) {
     (SELECT COUNT(*) FROM promotion_usages WHERE appointment_id = ?) AS promotion_usages,
     (SELECT COUNT(*) FROM loyalty_points WHERE appointment_id = ?) AS loyalty_points,
     (SELECT COUNT(*) FROM payment_intents WHERE appointment_id = ?) AS payment_intents,
-    (SELECT COUNT(*) FROM inventory_reservations WHERE appointment_id = ? AND status IN ('confirmed','active')) AS inventory_links
-  `, [id, id, id, id, id, id, id, id, id, id]);
+    (SELECT COUNT(*) FROM inventory_reservations WHERE appointment_id = ? AND status IN ('confirmed','active')) AS inventory_links,
+    (SELECT COUNT(*) FROM appointment_value_adjustments WHERE appointment_id = ?) AS value_adjustments,
+    (SELECT COUNT(*) FROM procedure_chemical_indicators WHERE appointment_id = ?) AS chemical_indicators,
+    (SELECT COUNT(*) FROM commission_entries WHERE appointment_id = ?) AS commission_entries
+  `, Array(13).fill(id));
   return Object.fromEntries(Object.entries(row || {}).map(([key, value]) => [key, Number(value || 0)]));
 }
 

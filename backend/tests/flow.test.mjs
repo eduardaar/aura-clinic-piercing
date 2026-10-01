@@ -6,6 +6,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { req, createTenant, loginTenant, platformLogin, deleteTenant } from "./helpers.mjs";
 import { withTenantSchema } from "../src/db/tenantSession.js";
+import { localDate } from "../src/services/utils.js";
 
 // Estado compartilhado entre os passos do fluxo (montado no before).
 const ctx = {
@@ -26,8 +27,11 @@ const ctx = {
 };
 
 // Datas: usa amanhã para o agendamento (evita conflito com "hoje" em rankings).
-const HOJE = new Date().toISOString().slice(0, 10);
-const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+// Data LOCAL da clínica (America/Sao_Paulo), a mesma que o servidor usa nos
+// filtros do mês: em UTC, entre 21h e 24h o teste já caía no dia seguinte e a
+// despesa criada "hoje" ficava fora do mês do financeiro.
+const HOJE = localDate();
+const tomorrow = localDate(new Date(Date.now() + 86400000));
 const AMANHA = tomorrow.slice(0, 7) === HOJE.slice(0, 7) ? tomorrow : HOJE;
 
 function nextDateForWeekday(weekday, offsetDays = 1) {

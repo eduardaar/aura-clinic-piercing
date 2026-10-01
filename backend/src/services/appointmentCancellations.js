@@ -2,6 +2,7 @@ import { localTimestamp } from "./utils.js";
 import { restoreJewelryStock } from "./appointments.js";
 import { restoreAppointmentConsumptions } from "./consumableUsage.js";
 import { cancelServiceExecution } from "./serviceExecutions.js";
+import { reverseAppointmentCommissions } from "./commissions.js";
 
 const RESOLUTIONS = new Set(["retain_deposit", "client_credit", "manual_refund", "no_payment"]);
 
@@ -71,6 +72,8 @@ export async function cancelAppointmentWithResolution(db, appointmentId, body = 
       await restoreAppointmentConsumptions(tx, appointment.id, userId, `Cancelamento #${created.returnedId}: ${reason}`);
     }
     await cancelServiceExecution(tx, appointment.id, reason);
+    // Atendimento cancelado não gera comissão: estorna o que estiver ativo.
+    await reverseAppointmentCommissions(tx, appointment.id, { userId, reason: `${outcome === "nao_compareceu" ? "Ausência" : "Cancelamento"}: ${reason}` });
     const depositStatus = resolution === "retain_deposit" ? "retido" : resolution === "manual_refund" ? "estornado" : resolution === "client_credit" ? "creditado" : "cancelado";
     await tx.run(`UPDATE appointments SET status=?, no_show_at=CASE WHEN ?='nao_compareceu' THEN now() ELSE no_show_at END, remaining_value=0, deposit_status=?, financial_notes=?, updated_at=? WHERE id=?`,
       [outcome, outcome, depositStatus, `${appointment.financial_notes || ""}\n${outcome === "nao_compareceu" ? "Ausência" : "Cancelamento"} #${created.returnedId}: ${reason}`.trim(), localTimestamp(), appointment.id]);

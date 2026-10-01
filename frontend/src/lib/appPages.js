@@ -3,6 +3,7 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   BarChart3,
+  BadgePercent,
   BookOpen,
   Calendar,
   ContactRound,
@@ -85,6 +86,18 @@ export const APP_PAGES = Object.freeze([
     id: "receivables", path: "/app/financeiro/receber", aliases: ["/app/financeiro"], title: "Contas a receber",
     menuTitle: "Financeiro", group: "Financeiro", icon: ArrowDownToLine, menu: true, menuRank: 0, roleRank: { admin: 11, finance: 0 },
     permission: "finance.view", feature: "basic_finance",
+    // Quem não tem `finance.view` mas vê comissões (ex.: piercer com
+    // `commission.view_own`) enxerga no lugar deste item o extrato de comissões.
+    menuFallback: "commissions",
+    component: lazyNamed(() => import("../features/finance/FinanceWorkspace"), "FinanceWorkspace")
+  },
+  {
+    // Extrato de comissões em rota própria: o Financeiro exige `finance.view`,
+    // e o profissional que só vê a PRÓPRIA comissão não chegava ao extrato.
+    // Fora do menu para não duplicar o item "Financeiro"; aparece no lugar dele
+    // para quem não tem acesso ao Financeiro (ver `menuFallback`).
+    id: "commissions", path: "/app/financeiro/comissoes", title: "Comissões", group: null, icon: BadgePercent, menu: false,
+    permission: ["commission.view_own", "commission.view_all", "commission.edit"], feature: "commissions",
     component: lazyNamed(() => import("../features/finance/FinanceWorkspace"), "FinanceWorkspace")
   },
   {

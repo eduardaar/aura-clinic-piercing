@@ -248,7 +248,8 @@ export const PAGE_FEATURE = {
   reports: "basic_reports",
   catalog: "basic_catalog",
   "catalog-customization": "public_catalog_customization",
-  sales: "basic_catalog"
+  sales: "basic_catalog",
+  commissions: "commissions"
 };
 
 // A página é acessível para este conjunto de features do plano?

@@ -3,11 +3,13 @@ import { CrudHeader } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { CollapsibleIndicators } from "../../components/common/CollapsibleIndicators";
 import { ApiError, Loading } from "../../components/common/Feedback";
-import { useFetch } from "../../lib/api";
+import { readStoredSession, useFetch } from "../../lib/api";
 import { asArray, asNumber, asObject } from "../../lib/utils";
 import { financeLabel } from "../../lib/financeLabels";
+import { canAccessPage } from "../../lib/permissions";
 import { currency } from "../shared/helpers";
 import { AccountsReceivable } from "./Receivables";
+import { CommissionStatement, commissionAccess } from "./CommissionStatement";
 
 function formatDate(value) {
   const text = String(value || "").slice(0, 10);
@@ -41,6 +43,7 @@ function FinancialSummary({ view, onNavigate }) {
           actions={[
             ...(view !== "visao" ? [{ label: "Visão financeira", onClick: () => onNavigate?.("receivables", { target: "visao" }) }] : []),
             ...(view !== "caixa" ? [{ label: "Caixa", onClick: () => onNavigate?.("receivables", { target: "caixa" }) }] : []),
+            ...(commissionAccess(readStoredSession()?.user || {}).canView ? [{ label: "Comissões", onClick: () => onNavigate?.("receivables", { target: "comissoes" }) }] : []),
             { label: "Contas a receber", onClick: () => onNavigate?.("receivables") },
             { label: "Contas a pagar", onClick: () => onNavigate?.("payables") },
             { label: "Categorias", onClick: () => onNavigate?.("finance-categories") },
@@ -65,7 +68,56 @@ function FinancialSummary({ view, onNavigate }) {
   );
 }
 
-export function FinanceWorkspace({ initialView = "receivables", onNavigate }) {
+// Área "Comissões" do Financeiro: extrato de lançamentos por profissional,
+// período, serviço e atendimento. Plano e permissão são checados dentro do
+// CommissionStatement (aviso de upgrade ou de permissão no lugar do extrato).
+function CommissionsArea({ features, onUpgrade, onNavigate }) {
+  // Quem chega aqui só com a permissão de comissão (rota /app/financeiro/comissoes)
+  // não deve ver atalhos para telas do Financeiro que não pode abrir.
+  const user = readStoredSession()?.user || {};
+  const shortcuts = [
+    { label: "Visão financeira", page: "receivables", target: "visao" },
+    { label: "Caixa", page: "receivables", target: "caixa" },
+    { label: "Contas a receber", page: "receivables" },
+    { label: "Contas a pagar", page: "payables" }
+  ].filter((item) => canAccessPage(user, item.page));
+  return (
+    <section className="stack finance-page">
+      <section className="panel stack">
+        <CrudHeader
+          title="Comissões"
+          subtitle="Extrato de comissões por profissional, com a base de cada atendimento e a regra aplicada"
+          actions={shortcuts.map((item) => ({
+            label: item.label,
+            onClick: () => (item.target ? onNavigate?.(item.page, { target: item.target }) : onNavigate?.(item.page))
+          }))}
+        />
+        <CommissionStatement features={features} onUpgrade={onUpgrade} />
+      </section>
+    </section>
+  );
+}
+
+// Sem `features` vindas da página (rota antiga), lê o plano da identidade da
+// loja — a mesma fonte do main.jsx — para não bloquear quem tem o recurso.
+function CommissionsAreaWithPlan({ onUpgrade, onNavigate }) {
+  const { data } = useFetch("/store-identity");
+  if (!data) return <Loading />;
+  // Falha ao ler o plano não pode virar "faça upgrade" para quem já tem o recurso.
+  if (data.error) return <ApiError message={data.error} />;
+  const features = asArray(asObject(asObject(data).subscription).features);
+  return <CommissionsArea features={features} onUpgrade={onUpgrade} onNavigate={onNavigate} />;
+}
+
+/**
+ * @param {{ initialView?: string, onNavigate?: (page: string, options?: Record<string, any>) => void, features?: string[], onUpgrade?: () => void }} props
+ */
+export function FinanceWorkspace({ initialView = "receivables", onNavigate, features, onUpgrade }) {
+  if (initialView === "comissoes") {
+    return Array.isArray(features)
+      ? <CommissionsArea features={features} onUpgrade={onUpgrade} onNavigate={onNavigate} />
+      : <CommissionsAreaWithPlan onUpgrade={onUpgrade} onNavigate={onNavigate} />;
+  }
   if (initialView === "receivables") return <AccountsReceivable onNavigate={onNavigate} />;
   return <FinancialSummary view={initialView === "caixa" ? "caixa" : "visao"} onNavigate={onNavigate} />;
 }

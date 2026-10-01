@@ -204,6 +204,9 @@ export function defaultAppointment() {
     deposit_payment_method: "Pix",
     remaining_payment_method: "Pix",
     coupon_code: "",
+    // Desconto manual em R$ (o backend soma ao cupom em `discount_value`).
+    manual_discount_value: 0,
+    manual_discount_reason: "",
     deposit_status: "pendente",
     deposit_paid_at: "",
     financial_notes: "",

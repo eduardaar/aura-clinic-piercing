@@ -6,18 +6,33 @@ import { apiFetch, useFetch } from "../../lib/api";
 import { asArray } from "../../lib/utils";
 import "./access-admin.css";
 
+// Módulos, ações e registros gravados pelo backend. Os de comissão, registro
+// clínico (indicador químico), desconto e ajuste de valor são novos: sem
+// rótulo, a tela mostrava a chave crua ("value adjustment add").
 const MODULE_LABELS = {
   users: "Usuários e acessos", appointments: "Agenda e atendimentos", clients: "Clientes",
   finance: "Financeiro", inventory: "Estoque", sales: "Vendas", settings: "Configurações",
-  audit: "Auditoria", privacy: "Privacidade", reports: "Relatórios"
+  audit: "Auditoria", privacy: "Privacidade", reports: "Relatórios",
+  commission: "Comissões", clinical: "Registro clínico", professionals: "Profissionais",
+  purchases: "Compras", suppliers: "Fornecedores", terms: "Termos digitais", auth: "Autenticação"
 };
 const ACTION_LABELS = {
   create: "Cadastro", update: "Alteração", delete: "Exclusão", replace_permissions: "Permissões substituídas",
-  login: "Login", logout: "Logout", cancel: "Cancelamento", export: "Exportação", view: "Consulta sensível"
+  login: "Login", logout: "Logout", cancel: "Cancelamento", export: "Exportação", view: "Consulta sensível",
+  discount: "Desconto manual",
+  value_adjustment_add: "Ajuste de valor incluído", value_adjustment_void: "Ajuste de valor anulado",
+  rule_create: "Regra de comissão criada", rule_update: "Regra de comissão alterada", rule_deactivate: "Regra de comissão desativada",
+  chemical_indicator_create: "Indicador químico registrado", chemical_indicator_void: "Indicador químico anulado",
+  // Leituras auditadas do registro clínico, devolução/crédito de venda e
+  // recálculo de comissão também são gravados pelo backend.
+  chemical_indicator_read: "Indicador químico consultado", chemical_indicator_history_read: "Histórico de indicadores consultado",
+  return: "Devolução", apply_client_credit: "Crédito do cliente aplicado", recalculate: "Recálculo de comissão"
 };
 const ENTITY_LABELS = {
   user: "Usuário", access_profile: "Perfil de acesso", client: "Cliente", appointment: "Atendimento",
-  financial_entry: "Lançamento financeiro", inventory_item: "Item de estoque", report: "Relatório"
+  financial_entry: "Lançamento financeiro", inventory_item: "Item de estoque", report: "Relatório",
+  sales_order: "Venda", professional: "Profissional", commission_rule: "Regra de comissão",
+  chemical_indicator: "Indicador químico"
 };
 const SEVERITY_LABELS = { info: "Informativo", warning: "Atenção", critical: "Crítico" };
 

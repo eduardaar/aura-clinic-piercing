@@ -19,6 +19,7 @@ import {
   validateClientForm,
 } from "../../lib/clientFields";
 import { useFormDraft } from "../../lib/useFormDraft";
+import { can } from "../../lib/permissions";
 import { DIGITAL_TERM_HEALTH_ITEMS, DIGITAL_TERM_LIFESTYLE_ITEMS, defaultDigitalTerm, defaultMedicalRecord } from "../../lib/defaultForms";
 import { currency, personName, whatsappUrl } from "../../features/shared/helpers";
 import { SignaturePad } from "../../components/common/SignaturePad";
@@ -26,6 +27,7 @@ import {
   TERM_REQUEST_CHANNEL_LABELS, TERM_REQUEST_STATUS_LABELS, TERM_REQUEST_STATUS_TONES,
   TermLinkPanel, TermRequestModal, formatExpiry, requestTermJson
 } from "../terms/TermRequestModal";
+import { ChemicalIndicatorHistory } from "../agenda/ChemicalIndicatorPanel";
 import "./clients.css";
 
 const PostCareIcon = ({ size }) => <HeartPulse size={size} />;
@@ -453,6 +455,9 @@ function ClientProfile({ client, onChanged, onNavigate, onEdit }) {
   const availableCredit = Number(creditsData?.open_amount || 0);
   const lastAppointment = client.summary?.last_appointment;
   const nextAppointment = client.summary?.next_appointment;
+  // Indicadores químicos são dado clínico: além do recorte do servidor
+  // (`clinical_access`), a seção só aparece para quem tem clinical_files.view.
+  const canViewIndicators = Boolean(client.clinical_access) && can(readStoredSession()?.user || {}, "clinical_files.view");
   return (
     <div className="stack client-360">
       <CollapsibleIndicators screenId="client-profile"><div className="client-360-metrics">
@@ -607,6 +612,17 @@ function ClientProfile({ client, onChanged, onNavigate, onEdit }) {
               {!timeline.length && <p className="empty-state">Nenhum evento registrado para este cliente.</p>}
             </div>
           </section>
+          {canViewIndicators && (
+            <section className="client-360-panel" aria-labelledby={`client-${client.id}-chemical-indicators`}>
+              <header>
+                <div>
+                  <h3 id={`client-${client.id}-chemical-indicators`}>Procedimentos e indicadores químicos</h3>
+                  <p>Etiqueta da esterilização de cada procedimento realizado, do mais recente ao mais antigo.</p>
+                </div>
+              </header>
+              <ChemicalIndicatorHistory clientId={client.id} />
+            </section>
+          )}
           {client.clinical_access ? (
             <>
               <MedicalRecordForm client={client} onSaved={onChanged} />

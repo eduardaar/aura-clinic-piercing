@@ -1,6 +1,7 @@
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { createTenant, deleteTenant, loginTenant, platformLogin, req } from "./helpers.mjs";
+import { withTenantSchema } from "../src/db/tenantSession.js";
 
 const context = {};
 
@@ -38,4 +39,38 @@ test("PDF clínico exige autenticação e não pode ser lido por outro tenant", 
   assert.equal(anonymous.status, 401);
   const foreign = await req(created.json.pdf_url.replace(/^\/api/, ""), { tenant: context.b.slug, token: context.b.token });
   assert.equal(foreign.status, 404);
+});
+
+test("arquivo clínico segue clinical_files.view, não só o cargo", async () => {
+  const tenant = context.a;
+  const api = (path, options = {}) => req(path, { tenant: tenant.slug, token: tenant.token, ...options });
+  const plan = await api("/subscription", { method: "PATCH", body: { plan_code: "studio" } });
+  assert.equal(plan.status, 200, JSON.stringify(plan.json));
+  const password = "SenhaForte123";
+  const users = [
+    { key: "piercerNegado", role: "piercer", permission_overrides: [{ permission: "clinical_files.view", allowed: false }] },
+    { key: "recepcaoLiberada", role: "reception", permission_overrides: [{ permission: "clinical_files.view", allowed: true }] },
+    { key: "recepcao", role: "reception" }
+  ];
+  const tokens = {};
+  for (const user of users) {
+    const email = `${user.key.toLowerCase()}@${tenant.slug}.test`;
+    const created = await api("/users", {
+      method: "POST",
+      body: { name: user.key, email, password, role: user.role, permission_overrides: user.permission_overrides }
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.json));
+    tokens[user.key] = (await loginTenant(tenant.slug, email, password)).token;
+  }
+  // Só o registro: a checagem de acesso acontece antes da leitura do bucket,
+  // então quem passa recebe 404 (objeto ausente) e quem não passa, 403.
+  await withTenantSchema(tenant.tenant.id, (db) => db.run(
+    "INSERT INTO private_files (filename, original_name, mime_type, purpose) VALUES ('qa-indicador-clinico.webp', 'indicador.webp', 'image/webp', 'chemical_indicator')"
+  ));
+  const path = "/private-files/qa-indicador-clinico.webp";
+  const as = (token) => req(path, { tenant: tenant.slug, token });
+  assert.equal((await as(tokens.piercerNegado)).status, 403, "piercer com a permissão negada não baixa");
+  assert.equal((await as(tokens.recepcao)).status, 403, "recepção sem a permissão não baixa");
+  assert.equal((await as(tokens.recepcaoLiberada)).status, 404, "recepção com a permissão passa da checagem");
+  assert.equal((await as(tenant.token)).status, 404, "admin passa da checagem");
 });

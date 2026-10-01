@@ -1,0 +1,140 @@
+/* Comissões: extrato no Financeiro, resumo do atendimento e configuração de
+ * regras no cadastro do profissional.
+ *
+ * Só o que não tem equivalente global: a grade de filtros do extrato, o cartão
+ * de regra e a linha do histórico. Campos, botões, tabela e totais vêm dos
+ * componentes comuns (Ui.jsx, DataView, TransactionTotals).
+ *
+ * `@layer telas` é a mesma camada dos outros CSS de tela: sem ela estas regras
+ * venceriam o appshell.css por acidente de ordem de importação.
+ */
+
+@layer telas {
+  /* --- Extrato --------------------------------------------------------- */
+
+  .commission-filters {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    align-items: end;
+  }
+
+  .commission-own-hint { align-self: center; margin: 0; }
+
+  /* --- Resumo do atendimento ------------------------------------------- */
+
+  .commission-summary { gap: 10px; }
+  .commission-summary-total { margin: 0; font-weight: 700; text-align: right; }
+  .commission-summary-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 8px;
+  }
+  .commission-summary-list li {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+  }
+  .commission-summary-list li > div { display: grid; gap: 2px; min-width: 0; }
+  .commission-summary-list small { color: var(--muted); overflow-wrap: anywhere; }
+
+  /* --- Regras do profissional ------------------------------------------ */
+
+  .commission-rules { display: grid; gap: 16px; min-width: 0; }
+  .commission-rules-group { display: grid; gap: 10px; min-width: 0; }
+  .commission-rules-group > header { display: grid; gap: 2px; }
+  .commission-rules-group > header h4 { margin: 0; font-size: 14px; color: var(--ink); }
+  .commission-rules-group > header p { margin: 0; color: var(--muted); font-size: 12.5px; }
+
+  .commission-rule-card {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    min-width: 0;
+  }
+  .commission-rule-card.is-inactive { opacity: .78; }
+  .commission-rule-card.is-invalid { border-color: var(--danger); }
+  .commission-rule-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    align-items: start;
+    min-width: 0;
+  }
+  .commission-rule-fields .commission-rule-notes { grid-column: 1 / -1; }
+  .commission-rule-service strong { padding: 9px 0; overflow-wrap: anywhere; }
+  .commission-rule-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .commission-rules-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+
+  .commission-readonly-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 6px;
+  }
+  .commission-readonly-list li {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 6px 12px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+  .commission-readonly-list small { color: var(--muted); flex-basis: 100%; }
+
+  /* --- Histórico -------------------------------------------------------- */
+
+  .commission-history {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 8px;
+  }
+  .commission-history li {
+    display: grid;
+    gap: 4px;
+    padding: 10px 12px;
+    border-left: 3px solid var(--line);
+    background: var(--surface-subtle, rgba(0, 0, 0, .02));
+    border-radius: 0 10px 10px 0;
+    min-width: 0;
+  }
+  .commission-history-meta { color: var(--muted); font-size: 12px; }
+  .commission-history-change { overflow-wrap: anywhere; }
+
+  @media (max-width: 620px) {
+    .commission-filters { grid-template-columns: 1fr; }
+    .commission-rule-fields { grid-template-columns: 1fr; }
+    .commission-rules-actions { justify-content: stretch; }
+    .commission-rules-actions button { width: 100%; }
+    .commission-rule-footer button { width: 100%; }
+  }
+}

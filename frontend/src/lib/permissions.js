@@ -19,7 +19,7 @@ import { appPageById, INTERNAL_APP_PAGES } from "./appPages.js";
 /**
  * Páginas do app autenticado.
  * @typedef {"dashboard" | "agenda" | "services" | "communications" | "catalog" | "products" | "inventory" | "consumables"
- *   | "catalog-customization" | "sales" | "purchases" | "receivables" | "payables" | "suppliers" | "finance-categories" | "cost-centers" | "reports" | "client-center"
+ *   | "catalog-customization" | "sales" | "purchases" | "receivables" | "commissions" | "payables" | "suppliers" | "finance-categories" | "cost-centers" | "reports" | "client-center"
  *   | "clients" | "terms" | "postcare" | "admin" | "audit" | "integrations" | "support"
  *   | "manual" | "product-news" | "meu-plano" | "settings" | "onboarding"} Page
  */
@@ -67,7 +67,10 @@ export const PAGE_FEATURE = Object.freeze(Object.fromEntries(
 // Financeiro básico do Profissional.
 export const ACTION_FEATURE = Object.freeze({
   "sales.generate_receivables": "basic_finance",
-  "appointments.generate_receivables": "basic_finance"
+  "appointments.generate_receivables": "basic_finance",
+  // Ajuste de valor em atendimento JÁ finalizado mexe no financeiro lançado:
+  // o backend exige o Financeiro básico (closedAppointmentGate).
+  "appointments.adjust_closed_value": "basic_finance"
 });
 
 // A página está incluída no plano atual? (features = subscription.features)
@@ -117,9 +120,9 @@ export const PAGE_PERMISSION = Object.freeze(Object.fromEntries(
 
 const ROLE_PERMISSIONS = {
   admin: ["*"],
-  piercer: ["dashboard.view", "appointments.view", "appointments.create", "appointments.edit", "appointments.reschedule", "appointments.cancel", "appointments.review", "appointments.finalize", "appointments.apply_discount", "appointments.apply_coupon", "appointments.edit_final_value", "clients.view", "clients.create", "clients.edit", "anamnesis.view", "anamnesis.edit", "anamnesis.review", "clinical_files.view", "clinical_files.edit", "sales.view", "sales.create", "sales.edit_open", "inventory.view", "inventory.sell", "inventory.adjust", "cash.view", "cash.open", "cash.receive_payment", "cash.close", "communication.view", "communication.send", "coupons.view", "coupons.apply", "settings.view"],
-  reception: ["dashboard.view", "appointments.view", "appointments.create", "appointments.edit", "appointments.reschedule", "appointments.cancel", "appointments.apply_discount", "appointments.apply_coupon", "clients.view", "clients.create", "clients.edit", "anamnesis.view", "anamnesis.edit", "sales.view", "sales.create", "sales.edit_open", "inventory.view", "inventory.sell", "cash.view", "cash.open", "cash.receive_payment", "communication.view", "communication.send", "coupons.view", "coupons.apply", "settings.view"],
-  finance: ["dashboard.view", "dashboard.financial", "appointments.view", "clients.view", "sales.view", "sales.edit_closed", "sales.cancel", "inventory.view", "inventory.view_cost", "cash.view", "cash.open", "cash.receive_payment", "cash.close", "cash.withdraw", "cash.adjust", "finance.view", "finance.create", "finance.edit", "finance.cancel", "finance.mark_test", "finance.expenses", "finance.refund", "reports.view_financial", "reports.view_all", "commission.view_all", "coupons.view", "audit.view", "settings.view"]
+  piercer: ["dashboard.view", "appointments.view", "appointments.create", "appointments.edit", "appointments.reschedule", "appointments.cancel", "appointments.review", "appointments.finalize", "appointments.apply_discount", "appointments.apply_coupon", "appointments.edit_final_value", "clients.view", "clients.create", "clients.edit", "anamnesis.view", "anamnesis.edit", "anamnesis.review", "clinical_files.view", "clinical_files.edit", "sales.view", "sales.create", "sales.edit_open", "sales.apply_discount", "inventory.view", "inventory.sell", "inventory.adjust", "cash.view", "cash.open", "cash.receive_payment", "cash.close", "communication.view", "communication.send", "coupons.view", "coupons.apply", "settings.view"],
+  reception: ["dashboard.view", "appointments.view", "appointments.create", "appointments.edit", "appointments.reschedule", "appointments.cancel", "appointments.apply_discount", "appointments.apply_coupon", "clients.view", "clients.create", "clients.edit", "anamnesis.view", "anamnesis.edit", "sales.view", "sales.create", "sales.edit_open", "sales.apply_discount", "inventory.view", "inventory.sell", "cash.view", "cash.open", "cash.receive_payment", "communication.view", "communication.send", "coupons.view", "coupons.apply", "settings.view"],
+  finance: ["dashboard.view", "dashboard.financial", "appointments.view", "clients.view", "sales.view", "sales.edit_closed", "sales.apply_discount", "sales.cancel", "inventory.view", "inventory.view_cost", "cash.view", "cash.open", "cash.receive_payment", "cash.close", "cash.withdraw", "cash.adjust", "finance.view", "finance.create", "finance.edit", "finance.cancel", "finance.mark_test", "finance.expenses", "finance.refund", "reports.view_financial", "reports.view_all", "commission.view_all", "coupons.view", "audit.view", "settings.view"]
 };
 
 /**
