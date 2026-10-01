@@ -16,9 +16,14 @@ A ordem de busca, na prática:
 | Preciso de… | Procure primeiro | Onde |
 | --- | --- | --- |
 | Listar registros | `<DataView>` | `components/common/DataView.jsx` |
+| Ações de uma linha da listagem | `<RowActions>` | `components/common/Crud.jsx` |
 | Formulário | `<Modal>` + `Input`/`Select`/`Textarea`/`Checkbox` | `components/common/Crud.jsx` e `Ui.jsx` |
-| Cabeçalho com botão "Novo" | `<CrudHeader>` | `components/common/Crud.jsx` |
+| Formulário longo ou em etapas | `<FormWorkflow>` + `StepNavigator`/`FormSection`/`AdvancedFields` | `components/common/FormWorkflow.jsx` |
+| Cabeçalho com botão "Novo" e atalhos da tela | `<CrudHeader>` (`actions` vira "Mais opções") | `components/common/Crud.jsx` |
 | Confirmar exclusão | `<ConfirmDeleteModal>` | `components/common/Crud.jsx` |
+| Escolher joia/item do estoque | `<SmartCombobox>` | `components/common/SmartCombobox.jsx` |
+| Escolher de um cadastro simples, criando a opção na hora | `<SelectWithCreate>` | `components/common/SelectWithCreate.jsx` |
+| Cartões de métrica no topo da tela | `<CollapsibleIndicators>` | `components/common/CollapsibleIndicators.jsx` |
 | Botão | `<Button variant=…>` | `components/common/Ui.jsx` |
 | Navegar entre seções | `<Tabs>` | `components/common/Ui.jsx` |
 | Mostrar conteúdo progressivamente | `<Accordion>` | `components/common/Ui.jsx` |
@@ -47,19 +52,31 @@ prévia da imagem fica ao lado dos controles"), ela pertence ao CSS da tela.
 
 | Componente | Para quê | Arquivo |
 | --- | --- | --- |
-| `DataView` | Listagem completa: busca, filtros avançados, ordenação por coluna, paginação e os estados de carregando/erro/vazio | `components/common/DataView.jsx` |
-| `DataTable` | Tabela nua, sem nada disso. **Só para tela ainda não migrada** | `components/common/Crud.jsx` |
-| `Modal` | Janela sobreposta. Fecha no Esc e no clique fora, trava o scroll do body | `components/common/Crud.jsx` |
-| `ConfirmDeleteModal` | Exclusão com palavra digitada. Use em **toda** exclusão | `components/common/Crud.jsx` |
-| `CrudHeader` | Título + subtítulo + botão de ação | `components/common/Crud.jsx` |
-| `Input` `Select` `Textarea` `Checkbox` | Campos controlados; `onChange` recebe o **valor**, não o evento | `components/common/Ui.jsx` |
+| `DataView` | Listagem completa: busca, filtros avançados (em modal), ordenação por coluna, paginação e os estados de carregando/erro/vazio | `components/common/DataView.jsx` |
+| `RowActions` | Ações da linha num único menu de três pontos ("Mais ações"); cada ação: `{ label, onClick, href, target, rel, danger, disabled }`. Nenhuma ação fica exposta (`primary` é aceito, mas ignorado) | `components/common/Crud.jsx` |
+| `Modal` | Janela sobreposta (Radix Dialog), largura única. Trava o scroll do body e **não** fecha no clique fora (`dismissible` libera, só em modal sem dados a perder). Com formulário alterado, X, Esc e os botões "Cancelar"/"Fechar" (ou `data-modal-cancel`) pedem confirmação: Sair sem salvar, Salvar, Continuar editando. Props `dirty`, `formId`, `confirmClose`; `size` é ignorado | `components/common/Crud.jsx` |
+| `useModal()` | Dentro de um `Modal`: `requestClose`, `markDirty`, `dirty` e o contêiner onde camadas flutuantes devem montar | `components/common/Crud.jsx` |
+| `ConfirmDeleteModal` | Exclusão com palavra digitada (padrão "SIM"). Use em **toda** exclusão | `components/common/Crud.jsx` |
+| `CrudHeader` | Título + subtítulo + botão de ação; `actions` (`{ label, icon, onClick }`) vira o menu "Mais opções" antes do botão | `components/common/Crud.jsx` |
+| `DropdownMenu` | Radix reexportado para menus próprios de uma tela | `components/common/Crud.jsx` |
+| `Input` `Select` `Textarea` `Checkbox` | Campos controlados; `onChange` recebe o **valor**, não o evento. `Select` e `Checkbox` são Radix; `Select` aceita `<option>` como filhos | `components/common/Ui.jsx` |
 | `Tabs` | Composição `Tabs.List`, `Tabs.Trigger`, `Tabs.Content`; `onChange`/`onValueChange` recebem a aba | `components/common/Ui.jsx` |
 | `Accordion` | Composição `Accordion.Item`, `Header`, `Trigger`, `Content`; suporta `single` e `multiple` | `components/common/Ui.jsx` |
 | `Switch` | Toggle Radix; `onChange` recebe booleano; `switchClassName` estiliza só o controle | `components/common/Ui.jsx` |
-| `Input` / `Textarea` | `className` vai ao controle nativo e `fieldClassName` ao invólucro; demais atributos HTML são encaminhados | `components/common/Ui.jsx` |
+| `Input` / `Textarea` | `className` vai ao controle nativo e `fieldClassName` ao invólucro; demais atributos HTML são encaminhados. `Textarea` aceita `hint` (vira `.field-hint`) | `components/common/Ui.jsx` |
 | `Button` | `variant`: `primary` \| `secondary` \| `ghost` \| `danger`; encaminha atributos e `ref` ao `<button>` | `components/common/Ui.jsx` |
 | `StatusBadge` | Selo colorido; mapeia o texto do status para o tom | `components/common/Ui.jsx` |
 | `AlertBlock` | Lista de avisos com estado vazio embutido | `components/common/Ui.jsx` |
+| `SmartCombobox` | Busca de joias com foto, SKU, preço e estoque. Dentro de um `Modal`, a lista monta no próprio diálogo; até 640px vira folha inferior com busca própria | `components/common/SmartCombobox.jsx` |
+| `SelectWithCreate` | `Select` de cadastro simples (categoria, centro de custo, fornecedor) com atalho para criar a opção sem sair do formulário; `onCreate(name)` devolve o registro criado | `components/common/SelectWithCreate.jsx` |
+| `FormWorkflow` `FormPage` `FormSection` `StepNavigator` `AdvancedFields` `ValidationSummary` `ReviewSummary` | Estrutura de formulário longo: etapas, seções, campos avançados recolhidos, resumo de erros e de revisão; `mobileFullscreen` ocupa a tela no celular | `components/common/FormWorkflow.jsx` (+ `form-workflow.css`) |
+| `useFormDraft` | Rascunho local no `localStorage` por clínica, usuário e formulário (`aura:form-draft:…`); com rascunho anterior, a gravação pausa até `restoreDraft` ou `discardDraft`. Nada vai ao backend antes de salvar | `lib/useFormDraft.js` |
+| `ResponsiveEditableList` / `TransactionTotals` | Itens de uma transação: tabela no desktop e cartões no celular, sem rolagem horizontal; totais da operação | `components/common/TransactionFields.jsx` (+ `transaction-fields.css`) |
+| `InstallmentGrid` | Parcelas automáticas ou editadas à mão (editar uma linha desliga o automático) | `components/common/InstallmentGrid.jsx` |
+| `CollapsibleIndicators` | Envolve os cartões de métrica com "Ocultar indicadores"/"Mostrar indicadores"; a escolha fica no `localStorage` por clínica, usuário e tela (`screenId`) | `components/common/CollapsibleIndicators.jsx` |
+| `LegalDocumentModal` / `useLegalDocuments` | Termos de Uso e Política de Privacidade em modal (título, versão, parágrafos) | `components/common/LegalDocumentModal.jsx` |
+| `PlanUpgradeNotice` | Explica o bloqueio de plano no ponto da ação | `components/common/PlanUpgradeNotice.jsx` |
+| `SignaturePad` | Assinatura desenhada (mouse, caneta ou dedo); devolve data URL PNG | `components/common/SignaturePad.jsx` |
 
 ### Classes globais (`styles.css`)
 
@@ -99,6 +116,34 @@ existia antes desta rodada — a seção 6 conta por quê.
 arquivo é a **autoridade** sobre o layout da área autenticada. Layout de shell
 se mexe aqui, e só aqui.
 
+### Padrões de lista, navegação e modal
+
+- **Filtros em modal.** O botão "Filtros" do `DataView` (com contador) abre um
+  `Modal` com "Cancelar", "Limpar" e "Aplicar filtros"; o que está ativo
+  aparece como chips em "Filtros aplicados:", com "Limpar filtros". Período e
+  filtros de uma tela entram como `filters` do `DataView`, não como barra
+  própria.
+- **Só os registros rolam.** `.dataview > .data-table-wrap` tem
+  `max-height: clamp(320px, 58vh, 720px)` (62dvh até 720px) e o `thead` é
+  fixo; busca, filtros e paginação ficam visíveis.
+- **Tabela a partir de 721px**: `table-layout: fixed`, sem rolagem horizontal
+  (as colunas encolhem e o texto quebra), linhas zebradas e coluna de ações de
+  72px com o menu de três pontos. Até 720px a linha vira cartão (`data-label`).
+- **Ações.** Da linha: `RowActions`, sempre o menu de três pontos. Da tela:
+  `actions` do `CrudHeader` ("Mais opções"), antes do botão principal. O menu
+  lateral não tem submenus (`Sidebar.jsx` fixa `visibleChildren: []` e
+  `frontend/tests/appPages.test.mjs` proíbe `menuChildren`): atalho para
+  subpágina mora no "Mais opções" da tela.
+- **Indicadores** no topo da tela vão dentro de `CollapsibleIndicators`.
+- **Modal com largura única.** O `Modal` sempre renderiza
+  `modal-card modal-md`, e `.modal-card` tem `width: min(640px, 100%)`
+  (`styles.css`). As regras `.modal-card.modal-sm`/`.modal-lg` (inclusive as de
+  1120px dos detalhes do agendamento) não são mais alcançadas pelo `Modal`.
+- **Celular.** Até 620px o modal ocupa a tela cheia (`100dvh`, sem cantos, rodapé
+  com botões em coluna e área segura). `frontend/index.html` usa
+  `viewport-fit=cover, interactive-widget=resizes-content`: com o teclado aberto
+  a página encolhe em vez de cobrir os campos.
+
 ---
 
 ## 3. As camadas da cascata
@@ -113,8 +158,17 @@ se mexe aqui, e só aqui.
 | --- | --- | --- |
 | `base` | Tokens do `:root`, reset e primitivas globais | quem cria primitiva nova |
 | `legado` | O corpo do `styles.css` — quatro gerações de CSS redefinindo os mesmos seletores | ninguém, se der para evitar |
-| `telas` | CSS de tela: `topnav`, `landing`, `auth`, `directory`, `platform-panel` e os CSS por tela do painel | **você** |
+| `telas` | CSS de tela: `topnav`, `landing`, `legal`, `auth`, `directory`, `settings`, `catalog-v2`, `operations-responsive`, `responsive`, `platform-panel` e os CSS por tela do painel | **você** |
 | `app` | `appshell.css`, o layout do shell | quem mexe no shell |
+
+A ordem de import em `main.jsx` é: `styles.css` (primeiro, porque declara as
+camadas), `topnav`, `landing`, `legal`, `auth`, `directory`, `settings`,
+`appshell`, `catalog-v2`, `operations-responsive` e, por último,
+`responsive.css` (invariantes responsivas do produto). Como
+`operations-responsive.css` e `responsive.css` estão em `telas`, vir por último
+só os faz vencer **dentro** de `telas`: o `appshell.css` (`app`) continua
+ganhando deles. Os demais CSS de tela (`platform-panel`, `plans-admin`,
+`agenda-admin-responsive` etc.) são importados pelo componente que os usa.
 
 ### A parte contraintuitiva
 
@@ -124,7 +178,7 @@ se mexe aqui, e só aqui.
 especificidade só desempata *dentro* da mesma camada.
 
 Isso é o oposto do que a intuição diz, e é justamente o que torna o sistema
-previsível: `appshell.css` não precisa disputar seletor com as 10 mil linhas do
+previsível: `appshell.css` não precisa disputar seletor com as quase 12 mil linhas do
 `styles.css`. Ele ganha por estar na última camada.
 
 Duas consequências que mordem:
@@ -133,7 +187,16 @@ Duas consequências que mordem:
    sem `@layer telas { … }` em volta passa a ganhar de tudo — inclusive do
    `appshell.css` — e o visual do sistema inteiro muda por acidente de ordem de
    importação. Por isso **todo** arquivo de `frontend/src/styles/` está
-   envolvido num bloco de camada.
+   envolvido num bloco de camada, e `frontend/tests/UiArchitecture.test.mjs`
+   falha se algum ficar sem `@layer`. O teste só olha essa pasta; hoje ficam
+   **fora de camada** (e vencem qualquer camada): o trecho final de
+   `styles.css`, depois de `} /* fim de @layer legado */` (seletor de joias
+   `.smart-combobox-*`, resumo financeiro `.financial-*` e blocos da vitrine),
+   `components/common/form-workflow.css`,
+   `components/common/transaction-fields.css`, `features/clients/clients.css`,
+   `features/access/access-admin.css` e os `*.module.css` de
+   `features/catalog/`. Não acrescente regra nova a esses trechos sem envolvê-la
+   numa camada.
 2. **`!important` inverte a ordem entre camadas**: com ele, `base` ganha de
    `app`. Hoje os poucos `!important` do projeto não disputam a mesma
    propriedade; mantenha assim.
@@ -175,6 +238,16 @@ Corolário: **o que precisa ficar fixo vai no `<header>`, não no
 `.content-scroll`.** As abas do painel moram no cabeçalho porque trocar de área
 não pode exigir rolar de volta ao topo.
 
+No painel `/plataforma`, o cabeçalho e o `.content-scroll` ficam dentro de
+`.platform-tabs-root`, que precisa ser coluna flex com `min-height: 0` e
+`overflow: hidden` (`styles/platform-panel.css`) — sem isso a rolagem volta a
+sumir. O `UiArchitecture.test.mjs` confere essas quatro propriedades.
+
+Quando a tela precisa de controles fixos **dentro** da área rolável, a saída é
+`position: sticky; top: 0` com fundo opaco, como `.agenda-sticky-controls` na
+Agenda (título, seletor de visão e barra de busca/filtros; `z-index: 24` e uma
+faixa opaca em `::before` para o calendário não aparecer por baixo).
+
 ---
 
 ## 5. Anti-padrões, com o caso real
@@ -215,6 +288,28 @@ coluna dentro da lista, e por isso guardava um **mapa de rascunhos** — um por
 plano, todos vivos ao mesmo tempo. Com `<Modal>` existe uma edição por vez, e o
 mapa virou um rascunho só. O padrão não é só visual: ele simplifica o estado.
 
+Depois dessa rodada, outros anti-padrões passaram a ser barrados — alguns por
+teste:
+
+- **Controle complexo nativo.** `frontend/tests/UiArchitecture.test.mjs` falha
+  se um `.jsx` de `components/`, `features/` ou `pages/` usar `<select>`,
+  `<dialog>`, `<details>` ou `<input type="checkbox|radio">`: use `Select`,
+  `Modal`, `Accordion`/`DropdownMenu` e `Checkbox`/`Switch`.
+- **Radix importado na tela.** O mesmo teste proíbe `@radix-ui/*` em
+  `features/` e `pages/`; nas telas, o Radix entra só por `components/common`
+  (por isso `Crud.jsx` reexporta `DropdownMenu`). Fora dessas pastas, só o
+  shell em `main.jsx` importa o `DropdownMenu` do Radix direto.
+- **Painel montando telas ocultas.** `PlatformAdmin.jsx` monta só a aba ativa
+  (`<Tabs.Content key={tab} …>`, sem `forceMount`); o teste também trava isso.
+- **Botões de ação expostos na linha.** Ação de linha vai no `RowActions`.
+- **Variável CSS que não existe.** Os tokens são os do `:root` de `styles.css`
+  (`--ink`, `--muted`, `--line`, `--paper`, `--white`, `--gold`, `--ok`,
+  `--warn`, `--danger`, `--info`…). `--border`, `--surface*`, `--text` e
+  `--accent` não existem. `--border`, `--surface*` e `--text` ainda aparecem,
+  com valor de reserva, em
+  `form-workflow.css`, `transaction-fields.css`, `content-hub.css`,
+  `myplan.css` e `access-admin.css`, e caem sempre no valor fixo.
+
 ---
 
 ## 6. O sinal de primitiva faltando
@@ -254,12 +349,12 @@ detalhe de uma delas.
 
 `frontend/src/features/platform/PlansAdmin.jsx` é a tela mais próxima do padrão:
 `.stack` por fora, `.panel` + `<CrudHeader>` no bloco, `<DataView>` com `actions`
-na linha, `<Modal>` para o formulário, `<ConfirmDeleteModal>` para a exclusão,
+na linha (via `<RowActions>`), `<Modal>` para o formulário, `<ConfirmDeleteModal>` para a exclusão,
 `.platform-facts` para o comparativo de preço, `.field-hint` para os textos de
 apoio e `<code>` para o código do plano. O CSS próprio dela são **quatro
 regras** — e cada uma tem, em comentário, o motivo de não haver equivalente.
 
-Vale ler também o cabeçalho de `AccountsAdmin.jsx`: ele lista, em cinco linhas,
+Vale ler também o cabeçalho de `AccountsAdmin.jsx`: ele lista, em seis linhas,
 qual primitiva substituiu cada parte do sistema `aa-` que existia antes.
 
 ---
@@ -268,12 +363,19 @@ qual primitiva substituiu cada parte do sistema `aa-` que existia antes.
 
 | Arquivo | Papel |
 | --- | --- |
-| `frontend/src/styles.css` | Declara a ordem das camadas; `@layer base` (tokens + primitivas) e `@layer legado` (o histórico) |
+| `frontend/src/main.jsx` | Ordem de import dos CSS globais (ver seção 3) |
+| `frontend/index.html` | `viewport` com `viewport-fit=cover, interactive-widget=resizes-content` |
+| `frontend/src/styles.css` | Declara a ordem das camadas; `@layer base` (tokens + primitivas), `@layer legado` (o histórico) e um trecho final fora de camada |
 | `frontend/src/styles/appshell.css` | `@layer app`. Autoridade do layout do shell e do CSS do `DataView` |
+| `frontend/src/styles/responsive.css` / `operations-responsive.css` | `@layer telas`. Ajustes de celular do produto e das telas internas, importados por último em `main.jsx` |
+| `frontend/src/styles/agenda-admin-responsive.css` | `@layer telas`. Ajustes da Agenda, Dashboard e Configurações, importado por essas telas |
 | `frontend/src/styles/platform-panel.css` | `@layer telas`. Camada única do painel `/plataforma` |
 | `frontend/src/components/common/DataView.jsx` | Listagem padrão. Os typedefs no topo são o contrato |
-| `frontend/src/components/common/Crud.jsx` | `Modal`, `ConfirmDeleteModal`, `CrudHeader`, `DataTable` |
-| `frontend/src/components/common/Ui.jsx` | Campos, `Button`, `StatusBadge`, `AlertBlock` |
+| `frontend/src/components/common/Crud.jsx` | `Modal`, `useModal`, `ConfirmDeleteModal`, `CrudHeader`, `RowActions`, `DropdownMenu` |
+| `frontend/src/components/common/Ui.jsx` | Campos (Radix em `Select`/`Checkbox`), `Button`, `Tabs`, `Accordion`, `Switch`, `StatusBadge`, `AlertBlock` |
+| `frontend/src/components/common/FormWorkflow.jsx` + `form-workflow.css` | Base de formulários longos e em etapas |
+| `frontend/src/lib/useFormDraft.js` | Rascunho local de formulário |
+| `frontend/tests/UiArchitecture.test.mjs` | Trava as regras: sem controle nativo complexo, nenhum import de Radix em `features/` e `pages/`, `@layer` em `styles/`, painel montando só a aba ativa |
 | `frontend/src/features/platform/PlansAdmin.jsx` | O gabarito |
 | `frontend/src/styles/plans-admin.css` | Exemplo do "que sobra": 4 regras, cada uma justificada |
 | `frontend/src/styles/accounts-admin.css` | O caso-limite: sobrou **nada**, e o arquivo continua lá para a próxima regra realmente específica ter um lugar óbvio |

@@ -1,5 +1,7 @@
 # Relatório de homologação crítica — 27/08/2026
 
+> **Situação em 30/09/2026:** relatório histórico; os números e o veredito valem para a base de 27/08 e não foram remedidos. Depois dele, o atendimento concluído passou a gerar uma execução de atendimento (`service_executions`) em vez da ordem de serviço citada abaixo (`c1176101` e `8584be9d`, 30/08), e os materiais viraram itens do estoque único (`48e5bfa1`, 30/08), com `backend/src/routes/consumables.js` removido; a trava de lotes da F-03 foi recolocada em `POST /api/jewelry/:id/lots` (`c49b714c`, 31/08). A automação citada abaixo (`backend/scripts/qa-homologation-critical.mjs`) ainda chama `/api/consumables` e, por isso, não roda como está sobre o código atual. O roteiro vigente está em [GUIA-HOMOLOGACAO-CLINICA-DO-ZERO.md](./GUIA-HOMOLOGACAO-CLINICA-DO-ZERO.md).
+
 ## Veredito
 
 **Aprovado no escopo local homologado após as correções.**
@@ -74,7 +76,7 @@ Origem: `backend/src/routes/jewelry.js` usa `Math.max(0, saldo + delta)` nos doi
 
 Material com saldo 21 aceitou três lotes de dez unidades sem entrada de estoque. O material continuou com 21, mas os lotes passaram a somar 30.
 
-Origem: `backend/src/routes/consumables.js` compara cada novo lote apenas com o saldo total, sem descontar a quantidade já atribuída a outros lotes.
+Origem: `backend/src/routes/consumables.js` (arquivo removido em `48e5bfa1`; a regra equivalente está hoje em `backend/src/routes/jewelry.js`, `POST /api/jewelry/:id/lots`) compara cada novo lote apenas com o saldo total, sem descontar a quantidade já atribuída a outros lotes.
 
 **Correção esperada:** ao classificar saldo legado, permitir no máximo `saldo atual - soma ainda alocada em lotes`; executar com lock e validar a invariância `soma dos lotes <= saldo`.
 

@@ -1,5 +1,20 @@
 # Roadmap de lançamento — setembro de 2026
 
+> **Situação em 30/09/2026:** o mês do plano terminou e este documento passa a
+> ser um registro datado; o estado vivo do produto está em
+> [ESTADO-ATUAL.md](./ESTADO-ATUAL.md). O desenvolvimento previsto foi entregue
+> antes do início do mês: os commits de 30 e 31/08 (de `064d2404` a `c49b714c`)
+> entraram na `main` pelo merge `10c51bca` da branch `release/setembro-2026`, e em
+> setembro vieram apenas `058ab1e5`, `d2aec131` e `a1c88f86` (12/09) e `fdde35fd`
+> (22/09). Ficaram pendentes, na seção de aceleração, a remoção completa dos
+> caminhos substituídos e a baseline por `pg_dump`. Não há no repositório registro
+> de execução dos itens das semanas 1 a 4, do lançamento, dos critérios de
+> Go/No-Go nem da decisão final; a tabela "Resultado do lançamento" continua sem
+> preenchimento. R2, Asaas e SMTP seguem como "Não validado" em ESTADO-ATUAL.md, e
+> a homologação crítica de
+> [RELATORIO-HOMOLOGACAO-CRITICA-2026-08-27.md](./RELATORIO-HOMOLOGACAO-CRITICA-2026-08-27.md)
+> é anterior a este plano e foi feita em ambiente local.
+
 > Documento vivo para conduzir o lançamento da Aura Clinic durante setembro de
 > 2026. O foco é validar regras de negócio com uso real, corrigir bloqueios e
 > evitar ampliar o produto antes de o fluxo principal estar confiável.
@@ -40,9 +55,11 @@ estoque, financeiro, pagamento, arquivos privados e auditoria.
 - [x] Criar registros configuráveis para relatórios e seus filtros/colunas/exportadores, evitando novas telas e implementações paralelas.
 - [x] Usar codemod AST somente para alterações mecânicas repetitivas, como imports, nomes de componentes, props e IDs de página; nunca para regras financeiras, clínicas, fiscais, de estoque ou permissão.
 - [ ] Remover no mesmo lote as telas, rotas, serviços, aliases e estruturas substituídas de Serviços/Procedimentos, Materiais/Produtos, atendimento em Vendas, relatórios e auditoria.
+  - *Situação em 30/09/2026: parcial.* Saíram `routes/consumables.js` e `Consumables.jsx` (`48e5bfa1`, migration tenant `0025`), a geração de venda pelo atendimento (`8584be9d`) e `admin_audit_logs` (`14686d5a`). Continuam o alias somente leitura `GET /api/procedures` (escritas respondem 410; `backend/src/routes/procedures.js`), ainda lido pela Agenda (`frontend/src/features/agenda/Agenda.jsx:352`), o alias `GET/PUT /api/services/:id/consumables` (`backend/src/routes/services.js:176-177`), a página `consumables` em `/app/materiais`, fora do menu, que só abre a visão Materiais de procedimento do Estoque unificado (`frontend/src/lib/appPages.js:65`; `frontend/src/features/inventory/Inventory.jsx:62-63`) e o bloco de `consumables` em `backend/src/db/schema.sql:1647-1676`.
 - [x] Remover candidatos já comprovados sem consumidor: `react-router-dom`, `@aws-sdk/s3-request-presigner`, `legacyLocalDateValue`, o `DataTable` antigo e `admin_audit_logs`; confirmar novamente com busca estática imediatamente antes da remoção.
 - [x] Implementar a busca global do cabeçalho ou retirá-la temporariamente; não lançar um controle que apenas aparenta pesquisar.
 - [ ] Durante o desenvolvimento, criar migrations novas por fatia; no candidato a release, gerar uma baseline completa com `pg_dump --schema-only`, remover o bootstrap SQL duplicado, zerar a base e comprovar a criação de plataforma e clínica somente pelas migrations.
+  - *Situação em 30/09/2026: não executado.* As migrations `0001_baseline.sql` continuam apenas marcando a adoção do runner (`SELECT 1`); a clínica nova ainda nasce de `backend/src/db/schema.sql` (`applySchemaSql`, chamado em `backend/src/services/tenants.js:200`) e a plataforma de `platformSchema.sql` (`backend/src/services/tenants.js:299`).
 - [x] Executar Biome e testes direcionados durante cada tarefa; reservar build e suítes completas para a integração de cada lote e para o candidato final.
 
 ## Semana 1 — 1 a 6 de setembro
@@ -203,6 +220,7 @@ Se qualquer item acima falhar, o lançamento fica **No-Go** até a correção.
 - [x] **Aprovado — comunicações da Agenda:** confirmação, lembrete, reagendamento e cancelamento para o cliente, com registro de envio, entrega e falha. Cada automação e canal deve poder ser ligado ou desligado pela clínica.
 - [x] **Aprovado — histórico de reagendamentos:** preservar data e horário anteriores, novos valores, usuário responsável, momento e motivo, sem substituir ou perder o histórico.
 - [x] **Aprovado — evoluções da Agenda entregues para o lançamento:** lista de espera para cancelamentos, encaixe com alerta de conflito, salas/cadeiras/estações opcionais, visão diária da recepção, feriados e horários especiais e indicadores de atraso, ocupação, cancelamento e ausência.
+  - *Situação em 30/09/2026:* a Agenda mostra "Atraso médio" e "Cancelamentos/ausências" (`frontend/src/features/agenda/Agenda.jsx:435-436`); a taxa de ocupação existe apenas no relatório de profissionais (`occupancy_rate`, `backend/src/services/reports.js:346`), não entre os indicadores da Agenda.
 - [ ] **Pós-lançamento — integrações avançadas da Agenda:** reagendamento por arrastar e soltar, integração com calendários externos e retorno/downsizing automático. Não bloqueiam o lançamento e devem continuar opcionais.
 - [x] **Aprovado — reorganização geral da navegação:** ordenar o menu conforme o uso real da clínica: **Início → Atendimento → Comercial → Estoque e Compras → Financeiro → Gestão → Configurações**.
 - [x] **Início:** reunir uma visão geral com agenda do dia, clientes aguardando retorno, pendências e alertas importantes.
@@ -215,6 +233,7 @@ Se qualquer item acima falhar, o lançamento fica **No-Go** até a correção.
 - [x] **Ajuda fora do menu principal:** disponibilizar no cabeçalho Manual do usuário, Novidades e Suporte.
 - [x] **Ações rápidas:** criar um botão fixo **+ Novo** com Novo agendamento, Novo cliente, Nova venda e Nova compra, respeitando permissões e recursos contratados.
 - [x] **Regras aprovadas da navegação:** adaptar itens ao cargo e às permissões; abrir submenus somente sob demanda; ocultar funcionalidades desativadas pela clínica; retirar o Onboarding do menu após sua conclusão; manter Termos e Pós-atendimento no perfil do cliente e usar os submenus gerais somente como filas operacionais; manter Procedimentos e configurações operacionais dentro da Agenda.
+  - *Situação em 30/09/2026:* os submenus entregues em `5fc37d55` e `440dc0c4` foram retirados em 31/08 (`3ce2d18d`, `a575523f`, `6d743aeb`, `04f32b49`). O menu lateral mostra só as páginas (`frontend/src/components/layout/Sidebar.jsx:20`; `frontend/tests/appPages.test.mjs` proíbe `menuChildren`), na ordem de grupos acima (`frontend/src/lib/appPages.js:219`). As subvisões abrem por "Mais opções" de cada tela — por exemplo, Solicitações online, Lista de espera e Histórico de atendimentos na Agenda (`frontend/src/features/agenda/Agenda.jsx:445-457`) — e Usuários e permissões, Integrações e Meu plano saíram do menu e abrem pela tela Configurações (`frontend/src/features/settings/Settings.jsx:76-80`).
 - [x] **Aprovado — manter Compras, Vendas e Atendimentos separados:** Compras representa entrada de produtos e materiais vindos de fornecedores, atualiza estoque/custo/lotes e gera contas a pagar; Vendas representa somente a saída avulsa de produtos para clientes, baixa estoque e registra pagamento ou contas a receber; Atendimentos nascem e são concluídos pela Agenda, registram receita do procedimento, podem incluir joias, consomem materiais e geram pagamento ou contas a receber.
 - [x] Despesas sem entrada de estoque, como aluguel, energia e internet, devem ser lançadas diretamente em Contas a pagar, sem passar por Compras.
 - [x] Quando uma joia for aplicada durante um procedimento, manter um único fechamento para o cliente, mas separar nos dados e relatórios a receita do serviço e a receita do produto. Troca ou instalação profissional deve ser procedimento da Agenda; entrega avulsa da joia deve ser Venda.
@@ -238,6 +257,7 @@ Se qualquer item acima falhar, o lançamento fica **No-Go** até a correção.
 - [x] Detectar duplicidade de fornecedor por CPF/CNPJ ou documento equivalente e impedir registros conflitantes.
 - [x] **Aprovado — relacionamento Fornecedor ↔ Item de estoque:** permitir vários fornecedores para o mesmo item e vários itens por fornecedor, guardando código do item no fornecedor, último custo, prazo de entrega e pedido mínimo para comparação de compra.
 - [x] Exibir automaticamente no perfil do fornecedor última compra, total comprado, contas pendentes e itens fornecidos, sem exigir preenchimento manual.
+  - *Situação em 30/09/2026 (dois itens acima):* não há no código tabela de relação entre vários fornecedores e o mesmo item; o item guarda um único `supplier_id` (migration tenant `0025`) e `gtin`/`supplier_item_code` (migration `0022`). O perfil do fornecedor mostra última compra, total comprado e contas pendentes (`backend/src/routes/finance.js:442-446`; `frontend/src/features/finance/SupplierRegistry.jsx:269`), mas não a lista de itens fornecidos.
 - [x] Fornecedor com compras, títulos ou outro histórico não pode ser apagado definitivamente; deve ser arquivado, preservando todas as referências.
 - [x] Todos os campos e controles avançados do fornecedor devem respeitar o princípio de adoção opcional e não dificultar o cadastro rápido usado por clínicas menores.
 - [x] **Aprovado — padronizar formulários extensos por categoria, importância e frequência de uso:** apresentar primeiro os campos essenciais e mais utilizados, depois os dados operacionais e financeiros, e deixar informações complementares ou raramente usadas no final, em seções opcionais/recolhíveis.

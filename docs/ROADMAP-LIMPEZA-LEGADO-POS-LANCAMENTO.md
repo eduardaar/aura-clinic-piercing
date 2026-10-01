@@ -1,5 +1,14 @@
 # Roadmap de limpeza de legado — pós-lançamento
 
+> **Situação em 30/09/2026:** a maior parte dos trabalhos transferidos foi
+> executada em 30 e 31/08 e chegou à `main` pelo merge `10c51bca` da branch
+> `release/setembro-2026`; a execução de cada item está anotada abaixo. Ficaram
+> pendentes a baseline pré-lançamento e parte das remoções no mesmo lote (aliases e
+> resíduos listados na Fase 3). A limpeza restante deste roadmap não começou: o
+> roadmap de setembro não tem registro de conclusão nem de decisão Go/No-Go, e a
+> tabela "Registro dos lotes" segue sem lote. O estado vivo está em
+> [ESTADO-ATUAL.md](./ESTADO-ATUAL.md).
+
 > Plano exclusivo para a limpeza ampla que permanecer depois da conclusão do
 > `ROADMAP-LANCAMENTO-SETEMBRO-2026.md`. As consolidações necessárias para as
 > novas regras de negócio foram antecipadas ao lançamento e estão registradas
@@ -16,16 +25,19 @@ compatibilidade que não participam mais do produto em produção.
 Estes itens não são mais pendências deste roadmap. Serão eliminados no mesmo lote
 que implantar seus substitutos, conforme o estudo técnico de execução:
 
-- [x] Consolidar Serviço e Procedimento e remover a experiência duplicada.
-- [x] Criar execução própria de atendimento e retirar `ordem_servico` de Vendas.
-- [x] Consolidar produtos, joias e materiais no Item de estoque e remover as cadeias antigas no cutover.
-- [x] Criar serviço/modelo central de auditoria e remover `admin_audit_logs`, que não possui escritor.
-- [x] Consolidar relatórios, filtros e exportadores síncronos/assíncronos.
-- [x] Criar componentes oficiais para formulários extensos, parcelas e listas responsivas.
-- [x] Consolidar rotas, menu, títulos, permissões e recursos do plano em um registro de páginas.
-- [x] Remover telas, rotas, serviços e chamadas antigas no mesmo lote dos substitutos.
-- [x] Remover dependências, exports e helpers comprovadamente sem uso e corrigir a busca global falsa.
-- [x] Gerar a baseline pré-lançamento e retirar o bootstrap SQL duplicado, aproveitando que bases antigas podem ser descartadas.
+> O `[x]` desta seção marca a transferência. A execução de cada item, conferida
+> no código em 30/09/2026, está anotada ao lado.
+
+- [x] Consolidar Serviço e Procedimento e remover a experiência duplicada. Executado em `2d3aafa3` (migration tenant `0035`); resta o alias somente leitura `GET /api/procedures`.
+- [x] Criar execução própria de atendimento e retirar `ordem_servico` de Vendas. Executado em `c1176101` (migration `0019`) e `8584be9d`, que removeu a geração de venda pelo atendimento; `createSalesOrder` recusa `ordem_servico` (`backend/src/services/sales.js:221`).
+- [x] Consolidar produtos, joias e materiais no Item de estoque e remover as cadeias antigas no cutover. Executado em `48e5bfa1` (migration `0025`, que apaga `consumables` e tabelas ligadas); restam aliases e o bloco legado do `schema.sql` (ver Fase 3).
+- [x] Criar serviço/modelo central de auditoria e remover `admin_audit_logs`, que não possui escritor. Executado em `064d2404` (`audit_events`, migration `0017`) e `14686d5a` (remoção de `admin_audit_logs` do `schema.sql`).
+- [x] Consolidar relatórios, filtros e exportadores síncronos/assíncronos. Executado em `39530ba2` e `02419dd3`; a exportação síncrona e o job `report_export` usam o mesmo `buildReport` (`backend/src/services/jobs.js:182`).
+- [x] Criar componentes oficiais para formulários extensos, parcelas e listas responsivas. Executado em `fae82e5c`, `68a03299` e `cf32e294`.
+- [x] Consolidar rotas, menu, títulos, permissões e recursos do plano em um registro de páginas. Executado em `52f365cb` (`frontend/src/lib/appPages.js`).
+- [x] Remover telas, rotas, serviços e chamadas antigas no mesmo lote dos substitutos. Parcial: saíram `routes/consumables.js` e `Consumables.jsx`, mas ficaram os aliases listados na Fase 3.
+- [x] Remover dependências, exports e helpers comprovadamente sem uso e corrigir a busca global falsa. Executado em `8018244d` (`react-router-dom`, `@aws-sdk/s3-request-presigner`, `legacyLocalDateValue` e `DataTable`) e `2cf86817` (busca global retirada).
+- [x] Gerar a baseline pré-lançamento e retirar o bootstrap SQL duplicado, aproveitando que bases antigas podem ser descartadas. Não executado: as migrations `0001_baseline.sql` seguem como marco (`SELECT 1`) e a clínica nova ainda nasce de `schema.sql` (`backend/src/services/tenants.js:200`).
 
 ## Regra de início da limpeza restante
 
@@ -76,6 +88,7 @@ Estes itens são candidatos, não autorização de remoção:
 - [ ] Revisar dependências diretas e transitivas sem depender de pacote transitivo não declarado.
 - [ ] Revisar scripts de migração, importação, auditoria e reconciliação que permanecerem depois da baseline.
 - [ ] Revisar compatibilidade de rotas públicas, favoritos antigos, uploads e integrações observadas em produção.
+- [ ] Resíduos do cutover de agosto, levantados no código em 30/09/2026: alias somente leitura `GET /api/procedures` (escritas em 410), ainda lido pela Agenda (`frontend/src/features/agenda/Agenda.jsx:352`); alias `GET/PUT /api/services/:id/consumables` (`backend/src/routes/services.js:176-177`); página `consumables` em `/app/materiais`, fora do menu, que só abre a visão Materiais de procedimento do Estoque unificado (`frontend/src/lib/appPages.js:65`); bloco `consumables`, `consumable_stock_movements` e `purchase_order_items.consumable_id` em `backend/src/db/schema.sql:1647-1676`; tipos de job `aura_jewelry_import` e `asaas_reconcile` sem executor (`backend/src/services/jobs.js:12`); código de submenu inerte em `frontend/src/components/layout/Sidebar.jsx` (`visibleChildren: []`, linha 20) com o CSS `.nav-submenu` (`frontend/src/styles/appshell.css:249`); CSS `.visual-search-*` sem tela (`frontend/src/styles.css:9810`); e `PlansPage` exportado sem uso, já que `/planos` redireciona para `/#planos` (`frontend/src/pages/Landing.jsx:378`).
 
 ## Fase 4 — limpeza ampla do frontend
 

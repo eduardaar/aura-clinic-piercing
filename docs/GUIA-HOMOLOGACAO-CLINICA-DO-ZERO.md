@@ -48,13 +48,16 @@ Catálogo público -> solicitação de agenda -> agenda interna
 
 ### H-00 — criar e acessar a clínica
 
-1. Abra Cadastro e crie QA Estúdio Aurora Piercing.
+1. Abra `/cadastro` e crie QA Estúdio Aurora Piercing. O código/slug não é digitado: ele é derivado do nome e aparece como endereço previsto.
 2. Use e-mail e senha temporários exclusivos de teste.
-3. Entre com o código/slug criado.
-4. Confirme nome da clínica no menu e Dashboard vazio.
+3. Na etapa de plano, escolha o plano, marque o aceite dos Termos de Uso e da Política de Privacidade (abrem em modal) e clique em Criar conta.
+4. Confirme que o sistema entra sozinho e abre o Onboarding.
+5. Saia pelo menu da conta e entre de novo em `/login` com o código/slug criado.
+6. Confirme nome da clínica no menu e Dashboard vazio.
 
 **Esperado**
 
+- Sem o aceite ou sem plano válido, nenhuma clínica é criada.
 - Não há clientes, agenda, produtos, compras ou financeiro de outra clínica.
 - Os módulos visíveis dependem do plano; item com cadeado deve ser registrado como limitação de plano, não como erro imediato.
 - Um segundo login com o mesmo código da clínica funciona.
@@ -63,7 +66,7 @@ Catálogo público -> solicitação de agenda -> agenda interna
 
 ### H-01 — identidade, horários e bloqueio
 
-No Onboarding/configurações, use:
+Siga o checklist do Onboarding. Os dados de contato ficam em Catálogo → Mais opções → Contato e políticas; nome e cores, em Catálogo → Aparência. O botão “Abrir configurações” do item “Completar dados da clínica” leva à tela Configurações, que não tem esses campos — registre como dúvida se isso atrapalhar o teste. Use:
 
 | Campo | Valor de teste |
 | --- | --- |
@@ -75,7 +78,7 @@ No Onboarding/configurações, use:
 | Horário | terça a sábado, 10:00–19:00 |
 | Cor da marca | #6D3B73 |
 
-Crie bloqueio: QA-Bloqueio, segunda-feira de 09:00 a 13:00, motivo limpeza e manutenção.
+Crie bloqueio em Agenda → Mais opções → Configurações da Agenda → aba Disponibilidade avançada: QA-Bloqueio, segunda-feira de 09:00 a 13:00, motivo limpeza e manutenção.
 
 **Esperado:** bloqueio não pode ser reservado no agendamento público nem na Agenda.
 
@@ -88,11 +91,13 @@ Crie bloqueio: QA-Bloqueio, segunda-feira de 09:00 a 13:00, motivo limpeza e man
 | QA Marina Piercer | principal | 40% | ter–sáb, 10:00–19:00 |
 | QA Rafael Piercer | auxiliar | 35% | qua–sáb, 12:00–19:00 |
 
+Cadastre em Agenda → Mais opções → Configurações da Agenda → aba Profissionais e defina a disponibilidade na aba Agenda semanal. A tela de profissionais não tem campo de comissão (a coluna `commission_percentage` existe e só é lida pelo relatório); registre a comissão apenas na planilha de evidências.
+
 Verifique: ambos aparecem nos filtros; horário de Marina não bloqueia Rafael; profissional inativo não entra em novo atendimento.
 
 ### H-03 — catálogo de serviços
 
-Crie os serviços abaixo e vincule quem pode executá-los.
+Crie os serviços abaixo em Configurações da Agenda → aba Procedimentos (“Novo tipo de atendimento”) e vincule quem pode executá-los em “Profissionais habilitados”.
 
 | Serviço | Duração | Preço | Sinal | Profissionais |
 | --- | ---: | ---: | ---: | --- |
@@ -101,13 +106,13 @@ Crie os serviços abaixo e vincule quem pode executá-los.
 | QA Perfuração nostril | 45 min | R$ 140,00 | R$ 50,00 | Marina, Rafael |
 | QA Troca de joia | 20 min | R$ 35,00 | R$ 0,00 | Marina, Rafael |
 
-Se existir a camada de procedimentos, crie QA Hélix simples e QA Nostril ponto de luz.
+Serviço e procedimento são hoje um cadastro único (“Procedimentos e tipos de atendimento”); não há camada separada de procedimentos para criar (`/api/procedures` é só leitura). Em “Regras e orientações”, ligue “Gerar pós-atendimento” (dias 7, 15, 30) em QA Perfuração hélix e QA Perfuração nostril — sem isso, a conclusão não cria lembretes (H-16). Depois de H-09, volte em “Equipe, estoque e operação” e preencha “Materiais previstos” (ficha técnica) com aqueles materiais.
 
 **Esperado:** somente Marina é elegível para Hélix. Arquivar serviço preserva histórico e impede novo agendamento.
 
 ### H-04 — usuários e perfis
 
-Crie, se o plano permitir:
+Crie em Configurações → Mais opções → Usuários e permissões (somente admin), se o plano permitir:
 
 | Usuário | E-mail | Perfil | Validar |
 | --- | --- | --- | --- |
@@ -207,7 +212,7 @@ Em janela anônima:
 
 ### H-09 — materiais de consumo
 
-Cadastre em Materiais:
+Desde a unificação do estoque (`48e5bfa1`), material é um item de estoque como os produtos. Cadastre em Estoque → aba Materiais de procedimento (“Novo item”), com “Pode ser usado em procedimento” ligado, “Pode ser vendido” e “Pode aparecer no catálogo” desligados e, para itens estéreis, “Controla lote e validade” ligado:
 
 | Material | Unidade | Mínimo | Custo de referência |
 | --- | --- | ---: | ---: |
@@ -217,7 +222,7 @@ Cadastre em Materiais:
 | QA Água mineral 500 ml | unidade | 12 | R$ 3,00 |
 | QA Antisséptico | frasco | 1 | R$ 28,00 |
 
-**Esperado:** material não aparece em Produtos, Vendas ou Catálogo; saída acima do saldo é recusada.
+**Esperado:** material não aparece em Produtos para venda, Vendas ou Catálogo; saída acima do saldo é recusada.
 
 ### H-10 — compra de revenda
 
@@ -237,7 +242,7 @@ Confirme a compra.
 
 ### H-11 — compra de consumo
 
-Compra em QA Medical Supply Ltda.:
+Compra em QA Medical Supply Ltda., com os itens lançados como “Material de consumo”:
 
 | Material | Quantidade | Custo unitário |
 | --- | ---: | ---: |
@@ -247,7 +252,7 @@ Compra em QA Medical Supply Ltda.:
 
 Parcelas: R$ 200,00 para 15 dias e R$ 215,00 para 45 dias.
 
-**Esperado:** somente Materiais aumenta e as parcelas aparecem em Pagar. Não crie despesa manual adicional para a mesma nota.
+**Esperado:** somente os materiais aumentam (aba Materiais de procedimento) e as parcelas aparecem em Pagar. Não crie despesa manual adicional para a mesma nota.
 
 ### H-12 — saídas e ajuste de materiais
 
@@ -263,6 +268,8 @@ Gaze estéril: ajuste com motivo "contagem física QA"
 **Automação entregue:** configure a ficha técnica do serviço antes deste teste. Ao concluir o atendimento, o sistema deve baixar automaticamente luva, agulha e demais materiais da receita, congelar o consumo no atendimento e consumir os lotes por FEFO. A saída manual acima continua útil para perdas, uso administrativo e contagem física.
 
 Cadastre dois lotes sem aumentar o saldo e tente cadastrar um terceiro cuja soma ultrapasse a quantidade do material. O terceiro lote deve ser recusado. Em seguida, faça uma saída e confirme que o lote com validade mais próxima diminuiu primeiro.
+
+Hoje a tela não tem cadastro manual de lote: a aba Lotes e validades só lista (`GET /api/inventory/lots`), e pela interface o lote nasce na compra com lote/validade vindos do XML da NF-e. O teste dos lotes manuais é feito pela API, `POST /api/jewelry/:id/lots` (sem `increase_stock`, o lote não pode passar do saldo ainda sem lote; com `increase_stock: true`, soma ao saldo e grava uma entrada).
 
 ## 8. Clientes, agenda e atendimento
 
@@ -300,26 +307,29 @@ Tente duplicar o horário de Marina.
 
 ### H-15 — prontuário e termo
 
-Antes da conclusão:
+Antes da conclusão, no perfil de Ana (Clientes → Ver perfil):
 
-1. Registre prontuário fictício com histórico, alergia e orientação.
-2. Gere termo digital com assinatura desenhada apenas para teste.
-3. Anexe apenas arquivo fictício/placeholder, se a tela permitir.
+1. Na aba Histórico e atendimentos, registre prontuário fictício com histórico, alergia e orientação.
+2. Na aba Termos digitais, use “Novo termo”, vincule ao agendamento de H-14 e assine com assinatura desenhada apenas para teste.
+3. Ainda na aba Termos digitais, use “Enviar para assinar” (canal no estúdio), abra o link gerado em outra janela (`/termo/<token>?t=<slug>`) e assine como cliente fictício.
+4. Anexe apenas arquivo fictício/placeholder, se a tela permitir.
 
-**Esperado:** prontuário e termo ficam somente na ficha do cliente; termo gera registro/PDF ou equivalente; nada é público.
+**Esperado:** prontuário e termo ficam somente na ficha do cliente; termo gera registro/PDF ou equivalente; o termo assinado pelo link aparece com origem “Assinado no estúdio” e a solicitação deixa de aceitar nova assinatura; fora do link individual, nada é público.
 
 ### H-16 — concluir atendimento
 
-Conclua a agenda de Ana e confira:
+No detalhe do agendamento de Ana, passe por “Confirmar”, “Registrar chegada” (só aparece com o agendamento confirmado) e “Iniciar atendimento” (só aparece depois da chegada), conclua com “Revisar e finalizar” e confira:
 
 | Módulo | Resultado esperado |
 | --- | --- |
 | Agenda | status atendido, sinal e saldo preservados |
-| Serviços | linha de serviço executado, derivada da Agenda |
-| Estoque | QA-LAB-08-12-NAT reduz 1 com movimento de origem |
+| Serviços | linha de serviço executado, derivada da Agenda, em Agenda → Mais opções → Histórico de atendimentos |
+| Estoque | QA-LAB-08-12-NAT reduz 1 com movimento de origem; materiais da ficha técnica baixam por FEFO |
 | Receber | saldo de R$ 140,00, uma única vez |
-| Pós-atendimento | lembretes criados |
+| Pós-atendimento | lembretes nos dias configurados no tipo de atendimento (H-03) |
 | Fidelidade | pontos, se o recurso/plano estiver ativo |
+
+Se o tipo de atendimento tiver “Exigir termo assinado”, a conclusão é recusada enquanto não houver termo ligado ao agendamento.
 
 **Não esperado:** duas baixas da joia, dois recebíveis para o mesmo saldo, ou venda avulsa criada para representar o serviço.
 
@@ -342,12 +352,13 @@ Orientada a retornar em 30 dias.
 
 Para QA Carla Mendes, crie perfuração nostril com sinal de R$ 50,00:
 
-1. Remarque para horário livre.
+1. Remarque para horário livre, informando o “Motivo do reagendamento”.
 2. Tente remarcar para o bloqueio H-01.
-3. Cancele antes de atender e escolha explicitamente entre retenção do sinal, crédito do cliente ou reembolso manual.
+3. Cancele antes de atender (botão “Cancelar” no detalhe) e escolha explicitamente, em “Resolução financeira”, entre “Reter sinal”, “Converter sinal em crédito” ou “Reembolso manual”.
 4. Repita com uma agenda sem pagamento e use “Sem pagamento recebido”.
+5. Em outra agenda fictícia, use “Não compareceu” e escolha o destino do sinal.
 
-**Esperado:** cancelamento direto por simples troca de status é recusado; cada resolução fica auditada. Crédito passa a aparecer na ficha do cliente e reembolso manual gera despesa financeira rastreável.
+**Esperado:** remarcação sem motivo é recusada e a remarcação válida fica no histórico; cancelamento direto por simples troca de status é recusado; cada resolução fica auditada. Crédito passa a aparecer na ficha do cliente e reembolso manual gera despesa financeira rastreável. Ausência fica com status “Não compareceu” e libera o horário.
 
 ## 9. Venda avulsa
 
@@ -393,11 +404,11 @@ Parcela 2: R$ 25,00 em 30 dias via cartão
 
 Em navegador anônimo:
 
-1. Abra o agendamento público.
+1. Abra o agendamento público (`/agendar?t=<slug>`; o link está em “Agendamento público”, no topo da Agenda).
 2. Escolha QA Perfuração nostril, profissional compatível e horário livre.
 3. Use QA Carla Mendes.
 4. Selecione joia publicada com saldo.
-5. Envie e trate a solicitação no painel interno.
+5. Envie e trate a solicitação no painel interno, em Agenda → Mais opções → Solicitações online.
 
 **Esperado:** serviços/profissionais inativos não aparecem; bloqueio/horário ocupado é recusado; joia não publicada não pode ser enviada; solicitação não duplica cliente/horário.
 
@@ -436,7 +447,7 @@ O total financeiro não pode somar duas vezes agenda, serviço, venda técnica e
 
 ### H-25 — relatórios/exportações
 
-Filtre por período, profissional e categoria. Exporte CSV/PDF/XLSX se habilitado.
+Em Relatórios, escolha o relatório no seletor da barra e filtre por período, profissional e categoria pelo botão “Filtros”. Exporte em PDF, XLSX, CSV ou TXT, se habilitado. A lista só mostra os relatórios que o perfil e o plano liberam.
 
 Conferência:
 
@@ -453,9 +464,9 @@ Abra o arquivo e confirme moeda, data, filtros, cabeçalhos e ausência de outra
 
 ### H-26 — comunicações sem envio real
 
-Em Comunicações/Integrações, use apenas dados de teste:
+Em Comunicações (menu Atendimento) e em Integrações (Configurações → Mais opções → Integrações e automações, somente admin), use apenas dados de teste:
 
-- visualizar templates, automações, fila e histórico;
+- visualizar modelos, automações, fila e histórico (abas Atendimento, Automações, Modelos e Assistente IA);
 - testar opt-in/opt-out se disponível;
 - registrar crédito de comunicação somente como cenário local.
 
@@ -467,8 +478,8 @@ Não use token, chave, telefone ou conta de produção.
 
 Se os recursos estiverem liberados:
 
-1. Abra chamado QA — dúvida sobre estoque de materiais.
-2. Registre solicitação fictícia de titular/LGPD, sem dado pessoal real.
+1. Abra chamado QA — dúvida sobre estoque de materiais (ícone de Ajuda na barra superior → Suporte → Novo chamado; somente admin).
+2. Registre solicitação fictícia de titular/LGPD, sem dado pessoal real. Não há tela para isso: use a API, `POST /api/privacy/data-subject-requests` (admin).
 3. Confira que perfil sem acesso não vê prontuário, termo, segredo ou dado de outro tenant.
 
 ## 12. Regressão obrigatória
@@ -481,28 +492,31 @@ Se os recursos estiverem liberados:
 | R-04 | abrir produto não publicado por URL pública | não exibir nem reservar |
 | R-05 | baixar recebível duas vezes | não ultrapassar título |
 | R-06 | agendar horário ocupado/bloqueado | recusar |
-| R-07 | recepção abrir Acessos por URL | negar |
+| R-07 | recepção abrir Usuários e permissões (`/app/acessos`) por URL | negar |
 | R-08 | alternar tenant | nunca misturar dados |
 | R-09 | arquivar produto com histórico | preservar histórico; impedir nova venda |
 | R-10 | remover variação usada | preservar referência/arquivar sem corromper |
+| R-11 | fechar um formulário em modal com dados alterados (clique fora, X, Esc ou Cancelar) | clique fora não fecha; os demais pedem confirmação em “Existem alterações não salvas” |
 
 ## 13. Lacunas e módulos recomendados
 
 > Situação em 29/08/2026. **M-01, M-02, M-03, M-06 e M-07 foram entregues** nos commits `31c089e5`, `e00464d2` e `575b61a5` — não são mais lacunas, e sim casos de teste. Se algum deles não funcionar, é defeito, não ausência de recurso. O estado consolidado do projeto está em [ESTADO-ATUAL.md](./ESTADO-ATUAL.md).
 
+> **Situação em 30/09/2026:** em `48e5bfa1` (30/08) os materiais deixaram de ser um estoque separado e viraram itens de `jewelry_inventory`; ficha técnica, lotes e consumo passaram para `service_inventory_recipes`, `inventory_item_lots` e `inventory_item_lot_allocations`. A trava “soma dos lotes ≤ saldo” e a baixa FEFO na saída manual voltaram em `c49b714c` (`POST /api/jewelry/:id/lots` e `POST /api/jewelry/:id/movements`). Os roteiros H-09 a H-12 acima já descrevem esse modelo. Este guia não foi reexecutado depois dessas mudanças.
+
 | Código | Tema | Situação |
 | --- | --- | --- |
-| M-01 | consumo baixa por ficha técnica do serviço | **entregue** — receita congelada em `appointment_consumptions` ao concluir; reabrir ou cancelar estorna o mesmo que foi consumido (H-12) |
+| M-01 | consumo baixa por ficha técnica do serviço | **entregue** — receita (“Materiais previstos” do tipo de atendimento) congelada em `appointment_consumptions` ao concluir; reabrir ou cancelar estorna o mesmo que foi consumido (H-12) |
 | M-02 | política de sinal, cancelamento e reembolso | **entregue** — `POST /api/appointments/:id/cancel` exige motivo e uma de quatro resoluções; `PATCH` direto bloqueado (H-18) |
 | M-03 | devolução/troca/estorno pós-venda | **entregue** — devolução por item com condição e ação financeira; só item `sellable` volta ao estoque (H-21) |
 | M-04 | WhatsApp oficial com créditos | **pendente** — configuração Cloud API é por clínica; falta cofre central, saldo, baixa por envio e conciliação |
 | M-05 | categorias de estoque/catálogo fragmentadas | **pendente** — taxonomia canônica e migração assistida ainda não executadas |
-| M-06 | painel de saúde do estoque | **entregue** — `GET /api/inventory/health`: estoque baixo, cadastro incompleto, lotes vencidos/a vencer |
+| M-06 | painel de saúde do estoque | **entregue** — `GET /api/inventory/health`: estoque baixo, cadastro incompleto, lotes vencidos/a vencer; sem tela própria no frontend, conferir pela API |
 | M-07 | lote e validade de material estéril | **entregue** — lotes, validade e baixa FEFO; soma dos lotes nunca excede o saldo (H-12) |
 
 ## 14. Aprovação e reporte
 
-A rodada é aprovada somente se todos os casos aplicáveis estiverem com evidência, R-01 a R-10 passarem, os valores de estoque/pagar/receber fecharem e as lacunas ainda abertas (M-04 e M-05) tiverem prioridade definida.
+A rodada é aprovada somente se todos os casos aplicáveis estiverem com evidência, R-01 a R-11 passarem, os valores de estoque/pagar/receber fecharem e as lacunas ainda abertas (M-04 e M-05) tiverem prioridade definida.
 
 Modelo de defeito:
 

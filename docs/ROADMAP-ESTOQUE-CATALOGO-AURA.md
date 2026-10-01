@@ -1,5 +1,41 @@
 # Roadmap seguro — Estoque e catálogo da Aura Clinic
 
+> **Situação em 30/09/2026:** os ajustes desta etapa continuam no código.
+> Nenhuma das pendências das seções 2 e 3 foi executada, nem os passos 3 a 5 da
+> "Ordem de execução recomendada". É a pendência P-02 de
+> [ESTADO-ATUAL.md](./ESTADO-ATUAL.md).
+>
+> - **Publicação.** As três marcas continuam no schema e no código
+>   (routes/jewelry.js:443, 465 e 476; Inventory.jsx:1089-1091). O estoque
+>   unificado (48e5bfa1, migration tenant `0025_unified_inventory_items`) criou
+>   uma quarta, `can_publish` ("Pode aparecer no catálogo"). Ela é exigida pelo
+>   catálogo e pelos eventos (routes/catalog.js:65 e 111). A reserva por
+>   agendamento também a exige, junto com `can_use_in_service`
+>   (routes/booking.js:222 e 247).
+> - **Pedido público.** Confere `can_sell`, `can_publish`, `is_catalog_active`
+>   e `is_published`, mas não `virtual_store_active`
+>   (services/sales.js:31-32).
+> - **Imagens.** `photo_url`, `image_url` e `gallery_urls` continuam em
+>   `jewelry_inventory` (schema.sql:212-214), ao lado da tabela `product_images`
+>   (schema.sql:306).
+> - **Categorias.** `jewelry_inventory.category_id` aponta para
+>   `inventory_options` (migration tenant `0005`, de 14/08/2026), sem relação
+>   pai/filha. As categorias em destaque do catálogo ainda guardam texto em
+>   `catalog_featured_categories.category_id` (schema.sql:863).
+> - **Valores.** Reais e centavos convivem: `cost_value`/`sale_value` e os
+>   campos `*_cents` (routes/jewelry.js:500).
+> - **Entrada e saída de estoque.**
+>   - A entrada por compra com variação já existe (services/purchases.js:254-259).
+>   - Movimentação com saída acima do saldo responde 409 (575b61a5).
+>   - Criar, editar, arquivar e excluir item e movimentar estoque gravam a
+>     auditoria central (1822d52a; routes/jewelry.js:617, 681, 738, 830, 867
+>     e 881). O cadastro de lote (`POST /api/jewelry/:id/lots`) não grava.
+>   - `GET /api/inventory/health` só aponta item sem SKU ou categoria, estoque
+>     baixo, lotes vencidos ou a vencer em 30 dias e serviços com ficha técnica
+>     (routes/jewelry.js:138-164). Não cobre negativos, preço nem imagem.
+> - **Base local.** Os números da "Leitura confirmada da base local" são de
+>   26/08/2026 e não foram reconferidos.
+
 ## Objetivo
 
 Manter o estoque como fonte operacional confiável e fazer o catálogo mostrar

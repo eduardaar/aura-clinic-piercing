@@ -86,6 +86,35 @@ Signup), emitir credenciais de servidor e salvar apenas segredos cifrados.
 - Processador que reserva crédito antes de chamar a Cloud API e mantém o fallback
   manual por `wa.me` sem integração oficial.
 
+Conferido com o código em 30/09/2026:
+
+- **Envio pela Cloud API:** é `type: "text"` (services/whatsappCloud.js:140).
+- **Reserva de crédito:**
+  - O crédito é consumido assim que a API aceita a mensagem e é liberado se o
+    envio falhar (services/communications.js:60-133).
+  - Sem saldo, a reserva falha com `insufficient_credits` e a mensagem fica
+    `failed`, com o erro registrado. Não existe o estado `blocked_credit`.
+  - A fila só roda quando alguém aciona `POST /api/automations/process`
+    (routes/notifications.js:177).
+- **Carteira:**
+  - É separada por canal (`whatsapp`, `email` e `ai`) e por competência mensal
+    `AAAA-MM`; a franquia do plano é concedida uma vez por competência
+    (services/communicationCredits.js:9-15 e 86-115).
+  - O saldo lido e reservado é sempre o de uma competência (padrão: a
+    corrente). Sobra de um mês não passa para o seguinte, e a recarga também
+    é gravada numa competência (services/communicationCredits.js:3-5,
+    117-128, 143-155 e 220-237).
+  - A mesma carteira atende o e-mail enviado pela fila de comunicações e o
+    Assistente IA (services/communications.js:83; routes/aiAssistant.js:47).
+  - `GET /api/communication-credits` devolve saldo, pacotes e histórico.
+- **Compra de créditos:**
+  - `POST /api/communication-credits/purchase` (só admin) apenas registra a
+    intenção em `communication_credit_purchase_intents`.
+  - `grantCommunicationTopup` existe, mas nenhuma rota ou webhook o chama.
+- **Tela:** a de Comunicações, módulo único desde 6d743aeb, mostra o "Saldo de
+  comunicação" por canal e as "Recargas avulsas"
+  (Communications.jsx:235-243). Ela não exibe o extrato.
+
 ## 5. Lacunas a fechar
 
 | Lacuna | Efeito atual | Resultado necessário |
@@ -94,8 +123,8 @@ Signup), emitir credenciais de servidor e salvar apenas segredos cifrados.
 | Cobrança de créditos | Há intenção de compra, mas sem checkout/grant no webhook. | Asaas cria cobrança; webhook idempotente concede saldo uma única vez. |
 | Templates oficiais | O envio atual é texto livre. | Catálogo de templates aprovados por tenant, variáveis tipadas e envio `type: template`. |
 | Webhooks WhatsApp | Não há recebimento de status/mensagens. | Verificação de assinatura, idempotência, status `sent/delivered/read/failed` e correlação por `wamid`. |
-| Worker | A fila depende do processamento acionado pela aplicação. | Worker persistente/cron com lock, retry exponencial e métricas. |
-| Opt-in e LGPD | Não há registro específico por finalidade/canal. | Consentimento, fonte, data, finalidade, revogação e trilha de auditoria. |
+| Worker | A fila depende do processamento acionado pela aplicação (`POST /api/automations/process`). | Worker persistente/cron com lock, retry exponencial e métricas. |
+| Opt-in e LGPD | O cliente tem só `operational_consent` e `marketing_consent` (booleanos, migration tenant `0028`), sem canal, fonte, data ou revogação; a fila não os consulta. | Consentimento, fonte, data, finalidade, revogação e trilha de auditoria. |
 | Precificação | Produtos atuais são valores de placeholder. | Tabela comercial versionada, custo interno por categoria/destino e margem mínima. |
 
 ## 6. Arquitetura-alvo

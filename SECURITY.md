@@ -20,6 +20,31 @@ uma forma segura de contato. Não inclua dados reais de pacientes ou clientes.
 O deploy deve permanecer bloqueado se algum desses controles não estiver
 configurado ou validado no ambiente alvo.
 
+> **Situação em 30/09/2026:** em 21/08/2026 o deploy automático na `main` foi
+> reativado (commit `8b00e0fe`) com parte deste checklist ainda pendente,
+> aceita como não bloqueante. A verificação automática cobre só o que está em
+> "Guardas aplicadas pelo código", abaixo; os demais itens dependem de revisão
+> manual do ambiente.
+
+### Guardas aplicadas pelo código
+
+Com `NODE_ENV=production`, o boot da API (`backend/src/config/index.js`,
+`backend/src/database/connection.js`, `backend/src/index.js`) falha quando:
+
+- `AUTH_SECRET` falta, é o valor padrão de desenvolvimento ou tem menos de 32 bytes;
+- `CORS_ORIGIN` falta ou contém `*`;
+- `PUBLIC_API_URL` falta ou não usa `https://`;
+- `DATABASE_SSL` não é `true` ou a validação do certificado está desligada;
+- o Cloudflare R2 não está completo (as seis variáveis `R2_*`);
+- `ASAAS_API_KEY` vem sem `ASAAS_WEBHOOK_TOKEN`;
+- `DISABLE_RATE_LIMIT`, `ALLOW_LOCAL_AUTH_BYPASS` ou `RUN_MIGRATIONS_ON_BOOT` estão ligados;
+- `TRUST_PROXY_HOPS` não é um inteiro de 0 a 5.
+
+`ALLOW_INSECURE_TEST_ENV=true` afrouxa parte dessas guardas e existe só para a
+suíte automatizada; nunca configure no servidor. No GitHub Actions, o job
+"Pré-requisitos do deploy" de `.github/workflows/deploy.yml` também recusa
+publicar sem as seis `R2_*` ou com a chave do Asaas sem o token do webhook.
+
 ## Verificações antes de cada release
 
 Execute:
@@ -33,7 +58,13 @@ npm run typecheck
 npm --prefix backend test
 npm --prefix frontend test
 npm run build
+npm run lint
 ```
+
+São os mesmos passos do job "Testes, tipos e build" da CI
+(`.github/workflows/deploy.yml`), que roda em todo pull request para a `main`
+e em todo push na `main`. A suíte do backend carrega o `backend/.env` local: rode-a sem
+credenciais reais nesse arquivo.
 
 Depois, faça teste dinâmico em um ambiente de homologação isolado, revisão das
 regras de autorização por papel/tenant e teste de restauração de backup. Uma

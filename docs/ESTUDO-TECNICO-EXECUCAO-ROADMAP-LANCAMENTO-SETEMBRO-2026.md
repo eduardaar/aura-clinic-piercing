@@ -1,5 +1,35 @@
 # Estudo técnico de execução do roadmap de lançamento — setembro de 2026
 
+> **Situação em 30/09/2026:** estudo datado de 30/08/2026, mantido como registro
+> do plano. O estado vivo está em [ESTADO-ATUAL.md](./ESTADO-ATUAL.md) e o
+> acompanhamento item a item em
+> [ROADMAP-LANCAMENTO-SETEMBRO-2026.md](./ROADMAP-LANCAMENTO-SETEMBRO-2026.md).
+> As ondas 0 a 4 não seguiram o calendário da seção 6: foram executadas em 30 e
+> 31/08 na branch `release/setembro-2026` e integradas pelo merge `10c51bca`.
+> Pacotes entregues: FND-01 (`8018244d`); FND-02 (`52f365cb`, `fae82e5c`,
+> `cf32e294`); ACC-01 e AUD-01 (`064d2404`, `c0bb75df` e os commits de auditoria
+> seguintes); CLI-01 (`ff3a7055`, `b7c6cc8f`, `c01c1363`, `bccee012`); CLI-02
+> (`a575523f`, `f2220508`; termos por link em `a1c88f86`, de 12/09); SUP-01
+> (`62b4462d`); INV-01 (`48e5bfa1`); PROC-01 (`eb06ac30`, `63c1f2a9`,
+> `2d3aafa3`); PUR-01 (Compras de `2f2d311d` adaptada ao Item em `48e5bfa1`);
+> SALE-01 (`9ff81348`); EXEC-01 (`c1176101`, `8584be9d`); MAIL-01 (eventos da
+> Agenda em `2ce87079`, sobre o SMTP global de `40825b55`, anterior a este estudo);
+> NFE-01 (`858f2a27`, `25edb281`); REP-01 (`39530ba2`, `02419dd3`);
+> PUB-01 (`9c110a82`). Divergências da arquitetura-alvo da seção 4: o Item de
+> estoque foi construído sobre `jewelry_inventory`, sem tabela `inventory_items`
+> (migration tenant `0025`); `procedures` não foi removida e virou leitura
+> histórica, com escritas respondendo 410 (`backend/src/routes/procedures.js`); o
+> documento fiscal ficou em `purchase_fiscal_documents` (migration `0022`); o
+> registro de relatórios se chama `REPORT_CATALOG` (`backend/src/services/reports.js`)
+> e a auditoria usa `recordAudit` (`backend/src/services/audit.js`). Pendentes:
+> REL-01 e a onda 5 (baseline por `pg_dump`, provisionamento só por migrations,
+> remoção do bootstrap duplicado e validação real de SMTP, R2 e Asaas), parte da
+> remoção de aliases e estruturas substituídas das ondas 2 e 4 (ver
+> [ROADMAP-LIMPEZA-LEGADO-POS-LANCAMENTO.md](./ROADMAP-LIMPEZA-LEGADO-POS-LANCAMENTO.md),
+> Fase 3) e a remoção dos tipos de job sem executor (`aura_jewelry_import` e `asaas_reconcile`,
+> `backend/src/services/jobs.js:12`). Não há registro no repositório da onda 6 nem
+> de decisão Go/No-Go.
+
 ## 1. Objetivo
 
 Definir como transformar o roadmap de setembro em entregas pequenas, paralelas e
@@ -42,6 +72,12 @@ executores. O integrador controla contratos e hotspots; os executores entregam
 fatias verticais com backend, frontend e testes relacionados.
 
 ## 3. Estado técnico relevante
+
+> Retrato de 30/08/2026, anterior à execução. Em `8018244d` o runner passou a
+> aceitar vários arquivos numa única subida da API, Node `20.19+` foi fixado em
+> `.nvmrc` e `engines`, e `react-router-dom` saiu do frontend; em `52f365cb` rota,
+> título, grupo, permissão e feature passaram ao registro
+> `frontend/src/lib/appPages.js`.
 
 ### 3.1 Backend e banco
 
@@ -285,7 +321,7 @@ Saída: Atendimento, Venda e Compra têm origens separadas e conciliadas.
 | MAIL-01 | SMTP global e eventos por clínica | AUD-01, EXEC-01 parcial | Mensagens rastreadas e configuráveis no painel da plataforma |
 | NFE-01 | Importação NF-e | SUP-01, INV-01, PUR-01 | Preview e aplicação idempotente |
 | REP-01 | Motor de relatórios | Modelos finais | Grid e quatro exportações pela mesma definição |
-| PUB-01 | Legal, Manual e Novidades | FND-02 | Conteýo publicado e acessível |
+| PUB-01 | Legal, Manual e Novidades | FND-02 | Conteúdo publicado e acessível |
 | REL-01 | Baseline e release | Todos | Base vazia gera plataforma e clínica completas |
 
 ## 8. Conversores rápidos e geração de código

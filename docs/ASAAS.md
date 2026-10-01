@@ -3,6 +3,11 @@
 Gateway de pagamento da Aura Clinic. Este documento cobre o desenho, as
 decisões que não são óbvias no código e o passo a passo de configuração.
 
+> **Situação em 30/09/2026:** a integração está implementada e coberta por
+> testes locais, mas **nunca foi exercitada contra o sandbox real do Asaas**
+> (ver [ESTADO-ATUAL.md](./ESTADO-ATUAL.md)). Nada abaixo deve ser lido como
+> validação contra o gateway.
+
 ---
 
 ## 1. Dois níveis de credencial
@@ -44,6 +49,15 @@ dinheiro da assinatura.
 - A API **nunca** devolve o segredo — só `secret_hint` (`••••1a2b`) e booleanos.
   A única exceção é o token de webhook recém-gerado, que aparece uma vez para
   ser colado no painel do Asaas.
+- Com `ASAAS_VAULT_KEY` definida, o cofre cifra com ela mas ainda decifra pela
+  derivação legada do `AUTH_SECRET`; a linha antiga é regravada com a chave
+  nova na primeira leitura (`needsRewrap`/`rewrapIfLegacy`). Por isso
+  introduzir a variável depois não invalida o que já estava salvo.
+- O mesmo cofre (e a mesma chave) guarda o token da WhatsApp Cloud API, em
+  outra linha de `tenant_integrations` (provider `whatsapp_cloud`,
+  `services/whatsappCloud.js`). A regravação automática cobre só a linha do
+  Asaas: o token do WhatsApp continua legível pela derivação legada, mas só
+  passa para a chave nova quando a clínica informa o token de novo.
 
 Tabela dedicada, e não `catalog_settings`: aquela **vaza inteira** na rota
 pública `GET /api/catalog`. Uma credencial de pagamento não pode viver ao lado
@@ -126,7 +140,7 @@ anula o `provider_event_id`: a linha fica para auditoria, mas sai do índice
 | `PAYMENT_CREATED` | materializa a fatura do mês (pendente) |
 | `PAYMENT_CONFIRMED` / `PAYMENT_RECEIVED` / `PAYMENT_RECEIVED_IN_CASH` / `PAYMENT_APPROVED_BY_RISK_ANALYSIS` | marca paga |
 | `PAYMENT_OVERDUE` | marca atrasada |
-| `PAYMENT_DELETED` / `PAYMENT_REFUNDED` / `PAYMENT_CHARGEBACK_*` / `PAYMENT_REPROVED_BY_RISK_ANALYSIS` | cancela ou estorna |
+| `PAYMENT_DELETED` / `PAYMENT_REFUNDED` / `PAYMENT_PARTIALLY_REFUNDED` / `PAYMENT_CHARGEBACK_*` / `PAYMENT_REPROVED_BY_RISK_ANALYSIS` | cancela ou estorna |
 | qualquer outro | no-op explícito |
 
 Ignorar o resto explicitamente é o que faz cada evento novo que o Asaas invente
@@ -176,9 +190,10 @@ conflito.
 O corpo da requisição e os dados do pagador não são gravados na tabela de
 idempotência: somente o SHA-256 necessário para detectar reuso incorreto.
 
-`billing_profile.complete: false` é o sinal para a tela pedir o CPF/CNPJ **antes**
-de oferecer o botão de assinar: o Asaas recusa criar pagador sem documento, e o
-erro dele (`invalid_cpfCnpj`) não diz onde preencher.
+`billing_profile.complete: false` (falta CPF/CNPJ ou e-mail) é o sinal para a
+tela pedir esses dados **antes** de oferecer o botão de assinar: o Asaas recusa
+criar pagador sem documento, e o erro dele (`invalid_cpfCnpj`) não diz onde
+preencher.
 
 ### Cofre da clínica (admin da clínica)
 
@@ -208,10 +223,22 @@ o `public_token` UUID aleatório entregue na criação da cobrança; o ID serial
 interno não é aceito publicamente. O `sync` devolve apenas status e campos
 mínimos de conclusão, nunca o intent inteiro.
 
-O token público expira em sete dias e pode ser rotacionado por `admin` ou
-`finance` em `POST /api/payment-intents/:id/public-token`. A rotação invalida o
+O token público expira em sete dias e pode ser rotacionado por quem tem a
+permissão `finance.edit` (por padrão, os cargos `admin` e `finance`) em
+`POST /api/payment-intents/:id/public-token`. A rotação invalida o
 link anterior sem criar outra cobrança. Um token expirado retorna `410`; o prazo
 do token é deliberadamente separado do vencimento financeiro (`expires_at`).
+O link também passa a responder `410` assim que a cobrança chega a um estado
+terminal (`cancelled`/`canceled`, `refunded` ou `chargeback`), mesmo dentro dos
+sete dias (`getPixDataByPublicToken` e `syncIntentByPublicToken`).
+
+Quando o webhook confirma a cobrança de uma **venda** (catálogo/checkout
+público), `transitionSaleIntent` marca o pedido como `pago` e, na mesma
+transação, grava a baixa em `payments` vinculada por `sales_order_id` (chave
+`sales-order:<id>:paid`, sem duplicar em reentrega), quita os títulos a receber
+da venda (`settleSalesOrderReceivables`) e baixa o estoque uma única vez
+(`stock_deducted`). Falha na baixa de estoque só gera aviso no log: o dinheiro
+já entrou e o evento não pode ser devolvido ao Asaas por isso.
 
 ### Cancelamento, estorno e chargeback
 
@@ -219,7 +246,8 @@ do token é deliberadamente separado do vencimento financeiro (`expires_at`).
   liquidada; para Asaas, primeiro remove a cobrança no gateway e só então muda
   o estado local.
 - `POST /api/payment-intents/:id/refund` solicita **estorno total** de cobrança
-  confirmada. Ambos exigem `Idempotency-Key` e gravam a operação em
+  confirmada. Exigem as permissões `finance.cancel` e `finance.refund`,
+  respectivamente. Ambos exigem `Idempotency-Key` e gravam a operação em
   `payment_operations` antes da chamada externa; reenvios devolvem o resultado
   já registrado, em vez de repetir a operação financeira.
 - PIX/cartão usam `POST /payments/{id}/refund`. Boleto abre a solicitação do
@@ -283,8 +311,10 @@ reativa automaticamente. Suspensão manual e cancelamento nunca são revertidos
 por webhook.
 
 O Asaas permanece responsável pela emissão e pelas notificações financeiras
-nativas. A Aura complementa com e-mails de vencimento, carência e bloqueio via
-Resend, deduplicados em `platform.billing_notifications`. O worker fica ativo
+nativas. A Aura complementa com e-mails de vencimento, carência e bloqueio pelo
+e-mail transacional da plataforma (SMTP do painel, com Resend como fallback; ver
+[SMTP.md](./SMTP.md)), deduplicados em `platform.billing_notifications`. Sem
+provedor ativo, o worker não envia esses avisos. O worker fica ativo
 por padrão em produção (`BILLING_LIFECYCLE_ENABLED=false` o desliga) e também
 concilia checkouts de cartão concluídos cuja entrega de webhook tenha atrasado.
 
@@ -352,6 +382,7 @@ ASAAS_API_KEY=                # chave da conta da Monitence
 ASAAS_WEBHOOK_TOKEN=          # obrigatório junto da chave
 ASAAS_VAULT_KEY=              # cifra o cofre das clínicas
 PUBLIC_API_URL=https://seu-dominio.com   # SEM /api no final
+PUBLIC_APP_URL=               # opcional: origem do painel (retornos do Checkout); padrão = PUBLIC_API_URL
 ```
 
 Gere os segredos com:
@@ -360,15 +391,19 @@ Gere os segredos com:
 node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 ```
 
-Guardas de boot (`backend/src/config/index.js`) — os três comportamentos abaixo
-foram **verificados executando o boot** com cada combinação:
+Guardas de boot (`backend/src/config/index.js`) — os três comportamentos de
+`ASAAS_BASE_URL`/`ASAAS_API_KEY` abaixo foram **verificados executando o boot**
+com cada combinação (registro de versão anterior deste documento, não repetido
+nesta revisão); as duas últimas linhas foram conferidas apenas na leitura do
+código (30/09/2026):
 
 | Cenário | Efeito |
 | --- | --- |
 | `ASAAS_API_KEY` sem `ASAAS_WEBHOOK_TOKEN`, em produção | **derruba o boot** |
 | `ASAAS_BASE_URL=https://api.asaas.com/v3`, em produção | silêncio (correto) |
 | `ASAAS_BASE_URL` contendo `sandbox` (ou ausente), em produção | **aviso alto** |
-| `PUBLIC_API_URL` ausente, em produção | aviso |
+| `PUBLIC_API_URL` ausente ou sem `https://`, em produção | **derruba o boot** (exceto com `ALLOW_INSECURE_TEST_ENV=true`) |
+| `ASAAS_VAULT_KEY` ausente, em produção | aviso |
 
 O par chave+token é indivisível: sem o token, o webhook seria uma rota pública
 capaz de marcar assinatura como paga. Já o sandbox só avisa, sem derrubar,
@@ -382,10 +417,11 @@ porque homologação em produção é caso legítimo.
 > `guard` do workflow avisa quando há `ASAAS_API_KEY` e `ASAAS_BASE_URL` não é
 > exatamente `https://api.asaas.com/v3`.
 
-> **`ASAAS_VAULT_KEY` não tem guarda nenhuma.** Ausente, o cofre das clínicas
+> **`ASAAS_VAULT_KEY` só gera aviso.** Ausente, o boot de produção registra
+> `[Asaas] ASAAS_VAULT_KEY não definida...`, mas sobe: o cofre das clínicas
 > deriva do `AUTH_SECRET` e uma rotação futura desse segredo torna ilegíveis
-> todas as chaves guardadas — sem aviso no boot e sem erro até a primeira
-> cobrança falhar. Trate como obrigatória em produção.
+> todas as chaves guardadas — sem erro até a primeira cobrança falhar. Trate
+> como obrigatória em produção.
 
 ### Produção (pipeline)
 
@@ -398,9 +434,9 @@ Configure em *Settings > Secrets and variables > Actions*:
 - em **Variables**: `ASAAS_BASE_URL`;
 - em **Secrets**: `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN` e `ASAAS_VAULT_KEY`.
 
-O mesmo laço da etapa `[3.5/5]` sincroniza também os segredos do **Cloudflare
-R2** (`R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`,
-`R2_BUCKET_PUBLIC`, `R2_BUCKET_PRIVATE`, `R2_PUBLIC_BASE_URL`) — mesma
+O mesmo laço da etapa `[3.5/6]` sincroniza também `PUBLIC_API_URL` e os
+segredos do **Cloudflare R2** (`R2_ENDPOINT`, `R2_ACCESS_KEY_ID`,
+`R2_SECRET_ACCESS_KEY`, `R2_BUCKET_PUBLIC`, `R2_BUCKET_PRIVATE`, `R2_PUBLIC_BASE_URL`) — mesma
 mecânica, mesma regra conservadora. Ver `backend/.env.example`.
 
 O upsert é **conservador**: secret vazio ou ausente é *pulado*, nunca escrito.
@@ -438,13 +474,17 @@ sandbox, não). Ela é mostrada **uma única vez**.
 `ASAAS_BASE_URL` não é opcional: o default do código é o **sandbox**, então
 deixar a variável vazia publica a produção cobrando de mentira.
 
-`ASAAS_VAULT_KEY` precisa ser definida **antes** de a primeira clínica salvar a
-chave dela. Introduzi-la depois muda a derivação e invalida tudo que já estava
-no cofre.
+`ASAAS_VAULT_KEY` deve ser definida de preferência **antes** de a primeira
+clínica salvar a chave dela. Introduzi-la depois não invalida o cofre: as linhas
+antigas continuam legíveis pela derivação do `AUTH_SECRET` e são regravadas com
+a chave nova na primeira leitura (ver §2). O que não pode acontecer é rotacionar
+o `AUTH_SECRET` enquanto ainda houver linha cifrada só com ele (inclusive o
+token da WhatsApp Cloud API, que não é regravado sozinho).
 
 **4. Rodar o deploy** (push na `main`, ou *Actions > Run workflow*). O job
 `guard` avisa se a `ASAAS_BASE_URL` não for a de produção e falha se houver
-chave sem token. Depois, confira no log do container que **não** apareceu
+chave sem token (ele também falha se faltar algum dos seis secrets `R2_*`).
+Depois, confira no log do container que **não** apareceu
 `[Asaas] ATENÇÃO: rodando em produção apontando para o SANDBOX`.
 
 **5. Cadastrar o webhook da plataforma** no painel do Asaas (ver abaixo). Sem
@@ -453,7 +493,7 @@ este passo o checkout funciona, o cliente paga — e a fatura fica eternamente
 
 **6. Conferir depois do deploy:**
 
-- `GET /api/health` respondendo `{"ok":true}`.
+- `GET /api/health` respondendo com `"ok": true`.
 - Painel do Asaas > *Integrações > Webhooks*: fila **ativa**, sem entregas
   falhadas acumuladas. Fila pausada congela a confirmação de **todas** as
   cobranças da conta.
@@ -483,11 +523,12 @@ problema está no webhook, não na fatura.
   `PAYMENT_CREATED`, `PAYMENT_CONFIRMED`, `PAYMENT_RECEIVED`,
   `PAYMENT_RECEIVED_IN_CASH`, `PAYMENT_APPROVED_BY_RISK_ANALYSIS`,
   `PAYMENT_OVERDUE`, `PAYMENT_DELETED`, `PAYMENT_REFUNDED`,
-  `PAYMENT_CHARGEBACK_REQUESTED`, `PAYMENT_REPROVED_BY_RISK_ANALYSIS` — mas
+  `PAYMENT_PARTIALLY_REFUNDED`, `PAYMENT_CHARGEBACK_REQUESTED`,
+  `PAYMENT_CHARGEBACK_DISPUTE`, `PAYMENT_REPROVED_BY_RISK_ANALYSIS` — mas
   marcar todos é seguro: o que não é tratado vira no-op com 200.
 
 Não existe evento de assinatura: o ciclo recorrente inteiro chega como evento de
-**cobrança** (§5, item 7).
+**cobrança** (§5, item 6).
 
 ### Painel do Asaas (cada clínica)
 
@@ -520,10 +561,14 @@ reinício do túnel — dor conhecida, sem solução elegante.
 | `backend/src/services/asaas/vault.js` | Cifra/decifra credenciais (AES-256-GCM) |
 | `backend/src/services/asaas/credentials.js` | Resolve qual chave usar por escopo |
 | `backend/src/services/asaas/events.js` | Traduz eventos e garante idempotência |
+| `backend/src/services/asaas/reconcile.js` | Worker opt-in de conciliação (`ASAAS_RECONCILE_ENABLED`) |
 | `backend/src/routes/webhooks.js` | As duas rotas de webhook |
 | `backend/src/routes/integrations.js` | API do cofre (tela de ajustes da clínica) |
 | `backend/src/services/platformBilling.js` | Monitence cobra as clínicas |
+| `backend/src/services/billingLifecycle.js` | Worker de carência, suspensão, avisos por e-mail e checkouts pendentes |
+| `backend/src/services/idempotency.js` | `Idempotency-Key` do checkout (`platform.idempotency_keys`) |
 | `backend/src/services/tenantCharges.js` | Clínica cobra o cliente final |
+| `backend/src/routes/payments.js` | Link público, rotação, cancelamento e estorno da cobrança da clínica |
 | `backend/src/routes/billing.js` | Assinatura e faturas |
 | `backend/src/db/tenantSession.js` | Acesso ao schema da clínica fora do ciclo de requisição |
 | `backend/tests/asaas.test.mjs` | Testes de segurança e idempotência |

@@ -1,7 +1,43 @@
 # Estudo — serviços, agenda e financeiro
 
-> **Estado:** Etapa A aplicada localmente em 26/08/2026. A separação financeira
-> da Etapa B continua como proposta e não alterou dados históricos.
+> **Situação em 30/09/2026:** as Etapas A e B foram executadas no código, exceto
+> a migração das ordens legadas `source='agenda'`. A Etapa C segue aberta.
+>
+> - **Etapa A** (31c089e5, 26/08/2026).
+> - **Etapa B** (c1176101 e 8584be9d, 30/08/2026). A migration tenant
+>   `0019_service_executions` cria `service_executions` (1:1 com
+>   `appointments`), `service_execution_items` e `payments.service_execution_id`.
+>   Concluir o atendimento chama `ensureServiceExecution`
+>   (services/serviceExecutions.js:22; routes/appointments.js:280 e 503) e gera
+>   os títulos com `source_type='service_execution'`. Reabrir ou cancelar chama
+>   `cancelServiceExecution` (services/serviceExecutions.js:184). O commit
+>   8584be9d removeu `ensureSalesOrderForAppointment`.
+> - **Itens da execução:** a implementação criou `service_execution_items`
+>   (itens `service` e `product`; a joia aplicada entra como `product`), embora
+>   a seção "Entidades" a tratasse como opcional.
+> - **Ordens legadas** `source='agenda'`: continuam em `sales_orders`. Ficam
+>   fora de Vendas, a menos que se peça `include_agenda=true`
+>   (routes/sales.js:45). A rota de Vendas não altera o status delas
+>   (routes/sales.js:237-238). O roadmap de lançamento aprovou o corte direto
+>   sem backfill legado, recriando as bases descartáveis
+>   ([ROADMAP-LANCAMENTO-SETEMBRO-2026.md](./ROADMAP-LANCAMENTO-SETEMBRO-2026.md));
+>   por isso não há migração dessas ordens no código.
+> - **Depois da Etapa A, a tela mudou.** O commit 2d3aafa3 (migration
+>   `0035_unified_service_catalog`) uniu serviço e procedimento no cadastro
+>   "Procedimentos e tipos de atendimento". `/api/procedures` virou alias
+>   somente leitura: as escritas respondem 410.
+>   - `/app/servicos` ("Procedimentos da Agenda") saiu do menu
+>     (frontend/src/lib/appPages.js:40). O cadastro abre em Agenda →
+>     Configurações da Agenda → aba "Procedimentos" (Agenda.jsx:1540 e 1550).
+>   - A lista de serviços executados é o "Histórico de atendimentos", em "Mais
+>     opções" da Agenda (Agenda.jsx:456 e 680). Ela lê
+>     `GET /api/service-executions`.
+> - **Etapa C:** há testes automatizados que exercitam a execução
+>   (backend/tests/transactions.test.mjs e backend/tests/flow.test.mjs). Esta
+>   revisão não os executou, por isso a Etapa C continua sem marcação.
+>
+> Até 30/08/2026 o estado registrado aqui era: Etapa A aplicada localmente em
+> 26/08/2026, Etapa B ainda como proposta.
 
 ## Objetivo
 
@@ -18,6 +54,9 @@ O serviço executado precisa aparecer no financeiro, mas como receita de serviç
 originada pela agenda — não como uma venda de balcão.
 
 ## Estado atual observado
+
+> Retrato de 26/08/2026, anterior à Etapa B. Fica como histórico; o estado atual
+> está na nota de situação do topo.
 
 ### Dados e fluxo
 
@@ -147,12 +186,15 @@ Novo módulo `/app/servicos`, com duas áreas:
 - [x] Ocultar `source='agenda'` do módulo Vendas, preservando acesso financeiro
   somente até a migração completa.
 
+> Depois de 30/08/2026, a página Serviços saiu do menu. O cadastro e a lista de
+> atendimentos finalizados voltaram para dentro da Agenda (ver a nota do topo).
+
 ### Etapa B — separação de dados e financeiro
 
 - [x] Migration: criar `service_executions`, vincular pagamentos por
   `service_execution_id` e títulos financeiros pela origem polimórfica.
 - [x] Substituir `ensureSalesOrderForAppointment` por
-  `ensureServiceExecutionForAppointment`.
+  `ensureServiceExecution` (services/serviceExecutions.js).
 - [x] Criar recebíveis com `source_type='service_execution'` e chave idempotente
   própria, sem depender de `sales_orders`.
 - [ ] Migrar ordens legadas `source='agenda'` de forma auditável e reversível por
@@ -169,6 +211,17 @@ Novo módulo `/app/servicos`, com duas áreas:
 - [ ] Rodar migração em banco vazio e em cópia de banco legado.
 
 ## Decisões necessárias antes da etapa B
+
+> Situação em 30/09/2026: as perguntas 2 e 4 foram respondidas no
+> [ROADMAP-LANCAMENTO-SETEMBRO-2026.md](./ROADMAP-LANCAMENTO-SETEMBRO-2026.md)
+> (seção "Pontos levantados durante os testes"; o item da joia foi marcado em
+> 48e17a2f). Na pergunta 2, ficou um único fechamento para o
+> cliente, com receita de serviço e de produto separadas nos dados; o código
+> guarda a joia aplicada como item `product` da própria execução, com
+> `product_subtotal` separado de `service_subtotal` (migration tenant
+> `0019_service_executions`). Na pergunta 4, a decisão foi o corte direto sem
+> backfill legado, recriando as bases descartáveis antes do primeiro dado real.
+> As perguntas 1 e 3 não têm decisão registrada.
 
 1. A execução de serviço pode ser editada depois de finalizada ou deve exigir
    reabertura do agendamento?
