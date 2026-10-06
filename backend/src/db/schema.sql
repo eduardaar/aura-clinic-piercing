@@ -605,6 +605,7 @@ ALTER TABLE appointments ADD COLUMN IF NOT EXISTS coupon_id INTEGER;
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS coupon_code TEXT;
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS coupon_snapshot JSONB;
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS deposit_status TEXT NOT NULL DEFAULT 'pendente';
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS deposit_expected_value NUMERIC(12,2);
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS deposit_paid_at TEXT;
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS financial_notes TEXT;
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS financial_closed_at TEXT;
@@ -940,6 +941,8 @@ CREATE TABLE IF NOT EXISTS financial_entry_audit (
 -- reescrever pagamentos antigos e permite teste/cancelamento/restauração com
 -- auditoria reversível.
 ALTER TABLE financial_entries ADD COLUMN IF NOT EXISTS lifecycle_status TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS financial_entry_id INTEGER REFERENCES financial_entries(id);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_payments_financial_entry ON payments(financial_entry_id) WHERE financial_entry_id IS NOT NULL;
 ALTER TABLE financial_entries ADD COLUMN IF NOT EXISTS lifecycle_reason TEXT;
 ALTER TABLE financial_entries ADD COLUMN IF NOT EXISTS lifecycle_changed_at TEXT;
 ALTER TABLE financial_entries ADD COLUMN IF NOT EXISTS lifecycle_changed_by INTEGER REFERENCES users(id);

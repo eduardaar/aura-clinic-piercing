@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { confirmAppointmentReservations, releaseAppointmentReservations } from "./reservations.js";
 import { recalculateAppointmentFinancials } from "./finance.js";
+import { localTimestamp } from "./utils.js";
 
 // Um link de pagamento é uma credencial de baixa entropia operacional: basta
 // encaminhá-lo para outra pessoa para ela acompanhar aquela cobrança. Por isso
@@ -113,17 +114,29 @@ export async function transitionPaymentIntent(db, { intentId, status, providerEv
     await tx.run("UPDATE payment_intents SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", [status, intentId]);
     await tx.run("INSERT INTO payment_events (payment_intent_id, provider_event_id, event_type, payload) VALUES (?, ?, ?, ?)", [intentId, providerEventId, status, JSON.stringify(payload)]);
     if (status === "confirmed") {
-      await confirmAppointmentReservations(tx, intent.appointment_id);
-      await tx.run("UPDATE appointments SET status='confirmado' WHERE id=?", [intent.appointment_id]);
-      const confirmedAt = paidAt || new Date().toISOString();
-      await tx.run("UPDATE payments SET status='pago', paid_at=? WHERE appointment_id=? AND payment_type='sinal'", [confirmedAt, intent.appointment_id]);
+      const appointment = intent.appointment_id ? await tx.get("SELECT * FROM appointments WHERE id=? FOR UPDATE", [intent.appointment_id]) : null;
+      if (appointment && ["pendente", "awaiting_deposit_proof", "confirmado"].includes(appointment.status)) {
+        await confirmAppointmentReservations(tx, intent.appointment_id);
+        await tx.run("UPDATE appointments SET status='confirmado' WHERE id=?", [intent.appointment_id]);
+      }
+      // O caixa usa datas civis da clínica, inclusive após 21h (UTC já virou
+      // o dia). Datas sem fuso enviadas pelo provedor já são civis.
+      const confirmedAt = paidAt && /(?:Z|[+-]\d{2}:\d{2})$/i.test(String(paidAt))
+        ? localTimestamp(new Date(paidAt)) : paidAt || localTimestamp();
+      const paymentKey = `payment-intent:${intent.id}`;
+      const linked = await tx.get("SELECT id FROM payments WHERE idempotency_key=?", [paymentKey]);
+      if (!linked && intent.appointment_id) {
+        const pending = await tx.get("SELECT id FROM payments WHERE appointment_id=? AND payment_type='sinal' AND status='pendente' AND idempotency_key IS NULL ORDER BY id LIMIT 1 FOR UPDATE", [intent.appointment_id]);
+        if (pending) await tx.run("UPDATE payments SET amount=?,status='pago',paid_at=?,idempotency_key=? WHERE id=?", [intent.amount, confirmedAt, paymentKey, pending.id]);
+        else await tx.run("INSERT INTO payments (appointment_id,client_id,amount,payment_type,method,status,paid_at,idempotency_key) VALUES (?,?,?,'sinal','Pix','pago',?,?)", [intent.appointment_id, intent.client_id, intent.amount, confirmedAt, paymentKey]);
+      }
       if (intent.appointment_id) {
         // O sinal pago também precisa aparecer no próprio agendamento: sem
         // isso a agenda seguia mostrando "sinal pendente" e o restante a
         // receber ignorava o pagamento. O recálculo central, na mesma
         // transação, deixa remaining_value e o snapshot iguais aos pagamentos.
         await tx.run(
-          "UPDATE appointments SET deposit_status='pago', deposit_paid_at=COALESCE(deposit_paid_at, ?) WHERE id=?",
+          "UPDATE appointments SET deposit_value=(SELECT COALESCE(SUM(amount),0) FROM payments WHERE appointment_id=appointments.id AND payment_type='sinal' AND status IN ('pago','confirmado')), deposit_status='pago', deposit_paid_at=COALESCE(deposit_paid_at, ?) WHERE id=?",
           [confirmedAt, intent.appointment_id]
         );
         await recalculateAppointmentFinancials(tx, intent.appointment_id);

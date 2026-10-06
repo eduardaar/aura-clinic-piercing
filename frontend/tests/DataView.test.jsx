@@ -24,6 +24,23 @@ function clientes(quantidade = 30) {
 
 const COLUNA_NOME = [{ key: "nome", label: "Nome" }];
 
+test("filtros externos por data e ID não são reaplicados em campos ausentes das linhas", () => {
+  render(<DataView columns={COLUNA_NOME} rows={[{ id: 1, nome: "Ana" }]} queryMode="external"
+    search="11988880000" filterValues={{ from: "2026-10-01", professional_id: "5" }}
+    filters={[{ key: "from", label: "De", type: "date" }, { key: "professional_id", label: "Profissional" }]} />);
+  expect(screen.getByText("Ana")).toBeInTheDocument();
+  expect(screen.getByText("1–1 de 1")).toBeInTheDocument();
+  expect(screen.queryByText(/Nenhum registro/)).not.toBeInTheDocument();
+});
+
+test("modo cliente conta o conjunto filtrado, mesmo com total externo desatualizado", async () => {
+  const user = userEvent.setup();
+  render(<DataView columns={COLUNA_NOME} rows={clientes(30)} total={999} />);
+  await user.type(screen.getByRole("searchbox"), "Cliente 30");
+  expect(screen.getByText("1–1 de 1")).toBeInTheDocument();
+  expect(screen.queryByText(/de 999/)).not.toBeInTheDocument();
+});
+
 // Conteúdo da primeira célula de cada linha do corpo da tabela.
 function celulasDaPrimeiraColuna() {
   const [, ...linhas] = screen.getAllByRole("row"); // [0] é o cabeçalho

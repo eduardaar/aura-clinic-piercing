@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Reports } from "../src/features/reports/Reports";
 import { useFetch } from "../src/lib/api";
 import { currency } from "../src/features/shared/helpers";
+import userEvent from "@testing-library/user-event";
+import { downloadApiFile } from "../src/lib/api";
 
 const brl = (value) => currency.format(value).replace(/\s/g, " ");
 
@@ -43,6 +45,25 @@ beforeEach(() => {
 });
 
 describe("Central de relatórios", () => {
+  it("relatório sem paginação SQL não reaplica datas/IDs e envia busca e filtros aos quatro formatos", async () => {
+    const user = userEvent.setup();
+    const definition = { type: "appointments", label: "Agendamentos", filters: [{ key: "from", label: "De", type: "date" }, { key: "to", label: "Até", type: "date" }, { key: "professional_id", label: "Profissional", type: "professional" }], columns: [{ key: "client", label: "Cliente" }] };
+    mockFetch([definition], { appointments: { rows: [{ id: 1, client: "João" }], columns: definition.columns, total_rows: 1 } });
+    render(<Reports />);
+    expect(await screen.findByText("João")).toBeInTheDocument();
+    expect(screen.getByText("1 registro(s)")).toBeInTheDocument();
+    expect(screen.queryByText(/Nenhum registro corresponde/)).not.toBeInTheDocument();
+    await user.type(screen.getByRole("searchbox"), "João");
+    for (const format of ["PDF", "XLSX", "CSV", "TXT"]) {
+      await user.click(screen.getByRole("button", { name: format }));
+      const [path] = downloadApiFile.mock.calls.at(-1);
+      const params = new URL(path, "http://localhost").searchParams;
+      expect(params.get("search")).toBe("João");
+      expect(params.get("from")).toMatch(/^\d{4}-\d{2}-01$/);
+      expect(params.get("format")).toBe(format.toLowerCase());
+      expect(params.has("offset")).toBe(false);
+    }
+  });
   it("usa as colunas devolvidas pelo servidor e mostra os totais do período", async () => {
     mockFetch([COMMISSIONS], {
       commissions: {

@@ -21,7 +21,7 @@ export function ResponsiveEditableList({
   getError = null,
 }) {
   if (!items.length) return <p className="empty-state">{empty}</p>;
-  const gridStyle = { gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))${onEdit || onRemove ? " auto" : ""}` };
+  const gridStyle = /** @type {import("react").CSSProperties} */ ({ "--transaction-columns": `repeat(${columns.length}, minmax(8rem, 1fr))${onEdit || onRemove ? " auto" : ""}` });
   return (
     <div className="transaction-list" aria-label={ariaLabel}>
       <div className="transaction-list__header" style={gridStyle} aria-hidden="true">

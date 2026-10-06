@@ -93,6 +93,7 @@ const PAGE_SIZES = [10, 25, 50, 100];
  * @property {(row: Row) => React.ReactNode} [actions] Botões da última coluna.
  * @property {"client" | "server"} [mode] Ver o cabeçalho do arquivo. Padrão: `"client"`.
  *
+ * @property {"local" | "external"} [queryMode] External: busca/filtros já aplicados pela API.
  * @property {boolean} [loading]
  * @property {string} [error] Mensagem já pronta para exibição ("" = sem erro).
  *
@@ -186,6 +187,7 @@ export function DataView({
   rowKey = (row) => row.id,
   actions,
   mode = "client",
+  queryMode = "local",
 
   loading = false,
   error = "",
@@ -266,14 +268,14 @@ export function DataView({
     if (isServer) return rows;
     let result = rows;
 
-    if (search) {
-      const term = fold(search);
+    if (queryMode !== "external" && search.trim()) {
+      const term = fold(search.trim());
       result = result.filter((row) =>
         searchableColumns.some((col) => fold(cellValue(col, row)).includes(term))
       );
     }
 
-    for (const [key, value] of activeFilters) {
+    for (const [key, value] of queryMode === "external" ? [] : activeFilters) {
       const filter = filters.find((f) => f.key === key);
       if (!filter) continue;
       result = result.filter((row) =>
@@ -292,9 +294,9 @@ export function DataView({
       }
     }
     return result;
-  }, [isServer, rows, search, JSON.stringify(filterValues), sort, columns, searchableColumns, filters]);
+  }, [isServer, queryMode, rows, search, JSON.stringify(filterValues), sort, columns, searchableColumns, filters]);
 
-  const total = totalProp !== undefined ? Number(totalProp) : processed.length;
+  const total = isServer && totalProp !== undefined ? Number(totalProp) : processed.length;
   const pageCount = paginated ? Math.max(1, Math.ceil(total / pageSize)) : 1;
   const currentPage = Math.min(page, pageCount);
 
@@ -433,8 +435,8 @@ export function DataView({
       ) : visible.length === 0 ? (
         <div className="dataview-state">{hasQuery ? emptyFiltered : empty}</div>
       ) : (
-        <div className="table-wrap data-table-wrap">
-          <table className="data-table dataview-table">
+        <div className="table-wrap data-table-wrap" role="region" aria-label={caption || "Resultados da listagem"} tabIndex={0}>
+          <table className="data-table dataview-table" style={{ minWidth: `${Math.max(640, columns.length * 160 + (actions ? 72 : 0))}px` }}>
             {caption && <caption>{caption}</caption>}
             <thead>
               <tr>
@@ -470,7 +472,7 @@ export function DataView({
                       data-label={col.label}
                       style={col.align ? { textAlign: col.align } : undefined}
                     >
-                      {col.render ? col.render(row) : row[col.key]}
+                      <div className="data-table-cell">{col.render ? col.render(row) : row[col.key]}</div>
                     </td>
                   ))}
                   {actions && <td className="table-actions" data-label="Ações">{actions(row)}</td>}

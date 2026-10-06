@@ -4,6 +4,7 @@ import { withFeature } from "../middleware/withDb.js";
 import { parseUpload, privateUpload, registerPrivateFiles } from "../middleware/upload.js";
 import { normalizeAppointment, addMinutesToTime, localTimestamp, rangesOverlap, timeToMinutes } from "../services/utils.js";
 import { parsePaging, pageResponse } from "../services/pagination.js";
+import { textSearch } from "../services/textSearch.js";
 import {
   listAppointments,
   countAppointments,
@@ -110,6 +111,8 @@ function discountReason(value) {
 function normalizeDepositInput(body) {
   const depositCents = parseMoneyInputCents(body.deposit_value, "O valor do sinal");
   if (depositCents !== undefined) body.deposit_value = depositCents / 100;
+  const expectedCents = parseMoneyInputCents(body.deposit_expected_value, "O sinal esperado");
+  if (expectedCents !== undefined) body.deposit_expected_value = expectedCents / 100;
 }
 
 // Regra de negócio do dinheiro (FinancialRuleError) vira resposta com o status
@@ -268,10 +271,10 @@ router.get("/api/appointments", withFeature("agenda", async (req, res, db) => {
     clauses.push("a.client_id = ?");
     params.push(req.query.client_id);
   }
-  if (req.query.search) {
-    clauses.push("(c.full_name ILIKE ? OR c.whatsapp ILIKE ? OR a.procedure ILIKE ?)");
-    params.push(...Array(3).fill(`%${req.query.search}%`));
-  }
+  const search = textSearch(["c.full_name", "c.whatsapp", "a.procedure", "p.name", "s.name", "j.name"], req.query.search);
+  if (search.sql) { clauses.push(search.sql); params.push(...search.params); }
+  if (req.query.id) { clauses.push("a.id = ?"); params.push(req.query.id); }
+  if (req.query.from && req.query.to && String(req.query.from) > String(req.query.to)) return res.status(400).json({ error: "A data inicial deve ser anterior ou igual à data final." });
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const paging = parsePaging(req.query, {
     sortable: APPOINTMENT_SORTABLE,
@@ -342,6 +345,7 @@ router.post("/api/appointments", withFeature("agenda", async (req, res, db) => {
   const jewelryId = optionalId(firstItem.jewelry_id || body.jewelry_id);
   const variantId = optionalId(firstItem.jewelry_variant_id || body.jewelry_variant_id);
   const depositValue = Number(body.deposit_value ?? service?.deposit_value ?? 0);
+  const depositExpectedValue = Number(body.deposit_expected_value ?? service?.deposit_value ?? 0);
   const totals = appointmentTotalsFromItems(items, { total_value: body.total_value, deposit_value: depositValue });
   // Itens sem preço caem no total informado (legado): ele vira o bruto do serviço.
   const serviceGross = totals.procedureValue + totals.jewelryValue > 0 ? totals.procedureValue : totals.totalValue;
@@ -394,6 +398,7 @@ router.post("/api/appointments", withFeature("agenda", async (req, res, db) => {
         [result.returnedId, client.id, depositValue, body.deposit_payment_method || "Pix", depositReceived ? "pago" : "pendente", depositReceived ? (body.deposit_paid_at || localTimestamp()) : localTimestamp()]
       );
     }
+    await tx.run("UPDATE appointments SET deposit_expected_value=? WHERE id=?", [depositExpectedValue, result.returnedId]);
     // Mesma conta usada em toda alteração posterior: o que a criação grava é
     // exatamente o que o snapshot financeiro devolve.
     const recalculated = await recalculateAppointmentFinancials(tx, result.returnedId);
@@ -410,7 +415,7 @@ router.post("/api/appointments", withFeature("agenda", async (req, res, db) => {
         appointment_time: body.appointment_time, status: body.status || "pendente",
         subtotal_value: recalculated.totals.grossTotal, discount_value: recalculated.totals.discountTotal,
         manual_discount_value: recalculated.totals.manualDiscount, total_value: recalculated.totals.netTotal,
-        deposit_value: depositValue
+        deposit_value: depositValue, deposit_expected_value: depositExpectedValue, deposit_status: depositStatus
       }
     });
     return result.returnedId;
@@ -730,6 +735,14 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
         ]);
       }
       if (depositTouched) await syncDepositPayment(tx, req.params.id, userId);
+      if (depositTouched) {
+        const afterDeposit = await tx.get("SELECT deposit_value, deposit_status, deposit_payment_method, deposit_paid_at FROM appointments WHERE id=?", [req.params.id]);
+        const beforeDeposit = Object.fromEntries(Object.keys(afterDeposit).map((key) => [key, locked[key]]));
+        if (JSON.stringify(beforeDeposit) !== JSON.stringify(afterDeposit)) {
+          await tx.run("INSERT INTO appointment_financial_audit (appointment_id,user_id,action,reason,before_snapshot,after_snapshot) VALUES (?,?,'deposit_correction',?,?,?)", [req.params.id, userId, financialReason || "Conferência do sinal recebido", JSON.stringify(beforeDeposit), JSON.stringify(afterDeposit)]);
+          await recordAudit(tx, { req, module: "appointments", action: "deposit_correction", entityType: "appointment", entityId: req.params.id, reason: financialReason || "Conferência do sinal recebido", before: beforeDeposit, after: afterDeposit });
+        }
+      }
       // `discount_value` é cupom + manual, e o recálculo deduz a parte do cupom
       // (ou desconto legado) como `discount_value − manual`. Ao mudar o manual
       // ou o cupom, regrava o total com a parte do cupom da linha de partida:

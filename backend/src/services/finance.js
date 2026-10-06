@@ -232,6 +232,7 @@ function snapshotFromTotals(appointment, sources, totals) {
     adjustments: sources.adjustments,
     netTotal: totals.netTotal,
     depositPaid: totals.depositPaid,
+    depositExpected: appointment.deposit_expected_value == null ? null : Number(appointment.deposit_expected_value),
     otherPayments: totals.otherPayments,
     creditApplied: totals.creditApplied,
     totalPaid: totals.totalPaid,
@@ -297,14 +298,14 @@ export async function buildFinanceReport(db) {
       SUM(CASE WHEN substr(paid_at, 1, 10) = ? THEN amount ELSE 0 END) AS day_total,
       SUM(CASE WHEN paid_at >= to_char(CAST(? AS date) - INTERVAL '6 days', 'YYYY-MM-DD') THEN amount ELSE 0 END) AS week_total,
       SUM(CASE WHEN paid_at LIKE ? THEN amount ELSE 0 END) AS month_total
-    FROM payments WHERE status = 'pago'
+    FROM payments WHERE status IN ('pago', 'confirmado')
   `, [today, today, `${month}%`]);
   // `payments` é a fonte completa do dinheiro recebido — balcão, catálogo e
   // agenda gravam uma linha aqui na confirmação (ver services/sales.js e
   // services/tenantCharges.js), cada uma ligada ao seu título por
   // `sales_order_id`. Somar `sales_orders.total_value` aqui contaria a mesma
   // venda duas vezes.
-  const deposits = await db.get("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE payment_type = 'sinal' AND status = 'pago' AND paid_at LIKE ?", [`${month}%`]);
+  const deposits = await db.get("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE payment_type = 'sinal' AND status IN ('pago', 'confirmado') AND paid_at LIKE ?", [`${month}%`]);
   // "A receber" soma as duas frentes: agenda e vendas de produtos. A execução
   // do serviço não cria uma segunda venda, evitando receita duplicada.
   const forecast = await db.get(`
@@ -330,7 +331,7 @@ export async function buildFinanceReport(db) {
       SELECT month, SUM(total) AS total FROM (
         SELECT SUBSTR(paid_at, 1, 7) AS month, amount AS total
         FROM payments
-        WHERE status = 'pago'
+        WHERE status IN ('pago', 'confirmado')
       ) AS monthly_union
       GROUP BY month
       ORDER BY month DESC
@@ -341,14 +342,14 @@ export async function buildFinanceReport(db) {
   const dailyRevenue = await db.all(`
     SELECT substr(paid_at, 1, 10) AS label, SUM(amount) AS total
     FROM payments
-    WHERE status = 'pago' AND substr(paid_at, 1, 10) >= to_char(CAST(? AS date) - INTERVAL '6 days', 'YYYY-MM-DD')
+    WHERE status IN ('pago', 'confirmado') AND substr(paid_at, 1, 10) >= to_char(CAST(? AS date) - INTERVAL '6 days', 'YYYY-MM-DD')
     GROUP BY label
     ORDER BY label
   `, [today]);
   const weeklyRevenue = await db.all(`
     SELECT to_char(CAST(paid_at AS timestamp), 'IYYY"-W"IW') AS label, SUM(amount) AS total
     FROM payments
-    WHERE status = 'pago' AND substr(paid_at, 1, 10) >= to_char(CAST(? AS date) - INTERVAL '42 days', 'YYYY-MM-DD')
+    WHERE status IN ('pago', 'confirmado') AND substr(paid_at, 1, 10) >= to_char(CAST(? AS date) - INTERVAL '42 days', 'YYYY-MM-DD')
     GROUP BY label
     ORDER BY label
   `, [today]);

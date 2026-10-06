@@ -188,6 +188,11 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
   const [applyingCoupon, setApplyingCoupon] = useState(false);
   const [saving, setSaving] = useState(false);
   const [details, setDetails] = useState(null);
+  const [linkedId] = useState(() => Number(new URLSearchParams(window.location.search).get("sale")) || 0);
+  const { data: linkedSale } = useFetch(linkedId > 0 ? `/sales-orders/${linkedId}` : null);
+  useEffect(() => {
+    if (linkedId > 0 && linkedSale) setDetails({ id: linkedId, ...linkedSale });
+  }, [linkedId, linkedSale]);
   const [returnOrder, setReturnOrder] = useState(null);
   const [returnForm, setReturnForm] = useState(null);
   const [returnedQuantities, setReturnedQuantities] = useState({});

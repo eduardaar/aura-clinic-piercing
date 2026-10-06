@@ -8,6 +8,7 @@
  * a largura do MODAL (container query), não a da janela — um modal largo num
  * notebook não deve colapsar como um celular, nem um modal estreito estourar. */
 @layer telas {
+  .modal-card.modal-workspace .modal-body { overflow-anchor: none; }
   @media (min-width: 621px) {
     .modal-backdrop:has(.modal-card.modal-workspace) { padding: 16px; }
 

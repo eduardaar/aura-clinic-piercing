@@ -1,5 +1,7 @@
 // Rotas financeiras: relatório, despesas e exportações (CSV, PDF, XLSX).
 import { Router } from "express";
+import { FinancialRuleError } from "../services/finance.js";
+import { syncEntrySettlement } from "../services/financeSettlement.js";
 import PDFDocument from "pdfkit";
 import ExcelJS from "exceljs";
 import { withFeature } from "../middleware/withDb.js";
@@ -10,8 +12,10 @@ import { buildFinanceReport } from "../services/finance.js";
 import { ledgerReport, normalizeEntry } from "../services/financeLedger.js";
 import { installmentMoneyCents, resolveInstallmentSchedule } from "../services/receivables.js";
 import { parsePaging } from "../services/pagination.js";
+import { textSearch } from "../services/textSearch.js";
 import { recordPrivacyAudit } from "../services/privacy.js";
 import { recordAudit } from "../services/audit.js";
+import { financialOriginJoins, FINANCIAL_ORIGIN_COLUMNS, financialEntryOrigin } from "../services/financialOrigins.js";
 import {
   normalizeSupplierInput,
   SUPPLIER_COLUMNS,
@@ -136,10 +140,12 @@ router.get("/api/finance/ledger", withFeature("basic_finance", async (req, res, 
     filters.push("e.cost_center_id = ?");
     filterParams.push(req.query.cost_center_id);
   }
-  if (req.query.search) {
-    filters.push("(e.description ILIKE ? OR e.category ILIKE ? OR e.notes ILIKE ?)");
-    filterParams.push(...Array(3).fill(`%${req.query.search}%`));
+  for (const [key, column] of [["client_id", "origin_client.id"], ["professional_id", "origin_professional.id"], ["source_type", "e.source_type"]]) {
+    if (req.query[key]) { filters.push(`${column} = ?`); filterParams.push(req.query[key]); }
   }
+  const search = textSearch(["e.description", "e.category", "e.notes", "origin_client.full_name", "origin_professional.name", "origin_appointment.procedure"], req.query.search);
+  if (search.sql) { filters.push(search.sql); filterParams.push(...search.params); }
+  if (req.query.from && req.query.to && String(req.query.from) > String(req.query.to)) return res.status(400).json({ error: "A data inicial deve ser anterior ou igual à data final." });
   const paging = parsePaging(req.query, {
     sortable: LEDGER_SORTABLE,
     tieBreak: "e.id",
@@ -150,21 +156,22 @@ router.get("/api/finance/ledger", withFeature("basic_finance", async (req, res, 
     to: req.query.to,
     filters,
     filterParams,
-    paging
+    paging,
+    dateField: req.query.date_field === "due_date" ? "due_date" : "competence_date"
   });
   res.json(paging.paginated ? { ...report, total, limit: paging.limit, offset: paging.offset } : report);
 }));
 
 router.get("/api/finance/entries/:id/details", withFeature("basic_finance", async (req, res, db) => {
   if (!financeLifecyclePermission(req, res, P.FINANCE_VIEW)) return;
-  const entry = await db.get(`SELECT e.*, c.name AS cost_center_name, sup.name AS supplier_name, u.name AS responsible_user_name
+  const entry = await db.get(`SELECT e.*, c.name AS cost_center_name, sup.name AS supplier_name, u.name AS responsible_user_name, ${FINANCIAL_ORIGIN_COLUMNS}
     FROM financial_entries e LEFT JOIN financial_cost_centers c ON c.id=e.cost_center_id
     LEFT JOIN suppliers sup ON sup.id=e.supplier_id
-    LEFT JOIN users u ON u.id=e.responsible_user_id WHERE e.id=?`, [req.params.id]);
+    LEFT JOIN users u ON u.id=e.responsible_user_id ${financialOriginJoins()} WHERE e.id=?`, [req.params.id]);
   if (!entry) return res.status(404).json({ error: "Lançamento não encontrado." });
   const audit = await db.all(`SELECT a.*, u.name AS user_name FROM financial_entry_audit a
     LEFT JOIN users u ON u.id=a.user_id WHERE a.entry_id=? ORDER BY a.created_at DESC, a.id DESC`, [entry.id]);
-  res.json({ ...entry, audit });
+  res.json({ ...entry, origin: await financialEntryOrigin(db, entry), audit });
 }));
 
 router.post("/api/finance/entries/:id/lifecycle", withFeature("basic_finance", async (req, res, db) => {
@@ -316,7 +323,7 @@ router.post("/api/finance/entries", withFeature("basic_finance", async (req, res
 
 router.patch("/api/finance/entries/:id", withFeature("basic_finance", async (req, res, db) => {
   if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
-  const current = await db.get("SELECT * FROM financial_entries WHERE id=?", [req.params.id]);
+  let current = await db.get("SELECT * FROM financial_entries WHERE id=?", [req.params.id]);
   if (!current) return res.status(404).json({ error: "Lançamento não encontrado." });
   if (current.source_key && current.source_type !== "manual_entry" && !["paid_amount", "status", "payment_method", "payment_account", "notes", "attachment_url"].some((key) => req.body?.[key] !== undefined)) {
     return res.status(400).json({ error: "Lançamentos integrados devem ser alterados no módulo de origem." });
@@ -325,6 +332,11 @@ router.patch("/api/finance/entries/:id", withFeature("basic_finance", async (req
   try { entry = normalizeEntry(req.body, current); } catch (error) { return res.status(400).json({ error: error.message }); }
   await db.run("BEGIN");
   try {
+    current = await db.get("SELECT * FROM financial_entries WHERE id=? FOR UPDATE", [req.params.id]);
+    entry = normalizeEntry(req.body, current);
+    if (current.source_key && current.source_type !== "manual_entry" && (entry.entry_type !== current.entry_type || entry.amount !== Number(current.amount))) {
+      throw new FinancialRuleError("O tipo e o valor de lançamentos integrados devem ser corrigidos no módulo de origem.");
+    }
     await db.run(`
       UPDATE financial_entries SET entry_type=?, description=?, category=?, amount=?, paid_amount=?, due_date=?,
         competence_date=?, status=?, payment_method=?, payment_account=?, paid_at=?, cost_center_id=?, supplier_id=?,
@@ -335,6 +347,7 @@ router.patch("/api/finance/entries/:id", withFeature("basic_finance", async (req
       entry.cost_center_id, entry.supplier_id, entry.attachment_url, entry.notes, entry.recurrence, entry.recurrence_end_date, current.id
     ]);
     const updated = await db.get("SELECT * FROM financial_entries WHERE id=?", [current.id]);
+    await syncEntrySettlement(db, current, updated, req.user?.id);
     await db.run("INSERT INTO financial_entry_audit (entry_id, user_id, action, before_data, after_data) VALUES (?, ?, 'update', ?, ?)", [
       current.id, req.user?.id || null, JSON.stringify(current), JSON.stringify(updated)
     ]);
@@ -343,6 +356,7 @@ router.patch("/api/finance/entries/:id", withFeature("basic_finance", async (req
     res.json(updated);
   } catch (error) {
     await db.run("ROLLBACK").catch(() => {});
+    if (error instanceof FinancialRuleError) return res.status(error.status).json({ error: error.message });
     throw error;
   }
 }));

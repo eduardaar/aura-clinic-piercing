@@ -53,7 +53,8 @@ export async function listAppointments(db, where = "", params = [], paging = nul
     SELECT a.*, c.full_name, c.whatsapp, c.instagram, p.name AS professional_name,
       j.name AS jewelry_name, j.photo_url AS jewelry_photo,
       v.variation_name AS jewelry_variation_name, v.sku AS jewelry_variant_sku,
-      s.name AS service_name
+      s.name AS service_name,
+      COALESCE((SELECT SUM(pay.amount) FROM payments pay WHERE pay.appointment_id=a.id AND pay.payment_type='sinal' AND pay.status IN ('pago','confirmado')),0) AS deposit_received_value
     FROM ${APPOINTMENT_FROM}
     ${where}
     ${orderBy}${page.clause}

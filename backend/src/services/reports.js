@@ -3,12 +3,23 @@ import { syncFinanceSources } from "./financeLedger.js";
 import { hasPermission } from "./permissionService.js";
 import { P } from "../config/permissions.js";
 import { CLINIC_TIME_ZONE, localDate } from "./utils.js";
+import { textSearch } from "./textSearch.js";
+import { financialOriginJoins, FINANCIAL_ORIGIN_COLUMNS } from "./financialOrigins.js";
 
 const filter = (key, label, type = "text", options) => Object.freeze({ key, label, type, ...(options ? { options } : {}) });
 const option = (value, label) => Object.freeze({ value, label });
 const PERIOD_FILTERS = [filter("from", "De", "date"), filter("to", "Até", "date")];
 const STATUS_FILTER = filter("status", "Status", "text");
 const PROFESSIONAL_FILTER = filter("professional_id", "Profissional", "professional");
+const APPOINTMENT_STATUS_FILTER = filter("status", "Status", "select", [
+  option("pendente", "Pendente"), option("awaiting_deposit_proof", "Aguardando comprovante"), option("confirmado", "Confirmado"),
+  option("chegou", "Chegou"), option("em_atendimento", "Em atendimento"), option("atendido", "Atendido"),
+  option("cancelado", "Cancelado"), option("nao_compareceu", "Não compareceu"), option("remarcado", "Remarcado"), option("recusado", "Recusado")
+]);
+const FINANCIAL_STATUS_FILTER = filter("status", "Status", "select", [
+  option("pending", "Pendente"), option("overdue", "Vencido"), option("partially_paid", "Parcialmente pago"),
+  option("paid", "Pago"), option("refunded", "Estornado"), option("canceled", "Cancelado")
+]);
 const columns = (...items) => items.map(([key, label, kind]) => Object.freeze({ key, label, ...(kind ? { kind } : {}) }));
 
 // Data local da clínica a partir de um TIMESTAMPTZ. `::date` puro usaria o fuso
@@ -44,11 +55,11 @@ const MONEY_BREAKDOWN_COLUMNS = [
 export const REPORT_CATALOG = Object.freeze([
   {
     type: "appointments", label: "Agendamentos", category: "Atendimento",
-    filters: [...PERIOD_FILTERS, STATUS_FILTER, PROFESSIONAL_FILTER],
+    filters: [...PERIOD_FILTERS, APPOINTMENT_STATUS_FILTER, PROFESSIONAL_FILTER],
     columns: columns(["id", "ID"], ["appointment_date", "Data", "date"], ["appointment_time", "Hora", "time"], ["client", "Cliente"],
       ["professional", "Profissional"], ["procedure", "Procedimento"], ["status", "Status", "status"], ["source", "Origem", "enum"],
       ...MONEY_BREAKDOWN_COLUMNS, ["adjustment_total", "Ajustes", "money"], ["net_value", "Líquido", "money"],
-      ["deposit_value", "Sinal", "money"], ["remaining_value", "Restante", "money"])
+      ["deposit_expected_value", "Sinal esperado", "money"], ["deposit_value", "Sinal informado", "money"], ["deposit_received_value", "Sinal recebido", "money"], ["remaining_value", "Restante", "money"])
   },
   {
     type: "services", label: "Serviços executados", category: "Atendimento",
@@ -125,8 +136,8 @@ export const REPORT_CATALOG = Object.freeze([
       ["operation_net", "Líquido da operação", "money"], ["amount", "Valor do lançamento", "money"], ["paid_amount", "Valor pago", "money"],
       ["open_amount", "Saldo", "money"], ["status", "Status", "status"], ["payment_method", "Forma de pagamento"])
   },
-  { type: "payables", label: "Contas a pagar", category: "Financeiro", pagination: "server", filters: [...PERIOD_FILTERS, STATUS_FILTER, filter("supplier_id", "Fornecedor"), filter("category", "Categoria")], columns: columns(["id", "ID"], ["due_date", "Vencimento", "date"], ["description", "Descrição"], ["supplier", "Fornecedor"], ["category", "Categoria"], ["amount", "Valor", "money"], ["paid_amount", "Valor pago", "money"], ["open_amount", "Saldo", "money"], ["status", "Status", "status"], ["payment_method", "Forma de pagamento"], ["source_type", "Origem", "enum"]) },
-  { type: "receivables", label: "Contas a receber", category: "Financeiro", pagination: "server", filters: [...PERIOD_FILTERS, STATUS_FILTER, filter("category", "Categoria")], columns: columns(["id", "ID"], ["due_date", "Vencimento", "date"], ["description", "Descrição"], ["category", "Categoria"], ["amount", "Valor", "money"], ["paid_amount", "Valor recebido", "money"], ["open_amount", "Saldo", "money"], ["status", "Status", "status"], ["payment_method", "Forma de pagamento"], ["source_type", "Origem", "enum"]) },
+  { type: "payables", label: "Contas a pagar", category: "Financeiro", pagination: "server", filters: [...PERIOD_FILTERS, FINANCIAL_STATUS_FILTER, filter("supplier_id", "Fornecedor"), filter("category", "Categoria")], columns: columns(["id", "ID"], ["due_date", "Vencimento", "date"], ["description", "Descrição"], ["supplier", "Fornecedor"], ["category", "Categoria"], ["amount", "Valor", "money"], ["paid_amount", "Valor pago", "money"], ["open_amount", "Saldo", "money"], ["status", "Status", "status"], ["payment_method", "Forma de pagamento"], ["source_type", "Origem", "enum"]) },
+  { type: "receivables", label: "Contas a receber", category: "Financeiro", pagination: "server", filters: [...PERIOD_FILTERS, FINANCIAL_STATUS_FILTER, filter("category", "Categoria")], columns: columns(["id", "ID"], ["due_date", "Vencimento", "date"], ["description", "Descrição"], ["category", "Categoria"], ["amount", "Valor", "money"], ["paid_amount", "Valor recebido", "money"], ["open_amount", "Saldo", "money"], ["status", "Status", "status"], ["payment_method", "Forma de pagamento"], ["source_type", "Origem", "enum"]) },
   {
     type: "payments", label: "Pagamentos", category: "Financeiro",
     filters: [...PERIOD_FILTERS, filter("status", "Status", "select", [option("pago", "Pago"), option("confirmado", "Confirmado"), option("pendente", "Pendente"), option("credito_aplicado", "Crédito aplicado"), option("refunded", "Estornado"), option("cancelado", "Cancelado")])],
@@ -167,7 +178,14 @@ export const REPORT_CATALOG = Object.freeze([
   { type: "access_profiles", label: "Perfis de acesso", category: "Gestão e auditoria", pagination: "server", filters: [STATUS_FILTER, filter("base_role", "Papel-base")], columns: columns(["id", "ID"], ["name", "Perfil"], ["description", "Descrição"], ["base_role", "Papel-base", "enum"], ["permissions", "Permissões", "count"], ["users", "Usuários", "count"], ["status", "Status", "status"], ["updated_at", "Atualizado em", "date"]) },
   { type: "permissions", label: "Permissões", category: "Gestão e auditoria", pagination: "server", filters: [filter("scope", "Origem", "select", [{ value: "user", label: "Exceção do usuário" }, { value: "profile", label: "Perfil de acesso" }]), filter("allowed", "Decisão", "select", [{ value: "true", label: "Permitida" }, { value: "false", label: "Negada" }]), filter("permission", "Permissão")], columns: columns(["id", "ID"], ["scope", "Origem", "enum"], ["owner", "Usuário/perfil"], ["permission", "Permissão"], ["allowed", "Permitida", "boolean"], ["updated_at", "Atualizada em", "date"]) },
   { type: "audit", label: "Auditoria", category: "Gestão e auditoria", pagination: "server", filters: [...PERIOD_FILTERS, filter("user_id", "Usuário"), filter("module", "Módulo"), filter("action", "Ação"), filter("severity", "Severidade", "select", [{ value: "info", label: "Informativa" }, { value: "warning", label: "Atenção" }, { value: "critical", label: "Crítica" }])], columns: columns(["id", "ID"], ["created_at", "Data e hora", "datetime"], ["actor", "Usuário"], ["actor_email", "E-mail"], ["module", "Módulo"], ["action", "Ação"], ["entity_type", "Entidade"], ["entity_id", "Registro"], ["reason", "Motivo"], ["severity", "Severidade", "enum"]) }
-].map((report) => Object.freeze({ ...report, formats: ["pdf", "xlsx", "csv", "txt"] })));
+].map((report) => Object.freeze({
+  ...report,
+  filters: ["appointments", "cancellations", "sales", "payments", "receivables", "financial"].includes(report.type)
+    ? [...report.filters, filter("client_id", "Cliente", "client"), ...(["receivables", "financial", "payments"].includes(report.type) ? [PROFESSIONAL_FILTER] : [])]
+    : report.filters,
+  columns: report.type === "receivables" ? [...report.columns, ...columns(["origin_label", "Operação"], ["client_name", "Cliente"], ["appointment_date", "Data do atendimento", "date"], ["appointment_time", "Hora", "time"], ["professional_name", "Profissional"], ["procedure", "Procedimento"], ["operation_total", "Total da operação", "money"])] : report.columns,
+  formats: ["pdf", "xlsx", "csv", "txt"]
+})));
 
 const REPORT_TYPES = new Set(REPORT_CATALOG.map(({ type }) => type));
 
@@ -335,13 +353,37 @@ export function reportExportValue(column, value) {
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
+// Busca e ordenação dos relatórios agregados precedem contagem e exportação.
+// Só as colunas autorizadas para o usuário participam da busca.
+export function filterReportRows(rows, columns, filters = {}) {
+  const fold = (value) => String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const term = fold(String(filters.search || "").trim());
+  let result = term ? rows.filter((row) => columns.some((column) =>
+    fold(row[column.key]).includes(term) || fold(reportExportValue(column, row[column.key])).includes(term)
+  )) : rows;
+  const [key, direction] = String(filters.sort || "").split(":");
+  const column = columns.find((item) => item.key === key);
+  if (column) {
+    const numeric = ["money", "count", "percent", "discount"].includes(column.kind);
+    result = [...result].sort((a, b) => {
+      const left = a[key], right = b[key];
+      const leftEmpty = left === null || left === undefined || left === "";
+      const rightEmpty = right === null || right === undefined || right === "";
+      if (leftEmpty || rightEmpty) return leftEmpty === rightEmpty ? 0 : leftEmpty ? 1 : -1;
+      const diff = numeric ? Number(left) - Number(right) : String(left).localeCompare(String(right), "pt-BR", { numeric: true });
+      return (direction === "desc" ? -diff : diff) || Number(a.id || 0) - Number(b.id || 0);
+    });
+  }
+  return result;
+}
+
 // Período padrão = mês corrente NO FUSO DA CLÍNICA. Com toISOString() (UTC),
 // entre 21h e meia-noite o "hoje" já era amanhã.
 function period(filters = {}) {
   const today = localDate();
   return {
-    from: DATE_PATTERN.test(filters.from) ? filters.from : `${today.slice(0, 7)}-01`,
-    to: DATE_PATTERN.test(filters.to) ? filters.to : today
+    from: filters.from === "" ? "0001-01-01" : DATE_PATTERN.test(filters.from) ? filters.from : `${today.slice(0, 7)}-01`,
+    to: filters.to === "" ? "9999-12-31" : DATE_PATTERN.test(filters.to) ? filters.to : today
   };
 }
 
@@ -352,25 +394,26 @@ const positiveInteger = (value) => {
 };
 
 async function pagedQuery(db, baseSql, baseParams, filters, options) {
-  const search = String(filters.search || "").trim();
   const searchColumns = options.searchColumns || [];
-  const searchSql = search && searchColumns.length
-    ? ` WHERE (${searchColumns.map((name) => `CAST(${name} AS TEXT) ILIKE ?`).join(" OR ")})`
-    : "";
-  const params = [...baseParams, ...(searchSql ? searchColumns.map(() => `%${search}%`) : [])];
+  const search = textSearch(searchColumns, filters.search, REPORT_VALUE_LABELS);
+  const searchSql = search.sql ? ` WHERE ${search.sql}` : "";
+  const params = [...baseParams, ...search.params];
   const requestedSort = String(filters.sort || "").split(":");
   const sortColumn = options.sortColumns?.[requestedSort[0]] || options.defaultSort;
   const direction = requestedSort[1] === "asc" ? "ASC" : "DESC";
   const order = `${sortColumn} ${direction}${sortColumn === "id" ? "" : ", id DESC"}`;
   const paginated = filters.paginated !== false;
   const limit = Math.min(Math.max(toInteger(filters.limit, 25), 1), 100);
-  const offset = Math.max(toInteger(filters.offset, 0), 0);
+  const requestedOffset = Math.max(toInteger(filters.offset, 0), 0);
   const countRow = await db.get(`SELECT COUNT(*) AS total_rows FROM (${baseSql}) report_rows${searchSql}`, params);
+  const totalRows = Number(countRow?.total_rows || 0);
+  const offset = requestedOffset >= totalRows ? Math.max(0, Math.ceil(totalRows / limit) - 1) * limit : requestedOffset;
   const rows = await db.all(
     `SELECT * FROM (${baseSql}) report_rows${searchSql} ORDER BY ${order}${paginated ? " LIMIT ? OFFSET ?" : ""}`,
     paginated ? [...params, limit, offset] : params
   );
-  return { rows, total_rows: Number(countRow?.total_rows || 0), limit: paginated ? limit : Number(countRow?.total_rows || 0), offset: paginated ? offset : 0 };
+  const summary = options.summarySelect ? await db.get(`SELECT ${options.summarySelect} FROM (${baseSql}) report_rows${searchSql}`, params) : null;
+  return { rows, total_rows: Number(countRow?.total_rows || 0), limit: paginated ? limit : Number(countRow?.total_rows || 0), offset: paginated ? offset : 0, summary };
 }
 
 /**
@@ -381,15 +424,24 @@ async function pagedQuery(db, baseSql, baseParams, filters, options) {
 export async function buildReport(db, type, filters = {}, context = {}) {
   if (!validReportType(type)) throw new Error("Relatório inválido.");
   const { from, to } = period(filters);
-  const status = String(filters.status || "");
+  if (from > to) throw new Error("A data inicial deve ser anterior ou igual à data final.");
+  const status = String(filters.status || "").trim();
   const professionalId = positiveInteger(filters.professional_id);
   const productId = positiveInteger(filters.product_id);
+  const clientId = positiveInteger(filters.client_id);
   const category = String(filters.category || "");
   let rows = [];
   let pageMeta = null;
-  let summary = null;
   const setPaged = async (sql, params, options) => {
-    pageMeta = await pagedQuery(db, sql, params, filters, options);
+    const declared = reportColumns(type, context).filter((column) => !["money", "count", "percent", "discount"].includes(column.kind)).map((column) => column.key);
+    pageMeta = await pagedQuery(db, sql, params, filters, {
+      ...options, searchColumns: [...new Set([...declared, ...options.searchColumns])],
+      summarySelect: type === "commissions"
+        ? "COUNT(*)::int AS entries, COALESCE(SUM(gross_amount),0) AS gross, COALESCE(SUM(discount_amount),0) AS discount, COALESCE(SUM(adjustment_amount),0) AS adjustment, COALESCE(SUM(base_amount),0) AS base, COALESCE(SUM(commission_amount),0) AS commission"
+        : type === "value_adjustments"
+          ? "COALESCE(SUM(signed_amount) FILTER (WHERE status='ativo'),0) AS net_effect, COALESCE(SUM(amount) FILTER (WHERE status='ativo' AND adjustment_type='acrescimo'),0) AS increases, COALESCE(SUM(amount) FILTER (WHERE status='ativo' AND adjustment_type='abatimento'),0) AS decreases"
+          : null
+    });
     rows = pageMeta.rows;
   };
   if (type === "purchases") {
@@ -423,13 +475,15 @@ export async function buildReport(db, type, filters = {}, context = {}) {
     // Sem filtro explícito, título cancelado não aparece como conta em aberto.
     if (status) { clauses.push("fe.status=?"); params.push(status); } else clauses.push("fe.status<>'canceled'");
     if (category) { clauses.push("fe.category=?"); params.push(category); }
+    if (type === "receivables" && clientId) { clauses.push("origin_client.id=?"); params.push(clientId); }
+    if (type === "receivables" && professionalId) { clauses.push("origin_professional.id=?"); params.push(professionalId); }
     const supplierId = toInteger(filters.supplier_id);
     if (type === "payables" && supplierId) { clauses.push("fe.supplier_id=?"); params.push(supplierId); }
     await setPaged(`
       SELECT fe.id,fe.due_date,fe.description,s.name AS supplier,fe.category,fe.amount,fe.paid_amount,
-        GREATEST(fe.amount-fe.paid_amount,0) AS open_amount,fe.status,fe.payment_method,fe.source_type
-      FROM financial_entries fe LEFT JOIN suppliers s ON s.id=fe.supplier_id WHERE ${clauses.join(" AND ")}
-    `, params, { searchColumns: ["description", "supplier", "category", "status", "payment_method", "source_type"], sortColumns: { id: "id", due_date: "due_date", description: "description", supplier: "supplier", amount: "amount", open_amount: "open_amount", status: "status" }, defaultSort: "due_date" });
+        GREATEST(fe.amount-fe.paid_amount,0) AS open_amount,fe.status,fe.payment_method,fe.source_type, ${FINANCIAL_ORIGIN_COLUMNS}
+      FROM financial_entries fe LEFT JOIN suppliers s ON s.id=fe.supplier_id ${financialOriginJoins("fe")} WHERE ${clauses.join(" AND ")}
+    `, params, { searchColumns: ["description", "supplier", "category", "status", "payment_method", "source_type", "client_name", "professional_name", "procedure", "origin_label"], sortColumns: { id: "id", due_date: "due_date", description: "description", supplier: "supplier", amount: "amount", open_amount: "open_amount", status: "status" }, defaultSort: "due_date" });
   } else if (type === "stock_movements") {
     const movementType = String(filters.movement_type || "");
     const itemType = String(filters.item_type || "");
@@ -554,15 +608,7 @@ export async function buildReport(db, type, filters = {}, context = {}) {
       LEFT JOIN users vu ON vu.id=ava.voided_by_user_id
       WHERE ${clauses.join(" AND ")}
     `, params, { searchColumns: ["client", "professional", "reason", "created_by", "void_reason"], sortColumns: { id: "id", created_at_local: "created_at_local", appointment_id: "appointment_id", client: "client", amount: "amount", status: "status" }, defaultSort: "created_at_local" });
-    summary = await db.get(`
-      SELECT COALESCE(SUM(signed_amount) FILTER (WHERE status='ativo'),0) AS net_effect,
-        COALESCE(SUM(amount) FILTER (WHERE status='ativo' AND adjustment_type='acrescimo'),0) AS increases,
-        COALESCE(SUM(amount) FILTER (WHERE status='ativo' AND adjustment_type='abatimento'),0) AS decreases
-      FROM (SELECT ava.amount, ava.status, ava.adjustment_type,
-          CASE WHEN ava.adjustment_type='abatimento' THEN -ava.amount ELSE ava.amount END AS signed_amount
-        FROM appointment_value_adjustments ava JOIN appointments a ON a.id=ava.appointment_id
-        WHERE ${clauses.join(" AND ")}) adjustments
-    `, params);
+
   } else if (type === "commissions") {
     // Lançamentos ATIVOS gravados no fechamento (base completa e regra
     // aplicada), nunca percentual atual × receita. Escopo próprio é forçado
@@ -590,12 +636,7 @@ export async function buildReport(db, type, filters = {}, context = {}) {
       WHERE ${clauses.join(" AND ")}
     `, params, { searchColumns: ["client", "professional", "item", "rule_scope"], sortColumns: { id: "id", reference_date: "reference_date", appointment_id: "appointment_id", client: "client", professional: "professional", base_amount: "base_amount", commission_amount: "commission_amount" }, defaultSort: "reference_date" });
     // Totais do período inteiro (não da página), somados no Postgres.
-    summary = await db.get(`
-      SELECT COUNT(*)::int AS entries, COALESCE(SUM(ce.gross_amount),0) AS gross, COALESCE(SUM(ce.discount_amount),0) AS discount,
-        COALESCE(SUM(ce.adjustment_amount),0) AS adjustment, COALESCE(SUM(ce.base_amount),0) AS base,
-        COALESCE(SUM(ce.commission_amount),0) AS commission
-      FROM commission_entries ce WHERE ${clauses.join(" AND ")}
-    `, params);
+
   } else if (type === "users") {
     const clauses = ["1=1"];
     const params = [];
@@ -657,6 +698,8 @@ export async function buildReport(db, type, filters = {}, context = {}) {
     const params = [from, to];
     if (status) { clauses.push("fe.status=?"); params.push(status); } else clauses.push("fe.status<>'canceled'");
     if (["income", "receivable", "expense", "payable"].includes(String(filters.entry_type || ""))) { clauses.push("fe.entry_type=?"); params.push(String(filters.entry_type)); }
+    if (clientId) { clauses.push("c.id=?"); params.push(clientId); }
+    if (professionalId) { clauses.push("p.id=?"); params.push(professionalId); }
     rows = await db.all(`
       SELECT fe.id, fe.competence_date, fe.due_date, fe.entry_type, fe.description, fe.category, fe.source_type,
         CASE WHEN a.id IS NOT NULL THEN 'Atendimento #' || a.id WHEN so.id IS NOT NULL THEN 'Venda #' || so.id END AS operation,
@@ -671,6 +714,8 @@ export async function buildReport(db, type, filters = {}, context = {}) {
       LEFT JOIN payments pay ON fe.source_type='payment' AND pay.id=fe.source_id
       LEFT JOIN appointments a ON a.id=COALESCE(se.appointment_id, pay.appointment_id)
       LEFT JOIN sales_orders so ON so.id=CASE WHEN fe.source_type='sales_order' THEN fe.source_id ELSE pay.sales_order_id END
+      LEFT JOIN clients c ON c.id=COALESCE(a.client_id, so.client_id, pay.client_id)
+      LEFT JOIN professionals p ON p.id=COALESCE(se.professional_id, a.professional_id)
       WHERE ${clauses.join(" AND ")}
       ORDER BY fe.due_date, fe.id
     `, params);
@@ -681,6 +726,7 @@ export async function buildReport(db, type, filters = {}, context = {}) {
     const clauses = ["SUBSTRING(so.created_at,1,10) BETWEEN ? AND ?", "so.source<>'agenda'"];
     const params = [from, to];
     if (status) { clauses.push("so.status=?"); params.push(status); } else clauses.push(`so.status NOT IN ${CANCELED_SALE_STATUSES}`);
+    if (clientId) { clauses.push("so.client_id=?"); params.push(clientId); }
     rows = await db.all(`
       SELECT so.id, SUBSTRING(so.created_at,1,10) AS sale_date, c.full_name AS client, so.order_type, so.source, so.status, so.payment_method,
         ${SALE_GROSS("so")} AS gross_value, ${SALE_COUPON("so")} AS coupon_discount,
@@ -825,13 +871,16 @@ export async function buildReport(db, type, filters = {}, context = {}) {
     const params = [from, to];
     if (status) { clauses.push("a.status=?"); params.push(status); }
     if (professionalId) { clauses.push("a.professional_id=?"); params.push(professionalId); }
+    if (clientId) { clauses.push("a.client_id=?"); params.push(clientId); }
     rows = await db.all(`
       SELECT a.id, a.appointment_date, a.appointment_time, c.full_name AS client, p.name AS professional,
         a.procedure, a.status, a.source,
         ${APPOINTMENT_GROSS("a")} AS gross_value, ${APPOINTMENT_COUPON("a")} AS coupon_discount,
         COALESCE(a.manual_discount_value,0) AS manual_discount, COALESCE(a.discount_value,0) AS discount_total,
         COALESCE(a.adjustment_total,0) AS adjustment_total, COALESCE(a.total_value,0) AS net_value,
-        a.deposit_value, a.remaining_value
+        a.deposit_expected_value, a.deposit_value,
+        COALESCE((SELECT SUM(pay.amount) FROM payments pay WHERE pay.appointment_id=a.id AND pay.payment_type='sinal' AND pay.status IN ('pago','confirmado')),0) AS deposit_received_value,
+        a.remaining_value
       FROM appointments a JOIN clients c ON c.id=a.client_id JOIN professionals p ON p.id=a.professional_id
       WHERE ${clauses.join(" AND ")} ORDER BY a.appointment_date,a.appointment_time,a.id
     `, params);
@@ -844,6 +893,7 @@ export async function buildReport(db, type, filters = {}, context = {}) {
     const params = [from, to];
     if (["cancelado", "recusado", "nao_compareceu"].includes(status)) { clauses.push("a.status=?"); params.push(status); }
     if (professionalId) { clauses.push("a.professional_id=?"); params.push(professionalId); }
+    if (clientId) { clauses.push("a.client_id=?"); params.push(clientId); }
     rows = await db.all(`
       SELECT a.id, a.appointment_date, a.appointment_time, ${eventDate} AS event_date, c.full_name AS client, p.name AS professional,
         a.procedure, a.status, ac.reason AS reason,
@@ -876,6 +926,8 @@ export async function buildReport(db, type, filters = {}, context = {}) {
     const clauses = ["SUBSTRING(p.paid_at,1,10) BETWEEN ? AND ?"];
     const params = [from, to];
     if (status) { clauses.push("p.status=?"); params.push(status); } else clauses.push("p.status<>'cancelado'");
+    if (clientId) { clauses.push("p.client_id=?"); params.push(clientId); }
+    if (professionalId) { clauses.push("a.professional_id=?"); params.push(professionalId); }
     rows = await db.all(`
       SELECT p.id, SUBSTRING(p.paid_at,1,10) AS payment_date, c.full_name AS client,
         CASE WHEN p.appointment_id IS NOT NULL THEN 'Atendimento #' || p.appointment_id
@@ -885,6 +937,7 @@ export async function buildReport(db, type, filters = {}, context = {}) {
         CASE WHEN p.status IN ${RECEIVED_PAYMENT_STATUSES} THEN COALESCE(p.fee_amount,0) ELSE 0 END AS fee_amount,
         CASE WHEN p.status IN ${RECEIVED_PAYMENT_STATUSES} THEN COALESCE(p.net_amount, p.amount - COALESCE(p.fee_amount,0)) ELSE 0 END AS net_received
       FROM payments p JOIN clients c ON c.id=p.client_id
+      LEFT JOIN appointments a ON a.id=p.appointment_id
       WHERE ${clauses.join(" AND ")}
       ORDER BY p.paid_at DESC, p.id DESC
     `, params);
@@ -901,12 +954,13 @@ export async function buildReport(db, type, filters = {}, context = {}) {
       name, sku, abc_class, units_out, movement_value, daily_demand, days_to_stockout
     }));
   }
+  if (!pageMeta) rows = filterReportRows(rows, reportColumns(type, context), filters);
   return {
     type, from, to, rows,
     columns: reportColumns(type, context),
     total_rows: pageMeta?.total_rows ?? rows.length,
     ...(pageMeta ? { limit: pageMeta.limit, offset: pageMeta.offset } : {}),
-    ...(summary ? { summary } : {}),
+    ...(pageMeta?.summary ? { summary: pageMeta.summary } : {}),
     generated_at: new Date().toISOString()
   };
 }

@@ -1,5 +1,7 @@
 # Padrão visual do frontend
 
+Revisão de 06/10/2026: `ResponsiveEditableList` define as colunas de desktop pela variável CSS `--transaction-columns`. Em até 700px, cada linha passa a uma única coluna com rótulos e controles completos; não use `gridTemplateColumns` inline, pois ele impediria a regra móvel. Os pagamentos do atendimento usam esse componente, assim como vendas, compras e parcelas. O modal de agendamento desativa `overflow-anchor` no corpo para preservar a rolagem durante o recálculo financeiro.
+
 Como escrever tela nova sem criar mais um sistema de CSS. O documento nasceu da
 refatoração do painel `/plataforma`, onde cinco telas tinham cinco CSS paralelos
 (`pa-`, `aa-`, `fa-`, `le-`, `sup-`) para desenhar as mesmas coisas.
@@ -54,7 +56,7 @@ prévia da imagem fica ao lado dos controles"), ela pertence ao CSS da tela.
 | --- | --- | --- |
 | `DataView` | Listagem completa: busca, filtros avançados (em modal), ordenação por coluna, paginação e os estados de carregando/erro/vazio | `components/common/DataView.jsx` |
 | `RowActions` | Ações da linha num único menu de três pontos ("Mais ações"); cada ação: `{ label, onClick, href, target, rel, danger, disabled }`. Nenhuma ação fica exposta (`primary` é aceito, mas ignorado) | `components/common/Crud.jsx` |
-| `Modal` | Janela sobreposta (Radix Dialog), largura única. Trava o scroll do body e **não** fecha no clique fora (`dismissible` libera, só em modal sem dados a perder). Com formulário alterado, X, Esc e os botões "Cancelar"/"Fechar" (ou `data-modal-cancel`) pedem confirmação: Sair sem salvar, Salvar, Continuar editando. Props `dirty`, `formId`, `confirmClose`; `size` é ignorado | `components/common/Crud.jsx` |
+| `Modal` | Janela sobreposta (Radix Dialog), largura padrão (`modal-md`) ou ampla com `size="workspace"` (`modal-workspace`). Trava o scroll do body e **não** fecha no clique fora (`dismissible` libera, só em modal sem dados a perder). Com formulário alterado, X, Esc e os botões "Cancelar"/"Fechar" (ou `data-modal-cancel`) pedem confirmação: Sair sem salvar, Salvar, Continuar editando. Props `dirty`, `formId`, `confirmClose`; outros valores de `size` mantêm a largura padrão | `components/common/Crud.jsx` |
 | `useModal()` | Dentro de um `Modal`: `requestClose`, `markDirty`, `dirty` e o contêiner onde camadas flutuantes devem montar | `components/common/Crud.jsx` |
 | `ConfirmDeleteModal` | Exclusão com palavra digitada (padrão "SIM"). Use em **toda** exclusão | `components/common/Crud.jsx` |
 | `CrudHeader` | Título + subtítulo + botão de ação; `actions` (`{ label, icon, onClick }`) vira o menu "Mais opções" antes do botão | `components/common/Crud.jsx` |
@@ -123,22 +125,33 @@ se mexe aqui, e só aqui.
   aparece como chips em "Filtros aplicados:", com "Limpar filtros". Período e
   filtros de uma tela entram como `filters` do `DataView`, não como barra
   própria.
-- **Só os registros rolam.** `.dataview > .data-table-wrap` tem
-  `max-height: clamp(320px, 58vh, 720px)` (62dvh até 720px) e o `thead` é
-  fixo; busca, filtros e paginação ficam visíveis.
-- **Tabela a partir de 721px**: `table-layout: fixed`, sem rolagem horizontal
-  (as colunas encolhem e o texto quebra), linhas zebradas e coluna de ações de
-  72px com o menu de três pontos. Até 720px a linha vira cartão (`data-label`).
+- **Só os registros rolam no desktop.** `.dataview > .data-table-wrap` mantém
+  altura limitada e cabeçalho fixo; busca, filtros e paginação ficam visíveis.
+  Até 720px, os cards acompanham a rolagem da página, sem uma segunda área
+  vertical de rolagem dentro da listagem.
+- **Tabela a partir de 721px**: `table-layout: auto`, largura mínima de 160px
+  por coluna e rolagem horizontal contida no bloco. Palavras quebram nos espaços;
+  valores monetários não quebram por dígito. Até 720px a linha vira cartão com
+  rótulos (`data-label`); relatórios e telas até 480px empilham rótulo e valor.
+  Filtros, menus, paginação e seletores mantêm alvos de toque de pelo menos 44px;
+  campos usam 16px em dispositivos de toque para evitar o zoom automático do iOS.
+- **Filtros com uma única origem.** `DataView` aplica filtros e busca em memória
+  por padrão. Quando a API já os aplicou, use `queryMode="external"`, inclusive
+  em relatórios com paginação local. `mode="server"` continua reservando a
+  paginação/contagem para a API. Exportações recebem filtros, busca e ordenação,
+  removendo somente `limit` e `offset`.
 - **Ações.** Da linha: `RowActions`, sempre o menu de três pontos. Da tela:
   `actions` do `CrudHeader` ("Mais opções"), antes do botão principal. O menu
   lateral não tem submenus (`Sidebar.jsx` fixa `visibleChildren: []` e
   `frontend/tests/appPages.test.mjs` proíbe `menuChildren`): atalho para
   subpágina mora no "Mais opções" da tela.
 - **Indicadores** no topo da tela vão dentro de `CollapsibleIndicators`.
-- **Modal com largura única.** O `Modal` sempre renderiza
-  `modal-card modal-md`, e `.modal-card` tem `width: min(640px, 100%)`
-  (`styles.css`). As regras `.modal-card.modal-sm`/`.modal-lg` (inclusive as de
-  1120px dos detalhes do agendamento) não são mais alcançadas pelo `Modal`.
+- **Modal com largura padrão e opção ampla.** Por padrão, o `Modal` renderiza
+  `modal-card modal-md`, com `width: min(640px, 100%)` (`styles.css`).
+  `size="workspace"` renderiza `modal-card modal-workspace`, usado nos formulários
+  de agendamento: até 1280px de largura e altura da janela menos 32px no desktop
+  (`styles/appointment-workspace.css`). Outros valores de `size` usam `modal-md`;
+  as regras `.modal-card.modal-sm`/`.modal-lg` não são alcançadas pelo `Modal`.
 - **Celular.** Até 620px o modal ocupa a tela cheia (`100dvh`, sem cantos, rodapé
   com botões em coluna e área segura). `frontend/index.html` usa
   `viewport-fit=cover, interactive-widget=resizes-content`: com o teclado aberto

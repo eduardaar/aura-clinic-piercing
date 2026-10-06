@@ -1,5 +1,6 @@
 .transaction-list { min-width: 0; overflow-x: auto; }
-.transaction-list__header, .transaction-list__rows > article { align-items: center; display: grid; gap: .65rem; min-width: 42rem; }
+.transaction-list__header, .transaction-list__rows > article { align-items: center; display: grid; gap: .65rem; min-width: 42rem; grid-template-columns: var(--transaction-columns); }
+.transaction-list__cell, .transaction-list__cell > div { min-width: 0; }
 .transaction-list__header { color: var(--muted); font-size: .75rem; padding: .55rem .7rem; text-transform: uppercase; }
 .transaction-list__rows > article { border-top: 1px solid var(--line, #e7e1da); padding: .7rem; }
 .transaction-list__rows > article.is-invalid { background: #fff4f2; }
@@ -17,10 +18,10 @@
   .transaction-list { overflow: visible; }
   .transaction-list__header { display: none; }
   .transaction-list__rows { display: grid; gap: .65rem; }
-  .transaction-list__rows > article { background: #fff; border: 1px solid var(--line, #e7e1da); border-radius: .8rem; display: grid; gap: .55rem; min-width: 0; padding: .85rem; }
-  .transaction-list__cell { align-items: baseline; display: flex; gap: .75rem; justify-content: space-between; text-align: right; }
+  .transaction-list__rows > article { background: #fff; border: 1px solid var(--line, #e7e1da); border-radius: .8rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: .75rem; min-width: 0; padding: .85rem; }
+  .transaction-list__cell { align-items: stretch; display: flex; flex-direction: column; gap: .3rem; text-align: left; }
   .transaction-list__cell > span { color: var(--muted); display: inline; flex: 0 0 auto; font-size: .75rem; }
-  .transaction-list__cell > div { max-width: 70%; overflow-wrap: anywhere; }
+  .transaction-list__cell > div { max-width: 100%; overflow-wrap: break-word; }
   .transaction-list__rows .transaction-list__actions { border-top: 1px solid var(--line, #e7e1da); display: grid; grid-template-columns: repeat(2, 1fr); justify-content: stretch; margin-top: .2rem; padding-top: .75rem; }
   .transaction-list__rows .transaction-list__actions button { width: 100%; }
 }

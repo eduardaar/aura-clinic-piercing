@@ -36,7 +36,7 @@ export function PayablesAdmin({ onNavigate }) {
   const initialTo = `${new Date().getFullYear() + 1}-12-31`;
   /** @type {[Record<string, any>, React.Dispatch<React.SetStateAction<Record<string, any>>>]} */
   const [listFilters, setListFilters] = useState({ period_from: initialFrom, period_to: initialTo });
-  const query = new URLSearchParams({ from: listFilters.period_from || "", to: listFilters.period_to || "" }).toString();
+  const query = new URLSearchParams({ from: listFilters.period_from || "", to: listFilters.period_to || "", date_field: "due_date" }).toString();
   const { data } = useFetch(`/finance/ledger?${query}`);
   const { data: centers } = useFetch("/finance/cost-centers");
   const { data: categoryList } = useFetch("/finance/categories");

@@ -339,33 +339,41 @@ export function Reports() {
   const { data: professionals } = useFetch("/professionals");
   // Serviços só são buscados quando o relatório tem filtro por serviço.
   const needsServices = selectedFilters.some((item) => item.type === "service");
+  const needsClients = selectedFilters.some((item) => item.type === "client");
+  const { data: clientsData } = useFetch(needsClients ? "/clients" : null);
+  const clientOptions = asArray(Array.isArray(clientsData) ? clientsData : asObject(clientsData).items)
+    .map((client) => ({ value: String(client.id), label: client.full_name }));
   const { data: servicesData } = useFetch(needsServices ? "/services" : null);
   const serviceOptions = asArray(Array.isArray(servicesData) ? servicesData : asObject(servicesData).items)
     .map((service) => ({ value: String(service.id), label: service.name }));
   const reportFilterDefinitions = selectedFilters.map((item) => ({
     key: item.key,
     label: item.label,
-    type: ["professional", "service", "select"].includes(item.type) ? "select" : item.type === "date" || item.type === "number" ? item.type : "text",
+    type: ["professional", "service", "client", "select"].includes(item.type) ? "select" : item.type === "date" || item.type === "number" ? item.type : "text",
     options: item.type === "professional"
       ? asArray(professionals).map((professional) => ({ value: String(professional.id), label: professional.name }))
-      : item.type === "service" ? serviceOptions : asArray(item.options)
+      : item.type === "service" ? serviceOptions : item.type === "client" ? clientOptions : asArray(item.options)
   }));
   const params = new URLSearchParams();
   selectedFilters.forEach(({ key }) => {
-    if (filters[key] !== undefined && filters[key] !== "") params.set(key, filters[key]);
+    if (filters[key] !== undefined) params.set(key, filters[key]);
   });
   if (serverPagination) {
     params.set("limit", String(pageSize));
     params.set("offset", String((page - 1) * pageSize));
-    if (deferredSearch) params.set("search", deferredSearch);
-    if (sort?.key) params.set("sort", `${sort.key}:${sort.dir}`);
   }
-  // Período e status continuam sendo filtro de servidor: mudam a consulta e o
-  // arquivo exportado. A DataView cuida só do que já veio (busca, ordenação e
-  // paginação), por isso mode="client".
+  if (deferredSearch.trim()) params.set("search", deferredSearch.trim());
+  if (sort?.key) params.set("sort", `${sort.key}:${sort.dir}`);
+  // A API aplica filtros e busca para tela e exportação. Relatórios sem
+  // paginação SQL mantêm apenas o recorte de páginas no navegador.
   const { data, loading, error } = useFetch(`/reports/${selectedReport?.type || filters.type}?${params}`);
   const report = asObject(data);
   const reportRows = asArray(report.rows);
+  useEffect(() => {
+    if (serverPagination && !loading && Number.isInteger(report.offset) && Number(report.limit) > 0) {
+      setPage(Math.floor(report.offset / report.limit) + 1);
+    }
+  }, [serverPagination, loading, report.offset, report.limit]);
 
   // As colunas efetivas vêm na resposta (o servidor tira, por exemplo, as de
   // comissão para quem não pode vê-las); o catálogo é o plano B.
@@ -384,6 +392,8 @@ export function Reports() {
     const exportParams = new URLSearchParams(params);
     exportParams.delete("limit");
     exportParams.delete("offset");
+    if (search.trim()) exportParams.set("search", search.trim());
+    else exportParams.delete("search");
     exportParams.set("format", format);
     return downloadApiFile(`/reports/${selectedReport.type}?${exportParams}`, `${selectedReport.type}-${filters.from || today}-${filters.to || today}.${format}`);
   };
@@ -406,7 +416,7 @@ export function Reports() {
       <div className="panel">
         <div className="panel-heading">
           <h2>{selectedReport?.label}</h2>
-          <span>{loading ? "Carregando…" : `${report.total_rows || 0} registro(s)`}</span>
+          <span>{loading || search !== deferredSearch ? "Carregando…" : error ? "Consulta indisponível" : `${report.total_rows || 0} registro(s)`}</span>
         </div>
         <ReportSummary type={selectedReport?.type} summary={summary} />
         <DataView
@@ -416,25 +426,26 @@ export function Reports() {
           rows={rows}
           columns={columns}
           mode={serverPagination ? "server" : "client"}
+          queryMode="external"
           total={serverPagination ? Number(report.total_rows || 0) : undefined}
           page={serverPagination ? page : undefined}
           pageSize={serverPagination ? pageSize : undefined}
-          search={serverPagination ? search : undefined}
-          sort={serverPagination ? sort : undefined}
-          onSearchChange={serverPagination ? (value) => { setPage(1); setSearch(value); } : undefined}
-          onSortChange={serverPagination ? (value) => { setPage(1); setSort(value); } : undefined}
+          search={search}
+          sort={sort}
+          onSearchChange={(value) => { setPage(1); setSearch(value); }}
+          onSortChange={(value) => { setPage(1); setSort(value); }}
           onPageChange={serverPagination ? setPage : undefined}
           onPageSizeChange={serverPagination ? (value) => { setPage(1); setPageSize(value); } : undefined}
           rowKey={(row) => row.__rowKey}
-          loading={loading}
+          loading={loading || search !== deferredSearch}
           error={error}
           searchPlaceholder="Buscar no resultado"
           filters={reportFilterDefinitions}
           filterValues={filters}
-          onFilterChange={(values) => { setPage(1); setFilters((current) => ({ ...values, type: current.type })); }}
+          onFilterChange={(values) => { setPage(1); setFilters((current) => ({ from: "", to: "", ...values, type: current.type })); }}
           toolbar={<Select label="Relatório" value={filters.type} onChange={selectReport}>{Object.entries(reportGroups).map(([category, reports]) => <optgroup label={category} key={category}>{reports.map((item) => <option value={item.type} key={item.type}>{item.label}</option>)}</optgroup>)}</Select>}
           empty="Nenhum dado para o período selecionado."
-          emptyFiltered="Nenhum registro corresponde à busca."
+          emptyFiltered="Nenhum registro corresponde aos filtros e à busca aplicados."
         />
       </div>
     </section>

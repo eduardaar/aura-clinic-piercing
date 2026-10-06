@@ -1,8 +1,8 @@
 # Estado atual do projeto
 
-> Situação em **01/10/2026**: código até o commit `fdde35fd` (22/09/2026) mais a entrega de 01/10 (seção 9 — descontos, ajustes de valor, indicador químico, comissões e revisão da Central de Relatórios).
+> Situação em **06/10/2026**: cópia local atualizada até `ab290dda` (01/10/2026), incluindo a entrega da seção 9 — descontos, ajustes de valor, indicador químico, comissões e revisão da Central de Relatórios.
 >
-> Nesta revisão nenhum teste foi reexecutado: as linhas novas foram conferidas lendo o código e os arquivos de teste em `fdde35fd`. Os resultados da seção 6 continuam com a data em que foram medidos.
+> Nesta revisão foram reexecutados o typecheck de backend/frontend, o build, as suítes de backend/frontend e a validação visual automatizada em Chromium/WebKit (seção 10). Integrações externas e iPhone físico não foram exercitados; os resultados anteriores preservam suas datas.
 >
 > Este documento existe para responder uma pergunta só: **o que já está feito e o que ainda não está.** Ele não propõe roadmap nem assume compromisso de produto — para isso, use [IDEIAS.md](./IDEIAS.md). Quando o código e este documento discordarem, o código vence: registre a correção aqui.
 
@@ -24,7 +24,7 @@
 | --- | --- | --- |
 | Multi-tenancy por schema Postgres | **Entregue** | `middleware/withDb.js`; `scripts/test-isolation.mjs` (9 checagens, incluindo token cruzado, suspensão e 30 requisições alternadas sem vazamento de pool) |
 | Provisionamento e desprovisionamento de clínica | **Entregue** | `services/tenants.js`; clínica nova nasce com `schema.sql` + todas as migrations de tenant na mesma transação |
-| Migrations versionadas com ledger e checksum | **Entregue** | `src/db/migrations/` (platform `0001`–`0008`; tenant `0001`–`0042`, sem `0026` e `0027`, que nunca existiram); CLI `npm --prefix backend run migrations:apply` |
+| Migrations versionadas com ledger e checksum | **Entregue** | `src/db/migrations/` (platform `0001`–`0008`; tenant `0001`–`0043`, sem `0026` e `0027`, que nunca existiram); CLI `npm --prefix backend run migrations:apply` |
 | Painel de super-admin | **Entregue** | `routes/platform.js`, `features/platform/PlatformAdmin.jsx` |
 | Cadastro público de clínica | **Entregue** | `POST /api/signup`, com verificação de disponibilidade de nome e e-mail antes do aceite; exige plano existente (`plano_obrigatorio`) e aceite das versões vigentes dos documentos legais (`legal_acceptance_required`) |
 
@@ -125,12 +125,13 @@
 
 | Camada | Resultado | Quando |
 | --- | --- | --- |
-| Suíte backend | 546/546 em 104 s, 60 arquivos de teste | reexecutada em 30/08; inclui cofre e rotas SMTP; runner isolado de `RUN_MIGRATIONS_ON_BOOT` local |
+| Suíte backend | 715/715 em 161 s; oito regressões específicas reexecutadas após os ajustes finais | 06/10, banco PostgreSQL temporário separado da base local, sem credenciais de provedores externos |
 | Homologação crítica ponta a ponta | 123/123 (`scripts/qa-homologation-critical.mjs`) | 27/08, tenant novo, após as correções. O script ainda chama `/api/consumables` (removida em `48e5bfa1`) e precisa ser atualizado antes de rodar de novo |
-| Frontend unitário e de componentes | 33/33 e 111/111 em 16 arquivos | reexecutados em 30/08 |
-| Build do frontend | aprovado, 1.794 módulos | reexecutado em 30/08 |
+| Frontend unitário e de componentes | 65/65 unitários e 308/308 de componentes em 36 arquivos Vitest | reexecutados em 06/10, com as alterações da seção 10 |
+| Typecheck backend e frontend | aprovado | reexecutado em 06/10, via `npm run verify:static` |
+| Build do frontend | aprovado, 1.828 módulos | reexecutado em 06/10, sobre `ab290dda` |
 
-Nenhuma dessas camadas foi reexecutada desde então. Contagem estática em `fdde35fd`, sem reexecução: 73 arquivos `*.test.mjs` em `backend/tests` e 38 arquivos de teste em `frontend/tests`. O resultado dos arquivos criados depois de 30/08 não foi medido nesta revisão.
+Em 06/10, `npm run verify:static` e `npm --prefix frontend test` passaram. Como `check:changed` não selecionou os arquivos da cópia de trabalho, o Biome também foi executado explicitamente sobre os 17 arquivos JavaScript/testes alterados: sem erros, com 18 avisos preexistentes. A validação parcial de 01/10 continua registrada na seção 9.
 
 Relatório completo, com as sete falhas encontradas e corrigidas: [RELATORIO-HOMOLOGACAO-CRITICA-2026-08-27.md](./RELATORIO-HOMOLOGACAO-CRITICA-2026-08-27.md).
 
@@ -147,7 +148,7 @@ Relatório completo, com as sete falhas encontradas e corrigidas: [RELATORIO-HOM
 | Experiência no celular | **Corrigido (rodada 1)** | busca das listas ocupava meia tela (`flex-basis` em coluna), indicadores em coluna única, seletor de visão da agenda cortado, etapas dos formulários cortadas, abas do perfil sem quebra; viewport com `interactive-widget=resizes-content`. Validado por capturas em 360/390/430 px |
 | Termos digitais presenciais e por link | **Entregue** | ver seção 3 |
 
-Pendência operacional: as migrations de produção não são aplicadas pelo deploy. Depois de publicar, rode o workflow "Aplicar migrations em produção" (inclui a `0037` e, desde 01/10, as `0038`–`0042`).
+Pendência operacional: as migrations de produção não são aplicadas pelo deploy. Depois de publicar, rode o workflow "Aplicar migrations em produção" (inclui a `0037`, as `0038`–`0042` de 01/10 e a `0043` da revisão de 06/10).
 
 ## 8. Ajustes de 22/09/2026 (commit `fdde35fd`)
 
@@ -172,6 +173,27 @@ Pendência operacional: as migrations de produção não são aplicadas pelo dep
 Validação em 01/10/2026: 377/377 testes de backend nos 38 arquivos afetados, 304/304 testes de componentes e 65/65 unitários do frontend, typecheck e build aprovados. Não houve validação em navegador real.
 
 **Pendências desta entrega:** P-05 a P-08, em [Pendências abertas](#pendências-abertas).
+
+## 10. Ajustes do cliente de 06/10/2026 — itens 2 a 5
+
+- **Responsividade:** tabelas compartilhadas usam larguras legíveis e rolagem horizontal contida no desktop; no celular viram cards com rótulo/valor. Relatórios empilham campos, exportações se reorganizam em duas colunas, controles de toque têm 44px e campos usam 16px. Abrange telas que usam `DataView`, além dos controles e modais compartilhados.
+- **Filtros e contagem:** relatórios não reaplicam datas/IDs em campos ausentes da resposta; busca e ordenação dos relatórios agregados passam pela API e também pelas exportações. Relatórios paginados usam a mesma consulta filtrada na lista, contagem e totais de comissões/ajustes. Página fora do conjunto é corrigida. Limpar datas remove os limites; período invertido responde `400`.
+- **Agenda e Financeiro:** busca literal sem acentos; Agenda busca cliente, telefone, procedimento, profissional, serviço e joia. Ledger admite filtros por cliente/profissional/origem e `date_field=due_date`; Contas a pagar/receber usam vencimento na consulta e na lista, evitando filtrar competência na API e vencimento na tela.
+- **Origem dos recebíveis:** listagem e detalhes identificam atendimento/venda, cliente, data/hora, profissional e procedimento. Detalhes incluem itens congelados da execução concluída, pagamentos com status, parcelas, total da operação, sinal confirmado, outros recebimentos, crédito e restante. Links `/app/agenda?appointment=<id>` e `/app/vendas?sale=<id>` abrem o registro específico, respeitando o acesso da tela. Redução de parcela não é tratada como recebimento. Lançamento manual permanece identificado como manual.
+- **Validação:** suíte backend completa 715/715, oito regressões específicas após ajustes finais, frontend 65+308 testes, tipos/build e lint explícito. O teste de exportações lê CSV, TXT, XLSX e os streams de texto do PDF e confere o conjunto filtrado. Sessões de navegador de teste: Chromium em 320/360/390/430/768/1024/1366/1920px e WebKit em 320/375/390/430/768px, 69 verificações de relatórios, filtros, recebíveis, Agenda, menus, formulário e abertura dos registros específicos de origem. Usa componentes reais com respostas fictícias da API; não equivale a homologação em iPhone físico nem a uma revisão de todos os fluxos particulares de cada tela.
+
+Capturas e evidências em `outputs/responsividade-filtros-origens-2026-10-06/`. Não exige migration nova. As pendências P-05 a P-07 continuam independentes desta entrega: detalhar recebimento não altera a política de baixa/faturamento nem permissões de arquivos clínicos. P-08 continua aberta para o fluxo integral da entrega de 01/10; a rodada acima cobre o recorte responsivo solicitado.
+
+### Revisão de sinal, Dashboard e rastreabilidade — 06/10/2026 (itens 6–10)
+
+- **Sinal real:** campo manual existente passa a ter orientação explícita sobre o recebido. `deposit_expected_value` preserva a expectativa separadamente; `deposit_received_value` da lista/relatório soma só pagamentos pagos/confirmados. Expectativas antigas desconhecidas permanecem nulas. Zero configurado no serviço público não vira automaticamente R$ 25.
+- **Conferência e finalização:** valor editado substitui o sinal na prévia; o pagamento mantém identidade e a alteração registra autor, motivo e antes/depois nas duas auditorias. O pagamento padrão do fechamento usa o saldo recém-gravado pelo backend, mesmo se o clique anteceder a prévia. Atendimento já encerrado mantém as correções financeiras no Financeiro.
+- **Dashboard:** próximo horário em São Paulo, aceitando HH:mm e HH:mm:ss; exclui horários passados, cancelados, concluídos, remarcados, recusados, ausentes e já em atendimento. A contagem acompanha o relógio, consulta novamente no horário, a cada 30 segundos enquanto visível e ao voltar ao navegador. Criação, alteração e conclusão invalidam os módulos dependentes.
+- **Rastreabilidade financeira:** P-05/P-06 corrigidas abaixo. Baixas de recebíveis alimentam caixa e saldo da origem sem espelho duplicado; pagamentos confirmados têm o mesmo tratamento nas séries e totais. Confirmação online usa data civil da clínica, inclusive após 21h.
+- **Toque:** listas transacionais de pagamentos, compras, vendas e parcelas usam uma coluna no celular. O template inline de desktop não bloqueia a adaptação móvel. A ancoragem de rolagem fica desativada no modal de agendamento para evitar saltos durante o recálculo.
+- **Validação:** regressões de sinais R$ 10/25/60, alteração antes de finalizar, auditoria, baixas repetidas/parciais/totais, gateway, comparação Dashboard/SQL e paridade de exportações; testes de frontend e navegadores com API/banco reais. Roteiro, números finais e limites em [RELATORIO.md](../outputs/sinal-dashboard-rastreabilidade-2026-10-06/RELATORIO.md).
+
+Esta rodada exige a migration tenant `0043_deposit_expectation.sql`. Código e documentação foram atualizados localmente; publicação e migration de produção não foram executadas. WebKit em tamanho de iPhone não substitui a homologação em aparelho físico.
 
 ## Pendências abertas
 
@@ -205,19 +227,15 @@ Enquanto isso não acontecer, trate qualquer afirmação sobre os três como "de
 
 O commit `8b00e0fe` (21/08) registra que os secrets do R2 já estavam configurados no GitHub Actions; não há no repositório registro de uso contra o bucket real.
 
-### P-05 — baixa de recebível não volta para o atendimento
+### P-05 — baixa de recebível ligada à operação (corrigido em 06/10/2026)
 
-**Severidade: alta para a leitura do faturamento; exige decisão de produto antes do código.**
-
-A baixa de um título em Contas a receber (`PATCH /api/finance/entries/:id`, `routes/finance.js`) altera só `financial_entries`. Ela não cria linha em `payments` e não atualiza `appointments.remaining_value` nem `service_executions.paid_value`/`receivable_value`. Como o dashboard e o relatório `payments` somam `payments`, a receita baixada pelo Financeiro não aparece no faturamento, e o atendimento continua "com saldo". Na prática alguém relança o pagamento à mão, e aí ele duplica no ledger.
-
-Decisão necessária: a fonte oficial de "faturamento" é `payments` (caixa) ou o ledger (`financial_entries`)? Com a resposta, o caminho é um serviço único de baixa que grave em `payments` com vínculo à origem e atualize execução e atendimento, ou passar dashboard e `/api/finance` a lerem o ledger.
+`services/financeSettlement.js` mantém `payments` como fonte de caixa das operações. A baixa de um título de execução ou venda grava um pagamento vinculado por `financial_entry_id` (migration `0043`, índice único), atualiza o saldo da Agenda e os totais da execução na mesma transação. Repetir a baixa atualiza o mesmo pagamento. O ledger não espelha esse recebimento novamente e a origem não soma pagamento e título duas vezes. Vendas preservam o recebimento inicial já registrado no fechamento. Lançamentos manuais continuam sendo registros do ledger, sem fabricar cliente ou atendimento.
 
 ### P-06 — confirmação de sinal online marca qualquer sinal como pago
 
-**Severidade: baixa (caso raro).**
+**Corrigido em 06/10/2026; sandbox externo continua sem homologação.**
 
-`transitionPaymentIntent` (`services/payments.js`) marca como `pago` todo pagamento `sinal` do agendamento, inclusive um sinal já cancelado ou substituído no fechamento. Desde 01/10 ele também atualiza `deposit_status`/`deposit_paid_at` e recalcula o atendimento, o que torna o efeito visível no saldo. Correção: restringir o UPDATE ao pagamento ligado ao intent confirmado.
+`transitionPaymentIntent` vincula o pagamento pela chave `payment-intent:<id>`, usa o valor efetivamente cobrado e confirma somente uma linha pendente elegível. Um sinal cancelado permanece cancelado. Reenvios do mesmo intent não criam recebimentos duplicados nem reabrem atendimentos encerrados. A confirmação recalcula o sinal e o saldo na mesma transação.
 
 ### P-07 — PDF do termo assinado ainda usa a regra de acesso por papel
 

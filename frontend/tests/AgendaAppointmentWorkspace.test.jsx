@@ -110,6 +110,26 @@ beforeEach(() => {
 });
 
 describe("Detalhes do Agendamento — área de trabalho", () => {
+  it("conferir sinal preserva expectativa e recalcula o pagamento antes da finalização", async () => {
+    const user = userEvent.setup();
+    mocks.apiFetch.mockImplementation(async (path, options) => path === "/appointments/10" && options?.method === "PATCH"
+      ? okResponse({ remaining_value: 79.9 })
+      : path === "/appointments/financial-preview" ? { ok: false, status: 503, json: async () => ({}) } : okResponse({}));
+    renderQuick({ ...baseAppointment, deposit_expected_value: 25 });
+    expect(screen.getByText(/Sinal esperado:/)).toHaveTextContent("25,00");
+    const input = screen.getByLabelText("Valor do sinal (R$)");
+    await user.clear(input);
+    await user.type(input, "60");
+    await waitFor(() => expect(mocks.summaries.at(-1).summary.depositPaid).toBe(60));
+    expect(mocks.summaries.at(-1).summary.outstandingBalance).toBe(79.9);
+    expect(screen.getByText(/Sinal conferido:/)).toHaveTextContent("60,00");
+    await user.click(screen.getByRole("button", { name: "Revisar e finalizar" }));
+    await waitFor(() => expect(patchBodies()).toHaveLength(1));
+    expect(patchBodies()[0].deposit_value).toBe(60);
+    expect(patchBodies()[0]).not.toHaveProperty("deposit_expected_value");
+    const completion = callsTo((path) => path === "/appointments/10/complete");
+    expect(JSON.parse(completion[0][1].body).payments[0].amount).toBe(79.9);
+  });
   it("abre como área de trabalho larga", () => {
     renderQuick();
     expect(screen.getByRole("dialog", { name: "Detalhes do Agendamento" })).toHaveClass("modal-workspace");

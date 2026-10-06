@@ -9,24 +9,9 @@ import { listCriticalStockItems } from "../services/inventory.js";
 import { authorizePermission } from "../middleware/requirePermission.js";
 import { hasPermission } from "../services/permissionService.js";
 import { P } from "../config/permissions.js";
+import { appointmentDateTime, appointmentCountdown, upcomingAppointmentsAt } from "../services/appointmentClock.js";
 
 const router = Router();
-
-function appointmentDateTime(item) {
-  const value = new Date(`${item.appointment_date}T${item.appointment_time || "00:00"}:00`);
-  return Number.isNaN(value.getTime()) ? null : value;
-}
-
-function appointmentCountdown(item, now = new Date()) {
-  const date = appointmentDateTime(item);
-  if (!date) return "";
-  const diffMinutes = Math.round((date.getTime() - now.getTime()) / 60000);
-  if (diffMinutes < 0) return `Atrasado ha ${Math.abs(diffMinutes)} min`;
-  if (diffMinutes < 60) return `Em ${diffMinutes} min`;
-  const hours = Math.floor(diffMinutes / 60);
-  const minutes = diffMinutes % 60;
-  return `Em ${hours}h${String(minutes).padStart(2, "0")}`;
-}
 
 function buildAppointmentAlerts(appointments, now = new Date()) {
   const seen = new Set();
@@ -148,16 +133,19 @@ router.get("/api/dashboard", withDb(async (_req, res, db) => {
     ORDER BY SUBSTR(birth_date, 9, 2)
     LIMIT 8
   `, [today.slice(5, 7)]);
-  const upcomingAppointments = await listAppointments(
+  const activeAppointments = await listAppointments(
     db,
-    "WHERE a.appointment_date >= ? AND a.status IN ('pendente', 'awaiting_deposit_proof', 'confirmado', 'remarcado')",
+    "WHERE a.appointment_date >= ? AND a.status IN ('pendente', 'awaiting_deposit_proof', 'confirmado', 'chegou', 'em_atendimento')",
     [today]
   );
+  const now = new Date();
+  const upcomingAppointments = upcomingAppointmentsAt(activeAppointments, now);
   const nextAppointment = upcomingAppointments[0] ? {
     ...upcomingAppointments[0],
-    countdown: appointmentCountdown(upcomingAppointments[0])
+    starts_at: appointmentDateTime(upcomingAppointments[0]).toISOString(),
+    countdown: appointmentCountdown(upcomingAppointments[0], now)
   } : null;
-  const appointmentAlerts = buildAppointmentAlerts(upcomingAppointments);
+  const appointmentAlerts = buildAppointmentAlerts(activeAppointments.filter((item) => item.status !== "em_atendimento"), now);
   const returnClients = await db.all(`
     SELECT f.*, c.full_name, c.whatsapp, a.procedure
     FROM post_care_followups f

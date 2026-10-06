@@ -43,9 +43,9 @@ nenhuma clínica consiga listar, executar ou baixar um trabalho de outra.
   `finance`.
 - A recepção só lista e baixa os jobs que ela mesma pediu; job de outra pessoa
   responde `404`.
-- A fila confere o papel-base do usuário (`requireRole`), não as permissões
-  granulares nem a regra de relatório próprio que `GET /api/reports/:type`
-  aplica (`reports.view_financial`, `reports.view_all`, `reports.view_own`).
+- A fila resolve permissões granulares e escopo próprio pela mesma função
+  `resolveReportAccess` usada por `GET /api/reports/:type`; features do plano
+  e colunas restritas continuam sendo conferidas na solicitação e no download.
 
 O worker é **desligado por padrão**. Para ativá-lo depois de aplicar as
 migrations, defina `JOBS_WORKER_ENABLED=true`. Em uma instalação pequena ele
@@ -78,9 +78,7 @@ artefato em vez de duplicá-lo.
   continuam síncronos até serem adaptados para artefato privado.
 - Nenhuma tela do frontend usa a fila. A central de relatórios exporta PDF,
   XLSX, CSV e TXT de forma síncrona, por `GET /api/reports/:type` com `format`.
-- O CSV da fila não acompanha a exportação síncrona: o cabeçalho traz as chaves
-  técnicas das colunas, sem rótulos em português, tradução de valores nem BOM,
-  e o job não grava evento em `audit_events`.
-- Nos relatórios com paginação no servidor (`pagination: "server"` em
-  `REPORT_CATALOG`, como `audit`, `payables` e `stock_movements`), o executor não
-  desliga a paginação, e o CSV sai só com a primeira página (25 linhas).
+- O CSV da fila usa `buildReport`, `reportExportColumns` e `reportExportValue`,
+  as mesmas fontes da rota síncrona: respeita filtros/busca, rótulos e valores
+  em português e inclui BOM. O executor força `paginated: false`, portanto
+  exporta todo o conjunto filtrado. Solicitação/download têm auditoria.

@@ -7,7 +7,7 @@ import { CollapsibleIndicators } from "../../components/common/CollapsibleIndica
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { SelectWithCreate } from "../../components/common/SelectWithCreate";
 import { apiFetch, readStoredSession, useApiInvalidate, useFetch } from "../../lib/api";
-import { asArray, asNumber, asObject } from "../../lib/utils";
+import { asArray, asNumber, asObject, localDateValue } from "../../lib/utils";
 import { FINANCE_STATUS_LABELS, financeLabel } from "../../lib/financeLabels";
 import { currency } from "../shared/helpers";
 import { commissionAccess } from "./CommissionStatement";
@@ -24,17 +24,17 @@ const distinctOptions = (rows, pick, label = (value) => value) =>
 
 /** Lista operacional de recebíveis manuais e originados por vendas/serviços. */
 export function AccountsReceivable({ onNavigate }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateValue(new Date());
   /** @type {[Record<string, any>, React.Dispatch<React.SetStateAction<Record<string, any>>>]} */
   const [listFilters, setListFilters] = useState({
     period_from: `${today.slice(0, 4)}-01-01`,
     period_to: `${Number(today.slice(0, 4)) + 1}-12-31`,
   });
-  const query = new URLSearchParams({ from: listFilters.period_from || "", to: listFilters.period_to || "" }).toString();
+  const query = new URLSearchParams({ from: listFilters.period_from || "", to: listFilters.period_to || "", date_field: "due_date" }).toString();
   const { data } = useFetch(`/finance/ledger?${query}`);
   const { data: categoryList } = useFetch("/finance/categories");
   const invalidate = useApiInvalidate();
-  const refresh = () => invalidate("/finance", "/finance/ledger", "/dashboard");
+  const refresh = () => invalidate("/finance", "/dashboard", "/appointments", "/service-executions", "/clients", "/sales", "/sales-orders", "/reports", "/payments");
 
   async function createCategory(name) {
     const response = await apiFetch("/finance/categories", { method: "POST", body: JSON.stringify({ name }) });
@@ -76,7 +76,7 @@ export function AccountsReceivable({ onNavigate }) {
   const sourceOptions = distinctOptions(
     entries,
     (item) => item.source_type || "manual",
-    (value) => (value === "manual" ? "Lançamento manual" : value === "payment" ? "Venda ou pagamento" : value),
+    (value) => financeLabel(value),
   );
 
   function openNew() {
@@ -125,9 +125,13 @@ export function AccountsReceivable({ onNavigate }) {
 
   async function openDetails(item) {
     setDetails({ loading: true, ...item });
-    const response = await apiFetch(`/finance/entries/${item.id}/details`);
-    const payload = await response.json().catch(() => ({}));
-    setDetails(response.ok ? payload : { ...item, error: payload.error || "Não foi possível abrir os detalhes." });
+    try {
+      const response = await apiFetch(`/finance/entries/${item.id}/details`);
+      const payload = await response.json().catch(() => ({}));
+      setDetails((current) => current?.id === item.id ? response.ok ? payload : { ...item, error: payload.error || "Não foi possível abrir os detalhes." } : current);
+    } catch {
+      setDetails((current) => current?.id === item.id ? { ...item, error: "Sem conexão para abrir os detalhes. Tente novamente." } : current);
+    }
   }
 
   return (
@@ -164,6 +168,8 @@ export function AccountsReceivable({ onNavigate }) {
             { key: "period_from", label: "Período a partir de", type: "date", match: (item, value) => String(item.due_date || "").slice(0, 10) >= value },
             { key: "period_to", label: "Período até", type: "date", match: (item, value) => String(item.due_date || "").slice(0, 10) <= value },
             { key: "status", label: "Status", type: "select", options: statusOptions },
+            { key: "client_id", label: "Cliente", type: "select", options: entries.filter((item) => item.client_id).map((item) => ({ value: String(item.client_id), label: item.client_name })).filter((item, index, options) => options.findIndex((option) => option.value === item.value) === index) },
+            { key: "professional_id", label: "Profissional", type: "select", options: entries.filter((item) => item.professional_id).map((item) => ({ value: String(item.professional_id), label: item.professional_name })).filter((item, index, options) => options.findIndex((option) => option.value === item.value) === index) },
             {
               key: "source_type",
               label: "Origem",
@@ -177,9 +183,14 @@ export function AccountsReceivable({ onNavigate }) {
             {
               key: "source_type",
               label: "Origem",
-              value: (item) => item.source_type || "manual",
-              render: (item) =>
-                item.source_type === "payment" ? "Venda" : item.source_type ? financeLabel(item.source_type) : "Manual",
+              value: (item) => [item.origin_label, item.client_name, item.professional_name, item.procedure, item.appointment_date, item.appointment_time, financeLabel(item.source_type || "manual")].filter(Boolean).join(" "),
+              render: (item) => <div className="receivable-origin">
+                <strong>{item.origin_label || financeLabel(item.source_type || "manual")}</strong>
+                {item.client_name && <span>{item.client_name}</span>}
+                {item.appointment_date && <small>{formatDateWithYear(item.appointment_date)} · {String(item.appointment_time || "").slice(0, 5)}</small>}
+                {item.professional_name && <small>{item.professional_name}</small>}
+                {item.procedure && <small>{item.procedure}</small>}
+              </div>,
             },
             {
               key: "due_date",
@@ -343,14 +354,14 @@ export function AccountsReceivable({ onNavigate }) {
         ) : (
           <div className="stack">
             {details?.error && <span className="form-error">{details.error}</span>}
-            <div className="form-grid">
+            <div className="form-grid receivable-detail-grid">
               <div>
                 <small>Descrição</small>
                 <strong>{details?.description}</strong>
               </div>
               <div>
                 <small>Origem</small>
-                <strong>{details?.source_type === "payment" ? "Venda" : details?.source_type || "Manual"}</strong>
+                <strong>{details?.origin?.label || details?.origin_label || financeLabel(details?.source_type || "manual")}</strong>
               </div>
               <div>
                 <small>Valor</small>
@@ -369,9 +380,42 @@ export function AccountsReceivable({ onNavigate }) {
                 <strong>{formatDateWithYear(details?.due_date)}</strong>
               </div>
             </div>
+            {details?.origin && <ReceivableOrigin origin={details.origin} />}
           </div>
         )}
       </Modal>
     </section>
   );
+}
+
+function ReceivableOrigin({ origin }) {
+  return <section className="stack" aria-label="Origem do recebível">
+    <h3>Operação de origem</h3>
+    <div className="form-grid receivable-detail-grid">
+      <div><small>Cliente</small><strong>{origin.client || "Não informado"}</strong></div>
+      <div><small>Data e horário</small><strong>{[formatDateWithYear(origin.date), String(origin.time || "").slice(0, 5)].filter(Boolean).join(" · ") || "Não informado"}</strong></div>
+      <div><small>Profissional responsável</small><strong>{origin.professional || "Não se aplica"}</strong></div>
+      <div><small>Procedimento/serviço</small><strong>{origin.procedure || asArray(origin.items).map((item) => item.service).filter(Boolean).join(", ") || "Não se aplica"}</strong></div>
+      <div><small>Total da operação</small><strong>{currency.format(asNumber(origin.total_value))}</strong></div>
+      <div><small>Sinal efetivamente pago</small><strong>{currency.format(asNumber(origin.deposit_paid))}</strong></div>
+      <div><small>Outros recebimentos</small><strong>{currency.format(asNumber(origin.other_paid))}</strong></div>
+      <div><small>Crédito aplicado</small><strong>{currency.format(asNumber(origin.credit_applied))}</strong></div>
+      <div><small>Valor restante da operação</small><strong>{currency.format(asNumber(origin.remaining_value))}</strong></div>
+    </div>
+    {asArray(origin.items).length > 0 && <div className="stack"><h4>Serviços e produtos/joias</h4>{origin.items.map((item) => <div key={item.id}>{[item.service, item.product, item.region].filter(Boolean).join(" · ")} · {item.quantity} un.</div>)}</div>}
+    <DataView rows={asArray(origin.payments)} searchable={false} paginated={false} caption="Pagamentos da operação" columns={[
+      { key: "payment_type", label: "Pagamento", render: (item) => financeLabel(item.payment_type) },
+      { key: "method", label: "Forma" },
+      { key: "status", label: "Status", render: (item) => <StatusBadge status={item.status}>{financeLabel(item.status)}</StatusBadge> },
+      { key: "amount", label: "Valor", align: "right", render: (item) => currency.format(asNumber(item.amount)) },
+      { key: "paid_at", label: "Data", render: (item) => formatDateWithYear(item.paid_at) }
+    ]} empty="Nenhum pagamento registrado na operação." />
+    {asArray(origin.receivables).length > 0 && <DataView rows={origin.receivables} searchable={false} paginated={false} caption="Parcelas da operação" columns={[
+      { key: "installment_number", label: "Parcela", render: (item) => `${item.installment_number}/${item.installment_count}` },
+      { key: "due_date", label: "Vencimento", render: (item) => formatDateWithYear(item.due_date) },
+      { key: "paid_amount", label: "Recebido no Financeiro", align: "right", render: (item) => currency.format(asNumber(item.paid_amount)) },
+      { key: "status", label: "Status", render: (item) => <StatusBadge status={item.status}>{financeLabel(item.status)}</StatusBadge> }
+    ]} />}
+    <a className="secondary-button" href={origin.href}>Abrir {origin.type === "appointment" ? "atendimento" : "venda"} de origem</a>
+  </section>;
 }

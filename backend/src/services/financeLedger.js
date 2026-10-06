@@ -1,5 +1,7 @@
 import { limitOffset } from "./pagination.js";
 import { localDate } from "./utils.js";
+import { financialOriginJoins, FINANCIAL_ORIGIN_COLUMNS } from "./financialOrigins.js";
+import { parseMoneyInputCents } from "./finance.js";
 
 const VALID_TYPES = new Set(["payable", "receivable", "income", "expense"]);
 const VALID_STATUSES = new Set(["pending", "paid", "overdue", "canceled", "partially_paid", "refunded"]);
@@ -9,8 +11,8 @@ export function normalizeEntry(body = {}, current = {}) {
   const status = body.status ?? current.status ?? "pending";
   if (!VALID_TYPES.has(entryType)) throw new Error("Tipo de lançamento inválido.");
   if (!VALID_STATUSES.has(status)) throw new Error("Status financeiro inválido.");
-  const amount = Number(body.amount ?? current.amount ?? 0);
-  const paidAmount = Math.min(amount, Math.max(0, Number(body.paid_amount ?? current.paid_amount ?? (status === "paid" ? amount : 0))));
+  const amount = parseMoneyInputCents(body.amount ?? current.amount ?? 0, "O valor do lançamento") / 100;
+  const paidAmount = Math.min(amount, parseMoneyInputCents(body.paid_amount ?? (body.status === "paid" ? amount : current.paid_amount ?? 0), "O valor recebido") / 100);
   if (!String(body.description ?? current.description ?? "").trim() || amount < 0 || !(body.due_date ?? current.due_date)) {
     throw new Error("Descrição, valor e vencimento são obrigatórios.");
   }
@@ -67,6 +69,7 @@ const PAYMENT_CASH_IN_SQL = "p.status IN ('pago','confirmado','refunded','estorn
 //   pagamento pendente dobrava o "a receber".
 const MIRRORED_PAYMENT_CONDITION = `
   p.status <> 'credito_aplicado'
+  AND p.financial_entry_id IS NULL
   AND NOT (
     COALESCE(so.source, '') <> 'agenda'
     AND EXISTS (
@@ -132,7 +135,7 @@ export async function syncFinanceSources(db) {
   `);
 }
 
-const LEDGER_FROM = "financial_entries e LEFT JOIN financial_cost_centers c ON c.id=e.cost_center_id LEFT JOIN suppliers sup ON sup.id=e.supplier_id";
+const LEDGER_FROM = `financial_entries e LEFT JOIN financial_cost_centers c ON c.id=e.cost_center_id LEFT JOIN suppliers sup ON sup.id=e.supplier_id ${financialOriginJoins()}`;
 const LEDGER_ORDER_BY = "ORDER BY e.due_date DESC, e.id DESC";
 
 // Os indicadores (caixa, DRE, inadimplência) somados PELO POSTGRES, não por
@@ -191,20 +194,21 @@ const LEDGER_TOTALS_AGGREGATE = `
 
 // `filters`/`filterParams` são fragmentos de WHERE montados pela rota (nunca
 // texto do cliente); `paging` é opcional e só recorta a lista `entries`.
-export async function ledgerReport(db, { from, to, filters = [], filterParams = [], paging = null } = {}) {
+export async function ledgerReport(db, { from, to, filters = [], filterParams = [], paging = null, dateField = "competence_date" } = {}) {
   await syncFinanceSources(db);
   // Datas no fuso da clínica: toISOString() (UTC) já é "amanhã" depois das
   // 21h em São Paulo e venceria títulos do dia antes da hora.
   const today = localDate();
-  const start = from || `${today.slice(0, 7)}-01`;
-  const end = to || today;
+  const start = from === "" ? "0001-01-01" : from || `${today.slice(0, 7)}-01`;
+  const end = to === "" ? "9999-12-31" : to || today;
+  if (start > end) throw new Error("A data inicial deve ser anterior ou igual à data final.");
   await db.run("UPDATE financial_entries SET status='overdue', updated_at=CURRENT_TIMESTAMP WHERE status='pending' AND due_date < ?", [today]);
-  const where = `WHERE ${["e.competence_date BETWEEN ? AND ?", ...filters].join(" AND ")}`;
+  const where = `WHERE ${[`e.${dateField === "due_date" ? "due_date" : "competence_date"} BETWEEN ? AND ?`, ...filters].join(" AND ")}`;
   const params = [start, end, ...filterParams];
   const orderBy = paging?.orderBy || LEDGER_ORDER_BY;
   const page = limitOffset(paging);
   const entries = await db.all(
-    `SELECT e.*, c.name AS cost_center_name, sup.name AS supplier_name FROM ${LEDGER_FROM} ${where} ${orderBy}${page.clause}`,
+    `SELECT e.*, c.name AS cost_center_name, sup.name AS supplier_name, ${FINANCIAL_ORIGIN_COLUMNS} FROM ${LEDGER_FROM} ${where} ${orderBy}${page.clause}`,
     [...params, ...page.params]
   );
   // Os indicadores somam TODO o período filtrado, nunca só a página — por isso

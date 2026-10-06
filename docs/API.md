@@ -1,5 +1,14 @@
 # Referência da API
 
+Atualização de 06/10/2026 — sinal e rastreabilidade:
+
+- `POST /api/appointments`: `deposit_value` aceita o valor manual e `deposit_status` determina se houve recebimento. `deposit_expected_value` preserva a sugestão do serviço (ou o valor esperado explicitamente enviado). Integrações legadas sem status mantêm a semântica anterior de recebido; telas atuais sempre enviam o status.
+- `PATCH /api/appointments/:id`: alterar o sinal recalcula pagamentos e saldo, preserva o ID do pagamento e gera `deposit_correction` nas auditorias financeira e central. A expectativa não muda na conferência do recebido.
+- Listagem de agendamentos e relatório `appointments`: `deposit_received_value` é a soma dos sinais pagos/confirmados; pendentes e cancelados não entram. Relatório distingue sinal esperado, informado e recebido, inclusive nas quatro exportações.
+- `GET /api/appointments/:id/value-adjustments`: `financial.depositExpected` e `financial.depositPaid` distinguem expectativa e caixa.
+- `PATCH /api/finance/entries/:id`: baixa de título integrado mantém um pagamento único vinculado pelo `financial_entry_id`, atualiza Agenda/execução e alimenta Dashboard e relatórios de pagamentos. Alterar tipo ou valor de um título integrado exige o módulo de origem. Valores monetários inválidos retornam 400.
+- `GET /api/dashboard`: `adminDashboard.nextAppointment.starts_at` é ISO UTC calculado a partir do horário civil de São Paulo. Próximos excluem horários passados e estados encerrados, remarcados ou em atendimento; a tela atualiza a contagem e consulta novamente no horário e ao voltar ao navegador.
+
 Catálogo da API Express atual. A fonte executável é `backend/src/routes/`; esta
 referência descreve os recursos expostos, não substitui as validações Zod e as
 regras de negócio implementadas em cada rota.
@@ -86,7 +95,7 @@ separadamente por `requireWithinLimit`.
 | Ficha técnica e consumo | A ficha técnica do serviço (`/api/services/:id/inventory-items`) lista itens de estoque e quantidades. Concluir um atendimento congela a receita em `appointment_consumptions`, baixa os lotes por FEFO quando o item controla lotes (sem lote suficiente, a conclusão é recusada) e reduz o saldo; também gera a execução do serviço. Reabrir ou cancelar devolve exatamente o que foi consumido. As antigas rotas `/api/consumables*` foram removidas na unificação do estoque. |
 | Reversões operacionais | `POST /api/appointments/:id/cancel` exige `reason` e `resolution` (`no_payment`, `retain_deposit`, `client_credit`, `manual_refund` — este último exige `refund_method`); o `PATCH` direto para `status = cancelado` retorna `409`. `POST /api/sales-orders/:id/returns` recebe `items`, `reason` e `financial_action` (`none`, `client_credit`, `manual_refund`), com `return_to_stock` e `condition` por item. `POST /api/appointments/:id/apply-client-credit` e `POST /api/sales-orders/:id/apply-client-credit` consomem crédito do cliente. |
 | Saúde do estoque | `GET /api/inventory/health`: estoque baixo, cadastro incompleto (sem SKU ou categoria), lotes vencidos ou a vencer em 30 dias e serviços com ficha técnica. |
-| Jobs em segundo plano | `GET /api/jobs`; `GET /api/jobs/metrics`; `GET /api/jobs/:id/download`; `POST /api/jobs/report-exports`. Fila persistente consumida pelo worker; a exportação pesada roda fora da requisição. Exigem `basic_reports` (menos `metrics`, só de `admin`) e as features de cada relatório; a recepção só vê e baixa os próprios jobs. A fila confere o papel (`requireRole`), não as permissões `reports.view_*`, aceita só CSV e, nos relatórios paginados no servidor, exporta só a primeira página (25 linhas); nenhuma tela usa a fila hoje. Ver [JOBS-EM-SEGUNDO-PLANO.md](./JOBS-EM-SEGUNDO-PLANO.md). |
+| Jobs em segundo plano | `GET /api/jobs`; `GET /api/jobs/metrics`; `GET /api/jobs/:id/download`; `POST /api/jobs/report-exports`. Fila persistente consumida pelo worker; a exportação pesada roda fora da requisição. Exigem `basic_reports` (menos `metrics`, só de `admin`) e as features de cada relatório; a recepção só vê e baixa os próprios jobs. A fila usa a mesma resolução de permissões e escopo próprio da rota síncrona, aceita só CSV e exporta todo o conjunto filtrado (`paginated: false`), com rótulos em português e auditoria; nenhuma tela usa a fila hoje. Ver [JOBS-EM-SEGUNDO-PLANO.md](./JOBS-EM-SEGUNDO-PLANO.md). |
 | Termos e pós-atendimento | `GET/POST /api/digital-terms`; `GET /api/post-care`; `PATCH /api/post-care/:id` (`multipart`, foto do cliente opcional). Exigem as permissões `clinical_files.view` (leitura) e `clinical_files.edit` (escrita) — por padrão, `admin` e `piercer`; termos de menor exigem identificação e assinatura separada do responsável. Termo concluído é imutável (gatilho no banco) e carrega `template_name`, `channel` (`staff`, `in_studio`, `remote`) e `content_hash`. |
 | Modelos de termo | `GET /api/term-templates[?include_inactive=1]`; `POST /api/term-templates`; `PATCH/DELETE /api/term-templates/:id` (modelo já usado é arquivado, não apagado). Tipos: `consent`, `authorization`, `procedure`, `other`. Clínica nova nasce com dois modelos. |
 | Termos por link | `GET /api/term-requests[?client_id&status]`; `POST /api/term-requests` (`client_id`, `template_id`, `appointment_id?`, `channel` = `in_studio` ou `remote`, `expires_in_hours?`, `message?`) devolve `url`, `whatsapp_url` e `message_text` uma única vez; `POST /api/term-requests/:id/{cancel,renew}`. Só o hash do token é gravado. |
@@ -131,6 +140,33 @@ segurança de conteúdo.
 | Suporte | `GET /api/platform/support/tickets`, `/open-count`, `/tickets/:id`; `POST /api/platform/support/tickets/:id/messages`; `PATCH /api/platform/support/tickets/:id`. |
 | E-mail | `GET/PUT/DELETE /api/platform/email-settings`; `POST /api/platform/email-settings/verify`; `POST /api/platform/email-settings/test`. A senha SMTP é somente de escrita: a API devolve apenas `password_configured`. |
 | Conteúdo público | `GET /api/platform/landing`; `PUT /api/platform/landing/sections/:key`; `PATCH /api/platform/landing/order`; `POST /api/platform/landing/uploads`; `GET /api/platform/legal-documents`; `PUT /api/platform/legal-documents/:key` (incrementa a versão e grava o histórico); `GET /api/platform/legal-documents/:key/versions`; `GET/POST /api/platform/content`; `PUT/DELETE /api/platform/content/:id` (notícias e manual em texto simples; o `DELETE` arquiva). |
+
+## Filtros, exportações e origem financeira
+
+- `GET /api/reports/:type` aplica os filtros declarados no catálogo, `search` e
+  `sort=campo:asc|desc` antes de calcular `total_rows`. Relatórios detalhados
+  também aceitam `limit`/`offset`; os agregados devolvem todo o conjunto filtrado.
+  PDF, XLSX, CSV e TXT usam `buildReport` e as mesmas colunas autorizadas; o formato
+  exportado remove somente a paginação. Totais de comissões/ajustes respeitam a
+  busca. Datas explicitamente vazias removem o limite correspondente; sem datas
+  informadas, permanece o padrão do mês corrente. Período invertido responde `400`.
+- Agendamentos, cancelamentos, vendas, pagamentos, recebíveis e lançamentos
+  financeiros admitem `client_id`; pagamentos, recebíveis e lançamentos também
+  oferecem `professional_id` quando ligados a atendimento. A Agenda admite
+  `id` para abrir um registro específico e sua busca inclui profissional,
+  serviço e joia. A contagem paginada usa os mesmos filtros da consulta.
+- `GET /api/finance/ledger` admite `client_id`, `professional_id`, `source_type`
+  e `date_field=due_date`; o padrão continua sendo competência. Consulta, contagem
+  e indicadores usam o mesmo campo de data. Contas a pagar/receber enviam
+  `date_field=due_date`. A busca textual é literal, sem diferenciar acentos/caixa.
+- `GET /api/finance/entries/:id/details` acrescenta `origin` (`null` para uma
+  origem manual ou indisponível). O objeto traz cliente, data/hora, profissional,
+  procedimento, itens, pagamentos com status, parcelas, `total_value`,
+  `deposit_paid`, `other_paid`, `credit_applied`, `paid_value`, `remaining_value`
+  e `href` para o registro. Somente sinal pago/confirmado entra em `deposit_paid`;
+  título reduzido não é recebimento e pagamentos de venda espelhados nos títulos
+  não são somados duas vezes. Dados clínicos e notas de anamnese não fazem parte
+  desse objeto. A autorização continua sendo `finance.view`.
 
 ## Referências de implementação
 

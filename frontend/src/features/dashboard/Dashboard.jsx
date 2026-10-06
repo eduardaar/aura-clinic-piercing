@@ -1,5 +1,5 @@
 // Feature extraída de main.jsx durante a modularização. Comportamento preservado.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Bell, Cake, Calendar, ChevronRight, CircleDollarSign, Gem, UserRound, UsersRound, } from "lucide-react";
 import { Button, StatusBadge, Tabs } from "../../components/common/Ui";
 import { ApiError, Loading } from "../../components/common/Feedback";
@@ -11,7 +11,22 @@ import "../../styles/agenda-admin-responsive.css";
 
 export function Dashboard({ user, setPage, alertsOpen, setAlertsOpen, alertsData, alertsLoading }) {
   const [period, setPeriod] = useState("30d");
-  const { data } = useFetch(`/dashboard?period=${period}`);
+  const { data, refresh } = useFetch(`/dashboard?period=${period}`);
+  const nextStart = data?.adminDashboard?.nextAppointment?.starts_at;
+  useEffect(() => {
+    const poll = setInterval(() => { if (!document.hidden) refresh(); }, 30000);
+    const onVisible = () => { if (!document.hidden) refresh(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    const delay = new Date(nextStart || "").getTime() - Date.now();
+    const boundary = Number.isFinite(delay) && delay >= 0 && delay < 2147483647 ? setTimeout(refresh, delay + 100) : null;
+    return () => {
+      clearInterval(poll);
+      if (boundary !== null) clearTimeout(boundary);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [refresh, nextStart]);
 
   if (data == null) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
@@ -28,6 +43,11 @@ function statCount(value) {
 }
 
 export function PremiumDashboard({ data, user, setPage, period, setPeriod, alertsOpen, setAlertsOpen, alertsData, alertsLoading }) {
+  const [clock, setClock] = useState(Date.now);
+  useEffect(() => {
+    const timer = setInterval(() => setClock(Date.now()), 10000);
+    return () => clearInterval(timer);
+  }, []);
   const [section, setSection] = useState("geral");
   const [revenueMode, setRevenueMode] = useState("mensal");
   const safeData = asObject(data);
@@ -43,6 +63,10 @@ export function PremiumDashboard({ data, user, setPage, period, setPeriod, alert
   const categoryRanking = asArray(adminDashboard.categoryRanking);
   const returnClients = asArray(adminDashboard.returnClients);
   const nextAppointment = asObject(adminDashboard.nextAppointment);
+  const nextMinutes = Math.ceil((new Date(nextAppointment.starts_at || "").getTime() - clock) / 60000);
+  const countdown = Number.isFinite(nextMinutes)
+    ? nextMinutes < 0 ? "Atualizando agenda…" : nextMinutes < 60 ? `Em ${nextMinutes} min` : `Em ${Math.floor(nextMinutes / 60)}h${String(nextMinutes % 60).padStart(2, "0")}`
+    : nextAppointment.countdown || "Em breve";
   const appointmentAlerts = asArray(adminDashboard.appointmentAlerts);
   const executive = asObject(adminDashboard.executive);
   const topViewed = asArray(adminDashboard.topViewed);
@@ -114,7 +138,7 @@ export function PremiumDashboard({ data, user, setPage, period, setPeriod, alert
           </div>
           {nextAppointment.id ? (
             <div className="next-appointment-body">
-              <strong>{nextAppointment.countdown || "Em breve"}</strong>
+              <strong>{countdown}</strong>
               <p>{personName(nextAppointment)} — {nextAppointment.service_name || nextAppointment.procedure || "Atendimento"}</p>
               <span>{formatLongDate(nextAppointment.appointment_date)} · {nextAppointment.appointment_time} · Prof. {nextAppointment.professional_name || "Sem profissional"}</span>
               <div className="row-actions">

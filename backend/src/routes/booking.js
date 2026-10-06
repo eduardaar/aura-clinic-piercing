@@ -241,7 +241,7 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
     return { ...resolveServiceRules(item), operational_requirements: operationalRequirements };
   };
   if (!requestedItems.length || !requestedItems.some((item) => item.item_type === "service")) {
-    bookingItems.push({ item_type: "service", service_id: service.id, name: service.name, quantity: 1, unit_price: Number(service.price || service.base_price || 0), duration_minutes: Number(service.duration_minutes || 40), deposit_value: Number(service.deposit_value || 25), service_rules_snapshot: serviceSnapshot(service) });
+    bookingItems.push({ item_type: "service", service_id: service.id, name: service.name, quantity: 1, unit_price: Number(service.price || service.base_price || 0), duration_minutes: Number(service.duration_minutes || 40), deposit_value: Number(service.deposit_value ?? 0), service_rules_snapshot: serviceSnapshot(service) });
   }
   for (const requested of requestedItems) {
     const quantity = Math.max(Number(requested.quantity || requested.qty || 1), 1);
@@ -250,7 +250,7 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
       if (!itemService) return res.status(404).json({ error: "Um dos serviços selecionados não está disponível." });
       const itemLinked = await db.get("SELECT id FROM professional_services WHERE professional_id=? AND service_id=?", [professionalId, itemService.id]);
       if (!itemLinked) return res.status(409).json({ error: "O profissional selecionado não realiza todos os serviços escolhidos." });
-      bookingItems.push({ item_type: "service", service_id: itemService.id, name: itemService.name, quantity, unit_price: Number(itemService.price || itemService.base_price || 0), duration_minutes: Number(itemService.duration_minutes || 40), deposit_value: Number(itemService.deposit_value || 25), notes: requested.notes || "", service_rules_snapshot: serviceSnapshot(itemService) });
+      bookingItems.push({ item_type: "service", service_id: itemService.id, name: itemService.name, quantity, unit_price: Number(itemService.price || itemService.base_price || 0), duration_minutes: Number(itemService.duration_minutes || 40), deposit_value: Number(itemService.deposit_value ?? 0), notes: requested.notes || "", service_rules_snapshot: serviceSnapshot(itemService) });
     } else if (requested.jewelry_id || requested.product_id) {
       const itemJewelryId = Number(requested.jewelry_id || requested.product_id);
       const itemVariantId = Number(requested.jewelry_variant_id || requested.variation_id || 0) || null;
@@ -400,6 +400,7 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
           [lockedCoupon.coupon.id, client.id, result.returnedId, grossValue, lockedCoupon.snapshot.coupon_discount_amount, totalValue]
         );
       }
+      await tx.run("UPDATE appointments SET deposit_expected_value=? WHERE id=?", [depositValue, result.returnedId]);
       if (depositValue > 0) {
         await tx.run(
           "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, 'sinal', 'Pix', 'pendente', ?)",

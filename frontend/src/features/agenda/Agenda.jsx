@@ -4,7 +4,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight, Copy, ExternalLink, Filter, MoreH
 import { Accordion, Button, Checkbox, FinancialSummary, Input, Metric, PaymentSelect, Select, StatusBadge, Switch, Tabs, Textarea } from "../../components/common/Ui";
 import { Modal, CrudHeader, ConfirmDeleteModal, DropdownMenu, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
-import { Loading } from "../../components/common/Feedback";
+import { ApiError, Loading } from "../../components/common/Feedback";
 import { FormSection, FormWorkflow, ReviewSummary, StepNavigator, ValidationSummary } from "../../components/common/FormWorkflow";
 import { ResponsiveEditableList } from "../../components/common/TransactionFields";
 import { CollapsibleIndicators } from "../../components/common/CollapsibleIndicators";
@@ -172,6 +172,7 @@ function priceAppointmentDraft(draft, services = [], jewelryList = []) {
     appointment_items: items,
     total_value: values.totalValue,
     deposit_value: values.depositValue,
+    deposit_expected_value: draft.deposit_expected_value ?? values.depositExpectedValue,
     remaining_value: values.remainingValue
   };
 }
@@ -196,6 +197,7 @@ function appointmentValueParts(form, services = [], jewelryList = [], normalized
     jewelryValue: fromCents(jewelryCents),
     totalValue: fromCents(totalCents),
     depositValue: fromCents(depositCents),
+    depositExpectedValue: asNumber(form.deposit_expected_value ?? firstService?.deposit_value),
     remainingValue: fromCents(Math.max(totalCents - depositCents, 0))
   };
 }
@@ -550,10 +552,12 @@ function AppointmentDepositFields({ form, onChange, lockedReason = "" }) {
   return (
     <section className="appointment-deposit-fields" aria-label="Sinal do agendamento">
       <div className="section-inline-header"><strong>Sinal</strong>{received && form.deposit_paid_at ? <small>Recebido em {formatDateWithYear(form.deposit_paid_at)}</small> : null}</div>
+      {form.deposit_expected_value != null && <small className="field-hint">Sinal esperado: {currency.format(asNumber(form.deposit_expected_value))}</small>}
       <div className="form-grid">
         <Input type="number" min="0" step="0.01" inputMode="decimal" label="Valor do sinal (R$)" value={form.deposit_value} onChange={(deposit_value) => onChange({ deposit_value })} />
         <PaymentSelect label="Forma do sinal" value={form.deposit_payment_method || "Pix"} onChange={(deposit_payment_method) => onChange({ deposit_payment_method })} />
       </div>
+      <small className="field-hint">Informe o valor efetivamente recebido, mesmo que seja diferente do sinal esperado. O saldo só é abatido quando “Sinal recebido” estiver marcado.</small>
       <Switch
         label="Sinal recebido"
         description="Marque quando o valor do sinal já estiver com a clínica."
@@ -574,6 +578,7 @@ const DEPOSIT_FIELDS = ["deposit_value", "deposit_status", "deposit_payment_meth
 function appointmentPatchPayload(form, services, jewelry, { depositDirty = false, includeStatus = true } = {}) {
   const priced = priceAppointmentDraft(form, services, jewelry);
   const payload = { ...priced };
+  delete payload.deposit_expected_value;
   for (const field of [...DEPOSIT_FIELDS, "deposit_manual", "remaining_value"]) delete payload[field];
   if (!includeStatus) delete payload.status;
   payload.appointment_items = normalizeAppointmentFormItems(priced, services, jewelry);
@@ -628,6 +633,12 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
   const [draftPeriod, setDraftPeriod] = useState({ from: "", to: "" });
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedAppointment, setSelectedAppointment] = useState(null);
+  const [linkedId] = useState(() => Number(new URLSearchParams(window.location.search).get("appointment")) || 0);
+  const { data: linkedAppointments, loading: linkedLoading, error: linkedError } = useFetch(linkedId > 0 ? `/appointments?id=${linkedId}` : null);
+  useEffect(() => {
+    const linked = asArray(linkedAppointments)[0];
+    if (linked) { setSelectedAppointment(linked); setCurrentDate(new Date(`${linked.appointment_date}T12:00:00`)); }
+  }, [linkedAppointments]);
   // Passo pedido no card do calendário (remarcar, cancelar, finalizar).
   const [selectedIntent, setSelectedIntent] = useState(/** @type {"" | "reschedule" | "cancel" | "finalize"} */ (""));
   /** @param {any} item @param {"" | "reschedule" | "cancel" | "finalize"} [intent] */
@@ -648,7 +659,7 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
   // Invalidar "/appointments" alcança o calendário sob qualquer combinação de
   // filtros, não só a consulta que está montada agora.
   const invalidate = useApiInvalidate();
-  const refresh = () => invalidate("/appointments", "/service-executions", "/clients", "/dashboard");
+  const refresh = () => invalidate("/appointments", "/service-executions", "/clients", "/dashboard", "/finance", "/reports", "/payments", "/inventory", "/commissions");
   const refreshClients = refresh;
   const safeOptions = asObject(options);
   const calendar = useMemo(() => ["lista", "realizados", "espera"].includes(filters.mode) ? null : buildCalendar(asArray(data), filters.mode, currentDate), [data, filters.mode, currentDate]);
@@ -706,6 +717,9 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
 
   return (
     <section className="stack agenda-visual-page">
+      {linkedId > 0 && linkedLoading && <Loading />}
+      {linkedId > 0 && linkedError && <ApiError message={linkedError} />}
+      {linkedId > 0 && !linkedLoading && !linkedError && linkedAppointments && !asArray(linkedAppointments).length && <ApiError message="O atendimento de origem não foi encontrado ou não está disponível para este usuário." />}
       <CollapsibleIndicators screenId="agenda">
         <div className="metric-grid">
           <Metric label="Agenda de hoje" value={todayRows.length} />
@@ -1350,7 +1364,7 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
           />
           <div className="appointment-workspace-side">
             <AppointmentDepositFields
-              form={{ ...form, deposit_value: form.deposit_manual ? form.deposit_value : values.depositValue }}
+              form={{ ...form, deposit_value: form.deposit_manual ? form.deposit_value : values.depositValue, deposit_expected_value: values.depositExpectedValue }}
               onChange={(patch) => setForm((current) => ({
                 ...current,
                 deposit_value: current.deposit_manual ? current.deposit_value : values.depositValue,
@@ -1473,6 +1487,7 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
       notes: appointment.notes || "",
       reschedule_reason: "",
       deposit_value: asNumber(appointment.deposit_value),
+      deposit_expected_value: appointment.deposit_expected_value,
       deposit_status: appointment.deposit_status || "pendente",
       deposit_payment_method: appointment.deposit_payment_method || "Pix",
       deposit_paid_at: String(appointment.deposit_paid_at || "").slice(0, 10),
@@ -1646,11 +1661,16 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(updatePayload)
     });
+    const updateData = await updateResponse.json().catch(() => ({}));
     if (!updateResponse.ok) {
-      const updateData = await updateResponse.json().catch(() => ({}));
       return setError(updateData.error || "Não foi possível salvar os itens do atendimento.");
     }
-    const response = await apiFetch(`/appointments/${appointment.id}/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ payments, financial_notes: financialNotes, clinical_notes: clinicalNotes, occurrences, aftercare_notes: aftercareNotes, checklist: operationalChecklist, biosafety }) });
+    // Um clique imediatamente após editar o sinal pode anteceder a prévia
+    // debounced. A linha padrão usa o saldo recém-gravado pelo backend.
+    const finalPayments = !paymentsTouched && payments.length === 1 && updateData.remaining_value != null
+      ? [{ ...payments[0], amount: asNumber(updateData.remaining_value) }]
+      : payments;
+    const response = await apiFetch(`/appointments/${appointment.id}/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ payments: finalPayments, financial_notes: financialNotes, clinical_notes: clinicalNotes, occurrences, aftercare_notes: aftercareNotes, checklist: operationalChecklist, biosafety }) });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) return setError(data.error || "Não foi possível concluir o atendimento.");
     quickDraft.clearDraft();
@@ -1828,7 +1848,7 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
                 </PlanUpgradeNotice>
               )}
               <Textarea label="Observações financeiras" value={financialNotes} onChange={setFinancialNotes} />
-              <small>Sinal: {currency.format(Number(appointment.deposit_value || 0))} ({hasPaidDeposit ? "recebido" : "pendente"}) · saldo atual: {currency.format(Number(appointment.remaining_value || 0))}</small>
+              <small>Sinal conferido: {currency.format(asNumber(form.deposit_value))} ({depositReceived(form.deposit_status) ? "recebido" : "pendente"}). Confira o saldo atualizado no resumo financeiro acima.</small>
             </>}
           </section>
           <div className="toolbar compact-actions">

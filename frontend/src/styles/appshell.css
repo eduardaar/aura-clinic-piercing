@@ -1123,19 +1123,16 @@
    de três pontos mantém a tabela visualmente estável, inclusive quando a
    linha possui mais funções. */
 @media (min-width: 721px) {
-  /* Entre desktop e celular a tabela não força uma largura mínima fixa: as
-     colunas encolhem, o texto quebra em mais linhas e a altura cresce antes
-     de adotarmos os cartões mobile. */
+  /* Antes dos cartões mobile, as colunas usam largura natural e o excesso
+     fica numa faixa rolável dentro da listagem. */
   .data-table-wrap {
-    /* Lista operacional não deve ganhar uma segunda navegação horizontal: ela
-       comprime as colunas antes. Isso também garante que as ações nunca sejam
-       levadas para fora da área visível. */
-    overflow-x: hidden;
+    /* Não comprimir uma tabela ampla até quebrar palavras por letra. */
+    overflow-x: auto;
   }
   .data-table {
     width: 100%;
     min-width: 0;
-    table-layout: fixed;
+    table-layout: auto;
     border-collapse: separate;
     border-spacing: 0;
   }
@@ -2003,3 +2000,61 @@
 }
 
 } /* fim de @layer app */
+
+/* Listagens legíveis: o scroll pertence à tabela, nunca à página. */
+@layer app {
+  .dataview > .data-table-wrap {
+    min-width: 0;
+    max-width: 100%;
+    overflow: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .dataview .data-table {
+    table-layout: auto;
+    width: 100%;
+  }
+  .dataview .data-table th,
+  .dataview .data-table td {
+    overflow-wrap: break-word;
+    word-break: normal;
+  }
+  .dataview .data-table th:not(.data-table-actions-head) { min-width: 160px; }
+  .dataview .dataview-sort { white-space: normal; text-align: inherit; line-height: 1.4; }
+  .data-table-cell { min-width: 0; max-width: 100%; }
+  .data-table-cell > * { max-width: 100%; }
+  .dataview .data-table td[style*="right"] .data-table-cell { white-space: nowrap; }
+  .receivable-origin { display: grid; gap: 4px; }
+  .receivable-origin small { color: var(--muted); }
+  .receivable-detail-grid > div { display: grid; gap: 5px; align-content: start; min-width: 0; }
+  .receivable-detail-grid strong { overflow-wrap: break-word; }
+  .export-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  @media (max-width: 720px) {
+    .dataview .data-table { min-width: 0 !important; table-layout: auto; }
+    .dataview > .data-table-wrap { max-height: none; overflow: visible; }
+    .dataview .data-table td { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 10px; align-items: start; }
+    .dataview .data-table td::before { min-width: 0; white-space: normal; overflow-wrap: break-word; }
+    .dataview .data-table-cell { text-align: left; white-space: normal !important; overflow-wrap: break-word; }
+    .dataview .data-table td.table-actions { display: flex; justify-content: flex-end; }
+    .dataview .data-table td.table-actions::before { display: none; }
+    .reports-page .data-table td { grid-template-columns: 1fr; gap: 5px; }
+    .reports-page .data-table td::before { font-size: 12px; letter-spacing: 0; text-transform: none; }
+    .dataview .data-table .status-badge { white-space: normal; }
+    .reports-page .export-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .reports-page .export-actions button { justify-content: center; }
+    .dataview-toolbar-extra, .dataview-toolbar-extra > *, .dataview-toolbar-extra .field { width: 100%; min-width: 0; }
+  }
+  @media (max-width: 480px) {
+    .dataview .data-table td { grid-template-columns: 1fr; gap: 5px; }
+    .dataview .data-table td::before { font-size: 12px; letter-spacing: 0; text-transform: none; }
+  }
+  @media (pointer: coarse), (max-width: 720px) {
+    input, textarea, select, .ui-select-trigger { font-size: 16px; }
+    .dataview-filter-toggle, .dataview-clear, .dataview-filter-chip,
+    .dataview-pager button, .dataview-search button, .row-actions-more, .modal-close,
+    .crud-options-popover [role="menuitem"], .ui-select-item,
+    .segmented button, .calendar-nav button, .ui-select-trigger { min-height: 44px; }
+    .dataview-search button, .dataview-pager button, .row-actions-more, .modal-close { min-width: 44px; }
+    .metric-grid .metric-card strong { overflow-wrap: normal; word-break: normal; font-size: clamp(1rem, 4vw, 1.3rem); }
+  }
+}
