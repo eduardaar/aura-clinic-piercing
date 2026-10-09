@@ -1,3 +1,4 @@
+import { normalizeCompletionPayments } from "./completionPayments.js";
 // Serviços de agendamentos, clientes vinculados, serviços e slots de agenda.
 import {
   timeToMinutes,
@@ -16,7 +17,8 @@ import {
   listActiveAppointmentAdjustments,
   recalculateAppointmentFinancials,
   recalculatedAppointmentRow,
-  storedCouponDiscount
+  storedCouponDiscount,
+  parseMoneyInputCents
 } from "./finance.js";
 import { calculateDiscount, validateCoupon } from "./discounts.js";
 import { parseServiceRulesSnapshot, resolveServiceRules } from "./serviceRules.js";
@@ -99,17 +101,24 @@ export async function normalizeAppointmentItems(db, body = {}) {
   const items = [];
   const clinicOperationalSettings = await getClinicOperationalSettings(db);
   for (const raw of baseItems) {
-    const serviceId = raw.service_id ? Number(raw.service_id) : (body.service_id ? Number(body.service_id) : null);
+    const serviceId = raw.service_id !== undefined ? (raw.service_id ? Number(raw.service_id) : null) : (body.service_id ? Number(body.service_id) : null);
     const procedureId = raw.procedure_id ? Number(raw.procedure_id) : null;
     const jewelryId = raw.jewelry_id ? Number(raw.jewelry_id) : null;
     const variantId = raw.jewelry_variant_id ? Number(raw.jewelry_variant_id) : null;
-    const quantity = Math.max(1, Number(raw.quantity || 1));
+    const quantity = raw.quantity === undefined ? 1 : Number(raw.quantity);
+    if (!Number.isInteger(quantity) || quantity < 1) throw new Error("Informe uma quantidade inteira de itens, a partir de 1.");
     const service = serviceId ? await db.get("SELECT * FROM services WHERE id = ?", [serviceId]) : null;
     const procedure = procedureId ? await db.get("SELECT * FROM procedures WHERE id = ?", [procedureId]) : null;
     const jewelry = jewelryId ? await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [jewelryId]) : null;
     const variant = variantId ? await db.get("SELECT * FROM jewelry_variants WHERE id = ?", [variantId]) : null;
-    const procedurePrice = Number(raw.procedure_price || raw.service_price || procedure?.price || service?.price || body.procedure_value || body.service_value || 0);
-    const jewelryUnitPrice = jewelryId ? Number(raw.jewelry_unit_price || raw.unit_price || variant?.sale_value || jewelry?.sale_value || body.jewelry_value || 0) : 0;
+    const procedureValue = submittedItems.length
+      ? raw.procedure_price ?? raw.service_price ?? procedure?.price ?? service?.price ?? body.procedure_value ?? body.service_value ?? 0
+      : raw.procedure_price || raw.service_price || procedure?.price || service?.price || body.procedure_value || body.service_value || 0;
+    const procedurePrice = parseMoneyInputCents(procedureValue, "O valor do procedimento") / 100;
+    const jewelryValue = submittedItems.length
+      ? raw.jewelry_unit_price ?? raw.unit_price ?? variant?.sale_value ?? jewelry?.sale_value ?? body.jewelry_value ?? 0
+      : raw.jewelry_unit_price || raw.unit_price || variant?.sale_value || jewelry?.sale_value || body.jewelry_value || 0;
+    const jewelryUnitPrice = jewelryId ? parseMoneyInputCents(jewelryValue, "O valor da joia") / 100 : 0;
     const duration = Number(raw.duration_minutes || procedure?.duration_minutes || service?.duration_minutes || body.duration_minutes || 0);
     const operationalRequirements = resolveOperationalRequirements({ clinic: clinicOperationalSettings, service: service || {}, variation: procedure });
     const compatibleJewelryIds = serviceId ? (await db.all("SELECT inventory_item_id FROM service_compatible_inventory_items WHERE service_id=? ORDER BY inventory_item_id", [serviceId])).map((item) => item.inventory_item_id) : [];
@@ -836,13 +845,10 @@ export async function registerCompletionPayments(db, appointmentId, rawPayments 
   // que serão substituídas).
   const maximum = completionCeiling(snapshot, appointment.total_value);
 
-  const payments = (Array.isArray(rawPayments) ? rawPayments : []).map((item) => ({
-    amount: Number(item.amount || 0), method: String(item.method || "Pix"), status: String(item.status || "pago"),
-    installments: Math.max(1, Number(item.installments || 1)), fee_amount: Math.max(0, Number(item.fee_amount || 0)),
-    expected_receipt_date: item.expected_receipt_date || null, notes: String(item.notes || "")
-  })).filter((item) => item.amount > 0);
+  const payments = normalizeCompletionPayments(rawPayments);
   const paid = payments.filter((item) => item.status === "pago" || item.status === "confirmado").reduce((sum, item) => sum + item.amount, 0);
-  if (paid > maximum + 0.009) throw new Error("A soma dos pagamentos não pode superar o saldo do atendimento.");
+  const allocated = payments.reduce((sum, item) => sum + Math.round(item.amount * 100), 0);
+  if (allocated > Math.round(maximum * 100)) throw new Error("A soma dos pagamentos não pode superar o saldo do atendimento.");
   await supersedePendingDeposit(db, appointmentId);
   // Preserva os ids das baixas ao refazer o fechamento. Apagar e reinserir
   // deixava para trás lançamentos espelhados no ledger e perdia sales_order_id.
@@ -857,7 +863,7 @@ export async function registerCompletionPayments(db, appointmentId, rawPayments 
       await db.run(
         `UPDATE payments SET amount=?, payment_type='restante', method=?, status=?, paid_at=?, installments=?,
            fee_amount=?, net_amount=?, expected_receipt_date=?, notes=?, created_by_user_id=? WHERE id=?`,
-        [item.amount, item.method, item.status, current.paid_at || localTimestamp(),
+        [item.amount, item.method, item.status, ["pago", "confirmado"].includes(item.status) ? (current.paid_at || localTimestamp()) : null,
           item.installments, item.fee_amount, Math.max(0, item.amount - item.fee_amount), item.expected_receipt_date,
           item.notes, userId, current.id]
       );
@@ -869,7 +875,7 @@ export async function registerCompletionPayments(db, appointmentId, rawPayments 
          VALUES (?, ?, ?, 'restante', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT DO NOTHING`,
         [appointmentId, appointment.client_id, item.amount, item.method, item.status,
-          localTimestamp(), item.installments, item.fee_amount,
+          ["pago", "confirmado"].includes(item.status) ? localTimestamp() : null, item.installments, item.fee_amount,
           Math.max(0, item.amount - item.fee_amount), item.expected_receipt_date, item.notes, userId,
           `appointment:${appointmentId}:completion:${index + 1}`]
       );

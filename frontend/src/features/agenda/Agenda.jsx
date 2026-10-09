@@ -1,5 +1,5 @@
-﻿// Feature extraída de main.jsx durante a modularização. Comportamento preservado.
-import { useEffect, useMemo, useState } from "react";
+// Feature extraída de main.jsx durante a modularização. Comportamento preservado.
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight, Copy, ExternalLink, Filter, MoreHorizontal, Plus, Search, Settings2, X } from "lucide-react";
 import { Accordion, Button, Checkbox, FinancialSummary, Input, Metric, PaymentSelect, Select, StatusBadge, Switch, Tabs, Textarea } from "../../components/common/Ui";
 import { Modal, CrudHeader, ConfirmDeleteModal, DropdownMenu, RowActions } from "../../components/common/Crud";
@@ -103,6 +103,8 @@ const moneyNumber = (value) => (typeof value === "string" && value.includes(",")
   : asNumber(value));
 const toCents = (value) => Math.round(moneyNumber(value) * 100);
 const fromCents = (cents) => cents / 100;
+let draftRowSequence = 0;
+const draftRowKey = () => `draft-${++draftRowSequence}`;
 const depositReceived = (status) => ["pago", "confirmado"].includes(String(status || "").toLowerCase());
 
 // Tudo que não é horário especial nem data indisponível é exibido como bloqueio
@@ -169,9 +171,10 @@ function priceAppointmentDraft(draft, services = [], jewelryList = []) {
     jewelry_variant_id: firstItem.jewelry_variant_id || "",
     procedure: firstService?.name || draft.procedure,
     piercing_region: firstItem.region || draft.piercing_region,
-    appointment_items: items,
+    // O rascunho mantém texto vazio e cursor; normalização só no payload.
+    appointment_items: rawAppointmentItems(draft),
     total_value: values.totalValue,
-    deposit_value: values.depositValue,
+    deposit_value: draft.deposit_manual ? draft.deposit_value : values.depositValue,
     deposit_expected_value: draft.deposit_expected_value ?? values.depositExpectedValue,
     remaining_value: values.remainingValue
   };
@@ -208,15 +211,16 @@ function emptyAppointmentItem(seed = {}) {
   const hasId = seed.id !== undefined && seed.id !== null && seed.id !== "";
   return {
     ...(hasId ? { id: seed.id } : {}),
+    row_key: seed.row_key || draftRowKey(),
     service_id: seed.service_id || "",
     procedure_id: seed.procedure_id || "",
-    region: seed.region || seed.piercing_region || "",
+    region: seed.region ?? seed.piercing_region ?? "",
     jewelry_id: seed.jewelry_id || "",
     jewelry_variant_id: seed.jewelry_variant_id || "",
-    quantity: seed.quantity || 1,
-    procedure_price: seed.procedure_price || 0,
-    jewelry_unit_price: seed.jewelry_unit_price || 0,
-    duration_minutes: seed.duration_minutes || 40,
+    quantity: seed.quantity ?? 1,
+    procedure_price: seed.procedure_price ?? 0,
+    jewelry_unit_price: seed.jewelry_unit_price ?? 0,
+    duration_minutes: seed.duration_minutes ?? 40,
     notes: seed.notes || ""
   };
 }
@@ -249,7 +253,7 @@ function normalizeAppointmentFormItems(form, services = [], jewelryList = []) {
     // do 1º item (uma linha só de joia viraria serviço + joia) nem troca um
     // preço zero gravado pelo preço de tabela.
     const persisted = raw.id !== undefined && raw.id !== null && raw.id !== "";
-    const serviceId = raw.service_id || (persisted ? "" : form.service_id) || "";
+    const serviceId = raw.service_id ?? form.service_id ?? "";
     const service = asArray(services).find((item) => String(item.id) === String(serviceId));
     const jewelry = asArray(jewelryList).find((item) => String(item.id) === String(raw.jewelry_id));
     const variant = asArray(jewelry?.variants).find((item) => String(item.id) === String(raw.jewelry_variant_id));
@@ -257,13 +261,13 @@ function normalizeAppointmentFormItems(form, services = [], jewelryList = []) {
     return {
       ...emptyAppointmentItem(raw),
       service_id: serviceId,
-      region: raw.region || (persisted ? "" : form.piercing_region) || "",
+      region: raw.region ?? form.piercing_region ?? "",
       quantity: Math.max(1, asNumber(raw.quantity, 1)),
       procedure_price: storedPrice(raw.procedure_price)
         ? asNumber(raw.procedure_price)
-        : asNumber(raw.procedure_price || service?.base_price || service?.price || 0),
+        : asNumber(raw.procedure_price ?? service?.base_price ?? service?.price ?? 0),
       jewelry_unit_price: raw.jewelry_id
-        ? (storedPrice(raw.jewelry_unit_price) ? asNumber(raw.jewelry_unit_price) : asNumber(raw.jewelry_unit_price || variant?.sale_value || jewelry?.sale_value || 0))
+        ? (storedPrice(raw.jewelry_unit_price) ? asNumber(raw.jewelry_unit_price) : asNumber(raw.jewelry_unit_price ?? variant?.sale_value ?? jewelry?.sale_value ?? 0))
         : 0,
       duration_minutes: asNumber(raw.duration_minutes || service?.duration_minutes || 40)
     };
@@ -276,13 +280,18 @@ function withAppointmentItems(form, items, services = [], jewelry = []) {
   const firstService = asArray(services).find((service) => String(service.id) === String(first.service_id));
   return {
     ...form,
-    appointment_items: normalized,
+    appointment_items: items,
     service_id: first.service_id || "",
     jewelry_id: first.jewelry_id || "",
     jewelry_variant_id: first.jewelry_variant_id || "",
     procedure: firstService?.name || form.procedure || "",
     piercing_region: first.region || form.piercing_region || ""
   };
+}
+
+function appointmentItemsError(form) {
+  return rawAppointmentItems(form).some((item) => !Number.isInteger(Number(item.quantity)) || Number(item.quantity) < 1)
+    ? "Informe uma quantidade inteira de itens, a partir de 1." : "";
 }
 
 function AppointmentItemsEditor({ form, services, procedures = [], jewelry, onChange, compact = false }) {
@@ -317,7 +326,7 @@ function AppointmentItemsEditor({ form, services, procedures = [], jewelry, onCh
         ].filter(Boolean);
         const priced = normalizeAppointmentFormItems({ ...form, appointment_items: [item] }, services, jewelry)[0] || item;
         return (
-          <div className={`appointment-item-row ${compact ? "compact" : ""}`} key={item.id ? `item-${item.id}` : `${index}-${item.service_id}-${item.jewelry_id}`}>
+          <div className={`appointment-item-row ${compact ? "compact" : ""}`} key={item.id ? `item-${item.id}` : item.row_key || index}>
             <Select label="Serviço" value={item.service_id} onChange={(value) => {
               const service = asArray(services).find((option) => String(option.id) === String(value));
               updateItem(index, {
@@ -356,7 +365,7 @@ function AppointmentItemsEditor({ form, services, procedures = [], jewelry, onCh
                 <option key={variant.id} value={variant.id}>{variant.variation_name || variant.sku} · {variant.quantity} un</option>
               ))}
             </Select>
-            <Input type="number" min="1" label="Qtd." value={item.quantity} onChange={(value) => updateItem(index, { quantity: value })} />
+            <Input type="number" min="1" label="Qtd." required value={item.quantity} onChange={(value) => updateItem(index, { quantity: value })} />
             <div className="appointment-item-total" aria-live="polite">
               <span>Valor do item</span>
               <strong>{currency.format(fromCents(itemGrossCents(priced)))}</strong>
@@ -585,7 +594,7 @@ function appointmentPatchPayload(form, services, jewelry, { depositDirty = false
   payload.manual_discount_value = fromCents(Math.max(0, toCents(form.manual_discount_value)));
   payload.manual_discount_reason = String(form.manual_discount_reason || "").trim();
   if (depositDirty) {
-    payload.deposit_value = priced.deposit_value;
+    payload.deposit_value = moneyNumber(priced.deposit_value);
     payload.deposit_status = form.deposit_status || "pendente";
     payload.deposit_payment_method = form.deposit_payment_method || "Pix";
     payload.deposit_paid_at = depositReceived(form.deposit_status) ? (form.deposit_paid_at || localDateValue(new Date())) : "";
@@ -757,12 +766,12 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
           {[["mensal", "Mensal"], ["semanal", "Semanal"], ["diario", "Diário"], ["lista", "Agendamentos"]].map(([mode, label]) => <button key={mode} className={filters.mode === mode ? "active" : ""} onClick={() => setFilters({ ...filters, mode })}>{label}</button>)}
         </div>
         {["mensal", "semanal", "diario", "lista"].includes(filters.mode) && <div className="calendar-nav">
-          {calendar && !hasPeriod && <button aria-label="Período anterior" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, -1))}><ChevronLeft size={18} /></button>}
+          {calendar && !hasPeriod && <button className="calendar-nav-previous" aria-label="Período anterior" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, -1))}><ChevronLeft size={18} /></button>}
           <strong>{hasPeriod ? periodLabel : calendar?.title || "Todos os períodos"}</strong>
-          {calendar && !hasPeriod && <button aria-label="Próximo período" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, 1))}><ChevronRight size={18} /></button>}
-          {!hasPeriod && calendar && <button onClick={() => setCurrentDate(new Date())}>Hoje</button>}
-          <button onClick={openPeriod}>Período</button>
-          {hasPeriod && <button onClick={clearPeriod}>Limpar</button>}
+          {calendar && !hasPeriod && <button className="calendar-nav-next" aria-label="Próximo período" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, 1))}><ChevronRight size={18} /></button>}
+          {!hasPeriod && calendar && <button className="calendar-nav-today" onClick={() => setCurrentDate(new Date())}>Hoje</button>}
+          <button className="calendar-nav-period" onClick={openPeriod}>Período</button>
+          {hasPeriod && <button className="calendar-nav-clear" onClick={clearPeriod}>Limpar</button>}
         </div>}
         </div>
         {["mensal", "semanal", "diario", "lista"].includes(filters.mode) && <div className="dataview-toolbar agenda-shared-filters">
@@ -1189,8 +1198,10 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
   useEffect(() => {
     if (!seed) return;
     const seededClient = safeClients.find((item) => String(item.id) === String(seed.client_id));
+    const seededService = safeServices.find((item) => String(item.id) === String(seed.service_id));
     setForm({
       ...defaultAppointment(),
+      appointment_items: [emptyAppointmentItem({ service_id: seed.service_id || "", procedure_price: asNumber(seededService?.base_price ?? seededService?.price), duration_minutes: seededService?.duration_minutes ?? 40 })],
       client_id: seed.client_id || "",
       full_name: seed.full_name || personName(seededClient),
       whatsapp: seed.whatsapp || seededClient?.whatsapp || "",
@@ -1245,6 +1256,8 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
 
   async function submit(event) {
     event.preventDefault();
+    const itemProblem = appointmentItemsError(form);
+    if (itemProblem) return setError(itemProblem);
     setError("");
     const errors = scheduleStepErrors();
     if (errors.length) {
@@ -1253,7 +1266,7 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
       return;
     }
     const priced = priceAppointmentDraft(form, safeServices, safeJewelry);
-    const body = { ...priced, appointment_items: normalizeAppointmentFormItems(form, safeServices, safeJewelry) };
+    const body = { ...priced, deposit_value: moneyNumber(priced.deposit_value), appointment_items: normalizeAppointmentFormItems(form, safeServices, safeJewelry) };
     delete body.deposit_manual;
     body.deposit_status = form.deposit_status || "pendente";
     body.deposit_payment_method = form.deposit_payment_method || "Pix";
@@ -1395,14 +1408,31 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
   );
 }
 
+function paymentValidation(rows, outstanding) {
+  for (const row of rows) {
+    const amount = Number(row.amount);
+    const validMoney = (value) => /^\d+(?:\.\d{1,2})?$/.test(String(value)) && Number(value) <= 9999999999.99;
+    const fee = Number(row.fee_amount || 0);
+    if (!validMoney(row.amount) || !Number.isFinite(amount) || amount < 0) return "Informe um valor válido para cada pagamento.";
+    if (!validMoney(row.fee_amount || 0) || !Number.isFinite(fee) || fee < 0 || fee > amount) return "A taxa deve estar entre zero e o valor do pagamento.";
+    if (String(row.method).toLowerCase().includes("crédito") && (!Number.isInteger(Number(row.installments)) || Number(row.installments) < 1)) return "Informe uma quantidade inteira de parcelas, a partir de 1.";
+  }
+  if (rows.reduce((sum, row) => sum + toCents(row.amount), 0) > (outstanding === Infinity ? Infinity : toCents(outstanding))) return "A soma dos pagamentos não pode superar o saldo do atendimento.";
+  return "";
+}
+
+const newPaymentRow = (seed = {}) => ({ ...DEFAULT_PAYMENT_ROW, row_key: draftRowKey(), ...seed });
 const DEFAULT_PAYMENT_ROW = { method: "Pix", amount: 0, status: "pago", installments: 1, fee_amount: 0, expected_receipt_date: "" };
 
 export function AppointmentQuickModal({ appointment, options, services, procedures, onClose, onSaved, features = [], onUpgrade, initialAction = "" }) {
+  const initializedAppointment = useRef(null);
   const [form, setForm] = useState(/** @type {Record<string, any>} */ ({ appointment_date: "", appointment_time: "", status: "pendente", notes: "", reschedule_reason: "" }));
-  const [payments, setPayments] = useState([{ ...DEFAULT_PAYMENT_ROW }]);
+  const [payments, setPayments] = useState(() => [newPaymentRow()]);
   // A grade nasce com uma linha padrão (o restante). Enquanto a pessoa não
   // mexer nela, acompanha o restante recalculado (desconto, itens, ajustes).
   const [paymentsTouched, setPaymentsTouched] = useState(false);
+  const [outstandingBalance, setOutstandingBalance] = useState(0);
+  const [completing, setCompleting] = useState(false);
   // `deposit_*` só vai no PATCH quando o sinal foi editado aqui.
   const [depositDirty, setDepositDirty] = useState(false);
   const [financialOverride, setFinancialOverride] = useState(/** @type {Record<string, any> | null} */ (null));
@@ -1464,7 +1494,7 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
       const restored = asObject(value);
       if (restored.form) setForm(restored.form);
       if (restored.payments) {
-        setPayments(asArray(restored.payments));
+        setPayments(asArray(restored.payments).map((row) => newPaymentRow(row)));
         setPaymentsTouched(true);
       }
       setDepositDirty(Boolean(restored.depositDirty));
@@ -1479,7 +1509,14 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
   });
 
   useEffect(() => {
-    if (!appointment) return;
+    if (!appointment) {
+      initializedAppointment.current = null;
+      return;
+    }
+    // Refetch do atendimento e opções assíncronas não podem apagar a edição.
+    // Uma nova abertura (ou outro id) cria o rascunho uma única vez.
+    if (initializedAppointment.current === appointment.id) return;
+    initializedAppointment.current = appointment.id;
     const seededForm = priceAppointmentDraft({
       appointment_date: appointment.appointment_date || "",
       appointment_time: appointment.appointment_time || "",
@@ -1501,7 +1538,8 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
     }, safeServices, safeJewelry);
     setForm(seededForm);
     setFinancialBaseline(appointmentFinancialFingerprint(seededForm, safeServices, safeJewelry));
-    setPayments([{ ...DEFAULT_PAYMENT_ROW, method: appointment.remaining_payment_method || "Pix", amount: Math.max(0, Number(appointment.remaining_value || 0)) }]);
+    setOutstandingBalance(Math.max(0, Number(appointment.remaining_value || 0)));
+    setPayments([newPaymentRow({ method: appointment.remaining_payment_method || "Pix", amount: Math.max(0, Number(appointment.remaining_value || 0)) })]);
     setPaymentsTouched(false);
     setDepositDirty(false);
     setFinancialOverride(null);
@@ -1560,9 +1598,10 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
 
   // Só a linha única padrão, nunca editada, acompanha o novo restante.
   function syncDefaultPayment(summary) {
-    if (paymentsTouched || attended) return;
     const outstanding = summary?.outstandingBalance;
     if (outstanding === undefined || outstanding === null) return;
+    setOutstandingBalance(outstanding);
+    if (paymentsTouched || attended) return;
     setPayments((current) => current.length === 1 ? [{ ...current[0], amount: fromCents(Math.max(0, toCents(outstanding))) }] : current);
   }
 
@@ -1609,6 +1648,8 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
 
   async function saveAppointment(patch = {}) {
     if (!appointment?.id) return;
+    const itemProblem = appointmentItemsError(form);
+    if (itemProblem) return setError(itemProblem);
     setError("");
     const scheduleChanged = form.appointment_date !== appointment.appointment_date
       || form.appointment_time !== appointment.appointment_time;
@@ -1642,6 +1683,7 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
   }
 
   async function completeAppointment() {
+    if (completing) return;
     setError("");
     if (!canFinalize) return setError("Você não tem permissão para finalizar atendimentos.");
     // Refazer o fechamento por aqui SUBSTITUIRIA os pagamentos finais pela grade
@@ -1655,6 +1697,12 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
     if (invalidDiscount) return setError(invalidDiscount);
     // O PATCH prévio grava itens, desconto e sinal editado — SEM status: quem
     // conclui é o POST /complete, com pagamentos e dados clínicos.
+    const itemProblem = appointmentItemsError(form);
+    if (itemProblem) return setError(itemProblem);
+    const paymentProblem = paymentValidation(payments, paymentsTouched ? outstandingBalance : Infinity);
+    if (paymentProblem) return setError(paymentProblem);
+    setCompleting(true);
+    try {
     const updatePayload = appointmentPatchPayload(form, safeServices, safeJewelry, { depositDirty, includeStatus: false });
     const updateResponse = await apiFetch(`/appointments/${appointment.id}`, {
       method: "PATCH",
@@ -1670,11 +1718,16 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
     const finalPayments = !paymentsTouched && payments.length === 1 && updateData.remaining_value != null
       ? [{ ...payments[0], amount: asNumber(updateData.remaining_value) }]
       : payments;
-    const response = await apiFetch(`/appointments/${appointment.id}/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ payments: finalPayments, financial_notes: financialNotes, clinical_notes: clinicalNotes, occurrences, aftercare_notes: aftercareNotes, checklist: operationalChecklist, biosafety }) });
+    const response = await apiFetch(`/appointments/${appointment.id}/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ payments: finalPayments.map(({ row_key, ...row }) => ({ ...row, amount: moneyNumber(row.amount), installments: Number(row.installments), fee_amount: moneyNumber(row.fee_amount) })), financial_notes: financialNotes, clinical_notes: clinicalNotes, occurrences, aftercare_notes: aftercareNotes, checklist: operationalChecklist, biosafety }) });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) return setError(data.error || "Não foi possível concluir o atendimento.");
     quickDraft.clearDraft();
     onSaved?.();
+    } catch {
+      setError("Não foi possível concluir o atendimento. Tente novamente.");
+    } finally {
+      setCompleting(false);
+    }
   }
 
   function closeQuickModal() {
@@ -1686,7 +1739,7 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
     const response = await apiFetch(`/appointments/${appointment.id}/apply-client-credit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) return setError(payload.error || "Não foi possível aplicar o crédito disponível.");
-    setPayments([{ ...DEFAULT_PAYMENT_ROW, method: "Crédito do cliente" }]);
+    setPayments([newPaymentRow({ method: "Crédito do cliente" })]);
     onSaved?.();
   }
 
@@ -1817,8 +1870,8 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
           </div>
           <section className="soft-card stack" aria-label="Conferência financeira">
             <div className="section-inline-header">
-              <strong>Conferência financeira</strong>
-              {!attended && <Button variant="secondary" onClick={() => editPayments([...payments, { ...DEFAULT_PAYMENT_ROW }])}>Dividir pagamento</Button>}
+              <strong>Formas de pagamento</strong>
+              {!attended && <Button variant="secondary" onClick={() => editPayments([...payments, newPaymentRow()])}>{payments.length > 1 ? "Adicionar forma de pagamento" : "Dividir pagamento"}</Button>}
             </div>
             <AppointmentValueAdjustments
               appointment={appointment}
@@ -1831,13 +1884,13 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
               <ResponsiveEditableList
                 items={payments}
                 ariaLabel="Pagamentos do atendimento"
-                getKey={(payment, index) => payment.row_key || `${payment.method}-${index}`}
+                getKey={(payment, index) => payment.row_key || index}
                 columns={[
                   { key: "method", label: "Forma", render: (payment, index) => <PaymentSelect ariaLabel={`Forma ${index + 1}`} value={payment.method} onChange={(value) => updatePayment(index, { method: value })} /> },
-                  { key: "amount", label: "Valor", render: (payment, index) => <Input type="number" aria-label={`Valor ${index + 1}`} value={payment.amount} onChange={(value) => updatePayment(index, { amount: Number(value || 0) })} /> },
+                  { key: "amount", label: "Valor", render: (payment, index) => <Input type="number" aria-label={`Valor ${index + 1}`} value={payment.amount} onChange={(value) => updatePayment(index, { amount: value })} /> },
                   { key: "status", label: "Status", render: (payment, index) => <Select ariaLabel={payments.length === 1 ? "Status" : `Status ${index + 1}`} value={payment.status} onChange={(value) => updatePayment(index, { status: value })}><option value="pago">Pago</option><option value="pendente" disabled={!canGenerateReceivables}>Pendente{canGenerateReceivables ? "" : " — Profissional"}</option></Select> },
-                  { key: "installments", label: "Parcelas", render: (payment, index) => String(payment.method).toLowerCase().includes("crédito") ? <Input type="number" aria-label={`Parcelas ${index + 1}`} value={payment.installments} onChange={(value) => updatePayment(index, { installments: Number(value || 1) })} /> : "—" },
-                  { key: "fee", label: "Taxa", render: (payment, index) => String(payment.method).toLowerCase().includes("crédito") ? <Input type="number" aria-label={`Taxa ${index + 1}`} value={payment.fee_amount} onChange={(value) => updatePayment(index, { fee_amount: Number(value || 0) })} /> : "—" },
+                  { key: "installments", label: "Parcelas", render: (payment, index) => String(payment.method).toLowerCase().includes("crédito") ? <Input type="number" aria-label={`Parcelas ${index + 1}`} value={payment.installments} onChange={(value) => updatePayment(index, { installments: value })} /> : "—" },
+                  { key: "fee", label: "Taxa da operadora (R$)", render: (payment, index) => String(payment.method).toLowerCase().includes("crédito") ? <Input type="number" aria-label={`Taxa ${index + 1}`} value={payment.fee_amount} onChange={(value) => updatePayment(index, { fee_amount: value })} /> : "—" },
                   { key: "receipt", label: "Previsão", render: (payment, index) => String(payment.method).toLowerCase().includes("crédito") ? <Input type="date" aria-label={`Previsão ${index + 1}`} value={payment.expected_receipt_date} onChange={(value) => updatePayment(index, { expected_receipt_date: value })} /> : "—" },
                 ]}
                 onRemove={payments.length > 1 ? (_payment, index) => editPayments(payments.filter((_, itemIndex) => itemIndex !== index)) : null}
@@ -1847,6 +1900,13 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
                   No Start, o atendimento pode ser finalizado com pagamentos recebidos. Gerar saldo a receber exige o Financeiro básico.
                 </PlanUpgradeNotice>
               )}
+              <div className="appointment-payment-summary" aria-live="polite">
+                <span>Saldo antes destes pagamentos: <strong>{currency.format(outstandingBalance)}</strong></span>
+                <span>Recebido nesta finalização: <strong>{currency.format(fromCents(payments.filter((row) => depositReceived(row.status)).reduce((sum, row) => sum + Math.max(0, toCents(row.amount)), 0)))}</strong></span>
+                <span>Saldo pendente: <strong>{currency.format(fromCents(Math.max(0, toCents(outstandingBalance) - payments.filter((row) => depositReceived(row.status)).reduce((sum, row) => sum + Math.max(0, toCents(row.amount)), 0))))}</strong></span>
+              </div>
+              {paymentValidation(payments, outstandingBalance) && <p className="form-error" role="alert">{paymentValidation(payments, outstandingBalance)}</p>}
+              <small>Registro manual de recebimento. A taxa da operadora reduz o valor líquido recebido pela clínica; não acrescenta juros ao cliente nem confirma aprovação pelo cartão.</small>
               <Textarea label="Observações financeiras" value={financialNotes} onChange={setFinancialNotes} />
               <small>Sinal conferido: {currency.format(asNumber(form.deposit_value))} ({depositReceived(form.deposit_status) ? "recebido" : "pendente"}). Confira o saldo atualizado no resumo financeiro acima.</small>
             </>}
@@ -1860,7 +1920,7 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
             {!attended && <Button variant="secondary" onClick={() => saveAppointment({ status: "remarcado" })}>Reagendar</Button>}
             {canCancel && <Button variant="secondary" className="danger" onClick={() => setCancellation({ resolution: hasPaidDeposit ? "retain_deposit" : "no_payment", refund_method: "Pix", reason: "" })}>Cancelar</Button>}
             {canCancel && !["atendido", "cancelado", "nao_compareceu"].includes(form.status) && <Button variant="secondary" onClick={() => setCancellation({ outcome: "no_show", resolution: hasPaidDeposit ? "retain_deposit" : "no_payment", refund_method: "Pix", reason: "" })}>Não compareceu</Button>}
-            {!attended && <Button onClick={completeAppointment} disabled={!canFinalize} title={canFinalize ? undefined : "Finalizar exige a permissão de finalizar atendimentos."}>Revisar e finalizar</Button>}
+            {!attended && <Button onClick={completeAppointment} disabled={!canFinalize || completing} title={canFinalize ? undefined : "Finalizar exige a permissão de finalizar atendimentos."}>Revisar e finalizar</Button>}
           </div>
           {attended
             ? <small className="field-hint">Atendimento finalizado: diferenças de valor entram como ajuste na Conferência financeira; pagamentos são corrigidos pelo Financeiro.</small>
@@ -2332,8 +2392,8 @@ export function BookingAdmin({ onBack, initialTab, features = [], onUpgrade }) {
                       <Accordion.Header><Accordion.Trigger>Ajustes</Accordion.Trigger></Accordion.Header>
                       <Accordion.Content>
                         <div className="weekly-schedule-advanced-fields">
-                          <label><span>Duração (min.)</span><input type="number" min="1" value={day.duration_minutes || 40} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { duration_minutes: event.target.value })} /></label>
-                          <label><span>Intervalo (min.)</span><input type="number" min="0" value={day.buffer_minutes || 10} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { buffer_minutes: event.target.value })} /></label>
+                          <label><span>Duração (min.)</span><input type="number" min="1" value={day.duration_minutes ?? 40} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { duration_minutes: event.target.value })} /></label>
+                          <label><span>Intervalo (min.)</span><input type="number" min="0" value={day.buffer_minutes ?? 10} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { buffer_minutes: event.target.value })} /></label>
                         </div>
                       </Accordion.Content>
                     </Accordion.Item>

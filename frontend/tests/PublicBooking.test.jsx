@@ -76,13 +76,18 @@ describe("PublicBooking · CPF", () => {
 
     const cpf = screen.getByLabelText("CPF");
     await user.type(cpf, "11111111111");
-    // Máscara aplicada e dígito verificador reprovado no mesmo passo.
-    expect(cpf).toHaveValue("111.111.111-11");
+    // Validação funciona no texto digitado; a máscara só entra ao sair do campo.
+    expect(cpf).toHaveValue("11111111111");
     expect(screen.getByText(/CPF inválido/i)).toBeInTheDocument();
     expect(resumo).toBeDisabled();
+    await user.tab();
+    expect(cpf).toHaveValue("111.111.111-11");
 
     await user.clear(cpf);
     await user.type(cpf, "52998224725");
+    expect(cpf).toHaveValue("52998224725");
+    expect(resumo).toBeEnabled();
+    await user.tab();
     expect(cpf).toHaveValue("529.982.247-25");
     expect(resumo).toBeEnabled();
   });

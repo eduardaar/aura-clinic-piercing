@@ -302,7 +302,10 @@ test("ledger: status explícito, crédito aplicado fora da receita, pendente cob
   // o "a receber"; o pagamento pendente não pode virar outra receita pendente.
   const appointment = await createAppointment({ professionalId: ctx.p1, time: "15:00", fullName: "Cliente Pendente Ledger", whatsapp: "11944440006", items: [{ service_id: ctx.serviceId, procedure_price: 80, region: "Lóbulo" }] });
   await complete(appointment.id, [{ amount: 80, method: "Pix", status: "pendente" }]);
-  const pendingCompletion = await sql((db) => db.get("SELECT id FROM payments WHERE appointment_id=? AND status='pendente' ORDER BY id DESC LIMIT 1", [appointment.id]));
+  const pendingCompletion = await sql((db) => db.get("SELECT id, paid_at, amount FROM payments WHERE appointment_id=? AND status='pendente' ORDER BY id DESC LIMIT 1", [appointment.id]));
+
+  assert.equal(pendingCompletion.paid_at, null, "pagamento pendente não declara uma data de recebimento");
+  assert.equal(Number(pendingCompletion.amount), 80);
 
   // Espelho antigo de um pagamento que não existe mais (sinal recriado).
   await sql((db) => db.run(

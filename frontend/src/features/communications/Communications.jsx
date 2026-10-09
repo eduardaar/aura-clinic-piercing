@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MessageCircle, Play, Save, Sparkles } from "lucide-react";
 import { apiFetch, useFetch } from "../../lib/api";
 import { asArray } from "../../lib/utils";
@@ -55,6 +55,8 @@ export function Communications({ initialTab = "service" }) {
   const creditsRequest = useFetch("/communication-credits");
   const [templates, setTemplates] = useState([]);
   const [rules, setRules] = useState([]);
+  const dirtyTemplates = useRef(new Map());
+  const dirtyRules = useRef(new Map());
   const [busy, setBusy] = useState("");
   const [feedback, setFeedback] = useState("");
   const [tab, setTab] = useState(initialTab);
@@ -63,8 +65,8 @@ export function Communications({ initialTab = "service" }) {
   const [assistantOutput, setAssistantOutput] = useState("");
   const [assistantError, setAssistantError] = useState("");
 
-  useEffect(() => setTemplates(asArray(templatesRequest.data?.templates)), [templatesRequest.data]);
-  useEffect(() => setRules(asArray(rulesRequest.data)), [rulesRequest.data]);
+  useEffect(() => setTemplates(asArray(templatesRequest.data?.templates).map((item) => dirtyTemplates.current.get(item.id) || item)), [templatesRequest.data]);
+  useEffect(() => setRules(asArray(rulesRequest.data).map((item) => dirtyRules.current.get(item.id) || item)), [rulesRequest.data]);
   useEffect(() => setTab(initialTab), [initialTab]);
 
   const variables = asArray(templatesRequest.data?.variables);
@@ -84,17 +86,25 @@ export function Communications({ initialTab = "service" }) {
   })), [templates]);
 
   function updateTemplate(id, field, value) {
-    setTemplates((items) => items.map((item) => item.id === id ? { ...item, [field]: value } : item));
+    setTemplates((items) => items.map((item) => {
+      if (item.id !== id) return item;
+      const next = { ...item, [field]: value };
+      dirtyTemplates.current.set(id, next);
+      return next;
+    }));
   }
 
   function updateRule(id, field, value) {
-    setRules((items) => items.map((item) => item.id === id ? { ...item, [field]: value } : item));
+    setRules((items) => items.map((item) => {
+      if (item.id !== id) return item;
+      const next = { ...item, [field]: value };
+      dirtyRules.current.set(id, next);
+      return next;
+    }));
   }
 
   function updateRuleTiming(rule, field, value) {
-    const direction = field === "direction" ? value : Number(rule.offset_minutes || 0) < 0 ? "before" : "after";
-    const minutes = field === "minutes" ? Math.max(0, Number(value || 0)) : Math.abs(Number(rule.offset_minutes || 0));
-    updateRule(rule.id, "offset_minutes", direction === "before" ? -minutes : minutes);
+    updateRule(rule.id, field === "direction" ? "timing_direction" : "timing_minutes", value);
   }
 
   async function saveTemplate(template) {
@@ -103,6 +113,7 @@ export function Communications({ initialTab = "service" }) {
     try {
       await request(`/communication-templates/${template.id}`, { method: "PATCH", body: JSON.stringify(template) });
       setFeedback("Modelo salvo.");
+      if (dirtyTemplates.current.get(template.id) === template) dirtyTemplates.current.delete(template.id);
       templatesRequest.refresh();
     } catch (error) {
       setFeedback(error.message);
@@ -112,11 +123,20 @@ export function Communications({ initialTab = "service" }) {
   }
 
   async function saveRule(rule) {
+    const direction = rule.timing_direction ?? (Number(rule.offset_minutes) < 0 ? "before" : "after");
+    const minutes = rule.timing_minutes ?? Math.abs(Number(rule.offset_minutes || 0));
+    if (minutes === "" || !Number.isInteger(Number(minutes)) || Number(minutes) < 0) {
+      setFeedback("Informe um intervalo inteiro de minutos maior ou igual a zero.");
+      return;
+    }
+    const { timing_direction: _direction, timing_minutes: _minutes, ...payload } = rule;
+    payload.offset_minutes = direction === "before" ? -Number(minutes) : Number(minutes);
     setBusy(`rule-${rule.id}`);
     setFeedback("");
     try {
-      await request(`/automation-rules/${rule.id}`, { method: "PATCH", body: JSON.stringify(rule) });
+      await request(`/automation-rules/${rule.id}`, { method: "PATCH", body: JSON.stringify(payload) });
       setFeedback("Automação atualizada.");
+      if (dirtyRules.current.get(rule.id) === rule) dirtyRules.current.delete(rule.id);
       rulesRequest.refresh();
     } catch (error) {
       setFeedback(error.message);
@@ -314,11 +334,11 @@ export function Communications({ initialTab = "service" }) {
                     </header>
                     <Input label="Nome" value={rule.name || ""} onChange={(value) => updateRule(rule.id, "name", value)} />
                     <div className="communication-rule-timing">
-                      <Select label="Quando enviar" value={Number(rule.offset_minutes || 0) < 0 ? "before" : "after"} onChange={(value) => updateRuleTiming(rule, "direction", value)}>
+                      <Select label="Quando enviar" value={rule.timing_direction ?? (Number(rule.offset_minutes || 0) < 0 ? "before" : "after")} onChange={(value) => updateRuleTiming(rule, "direction", value)}>
                         <option value="before">Antes do atendimento</option>
                         <option value="after">Depois do evento</option>
                       </Select>
-                      <Input label="Intervalo em minutos" type="number" min="0" value={Math.abs(Number(rule.offset_minutes || 0))} onChange={(value) => updateRuleTiming(rule, "minutes", value)} />
+                      <Input label="Intervalo em minutos" type="number" min="0" value={rule.timing_minutes ?? Math.abs(Number(rule.offset_minutes || 0))} onChange={(value) => updateRuleTiming(rule, "minutes", value)} />
                     </div>
                     <div className="communication-rule-reference"><span>Canal</span><strong>{rule.channel === "email" ? "E-mail" : "WhatsApp"}</strong><span>Modelo</span><strong>{rule.template_name || rule.template_key}</strong></div>
                     <Checkbox label="Automação ativa" checked={Boolean(Number(rule.is_active))} onChange={(value) => updateRule(rule.id, "is_active", value ? 1 : 0)} />

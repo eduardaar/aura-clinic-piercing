@@ -586,8 +586,10 @@ CREATE TABLE IF NOT EXISTS payments (
   payment_type TEXT NOT NULL,
   method TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pago',
-  paid_at TEXT NOT NULL
+  paid_at TEXT
 );
+-- Um pagamento pendente ainda não tem data de recebimento.
+ALTER TABLE payments ALTER COLUMN paid_at DROP NOT NULL;
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS installments INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS fee_amount NUMERIC(12,2) NOT NULL DEFAULT 0;
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS net_amount NUMERIC(12,2);

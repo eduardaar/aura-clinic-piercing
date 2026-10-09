@@ -39,8 +39,10 @@ export function promotionalPrice(value, promotion) {
 
 export function catalogStockText(item, theme = {}, settings = {}) {
   const mode = theme.stock_display_mode || "status";
+  const variants = asArray(item.variants).filter((variant) => Number(variant.is_active ?? 1) === 1);
+  const quantity = variants.length ? variants.reduce((sum, variant) => sum + Number(variant.quantity || 0), 0) : Number(item.quantity || 0);
+  if (quantity <= 0) return settings.unavailable_message || "Esgotado";
   if (mode === "hidden") return "";
-  const quantity = Number(item.quantity || 0);
   if (mode === "quantity" || Boolean(Number(theme.show_stock_quantity))) return `${quantity} em estoque`;
   if (quantity <= 0) return settings.unavailable_message || "Indisponível";
   if (quantity <= 2) return settings.low_stock_message || "Poucas unidades";
@@ -54,11 +56,11 @@ export function catalogItemIsAvailable(item = {}) {
     : Number(item.quantity || 0) > 0;
 }
 
-export function catalogAvailabilityMatches(item, availability = "", showOutOfStock = false) {
+export function catalogAvailabilityMatches(item, availability = "", _showOutOfStock = true) {
   const available = catalogItemIsAvailable(item);
   if (availability === "true") return available;
   if (availability === "false") return !available;
-  return Boolean(showOutOfStock) || available;
+  return true;
 }
 
 export function catalogFilterOptions(items) {
@@ -205,4 +207,17 @@ export function hasRenderableContent(section = {}) {
     section.slogan, section.copyright_text].some(hasText);
   return [section.title, section.text, section.image_url, section.media_url, section.url].some(hasText)
     || (Array.isArray(section.items) && section.items.length > 0);
+}
+
+// Publication and archival controls remain independent from stock availability.
+export function catalogItemIsPublished(item = {}) {
+  return Number(item.is_catalog_active) === 1 && Number(item.is_published) === 1
+    && Number(item.virtual_store_active) === 1 && item.status !== "arquivado"
+    && item.can_publish !== false && item.can_publish !== 0;
+}
+
+export function catalogOrderQuantityIsValid(item = {}) {
+  const quantity = Number(item.qty);
+  const available = item.quantity === undefined || item.quantity === null ? Infinity : Number(item.quantity);
+  return Number.isInteger(quantity) && quantity > 0 && quantity <= available;
 }

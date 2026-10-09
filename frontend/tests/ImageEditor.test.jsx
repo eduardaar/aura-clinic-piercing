@@ -1,7 +1,20 @@
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { imageTransformStyle, normalizeImageTransform } from "../src/components/common/ImageEditor";
+import { ImageEditor, imageTransformStyle, normalizeImageTransform } from "../src/components/common/ImageEditor";
 
 describe("editor de imagens multi-contexto", () => {
+  it("permite limpar e substituir a coordenada antes de normalizar ao sair", async () => {
+    const user = userEvent.setup();
+    render(<ImageEditor src="/image.png" onCancel={() => {}} onConfirm={() => {}} />);
+    const x = screen.getByLabelText("Foco X");
+    await user.clear(x);
+    expect(x).toHaveValue(null);
+    await user.type(x, "75");
+    expect(x).toHaveValue(75);
+    await user.tab();
+    expect(x).toHaveValue(75);
+  });
   it("usa contain e centro como padrão para não cortar imagens", () => {
     expect(normalizeImageTransform()).toMatchObject({
       fitMode: "contain",

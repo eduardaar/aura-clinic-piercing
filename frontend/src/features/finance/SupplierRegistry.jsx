@@ -206,8 +206,8 @@ export function SupplierRegistry() {
               <Select label="Tipo" value={form.person_type} onChange={(value) => setForm((current) => ({ ...current, person_type: value, document: "" }))} required>
                 <option value="PJ">Pessoa jurídica</option><option value="PF">Pessoa física</option>
               </Select>
-              <Input label={form.person_type === "PF" ? "CPF" : "CNPJ"} value={form.document} onChange={(value) => change("document", formatSupplierTaxId(value, form.person_type))} inputMode="numeric" />
-              <Input label="Inscrição estadual" value={form.state_registration} onChange={(value) => change("state_registration", value.toUpperCase())} />
+              <Input label={form.person_type === "PF" ? "CPF" : "CNPJ"} value={form.document} onChange={(value) => change("document", value)} onBlur={(event) => change("document", formatSupplierTaxId(event.target.value, form.person_type))} inputMode="numeric" />
+              <Input label="Inscrição estadual" value={form.state_registration} onChange={(value) => change("state_registration", value)} onBlur={(event) => change("state_registration", event.target.value.toUpperCase())} />
               <Input label={form.person_type === "PF" ? "Nome completo" : "Razão social"} value={form.legal_name} onChange={(value) => change("legal_name", value)} />
               <Input label="Nome fantasia" value={form.trade_name} onChange={(value) => change("trade_name", value)} />
               <Select label="Status" value={normalizeActive(form.is_active) ? "active" : "inactive"} onChange={(value) => change("is_active", value === "active")}>
@@ -219,9 +219,9 @@ export function SupplierRegistry() {
           <FormSection title="Contato" description="Canais usados para orçamento, pedidos e suporte." badge={null} actions={null}>
             <div className="form-grid">
               <Input label="Contato comercial" value={form.contact_name} onChange={(value) => change("contact_name", value)} />
-              <Input label="Telefone" value={form.phone} onChange={(value) => change("phone", formatBrazilianPhone(value))} inputMode="tel" />
-              <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => change("whatsapp", formatBrazilianPhone(value))} inputMode="tel" />
-              <Input type="email" label="E-mail" value={form.email} onChange={(value) => change("email", value.replace(/\s/g, "").toLowerCase())} />
+              <Input label="Telefone" value={form.phone} onChange={(value) => change("phone", value)} onBlur={(event) => change("phone", formatBrazilianPhone(event.target.value))} inputMode="tel" />
+              <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => change("whatsapp", value)} onBlur={(event) => change("whatsapp", formatBrazilianPhone(event.target.value))} inputMode="tel" />
+              <Input type="email" label="E-mail" value={form.email} onChange={(value) => change("email", value)} onBlur={(event) => change("email", event.target.value.replace(/\s/g, "").toLowerCase())} />
               <Input label="Site HTTPS ou @Instagram" value={form.website} onChange={(value) => change("website", value)} />
             </div>
           </FormSection>
@@ -242,7 +242,7 @@ export function SupplierRegistry() {
 
           <AdvancedFields title="Endereço" description="Opcional para entrega, cobrança e documentos fiscais." count={undefined} open={undefined} onOpenChange={undefined}>
             <div className="form-grid">
-              <Input label="CEP" value={form.postal_code} onChange={(value) => change("postal_code", formatPostalCode(value))} inputMode="numeric" />
+              <Input label="CEP" value={form.postal_code} onChange={(value) => change("postal_code", value)} onBlur={(event) => change("postal_code", formatPostalCode(event.target.value))} inputMode="numeric" />
               <Input label="Logradouro" value={form.street} onChange={(value) => change("street", value)} />
               <Input label="Número" value={form.street_number} onChange={(value) => change("street_number", value)} />
               <Input label="Complemento" value={form.address_complement} onChange={(value) => change("address_complement", value)} />

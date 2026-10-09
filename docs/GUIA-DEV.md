@@ -2,6 +2,37 @@
 
 Como configurar, rodar, testar e evoluir a **Aura Clinic Piercing** localmente. Complementa `docs/ARQUITETURA.md` (visão geral) e `docs/API.md` (endpoints).
 
+## Regressões de edição e finalização (09/10/2026)
+
+Os testes `editableFields`, `catalogVisibility`, `completionPayments.unit` e as
+regressões existentes de transações/relatórios entram na suíte normal. Testes
+de UI adicionais estão em `InputEditingFlows`, `PublicCatalog` e nos arquivos
+de cadastro, compra, venda, agenda e editor de imagem.
+
+O teste integrado de navegador fica em
+`outputs/melhorias-2026-10-09/browser-validation.test.mjs`. Para repeti-lo:
+
+1. Copie `browser-harness.jsx` e `browser-harness.html` dessa pasta para
+   `frontend/.qa-improvements.jsx` e `frontend/.qa-improvements.html`.
+2. Inicie Vite na porta 5184 com `VITE_API_URL=/api` e
+   `VITE_DEV_API_TARGET=http://localhost:4299`.
+3. Execute da raiz, com PostgreSQL **local** e permissão de criar banco:
+
+   ```bash
+   TEMP=/tmp AURA_TEST_PORT=4299 AURA_PLAYWRIGHT_MODULE=/caminho/playwright/index.mjs \
+     node outputs/sinal-dashboard-rastreabilidade-2026-10-06/run-isolated-tests.cjs \
+     ../outputs/melhorias-2026-10-09/browser-validation.test.mjs
+   ```
+
+4. Encerre o Vite de teste e remova somente os dois arquivos `.qa-improvements`
+   copiados para o frontend. Eles não fazem parte do produto.
+
+O runner cria/remove um banco descartável e desativa credenciais externas.
+Chromium e WebKit precisam estar instalados na instalação de Playwright
+indicada. A ordem de importação de `styles.css` no harness deve preceder os
+componentes, como na aplicação, para preservar a ordem das camadas CSS.
+Para execuções concorrentes do runner, use portas e pastas `TEMP` diferentes.
+
 ## Pré-requisitos
 
 - **Node.js 20.19+**

@@ -1,0 +1,66 @@
+[
+  {
+    "engine": "chromium",
+    "width": 320,
+    "columns": 2,
+    "scroll": 320,
+    "sharedTenant": true,
+    "unavailableVariantContact": true
+  },
+  {
+    "engine": "chromium",
+    "width": 390,
+    "columns": 2,
+    "scroll": 390,
+    "sharedTenant": true,
+    "unavailableVariantContact": true
+  },
+  {
+    "engine": "chromium",
+    "width": 768,
+    "columns": 3,
+    "scroll": 768,
+    "sharedTenant": true,
+    "unavailableVariantContact": true
+  },
+  {
+    "engine": "chromium",
+    "width": 1366,
+    "columns": 5,
+    "scroll": 1366,
+    "sharedTenant": true,
+    "unavailableVariantContact": true
+  },
+  {
+    "engine": "webkit",
+    "width": 320,
+    "columns": 2,
+    "scroll": 320,
+    "sharedTenant": true,
+    "unavailableVariantContact": true
+  },
+  {
+    "engine": "webkit",
+    "width": 390,
+    "columns": 2,
+    "scroll": 390,
+    "sharedTenant": true,
+    "unavailableVariantContact": true
+  },
+  {
+    "engine": "webkit",
+    "width": 768,
+    "columns": 3,
+    "scroll": 768,
+    "sharedTenant": true,
+    "unavailableVariantContact": true
+  },
+  {
+    "engine": "webkit",
+    "width": 1366,
+    "columns": 5,
+    "scroll": 1366,
+    "sharedTenant": true,
+    "unavailableVariantContact": true
+  }
+]

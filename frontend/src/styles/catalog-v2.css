@@ -132,3 +132,32 @@
 }
 
 } /* @layer telas */
+
+/* Compact storefront cards use the available width, including builder columns. */
+.catalog-page .catalog-grid,
+.catalog-page .catalog-product-rail.catalog-display-grid > div {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 16px;
+}
+.catalog-page .catalog-product-card { min-width: 0; display: flex; flex-direction: column; }
+.catalog-page .catalog-product-card figure { min-height: 0; height: auto; aspect-ratio: 1; margin: 0; }
+.catalog-page .catalog-product-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; padding: 14px; }
+.catalog-page .catalog-product-info h2, .catalog-page .catalog-product-info p,
+.catalog-page .catalog-soft-detail { margin: 0; overflow-wrap: anywhere; white-space: normal; height: auto; max-height: none; display: block; }
+.catalog-page .catalog-actions { margin-top: auto; padding-top: 8px; display: grid; gap: 6px; }
+.catalog-page .catalog-actions a, .catalog-page .catalog-actions button { white-space: normal; overflow-wrap: anywhere; text-align: center; }
+.catalog-page .catalog-variation-summary { color: var(--catalog-muted, #74685e); }
+@media (min-width: 320px) and (max-width: 767px) {
+  .catalog-page .catalog-grid, .catalog-page .catalog-product-rail.catalog-display-grid > div {
+    grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;
+  }
+  .catalog-page .catalog-product-info { padding: 10px !important; gap: 5px; }
+  .catalog-page .catalog-product-info h2 { font-size: .86rem; line-height: 1.3; }
+  .catalog-page .catalog-product-info p, .catalog-page .catalog-soft-detail { font-size: .75rem; line-height: 1.4; }
+  .catalog-page .catalog-actions a, .catalog-page .catalog-actions button { padding: 8px 6px; min-height: 44px; font-size: .75rem; }
+  .catalog-page .catalog-product-card figure { aspect-ratio: 1; }
+  .catalog-page .catalog-product-badge { max-width: calc(100% - 14px); font-size: .65rem; padding: 4px 6px; }
+}
+
+.catalog-page .catalog-product-info h2 a { display: block; overflow: visible; -webkit-line-clamp: unset; }
+.catalog-page .catalog-actions .secondary-button { display: inline-flex; align-items: center; justify-content: center; }

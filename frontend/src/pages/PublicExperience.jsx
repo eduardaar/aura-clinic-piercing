@@ -27,6 +27,9 @@ import { readRecentSearches, saveRecentSearch, smartSearchMatches, useDebouncedV
 import { JEWELRY_CATEGORY_OPTIONS, defaultPublicBooking, nextBookingDates, parseGalleryUrls } from "../lib/defaultForms";
 import {
   catalogAvailabilityMatches,
+  catalogItemIsAvailable,
+  catalogItemIsPublished,
+  catalogOrderQuantityIsValid,
   catalogCategoryTerms,
   catalogContentSections,
   catalogFilterOptions,
@@ -142,7 +145,8 @@ function trackCatalogEvent(eventType, productId = null, metadata = {}) {
 // Leitura resiliente do localStorage do catálogo público (favoritos / itens do pedido).
 function readCatalogStorage(key, fallback = []) {
   try {
-    const raw = localStorage.getItem(`${key}:${publicTenant() || "default"}`) || localStorage.getItem(key);
+    const tenant = publicTenant();
+    const raw = localStorage.getItem(`${key}:${tenant || "default"}`) || (!tenant ? localStorage.getItem(key) : null);
     if (!raw) return fallback;
     const parsed = JSON.parse(raw);
     return parsed ?? fallback;
@@ -259,11 +263,14 @@ export function PublicCatalog() {
   const catalogItems = asArray(safeData.items);
   // Durante a transição dos campos legados, a vitrine só recebe produto cuja
   // publicação esteja completa. O backend aplica a mesma regra.
-  const publishedItems = catalogItems.filter((item) => (
-    Boolean(Number(item.is_catalog_active)) &&
-    Boolean(Number(item.is_published)) &&
-    Boolean(Number(item.virtual_store_active))
-  ));
+  const publishedItems = catalogItems.filter(catalogItemIsPublished);
+  const productSections = hasLayoutRows
+    ? layoutRows.flatMap((row) => row.columns.flatMap((column) => column.components))
+    : publishedLayout;
+  const hasCuratedProducts = asArray(safeData.featuredProducts).some((product) => Number(product.is_active ?? 1) === 1)
+    || publishedItems.some((item) => Number(item.is_featured) === 1);
+  const hasFullProductSection = productSections.some((section) => section.section_type === "featured_products"
+    && !section.category_filter && !hasCuratedProducts);
   const selectedProduct = publishedItems.find((item) => asNumber(item?.id) === selectedProductId) || null;
   const filteredItems = publishedItems.filter((item) => {
     const variants = asArray(item.variants);
@@ -277,13 +284,13 @@ export function PublicCatalog() {
     const stoneMatch = !filters.stone || String(item.stone || "").toLowerCase().includes(filters.stone.toLowerCase()) || matchesVariant("stone_color", filters.stone);
     const sizeMatch = !filters.size || item.size === filters.size || matchesVariant("size", filters.size);
     const topSizeMatch = !filters.topSize || Number(item.top_size_mm) === Number(filters.topSize) || variants.some((variant) => Number(variant.top_size_mm) === Number(filters.topSize));
-    const availabilityMatch = catalogAvailabilityMatches(item, filters.availability, Boolean(Number(theme.show_out_of_stock)));
+    const availabilityMatch = catalogAvailabilityMatches(item, filters.availability);
     return categoryMatch && searchMatch && materialMatch && colorMatch && stoneMatch && sizeMatch && topSizeMatch && availabilityMatch;
   });
   const items = [...filteredItems].sort((a, b) => sort === "menor-preco" ? a.sale_value - b.sale_value : sort === "maior-preco" ? b.sale_value - a.sale_value : sort === "nome-az" ? a.name.localeCompare(b.name) : sort === "nome-za" ? b.name.localeCompare(a.name) : sort === "estoque" ? Number(b.quantity) - Number(a.quantity) : b.id - a.id);
   const options = catalogFilterOptions(publishedItems);
-  const latestItems = publishedItems.filter((item) => Number(item.quantity || 0) > 0).sort((a, b) => b.id - a.id);
-  const bestSellerItems = publishedItems.filter((item) => Number(item.quantity || 0) > 0).sort((a, b) => Number(b.sale_value || 0) - Number(a.sale_value || 0));
+  const latestItems = [...publishedItems].sort((a, b) => b.id - a.id);
+  const bestSellerItems = [...publishedItems].sort((a, b) => Number(b.sale_value || 0) - Number(a.sale_value || 0));
   const promoItems = publishedItems.filter((item) => catalogPromotionForItem(item, asArray(safeData.promotions)));
   const safeFavoriteIds = asArray(favoriteIds);
   const safeOrderItems = asArray(orderItems);
@@ -317,6 +324,7 @@ export function PublicCatalog() {
   }
 
 function addToOrder(item) {
+    if (!catalogItemIsAvailable(item)) return;
     if (!previewMode) trackCatalogEvent("product_selected", item.id, { variation_id: item.selected_variant_id || null });
     setOrderItems((currentValue) => {
       const current = asArray(currentValue);
@@ -340,15 +348,26 @@ function addToOrder(item) {
   function updateOrderItemQuantity(id, quantity) {
     setOrderItems((current) => asArray(current).map((item) => {
       if ((item.order_key || item.id) !== id) return item;
-      const max = Math.max(1, Number(item.quantity || 1));
-      return { ...item, qty: Math.min(Math.max(1, Number(quantity || 1)), max) };
+      return { ...item, qty: quantity };
     }));
   }
 
+  const drawerContent = drawer && <CatalogDrawer type={drawer} favorites={favoriteItems}
+    orderItems={orderItems} orderTotal={orderTotal} whatsappPhone={data.whatsapp_phone}
+    onClose={() => setDrawer(null)}
+    onRemoveFavorite={(id) => setFavoriteIds((current) => current.filter((itemId) => itemId !== id))}
+    onRemoveOrder={removeFromOrder} onUpdateOrderNotes={updateOrderItemNotes}
+    onUpdateOrderQuantity={updateOrderItemQuantity} onClearOrder={() => setOrderItems([])} />;
+
+  if (selectedProductId && !selectedProduct) {
+    return <main className="catalog-page"><section className="catalog-main"><h1>Joia indisponível neste catálogo</h1>
+      <p>O produto pode ter sido removido ou deixado de ser publicado.</p><a className="primary-button" href={catalogUrl()}>Voltar ao catálogo</a></section></main>;
+  }
   if (selectedProduct) {
     return (
       <CatalogProductDetail
         item={selectedProduct}
+        drawerContent={drawerContent}
         data={data}
         theme={theme}
         settings={settings}
@@ -363,7 +382,9 @@ function addToOrder(item) {
             selected_variant_id: variant.id,
             selected_variant_name: variant.variation_name,
             selected_color: variant.selected_color || "",
-            sale_value: variant.sale_value,
+            sale_value: variant.sale_value ?? selectedProduct.sale_value,
+            quantity: variant.quantity ?? selectedProduct.quantity,
+            requested_qty: variant.requested_qty,
             customer_notes: [
               variant.variation_name,
               variant.selected_color && `Cor: ${variant.selected_color}`
@@ -398,7 +419,7 @@ function addToOrder(item) {
                 {recentSearches.map((item) => <option key={item} value={item} />)}
               </datalist>
             </label>
-            {Boolean(Number(theme.show_favorites || 1)) && <button className="catalog-icon-action" onClick={() => setDrawer("favorites")} aria-label="Favoritos"><Heart size={18} /><span>{favoriteIds.length}</span></button>}
+            {Boolean(Number(theme.show_favorites ?? 1)) && <button className="catalog-icon-action" onClick={() => setDrawer("favorites")} aria-label="Favoritos"><Heart size={18} /><span>{favoriteIds.length}</span></button>}
             <button className="catalog-icon-action primary-cart" onClick={() => setDrawer("order")}><ShoppingCart size={19} /> Pedido <span>{orderItems.reduce((sum, item) => sum + Number(item.qty || 1), 0)}</span></button>
           </div>
         </header>}
@@ -490,24 +511,16 @@ function addToOrder(item) {
             footerDisplayName={footerDisplayName}
           />
         ))}
+        {!hasFullProductSection && <CatalogProductsBlock
+          section={{ title: "Todas as joias", subtitle: "Catálogo completo" }} style={undefined} className="catalog-results"
+          productsRef={productsRef} items={items} activeCategory={activeCategory}
+          data={data} theme={theme} settings={settings} favoriteIds={favoriteIds}
+          onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }}
+        />}
         <CatalogNativePlugins plugins={safeData.plugins} settings={settings} theme={theme} />
-        {Boolean(Number(theme.show_whatsapp_button || 1)) && <a className="floating-whatsapp" href={whatsappCatalogUrl(data.whatsapp_message, data.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle size={24} /><span>WhatsApp</span></a>}
+        {Boolean(Number(theme.show_whatsapp_button ?? 1)) && data.whatsapp_phone && <a className="floating-whatsapp" href={whatsappCatalogUrl(data.whatsapp_message, data.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle size={24} /><span>WhatsApp</span></a>}
       </section>
-      {drawer && (
-        <CatalogDrawer
-          type={drawer}
-          favorites={favoriteItems}
-          orderItems={orderItems}
-          orderTotal={orderTotal}
-          whatsappPhone={data.whatsapp_phone}
-          onClose={() => setDrawer(null)}
-          onRemoveFavorite={(id) => setFavoriteIds((current) => current.filter((itemId) => itemId !== id))}
-          onRemoveOrder={removeFromOrder}
-          onUpdateOrderNotes={updateOrderItemNotes}
-          onUpdateOrderQuantity={updateOrderItemQuantity}
-          onClearOrder={() => setOrderItems([])}
-        />
-      )}
+      {drawerContent}
     </main>
   );
 }
@@ -794,9 +807,9 @@ function CatalogLayoutBlock({
     case "premium_products":
       return rail("Joias premium", "Curadoria de alto padrão para composições especiais.", publishedItems, { forceSort: "price_desc" });
     case "in_stock":
-      return rail("Disponíveis agora", "Joias prontas para você reservar.", publishedItems.filter((item) => Number(item.quantity || 0) > 0), { forceSort: "stock" });
+      return rail("Disponíveis agora", "Joias prontas para você reservar.", publishedItems.filter(catalogItemIsAvailable), { forceSort: "stock" });
     case "out_of_stock":
-      return rail("Indisponíveis", "Cadastre seu interesse e avisaremos quando voltarem.", publishedItems.filter((item) => Number(item.quantity || 0) <= 0 || item.status === "esgotado"));
+      return rail("Indisponíveis", "Cadastre seu interesse e avisaremos quando voltarem.", publishedItems.filter((item) => !catalogItemIsAvailable(item)));
     case "category_products":
       return rail("Joias por categoria", "Explore a seleção que mais combina com você.", publishedItems, { category: activeCategory });
     case "services":
@@ -1266,14 +1279,15 @@ function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, th
   const detail = [elegantProductName(item.color), elegantProductName(item.stone)].filter(Boolean).join(" · ");
   const saleValue = Number(item.sale_value || 0);
   const promotionalValue = promotion ? promotionalPrice(saleValue, promotion) : null;
-  const finalValue = promotionalValue || saleValue;
+  const finalValue = promotionalValue ?? saleValue;
   const pixValue = finalValue * 0.95;
   const installmentValue = finalValue / 3;
-  const shareText = `${settings.product_share_text || "Olha esta joia:"} ${productName} - ${description} - ${currency.format(finalValue)}.`;
-  const notifyText = `Olá! Quero ser avisada quando a joia ${productName} voltar ao estoque.`;
+  const productLink = new URL(catalogProductUrl(item.id), window.location.origin).href;
+  const shareText = `${settings.product_share_text || "Olha esta joia:"} ${productName} - ${currency.format(finalValue)}. ${productLink}`;
+  const notifyText = `Olá! Quero consultar a disponibilidade da joia ${productName}. ${productLink}`;
   const stockText = catalogStockText(item, theme, settings);
-  const available = Number(item.quantity || 0) > 0 && item.status !== "esgotado";
-  const requiresVariant = asArray(item.variants).filter((variant) => Number(variant.is_active ?? 1) === 1 && Number(variant.quantity || 0) > 0).length > 1;
+  const available = catalogItemIsAvailable(item);
+  const requiresVariant = asArray(item.variants).some((variant) => Number(variant.is_active ?? 1) === 1);
 
   return (
     <article className="catalog-product-card">
@@ -1282,13 +1296,14 @@ function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, th
         <a className="catalog-product-image-link" href={catalogProductUrl(item.id)} aria-label={`Abrir ${productName}`}>
           <img src={catalogImageUrl(item.photo_url)} alt="" loading="lazy" onError={useNeutralImageFallback} />
         </a>
-        {Boolean(Number(theme.show_favorites || 1)) && <button type="button" className={favorite ? "favorite active" : "favorite"} onClick={onToggleFavorite} aria-label="Favoritar">
+        {Boolean(Number(theme.show_favorites ?? 1)) && <button type="button" className={favorite ? "favorite active" : "favorite"} onClick={onToggleFavorite} aria-label="Favoritar">
           <Heart size={19} />
         </button>}
       </figure>
       <div className="catalog-product-info">
         <h2><a href={catalogProductUrl(item.id)}>{productName}</a></h2>
         <p>{description || "Joalheria selecionada Aura"}</p>
+        {asArray(item.variants).length > 1 && <small className="catalog-variation-summary">{item.variants.length} variações · ver detalhes</small>}
         {detail && <span className="catalog-soft-detail">{detail}</span>}
         {item.sku && <small className="catalog-sku">SKU {item.sku}</small>}
         <strong>{finalValue > 0 ? <>{promotion && <del>{currency.format(saleValue)}</del>}{currency.format(finalValue)}</> : "Valor Sob Consulta"}</strong>
@@ -1296,11 +1311,11 @@ function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, th
         {finalValue >= 60 && <span className="catalog-payment-line muted">até 3x de {currency.format(installmentValue)} sem juros</span>}
         {stockText && <small className={Number(item.quantity || 0) <= 2 ? "catalog-stock warning" : "catalog-stock"}>{stockText}</small>}
         <div className="catalog-actions">
-          {available && Boolean(Number(theme.show_schedule_button || 1)) && <button className="primary-button" type="button" onClick={onAddToOrder}>Quero essa joia</button>}
-          {available && Boolean(Number(theme.show_buy_button)) && (requiresVariant
+          {available && Boolean(Number(theme.show_schedule_button ?? 1)) && <a className="primary-button" href={catalogProductUrl(item.id)}>Ver joia</a>}
+          {available && !Boolean(Number(theme.show_schedule_button ?? 1)) && Boolean(Number(theme.show_buy_button)) && (requiresVariant
             ? <a className="secondary-button" href={catalogUrl(`/catalogo/produto/${item.id}`)}>Escolher variação</a>
             : <button className="secondary-button" type="button" onClick={onAddToOrder}>Adicionar ao carrinho</button>)}
-          {!available && <a className="primary-button" href={whatsappCatalogUrl(notifyText, settings.whatsapp_phone)} target="_blank" rel="noreferrer">Avise-me</a>}
+          {!available && <a className="primary-button" href={requiresVariant || !settings.whatsapp_phone ? catalogProductUrl(item.id) : whatsappCatalogUrl(notifyText, settings.whatsapp_phone)} target={requiresVariant || !settings.whatsapp_phone ? undefined : "_blank"} rel="noreferrer">Consultar disponibilidade</a>}
           <a className="secondary-button" href={whatsappShareUrl(shareText)} target="_blank" rel="noreferrer"><MessageCircle size={15} /> Compartilhar</a>
         </div>
       </div>
@@ -1308,12 +1323,13 @@ function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, th
   );
 }
 
-/** @param {{ item?: Record<string, any>, data?: Record<string, any>, theme?: Record<string, any>, settings?: Record<string, any>, favorite?: boolean, onToggleFavorite?: (item: any) => any, onAddToOrder?: (item: any) => any, onScheduleWithJewelry?: (item: any) => any }} props */
-function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite, onToggleFavorite, onAddToOrder, onScheduleWithJewelry }) {
+/** @param {{ item?: Record<string, any>, data?: Record<string, any>, theme?: Record<string, any>, settings?: Record<string, any>, favorite?: boolean, onToggleFavorite?: (item: any) => any, onAddToOrder?: (item: any) => any, onScheduleWithJewelry?: (item: any) => any, drawerContent?: React.ReactNode }} props */
+function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite, onToggleFavorite, onAddToOrder, onScheduleWithJewelry, drawerContent }) {
   const productName = elegantProductName(item.name);
   const availableVariants = asArray(item?.variants).filter((variant) => Boolean(asNumber(variant?.is_active, 1)));
-  const [selectedVariantId, setSelectedVariantId] = useState(availableVariants.find((variant) => Number(variant.quantity || 0) > 0)?.id || availableVariants[0]?.id || "");
+  const [selectedVariantId, setSelectedVariantId] = useState(new URLSearchParams(window.location.search).get("variant") || availableVariants.find((variant) => Number(variant.quantity || 0) > 0)?.id || availableVariants[0]?.id || "");
   const selectedVariant = availableVariants.find((variant) => Number(variant.id) === Number(selectedVariantId)) || availableVariants[0] || {};
+  const selectedProductLink = new URL(catalogUrl(`/catalogo/produto/${item.id}`, { variant: selectedVariant.id }), window.location.origin).href;
   const colorOptions = splitColorOptions(selectedVariant.color);
   const [selectedColor, setSelectedColor] = useState(colorOptions[0] || "");
   const [quantity, setQuantity] = useState(1);
@@ -1333,10 +1349,11 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
 
   const description = item.description || "Joia selecionada com curadoria profissional.";
   const detailItems = [
-    selectedVariant.material && { label: "Material", value: elegantProductName(selectedVariant.material) },
+    (selectedVariant.material || item.material) && { label: "Material", value: elegantProductName(selectedVariant.material || item.material) },
+    item.category && { label: "Tipo de joia", value: cleanDisplayText(item.category) },
     selectedColor && { label: "Observação de Cor", value: elegantProductName(selectedColor) },
     item.stone && { label: "Pedra", value: elegantProductName(item.stone) },
-    selectedVariant.size && { label: "Tamanho", value: selectedVariant.size },
+    (selectedVariant.size || item.size) && { label: "Tamanho", value: selectedVariant.size || item.size },
     Number(selectedVariant.top_size_mm) > 0 && { label: "Tamanho do topo", value: `${Number(selectedVariant.top_size_mm).toLocaleString("pt-BR", { minimumFractionDigits: 1 })} mm` },
     selectedVariant.thickness && { label: "Espessura", value: selectedVariant.thickness },
     selectedVariant.length && { label: "Comprimento", value: selectedVariant.length },
@@ -1346,12 +1363,12 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
     item.package_length_cm || item.package_width_cm || item.package_height_cm ? { label: "Embalagem", value: `${item.package_length_cm || 0} x ${item.package_width_cm || 0} x ${item.package_height_cm || 0} cm` } : null,
     item.physical_location && { label: "Localização", value: item.physical_location }
   ].filter(Boolean);
-  const stockText = catalogStockText(item, theme, settings);
-  const saleValue = Number(selectedVariant.sale_value || item.sale_value || 0);
-  const maximumQuantity = Math.max(0, Number(selectedVariant.quantity ?? item.inventory_quantity ?? 0));
-  const available = Number(selectedVariant.quantity ?? item.quantity ?? 0) > 0 && selectedVariant.status !== "esgotado";
+  const stockText = catalogStockText({ ...item, ...selectedVariant, variants: [] }, theme, settings);
+  const saleValue = Number(selectedVariant.sale_value ?? item.sale_value ?? 0);
+  const maximumQuantity = Math.max(0, Number(selectedVariant.quantity ?? item.quantity ?? 0));
+  const available = Number(selectedVariant.quantity ?? item.quantity ?? 0) > 0;
   const related = asArray(data?.items)
-    .filter((candidate) => candidate.id !== item.id && (candidate.category === item.category || candidate.subcategory === item.subcategory))
+    .filter((candidate) => catalogItemIsPublished(candidate) && candidate.id !== item.id && (candidate.category === item.category || candidate.subcategory === item.subcategory))
     .slice(0, 4);
 
   return (
@@ -1365,7 +1382,7 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
           </a>
           <div className="catalog-top-actions">
             <a className="secondary-button" href={catalogUrl()}>Voltar ao catálogo</a>
-            {Boolean(Number(theme.show_favorites || 1)) && <button className="catalog-icon-action" onClick={onToggleFavorite} aria-label={favorite ? "Remover dos favoritos" : "Favoritar"}><Heart size={18} /></button>}
+            {Boolean(Number(theme.show_favorites ?? 1)) && <button className="catalog-icon-action" onClick={onToggleFavorite} aria-label={favorite ? "Remover dos favoritos" : "Favoritar"}><Heart size={18} /></button>}
           </div>
         </header>
 
@@ -1387,9 +1404,9 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
             <p className="catalog-product-description">{description}</p>
             {availableVariants.length > 0 && (
               <div className="catalog-variant-picker">
-                <Select label="Escolha a Variação" value={selectedVariantId} onChange={setSelectedVariantId}>
+                <Select label="Escolha a Variação" value={selectedVariantId} onChange={(value) => { setSelectedVariantId(value); setQuantity(1); }}>
                     {availableVariants.map((variant) => (
-                      <option key={variant.id} value={variant.id} disabled={Number(variant.quantity || 0) <= 0}>
+                      <option key={variant.id} value={variant.id}>
                         {variantCatalogLabel(variant)} · {variant.quantity > 0 ? `${variant.quantity} disponíveis` : "Indisponível"}
                       </option>
                     ))}
@@ -1415,12 +1432,12 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
               ))}
             </div>
             <div className="catalog-detail-actions">
-              {available && Boolean(Number(theme.show_schedule_button || 1)) && <button className="primary-button" type="button" onClick={() => onScheduleWithJewelry({ ...selectedVariant, selected_color: selectedColor })}>Quero Agendar Com Essa Joia</button>}
+              {available && Boolean(Number(theme.show_schedule_button ?? 1)) && <button className="primary-button" type="button" onClick={() => onScheduleWithJewelry({ ...selectedVariant, selected_color: selectedColor })}>Quero Agendar Com Essa Joia</button>}
               {available && <button className="secondary-button" type="button" onClick={() => onAddToOrder({ ...selectedVariant, selected_color: selectedColor, requested_qty: quantity })}>Adicionar {quantity} ao carrinho</button>}
-              {!available && settings.whatsapp_phone && <a className="primary-button" href={whatsappCatalogUrl(`Ola! Gostaria de consultar a disponibilidade desta joia:\n\nProduto: ${productName}\nVariacao: ${variantCatalogLabel(selectedVariant)}\nMaterial: ${selectedVariant.material || item.material || "nao informado"}\nCor: ${selectedColor || selectedVariant.color || item.color || "nao informada"}\nTamanho: ${variantCatalogLabel(selectedVariant)}\nLink: ${window.location.href}\n\nPodem me informar prazo e valor?`, settings.whatsapp_phone)} target="_blank" rel="noreferrer">Pedir pelo WhatsApp</a>}
+              {!available && settings.whatsapp_phone && <a className="primary-button" href={whatsappCatalogUrl(`Ola! Gostaria de consultar a disponibilidade desta joia:\n\nProduto: ${productName}\nVariacao: ${variantCatalogLabel(selectedVariant)}\nMaterial: ${selectedVariant.material || item.material || "nao informado"}\nCor: ${selectedColor || selectedVariant.color || item.color || "nao informada"}\nTamanho: ${variantCatalogLabel(selectedVariant)}\nLink: ${selectedProductLink}\n\nPodem me informar prazo e valor?`, settings.whatsapp_phone)} target="_blank" rel="noreferrer">Pedir pelo WhatsApp</a>}
               {!available && !settings.whatsapp_phone && <span className="form-error">WhatsApp de vendas nao configurado. Avise a administracao.</span>}
-              {settings.whatsapp_phone && <a className="secondary-button" href={whatsappCatalogUrl(`Olá! Quero informações sobre ${productName}, ${variantCatalogLabel(selectedVariant)}${selectedColor ? `, na cor ${selectedColor}` : ""}.`, settings.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Falar com a Aura</a>}
-              <a className="secondary-button" href={whatsappShareUrl(`${settings.product_share_text || "Olha esta joia:"} ${item.name} - ${currency.format(saleValue)}.`)} target="_blank" rel="noreferrer">Compartilhar</a>
+              {settings.whatsapp_phone && <a className="secondary-button" href={whatsappCatalogUrl(`Olá! Quero informações sobre ${productName}, ${variantCatalogLabel(selectedVariant)}${selectedColor ? `, na cor ${selectedColor}` : ""}. ${selectedProductLink}`, settings.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Falar com a Aura</a>}
+              <a className="secondary-button" href={whatsappShareUrl(`${settings.product_share_text || "Olha esta joia:"} ${item.name} - ${variantCatalogLabel(selectedVariant)} - ${currency.format(saleValue)}. ${selectedProductLink}`)} target="_blank" rel="noreferrer">Compartilhar</a>
             </div>
             {item.notes && <div className="catalog-notes-box"><strong>Observações</strong><p>{item.notes}</p></div>}
           </div>
@@ -1440,7 +1457,7 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
                   favorite={false}
                   onToggleFavorite={() => {}}
                   onAddToOrder={() => {}}
-                  theme={{ ...theme, show_favorites: 0 }}
+                  theme={{ ...theme, show_favorites: 0, show_buy_button: 0 }}
                   settings={settings}
                   promotion={catalogPromotionForItem(relatedItem, data.promotions || [])}
                 />
@@ -1449,6 +1466,7 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
           </section>
         )}
       </section>
+      {drawerContent}
     </main>
   );
 }
@@ -1461,8 +1479,9 @@ function CatalogDrawer({ type, favorites, orderItems, orderTotal, whatsappPhone,
   const safeFavorites = asArray(favorites);
   const safeOrderItems = asArray(orderItems);
   const items = isFavorites ? safeFavorites : safeOrderItems;
+  const invalidQuantities = safeOrderItems.some((item) => !catalogOrderQuantityIsValid(item));
   useEffect(() => {
-    if (isFavorites || !safeOrderItems.length) {
+    if (isFavorites || !safeOrderItems.length || invalidQuantities) {
       setCouponQuote(null);
       return;
     }
@@ -1486,7 +1505,7 @@ function CatalogDrawer({ type, favorites, orderItems, orderTotal, whatsappPhone,
       if (active && json.valid) setCouponQuote(json);
     }).catch(() => {});
     return () => { active = false; };
-  }, [isFavorites, orderItems]);
+  }, [isFavorites, orderItems, invalidQuantities]);
   const favoriteMessage = safeFavorites.length
     ? `Olá! Quero ajuda com estas joias favoritas: ${safeFavorites.map((item) => item.name).join(", ")}.`
     : "Olá! Quero ajuda para escolher minhas joias favoritas no catálogo.";
@@ -1496,13 +1515,14 @@ function CatalogDrawer({ type, favorites, orderItems, orderTotal, whatsappPhone,
     : "Olá! Quero ajuda para montar meu pedido no catálogo.";
 
   async function applyCoupon() {
+    if (invalidQuantities) return setCouponError("Informe quantidades inteiras, maiores que zero e dentro do estoque disponível.");
     setCouponError("");
     setCouponQuote(null);
     const response = await publicApiFetch("/catalog/price-quote", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        coupon_code: couponCode,
+        coupon_code: couponCode.trim().toUpperCase(),
         items: safeOrderItems.map((item) => ({
           product_id: item.id,
           variation_id: item.selected_variant_id,
@@ -1537,8 +1557,8 @@ function CatalogDrawer({ type, favorites, orderItems, orderTotal, whatsappPhone,
               <div>
                 <strong>{item.name}</strong>
                 <span>{[item.material, item.selected_color || item.color, item.selected_variant_name || item.size].map(elegantProductName).filter(Boolean).join(" · ")}</span>
-                <small>{isFavorites ? currency.format(item.sale_value || 0) : `${item.qty || 1}x · ${currency.format(item.sale_value || 0)}`}</small>
-                {!isFavorites && <label>Quantidade<input type="number" min="1" max={Math.max(1, Number(item.quantity || 1))} value={item.qty || 1} onChange={(event) => onUpdateOrderQuantity(item.order_key || item.id, event.target.value)} /></label>}
+                <small>{isFavorites ? currency.format(item.sale_value || 0) : `${catalogOrderQuantityIsValid(item) ? `${item.qty ?? 1}x` : "Quantidade inválida"} · ${currency.format(item.sale_value || 0)}`}</small>
+                {!isFavorites && <label>Quantidade<input type="number" min="1" max={Math.max(1, Number(item.quantity || 1))} value={item.qty ?? 1} onChange={(event) => onUpdateOrderQuantity(item.order_key || item.id, event.target.value)} /></label>}
                 {!isFavorites && <textarea value={item.customer_notes || ""} onChange={(event) => onUpdateOrderNotes(item.order_key || item.id, event.target.value)} placeholder="Observações de cor, tamanho ou envio" />}
               </div>
               <button onClick={() => isFavorites ? onRemoveFavorite(item.id) : onRemoveOrder(item.order_key || item.id)}>Remover</button>
@@ -1548,15 +1568,21 @@ function CatalogDrawer({ type, favorites, orderItems, orderTotal, whatsappPhone,
         {!isFavorites && (
           <footer>
             <div className="catalog-coupon-field">
-              <input value={couponCode} onChange={(event) => setCouponCode(event.target.value.toUpperCase())} placeholder="Cupom de desconto" />
-              <button type="button" className="secondary-button" onClick={applyCoupon} disabled={!couponCode.trim() || !safeOrderItems.length}>Aplicar</button>
+              <input value={couponCode} onChange={(event) => setCouponCode(event.target.value)} onBlur={() => setCouponCode((current) => current.trim().toUpperCase())} placeholder="Cupom de desconto" />
+              <button type="button" className="secondary-button" onClick={applyCoupon} disabled={!couponCode.trim() || !safeOrderItems.length || invalidQuantities}>Aplicar</button>
             </div>
             {couponError && <span className="form-error">{couponError}</span>}
             {couponQuote?.promotion_discount > 0 && <span className="form-success">Promoções: −{currency.format(couponQuote.promotion_discount)}</span>}
             {couponQuote?.coupon_discount > 0 && <span className="form-success">Cupom aplicado: −{currency.format(couponQuote.coupon_discount)}</span>}
             <div><span>Total aproximado</span><strong>{currency.format(finalTotal)}</strong></div>
-            <a className="secondary-button" href={publicUrl("/comprar")}>Finalizar no site</a>
-            <a className="primary-button whatsapp-checkout" href={whatsappCatalogUrl(message, whatsappPhone)} target="_blank" rel="noreferrer"><MessageCircle size={17} /> Finalizar pelo WhatsApp</a>
+            {invalidQuantities && <p className="form-error" role="alert">Informe quantidades inteiras, maiores que zero e dentro do estoque disponível.</p>}
+            {invalidQuantities ? <>
+              <button className="secondary-button" type="button" disabled>Finalizar no site</button>
+              <button className="primary-button whatsapp-checkout" type="button" disabled>Finalizar pelo WhatsApp</button>
+            </> : <>
+              <a className="secondary-button" href={publicUrl("/comprar")}>Finalizar no site</a>
+              <a className="primary-button whatsapp-checkout" href={whatsappCatalogUrl(message, whatsappPhone)} target="_blank" rel="noreferrer"><MessageCircle size={17} /> Finalizar pelo WhatsApp</a>
+            </>}
             {safeOrderItems.length > 0 && <button className="secondary-button" onClick={onClearOrder}>Limpar pedido</button>}
           </footer>
         )}
@@ -1584,14 +1610,16 @@ export function PublicCheckout() {
     setOrderItems(readCatalogStorage("aura-catalog-order", []));
   }, []);
 
+  const invalidQuantities = safeOrderItems.some((item) => !catalogOrderQuantityIsValid(item));
   const subtotal = safeOrderItems.reduce((sum, item) => sum + asNumber(item?.sale_value) * asNumber(item?.qty, 1), 0);
   const total = quote?.valid ? asNumber(quote.final_amount) : subtotal;
 
   async function applyCheckoutCoupon() {
+    if (invalidQuantities) return setError("Corrija as quantidades no pedido: use números inteiros, maiores que zero e dentro do estoque disponível.");
     setError("");
     const response = await publicApiFetch("/catalog/price-quote", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ coupon_code: form.coupon_code, items: safeOrderItems.map((item) => ({ product_id: item.id, variation_id: item.selected_variant_id, category: item.category, unit_price: item.sale_value, quantity: item.qty || 1 })) })
+      body: JSON.stringify({ coupon_code: form.coupon_code.trim().toUpperCase(), items: safeOrderItems.map((item) => ({ product_id: item.id, variation_id: item.selected_variant_id, category: item.category, unit_price: item.sale_value, quantity: item.qty || 1 })) })
     });
     const json = await response.json().catch(() => ({}));
     if (!response.ok) return setError(json.error || "Cupom inválido.");
@@ -1609,6 +1637,7 @@ export function PublicCheckout() {
       setError("Seu pedido está vazio.");
       return;
     }
+    if (invalidQuantities) return setError("Corrija as quantidades no pedido antes de confirmar a compra.");
     // CPF continua opcional aqui, mas errado ele não passa: o backend guardaria
     // um documento inválido em `clients.tax_id` e a recusa só apareceria na
     // primeira cobrança online daquele cliente.
@@ -1624,12 +1653,12 @@ export function PublicCheckout() {
         whatsapp: form.whatsapp,
         instagram: form.instagram,
         payment_method: form.payment_method,
-        cpf: form.cpf,
+        cpf: taxIdDigits(form.cpf),
         email: form.email,
         fulfillment_method: form.fulfillment_method,
         delivery_address: form.delivery_address,
         accepted_policies: form.accepted_policies,
-        coupon_code: form.coupon_code,
+        coupon_code: form.coupon_code.trim().toUpperCase(),
         idempotency_key: idempotencyKey,
         source: "site",
         order_type: "produto",
@@ -1691,7 +1720,7 @@ export function PublicCheckout() {
             <div className="form-grid">
               <Input label="Nome completo" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} required />
               <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => setForm({ ...form, whatsapp: value })} required />
-              <Input label="CPF (opcional)" value={form.cpf} onChange={(value) => setForm({ ...form, cpf: formatTaxId(value) })} />
+              <Input label="CPF (opcional)" value={form.cpf} onChange={(value) => setForm((current) => ({ ...current, cpf: value }))} onBlur={() => setForm((current) => ({ ...current, cpf: formatTaxId(current.cpf) }))} inputMode="numeric" />
               <Input label="E-mail" type="email" value={form.email} onChange={(value) => setForm({ ...form, email: value })} />
               <Input label="Instagram" value={form.instagram} onChange={(value) => setForm({ ...form, instagram: value })} />
               <Select label="Forma de pagamento" value={form.payment_method} onChange={(value) => setForm({ ...form, payment_method: value })}>
@@ -1707,8 +1736,8 @@ export function PublicCheckout() {
               {form.fulfillment_method === "delivery" && <Input label="Endereço de entrega" value={form.delivery_address} onChange={(value) => setForm({ ...form, delivery_address: value })} required />}
             </div>
             <div className="catalog-coupon-field">
-              <input value={form.coupon_code} onChange={(event) => { setForm({ ...form, coupon_code: event.target.value.toUpperCase() }); setQuote(null); }} placeholder="Cupom de desconto" />
-              <button type="button" className="secondary-button" onClick={applyCheckoutCoupon} disabled={!form.coupon_code.trim()}>Aplicar cupom</button>
+              <input value={form.coupon_code} onChange={(event) => { setForm((current) => ({ ...current, coupon_code: event.target.value })); setQuote(null); }} onBlur={() => setForm((current) => ({ ...current, coupon_code: current.coupon_code.trim().toUpperCase() }))} placeholder="Cupom de desconto" />
+              <button type="button" className="secondary-button" onClick={applyCheckoutCoupon} disabled={!form.coupon_code.trim() || invalidQuantities}>Aplicar cupom</button>
               {quote?.coupon_discount > 0 && <button type="button" className="secondary-button" onClick={() => { setForm({ ...form, coupon_code: "" }); setQuote(null); }}>Remover</button>}
             </div>
             <label>Observações
@@ -1716,7 +1745,8 @@ export function PublicCheckout() {
             </label>
             <Checkbox className="checkout-policy" label="Li e aceito as políticas da clínica." checked={form.accepted_policies} onChange={(accepted_policies) => setForm({ ...form, accepted_policies })} />
             {error && <span className="form-error">{error}</span>}
-            <button className="primary-button" type="submit">Confirmar compra</button>
+            {invalidQuantities && <p className="form-error" role="alert">Corrija as quantidades no pedido: use números inteiros, maiores que zero e dentro do estoque disponível.</p>}
+            <button className="primary-button" type="submit" disabled={invalidQuantities || !safeOrderItems.length}>Confirmar compra</button>
           </form>
           <div className="panel">
             <div className="panel-heading">
@@ -1730,7 +1760,7 @@ export function PublicCheckout() {
                   <div>
                     <strong>{item.name}</strong>
                     <small>{[item.material, item.color, item.size].filter(Boolean).join(" · ")}</small>
-                    <span>{Number(item.qty || 1)}x {currency.format(item.sale_value || 0)}</span>
+                    <span>{catalogOrderQuantityIsValid(item) ? `${item.qty ?? 1}x` : "Quantidade inválida"} {currency.format(item.sale_value || 0)}</span>
                   </div>
                 </article>
               )) : <p className="empty-state">Seu carrinho está vazio. Volte ao catálogo e adicione joias.</p>}
@@ -1825,6 +1855,7 @@ export function PublicBooking() {
 
   async function submit() {
     if (submitting) return;
+    if (asArray(bookingOrderItems).some((item) => !catalogOrderQuantityIsValid(item))) return setError("Corrija as quantidades das joias no pedido antes de solicitar o agendamento.");
     // Última barreira antes do envio: a etapa 5 pode ter sido pulada por link
     // com query string, e o backend devolveria 400 depois do resumo inteiro.
     if (cpfError) return setError(`${cpfError} Volte à etapa "Dados" para corrigir.`);
@@ -1834,7 +1865,7 @@ export function PublicBooking() {
     setSubmitting(true);
     const body = new FormData();
     Object.entries(form).forEach(([key, value]) => {
-      if (value) body.append(key, value);
+      if (value) body.append(key, key === "cpf" || key === "guardian_document" ? taxIdDigits(value) : key === "coupon_code" ? String(value).trim().toUpperCase() : value);
     });
     body.set("service_id", String(effectiveServiceIds[0] || form.service_id));
     body.append("items", JSON.stringify([
@@ -1948,7 +1979,7 @@ export function PublicBooking() {
             <div className="form-grid">
               <Input label="Nome" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} required />
               <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => setForm({ ...form, whatsapp: value })} required />
-              <Input label={onlineDeposit ? "CPF" : "CPF (opcional)"} value={form.cpf} onChange={(value) => setForm({ ...form, cpf: formatTaxId(value) })} required={onlineDeposit} />
+              <Input label={onlineDeposit ? "CPF" : "CPF (opcional)"} value={form.cpf} onChange={(value) => setForm((current) => ({ ...current, cpf: value }))} onBlur={() => setForm((current) => ({ ...current, cpf: formatTaxId(current.cpf) }))} inputMode="numeric" required={onlineDeposit} />
               {/* E-mail é opcional no gateway (`email: client.email || undefined`),
                   então ele não vira barreira — mas é por onde o Asaas manda a
                   fatura e o recibo do sinal. */}
@@ -1957,7 +1988,7 @@ export function PublicBooking() {
               {needsBirthDate && <Input label="Data de nascimento" type="date" value={form.birth_date} onChange={(value) => setForm({ ...form, birth_date: value })} required />}
               {guardianRequired && <>
                 <Input label="Nome do responsável legal" value={form.guardian_name} onChange={(value) => setForm({ ...form, guardian_name: value })} required />
-                <Input label="Documento do responsável" value={form.guardian_document} onChange={(value) => setForm({ ...form, guardian_document: formatTaxId(value) })} required />
+                <Input label="Documento do responsável" value={form.guardian_document} onChange={(value) => setForm((current) => ({ ...current, guardian_document: value }))} onBlur={() => setForm((current) => ({ ...current, guardian_document: formatTaxId(current.guardian_document) }))} inputMode="numeric" required />
               </>}
               <label>Foto de referência<input type="file" accept="image/*" onChange={(event) => setForm({ ...form, reference_photo: event.target.files?.[0] })} /></label>
             </div>
@@ -1990,7 +2021,7 @@ export function PublicBooking() {
             {selectedServices.some((item) => Boolean(item.requires_signed_term)) && <p><strong>Termo digital:</strong> deverá estar assinado antes da conclusão do atendimento.</p>}
             <p><strong>Valor restante:</strong> {currency.format(selectedRemaining)}</p>
             <p><strong>Regras:</strong> {data.rules?.cancellation}</p>
-            <Input label="Cupom (opcional)" value={form.coupon_code || ""} onChange={(value) => setForm({ ...form, coupon_code: value.toUpperCase() })} />
+            <Input label="Cupom (opcional)" value={form.coupon_code || ""} onChange={(value) => setForm((current) => ({ ...current, coupon_code: value }))} onBlur={() => setForm((current) => ({ ...current, coupon_code: current.coupon_code.trim().toUpperCase() }))} />
             <label>Comprovante Do Sinal Pix (opcional)<input type="file" accept="image/*,.pdf" onChange={(event) => setForm({ ...form, payment_proof: event.target.files?.[0] })} /></label>
             {error && <span className="form-error">{error}</span>}
             <button className="primary-button booking-wide-button" disabled={submitting} onClick={submit}>{submitting ? "Enviando..." : "Confirmar Solicitação"}</button>

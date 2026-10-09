@@ -20,13 +20,13 @@ function optionalId(value) {
 
 function normalizeWaitlist(body = {}, current = {}) {
   return {
-    client_id: optionalId(body.client_id ?? current.client_id),
-    service_id: optionalId(body.service_id ?? current.service_id),
-    professional_id: optionalId(body.professional_id ?? current.professional_id),
+    client_id: optionalId(body.client_id === undefined ? current.client_id : body.client_id),
+    service_id: optionalId(body.service_id === undefined ? current.service_id : body.service_id),
+    professional_id: optionalId(body.professional_id === undefined ? current.professional_id : body.professional_id),
     client_name: text(body.client_name, current.client_name),
     contact: text(body.contact, current.contact),
-    preferred_date_from: body.preferred_date_from || current.preferred_date_from || null,
-    preferred_date_to: body.preferred_date_to || current.preferred_date_to || null,
+    preferred_date_from: (body.preferred_date_from === undefined ? current.preferred_date_from : body.preferred_date_from) || null,
+    preferred_date_to: (body.preferred_date_to === undefined ? current.preferred_date_to : body.preferred_date_to) || null,
     preferred_period: PERIODS.has(body.preferred_period) ? body.preferred_period : current.preferred_period || "qualquer",
     priority: Math.min(5, Math.max(0, Number(body.priority ?? current.priority ?? 0))),
     status: WAITLIST_STATUSES.has(body.status) ? body.status : current.status || "waiting",

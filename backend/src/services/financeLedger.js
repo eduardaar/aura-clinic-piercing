@@ -6,6 +6,11 @@ import { parseMoneyInputCents } from "./finance.js";
 const VALID_TYPES = new Set(["payable", "receivable", "income", "expense"]);
 const VALID_STATUSES = new Set(["pending", "paid", "overdue", "canceled", "partially_paid", "refunded"]);
 
+// Omitir um campo preserva o cadastro; enviar vazio/null remove o vínculo.
+function optionalEntryValue(body, current, field) {
+  return (body[field] === undefined ? current[field] : body[field]) || null;
+}
+
 export function normalizeEntry(body = {}, current = {}) {
   const entryType = body.entry_type ?? current.entry_type ?? "payable";
   const status = body.status ?? current.status ?? "pending";
@@ -31,14 +36,14 @@ export function normalizeEntry(body = {}, current = {}) {
     payment_method: body.payment_method ?? current.payment_method ?? "",
     payment_account: body.payment_account ?? current.payment_account ?? "",
     paid_at: computedStatus === "paid" || computedStatus === "partially_paid" ? (body.paid_at ?? current.paid_at ?? new Date().toISOString()) : null,
-    cost_center_id: body.cost_center_id || current.cost_center_id || null,
-    supplier_id: body.supplier_id || current.supplier_id || null,
+    cost_center_id: optionalEntryValue(body, current, "cost_center_id"),
+    supplier_id: optionalEntryValue(body, current, "supplier_id"),
     attachment_url: body.attachment_url ?? current.attachment_url ?? "",
     notes: body.notes ?? current.notes ?? "",
     recurrence: body.recurrence ?? current.recurrence ?? "",
-    recurrence_end_date: body.recurrence_end_date ?? current.recurrence_end_date ?? null,
-    installment_number: body.installment_number || current.installment_number || null,
-    installment_count: body.installment_count || current.installment_count || null
+    recurrence_end_date: optionalEntryValue(body, current, "recurrence_end_date"),
+    installment_number: optionalEntryValue(body, current, "installment_number"),
+    installment_count: optionalEntryValue(body, current, "installment_count")
   };
 }
 

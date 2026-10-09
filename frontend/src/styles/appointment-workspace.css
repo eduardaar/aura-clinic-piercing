@@ -40,6 +40,8 @@
   .appointment-workspace-pair > * { min-width: 0; }
   .appointment-workspace-side { display: grid; gap: 14px; align-content: start; }
 
+  .appointment-payment-summary { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); overflow-wrap: anywhere; }
+
   .appointment-deposit-fields { display: grid; gap: 12px; }
   .appointment-deposit-fields .form-grid { align-items: end; }
   .appointment-item-total {

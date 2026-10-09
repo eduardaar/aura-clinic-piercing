@@ -112,8 +112,8 @@ export function ImageEditor({ file, src, initialTransform, aspectRatio = "16/5",
               <button type="button" onClick={() => setTransform(normalizeImageTransform({}, aspectRatio))}><Undo2 /> Restaurar original</button>
             </div>
             <div className="image-editor-coordinates">
-              <label>Foco X<input type="number" min="0" max="100" value={Math.round(transform.focalPointX)} onChange={(event) => patch({ focalPointX: Number(event.target.value) })} /></label>
-              <label>Foco Y<input type="number" min="0" max="100" value={Math.round(transform.focalPointY)} onChange={(event) => patch({ focalPointY: Number(event.target.value) })} /></label>
+              <label>Foco X<input type="number" min="0" max="100" value={transform.focalPointX} onChange={(event) => setTransform((current) => ({ ...current, focalPointX: event.target.value }))} onBlur={() => patch({ focalPointX: transform.focalPointX === "" ? 50 : transform.focalPointX })} /></label>
+              <label>Foco Y<input type="number" min="0" max="100" value={transform.focalPointY} onChange={(event) => setTransform((current) => ({ ...current, focalPointY: event.target.value }))} onBlur={() => patch({ focalPointY: transform.focalPointY === "" ? 50 : transform.focalPointY })} /></label>
             </div>
           </div>
       </div>

@@ -48,6 +48,29 @@ vi.mock("../src/lib/api", () => ({
 }));
 
 describe("clientes e perfil 360", () => {
+  it("edita e apaga dados salvos sem reconstruir máscaras durante a digitação", async () => {
+    const user = userEvent.setup();
+    render(<ClientEditForm client={client} onSaved={() => {}} />);
+    const cpf = screen.getByLabelText("CPF");
+    await user.click(cpf);
+    cpf.setSelectionRange(3, 4);
+    await user.keyboard("{Backspace}");
+    expect(cpf).toHaveValue("529982.247-25");
+    expect(cpf.selectionStart).toBe(3);
+    await user.clear(cpf);
+    expect(cpf).toHaveValue("");
+    await user.type(cpf, "52998224725");
+    expect(cpf).toHaveValue("52998224725");
+    await user.tab();
+    expect(cpf).toHaveValue("529.982.247-25");
+    for (const label of ["Telefone", "WhatsApp", "E-mail", "Nome civil completo"]) {
+      const field = screen.getByLabelText(label);
+      await user.clear(field);
+      expect(field).toHaveValue("");
+      await user.tab();
+      expect(field).toHaveValue("");
+    }
+  });
   beforeEach(() => {
     localStorage.clear();
     apiFetch.mockReset();
@@ -117,6 +140,7 @@ describe("clientes e perfil 360", () => {
     await user.type(screen.getByLabelText("WhatsApp"), "11999998888");
     await user.type(screen.getByLabelText("CPF"), "52998224725");
     expect(screen.getByLabelText("WhatsApp")).toHaveValue("(11) 99999-8888");
+    await user.tab();
     expect(screen.getByLabelText("CPF")).toHaveValue("529.982.247-25");
 
     await user.click(screen.getByRole("button", { name: /Endereço e dados adicionais/ }));

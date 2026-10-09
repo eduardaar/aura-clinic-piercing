@@ -27,14 +27,14 @@ function normalizeBlock(body = {}, current = {}) {
     start_datetime: body.start_datetime ?? current.start_datetime ?? "",
     end_datetime: body.end_datetime ?? current.end_datetime ?? "",
     block_type: blockType,
-    reason: body.reason || current.reason || (blockType === "special_hours" ? "Horario especial" : "Bloqueio"),
+    reason: body.reason ?? current.reason ?? (blockType === "special_hours" ? "Horario especial" : "Bloqueio"),
     notes: body.notes ?? current.notes ?? "",
     is_full_day: blockType === "unavailable" ? 1 : boolNumber(body.is_full_day ?? current.is_full_day),
     is_recurring: boolNumber(body.is_recurring ?? current.is_recurring),
     lunch_start: body.lunch_start ?? current.lunch_start ?? "",
     lunch_end: body.lunch_end ?? current.lunch_end ?? "",
-    duration_minutes: body.duration_minutes === "" || body.duration_minutes === undefined ? null : Number(body.duration_minutes),
-    buffer_minutes: body.buffer_minutes === "" || body.buffer_minutes === undefined ? null : Number(body.buffer_minutes)
+    duration_minutes: body.duration_minutes === undefined ? current.duration_minutes ?? null : body.duration_minutes === "" || body.duration_minutes === null ? null : Number(body.duration_minutes),
+    buffer_minutes: body.buffer_minutes === undefined ? current.buffer_minutes ?? null : body.buffer_minutes === "" || body.buffer_minutes === null ? null : Number(body.buffer_minutes)
   };
 }
 

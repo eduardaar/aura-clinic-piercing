@@ -961,13 +961,14 @@ export function ClientEditForm({ client, clients = [], onSaved, onCancel = () =>
   async function submit(event) {
     event.preventDefault();
     setError("");
-    const validation = validateClientForm(form);
+    const payload = { ...form, email: normalizeEmailInput(form.email), instagram: normalizeInstagramInput(form.instagram) };
+    const validation = validateClientForm(payload);
     setFieldErrors(validation);
     if (Object.keys(validation).length) return;
     const response = await apiFetch(client?.id ? `/clients/${client.id}` : "/clients", {
       method: client?.id ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      body: JSON.stringify(payload),
     });
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
@@ -1041,7 +1042,8 @@ export function ClientEditForm({ client, clients = [], onSaved, onCancel = () =>
               name="cpf"
               label="CPF"
               value={form.cpf}
-              onChange={(value) => change("cpf", formatCpf(value))}
+              onChange={(value) => change("cpf", value)}
+              onBlur={(event) => change("cpf", formatCpf(event.target.value))}
               inputMode="numeric"
               maxLength={14}
               placeholder="000.000.000-00"
@@ -1059,7 +1061,8 @@ export function ClientEditForm({ client, clients = [], onSaved, onCancel = () =>
               name="whatsapp"
               label="WhatsApp"
               value={form.whatsapp}
-              onChange={(value) => change("whatsapp", formatBrazilianPhone(value))}
+              onChange={(value) => change("whatsapp", value)}
+              onBlur={(event) => change("whatsapp", formatBrazilianPhone(event.target.value))}
               inputMode="tel"
               maxLength={15}
               placeholder="(11) 99999-9999"
@@ -1070,7 +1073,8 @@ export function ClientEditForm({ client, clients = [], onSaved, onCancel = () =>
               name="phone"
               label="Telefone"
               value={form.phone}
-              onChange={(value) => change("phone", formatBrazilianPhone(value))}
+              onChange={(value) => change("phone", value)}
+              onBlur={(event) => change("phone", formatBrazilianPhone(event.target.value))}
               inputMode="tel"
               maxLength={15}
               placeholder="(11) 99999-9999"
@@ -1081,7 +1085,8 @@ export function ClientEditForm({ client, clients = [], onSaved, onCancel = () =>
               type="email"
               label="E-mail"
               value={form.email}
-              onChange={(value) => change("email", normalizeEmailInput(value))}
+              onChange={(value) => change("email", value)}
+              onBlur={(event) => change("email", normalizeEmailInput(event.target.value))}
               autoComplete="email"
               aria-invalid={Boolean(fieldErrors.email)}
             />
@@ -1106,7 +1111,8 @@ export function ClientEditForm({ client, clients = [], onSaved, onCancel = () =>
               name="postal_code"
               label="CEP"
               value={form.postal_code}
-              onChange={(value) => change("postal_code", formatCep(value))}
+              onChange={(value) => change("postal_code", value)}
+              onBlur={(event) => change("postal_code", formatCep(event.target.value))}
               inputMode="numeric"
               maxLength={9}
               placeholder="00000-000"
@@ -1157,7 +1163,8 @@ export function ClientEditForm({ client, clients = [], onSaved, onCancel = () =>
               name="instagram"
               label="Instagram"
               value={form.instagram}
-              onChange={(value) => change("instagram", normalizeInstagramInput(value))}
+              onChange={(value) => change("instagram", value)}
+              onBlur={(event) => change("instagram", normalizeInstagramInput(event.target.value))}
               placeholder="@usuario"
             />
           </div>
@@ -1184,7 +1191,8 @@ export function ClientEditForm({ client, clients = [], onSaved, onCancel = () =>
             </Select>
             {form.lifecycle_status === "blocked" && <Input name="blocked_reason" label="Motivo interno do bloqueio" value={form.blocked_reason} onChange={(value) => change("blocked_reason", value)} />}
             <Input name="emergency_contact_name" label="Contato de emergência" value={form.emergency_contact_name} onChange={(value) => change("emergency_contact_name", value)} />
-            <Input name="emergency_contact_phone" label="Telefone de emergência" value={form.emergency_contact_phone} onChange={(value) => change("emergency_contact_phone", formatBrazilianPhone(value))} inputMode="tel" maxLength={15} placeholder="(11) 99999-9999" />
+            <Input name="emergency_contact_phone" label="Telefone de emergência" value={form.emergency_contact_phone} onChange={(value) => change("emergency_contact_phone", value)}
+              onBlur={(event) => change("emergency_contact_phone", formatBrazilianPhone(event.target.value))} inputMode="tel" maxLength={15} placeholder="(11) 99999-9999" />
             <Select label="Responsável legal cadastrado" value={form.guardian_client_id} onChange={(value) => change("guardian_client_id", value)}>
               <option value="">Não informado</option>
               {asArray(clients).filter((item) => item.id !== client?.id).map((item) => <option key={item.id} value={item.id}>{personName(item)}</option>)}

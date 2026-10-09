@@ -14,6 +14,26 @@ vi.mock("../src/lib/api", () => ({
 describe("formulário extenso de compras", () => {
   beforeEach(() => localStorage.clear());
 
+  it("permite apagar e substituir quantidades e parcelas sem restaurar o padrão", async () => {
+    const user = userEvent.setup();
+    render(<Purchases />);
+    await user.click(screen.getByRole("button", { name: "Nova compra" }));
+    await user.click(screen.getByRole("button", { name: /2\. Itens/i }));
+    const quantity = screen.getByLabelText("Quantidade");
+    await user.clear(quantity);
+    expect(quantity).toHaveValue(null);
+    await user.type(quantity, "12");
+    expect(quantity).toHaveValue(12);
+    await user.clear(quantity);
+    expect(quantity).toHaveValue(null);
+    await user.click(screen.getByRole("button", { name: /3\. Pagamento/i }));
+    const count = screen.getByLabelText("Parcelas");
+    await user.clear(count);
+    expect(count).toHaveValue(null);
+    await user.type(count, "3");
+    expect(count).toHaveValue(3);
+  });
+
   it("organiza essenciais, itens e parcelas em etapas sem modal secundário", async () => {
     const user = userEvent.setup();
     render(<Purchases />);

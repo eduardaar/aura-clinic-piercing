@@ -14,7 +14,7 @@ const EMPTY_FORM = {
   category: "Geral",
   content: "",
   status: "draft",
-  sort_order: 0,
+  sort_order: /** @type {string | number} */ (0),
 };
 
 const TYPE_LABELS = { news: "Notícias", manual: "Manual do usuário" };
@@ -228,7 +228,7 @@ export function ContentAdmin({ token, onUnauthorized }) {
               type="number"
               label="Ordem"
               value={form.sort_order}
-              onChange={(sort_order) => setForm({ ...form, sort_order: Number(sort_order || 0) })}
+              onChange={(sort_order) => setForm({ ...form, sort_order })}
             />
           </div>
           <Textarea

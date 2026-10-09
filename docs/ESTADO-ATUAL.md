@@ -1,6 +1,6 @@
 # Estado atual do projeto
 
-> Situação em **06/10/2026**: cópia local atualizada até `ab290dda` (01/10/2026), incluindo a entrega da seção 9 — descontos, ajustes de valor, indicador químico, comissões e revisão da Central de Relatórios.
+> Situação em **09/10/2026**: cópia local sobre `a4c3cab3` (06/10/2026), com as correções de campos, catálogo, agenda e finalização da seção 11. Alterações desta execução ainda não publicadas.
 >
 > Nesta revisão foram reexecutados o typecheck de backend/frontend, o build, as suítes de backend/frontend e a validação visual automatizada em Chromium/WebKit (seção 10). Integrações externas e iPhone físico não foram exercitados; os resultados anteriores preservam suas datas.
 >
@@ -24,7 +24,7 @@
 | --- | --- | --- |
 | Multi-tenancy por schema Postgres | **Entregue** | `middleware/withDb.js`; `scripts/test-isolation.mjs` (9 checagens, incluindo token cruzado, suspensão e 30 requisições alternadas sem vazamento de pool) |
 | Provisionamento e desprovisionamento de clínica | **Entregue** | `services/tenants.js`; clínica nova nasce com `schema.sql` + todas as migrations de tenant na mesma transação |
-| Migrations versionadas com ledger e checksum | **Entregue** | `src/db/migrations/` (platform `0001`–`0008`; tenant `0001`–`0043`, sem `0026` e `0027`, que nunca existiram); CLI `npm --prefix backend run migrations:apply` |
+| Migrations versionadas com ledger e checksum | **Entregue** | `src/db/migrations/` (platform `0001`–`0008`; tenant `0001`–`0044`, sem `0026` e `0027`, que nunca existiram); CLI `npm --prefix backend run migrations:apply` |
 | Painel de super-admin | **Entregue** | `routes/platform.js`, `features/platform/PlatformAdmin.jsx` |
 | Cadastro público de clínica | **Entregue** | `POST /api/signup`, com verificação de disponibilidade de nome e e-mail antes do aceite; exige plano existente (`plano_obrigatorio`) e aceite das versões vigentes dos documentos legais (`legal_acceptance_required`) |
 
@@ -195,7 +195,92 @@ Capturas e evidências em `outputs/responsividade-filtros-origens-2026-10-06/`. 
 
 Esta rodada exige a migration tenant `0043_deposit_expectation.sql`. Código e documentação foram atualizados localmente; publicação e migration de produção não foram executadas. WebKit em tamanho de iPhone não substitui a homologação em aparelho físico.
 
+## 11. Execução de 09/10/2026 — campos, catálogo e finalização
+
+- **Edição:** rascunhos numéricos mantêm o texto, inclusive vazio, em Agenda,
+  pagamentos, vendas, compras, estoque, automações, conteúdo, catálogo
+  administrativo e coordenadas de imagem. Cálculos derivados não reescrevem o
+  campo. Valores monetários aceitam centavos; quantidade e parcelas continuam
+  exigindo inteiros válidos no salvamento.
+- **Máscaras e cursor:** CPF/CNPJ, telefone, CEP e contatos dos cadastros e
+  formulários públicos são formatados ao sair do campo; exclusão e seleção
+  durante a edição preservam o texto/cursor. Normalização e validação continuam
+  no envio. Campos obrigatórios podem ser apagados, mas não salvos inválidos.
+- **Respostas assíncronas:** consultas de comunicações e atualizações de opções,
+  serviços ou do mesmo agendamento não substituem rascunhos editados. Trocar de
+  agendamento inicializa os dados da nova origem.
+- **Limpeza persistida:** mensagens e observações de pós-atendimento, motivo de
+  bloqueio, datas/vínculos da lista de espera, opcionais financeiros e
+  observações do fechamento distinguem campo omitido de campo enviado vazio.
+  Bloqueios preservam duração/intervalo omitidos e removem valores explicitamente
+  apagados; zero de intervalo permanece zero.
+- **Agenda e itens:** edição de procedimentos/joias permanece no atendimento;
+  linhas mantêm identidade ao trocar itens e formas de pagamento. Controles de
+  período têm posicionamento explícito no celular; navegação fixa é desativada
+  em orientação horizontal de pouca altura.
+- **Pagamentos:** divisão existente foi completada com resumo recebido/pendente,
+  métodos de transferência e outra forma, validação de centavos, parcelas,
+  taxas, status e teto da soma. Sinal anterior continua separado. Refechamento
+  mantém os pagamentos sem duplicar receitas. Parcela de cartão é metadata do
+  recebimento manual; não confirma uma transação externa nem calcula juros.
+- **Migration nova:** `0044_pending_payment_received_at.sql` permite data de
+  recebimento nula para pagamento pendente; preserva todas as datas históricas.
+  Baseline atualizado para novas clínicas. A migration não foi aplicada em
+  produção e deve acompanhar a publicação futura (junto da `0043` se pendente).
+- **Catálogo:** grade compacta com duas colunas em celulares testados, mantendo
+  paleta/fontes configuradas; todos os publicados, inclusive esgotados, têm
+  acesso pela listagem completa, complementando vitrines curadas quando preciso.
+  Arquivados e ocultos continuam excluídos. Links de contato/compartilhamento
+  identificam clínica, produto e variação e preservam filtros explícitos.
+  Detalhes, produtos relacionados e carrinho foram corrigidos; preços zero
+  explícitos não são substituídos pelo preço do produto-base.
+
+Evidências de catálogo em
+[`outputs/catalogo-execucao-2026-10-09/RELATORIO.md`](../outputs/catalogo-execucao-2026-10-09/RELATORIO.md).
+O teste integrado de edição/finalização está em
+[`outputs/melhorias-2026-10-09/browser-validation.test.mjs`](../outputs/melhorias-2026-10-09/browser-validation.test.mjs),
+com componentes reais, login real, API e PostgreSQL descartáveis. Os testes de
+catálogo no navegador usam respostas fictícias; a regressão HTTP
+`catalogVisibility.test.mjs` prova exibição pública do esgotado, recusa de compra,
+ausência de custo privado e ocultação após despublicação com banco real.
+
+Não houve teste em iPhone físico, chamada externa à operadora, commit ou deploy.
+A matriz automatizada cobre os cenários descritos; não certifica individualmente
+todos os campos e todos os fluxos em aparelhos físicos.
+
+Validação consolidada de 09/10: **734/734 testes backend**, em banco
+descartável; **68/68 unitários e 329/329 componentes frontend** (39 arquivos
+Vitest), typecheck de backend/frontend e build aprovados. Biome explícito sobre
+arquivos alterados/novos passou sem erros, com avisos de hooks e outros padrões.
+**90 verificações** em dez cenários Chromium/WebKit com API/banco
+reais (320×844, 390×844, 768×1024, 1366×768 e 844×390 em cada navegador).
+Conferida em SQL a quitação de R$ 145 por sinal R$ 25 + Pix R$ 50 + cartão R$ 70,
+com uma única linha de sinal, três recebimentos e saldo zero. Uma notificação
+ResizeObserver em WebKit foi classificada como o ruído já tratado pela central
+de erros; nenhum outro erro de aplicação foi aceito pelo teste.
+
 ## Pendências abertas
+
+### Decisões guardadas da execução de 09/10/2026
+
+O escopo claro dos pedidos de campos, catálogo, agenda e pagamento dividido
+foi implementado localmente sobre `a4c3cab3`. As dúvidas abaixo ficam para uma
+decisão posterior, sem bloquear essas correções:
+
+- **Juros cobrados do cliente:** definir política, limites, arredondamento e
+  responsável pelas taxas. O campo existente de taxa representa retenção da
+  operadora sobre o recebimento, não acréscimo ao preço do cliente.
+- **Custo zero versus desconhecido:** o estoque mantém a política anterior de
+  estimar custo pelo preço quando o custo vale zero. A edição aceita vazio/zero;
+  mudar a interpretação contábil desses valores exige uma decisão específica.
+- **Tutorial, novidades e suporte:** os anexos citam essas áreas, mas não
+  especificam conteúdo, público, formato ou mudanças no fluxo de suporte.
+  Os recursos existentes foram preservados; conteúdo novo não foi inventado.
+- **Aparelhos e integrações reais:** homologação em iPhone físico e confirmação
+  externa por operadora continuam pendentes. WebKit e registro manual não
+  comprovam esses comportamentos externos.
+
+Não houve publicação nem alteração de registros de produção nesta execução.
 
 ### P-02 — taxonomia e duplicidades do estoque (M-05)
 

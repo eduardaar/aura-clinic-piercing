@@ -92,9 +92,9 @@ router.patch("/api/post-care/:id", withFeature("automatic_followup", async (req,
      SET care_message = ?, healing_status = ?, client_notes = ?, status = ?, client_photo_url = ?, updated_at = CURRENT_TIMESTAMP
      WHERE id = ?`,
     [
-      req.body.care_message || existing.care_message,
+      req.body.care_message ?? existing.care_message,
       req.body.healing_status || existing.healing_status,
-      req.body.client_notes || existing.client_notes,
+      req.body.client_notes ?? existing.client_notes,
       req.body.status || existing.status,
       photoUrl,
       req.params.id

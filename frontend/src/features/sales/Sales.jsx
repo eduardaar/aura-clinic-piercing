@@ -124,7 +124,7 @@ function orderMoney(order = {}) {
   return { gross, discount, manual, coupon: Math.max(0, discount - manual), net };
 }
 
-const newSalesForm = () => ({ ...defaultSalesOrderForm(), manual_discount_value: 0, manual_discount_reason: "" });
+const newSalesForm = () => ({ ...defaultSalesOrderForm(), installment_count: /** @type {string | number} */ (1), manual_discount_value: 0, manual_discount_reason: "" });
 const QUOTE_IDLE = { status: "idle", key: "", quote: null, error: "", basis: null };
 const QUOTE_DEBOUNCE_MS = 350;
 
@@ -167,7 +167,7 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
   const refreshOrders = () => invalidate("/sales-orders", "/jewelry", "/finance", "/dashboard");
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(newSalesForm);
-  const [line, setLine] = useState(defaultSalesLine());
+  const [line, setLine] = useState(() => ({ ...defaultSalesLine(), quantity: /** @type {string | number} */ (1), unit_price: /** @type {string | number} */ (0) }));
   const [items, setItems] = useState([]);
   const [installments, setInstallments] = useState([]);
   const [automaticInstallments, setAutomaticInstallments] = useState(true);
@@ -357,7 +357,9 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
   }
 
   function addLineItem() {
-    const quantity = Math.max(1, Number(line.quantity || 1));
+    const quantity = Number(line.quantity);
+    if (!Number.isInteger(quantity) || quantity < 1) return setError("Informe uma quantidade inteira maior que zero.");
+    if (line.unit_price === "" || !Number.isFinite(Number(line.unit_price)) || Number(line.unit_price) < 0) return setError("Informe um valor unitário válido.");
     const entry = safeJewelry.find((item) => String(item.id) === String(line.product_id));
     if (!entry) return;
     // A variação usada é a MESMA que o backend vai debitar (inclusive quando o
@@ -382,7 +384,7 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
       // Só para a tela somar o que já foi adicionado contra o mesmo saldo; o
       // backend ignora campos que não conhece.
       stock_key: stockKey,
-      unit_price: Number(line.unit_price || variant?.sale_value || entry.sale_value || 0),
+      unit_price: Number(line.unit_price),
       notes: line.notes || ""
     };
     setItems((current) => editingItemKey
@@ -1004,7 +1006,7 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
                 </Select>
               )}
               <div>
-                <Input type="number" label="Quantidade" value={line.quantity} onChange={(value) => setLine({ ...line, quantity: Number(value || 0) })} />
+                <Input type="number" label="Quantidade" value={line.quantity} onChange={(value) => setLine({ ...line, quantity: value })} />
                 {availableQuantity !== null && (
                   <span className={exceedsStock ? "field-hint is-error" : "field-hint"}>
                     {availableQuantity > 0
@@ -1013,7 +1015,7 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
                   </span>
                 )}
               </div>
-              <Input type="number" label="Valor unitário" value={line.unit_price} onChange={(value) => setLine({ ...line, unit_price: Number(value || 0) })} />
+              <Input type="number" min="0" step="0.01" inputMode="decimal" label="Valor unitário" value={line.unit_price} onChange={(value) => setLine({ ...line, unit_price: value })} />
             </div>
             <Textarea label="Observações do item" value={line.notes} onChange={(value) => setLine({ ...line, notes: value })} />
             <Button variant="secondary" type="button" onClick={addLineItem} disabled={exceedsStock}>{editingItemKey ? "Salvar alteração" : "Adicionar item"}</Button>
@@ -1047,7 +1049,7 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
                     <option value="pending" disabled={!canGenerateReceivables}>Gerar contas a receber{canGenerateReceivables ? "" : " — Profissional"}</option>
                   </Select>
                   {form.receivable_mode === "pending" && <>
-                    <Input type="number" min="1" max="120" label="Parcelas" value={form.installment_count} onChange={(value) => setForm({ ...form, installment_count: Number(value || 1) })} required />
+                    <Input type="number" min="1" max="120" label="Parcelas" value={form.installment_count} onChange={(value) => setForm({ ...form, installment_count: value })} required />
                     <Input type="date" label="Primeiro vencimento" value={form.first_due_date} onChange={(value) => setForm({ ...form, first_due_date: value })} required />
                   </>}
                 </div>

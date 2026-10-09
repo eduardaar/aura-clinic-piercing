@@ -166,7 +166,7 @@ router.get("/api/catalog", withFeature("basic_catalog", async (_req, res, db) =>
           is_primary: image.is_primary
         })),
         thread_type: v.thread_type,
-        sale_value: v.sale_value || item.sale_value,
+        sale_value: v.sale_value ?? item.sale_value,
         // Zero é um saldo válido e não pode herdar o estoque do produto pai.
         quantity: v.quantity ?? item.quantity,
         status: v.status,

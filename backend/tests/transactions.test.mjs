@@ -360,6 +360,55 @@ test("atendimento marcado 'atendido' que falha no meio não deixa nenhuma das 5 
   assert.equal(postCareDepois.json.filter((item) => Number(item.appointment_id) === Number(appointmentId)).length, 3);
 });
 
+test("fechamento dividido preserva sinal, rejeita valores inválidos e não duplica receitas", async () => {
+  const created = await api("/appointments", {
+    method: "POST", body: {
+      full_name: "Cliente Pagamento Dividido QA", whatsapp: "11900005550", professional_id: ctx.professionalId,
+      service_id: ctx.serviceId, procedure: "Servico TX", piercing_region: "Orelha",
+      appointment_date: HOJE, appointment_time: "22:00", total_value: 120, deposit_value: 50,
+      deposit_status: "pago", deposit_payment_method: "Pix", financial_notes: "Apagar ao concluir", status: "confirmado"
+    }
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.json));
+  const id = created.json.id;
+  for (const payments of [
+    [{ amount: -1 }], [{ amount: "NaN" }], [{ amount: 70, fee_amount: 71 }],
+    [{ amount: 70, installments: 1.5 }], [{ amount: 40 }, { amount: 40, status: "pendente" }]
+  ]) {
+    const rejected = await api(`/appointments/${id}/complete`, { method: "POST", body: { payments } });
+    assert.equal(rejected.status, 400, JSON.stringify(rejected.json));
+    const state = await withTenantSchema(ctx.tenant.id, async (db) => ({
+      appointment: await db.get("SELECT status FROM appointments WHERE id=?", [id]),
+      payments: await db.all("SELECT id FROM payments WHERE appointment_id=? AND payment_type='restante'", [id])
+    }));
+    assert.equal(state.appointment.status, "confirmado");
+    assert.equal(state.payments.length, 0);
+  }
+  const body = { financial_notes: "", payments: [
+    { amount: 30, method: "Pix", status: "pago" },
+    { amount: 40, method: "Cartão de crédito", status: "pago", installments: 2, fee_amount: 2 }
+  ] };
+  const completed = await api(`/appointments/${id}/complete`, { method: "POST", body });
+  assert.equal(completed.status, 200, JSON.stringify(completed.json));
+  const state = await withTenantSchema(ctx.tenant.id, async (db) => ({
+    appointment: await db.get("SELECT remaining_value,financial_notes FROM appointments WHERE id=?", [id]),
+    payments: await db.all("SELECT id,amount,method,payment_type,installments,fee_amount,net_amount,paid_at,created_by_user_id FROM payments WHERE appointment_id=? AND status IN ('pago','confirmado') ORDER BY id", [id])
+  }));
+  assert.equal(state.appointment.remaining_value, 0);
+  assert.equal(state.appointment.financial_notes, "");
+  assert.equal(state.payments.filter((row) => row.payment_type === "sinal").length, 1);
+  assert.equal(state.payments.reduce((sum, row) => sum + Number(row.amount), 0), 120);
+  const card = state.payments.find((row) => row.method === "Cartão de crédito");
+  assert.equal(card.installments, 2);
+  assert.equal(card.net_amount, 38);
+  assert.ok(card.paid_at);
+  assert.ok(card.created_by_user_id);
+  const repeated = await api(`/appointments/${id}/complete`, { method: "POST", body: { ...body, reason: "Conferência QA" } });
+  assert.equal(repeated.status, 200, JSON.stringify(repeated.json));
+  const after = await withTenantSchema(ctx.tenant.id, async (db) => db.all("SELECT id FROM payments WHERE appointment_id=? AND status IN ('pago','confirmado') ORDER BY id", [id]));
+  assert.deepEqual(after.map((row) => row.id), state.payments.map((row) => row.id));
+});
+
 test("refechamento da agenda preserva execução/pagamento e recalcula apenas o saldo a receber", async () => {
   const criado = await api("/appointments", {
     method: "POST",

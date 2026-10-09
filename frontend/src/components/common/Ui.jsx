@@ -399,6 +399,8 @@ export function PaymentSelect(props) {
       <option>dinheiro</option>
       <option>cartão de crédito</option>
       <option>cartão de débito</option>
+      <option>transferência bancária</option>
+      <option>outra</option>
     </Select>
   );
 }

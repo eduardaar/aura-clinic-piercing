@@ -249,7 +249,7 @@ backend/src/
 │   └── index.js             Schemas de validação Zod
 ├── db/migrations/           Migrations versionadas com ledger e checksum
 │   ├── platform/            0001–0008
-│   └── tenant/              0001–0025 e 0028–0042 (0026 e 0027 não existem)
+│   └── tenant/              0001–0025 e 0028–0044 (0026 e 0027 não existem)
 ├── text-normalizer.js       Normalização de encoding das respostas
 └── data/uploads/            Arquivos enviados (fallback local, quando o R2 está desligado)
 

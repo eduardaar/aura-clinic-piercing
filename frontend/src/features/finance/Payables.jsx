@@ -218,7 +218,7 @@ export function PayablesAdmin({ onNavigate }) {
             options={asArray(categoryList).map((item) => ({ id: item.name, name: item.name }))}
             emptyLabel="Sem categoria" createTitle="Nova categoria" createLabel="Nome da categoria" onCreate={createCategory}
           />
-          <Input type="number" label="Valor total" value={form.amount} onChange={(value) => setForm({ ...form, amount: value })} required />
+          <Input type="number" min="0" step="0.01" inputMode="decimal" label="Valor total" value={form.amount} onChange={(value) => setForm({ ...form, amount: value })} required />
           <Input type="date" label="Primeiro vencimento" value={String(form.due_date || "").slice(0, 10)} onChange={(value) => setForm({ ...form, due_date: value })} required />
           {!editing && <Input type="number" label="Parcelas" value={form.installment_count} onChange={(value) => setForm({ ...form, installment_count: value })} required />}
           {!editing && Number(form.installment_count || 1) === 1 && <Select label="Recorrência" value={form.recurrence} onChange={(value) => setForm({ ...form, recurrence: value })}><option value="">Sem recorrência</option><option value="monthly">Mensal</option><option value="yearly">Anual</option></Select>}
@@ -254,7 +254,7 @@ export function PayablesAdmin({ onNavigate }) {
     <Modal open={!!payment} title="Registrar pagamento" subtitle={payment?.item?.description} size="sm" onClose={() => setPayment(null)}
       footer={<><Button variant="secondary" onClick={() => setPayment(null)}>Cancelar</Button><Button type="submit" form="payable-payment-form">Confirmar pagamento</Button></>}>
       <form id="payable-payment-form" onSubmit={registerPayment} className="stack">
-        <Input type="number" label="Valor pago" value={payment?.value || ""} onChange={(value) => setPayment((current) => ({ ...current, value }))} required />
+        <Input type="number" min="0" step="0.01" inputMode="decimal" label="Valor pago" value={payment?.value || ""} onChange={(value) => setPayment((current) => ({ ...current, value }))} required />
         <p className="empty-state">Restante: {currency.format(Math.max(0, asNumber(payment?.item?.amount) - asNumber(payment?.item?.paid_amount)))}.</p>
       </form>
     </Modal>

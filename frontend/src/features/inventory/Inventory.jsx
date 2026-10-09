@@ -849,7 +849,7 @@ export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTI
         if (variantIndex !== index) return variant;
         const nextVariant = { ...variant, ...patch };
         return pricingFields.some((field) => Object.prototype.hasOwnProperty.call(patch, field))
-          ? { ...nextVariant, ...calculateVariantPricing(nextVariant, pricingSettings) }
+          ? { ...nextVariant, ...calculateVariantPricing(nextVariant, pricingSettings), ...Object.fromEntries(["purchase_cost", "cost_value", "allocated_freight", "additional_cost", "sale_value"].filter((field) => typeof patch[field] === "string").map((field) => [field, patch[field]])) }
           : nextVariant;
       })
     }));
@@ -1140,7 +1140,12 @@ export function VariantEditModal({ category, variant, pricingSettings = {}, onCh
 
   function updatePricing(patch) {
     const nextVariant = { ...variant, ...patch };
-    onChange({ ...patch, ...calculateVariantPricing(nextVariant, pricingSettings) });
+    const calculated = calculateVariantPricing(nextVariant, pricingSettings);
+    // Derived cents update immediately, without rewriting editable input text.
+    const drafts = Object.fromEntries(["purchase_cost", "cost_value", "allocated_freight", "additional_cost", "sale_value"]
+      .filter((field) => typeof nextVariant[field] === "string" && (field !== "sale_value" || nextVariant.price_manually_overridden) && !(patch.estimate_cost_from_sale && ["purchase_cost", "cost_value"].includes(field)))
+      .map((field) => [field, nextVariant[field]]));
+    onChange({ ...calculated, ...patch, ...drafts });
   }
 
   function estimateCostFromSale() {
@@ -1234,9 +1239,9 @@ export function VariantEditModal({ category, variant, pricingSettings = {}, onCh
               <div className="price-box">
                 <strong>Custos</strong>
                 <div className="form-grid">
-                  <Input type="number" label="Custo da Joia" value={variant.purchase_cost || variant.cost_value} onChange={(value) => updatePricing({ purchase_cost: value, cost_value: value, price_manually_overridden: false, cost_estimated: false })} />
-                  <Input type="number" label="Frete Rateado" value={variant.allocated_freight} onChange={(value) => updatePricing({ allocated_freight: value, price_manually_overridden: false })} />
-                  <Input type="number" label="Outros Custos" value={variant.additional_cost} onChange={(value) => updatePricing({ additional_cost: value, price_manually_overridden: false })} />
+                  <Input type="number" min="0" step="0.01" inputMode="decimal" label="Custo da Joia" value={variant.purchase_cost ?? variant.cost_value} onChange={(value) => updatePricing({ purchase_cost: value, cost_value: value, price_manually_overridden: false, cost_estimated: false })} />
+                  <Input type="number" min="0" step="0.01" inputMode="decimal" label="Frete Rateado" value={variant.allocated_freight} onChange={(value) => updatePricing({ allocated_freight: value, price_manually_overridden: false })} />
+                  <Input type="number" min="0" step="0.01" inputMode="decimal" label="Outros Custos" value={variant.additional_cost} onChange={(value) => updatePricing({ additional_cost: value, price_manually_overridden: false })} />
                   <div className="money-readout"><small>Custo total</small><b>{currency.format(centsToMoney(pricing.total_cost_cents))}</b></div>
                 </div>
               </div>
@@ -1249,7 +1254,7 @@ export function VariantEditModal({ category, variant, pricingSettings = {}, onCh
                   <Select label="Arredondamento" value={variant.price_rounding_mode || pricingSettings.price_rounding_mode || "exact"} onChange={(value) => updatePricing({ price_rounding_mode: value, price_manually_overridden: false })}>
                     {PRICE_ROUNDING_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                   </Select>
-                  <Input type="number" label="Preço Final de Venda" value={variant.sale_value} onChange={(value) => updatePricing({ sale_value: value, price_manually_overridden: true })} required />
+                  <Input type="number" min="0" step="0.01" inputMode="decimal" label="Preço Final de Venda" value={variant.sale_value} onChange={(value) => updatePricing({ sale_value: value, price_manually_overridden: true })} required />
                   <div className="pricing-actions-inline">
                     <Button variant="secondary" onClick={() => updatePricing({ sale_value: centsToMoney(pricing.suggested_price_cents), price_manually_overridden: false, cost_estimated: false })}>Usar preço sugerido</Button>
                     <Button variant="secondary" onClick={estimateCostFromSale}>Calcular custo pelo preço final</Button>

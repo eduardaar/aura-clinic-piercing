@@ -1,5 +1,22 @@
 # Referência da API
 
+Atualização de 09/10/2026 — edição e finalização:
+
+- `POST /api/appointments/:id/complete` valida a lista de pagamentos antes das
+  escritas: valores/taxas não negativos com até duas casas, parcelas inteiras a
+  partir de 1 e status `pago`, `confirmado` ou `pendente`. A soma das linhas,
+  inclusive pendentes, não pode superar o saldo disponível após sinal/crédito.
+  Pagamentos pendentes novos têm `paid_at = NULL` (migration tenant `0044`);
+  recebimentos confirmados têm data e usuário. Os métodos de transferência e
+  outra forma são registros manuais, sem confirmação automática de operadora.
+- No fechamento, `financial_notes: ""` apaga a observação; omitir o campo a
+  preserva. A mesma distinção vale para mensagem/notas de pós-atendimento e
+  motivo/notas de bloqueios. Datas opcionais da lista de espera e vínculos
+  opcionais dos lançamentos aceitam limpeza explícita.
+- `/api/catalog` mantém publicados esgotados disponíveis para consulta, sem
+  liberar a compra de saldo inexistente. A interface não usa mais a antiga
+  configuração `show_out_of_stock` para ocultá-los.
+
 Atualização de 06/10/2026 — sinal e rastreabilidade:
 
 - `POST /api/appointments`: `deposit_value` aceita o valor manual e `deposit_status` determina se houve recebimento. `deposit_expected_value` preserva a sugestão do serviço (ou o valor esperado explicitamente enviado). Integrações legadas sem status mantêm a semântica anterior de recebido; telas atuais sempre enviam o status.

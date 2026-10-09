@@ -49,6 +49,25 @@ async function pickJewelry(name) {
 }
 
 describe("venda: itens e status", () => {
+  it("deixa quantidade e preço vazios e recusa quantidade vazia", async () => {
+    const user = userEvent.setup();
+    await openSale(user);
+    await user.click(screen.getByRole("button", { name: /2\. Itens/i }));
+    await pickJewelry("Argola Titânio");
+    const quantity = screen.getByLabelText("Quantidade");
+    const price = screen.getByLabelText("Valor unitário");
+    await user.clear(quantity);
+    expect(quantity).toHaveValue(null);
+    await user.click(screen.getByRole("button", { name: "Salvar alteração" }));
+    expect(screen.getByText("Informe uma quantidade inteira maior que zero.")).toBeInTheDocument();
+    await user.type(quantity, "2");
+    await user.clear(price);
+    expect(price).toHaveValue(null);
+    await user.type(price, "0");
+    expect(price).toHaveValue(0);
+    await user.click(screen.getByRole("button", { name: "Salvar alteração" }));
+    expect(screen.getByText("1 item(ns) adicionado(s)")).toBeInTheDocument();
+  });
   it("escolher a joia e confirmar a linha não duplica o item", async () => {
     const user = userEvent.setup();
     await openSale(user);

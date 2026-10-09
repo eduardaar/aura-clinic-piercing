@@ -130,6 +130,81 @@ describe("Detalhes do Agendamento — área de trabalho", () => {
     const completion = callsTo((path) => path === "/appointments/10/complete");
     expect(JSON.parse(completion[0][1].body).payments[0].amount).toBe(79.9);
   });
+  it("permite apagar região, quantidade, sinal e valor de pagamento sem restaurar conteúdo", async () => {
+    const user = userEvent.setup();
+    renderQuick();
+    for (const input of [screen.getAllByLabelText("Região")[0], screen.getAllByLabelText("Qtd.")[0], screen.getByLabelText("Valor do sinal (R$)"), screen.getByRole("spinbutton", { name: "Valor 1" })]) {
+      await user.clear(input);
+      expect(input.value).toBe("");
+      await user.type(input, input.type === "number" ? "2" : "Texto");
+      await user.clear(input);
+      expect(input.value).toBe("");
+    }
+    await user.type(screen.getAllByLabelText("Qtd.")[0], "1");
+    await user.click(screen.getByRole("button", { name: "Revisar e finalizar" }));
+    expect(patchBodies()).toHaveLength(0);
+    expect(screen.getAllByText("Informe um valor válido para cada pagamento.").length).toBeGreaterThan(0);
+  });
+
+  it("divide Pix e crédito, preserva a linha ao mudar a forma e envia valores separados", async () => {
+    const user = userEvent.setup();
+    renderQuick();
+    await user.click(screen.getByRole("button", { name: "Dividir pagamento" }));
+    const firstAmount = screen.getByRole("spinbutton", { name: "Valor 1" });
+    await user.clear(firstAmount);
+    await user.type(firstAmount, "40");
+    const secondAmount = screen.getByRole("spinbutton", { name: "Valor 2" });
+    await user.clear(secondAmount);
+    await user.type(secondAmount, "49.90");
+    await user.click(screen.getByRole("combobox", { name: "Forma 2" }));
+    await user.click(screen.getByRole("option", { name: /cartão de crédito/i }));
+    expect(screen.getByRole("spinbutton", { name: "Valor 2" })).toBe(secondAmount);
+    const installments = screen.getByRole("spinbutton", { name: "Parcelas 2" });
+    await user.clear(installments);
+    expect(installments.value).toBe("");
+    await user.type(installments, "3");
+    await user.click(screen.getByRole("button", { name: "Revisar e finalizar" }));
+    await waitFor(() => expect(callsTo((path) => path === "/appointments/10/complete")).toHaveLength(1));
+    const [, options] = callsTo((path) => path === "/appointments/10/complete")[0];
+    expect(JSON.parse(options.body).payments.map((row) => row.amount)).toEqual([40, 49.9]);
+    expect(JSON.parse(options.body).payments[1].installments).toBe(3);
+    expect(JSON.parse(options.body).payments[0]).not.toHaveProperty("row_key");
+  });
+
+  it("barra excesso da soma incluindo pagamentos pendentes antes de gravar itens", async () => {
+    const user = userEvent.setup();
+    renderQuick();
+    await user.click(screen.getByRole("button", { name: "Dividir pagamento" }));
+    const secondAmount = screen.getByRole("spinbutton", { name: "Valor 2" });
+    await user.clear(secondAmount);
+    await user.type(secondAmount, "10");
+    await user.click(screen.getByRole("combobox", { name: "Status 2" }));
+    await user.click(screen.getByRole("option", { name: "Pendente" }));
+    await user.click(screen.getByRole("button", { name: "Revisar e finalizar" }));
+    expect(patchBodies()).toHaveLength(0);
+    expect(screen.getAllByText("A soma dos pagamentos não pode superar o saldo do atendimento.").length).toBeGreaterThan(0);
+  });
+
+  it("refetch do atendimento e carregamento das opções não sobrescrevem a edição", async () => {
+    const user = userEvent.setup();
+    const props = { appointment: baseAppointment, options: { serviceItems: [] }, services, procedures: [], features: ["basic_catalog", "basic_finance"], onClose: () => {}, onSaved: () => {} };
+    const { rerender } = render(<AppointmentQuickModal {...props} />);
+    await user.click(screen.getByRole("button", { name: "Dividir pagamento" }));
+    const amount = screen.getByRole("spinbutton", { name: "Valor 2" });
+    await user.clear(amount);
+    await user.type(amount, "25");
+    const region = screen.getAllByLabelText("Região")[0];
+    await user.clear(region);
+    await user.type(region, "Tragus");
+    rerender(<AppointmentQuickModal {...props} appointment={{ ...baseAppointment }} options={{ serviceItems: [] }} services={[...services]} />);
+    expect(screen.getByRole("spinbutton", { name: "Valor 2" })).toBe(amount);
+    expect(amount.value).toBe("25");
+    expect(region.value).toBe("Tragus");
+    rerender(<AppointmentQuickModal {...props} appointment={{ ...baseAppointment, id: 20 }} />);
+    expect(screen.queryByRole("spinbutton", { name: "Valor 2" })).not.toBeInTheDocument();
+    expect(screen.getAllByLabelText("Região")[0].value).toBe("Hélix");
+  });
+
   it("abre como área de trabalho larga", () => {
     renderQuick();
     expect(screen.getByRole("dialog", { name: "Detalhes do Agendamento" })).toHaveClass("modal-workspace");

@@ -29,12 +29,12 @@ function emptyPurchase() {
     supplier_id: "",
     purchase_date: today(),
     first_due_date: today(),
-    installment_count: 1,
+    installment_count: /** @type {string | number} */ (1),
     payment_method: "Pix",
     category: "",
     cost_center_id: "",
-    freight_value: 0,
-    discount_value: 0,
+    freight_value: /** @type {string | number} */ (0),
+    discount_value: /** @type {string | number} */ (0),
     notes: "",
     idempotency_key:
       typeof crypto !== "undefined" && crypto.randomUUID
@@ -44,7 +44,7 @@ function emptyPurchase() {
 }
 
 function emptyItem() {
-  return { item_type: "product", product_id: "", consumable_id: "", product_variant_id: "", quantity: 1, unit_cost: "" };
+  return { item_type: "product", product_id: "", consumable_id: "", product_variant_id: "", quantity: /** @type {string | number} */ (1), unit_cost: "" };
 }
 
 function formatDate(value) {
@@ -564,7 +564,7 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
                 min="1"
                 label="Quantidade"
                 value={line.quantity}
-                onChange={(quantity) => setLine({ ...line, quantity: Number(quantity || 0) })}
+                onChange={(quantity) => setLine({ ...line, quantity })}
               />
               <Input
                 type="number"
@@ -600,15 +600,15 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
               <FormSection title="Condições de pagamento" badge="Obrigatório">
                 <div className="form-grid">
                   <PaymentSelect label="Forma de pagamento" value={form.payment_method} onChange={(payment_method) => setForm({ ...form, payment_method })} />
-                  <Input type="number" min="1" max="120" label="Parcelas" value={form.installment_count} onChange={(installment_count) => setForm({ ...form, installment_count: Number(installment_count || 1) })} required />
+                  <Input type="number" min="1" max="120" label="Parcelas" value={form.installment_count} onChange={(installment_count) => setForm({ ...form, installment_count })} required />
                   <Input type="date" label="Primeiro vencimento" value={form.first_due_date} onChange={(first_due_date) => setForm({ ...form, first_due_date })} required />
                 </div>
                 <InstallmentGrid total={total} count={form.installment_count} firstDueDate={form.first_due_date} paymentMethod={form.payment_method} installments={installments} onChange={setInstallments} automatic={automaticInstallments} onAutomaticChange={setAutomaticInstallments} title="Parcelas da compra" />
               </FormSection>
               <AdvancedFields title="Valores e classificação" description="Frete, desconto, categoria, centro de custo e observações." count={undefined} open={undefined} onOpenChange={undefined}>
                 <div className="form-grid">
-                  <Input type="number" min="0" step="0.01" label="Frete" value={form.freight_value} onChange={(freight_value) => setForm({ ...form, freight_value: Number(freight_value || 0) })} />
-                  <Input type="number" min="0" step="0.01" label="Desconto" value={form.discount_value} onChange={(discount_value) => setForm({ ...form, discount_value: Number(discount_value || 0) })} />
+                  <Input type="number" min="0" step="0.01" label="Frete" value={form.freight_value} onChange={(freight_value) => setForm({ ...form, freight_value })} />
+                  <Input type="number" min="0" step="0.01" label="Desconto" value={form.discount_value} onChange={(discount_value) => setForm({ ...form, discount_value })} />
                   <Select label="Categoria financeira" value={form.category} onChange={(category) => setForm({ ...form, category })}>
                     <option value="">Sem categoria</option>
                     {asArray(categories).map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}

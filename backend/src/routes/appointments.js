@@ -1,3 +1,4 @@
+import { normalizeCompletionPayments } from "../services/completionPayments.js";
 // Rotas de agendamentos.
 import { Router } from "express";
 import { withFeature } from "../middleware/withDb.js";
@@ -479,9 +480,13 @@ router.post("/api/appointments/:id/complete", withFeature("agenda", async (req, 
   // confirmado e crédito aplicado.
   const financialSnapshot = await getAppointmentFinancialSnapshot(db, req.params.id);
   const maximumAtCompletion = completionCeiling(financialSnapshot, before.total_value);
-  const paidAtCompletion = (Array.isArray(req.body?.payments) ? req.body.payments : [])
-    .filter((item) => ["pago", "confirmado"].includes(String(item?.status || "pago")))
-    .reduce((sum, item) => sum + Math.max(0, Number(item?.amount || 0)), 0);
+  let validatedPayments;
+  try {
+    validatedPayments = normalizeCompletionPayments(req.body.payments);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+  const paidAtCompletion = validatedPayments.filter((item) => ["pago", "confirmado"].includes(item.status)).reduce((sum, item) => sum + item.amount, 0);
   const willCreateReceivable = maximumAtCompletion - paidAtCompletion > 0.009;
   if ((configuresReceivableSchedule(req.body) || willCreateReceivable) &&
       !(await requireFeature(req, res, "basic_finance"))) return;
@@ -489,7 +494,7 @@ router.post("/api/appointments/:id/complete", withFeature("agenda", async (req, 
     await db.transaction(async (tx) => {
       await assertCompletionServiceRules(tx, req.params.id);
       await registerCompletionPayments(tx, req.params.id, req.body.payments, req.user?.id);
-      await tx.run("UPDATE appointments SET status = 'atendido', financial_notes = ?, updated_at = ? WHERE id = ?", [req.body.financial_notes || before.financial_notes || "", localTimestamp(), req.params.id]);
+      await tx.run("UPDATE appointments SET status = 'atendido', financial_notes = ?, updated_at = ? WHERE id = ?", [req.body.financial_notes === undefined ? (before.financial_notes || "") : String(req.body.financial_notes ?? ""), localTimestamp(), req.params.id]);
       const after = await tx.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
       await tx.run("INSERT INTO appointment_financial_audit (appointment_id, user_id, action, reason, before_snapshot, after_snapshot) VALUES (?, ?, ?, ?, ?, ?)", [req.params.id, req.user?.id, before.status === "atendido" ? "reopen_financial_close" : "financial_close", req.body.reason || null, JSON.stringify(before), JSON.stringify(after)]);
       await deductJewelryStock(tx, req.params.id);
