@@ -235,6 +235,17 @@ async function validatePurchaseReferences(db, purchase) {
     const center = await db.get("SELECT id FROM financial_cost_centers WHERE id = ? AND is_active = 1", [purchase.cost_center_id]);
     if (!center) throw new PurchaseValidationError("Centro de custo ativo não encontrado.", 404);
   }
+  // Validate stock targets in this tenant before writing purchase item rows.
+  for (const item of purchase.items || []) {
+    const product = await db.get("SELECT id, status FROM jewelry_inventory WHERE id=?", [item.product_id]);
+    if (!product || product.status === "arquivado") {
+      throw new PurchaseValidationError(`Item ${item.product_id} não está disponível para entrada.`, 409);
+    }
+    if (item.product_variant_id) {
+      const variant = await db.get("SELECT id FROM jewelry_variants WHERE id=? AND jewelry_id=? AND is_active=1", [item.product_variant_id, item.product_id]);
+      if (!variant) throw new PurchaseValidationError("Variação inválida para o item de estoque.", 409);
+    }
+  }
   return supplier;
 }
 

@@ -6,7 +6,8 @@ import { Modal, CrudHeader, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { CollapsibleIndicators } from "../../components/common/CollapsibleIndicators";
 import { asArray, asObject, formatDate, removeAccents } from "../../lib/utils";
-import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
+import { apiFetch, readStoredSession, useApiInvalidate, useFetch } from "../../lib/api";
+import { can } from "../../lib/permissions";
 import { useDebouncedValue } from "../../lib/smartSearch";
 import { ANODIZATION_COLOR_OPTIONS, JEWELRY_CATEGORY_OPTIONS, JEWELRY_LENGTH_OPTIONS, JEWELRY_THICKNESS_OPTIONS, JEWELRY_THREAD_OPTIONS, PRICE_MULTIPLIER_OPTIONS, PRICE_ROUNDING_OPTIONS, calculateVariantPricing, centsToMoney, defaultJewelry, defaultJewelryVariant, normalizeJewelryForm, parseGalleryUrls } from "../../lib/defaultForms";
 import { catalogFilterOptions, cleanDisplayText, elegantProductName, splitColorOptions } from "../../features/catalog/catalogUtils";
@@ -104,6 +105,7 @@ export function JewelryCards({ items, onOpen, onEdit, onMovement, onArchive }) {
 }
 
 export function Inventory2({ initialTab = "produtos" }) {
+  const canCreate = can(readStoredSession()?.user || {}, "inventory.create");
   const inventoryWorkspace = initialTab !== "produtos";
   const [view, setView] = useState("table");
   const [sectionTab, setSectionTab] = useState(initialTab);
@@ -288,7 +290,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
         {(inventoryWorkspace || sectionTab === "produtos") && (
           <div className="panel products-crud-header">
             {inventoryWorkspace ? (
-              <CrudHeader title="Itens de estoque" subtitle="Uma única origem para produtos, materiais, saldos, custos e movimentações." actionLabel="Novo item" onAction={openNewProduct} />
+              <CrudHeader title="Itens de estoque" subtitle="Uma única origem para produtos, materiais, saldos, custos e movimentações." actions={[{ label: "Categorias", icon: ListFilter, onClick: () => setSectionTab("categorias") }]} actionLabel={sectionTab === "materiais" ? "Novo material" : "Novo item"} onAction={canCreate ? openNewProduct : undefined} />
             ) : (
               <CrudHeader
                 title="Produtos"
@@ -437,9 +439,11 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
         )}
       >
         <JewelryEditor
+          materialMode={sectionTab === "materiais"}
           options={inventoryOptions}
           categoryOptions={categoryOptions}
           categories={categoryManagement}
+          suppliers={asArray(safeOptions.suppliers)}
           pricingSettings={safeOptions.pricingSettings}
           editing={editingJewelry}
           onMovementOpen={openMovement}
@@ -761,20 +765,26 @@ function ProductGalleryManager({ images = [], productName = "", onChange }) {
   );
 }
 
-/** @param {{ options?: any, categoryOptions?: any[], categories?: any[], pricingSettings?: Record<string, any>, editing?: any, onSaved?: (...args: any[]) => any, onMovementOpen?: (...args: any[]) => any }} props */
-export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTIONS, categories = [], pricingSettings = {}, editing, onSaved, onMovementOpen }) {
-  const [form, setForm] = useState(defaultJewelry());
+function defaultInventoryForm(materialMode) {
+  const form = defaultJewelry();
+  if (materialMode) Object.assign(form, { can_sell: false, can_use_in_service: true, can_publish: false, photo_url: "", weight_grams: 0 });
+  return form;
+}
+
+/** @param {{ materialMode?: boolean, suppliers?: any[], options?: any, categoryOptions?: any[], categories?: any[], pricingSettings?: Record<string, any>, editing?: any, onSaved?: (...args: any[]) => any, onMovementOpen?: (...args: any[]) => any }} props */
+export function JewelryEditor({ materialMode = false, suppliers = [], options, categoryOptions = JEWELRY_CATEGORY_OPTIONS, categories = [], pricingSettings = {}, editing, onSaved, onMovementOpen }) {
+  const [form, setForm] = useState(() => defaultInventoryForm(materialMode));
   const [error, setError] = useState("");
   const [editorTab, setEditorTab] = useState("dados");
   const [editingVariantIndex, setEditingVariantIndex] = useState(null);
   const [confirmPricing, setConfirmPricing] = useState(false);
 
   useEffect(() => {
-    setForm(editing ? normalizeJewelryForm(editing) : defaultJewelry());
+    setForm(editing ? normalizeJewelryForm(editing) : defaultInventoryForm(materialMode));
     setError("");
     setEditorTab("dados");
     setEditingVariantIndex(null);
-  }, [editing?.id]);
+  }, [editing?.id, materialMode]);
 
   useEffect(() => {
     if (!form.name) return;
@@ -832,7 +842,7 @@ export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTI
     });
     const json = await response.json().catch(() => ({}));
     if (!response.ok) return setError(json.message || json.error || "Não foi possível salvar a joia.");
-    setForm(defaultJewelry());
+    setForm(defaultInventoryForm(materialMode));
     onSaved(json);
   }
 
@@ -903,9 +913,9 @@ export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTI
     <form id="jewelry-editor-form" className="panel jewelry-editor stock-editor" onSubmit={submit}>
       <div className="panel-heading">
         <div>
-          <span className="eyebrow">Categoria → Produto → Variações</span>
-          <h2>{editing ? "Editar Produto" : "Novo Produto"}</h2>
-          <span>Cadastre a joia uma vez e controle cada medida separadamente.</span>
+          <span className="eyebrow">Estoque unificado</span>
+          <h2>{materialMode ? editing ? "Editar material" : "Novo material" : editing ? "Editar Produto" : "Novo Produto"}</h2>
+          <span>{materialMode ? "Cadastre o material e selecione sua variação ao registrar a compra." : "Cadastre a joia uma vez e controle cada medida separadamente."}</span>
         </div>
       </div>
 
@@ -924,7 +934,7 @@ export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTI
       {editorTab === "dados" && (
         <div className="editor-section">
           <div className="form-grid">
-            <Input label="Nome do Produto" value={form.name} onChange={(value) => setForm({ ...form, name: value })} required />
+            <Input label={materialMode ? "Nome do material" : "Nome do Produto"} value={form.name} onChange={(value) => setForm({ ...form, name: value })} required />
             <Select
               label="Categoria"
               value={form.category}
@@ -960,6 +970,15 @@ export function JewelryEditor({ options, categoryOptions = JEWELRY_CATEGORY_OPTI
           </div>
           <Textarea label="Descrição curta" value={form.description} onChange={(value) => setForm({ ...form, description: value })} />
           <Textarea label="Observações internas" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} />
+          {materialMode && form.variants.length === 1 && <div className="form-grid">
+            <Input type="number" min="0" step="1" label="Quantidade em estoque" value={form.variants[0].quantity} onChange={(quantity) => updateVariant(0, { quantity })} />
+            <Input type="number" min="0" step="0.01" label="Custo unitário" value={form.variants[0].purchase_cost} onChange={(purchase_cost) => updateVariant(0, { purchase_cost })} />
+            <Input type="number" min="0" step="1" label="Estoque mínimo" value={form.low_stock_threshold} onChange={(low_stock_threshold) => { setForm((current) => ({ ...current, low_stock_threshold, variants: current.variants.map((variant) => ({ ...variant, low_stock_threshold })) })); }} />
+            <Select label="Fornecedor (opcional)" value={String(form.supplier_id || "")} onChange={(supplier_id) => { const supplier = suppliers.find((item) => String(item.id) === supplier_id)?.name || ""; setForm((current) => ({ ...current, supplier_id, supplier, variants: current.variants.map((variant) => ({ ...variant, supplier })) })); }}>
+              <option value="">Sem fornecedor vinculado</option>
+              {suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+            </Select>
+          </div>}
           <div className="form-grid">
             <Input label="Unidade de estoque" value={form.stock_unit} onChange={(value) => setForm({ ...form, stock_unit: value })} />
             <Input label="Unidade de compra" value={form.purchase_unit} onChange={(value) => setForm({ ...form, purchase_unit: value })} />

@@ -56,6 +56,17 @@ export function catalogItemIsAvailable(item = {}) {
     : Number(item.quantity || 0) > 0;
 }
 
+// Cards summarize a product; dimensions and colors belong to one selected
+// variant in the detail page, never to a merged list of incompatible variants.
+export function catalogCardSummary(item = {}) {
+  const variants = asArray(item.variants).filter((variant) => Number(variant.is_active ?? 1) === 1);
+  const materials = [...new Set(variants.map((variant) => cleanDisplayText(variant.material)).filter(Boolean))];
+  const material = variants.length
+    ? materials.length === 1 && variants.every((variant) => cleanDisplayText(variant.material) === materials[0]) ? materials[0] : ""
+    : cleanDisplayText(item.material);
+  return { variantCount: variants.length, technicalSummary: material || cleanDisplayText(item.category) };
+}
+
 export function catalogAvailabilityMatches(item, availability = "", _showOutOfStock = true) {
   const available = catalogItemIsAvailable(item);
   if (availability === "true") return available;

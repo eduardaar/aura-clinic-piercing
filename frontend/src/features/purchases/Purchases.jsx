@@ -20,6 +20,7 @@ import { useFormDraft } from "../../lib/useFormDraft";
 import { installmentSummary, installmentsForPayload } from "../../lib/installments";
 import { asArray, asNumber, asObject } from "../../lib/utils";
 import { financeLabel } from "../../lib/financeLabels";
+import { can } from "../../lib/permissions";
 import { currency } from "../shared/helpers";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -64,7 +65,7 @@ const PURCHASE_STEPS = [
 export function Purchases({ onNavigate, createSignal = 0 }) {
   const { data, loading, error: purchasesError } = useFetch("/purchases");
   const { data: suppliers } = useFetch("/finance/suppliers");
-  const { data: products } = useFetch("/jewelry");
+  const { data: products, loading: productsLoading, error: productsError } = useFetch("/jewelry");
   const { data: categories } = useFetch("/finance/categories");
   const { data: centers } = useFetch("/finance/cost-centers");
   const invalidate = useApiInvalidate();
@@ -109,7 +110,7 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
   const purchasePayload = asObject(data);
   const purchases = Array.isArray(data) ? data : asArray(purchasePayload.items);
   const safeProducts = asArray(products);
-  const safeConsumables = safeProducts.filter((item) => Boolean(Number(item.can_use_in_service)) && !Boolean(Number(item.can_sell)) && item.status !== "arquivado");
+  const safeConsumables = safeProducts.filter((item) => Boolean(Number(item.can_use_in_service)) && item.status !== "arquivado");
   const selectedProduct = safeProducts.find((item) => String(item.id) === String(line.product_id));
   const selectedConsumable = safeConsumables.find((item) => String(item.id) === String(line.consumable_id));
   const variants = asArray(selectedProduct?.variants).filter((item) => Number(item.is_active ?? 1));
@@ -166,7 +167,8 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
 
   function selectConsumable(consumableId) {
     const consumable = safeConsumables.find((item) => String(item.id) === String(consumableId));
-    setLine({ ...emptyItem(), item_type: "consumable", product_id: consumableId, consumable_id: consumableId, unit_cost: consumable?.cost_value ?? "" });
+    const variant = asArray(consumable?.variants).find((item) => Number(item.is_active ?? 1)) || null;
+    setLine({ ...emptyItem(), item_type: "consumable", product_id: consumableId, consumable_id: consumableId, product_variant_id: variant?.id ? String(variant.id) : "", unit_cost: variant?.cost_value ?? consumable?.cost_value ?? "" });
   }
 
   function selectVariant(variantId) {
@@ -185,7 +187,7 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
     if (asNumber(line.quantity) <= 0) return setError("A quantidade deve ser maior que zero.");
     if (asNumber(line.unit_cost) <= 0) return setError("O custo unitário deve ser maior que zero.");
     const label = isConsumable
-      ? selectedConsumable.name
+      ? `${selectedConsumable.name}${selectedVariant ? ` - ${selectedVariant.variation_name || selectedVariant.sku}` : ""}`
       : selectedVariant
       ? `${selectedProduct.name} - ${selectedVariant.variation_name || selectedVariant.sku}`
       : selectedProduct.name;
@@ -197,7 +199,7 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
         item_type: isConsumable ? "consumable" : "product",
         product_id: isConsumable ? Number(selectedConsumable.id) : Number(selectedProduct.id),
         consumable_id: isConsumable ? Number(selectedConsumable.id) : null,
-        product_variant_id: isConsumable ? null : (selectedVariant?.id ? Number(selectedVariant.id) : null),
+        product_variant_id: selectedVariant?.id ? Number(selectedVariant.id) : null,
         item_name: label,
         quantity: Number(line.quantity),
         unit_cost: Number(line.unit_cost),
@@ -226,7 +228,7 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
   function fiscalTarget(match) {
     if (!match) return "";
     return match.item_type === "consumable"
-      ? `consumable:${match.consumable_id}`
+      ? `consumable:${match.consumable_id}:${match.product_variant_id || 0}`
       : `product:${match.product_id}:${match.product_variant_id || 0}`;
   }
 
@@ -283,8 +285,8 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
       const [itemType, rawId, rawVariantId] = imported.selected_target.split(":");
       const isNewItem = itemType === "new";
       const product = itemType === "product" ? safeProducts.find((item) => String(item.id) === rawId) : null;
-      const variant = product ? asArray(product.variants).find((item) => String(item.id) === rawVariantId && rawVariantId !== "0") : null;
       const consumable = itemType === "consumable" ? safeConsumables.find((item) => String(item.id) === rawId) : null;
+      const variant = asArray((product || consumable)?.variants).find((item) => String(item.id) === rawVariantId && rawVariantId !== "0") || null;
       if (!product && !consumable && !isNewItem) return setError(`Revise a associação de ${imported.name}.`);
       const quantity = Number(imported.quantity);
       const lineValue = quantity * asNumber(imported.unit_cost);
@@ -356,6 +358,7 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
     setDetails(response.ok ? payload : { ...item, error: payload.error || "Não foi possível abrir a compra." });
   }
 
+  if (productsError) return <ApiError message={productsError} />;
   if (loading || data == null || suppliers == null || products == null || categories == null || centers == null)
     return <Loading />;
   if (purchasesError) return <ApiError message={purchasesError} />;
@@ -435,7 +438,7 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
       <Modal
         open={modalOpen}
         title="Nova compra"
-        subtitle="Produtos para revenda e materiais de consumo entram em estoques separados; as parcelas vão para contas a pagar."
+        subtitle="Produtos e materiais usam o estoque unificado; as parcelas vão para contas a pagar."
         size="lg"
         onClose={closePurchaseModal}
         footer={
@@ -514,7 +517,12 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
                                 ? productVariants.map((variant) => <option key={`p-${product.id}-${variant.id}`} value={`product:${product.id}:${variant.id}`}>{product.name} · {variant.variation_name || variant.sku}</option>)
                                 : [<option key={`p-${product.id}`} value={`product:${product.id}:0`}>{product.name}</option>];
                             })}
-                            {safeConsumables.map((item) => <option key={`c-${item.id}`} value={`consumable:${item.id}`}>{item.name} · material</option>)}
+                            {safeConsumables.flatMap((item) => {
+                              const activeVariants = asArray(item.variants).filter((variant) => Number(variant.is_active ?? 1));
+                              return activeVariants.length
+                                ? activeVariants.map((variant) => <option key={`c-${item.id}-${variant.id}`} value={`consumable:${item.id}:${variant.id}`}>{item.name} · {variant.variation_name || variant.sku} · material</option>)
+                                : [<option key={`c-${item.id}`} value={`consumable:${item.id}:0`}>{item.name} · material</option>];
+                            })}
                           </Select>
                         </div>)}
                       </div>
@@ -527,6 +535,12 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
 
             {activeStep === "items" && <FormWorkflow.Page title="Itens da compra" description="Monte a lista em uma única tela, sem abrir formulários sobrepostos.">
           <FormSection title="Adicionar item" description="Informe o custo unitário negociado.">
+            {line.item_type === "consumable" && (
+              <div className="section-inline-header">
+                <span>{productsLoading ? "Carregando materiais…" : safeConsumables.length ? "Materiais cadastrados no estoque, inclusive os que também podem ser vendidos." : "Nenhum material ativo cadastrado. Em Estoque → Materiais de procedimento, cadastre ou habilite um item para uso em procedimento."}</span>
+                {onNavigate && can(sessionUser, "inventory.view") && <Button variant="secondary" onClick={() => { closePurchaseModal(); onNavigate("inventory", { target: "materiais" }); }}>{can(sessionUser, "inventory.create") ? "Cadastrar material no estoque" : "Ver materiais no estoque"}</Button>}
+              </div>
+            )}
             <div className="section-inline-header">
               <strong>Novo item</strong>
               <span>{items.length} item(ns) adicionado(s)</span>
@@ -539,7 +553,7 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
               {line.item_type === "consumable" ? (
                 <Select label="Material" value={line.consumable_id} onChange={selectConsumable}>
                   <option value="">Selecione</option>
-                  {safeConsumables.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.quantity || 0} {item.unit || "un."}</option>)}
+                  {safeConsumables.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.quantity || 0} {item.stock_unit || "un."}</option>)}
                 </Select>
               ) : <Select label="Produto" value={line.product_id} onChange={selectProduct}>
                 <option value="">Selecione</option>
@@ -549,7 +563,7 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
                   </option>
                 ))}
               </Select>}
-              {line.item_type === "product" && <Select label="Variação" value={line.product_variant_id} onChange={selectVariant}>
+              {(line.item_type === "product" || variants.length > 0) && <Select label="Variação" value={line.product_variant_id} onChange={selectVariant}>
                 <option value="" disabled={variants.length > 0}>
                   Sem variação
                 </option>

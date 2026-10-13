@@ -19,6 +19,56 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 describe("PublicCatalog", () => {
+  it("sempre permite limpar categorias mesmo quando Todos não foi cadastrado pela loja", () => {
+    catalog.data.catalogSections.unshift({ section_type: "categories", is_active: 1 });
+    catalog.data.categories = ["Labret"];
+    render(<PublicCatalog />);
+    expect(screen.getByRole("button", { name: "Todos", exact: true })).toBeInTheDocument();
+  });
+  it("Ver todos mantém a categoria da seção e inclui suas joias esgotadas na grade completa", () => {
+    catalog.data.catalogSections.unshift({ section_type: "in_stock", category_filter: "Labret", is_active: 1 });
+    catalog.data.items.push(product(4, 2, { category: "Argolas", material: "Titânio" }));
+    render(<PublicCatalog />);
+    expect(document.querySelector("#catalog-products")).toHaveTextContent("Joia 4");
+    const link = screen.getByRole("link", { name: "Ver todos", exact: true });
+    link.addEventListener("click", (event) => event.preventDefault());
+    fireEvent.click(link);
+    expect(document.querySelector("#catalog-products")).toHaveTextContent("Joia 1");
+    expect(document.querySelector("#catalog-products")).toHaveTextContent("Joia 2");
+    expect(document.querySelector("#catalog-products")).not.toHaveTextContent("Joia 4");
+  });
+  it("resume somente características comuns e conta variações ativas sem listar cores no cartão", () => {
+    catalog.data.items[1].color = "natural, bronze, rosa, azul, turquesa, verde, roxo, dourado";
+    catalog.data.items[1].variants = Array.from({ length: 11 }, (_, index) => ({ id: index + 100, material: "Titânio ASTM F136", color: `Cor ${index}`, quantity: index ? 1 : 0, is_active: 1 }));
+    catalog.data.items[1].variants.push({ id: 999, material: "Aço", is_active: 0 });
+    render(<PublicCatalog />);
+    const card = screen.getByRole("heading", { name: "Joia 2" }).closest("article");
+    expect(card).toHaveTextContent("11 variações");
+    expect(card).toHaveTextContent("Titânio ASTM F136");
+    expect(card).not.toHaveTextContent("turquesa");
+    expect(card).not.toHaveTextContent("sem juros");
+    expect(card).not.toHaveTextContent("via Pix");
+  });
+  it("favoritos persistem por clínica após remontar o catálogo e compra desabilitada esconde carrinho", () => {
+    catalog.data.theme.show_buy_button = 0;
+    const view = render(<PublicCatalog />);
+    const card = screen.getByRole("heading", { name: "Joia 2" }).closest("article");
+    fireEvent.click(card.querySelector('button[aria-label="Favoritar"]'));
+    expect(card.querySelector('button[aria-label="Remover dos favoritos"]')).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("button", { name: "Carrinho" })).not.toBeInTheDocument();
+    view.unmount();
+    render(<PublicCatalog />);
+    expect(screen.getByRole("heading", { name: "Joia 2" }).closest("article").querySelector('button[aria-label="Remover dos favoritos"]')).toHaveAttribute("aria-pressed", "true");
+  });
+  it("Ver todos aponta à listagem completa depois de uma seleção curada, incluindo esgotados", () => {
+    catalog.data.catalogSections.unshift({ section_type: "in_stock", is_active: 1 });
+    catalog.data.featuredProducts = [{ product_id: 2, is_active: 1 }];
+    render(<PublicCatalog />);
+    expect(document.querySelectorAll("#catalog-products")).toHaveLength(1);
+    expect(document.querySelector("#catalog-products")).toHaveTextContent("Joia 1");
+    expect(document.querySelector("#catalog-products")).toHaveTextContent("Joia 2");
+    expect(screen.getByRole("link", { name: "Ver todos" })).toHaveAttribute("href", "#catalog-products");
+  });
   it("exibe esgotados, protege ocultos e compartilha o produto e a clínica corretos", async () => {
     render(<PublicCatalog />);
     expect(screen.getByRole("heading", { name: "Joia 1" })).toBeInTheDocument();

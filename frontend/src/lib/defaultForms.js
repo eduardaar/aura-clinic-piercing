@@ -440,6 +440,7 @@ export function defaultJewelry() {
     cost_estimated: false,
     supplier: "",
     physical_location: "",
+    supplier_id: "",
     sku: "",
     is_catalog_active: false,
     is_featured: false,

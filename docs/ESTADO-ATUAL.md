@@ -1,8 +1,8 @@
 # Estado atual do projeto
 
-> Situação em **09/10/2026**: cópia local sobre `a4c3cab3` (06/10/2026), com as correções de campos, catálogo, agenda e finalização da seção 11. Alterações desta execução ainda não publicadas.
+> Situação em **13/10/2026**: correções de materiais e catálogo da seção 12 preparadas para envio à `main`, sobre `df551949` (09/10/2026). O push aciona a pipeline de CI/deploy; a conclusão em produção deve ser conferida no GitHub Actions.
 >
-> Nesta revisão foram reexecutados o typecheck de backend/frontend, o build, as suítes de backend/frontend e a validação visual automatizada em Chromium/WebKit (seção 10). Integrações externas e iPhone físico não foram exercitados; os resultados anteriores preservam suas datas.
+> Nesta revisão foram reexecutados o typecheck de backend/frontend, o build, as suítes de backend/frontend e a validação automatizada em Chromium/WebKit (seção 12). Integrações externas e iPhone físico não foram exercitados; os resultados anteriores preservam suas datas.
 >
 > Este documento existe para responder uma pergunta só: **o que já está feito e o que ainda não está.** Ele não propõe roadmap nem assume compromisso de produto — para isso, use [IDEIAS.md](./IDEIAS.md). Quando o código e este documento discordarem, o código vence: registre a correção aqui.
 
@@ -258,6 +258,29 @@ Conferida em SQL a quitação de R$ 145 por sinal R$ 25 + Pix R$ 50 + cartão R$
 com uma única linha de sinal, três recebimentos e saldo zero. Uma notificação
 ResizeObserver em WebKit foi classificada como o ruído já tratado pela central
 de erros; nenhum outro erro de aplicação foi aceito pelo teste.
+
+## 12. Materiais de consumo e catálogo — 13/10/2026
+
+O cadastro unificado de materiais foi preservado. Compras deixou de excluir
+itens simultaneamente vendáveis e usáveis em procedimento, e passou a preservar
+a variação que recebe estoque. A aba de materiais oferece “Novo material” com
+defaults próprios, campos de saldo/custo/mínimo e fornecedor vinculado, usando
+o mesmo editor. Categorias continuam no gerenciador existente. A API valida os
+vínculos da compra no schema do tenant antes de gravar.
+
+O catálogo ganhou cartões com imagens proporcionais, nomes em duas linhas,
+resumo técnico comum e contagem de variações ativas. Características completas
+permanecem nos detalhes. Cabeçalho/categorias ficaram compactos; “Todos” permite
+limpar o filtro e “Ver todos” aponta à listagem completa. Esgotados continuam
+visíveis e consultáveis. Pix/parcelamento fixos sem configuração foram removidos.
+Fonte, identidade, publicação, favoritos e carrinho continuam vinculados à loja.
+
+Não exige migration nova. Implementação, testes, capturas e limitações em
+[`outputs/materiais-catalogo-2026-10-13/RELATORIO.md`](../outputs/materiais-catalogo-2026-10-13/RELATORIO.md).
+Validação: 737 testes backend e 68+337 frontend aprovados, tipos/build aprovados
+e matriz Chromium/WebKit em 320/390/430/768/1366px com API/banco descartáveis.
+As três referências visuais citadas no texto não foram recebidas; não foi feita
+comparação visual com elas. Não houve teste em iPhone físico ou deploy.
 
 ## Pendências abertas
 

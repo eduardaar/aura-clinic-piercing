@@ -22,6 +22,7 @@ router.get("/api/options", withFeature("basic_inventory", async (_req, res, db) 
   const inventoryOptions = await db.all("SELECT * FROM inventory_options ORDER BY type, name");
   const pricingSettings = await getPricingSettings(db);
   const categoryManagement = await listInventoryCategories(db);
+  const suppliers = await db.all("SELECT id, name FROM suppliers WHERE is_active=1 AND quality_status <> 'blocked' ORDER BY name");
   const visibleJewelry = hasPermission(_req.user, P.INVENTORY_VIEW_COST) ? jewelry : redactInventoryCosts(jewelry);
   res.json({
     professionals,
@@ -34,6 +35,7 @@ router.get("/api/options", withFeature("basic_inventory", async (_req, res, db) 
     jewelrySubcategories: { Argolas: ARGOLA_SUBCATEGORIES },
     inventoryOptions: groupInventoryOptions(inventoryOptions),
     categoryManagement,
+    suppliers,
     ...(hasPermission(_req.user, P.INVENTORY_VIEW_COST) ? { pricingSettings } : {})
   });
 }));
