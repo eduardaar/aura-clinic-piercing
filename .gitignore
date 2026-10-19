@@ -13,3 +13,9 @@ backend/src/data/*.pdf
 
 # Backups locais do banco (gerados por backend/scripts/backup.sh)
 backend/backups/
+
+# Evidências visuais e pacotes gerados localmente (relatórios e testes são versionados)
+/outputs/**/*.png
+/outputs/**/*.tar.gz
+/outputs/**/*.log
+/outputs/demo-local-*/

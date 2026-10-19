@@ -126,7 +126,7 @@ export const REPORT_CATALOG = Object.freeze([
   { type: "suppliers", label: "Fornecedores", category: "Estoque e compras", pagination: "server", filters: [STATUS_FILTER, filter("person_type", "Tipo de pessoa", "select", [{ value: "PJ", label: "Pessoa jurídica" }, { value: "PF", label: "Pessoa física" }]), filter("quality_status", "Homologação", "select", [{ value: "approved", label: "Aprovado" }, { value: "review", label: "Em análise" }, { value: "blocked", label: "Bloqueado" }])], columns: columns(["id", "ID"], ["name", "Fornecedor"], ["person_type", "Tipo", "enum"], ["document", "CPF/CNPJ"], ["contact_name", "Contato"], ["phone", "Telefone"], ["whatsapp", "WhatsApp"], ["email", "E-mail"], ["city", "Cidade"], ["state", "UF"], ["quality_status", "Homologação", "enum"], ["status", "Status", "status"], ["lead_time_days", "Prazo de entrega (dias)", "count"], ["minimum_order_value", "Pedido mínimo", "money"]) },
   {
     type: "financial", label: "Lançamentos financeiros", category: "Financeiro",
-    filters: [...PERIOD_FILTERS,
+    filters: [...PERIOD_FILTERS, filter("category", "Categoria"),
       filter("status", "Status", "select", [option("pending", "Pendente"), option("overdue", "Vencido"), option("partially_paid", "Parcialmente pago"), option("paid", "Pago"), option("refunded", "Estornado"), option("canceled", "Cancelado")]),
       filter("entry_type", "Tipo", "select", [option("income", "Receita"), option("receivable", "A receber"), option("expense", "Despesa"), option("payable", "A pagar")])],
     columns: columns(["id", "ID"], ["competence_date", "Competência", "date"], ["due_date", "Vencimento", "date"], ["entry_type", "Tipo de lançamento", "enum"],
@@ -696,6 +696,7 @@ export async function buildReport(db, type, filters = {}, context = {}) {
     await syncFinanceSources(db);
     const clauses = ["fe.competence_date BETWEEN ? AND ?", "COALESCE(fe.lifecycle_status,'active')='active'"];
     const params = [from, to];
+    if (category) { clauses.push("fe.category=?"); params.push(category); }
     if (status) { clauses.push("fe.status=?"); params.push(status); } else clauses.push("fe.status<>'canceled'");
     if (["income", "receivable", "expense", "payable"].includes(String(filters.entry_type || ""))) { clauses.push("fe.entry_type=?"); params.push(String(filters.entry_type)); }
     if (clientId) { clauses.push("c.id=?"); params.push(clientId); }

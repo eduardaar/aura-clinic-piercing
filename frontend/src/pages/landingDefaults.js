@@ -39,28 +39,36 @@ export const LANDING_DEFAULTS = {
     subtitle: "",
     items: [
       {
-        title: "Agendamento online",
-        text: "Seus clientes marcam horário sozinhos por um link só seu.",
-        image: "/assets/landing/system/agenda-demo.png",
-        image_alt: "Tela da agenda online da Aura Clinic com horários organizados"
+        "title": "Agendamento online",
+        "text": "Seus clientes marcam horário sozinhos por um link só seu.",
+        "image": "/assets/landing/features/agendamento-online.jpg",
+        "image_alt": "Cliente consultando o agendamento online pelo celular",
+        "image_width": 1536,
+        "image_height": 1024
       },
       {
-        title: "Catálogo de joias",
-        text: "Uma vitrine online da sua marca, pronta pra compartilhar.",
-        image: "/assets/landing/system/catalogo-demo.png",
-        image_alt: "Tela do catálogo de joias e estoque da Aura Clinic"
+        "title": "Controle de estoque",
+        "text": "Joias, materiais e alertas de estoque baixo organizados no mesmo lugar.",
+        "image": "/assets/landing/features/controle-de-estoque.jpg",
+        "image_alt": "Profissional conferindo o estoque de joias pelo tablet",
+        "image_width": 1600,
+        "image_height": 900
       },
       {
-        title: "Ficha digital",
-        text: "Anamnese e termo de consentimento assinados sem papel.",
-        image: "/assets/landing/feature-agenda.jpg",
-        image_alt: "Profissional usando tablet para atendimento digital"
+        "title": "Ficha digital",
+        "text": "Anamnese e termo de consentimento assinados sem papel.",
+        "image": "/assets/landing/features/ficha-digital.jpg",
+        "image_alt": "Profissional preenchendo a ficha digital com a cliente",
+        "image_width": 1600,
+        "image_height": 900
       },
       {
-        title: "Financeiro e estoque",
-        text: "Caixa, vendas e alertas de estoque baixo no mesmo lugar.",
-        image: "/assets/landing/system/financeiro-demo.png",
-        image_alt: "Tela de financeiro e indicadores da Aura Clinic"
+        "title": "Controle financeiro",
+        "text": "Acompanhe caixa, vendas e despesas do seu estúdio.",
+        "image": "/assets/landing/features/controle-financeiro.jpg",
+        "image_alt": "Profissional acompanhando o financeiro do estúdio no computador",
+        "image_width": 1600,
+        "image_height": 900
       }
     ]
   },

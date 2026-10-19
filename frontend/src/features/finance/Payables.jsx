@@ -23,7 +23,7 @@ function emptyPayable() {
   return {
     entry_type: "payable", description: "", category: "", amount: "", due_date: today(),
     payment_method: "Pix", payment_account: "", cost_center_id: "", supplier_id: "", installment_count: "1",
-    recurrence: "", notes: "",
+    recurrence: "", notes: "", status: "pending", paid_at: today(),
     idempotency_key: typeof crypto !== "undefined" && crypto.randomUUID
       ? crypto.randomUUID()
       : `payable-${Date.now()}-${Math.random()}`
@@ -69,7 +69,7 @@ export function PayablesAdmin({ onNavigate }) {
   ])].sort(), [categoryList, entries]);
 
   async function createCategory(name) {
-    const response = await apiFetch("/finance/categories", { method: "POST", body: JSON.stringify({ name }) });
+    const response = await apiFetch("/finance/categories", { method: "POST", body: JSON.stringify({ name, usage_scope: "expense" }) });
     const created = await response.json().catch(() => null);
     refreshCategories();
     // `category` é texto livre no lançamento (não FK) — o valor do select é
@@ -121,6 +121,8 @@ export function PayablesAdmin({ onNavigate }) {
     const payload = {
       ...form,
       amount: Number(form.amount),
+      category: form.category || "Outras despesas",
+      ...(!editing ? { paid_amount: form.status === "paid" ? Number(form.amount) : 0 } : {}),
       installment_count: installmentCount,
       recurrence: installmentCount > 1 ? "" : form.recurrence,
       ...(!editing ? { installments: installmentsForPayload(installments) } : {})
@@ -166,8 +168,9 @@ export function PayablesAdmin({ onNavigate }) {
     <section className="panel stack">
       <CrudHeader
         title="Contas a pagar"
-        subtitle="Despesas, empréstimos, parcelas e contas operacionais."
+        subtitle="Despesas operacionais: aluguel, água, luz, serviços e outras contas, sem movimentar o estoque."
         actions={[
+          { label: "Compras e reposições", onClick: () => onNavigate?.("purchases") },
           { label: "Visão financeira", onClick: () => onNavigate?.("receivables", { target: "visao" }) },
           { label: "Caixa", onClick: () => onNavigate?.("receivables", { target: "caixa" }) },
           { label: "Contas a receber", onClick: () => onNavigate?.("receivables") },
@@ -200,7 +203,7 @@ export function PayablesAdmin({ onNavigate }) {
           { key: "status", label: "Status", render: (item) => <StatusBadge status={item.status}>{financeLabel(item.status)}</StatusBadge> }
         ]}
         actions={(item) => <RowActions actions={[
-          !item.source_key && { label: "Editar", onClick: () => openEdit(item) },
+          (!item.source_key || item.source_type === "manual_entry") && { label: "Editar", onClick: () => openEdit(item) },
           !["paid", "canceled", "refunded"].includes(item.status) && { label: "Registrar pagamento", onClick: () => setPayment({ item, value: String(Math.max(0, asNumber(item.amount) - asNumber(item.paid_amount))) }) },
           (item.lifecycle_status || "active") === "active" && { label: "Cancelar conta", onClick: () => setLifecycle({ item, action: "cancel", reason: "" }), danger: true }
         ].filter(Boolean)} />}
@@ -208,15 +211,15 @@ export function PayablesAdmin({ onNavigate }) {
       />
     </section>
 
-    <Modal open={modalOpen} title={editing ? "Editar conta a pagar" : "Nova conta a pagar"} subtitle={editing ? "Altere somente esta parcela." : "Empréstimos e outras obrigações podem ser distribuídos automaticamente e ajustados linha a linha."} size="lg" onClose={() => setModalOpen(false)}
+    <Modal open={modalOpen} title={editing ? "Editar conta a pagar" : "Nova conta a pagar"} subtitle={editing ? "Altere somente esta parcela." : "Registre aluguel, contas e serviços. Categoria e fornecedor são opcionais; o estoque não será alterado."} size="lg" onClose={() => setModalOpen(false)}
       footer={<><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button><Button type="submit" form="payable-form">Salvar conta</Button></>}>
       <form id="payable-form" onSubmit={save} className="stack">
         <div className="form-grid">
           <Input label="Descrição" value={form.description} onChange={(value) => setForm({ ...form, description: value })} required />
           <SelectWithCreate
             label="Categoria" value={form.category} onChange={(value) => setForm({ ...form, category: value })}
-            options={asArray(categoryList).map((item) => ({ id: item.name, name: item.name }))}
-            emptyLabel="Sem categoria" createTitle="Nova categoria" createLabel="Nome da categoria" onCreate={createCategory}
+            options={[...new Set([...asArray(categoryList).filter((item) => item.usage_scope !== "purchase").map((item) => item.name), ...(form.category ? [form.category] : [])])].map((name) => ({ id: name, name }))}
+            emptyLabel="Outras despesas (opcional)" createTitle="Nova categoria" createLabel="Nome da categoria" onCreate={createCategory}
           />
           <Input type="number" min="0" step="0.01" inputMode="decimal" label="Valor total" value={form.amount} onChange={(value) => setForm({ ...form, amount: value })} required />
           <Input type="date" label="Primeiro vencimento" value={String(form.due_date || "").slice(0, 10)} onChange={(value) => setForm({ ...form, due_date: value })} required />
@@ -231,6 +234,10 @@ export function PayablesAdmin({ onNavigate }) {
             options={asArray(supplierList)} emptyLabel="Sem fornecedor" createTitle="Novo fornecedor" createLabel="Nome do fornecedor" onCreate={createSupplier}
           />
           <PaymentSelect label="Forma de pagamento" value={form.payment_method} onChange={(value) => setForm({ ...form, payment_method: value })} />
+          {!editing && <Select label="Situação da despesa" value={form.status} onChange={(status) => setForm({ ...form, status })}>
+            <option value="pending">A pagar</option><option value="paid">Já paga</option>
+          </Select>}
+          {!editing && form.status === "paid" && <Input type="date" label="Data do pagamento" value={form.paid_at} onChange={(paid_at) => setForm({ ...form, paid_at })} required />}
           <Input label="Conta ou caixa" value={form.payment_account || ""} onChange={(value) => setForm({ ...form, payment_account: value })} />
         </div>
         {!editing && (

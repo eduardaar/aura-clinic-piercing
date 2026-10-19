@@ -892,6 +892,22 @@
   }
 }
 
+.au-a-root .au-a-aside.au-a-login-photo {
+  display: grid;
+  align-content: center;
+  background: #211a16;
+}
+
+.au-a-root .au-a-login-photo::after {
+  content: none;
+}
+
+.au-a-root .au-a-login-photo img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .au-a-root *,
   .au-a-root *::before,

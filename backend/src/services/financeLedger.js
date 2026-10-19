@@ -27,7 +27,7 @@ export function normalizeEntry(body = {}, current = {}) {
   return {
     entry_type: entryType,
     description: String(body.description ?? current.description).trim(),
-    category: body.category ?? current.category ?? "",
+    category: body.category ?? current.category ?? (["payable", "expense"].includes(entryType) ? "Outras despesas" : ""),
     amount,
     paid_amount: paidAmount,
     due_date: body.due_date ?? current.due_date,

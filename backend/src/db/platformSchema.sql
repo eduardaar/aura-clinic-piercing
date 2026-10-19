@@ -438,10 +438,10 @@ INSERT INTO platform.landing_sections (section_key, enabled, sort_order, content
     "title": "Tudo que o estúdio precisa",
     "subtitle": "",
     "items": [
-      {"title": "Agendamento online", "text": "Seus clientes marcam horário sozinhos por um link só seu.", "image": "/assets/landing/aura-portfolio/portfolio-01.jpeg", "image_alt": "Orelha com composição de piercings em joias prateadas"},
-      {"title": "Catálogo de joias", "text": "Uma vitrine online da sua marca, pronta pra compartilhar.", "image": "/assets/landing/aura-portfolio/portfolio-02.jpeg", "image_alt": "Composição de piercing em orelha com joias"},
-      {"title": "Ficha digital", "text": "Anamnese e termo de consentimento assinados sem papel.", "image": "/assets/landing/aura-portfolio/portfolio-03.jpeg", "image_alt": "Detalhe de piercing em orelha"},
-      {"title": "Financeiro e estoque", "text": "Caixa, vendas e alertas de estoque baixo no mesmo lugar.", "image": "/assets/landing/aura-portfolio/portfolio-04.jpeg", "image_alt": "Joias de piercing em composição autoral"}
+      {"title":"Agendamento online","text":"Seus clientes marcam horário sozinhos por um link só seu.","image":"/assets/landing/features/agendamento-online.jpg","image_alt":"Cliente consultando o agendamento online pelo celular","image_width":1536,"image_height":1024},
+      {"title":"Controle de estoque","text":"Joias, materiais e alertas de estoque baixo organizados no mesmo lugar.","image":"/assets/landing/features/controle-de-estoque.jpg","image_alt":"Profissional conferindo o estoque de joias pelo tablet","image_width":1600,"image_height":900},
+      {"title":"Ficha digital","text":"Anamnese e termo de consentimento assinados sem papel.","image":"/assets/landing/features/ficha-digital.jpg","image_alt":"Profissional preenchendo a ficha digital com a cliente","image_width":1600,"image_height":900},
+      {"title":"Controle financeiro","text":"Acompanhe caixa, vendas e despesas do seu estúdio.","image":"/assets/landing/features/controle-financeiro.jpg","image_alt":"Profissional acompanhando o financeiro do estúdio no computador","image_width":1600,"image_height":900}
     ]
   }'::jsonb),
 

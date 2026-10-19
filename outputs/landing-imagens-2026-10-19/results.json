@@ -1,0 +1,274 @@
+[
+  {
+    "engine": "chromium",
+    "width": 320,
+    "images": [
+      {
+        "src": "/assets/landing/features/agendamento-online.jpg",
+        "width": 252,
+        "height": 168,
+        "naturalWidth": 1536,
+        "naturalHeight": 1024
+      },
+      {
+        "src": "/assets/landing/features/controle-de-estoque.jpg",
+        "width": 252,
+        "height": 142,
+        "naturalWidth": 1600,
+        "naturalHeight": 900
+      },
+      {
+        "src": "/assets/landing/features/ficha-digital.jpg",
+        "width": 252,
+        "height": 142,
+        "naturalWidth": 1600,
+        "naturalHeight": 900
+      },
+      {
+        "src": "/assets/landing/features/controle-financeiro.jpg",
+        "width": 252,
+        "height": 142,
+        "naturalWidth": 1600,
+        "naturalHeight": 900
+      }
+    ]
+  },
+  {
+    "engine": "chromium",
+    "width": 390,
+    "images": [
+      {
+        "src": "/assets/landing/features/agendamento-online.jpg",
+        "width": 322,
+        "height": 215,
+        "naturalWidth": 1536,
+        "naturalHeight": 1024
+      },
+      {
+        "src": "/assets/landing/features/controle-de-estoque.jpg",
+        "width": 322,
+        "height": 181,
+        "naturalWidth": 1600,
+        "naturalHeight": 900
+      },
+      {
+        "src": "/assets/landing/features/ficha-digital.jpg",
+        "width": 322,
+        "height": 181,
+        "naturalWidth": 1600,
+        "naturalHeight": 900
+      },
+      {
+        "src": "/assets/landing/features/controle-financeiro.jpg",
+        "width": 322,
+        "height": 181,
+        "naturalWidth": 1600,
+        "naturalHeight": 900
+      }
+    ]
+  },
+  {
+    "engine": "chromium",
+    "width": 768,
+    "images": [
+      {
+        "src": "/assets/landing/features/agendamento-online.jpg",
+        "width": 369,
+        "height": 246,
+        "naturalWidth": 1536,
+        "naturalHeight": 1024
+      },
+      {
+        "src": "/assets/landing/features/controle-de-estoque.jpg",
+        "width": 369,
+        "height": 207,
+        "naturalWidth": 1600,
+        "naturalHeight": 900
+      },
+      {
+        "src": "/assets/landing/features/ficha-digital.jpg",
+        "width": 369,
+        "height": 207,
+        "naturalWidth": 1600,
+        "naturalHeight": 900
+      },
+      {
+        "src": "/assets/landing/features/controle-financeiro.jpg",
+        "width": 369,
+        "height": 207,
+        "naturalWidth": 1600,
+        "naturalHeight": 900
+      }
+    ]
+  },
+  {
+    "engine": "chromium",
+    "width": 1366,
+    "images": [
+      {
+        "src": "/assets/landing/features/agendamento-online.jpg",
+        "width": 608,
+        "height": 405,
+        "naturalWidth": 1536,
+        "naturalHeight": 1024
+      },
+      {
+        "src": "/assets/landing/features/controle-de-estoque.jpg",
+        "width": 608,
+        "height": 342,
+        "naturalWidth": 1600,
+        "naturalHeight": 900
+      },
+      {
+        "src": "/assets/landing/features/ficha-digital.jpg",
+        "width": 608,
+        "height": 342,
+        "naturalWidth": 1600,
+        "naturalHeight": 900
+      },
+      {
+        "src": "/assets/landing/features/controle-financeiro.jpg",
+        "width": 608,
+        "height": 342,
+        "naturalWidth": 1600,
+        "naturalHeight": 900
+      }
+    ]
+  },
+  {
+    "engine": "webkit",
+    "width": 320,
+    "images": [
+      {
+        "src": "/assets/landing/features/agendamento-online.jpg",
+        "width": 252,
+        "height": 168,
+        "naturalWidth": 1536,
+        "naturalHeight": 1024
+      },
+      {
+        "src": "/assets/landing/features/controle-de-estoque.jpg",
+        "width": 252,
+        "height": 142,
+        "naturalWidth": 1600,
+        "naturalHeight": 900
+      },
+      {
+        "src": "/assets/landing/features/ficha-digital.jpg",
+        "width": 252,
+        "height": 142,
+        "naturalWidth": 1600,
+        "naturalHeight": 900
+      },
+      {
+        "src": "/assets/landing/features/controle-financeiro.jpg",
+        "width": 252,
+        "height": 142,
+        "naturalWidth": 1600,
+        "naturalHeight": 900
+      }
+    ]
+  },
+  {
+    "engine": "webkit",
+    "width": 390,
+    "images": [
+      {
+        "src": "/assets/landing/features/agendamento-online.jpg",
+        "width": 322,
+        "height": 215,
+        "naturalWidth": 1536,
+        "naturalHeight": 1024
+      },
+      {
+        "src": "/assets/landing/features/controle-de-estoque.jpg",
+        "width": 322,
+        "height": 181,
+        "naturalWidth": 1600,
+        "naturalHeight": 900
+      },
+      {
+        "src": "/assets/landing/features/ficha-digital.jpg",
+        "width": 322,
+        "height": 181,
+        "naturalWidth": 1600,
+        "naturalHeight": 900
+      },
+      {
+        "src": "/assets/landing/features/controle-financeiro.jpg",
+        "width": 322,
+        "height": 181,
+        "naturalWidth": 1600,
+        "naturalHeight": 900
+      }
+    ]
+  },
+  {
+    "engine": "webkit",
+    "width": 768,
+    "images": [
+      {
+        "src": "/assets/landing/features/agendamento-online.jpg",
+        "width": 369,
+        "height": 246,
+        "naturalWidth": 1536,
+        "naturalHeight": 1024
+      },
+      {
+        "src": "/assets/landing/features/controle-de-estoque.jpg",
+        "width": 369,
+        "height": 207,
+        "naturalWidth": 1600,
+        "naturalHeight": 900
+      },
+      {
+        "src": "/assets/landing/features/ficha-digital.jpg",
+        "width": 369,
+        "height": 207,
+        "naturalWidth": 1600,
+        "naturalHeight": 900
+      },
+      {
+        "src": "/assets/landing/features/controle-financeiro.jpg",
+        "width": 369,
+        "height": 207,
+        "naturalWidth": 1600,
+        "naturalHeight": 900
+      }
+    ]
+  },
+  {
+    "engine": "webkit",
+    "width": 1366,
+    "images": [
+      {
+        "src": "/assets/landing/features/agendamento-online.jpg",
+        "width": 608,
+        "height": 405,
+        "naturalWidth": 1536,
+        "naturalHeight": 1024
+      },
+      {
+        "src": "/assets/landing/features/controle-de-estoque.jpg",
+        "width": 608,
+        "height": 342,
+        "naturalWidth": 1600,
+        "naturalHeight": 900
+      },
+      {
+        "src": "/assets/landing/features/ficha-digital.jpg",
+        "width": 608,
+        "height": 342,
+        "naturalWidth": 1600,
+        "naturalHeight": 900
+      },
+      {
+        "src": "/assets/landing/features/controle-financeiro.jpg",
+        "width": 608,
+        "height": 342,
+        "naturalWidth": 1600,
+        "naturalHeight": 900
+      }
+    ]
+  }
+]

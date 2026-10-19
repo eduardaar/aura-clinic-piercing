@@ -13,7 +13,7 @@ const REGISTRY_CONFIG = {
     subtitle: "Categorias usadas nos lançamentos financeiros.",
     singular: "categoria",
     endpoint: "/finance/categories",
-    empty: () => ({ name: "", description: "", is_active: true }),
+    empty: () => ({ name: "", description: "", is_active: true, usage_scope: "both" }),
   },
   centers: {
     title: "Centros de custo",
@@ -85,6 +85,7 @@ function SimpleFinanceRegistry({ registry }) {
 
   const commonColumns = [
     { key: "name", label: "Nome" },
+    ...(registry === "categories" ? [{ key: "usage_scope", label: "Uso", render: (item) => ({ purchase: "Compras e reposições", expense: "Despesas operacionais", both: "Compras e despesas" })[item.usage_scope || "both"] }] : []),
     { key: "description", label: "Descrição", render: (item) => item.description || item.notes || "—" },
     {
       key: "is_active",
@@ -160,6 +161,9 @@ function SimpleFinanceRegistry({ registry }) {
             value={form.description || ""}
             onChange={(description) => setForm({ ...form, description })}
           />
+          {registry === "categories" && <Select label="Uso da categoria" value={form.usage_scope || "both"} onChange={(usage_scope) => setForm({ ...form, usage_scope })}>
+            <option value="both">Compras e despesas</option><option value="purchase">Compras e reposições</option><option value="expense">Despesas operacionais</option>
+          </Select>}
           <Select
             label="Status"
             value={normalizeActive(form.is_active) ? "active" : "inactive"}

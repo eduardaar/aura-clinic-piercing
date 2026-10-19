@@ -172,7 +172,22 @@ segurança de conteúdo.
   oferecem `professional_id` quando ligados a atendimento. A Agenda admite
   `id` para abrir um registro específico e sua busca inclui profissional,
   serviço e joia. A contagem paginada usa os mesmos filtros da consulta.
-- `GET /api/finance/ledger` admite `client_id`, `professional_id`, `source_type`
+- Categorias financeiras (`/api/finance/categories`, GET/POST/PATCH) incluem
+  `usage_scope`: `purchase`, `expense` ou `both`. Categorias de estoque
+  (`/api/inventory-categories`) usam `product`, `material` ou `both`. O padrão
+  de um cadastro personalizado é `both`. A migration `0045` fornece os dados
+  iniciais por tenant; `include_inactive=1` inclui categorias desativadas.
+  Renomear uma categoria financeira preserva o texto dos lançamentos antigos.
+  Não existe DELETE financeiro de categoria; use `is_active=0`.
+- Despesas operacionais usam `POST /api/finance/entries` com `entry_type=payable`,
+  sem produto nem estoque. `supplier_id` e `category` são opcionais; a omissão
+  de categoria usa “Outras despesas”. Para registrar já paga, envie `status=paid`
+  e `paid_at`. Compras sem categoria usam “Outros”. O relatório `financial`
+  também admite filtro exato por `category`.
+- `POST /api/purchases` aceita `description` opcional, independente de `notes`.
+  A descrição é persistida no pedido e em suas contas a pagar; quando omitida,
+  os títulos mantêm o padrão `Compra #<id>`.
+- `GET /api/finance/ledger` admite `category`, `client_id`, `professional_id`, `source_type`
   e `date_field=due_date`; o padrão continua sendo competência. Consulta, contagem
   e indicadores usam o mesmo campo de data. Contas a pagar/receber enviam
   `date_field=due_date`. A busca textual é literal, sem diferenciar acentos/caixa.

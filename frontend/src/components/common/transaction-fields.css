@@ -8,13 +8,20 @@
 .transaction-list__cell[data-align="right"] { text-align: right; }
 .transaction-list__actions { display: flex; flex-wrap: wrap; gap: .4rem; justify-content: flex-end; }
 .transaction-list__actions button { min-height: 2.25rem; padding: .4rem .7rem; }
-.transaction-totals { background: var(--surface-subtle, #f8f6f3); border: 1px solid var(--line, #e7e1da); border-radius: .85rem; display: grid; gap: .65rem; margin: 0; padding: 1rem; }
+.transaction-totals { background: var(--surface-subtle, #f8f6f3); border: 1px solid var(--line, #e7e1da); border-radius: .85rem; display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: .65rem; margin: 0; padding: 1rem; }
 .transaction-totals > div { align-items: baseline; display: flex; gap: 1rem; justify-content: space-between; }
-.transaction-totals dt { color: var(--muted); }
+.transaction-totals dt { color: var(--muted); min-width: 0; white-space: normal; overflow-wrap: anywhere; }
 .transaction-totals dd { font-weight: 700; margin: 0; text-align: right; }
 .transaction-totals .is-emphasis { border-top: 1px solid var(--line, #e7e1da); font-size: 1.05rem; padding-top: .65rem; }
+.installment-grid, .installment-grid .ui-input-field, .installment-grid .ui-input { min-width: 0; max-width: 100%; }
+.installment-grid { grid-template-columns: minmax(0, 1fr); }
 
 @media (max-width: 700px) {
+  .installment-grid .section-inline-header { flex-direction: column; align-items: stretch; min-width: 0; }
+  .installment-grid .ui-switch-field { flex-wrap: wrap; min-width: 0; }
+  .transaction-totals > div { flex-direction: column; align-items: stretch; gap: .35rem; }
+  .transaction-totals dd { margin-left: auto; overflow-wrap: anywhere; }
+  .installment-grid .section-inline-header > div:first-child { display: grid; gap: .35rem; }
   .transaction-list { overflow: visible; }
   .transaction-list__header { display: none; }
   .transaction-list__rows { display: grid; gap: .65rem; }

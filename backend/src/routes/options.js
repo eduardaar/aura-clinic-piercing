@@ -43,7 +43,7 @@ router.get("/api/options", withFeature("basic_inventory", async (_req, res, db) 
 async function listInventoryCategories(db) {
   for (const name of JEWELRY_CATEGORIES) {
     await db.run(
-      "INSERT INTO inventory_options (type, name, description, is_active) VALUES ('category', ?, '', 1) ON CONFLICT(type, name) DO NOTHING",
+      "INSERT INTO inventory_options (type, name, description, is_active, usage_scope) VALUES ('category', ?, '', 1, 'product') ON CONFLICT(type, name) DO NOTHING",
       [name]
     );
   }
@@ -131,10 +131,12 @@ router.post("/api/inventory-categories", withFeature("basic_inventory", async (r
   const name = String(req.body.name || "").trim();
   if (!name) return res.status(400).json({ error: "Nome da categoria é obrigatório." });
   const existing = await ensureCategoryExists(db, name);
+  const scope = req.body.usage_scope || "both";
+  if (!["product", "material", "both"].includes(scope)) return res.status(400).json({ error: "Uso da categoria inválido." });
   if (existing) return res.status(409).json({ error: "Já existe uma categoria com esse nome." });
   const result = await db.run(
-    "INSERT INTO inventory_options (type, name, description, is_active) VALUES ('category', ?, ?, ?) RETURNING id",
-    [name, String(req.body.description || "").trim(), boolNumber(req.body.is_active ?? 1)]
+    "INSERT INTO inventory_options (type, name, description, is_active, usage_scope) VALUES ('category', ?, ?, ?, ?) RETURNING id",
+    [name, String(req.body.description || "").trim(), boolNumber(req.body.is_active ?? 1), scope]
   );
   res.status(201).json(await db.get("SELECT * FROM inventory_options WHERE id = ?", [result.returnedId]));
 }));
@@ -145,17 +147,19 @@ router.patch("/api/inventory-categories/:id", withFeature("basic_inventory", asy
   if (!category) return res.status(404).json({ error: "Categoria não encontrada." });
   const nextName = req.body.name !== undefined ? String(req.body.name || "").trim() : category.name;
   if (!nextName) return res.status(400).json({ error: "Nome da categoria é obrigatório." });
+  const scope = req.body.usage_scope ?? category.usage_scope;
+  if (!["product", "material", "both"].includes(scope)) return res.status(400).json({ error: "Uso da categoria inválido." });
   const duplicate = await db.get("SELECT id FROM inventory_options WHERE type = 'category' AND name = ? AND id != ?", [nextName, category.id]);
   if (duplicate) return res.status(409).json({ error: "Já existe uma categoria com esse nome." });
   await db.run("BEGIN");
   try {
     await db.run(
-      "UPDATE inventory_options SET name = ?, description = ?, is_active = ? WHERE id = ?",
+      "UPDATE inventory_options SET name = ?, description = ?, is_active = ?, usage_scope = ? WHERE id = ?",
       [
         nextName,
         req.body.description !== undefined ? String(req.body.description || "").trim() : category.description || "",
         req.body.is_active !== undefined ? boolNumber(req.body.is_active) : Number(category.is_active ?? 1),
-        category.id
+        scope, category.id
       ]
     );
     if (nextName !== category.name) {

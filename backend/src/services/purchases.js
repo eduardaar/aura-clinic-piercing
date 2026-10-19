@@ -126,7 +126,8 @@ export function normalizePurchase(body = {}, idempotencyKey = "") {
     installment_count: installmentCount,
     payment_method: String(body.payment_method || explicitInstallments?.[0]?.paymentMethod || "Pix").trim() || "Pix",
     installments: explicitInstallments,
-    category: String(body.category || "Fornecedores").trim() || "Fornecedores",
+    category: String(body.category || "Outros").trim() || "Outros",
+    description: String(body.description || "").trim(),
     cost_center_id: body.cost_center_id ? requiredId(body.cost_center_id, "Centro de custo") : null,
     notes: String(body.notes || "").trim(),
     idempotency_key: key,
@@ -351,7 +352,7 @@ async function confirmPurchaseLocked(tx, purchase, userId) {
       VALUES ('payable', ?, ?, ?, 0, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, 'purchase_order', ?, ?)
       ON CONFLICT (source_key) DO NOTHING
     `, [
-      `Compra #${purchase.id}`,
+      purchase.description || `Compra #${purchase.id}`,
       purchase.category || "Fornecedores",
       installment.amount,
       installment.dueDate,
@@ -398,15 +399,15 @@ export async function createPurchase(db, body, { idempotencyKey = "", userId = n
         INSERT INTO purchase_orders
           (supplier_id, purchase_date, first_due_date, installment_count, payment_method, category,
            installments_json, cost_center_id, products_value, freight_value, discount_value, total_value,
-           status, idempotency_key, notes, created_by_user_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?) RETURNING id
+           status, idempotency_key, notes, created_by_user_id, description)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?) RETURNING id
       `, [
         purchase.supplier_id, purchase.purchase_date, purchase.first_due_date, purchase.installment_count,
         purchase.payment_method, purchase.category,
         purchase.installments ? JSON.stringify(serializeInstallments(purchase.installments)) : null,
         purchase.cost_center_id, purchase.products_cents / 100, purchase.freight_cents / 100,
         purchase.discount_cents / 100, purchase.total_cents / 100,
-        purchase.idempotency_key, purchase.notes, userId
+        purchase.idempotency_key, purchase.notes, userId, purchase.description
       ]);
       for (const item of purchase.items) {
         await tx.run(`

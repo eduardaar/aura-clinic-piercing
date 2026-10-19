@@ -1,8 +1,8 @@
 # Estado atual do projeto
 
-> Situação em **13/10/2026**: correções de materiais e catálogo da seção 12 preparadas para envio à `main`, sobre `df551949` (09/10/2026). O push aciona a pipeline de CI/deploy; a conclusão em produção deve ser conferida no GitHub Actions.
+> Situação em **19/10/2026**: ajustes de compras, materiais e despesas operacionais (seção 13), sobre `d7f6da31`, e troca das quatro imagens de recursos da landing **publicados às 13:19 BRT**, a partir da árvore de trabalho local. Migrations `0045` aplicadas às quatro clínicas e `0009` à plataforma, sem pendências. Backup restaurado com sucesso em base temporária antes da publicação; totais de registros, estoque e financeiro preservados. Validação pública em 390/1366 px e relatório em `outputs/deploy-2026-10-19/RELATORIO.md`. Imagens também verificadas localmente em Chromium/WebKit nas larguras 320, 390, 768 e 1366 px.
 >
-> Nesta revisão foram reexecutados o typecheck de backend/frontend, o build, as suítes de backend/frontend e a validação automatizada em Chromium/WebKit (seção 12). Integrações externas e iPhone físico não foram exercitados; os resultados anteriores preservam suas datas.
+> Nesta revisão foram reexecutados o typecheck de backend/frontend, o build, as suítes de backend/frontend e a validação automatizada em Chromium/WebKit (seção 13). Integrações externas e iPhone físico não foram exercitados; os resultados anteriores preservam suas datas.
 >
 > Este documento existe para responder uma pergunta só: **o que já está feito e o que ainda não está.** Ele não propõe roadmap nem assume compromisso de produto — para isso, use [IDEIAS.md](./IDEIAS.md). Quando o código e este documento discordarem, o código vence: registre a correção aqui.
 
@@ -24,7 +24,7 @@
 | --- | --- | --- |
 | Multi-tenancy por schema Postgres | **Entregue** | `middleware/withDb.js`; `scripts/test-isolation.mjs` (9 checagens, incluindo token cruzado, suspensão e 30 requisições alternadas sem vazamento de pool) |
 | Provisionamento e desprovisionamento de clínica | **Entregue** | `services/tenants.js`; clínica nova nasce com `schema.sql` + todas as migrations de tenant na mesma transação |
-| Migrations versionadas com ledger e checksum | **Entregue** | `src/db/migrations/` (platform `0001`–`0008`; tenant `0001`–`0044`, sem `0026` e `0027`, que nunca existiram); CLI `npm --prefix backend run migrations:apply` |
+| Migrations versionadas com ledger e checksum | **Entregue** | `src/db/migrations/` (platform `0001`–`0009`; tenant `0001`–`0045`, sem `0026` e `0027`, que nunca existiram); CLI `npm --prefix backend run migrations:apply` |
 | Painel de super-admin | **Entregue** | `routes/platform.js`, `features/platform/PlatformAdmin.jsx` |
 | Cadastro público de clínica | **Entregue** | `POST /api/signup`, com verificação de disponibilidade de nome e e-mail antes do aceite; exige plano existente (`plano_obrigatorio`) e aceite das versões vigentes dos documentos legais (`legal_acceptance_required`) |
 
@@ -281,6 +281,43 @@ Validação: 737 testes backend e 68+337 frontend aprovados, tipos/build aprovad
 e matriz Chromium/WebKit em 320/390/430/768/1366px com API/banco descartáveis.
 As três referências visuais citadas no texto não foram recebidas; não foi feita
 comparação visual com elas. Não houve teste em iPhone físico ou deploy.
+
+## 13. Compras, reposições e despesas operacionais — 19/10/2026
+
+- Categorias padrão persistidas pela migration `0045`, em cada tenant, com uso
+  separado para compras, despesas ou ambos. Categorias financeiras continuam
+  independentes das categorias dos itens de estoque. Os nomes dos lançamentos
+  antigos permanecem como histórico, inclusive depois de renomear/desativar uma
+  categoria; filtros incluem os nomes usados. Não há exclusão física de categoria
+  financeira pela API.
+- Estoque oferece categorias de materiais de consumo, perfuração, biossegurança,
+  limpeza, EPIs, embalagens, equipamentos e outros materiais. O editor distingue
+  categorias de materiais e de joias; categorias personalizadas podem servir aos
+  dois tipos. Categorias antigas de um item continuam visíveis ao editá-lo.
+- Compras permite criar a categoria financeira no formulário, usa “Outros” quando
+  omitida e mantém os fluxos existentes de NF-e, parcelas e entrada de estoque.
+  A descrição opcional é separada das observações e acompanha os títulos financeiros.
+  A seleção automática de variação não é mais apagada ao mudar o produto.
+- Contas a pagar identifica o fluxo de despesas operacionais e permite registrar
+  uma despesa já paga, com data de pagamento, ou pendente. Categoria e fornecedor
+  são opcionais; a categoria omitida usa “Outras despesas”. Nenhum produto ou
+  movimento de estoque é criado. Contas manuais com chave de idempotência voltam
+  a oferecer edição. Os dois fluxos possuem atalhos entre si.
+- O seletor permite trocar de categoria após criar uma nova e mostra erros de
+  criação. Totais e parcelas foram ajustados para telas estreitas. O razão e o
+  relatório de lançamentos financeiros aceitam filtro de categoria.
+
+Evidências e validação em
+[`outputs/compras-despesas-2026-10-19/RELATORIO.md`](../outputs/compras-despesas-2026-10-19/RELATORIO.md).
+Passaram 742 testes backend, 68 unitários e 340 componentes frontend, tipos/build
+e seis cenários de navegador (Chromium/WebKit, 320/390/1366 px). Após incluir a
+descrição da compra, passaram novamente 16 testes backend pertinentes, nove de
+componentes, tipos/build e a matriz completa de navegador.
+O deploy não aplica migrations automaticamente. A `0045` foi aplicada nas quatro
+clínicas existentes antes da publicação de 19/10; clínicas novas a recebem no
+provisionamento. As quatro imagens da landing e a imagem do login foram recebidas,
+publicadas e verificadas em desktop e celular. Evidências visuais e pacotes locais
+ficam fora do Git; relatórios e testes permanecem versionados.
 
 ## Pendências abertas
 

@@ -13,6 +13,7 @@ import { CrudHeader, Modal, RowActions } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { ApiError, Loading } from "../../components/common/Feedback";
 import { InstallmentGrid } from "../../components/common/InstallmentGrid";
+import { SelectWithCreate } from "../../components/common/SelectWithCreate";
 import { ResponsiveEditableList, TransactionTotals } from "../../components/common/TransactionFields";
 import { CollapsibleIndicators } from "../../components/common/CollapsibleIndicators";
 import { apiFetch, readStoredSession, tenantSlug, useApiInvalidate, useFetch } from "../../lib/api";
@@ -28,6 +29,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 function emptyPurchase() {
   return {
     supplier_id: "",
+    description: "",
     purchase_date: today(),
     first_due_date: today(),
     installment_count: /** @type {string | number} */ (1),
@@ -127,6 +129,14 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
     totalValue: purchases.reduce((sum, item) => sum + asNumber(item.total_value), 0),
   };
 
+  async function createCategory(name) {
+    const response = await apiFetch("/finance/categories", { method: "POST", body: JSON.stringify({ name, usage_scope: "purchase" }) });
+    const created = await response.json();
+    if (!response.ok) throw new Error(created.error || "Não foi possível criar a categoria.");
+    invalidate("/finance/categories");
+    return { id: created.name, name: created.name };
+  }
+
   function openNew() {
     if (!draft.savedAt || draft.hasDraft) {
       setForm(emptyPurchase());
@@ -173,6 +183,9 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
 
   function selectVariant(variantId) {
     const variant = variants.find((item) => String(item.id) === String(variantId));
+    // O select nativo do Radix emite vazio quando troca a lista de opções.
+    // Uma variação obrigatória já selecionada não pode ser apagada por esse evento.
+    if (variants.length && !variant) return;
     setLine({
       ...line,
       product_variant_id: variantId,
@@ -184,6 +197,7 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
     const isConsumable = line.item_type === "consumable";
     if (isConsumable && !selectedConsumable) return setError("Selecione um material para adicionar.");
     if (!isConsumable && !selectedProduct) return setError("Selecione um produto para adicionar.");
+    if (variants.length && !selectedVariant) return setError("Selecione a variação do item para adicionar.");
     if (asNumber(line.quantity) <= 0) return setError("A quantidade deve ser maior que zero.");
     if (asNumber(line.unit_cost) <= 0) return setError("O custo unitário deve ser maior que zero.");
     const label = isConsumable
@@ -373,8 +387,9 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
       <section className="panel stack">
         <CrudHeader
           title="Compras"
-          subtitle="Entrada de produtos e contas a pagar geradas no mesmo lançamento."
+          subtitle="Compras e reposições de joias e materiais, com entrada no estoque e contas a pagar."
           actions={[
+            { label: "Despesas operacionais", onClick: () => onNavigate?.("payables") },
             { label: "Fornecedores", onClick: () => onNavigate?.("suppliers") },
             { label: "Categorias", icon: Tags, onClick: () => onNavigate?.("finance-categories") },
             { label: "Centros de custo", icon: Landmark, onClick: () => onNavigate?.("cost-centers") }
@@ -397,6 +412,7 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
             },
           ]}
           columns={[
+            { key: "description", label: "Descrição", render: (item) => item.description || `Compra #${item.id}` },
             { key: "supplier_name", label: "Fornecedor", render: (item) => item.supplier_name || "—" },
             {
               key: "purchase_date",
@@ -483,6 +499,7 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
                       {asArray(suppliers).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                     </Select>
                     <Input type="date" label="Data da compra" value={form.purchase_date} onChange={(purchase_date) => setForm({ ...form, purchase_date })} required />
+                    <Input label="Descrição da compra (opcional)" value={form.description} onChange={(description) => setForm({ ...form, description })} />
                   </div>
                 </FormSection>
                 <AdvancedFields
@@ -623,10 +640,9 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
                 <div className="form-grid">
                   <Input type="number" min="0" step="0.01" label="Frete" value={form.freight_value} onChange={(freight_value) => setForm({ ...form, freight_value })} />
                   <Input type="number" min="0" step="0.01" label="Desconto" value={form.discount_value} onChange={(discount_value) => setForm({ ...form, discount_value })} />
-                  <Select label="Categoria financeira" value={form.category} onChange={(category) => setForm({ ...form, category })}>
-                    <option value="">Sem categoria</option>
-                    {asArray(categories).map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}
-                  </Select>
+                  <SelectWithCreate label="Categoria financeira" value={form.category} onChange={(category) => setForm({ ...form, category })}
+                    options={asArray(categories).filter((item) => item.usage_scope !== "expense").map((item) => ({ id: item.name, name: item.name }))}
+                    emptyLabel="Outros (opcional)" createTitle="Nova categoria de compra" createLabel="Nome da categoria" onCreate={createCategory} />
                   <Select label="Centro de custo" value={form.cost_center_id} onChange={(cost_center_id) => setForm({ ...form, cost_center_id })}>
                     <option value="">Sem centro</option>
                     {asArray(centers).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}

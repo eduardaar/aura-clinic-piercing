@@ -13,6 +13,7 @@ import { Modal } from "./Crud";
 export function SelectWithCreate({ label, value, onChange, options, emptyLabel = "Nenhum", createTitle, createLabel = "Nome", onCreate }) {
   const formId = useId();
   const [creating, setCreating] = useState(null);
+  const [error, setError] = useState("");
   // A opção recém-criada ainda não chega em `options` no mesmo render (o
   // refetch da lista é assíncrono); sem isso o Select não encontra a opção
   // e o `<select>` nativo espelhado pelo Radix reverte o valor para vazio.
@@ -26,29 +27,36 @@ export function SelectWithCreate({ label, value, onChange, options, emptyLabel =
   // mesmo commit em que a opção nova é registrada, esse remount corrige o
   // valor de volta para vazio. Por isso o `onChange` só acontece depois que
   // a opção nova já foi renderizada (efeito seguinte, após o commit).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: seleciona somente a opção recém-criada, sem sobrescrever escolhas posteriores.
   useEffect(() => {
     if (pendingOption) onChange(String(pendingOption.id));
-  }, [pendingOption, onChange]);
+  }, [pendingOption]);
 
   async function submit(event) {
     event.preventDefault();
     event.stopPropagation();
     const name = String(creating?.name || "").trim();
     if (!name) return;
-    const created = await onCreate(name);
-    setCreating(null);
-    if (created?.id) setPendingOption(created);
+    setError("");
+    try {
+      const created = await onCreate(name);
+      if (!created?.id) throw new Error(created?.error || "Não foi possível criar o cadastro.");
+      setCreating(null);
+      setPendingOption(created);
+    } catch (error) {
+      setError(error.message || "Não foi possível criar o cadastro.");
+    }
   }
 
   return (
     <div className="select-with-create">
       <span className="ui-select-label">{label}</span>
       <div className="select-with-create-row">
-        <Select value={value} onChange={onChange}>
+        <Select value={value} onChange={onChange} ariaLabel={typeof label === "string" ? label : undefined}>
           <option value="">{emptyLabel}</option>
           {mergedOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
         </Select>
-        <Button type="button" variant="secondary" className="select-with-create-add" onClick={() => setCreating({ name: "" })} aria-label={createTitle}>
+        <Button type="button" variant="secondary" className="select-with-create-add" onClick={() => { setError(""); setCreating({ name: "" }); }} aria-label={createTitle}>
           <Plus size={16} aria-hidden="true" />
         </Button>
       </div>
@@ -61,6 +69,7 @@ export function SelectWithCreate({ label, value, onChange, options, emptyLabel =
       >
         <form id={formId} onSubmit={submit}>
           <Input label={createLabel} value={creating?.name ?? ""} onChange={(name) => setCreating((current) => ({ ...current, name }))} required />
+          {error && <span className="form-error" role="alert">{error}</span>}
         </form>
       </Modal>
     </div>

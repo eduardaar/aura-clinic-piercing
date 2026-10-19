@@ -124,6 +124,10 @@ router.get("/api/finance/ledger", withFeature("basic_finance", async (req, res, 
   if (!authorizePermission(req, res, P.FINANCE_VIEW)) return;
   const filters = [];
   const filterParams = [];
+  if (req.query.category) {
+    filters.push("e.category = ?");
+    filterParams.push(req.query.category);
+  }
   if (req.query.status) {
     filters.push("e.status = ?");
     filterParams.push(req.query.status);
@@ -409,12 +413,14 @@ router.post("/api/finance/categories", withFeature("basic_finance", async (req, 
   if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
   const name = String(req.body?.name || "").trim();
   if (!name) return res.status(400).json({ error: "Informe a categoria." });
+  const scope = req.body?.usage_scope || "both";
+  if (!["purchase", "expense", "both"].includes(scope)) return res.status(400).json({ error: "Uso da categoria inválido." });
   const result = await db.run(
-    `INSERT INTO financial_categories (name, description) VALUES (?, ?)
+    `INSERT INTO financial_categories (name, description, usage_scope) VALUES (?, ?, ?)
      ON CONFLICT (name) DO UPDATE
        SET description=COALESCE(EXCLUDED.description, financial_categories.description), is_active=1
      RETURNING id`,
-    [name, req.body?.description ?? null]
+    [name, req.body?.description ?? null, scope]
   );
   const created = await db.get("SELECT * FROM financial_categories WHERE id = ?", [result.returnedId]);
   await recordAudit(db, { req, module: "finance", action: "upsert", entityType: "financial_category", entityId: created.id, reason: "Categoria financeira cadastrada ou reativada", after: created });
@@ -427,9 +433,13 @@ router.patch("/api/finance/categories/:id", withFeature("basic_finance", async (
   if (!current) return res.status(404).json({ error: "Categoria não encontrada." });
   const name = String(req.body?.name ?? current.name).trim();
   if (!name) return res.status(400).json({ error: "Informe a categoria." });
+  const scope = req.body?.usage_scope ?? current.usage_scope;
+  if (!["purchase", "expense", "both"].includes(scope)) return res.status(400).json({ error: "Uso da categoria inválido." });
+  const duplicate = await db.get("SELECT id FROM financial_categories WHERE lower(name)=lower(?) AND id<>?", [name, current.id]);
+  if (duplicate) return res.status(409).json({ error: "Já existe uma categoria com esse nome." });
   await db.run(
-    "UPDATE financial_categories SET name=?, description=?, is_active=? WHERE id=?",
-    [name, req.body?.description ?? current.description, req.body?.is_active ?? current.is_active, current.id]
+    "UPDATE financial_categories SET name=?, description=?, is_active=?, usage_scope=? WHERE id=?",
+    [name, req.body?.description ?? current.description, req.body?.is_active ?? current.is_active, scope, current.id]
   );
   const updated = await db.get("SELECT * FROM financial_categories WHERE id = ?", [current.id]);
   await recordAudit(db, { req, module: "finance", action: updated.is_active ? "update" : "archive", entityType: "financial_category", entityId: current.id, reason: String(req.body.reason || "Categoria financeira alterada"), before: current, after: updated });

@@ -412,15 +412,17 @@
 }
 
 .au-l-root .au-l-feature-media {
-  aspect-ratio: 8 / 5;
+  display: grid;
+  align-items: center;
   background: var(--au-l-media-bg);
   overflow: hidden;
 }
 
 .au-l-root .au-l-feature-media img {
+  display: block;
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  height: auto;
+  object-fit: contain;
 }
 
 .au-l-root .au-l-feature-body {
@@ -773,8 +775,7 @@
   .au-l-root .au-l-features { grid-template-columns: minmax(0, 1fr); }
   .au-l-root .au-l-feature {
     display: grid;
-    grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr);
-    height: 120px;
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
     min-height: 0;
   }
   .au-l-root .au-l-feature-media {
@@ -791,6 +792,7 @@
   }
   .au-l-root .au-l-feature.is-reversed .au-l-feature-media { grid-column: 2; }
   .au-l-root .au-l-feature.is-reversed .au-l-feature-body { grid-column: 1; }
+  .au-l-root .au-l-feature.is-reversed { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); }
   .au-l-root .au-l-about-layout { grid-template-columns:minmax(240px, .72fr) minmax(0, 1.28fr); gap:42px; }
   .au-l-root .au-l-about-media img { aspect-ratio:4 / 5; object-position:center 68%; }
   .au-l-root .au-l-about-copy { padding:6px 0; }
@@ -833,8 +835,6 @@
 
   .au-l-root .au-l-hero .au-l-hero-inner { padding-bottom: 16px; }
   .au-l-root #recursos { padding-top: 16px; }
-  .au-l-root .au-l-feature,
-  .au-l-root .au-l-feature-media { height: 140px; }
 
   /* planos: lista vertical vira grade lado a lado */
   .au-l-root .au-l-plan-grid {

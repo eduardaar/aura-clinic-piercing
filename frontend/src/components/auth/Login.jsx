@@ -268,9 +268,8 @@ export function Login({ onLogin }) {
           </div>
         </section>
 
-        <aside className="au-a-aside" aria-hidden="true">
-          <span className="au-a-aside-rule" />
-          <p className="au-a-aside-quote">Gestão inteligente para quem vive da perfuração.</p>
+        <aside className="au-a-aside au-a-login-photo" aria-hidden="true">
+          <img src="/assets/landing/login-piercing.jpg" alt="" width="1600" height="844" decoding="async" />
         </aside>
       </main>
       <PublicFooter />

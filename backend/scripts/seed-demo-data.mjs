@@ -26,11 +26,12 @@ if (process.env.NODE_ENV === "production") {
 }
 
 await ensurePlatform();
-const tenantResult = await query("SELECT id, slug FROM platform.tenants WHERE slug = $1 AND status = 'ativo'", [tenantSlug]);
+const tenantResult = await query("SELECT id, slug, schema_name FROM platform.tenants WHERE slug = $1 AND status = 'ativo'", [tenantSlug]);
 const tenant = tenantResult.rows[0];
 if (!tenant) throw new Error(`Clínica ativa \"${tenantSlug}\" não encontrada.`);
 
-const schema = `tenant_${Number(tenant.id)}`;
+const schema = tenant.schema_name || `tenant_${Number(tenant.id)}`;
+if (!/^tenant_[a-z0-9_]{1,58}$/.test(schema)) throw new Error("Schema da clínica inválido.");
 const client = await pool.connect();
 let imported = {};
 

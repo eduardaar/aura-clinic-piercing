@@ -778,6 +778,11 @@ export function JewelryEditor({ materialMode = false, suppliers = [], options, c
   const [editorTab, setEditorTab] = useState("dados");
   const [editingVariantIndex, setEditingVariantIndex] = useState(null);
   const [confirmPricing, setConfirmPricing] = useState(false);
+  const editorCategoryOptions = categoryOptions.filter((name) => {
+    const category = asArray(categories).find((item) => item.name === name);
+    if (name === editing?.category) return true;
+    return Number(category?.is_active ?? 1) && category?.usage_scope !== (materialMode ? "product" : "material");
+  });
 
   useEffect(() => {
     setForm(editing ? normalizeJewelryForm(editing) : defaultInventoryForm(materialMode));
@@ -945,7 +950,7 @@ export function JewelryEditor({ materialMode = false, suppliers = [], options, c
               required
             >
               <option value="">Selecione</option>
-              {categoryOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+              {[...new Set([...editorCategoryOptions, ...(editing?.category ? [editing.category] : [])])].map((item) => <option key={item} value={item}>{item}</option>)}
             </Select>
             {form.category === "Argolas" && (
               <Select label="Subcategoria" value={form.subcategory} onChange={(value) => setForm({ ...form, subcategory: value })}>
@@ -1378,7 +1383,7 @@ export function StockMovementModal({ item, initialType = "Entrada", onClose, onS
 }
 
 export function CategoryManager({ categories = [], onChanged, headerActions }) {
-  const [form, setForm] = useState({ name: "", description: "", is_active: true });
+  const [form, setForm] = useState({ name: "", description: "", is_active: true, usage_scope: "both" });
   const [editing, setEditing] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -1390,14 +1395,14 @@ export function CategoryManager({ categories = [], onChanged, headerActions }) {
 
   function openNew() {
     setEditing(null);
-    setForm({ name: "", description: "", is_active: true });
+    setForm({ name: "", description: "", is_active: true, usage_scope: "both" });
     setError("");
     setModalOpen(true);
   }
 
   function openEdit(category) {
     setEditing(category);
-    setForm({ name: category.name || "", description: category.description || "", is_active: Boolean(Number(category.is_active ?? 1)) });
+    setForm({ name: category.name || "", description: category.description || "", is_active: Boolean(Number(category.is_active ?? 1)), usage_scope: category.usage_scope || "both" });
     setError("");
     setModalOpen(true);
   }
@@ -1497,6 +1502,9 @@ export function CategoryManager({ categories = [], onChanged, headerActions }) {
         <form id="category-form" onSubmit={save} className="stack">
           <Input label="Nome" value={form.name} onChange={(value) => setForm({ ...form, name: value })} required />
           <Textarea label="Descrição" value={form.description} onChange={(value) => setForm({ ...form, description: value })} />
+          <Select label="Uso da categoria" value={form.usage_scope} onChange={(usage_scope) => setForm({ ...form, usage_scope })}>
+            <option value="both">Produtos e materiais</option><option value="product">Produtos e joias</option><option value="material">Materiais de procedimento</option>
+          </Select>
           <Switch label="Categoria Ativa" checked={form.is_active} onChange={(value) => setForm({ ...form, is_active: value })} />
           {error && <span className="form-error">{error}</span>}
         </form>

@@ -1,0 +1,62 @@
+[
+  {
+    "engine": "chromium",
+    "width": 320,
+    "expenses": 3,
+    "stockPurchases": 2,
+    "stockUnaffectedByExpenses": true,
+    "weightedCost": 16,
+    "noOverflow": true,
+    "reports": true
+  },
+  {
+    "engine": "chromium",
+    "width": 390,
+    "expenses": 3,
+    "stockPurchases": 2,
+    "stockUnaffectedByExpenses": true,
+    "weightedCost": 16,
+    "noOverflow": true,
+    "reports": true
+  },
+  {
+    "engine": "chromium",
+    "width": 1366,
+    "expenses": 3,
+    "stockPurchases": 2,
+    "stockUnaffectedByExpenses": true,
+    "weightedCost": 16,
+    "noOverflow": true,
+    "reports": true
+  },
+  {
+    "engine": "webkit",
+    "width": 320,
+    "expenses": 3,
+    "stockPurchases": 2,
+    "stockUnaffectedByExpenses": true,
+    "weightedCost": 16,
+    "noOverflow": true,
+    "reports": true
+  },
+  {
+    "engine": "webkit",
+    "width": 390,
+    "expenses": 3,
+    "stockPurchases": 2,
+    "stockUnaffectedByExpenses": true,
+    "weightedCost": 16,
+    "noOverflow": true,
+    "reports": true
+  },
+  {
+    "engine": "webkit",
+    "width": 1366,
+    "expenses": 3,
+    "stockPurchases": 2,
+    "stockUnaffectedByExpenses": true,
+    "weightedCost": 16,
+    "noOverflow": true,
+    "reports": true
+  }
+]

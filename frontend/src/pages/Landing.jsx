@@ -208,8 +208,8 @@ function FeaturesSection({ content }) {
               <img
                 src={imageUrl(item.image)}
                 alt={item.image_alt || ""}
-                width={IMAGE_SIZE.feature.width}
-                height={IMAGE_SIZE.feature.height}
+                width={item.image_width || IMAGE_SIZE.feature.width}
+                height={item.image_height || IMAGE_SIZE.feature.height}
                 loading="lazy"
                 decoding="async"
               />
