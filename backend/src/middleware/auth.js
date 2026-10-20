@@ -25,6 +25,7 @@ const PUBLIC_ROUTE_METHODS = new Set([
   "GET /api/booking/readiness",
   "GET /api/booking/config",
   "GET /api/booking/slots",
+  "GET /api/booking/dates",
   "POST /api/booking/requests"
 ]);
 
@@ -69,9 +70,11 @@ export function requiresAuth(req) {
 export function isLocalDevRequest(req) {
   const host = String(req.hostname || "").toLowerCase();
   const forwardedHost = String(req.headers["x-forwarded-host"] || "").toLowerCase();
-  return !isProduction
+  return (
+    !isProduction
     && process.env.ALLOW_LOCAL_AUTH_BYPASS === "true"
-    && ["localhost", "127.0.0.1", "::1"].includes(host || forwardedHost);
+    && ["localhost", "127.0.0.1", "::1"].includes(host || forwardedHost)
+  );
 }
 
 // Assina um payload (objeto) e devolve o token "payload.assinatura".

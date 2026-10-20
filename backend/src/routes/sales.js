@@ -7,6 +7,7 @@ import { parsePaging, pageResponse } from "../services/pagination.js";
 import { tenantClient } from "../services/asaas/credentials.js";
 import { createSalesOrderCharge } from "../services/tenantCharges.js";
 import { publicPaymentIntent } from "../services/payments.js";
+import { applyConfiguredCardFee } from "../services/cardFees.js";
 import { P } from "../config/permissions.js";
 import { authorizePermission } from "../middleware/requirePermission.js";
 import {
@@ -301,11 +302,24 @@ router.patch("/api/sales-orders/:id", withFeature("basic_catalog", async (req, r
 
       if (nowOperationallyClosed && Number(locked.total_value) > 0 && receivableMode === "paid") {
         const paidAt = localTimestamp();
-        await tx.run(
+          const card = await applyConfiguredCardFee(tx, {
+            amount: Number(locked.total_value),
+            method: nextPaymentMethod,
+            installments: installmentCount,
+            fee_amount: 0,
+            card_fee_table_id: req.body.card_fee_table_id || locked.card_fee_table_id,
+          });
+          await tx.run(
           `INSERT INTO payments
-            (appointment_id, client_id, sales_order_id, amount, payment_type, method, status, paid_at, idempotency_key)
-           VALUES (?, ?, ?, ?, ?, ?, 'pago', ?, ?) ON CONFLICT DO NOTHING`,
-          [locked.appointment_id, locked.client_id, locked.id, locked.total_value, locked.order_type, nextPaymentMethod, paidAt, `sales-order:${locked.id}:paid`]
+            (appointment_id, client_id, sales_order_id, amount, payment_type, method, status, paid_at, idempotency_key,installments,fee_amount,net_amount,card_fee_table_id,card_fee_snapshot)
+           VALUES (?, ?, ?, ?, ?, ?, 'pago', ?, ?,?,?,?,?,?) ON CONFLICT DO NOTHING`,
+          [locked.appointment_id, locked.client_id, locked.id, locked.total_value, locked.order_type, nextPaymentMethod, paidAt, `sales-order:${locked.id}:paid`,
+              card.installments,
+              card.fee_amount,
+              Number(locked.total_value) - card.fee_amount,
+              card.card_fee_table_id,
+              JSON.stringify(card.card_fee_snapshot),
+            ]
         );
         await settleSalesOrderReceivables(tx, locked.id, { paymentMethod: nextPaymentMethod, paidAt });
       } else if (nowOperationallyClosed && receivableMode === "pending" && Number(locked.total_value) > 0) {

@@ -97,6 +97,6 @@ test("painel da plataforma preserva a cadeia de altura do scroll", async () => {
 test("API de produção usa o mesmo domínio e nunca depende de localhost", async () => {
   const source = withoutComments(await readFile(join(SRC_ROOT, "lib/api.js"), "utf8"));
 
-  assert.match(source, /import\.meta\.env\.PROD\s*\?\s*["']\/api["']\s*:\s*\(import\.meta\.env\.VITE_API_URL\s*\|\|\s*["']http:\/\/localhost:4000\/api["']\)/,
+  assert.match(source, /import\.meta\.env\.PROD\s*\?\s*["']\/api["']\s*:\s*\(?import\.meta\.env\.VITE_API_URL\s*\|\|\s*["']http:\/\/localhost:4000\/api["']\)?/,
     "Produção deve escolher /api antes de considerar qualquer variável local.");
 });

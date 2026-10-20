@@ -24,6 +24,8 @@ jobs:
       name: production
       url: https://auraclinic.monitence.com
     steps:
+      - name: Checkout das migrations desta revisão
+        uses: actions/checkout@v5
       - name: Validar confirmação
         env:
           CONFIRMATION: ${{ inputs.confirmation }}
@@ -46,6 +48,10 @@ jobs:
           SSH_OPTS: -i ${{ github.workspace }}/.deploy_key -o UserKnownHostsFile=${{ github.workspace }}/.known_hosts -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20
         run: |
           set -euo pipefail
+          # Only migration definitions are staged in the running image. The
+          # application continues running the previous release until deploy.
+          tar -C backend/src/db -cf - migrations | ssh ${SSH_OPTS} root@187.77.225.233 \
+            'docker cp - aura-api:/app/src/db'
           ssh ${SSH_OPTS} root@187.77.225.233 'bash -s' <<'REMOTE'
           set -euo pipefail
           cd /home/auraclinic

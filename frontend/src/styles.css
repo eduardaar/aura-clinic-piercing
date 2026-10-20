@@ -11483,17 +11483,17 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--gold); width: 
    * nenhum clique nelas chegava. */
   pointer-events: auto;
 }
-.smart-combobox-list > button[role="option"] {
+.smart-combobox-results > button[role="option"] {
   touch-action: manipulation;
   width: 100%; display: grid; grid-template-columns: 3.9rem minmax(0, 1fr) minmax(8.5rem, auto);
   gap: .65rem .8rem; align-items: start; text-align: left; border: 1px solid transparent; border-radius: 14px;
   padding: .75rem; background: transparent; color: inherit; min-height: 5.35rem; margin-bottom: .35rem;
 }
-.smart-combobox-list > button[role="option"]:last-child { margin-bottom: 0; }
-.smart-combobox-list > button.active { background: color-mix(in srgb, var(--paper) 70%, white); border-color: color-mix(in srgb, var(--gold) 25%, var(--line)); }
-.smart-combobox-list > button:hover { background: color-mix(in srgb, var(--paper) 70%, white); }
-.smart-combobox-list > button:focus-visible { outline: 3px solid color-mix(in srgb, var(--gold) 30%, transparent); outline-offset: 2px; }
-.smart-combobox-list > button:disabled { opacity: .6; cursor: not-allowed; }
+.smart-combobox-results > button[role="option"]:last-child { margin-bottom: 0; }
+.smart-combobox-results > button.active { background: color-mix(in srgb, var(--paper) 70%, white); border-color: color-mix(in srgb, var(--gold) 25%, var(--line)); }
+.smart-combobox-results > button:hover { background: color-mix(in srgb, var(--paper) 70%, white); }
+.smart-combobox-results > button:focus-visible { outline: 3px solid color-mix(in srgb, var(--gold) 30%, transparent); outline-offset: 2px; }
+.smart-combobox-results > button:disabled { opacity: .6; cursor: not-allowed; }
 .smart-combobox-thumb {
   width: 3.9rem; height: 3.9rem; display: grid; place-items: center; overflow: hidden; border-radius: 12px;
   background: color-mix(in srgb, var(--paper) 52%, transparent); font-size: 1.3rem; border: 1px solid var(--line);
@@ -11521,6 +11521,14 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--gold); width: 
 .smart-combobox-empty, .smart-combobox-hint { display: flex; align-items: center; justify-content: center; gap: .4rem; padding: .9rem; color: var(--muted); text-align: center; }
 .smart-combobox-more { width: 100%; min-height: 2.75rem; border: 0; border-top: 1px solid var(--line); background: transparent; color: var(--gold-dark, var(--gold)); font-weight: 700; }
 .smart-combobox-mobile-head { display: none; }
+.smart-combobox-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; margin-bottom: .65rem; }
+.smart-combobox-filters label { display: grid; gap: .2rem; min-width: 0; font-size: .75rem; color: var(--muted); }
+.smart-combobox-filters .ui-select-trigger { width: 100%; min-width: 0; min-height: 2.5rem; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); }
+.smart-combobox-filters button { border: 0; background: transparent; color: var(--ink); text-align: left; min-height: 2rem; }
+.public-booking-month-nav { display: flex; gap: .75rem; align-items: end; margin: 1rem 0; }
+.public-booking-month-nav label { display: grid; gap: .4rem; flex: 1; min-width: 0; }
+.public-booking-month-nav input { width: 100%; min-width: 0; padding: .65rem; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); }
+.public-booking-calendar .booking-date-strip { grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); overflow: visible; }
 .smart-combobox-spinner { animation: smart-combobox-spin .8s linear infinite; }
 @keyframes smart-combobox-spin { to { transform: rotate(360deg); } }
 @media (max-width: 640px) {
@@ -11541,7 +11549,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--gold); width: 
   }
   .smart-combobox-mobile-search svg { flex: none; color: var(--muted); }
   .smart-combobox-mobile-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 1rem; }
-  .smart-combobox-list > button[role="option"] { grid-template-columns: 3.6rem minmax(0,1fr); min-height: 5.25rem; }
+  .smart-combobox-results > button[role="option"] { grid-template-columns: 3.6rem minmax(0,1fr); min-height: 5.25rem; }
   .smart-combobox-thumb { width: 3.6rem; height: 3.6rem; }
   .smart-combobox-values { grid-column: 2; text-align: left; justify-items: start; grid-template-columns: auto auto; column-gap: .6rem; }
   .smart-combobox-values strong { grid-column: 1 / -1; }

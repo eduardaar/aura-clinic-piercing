@@ -17,7 +17,7 @@ export function normalizeEntry(body = {}, current = {}) {
   if (!VALID_TYPES.has(entryType)) throw new Error("Tipo de lançamento inválido.");
   if (!VALID_STATUSES.has(status)) throw new Error("Status financeiro inválido.");
   const amount = parseMoneyInputCents(body.amount ?? current.amount ?? 0, "O valor do lançamento") / 100;
-  const paidAmount = Math.min(amount, parseMoneyInputCents(body.paid_amount ?? (body.status === "paid" ? amount : current.paid_amount ?? 0), "O valor recebido") / 100);
+  const paidAmount = Math.min(amount, parseMoneyInputCents(body.paid_amount ?? (body.status === "paid" ? amount : (current.paid_amount ?? 0)), "O valor recebido") / 100);
   if (!String(body.description ?? current.description ?? "").trim() || amount < 0 || !(body.due_date ?? current.due_date)) {
     throw new Error("Descrição, valor e vencimento são obrigatórios.");
   }
@@ -98,7 +98,9 @@ export async function syncFinanceSources(db) {
     INSERT INTO financial_entries
       (entry_type, description, category, amount, paid_amount, due_date, competence_date, status, payment_method, paid_at, source_type, source_id, source_key)
     SELECT 'income', 'Pagamento ' || p.payment_type, p.payment_type, p.amount,
-      CASE WHEN ${PAYMENT_CASH_IN_SQL} THEN p.amount ELSE 0 END, SUBSTRING(p.paid_at, 1, 10), SUBSTRING(p.paid_at, 1, 10),
+      CASE WHEN ${PAYMENT_CASH_IN_SQL} THEN p.amount ELSE 0 END,
+      COALESCE(NULLIF(p.expected_receipt_date,''),NULLIF(SUBSTRING(p.paid_at,1,10),''),CURRENT_DATE::text),
+      COALESCE(NULLIF(SUBSTRING(p.paid_at,1,10),''),NULLIF(p.expected_receipt_date,''),CURRENT_DATE::text),
       ${PAYMENT_LEDGER_STATUS_SQL},
       p.method, CASE WHEN ${PAYMENT_CASH_IN_SQL} THEN p.paid_at ELSE NULL END, 'payment', p.id, 'payment:' || p.id
     FROM payments p
@@ -134,7 +136,8 @@ export async function syncFinanceSources(db) {
     FROM expenses e
     ON CONFLICT (source_key) DO UPDATE SET
       description=EXCLUDED.description, category=EXCLUDED.category, amount=EXCLUDED.amount,
-      paid_amount=EXCLUDED.paid_amount, due_date=EXCLUDED.due_date, status=EXCLUDED.status,
+      paid_amount=CASE WHEN EXCLUDED.status='pending' AND financial_entries.status='partially_paid' THEN financial_entries.paid_amount ELSE EXCLUDED.paid_amount END,
+      due_date=EXCLUDED.due_date, status=CASE WHEN EXCLUDED.status='pending' AND financial_entries.status='partially_paid' THEN financial_entries.status ELSE EXCLUDED.status END,
       payment_method=EXCLUDED.payment_method, payment_account=EXCLUDED.payment_account,
       paid_at=EXCLUDED.paid_at, notes=EXCLUDED.notes, updated_at=CURRENT_TIMESTAMP
   `);
@@ -207,7 +210,7 @@ export async function ledgerReport(db, { from, to, filters = [], filterParams = 
   const start = from === "" ? "0001-01-01" : from || `${today.slice(0, 7)}-01`;
   const end = to === "" ? "9999-12-31" : to || today;
   if (start > end) throw new Error("A data inicial deve ser anterior ou igual à data final.");
-  await db.run("UPDATE financial_entries SET status='overdue', updated_at=CURRENT_TIMESTAMP WHERE status='pending' AND due_date < ?", [today]);
+  await db.run("UPDATE financial_entries SET status=CASE WHEN due_date<? THEN 'overdue' ELSE 'pending' END,updated_at=CURRENT_TIMESTAMP WHERE (status='pending' AND due_date<?) OR (status='overdue' AND due_date>=?)", [today, today, today]);
   const where = `WHERE ${[`e.${dateField === "due_date" ? "due_date" : "competence_date"} BETWEEN ? AND ?`, ...filters].join(" AND ")}`;
   const params = [start, end, ...filterParams];
   const orderBy = paging?.orderBy || LEDGER_ORDER_BY;

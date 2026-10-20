@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { ChevronRight, Eye, EyeOff } from "lucide-react";
-import { apiFetch, setTenantSlug, tenantSlug } from "../../lib/api";
+import { apiFetch, setTenantSlug, storeAccessSession, tenantSlug } from "../../lib/api";
 import { PublicTopNav } from "../layout/PublicTopNav";
 import { PublicFooter } from "../layout/PublicFooter";
 import { Button, Checkbox, Input } from "../common/Ui";
 
-export function Login({ onLogin }) {
+export function Login({ onLogin, sessionMessage = "" }) {
   const resetToken = new URLSearchParams(window.location.search).get("reset") || "";
   const [form, setForm] = useState({
     slug: tenantSlug(),
@@ -44,7 +44,9 @@ export function Login({ onLogin }) {
       setTenantSlug(slug);
       const response = await apiFetch("/login", {
         method: "POST",
-        body: JSON.stringify({ email, password: form.password, ...(form.mfa_code ? { mfa_code: form.mfa_code.trim() } : {}) }),
+        body: JSON.stringify({ email, password: form.password,
+          remember_access: rememberAccess,
+          ...(form.mfa_code ? { mfa_code: form.mfa_code.trim() } : {}) }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -59,7 +61,7 @@ export function Login({ onLogin }) {
       // Guarda o último e-mail usado para pré-preencher no próximo acesso.
       localStorage.setItem("aura-last-email", email);
       localStorage.setItem("aura-admin-authenticated", rememberAccess ? "true" : "");
-      localStorage.setItem("aura-session", JSON.stringify(session));
+      storeAccessSession(session, rememberAccess);
       onLogin(session);
     } catch {
       setError("Não foi possível conectar ao servidor. Tente novamente.");
@@ -126,7 +128,9 @@ export function Login({ onLogin }) {
               <form className="au-a-form" onSubmit={resetPassword}>
                 <Input fieldClassName="au-a-field" label="Nova senha" type="password" autoComplete="new-password" minLength={12} required value={resetForm.password} onChange={(password) => setResetForm({ ...resetForm, password })} />
                 <Input fieldClassName="au-a-field" label="Confirmar nova senha" type="password" autoComplete="new-password" minLength={12} required value={resetForm.confirmation} onChange={(confirmation) => setResetForm({ ...resetForm, confirmation })} />
-                {error && <p className="au-a-error" role="alert">{error}</p>}
+                {error && (
+                    <p className="au-a-error" role="alert">{error}</p>
+                  )}
                 <Button type="submit" className="au-a-submit" disabled={loading}>{loading ? "Salvando…" : "Redefinir senha"}</Button>
               </form>
             )}
@@ -148,8 +152,12 @@ export function Login({ onLogin }) {
             <form className="au-a-form" onSubmit={requestRecovery}>
               <Input fieldClassName="au-a-field" label="Código da clínica" value={form.slug} required onChange={(slug) => setForm({ ...form, slug: slug.toLowerCase() })} placeholder="ex.: aura" />
               <Input fieldClassName="au-a-field" label="E-mail" type="email" autoComplete="username" value={form.email} required onChange={(email) => setForm({ ...form, email })} placeholder="seu@email.com" />
-              {error && <p className="au-a-error" role="alert">{error}</p>}
-              {recoveryMessage && <p className="au-a-success" role="status">{recoveryMessage}</p>}
+              {error && (
+                  <p className="au-a-error" role="alert">{error}</p>
+                )}
+              {recoveryMessage && (
+                  <p className="au-a-success" role="status">{recoveryMessage}</p>
+                )}
               <Button type="submit" className="au-a-submit" disabled={loading}>{loading ? "Enviando…" : "Enviar instruções"}</Button>
               <Button type="button" variant="ghost" onClick={() => { setRecoveryMode(false); setError(""); setRecoveryMessage(""); }}>Voltar para entrar</Button>
             </form>
@@ -172,6 +180,11 @@ export function Login({ onLogin }) {
             <h1 className="au-a-title">Entrar na sua conta</h1>
 
             <form className="au-a-form" onSubmit={submit}>
+              {sessionMessage && (
+                <p className="au-a-error" role="status">
+                  {sessionMessage}
+                </p>
+              )}
               <Input
                 fieldClassName="au-a-field"
                 label="Código da clínica"
@@ -254,7 +267,9 @@ export function Login({ onLogin }) {
                 Esqueci minha senha
               </Button>
 
-              {error && <p className="au-a-error" role="alert">{error}</p>}
+              {error && (
+                <p className="au-a-error" role="alert">{error}</p>
+              )}
 
               <Button type="submit" className="au-a-submit" disabled={loading}>
                 {loading ? "Entrando…" : "Entrar"} <ChevronRight size={18} aria-hidden="true" />

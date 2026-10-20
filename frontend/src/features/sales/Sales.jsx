@@ -22,6 +22,7 @@ import { defaultSalesLine, defaultSalesOrderForm } from "../../lib/defaultForms"
 import { installmentSummary, installmentsForPayload } from "../../lib/installments";
 import { currency, saleItemLabel, saleOrderTypeLabel, saleSourceLabel } from "../../features/shared/helpers";
 import { SmartCombobox } from "../../components/common/SmartCombobox";
+import { CardFeePreview } from "../finance/CardFees";
 import { PlanUpgradeNotice } from "../../components/common/PlanUpgradeNotice";
 import { can, planAllowsAction } from "../../lib/permissions";
 import "./sales.css";
@@ -281,8 +282,10 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
     : null;
   const requestedQuantity = Math.max(1, Number(line.quantity || 1));
   const exceedsStock = availableQuantity !== null && requestedQuantity > availableQuantity;
-  function addSelectedJewelry(product) {
-    const variant = asArray(product?.variants).find((option) => Number(option.quantity || 0) > 0) || asArray(product?.variants)[0];
+  function addSelectedJewelry(product, matchedVariant) {
+    const variant =
+      matchedVariant ||
+      asArray(product?.variants).find((option) => Number(option.quantity || 0) > 0) || asArray(product?.variants)[0];
     const unitPrice = Number(variant?.sale_value || product?.sale_value || 0);
     const availableStock = variant ? Number(variant.quantity || 0) : Number(product?.inventory_quantity ?? product?.quantity ?? 0);
     const rowKey = crypto.randomUUID?.() || `sale-${Date.now()}-${Math.random()}`;
@@ -388,8 +391,8 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
       notes: line.notes || ""
     };
     setItems((current) => editingItemKey
-      ? current.map((item) => item.row_key === editingItemKey ? nextItem : item)
-      : [...current, nextItem]);
+      ? current.map((item) => (item.row_key === editingItemKey ? nextItem : item))
+        : [...current, nextItem]);
     // Itens mudaram: a cotação anterior não vale mais para esta venda.
     resetQuote();
     setEditingItemKey("");
@@ -522,9 +525,10 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
     const timer = setTimeout(async () => {
       const result = await requestSalesQuote(appliedCouponCode);
       if (sequence !== quoteSequence.current) return;
-      setQuoteState((current) => (result.ok
+      setQuoteState((current) =>
+        result.ok
         ? { status: "ready", key, quote: result.quote, error: "", basis: { key: basisKey, couponCents: result.quote.couponCents } }
-        : { status: "error", key, quote: null, error: result.error, basis: current.basis }));
+        : { status: "error", key, quote: null, error: result.error, basis: current.basis });
     }, QUOTE_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [modalOpen, quoteKey, quoteNonce, manualDiscountTooHigh]);
@@ -676,13 +680,15 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
       const response = await apiFetch(`/sales-orders/${order.id}`);
       const payload = await response.json().catch(() => ({}));
       // Detalhe fechado (ou outra venda aberta) enquanto a resposta vinha.
-      setDetails((current) => (current && String(current.id) === String(order.id)
-        ? (response.ok ? payload : { ...order, error: payload.error || "Não foi possível abrir a venda." })
-        : current));
+      setDetails((current) =>
+        current && String(current.id) === String(order.id)
+        ? response.ok ? payload : { ...order, error: payload.error || "Não foi possível abrir a venda." }
+          : current);
     } catch {
-      setDetails((current) => (current && String(current.id) === String(order.id)
+      setDetails((current) =>
+        current && String(current.id) === String(order.id)
         ? { ...order, error: "Sem conexão para abrir a venda. Tente novamente." }
-        : current));
+        : current);
     }
   }
 
@@ -723,7 +729,8 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
         }
       }
       setReturnedQuantities(returned);
-      setReturnForm((current) => (current ? { ...returnFormFor(order, returned), financial_action: current.financial_action, refund_method: current.refund_method, reason: current.reason } : current));
+      setReturnForm((current) =>
+        current ? { ...returnFormFor(order, returned), financial_action: current.financial_action, refund_method: current.refund_method, reason: current.reason } : current);
     } catch {
       // Sem histórico: o servidor continua validando o saldo devolvível.
     }
@@ -931,9 +938,9 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
         subtitle="Cadastro interno com baixa financeira"
         size="lg"
         onClose={closeModal}
-        footer={(
+        footer={
           <>
-            <Button type="button" variant="secondary" onClick={() => activeStep === "customer" ? closeModal() : moveSalesStep(-1)}>
+            <Button type="button" variant="secondary" onClick={() => (activeStep === "customer" ? closeModal() : moveSalesStep(-1))}>
               {activeStep === "customer" ? "Cancelar" : "Voltar"}
             </Button>
             {activeStep === "payment" ? (
@@ -942,7 +949,7 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
               <Button type="button" variant="primary" onClick={() => moveSalesStep(1)}>Continuar</Button>
             )}
           </>
-        )}
+        }
       >
         <form id="sales-order-form" className="stack" onSubmit={saveOrder}>
           <FormWorkflow
@@ -961,7 +968,8 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
             <StepNavigator steps={SALES_STEPS} currentStep={activeStep} onStepChange={setActiveStep} canNavigateTo={undefined} />
             <ValidationSummary errors={error ? [error] : []} />
 
-            {activeStep === "customer" && <FormWorkflow.Page title="Cliente" description="Dados necessários para identificar e contatar o comprador.">
+            {activeStep === "customer" && (
+              <FormWorkflow.Page title="Cliente" description="Dados necessários para identificar e contatar o comprador.">
               <FormSection title="Dados principais" badge="Obrigatório">
                 <div className="form-grid">
                   <Input label="Cliente" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} required />
@@ -977,9 +985,11 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
                   </Select>
                 </div>
               </AdvancedFields>
-            </FormWorkflow.Page>}
+            </FormWorkflow.Page>
+            )}
 
-            {activeStep === "items" && <FormWorkflow.Page title="Itens da venda" description="Adicione e revise as joias sem abrir outro formulário.">
+            {activeStep === "items" && (
+              <FormWorkflow.Page title="Itens da venda" description="Adicione e revise as joias sem abrir outro formulário.">
               <FormSection title="Selecionar joia" description={`${items.length} item(ns) adicionado(s)`}>
           <div className="sales-line-builder">
             <div className="sales-line-header">
@@ -988,8 +998,8 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
             </div>
             <div className="form-grid">
               <SmartCombobox label="Joia" value={line.product_id} options={safeJewelry} onChange={(value) => { if (!value) setLine({ ...defaultSalesLine(), item_type: "produto" }); }} onSelect={addSelectedJewelry} getMeta={(item) => [item.category, item.material, item.sku].filter(Boolean).join(" · ")} isDisabled={(item) => asArray(item.variants).length ? !asArray(item.variants).some((variant) => Number(variant.quantity || 0) > 0) : Number(item.inventory_quantity ?? item.quantity ?? 0) <= 0} />
-              {(
-                <Select label="Variação" value={line.product_variant_id} onChange={(value) => {
+              {
+                        <Select label="Variação" value={line.product_variant_id} onChange={(value) => {
                   const variant = selectedVariants.find((item) => String(item.id) === String(value));
                   setLine({
                     ...line,
@@ -1004,7 +1014,7 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
                     </option>
                   ))}
                 </Select>
-              )}
+                      }
               <div>
                 <Input type="number" label="Quantidade" value={line.quantity} onChange={(value) => setLine({ ...line, quantity: value })} />
                 {availableQuantity !== null && (
@@ -1036,9 +1046,11 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
             onRemove={(_item, index) => removeLine(index)}
           />
               </FormSection>
-            </FormWorkflow.Page>}
+            </FormWorkflow.Page>
+            )}
 
-            {activeStep === "payment" && <FormWorkflow.Page title="Pagamento e conferência" description="Registre o recebimento sem alterar a origem da venda.">
+            {activeStep === "payment" && (
+              <FormWorkflow.Page title="Pagamento e conferência" description="Registre o recebimento sem alterar a origem da venda.">
               <FormSection title="Recebimento" badge="Obrigatório">
                 <div className="form-grid">
                   <Select label="Forma de pagamento" value={form.payment_method} onChange={(value) => setForm({ ...form, payment_method: value })}>
@@ -1048,13 +1060,29 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
                     <option value="paid">Recebido agora</option>
                     <option value="pending" disabled={!canGenerateReceivables}>Gerar contas a receber{canGenerateReceivables ? "" : " — Profissional"}</option>
                   </Select>
-                  {form.receivable_mode === "pending" && <>
+                  {form.receivable_mode === "pending" && (
+                      <>
                     <Input type="number" min="1" max="120" label="Parcelas" value={form.installment_count} onChange={(value) => setForm({ ...form, installment_count: value })} required />
                     <Input type="date" label="Primeiro vencimento" value={form.first_due_date} onChange={(value) => setForm({ ...form, first_due_date: value })} required />
-                  </>}
+                  </>
+                    )}
                 </div>
-                {!canGenerateReceivables && <PlanUpgradeNotice title="Contas a receber no plano Profissional" onUpgrade={onUpgrade}>A venda e o pagamento imediato continuam disponíveis no Start. O upgrade libera vencimentos e parcelamento em contas a receber.</PlanUpgradeNotice>}
-                {form.receivable_mode === "pending" && canGenerateReceivables && <InstallmentGrid total={saleTotal} count={form.installment_count} firstDueDate={form.first_due_date} paymentMethod={form.payment_method} installments={installments} onChange={setInstallments} automatic={automaticInstallments} onAutomaticChange={setAutomaticInstallments} title="Parcelas da venda" />}
+                {!canGenerateReceivables && (
+                    <PlanUpgradeNotice title="Contas a receber no plano Profissional" onUpgrade={onUpgrade}>A venda e o pagamento imediato continuam disponíveis no Start. O upgrade libera vencimentos e parcelamento em contas a receber.</PlanUpgradeNotice>
+                  )}
+                  <CardFeePreview
+                    payment={{
+                      method: form.payment_method,
+                      installments: form.installment_count || 1,
+                      amount: saleTotal,
+                      fee_amount: form.fee_amount || 0,
+                      card_fee_table_id: form.card_fee_table_id,
+                    }}
+                    onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
+                  />
+                  {form.receivable_mode === "pending" && canGenerateReceivables && (
+                    <InstallmentGrid total={saleTotal} count={form.installment_count} firstDueDate={form.first_due_date} paymentMethod={form.payment_method} installments={installments} onChange={setInstallments} automatic={automaticInstallments} onAutomaticChange={setAutomaticInstallments} title="Parcelas da venda" />
+                  )}
               </FormSection>
               <FormSection title="Descontos" description="Cupom e desconto manual entram no total conferido pelo sistema.">
                 <div className="catalog-coupon-field sale-coupon-field">
@@ -1072,11 +1100,21 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
                     </Button>
                   )}
                 </div>
-                {!canApplyCoupon && <span className="field-hint">Seu perfil não pode aplicar cupom. Peça a um responsável com a permissão “Aplicar cupom”.</span>}
-                {couponPendingApply && canApplyCoupon && !couponError && <span className="field-hint">O cupom só vale depois de “Aplicar cupom”.</span>}
-                {appliedCouponMessage && <span className="form-success" role="status">{appliedCouponMessage}</span>}
-                {couponError && <span className="form-error" role="alert">{couponError}</span>}
-                {!canApplyDiscount && <span className="field-hint sale-discount-locked">Desconto manual indisponível para o seu perfil (permissão “Aplicar desconto”).</span>}
+                {!canApplyCoupon && (
+                    <span className="field-hint">Seu perfil não pode aplicar cupom. Peça a um responsável com a permissão “Aplicar cupom”.</span>
+                  )}
+                {couponPendingApply && canApplyCoupon && !couponError && (
+                    <span className="field-hint">O cupom só vale depois de “Aplicar cupom”.</span>
+                  )}
+                {appliedCouponMessage && (
+                    <span className="form-success" role="status">{appliedCouponMessage}</span>
+                  )}
+                {couponError && (
+                    <span className="form-error" role="alert">{couponError}</span>
+                  )}
+                {!canApplyDiscount && (
+                    <span className="field-hint sale-discount-locked">Desconto manual indisponível para o seu perfil (permissão “Aplicar desconto”).</span>
+                  )}
               </FormSection>
               {/* O backend só registra o pagamento quando a venda é concluída
                   (services/sales.js): venda "aberta" com "Recebido agora" ainda
@@ -1096,7 +1134,8 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
                   outstandingBalance: paidOnSave ? 0 : saleTotal,
                   paymentStatus: paidOnSave ? "pago" : "pendente",
                   // Só anuncia cupom que a cotação oficial confirmou.
-                  couponCode: appliedCouponCode && (freshQuote || couponBasis) ? (freshQuote?.couponCode || appliedCouponCode) : "",
+                  couponCode: appliedCouponCode && (freshQuote || couponBasis) ? freshQuote?.couponCode || appliedCouponCode
+                        : "",
                 }}
                 discountEditable={canApplyDiscount && items.length > 0}
                 onDiscountChange={canApplyDiscount ? changeManualDiscount : undefined}
@@ -1128,7 +1167,8 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
                 { label: "Total líquido", value: currency.format(saleTotal) },
                 { label: "Recebimento", value: form.receivable_mode === "pending" ? `${form.installment_count || 1} parcela(s)` : paidOnSave ? "Recebido agora" : "Recebido ao concluir a venda" },
               ]} />
-            </FormWorkflow.Page>}
+            </FormWorkflow.Page>
+            )}
           </FormWorkflow>
         </form>
       </Modal>
@@ -1179,8 +1219,10 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
                     </div>
                     {preview && Number(item.quantity || 0) > preview.available ? (
                       <span className="field-hint is-error">Máximo de {preview.available} un. ainda devolvível(is) neste item.</span>
-                    ) : preview && wholeQuantity(item.quantity) > 0 && (
+                    ) : (
+                      preview && wholeQuantity(item.quantity) > 0 && (
                       <span className="sale-return-item-value">A devolver neste item: <strong>{currency.format(fromCents(preview.refund))}</strong></span>
+                    )
                     )}
                   </div>
                 );
@@ -1192,7 +1234,9 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
               <small>Calculado pelo valor pago em cada item, já descontado o rateio do cupom e do desconto manual. Contas pendentes são abatidas primeiro; o sistema confirma o valor final ao registrar.</small>
             </div>
             <Textarea label="Motivo obrigatório" value={returnForm.reason} onChange={(reason) => setReturnForm({ ...returnForm, reason })} />
-            {error && <span className="form-error" role="alert">{error}</span>}
+            {error && (
+              <span className="form-error" role="alert">{error}</span>
+            )}
           </div>
         )}
       </Modal>
@@ -1222,7 +1266,9 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
                 <div>
                   <dt>Desconto manual</dt>
                   <dd>{detailMoney.manual > 0 ? `− ${currency.format(fromCents(detailMoney.manual))}` : currency.format(0)}</dd>
-                  {detailMoney.manual > 0 && details?.manual_discount_reason && <small>Motivo: {details.manual_discount_reason}</small>}
+                  {detailMoney.manual > 0 && details?.manual_discount_reason && (
+                    <small>Motivo: {details.manual_discount_reason}</small>
+                  )}
                 </div>
                 <div className="is-featured">
                   <dt>Valor líquido</dt>
@@ -1282,7 +1328,8 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
                           {receivable.installment_count || details.installment_count || asArray(details.receivables).length}
                         </strong>
                         <small>
-                          {formatDateWithYear(receivable.due_date)} · {receivable.payment_method || details.payment_method || "Pix"}
+                          {formatDateWithYear(receivable.due_date)} · {" "}
+                          {receivable.payment_method || details.payment_method || "Pix"}
                         </small>
                       </span>
                       <span>
@@ -1300,7 +1347,9 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
                 </p>
               )}
             </section>
-            {canApplyCredit && details?.receivable_mode === "pending" && <Button variant="secondary" onClick={() => applyCredit(details)}>Aplicar crédito disponível</Button>}
+            {canApplyCredit && details?.receivable_mode === "pending" && (
+              <Button variant="secondary" onClick={() => applyCredit(details)}>Aplicar crédito disponível</Button>
+            )}
           </div>
         )}
       </Modal>

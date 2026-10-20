@@ -1,9 +1,10 @@
 import { createPortal } from "react-dom";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ChevronDown, LoaderCircle, Search, X } from "lucide-react";
-import { smartSearchMatches, useDebouncedValue } from "../../lib/smartSearch";
+import { normalizeSearch, smartSearchMatches } from "../../lib/smartSearch";
 import { API_ORIGIN } from "../../lib/api";
 import { useModal } from "./Crud";
+import { Select } from "./Ui";
 
 const PAGE_SIZE = 40;
 const MAX_RESULTS = 200;
@@ -11,13 +12,50 @@ const MAX_RESULTS = 200;
 const MOBILE_SHEET_MAX_WIDTH = 640;
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
-function optionText(item) {
-  return [item.name, item.variation_name, item.category, item.subcategory, item.sku, item.material, item.color,
+const skuKey = (value) =>
+  String(value || "")
+    .trim()
+    .toLocaleUpperCase();
+const variantsOf = (item) =>
+  (Array.isArray(item.variants) ? item.variants : []).filter((variant) => Number(variant.is_active ?? 1) === 1);
+const filterFields = [
+  ["category", "Categoria"],
+  ["material", "Material"],
+  ["color", "Cor"],
+];
+
+function searchOptions(options, query) {
+  const wantedSku = skuKey(query);
+  if (!wantedSku) return options;
+  const exact = options.filter(
+    (item) => skuKey(item.sku) === wantedSku || variantsOf(item).some((variant) => skuKey(variant.sku) === wantedSku),
+  );
+  if (exact.length) return exact;
+  // Codes and measurements must never use typo tolerance: LAB-002 != LAB-001.
+  if (/\d/.test(query)) {
+    const terms = normalizeSearch(query).split(" ").filter(Boolean);
+    return options.filter((item) => {
+      const words = normalizeSearch(optionText(item)).split(" ");
+      return terms.every((term) => words.some((word) => word.startsWith(term)));
+    });
+  }
+  return options.filter(
+    (item) =>
+      [item.sku, ...variantsOf(item).map((variant) => variant.sku)].some((sku) => skuKey(sku).includes(wantedSku)) ||
+      smartSearchMatches(optionText(item, false), query),
+  );
+}
+
+function optionText(item, includeSku = true) {
+  return [item.name, item.variation_name, item.category, item.subcategory,
+    includeSku ? item.sku : "", item.material, item.color,
     item.stone, item.stone_color, item.size, item.top_size_mm, item.thickness, item.stem_length, item.length,
     item.length_mm, item.diameter, item.thread_type, item.sale_value, item.sale_price_cents, item.status,
-    ...(Array.isArray(item.variants) ? item.variants.flatMap((variant) => [variant.sku, variant.variation_name,
+    ...variantsOf(item).flatMap((variant) => [
+      includeSku ? variant.sku : "", variant.variation_name,
       variant.material, variant.color, variant.stone_color, variant.size, variant.top_size_mm, variant.thickness,
-      variant.length, variant.length_mm, variant.diameter, variant.thread_type, variant.sale_value, variant.status]) : [])]
+      variant.length, variant.length_mm, variant.diameter, variant.thread_type, variant.sale_value, variant.status]),
+  ]
     .filter((value) => value !== undefined && value !== null && value !== "").join(" ");
 }
 
@@ -63,7 +101,7 @@ function stockStatus(item) {
   return { label: "Disponível", tone: "stock-ok", text: `Disponível · ${quantity} ${quantity === 1 ? "unidade" : "unidades"}` };
 }
 
-/** @param {{ label?: React.ReactNode, value?: any, onChange?: (value: any) => any, onSelect?: (item: any) => any, options?: any[], placeholder?: string, emptyLabel?: string, required?: boolean, loading?: boolean, getLabel?: (item: any) => any, getMeta?: (item: any) => any, isDisabled?: (item: any) => boolean }} props */
+/** @param {{ label?: React.ReactNode, value?: any, onChange?: (value: any) => any, onSelect?: (item: any, variant?: any) => any, options?: any[], placeholder?: string, emptyLabel?: string, required?: boolean, loading?: boolean, getLabel?: (item: any) => any, getMeta?: (item: any) => any, isDisabled?: (item: any) => boolean }} props */
 export function SmartCombobox({ label, value, onChange, onSelect, options = [], placeholder = "Buscar joia, SKU ou medida", emptyLabel = "Nenhuma joia encontrada", required = false, loading = false, getLabel = (item) => item.name, getMeta, isDisabled = (item) => stock(item) <= 0 }) {
   const id = useId();
   const root = useRef(null);
@@ -80,11 +118,12 @@ export function SmartCombobox({ label, value, onChange, onSelect, options = [], 
   const [active, setActive] = useState(0);
   const [visible, setVisible] = useState(PAGE_SIZE);
   const [popupStyle, setPopupStyle] = useState({});
-  const debounced = useDebouncedValue(query, 180);
+  const [filters, setFilters] = useState({ category: "", material: "", color: "", stock: "" });
 
   useEffect(() => { if (!open) setQuery(selectedLabel); }, [open, selectedLabel]);
   // Cada termo novo recomeça a paginação e o destaque do topo da lista.
-  useEffect(() => { if (typeof debounced === "string") { setVisible(PAGE_SIZE); setActive(0); } }, [debounced]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: query/filter changes intentionally reset pagination and keyboard focus.
+  useEffect(() => { setVisible(PAGE_SIZE); setActive(0); }, [query, filters]);
   // No celular a folha inferior cobre o campo original; quem digita precisa
   // ver o que digita, então a busca passa para o campo dentro da folha.
   useEffect(() => {
@@ -133,13 +172,36 @@ export function SmartCombobox({ label, value, onChange, onSelect, options = [], 
     };
   }, [open]);
 
-  const matches = useMemo(() => options.filter((item) => smartSearchMatches(optionText(item), debounced)).slice(0, MAX_RESULTS), [options, debounced]);
+  const matches = useMemo(() =>
+      searchOptions(options, query)
+        .filter((item) => {
+          const exactVariant = variantsOf(item).find((variant) => skuKey(variant.sku) === skuKey(query));
+          const quantity = exactVariant ? Number(exactVariant.quantity || 0) : stock(item);
+          if (filters.stock === "available" && quantity <= 0) return false;
+          if (filters.stock === "out" && quantity > 0) return false;
+          const candidates = exactVariant ? [exactVariant] : variantsOf(item);
+          return (candidates.length ? candidates : [item]).some((variant) =>
+            filterFields.every(([key]) => !filters[key] || String(variant[key] || item[key] || "") === filters[key]),
+          );
+        }).slice(0, MAX_RESULTS), [options, query, filters]);
   const filtered = matches.slice(0, visible);
 
+  function optionDisabled(item) {
+    const exactVariant = variantsOf(item).find((variant) => skuKey(variant.sku) === skuKey(query));
+    return isDisabled(item) || Boolean(exactVariant && Number(exactVariant.quantity || 0) <= 0);
+  }
+
   function select(item, close = true) {
-    if (isDisabled(item)) return;
+    if (optionDisabled(item)) return;
     onChange(String(item.id));
-    onSelect?.(item);
+    const exactVariant = variantsOf(item).find((variant) => skuKey(variant.sku) === skuKey(query));
+    const filteredVariant = variantsOf(item).find(
+      (variant) =>
+        Number(variant.quantity) > 0 &&
+        filterFields.every(([key]) => !filters[key] || String(variant[key] || item[key] || "") === filters[key]),
+    );
+    if (exactVariant || filteredVariant) onSelect?.(item, exactVariant || filteredVariant);
+    else onSelect?.(item);
     setQuery(getLabel(item));
     if (close) setOpen(false);
   }
@@ -163,54 +225,123 @@ export function SmartCombobox({ label, value, onChange, onSelect, options = [], 
       event.preventDefault(); setOpen(true);
       setActive((current) => Math.max(0, Math.min(filtered.length - 1, current + (event.key === "ArrowDown" ? 1 : -1))));
     }
-    if (event.key === "Enter" && open && filtered[active]) { event.preventDefault(); select(filtered[active]); }
+    if (event.key === "Enter" && open) { event.preventDefault();
+      if (filtered[active]) select(filtered[active]); }
   }
 
   return (
-    <label className="smart-combobox" ref={root}>
-      <span className="smart-combobox-label">{label}</span>
+    <div className="smart-combobox" ref={root}>
+      <label htmlFor={id} className="smart-combobox-label">{label}</label>
       <span className="smart-combobox-input" aria-busy={loading}>
         <Search size={16} className="smart-combobox-search-icon" />
         <input id={id} role="combobox" aria-expanded={open} aria-controls={`${id}-list`} aria-autocomplete="list" aria-activedescendant={open && filtered[active] ? `${id}-option-${filtered[active].id}` : undefined} required={required} value={query} placeholder={placeholder} onFocus={() => setOpen(true)} onChange={(event) => { setQuery(event.target.value); setOpen(true); }} onKeyDown={keyDown} />
-        {loading ? <LoaderCircle className="smart-combobox-spinner" size={16} aria-label="Carregando" /> : (value || query) ? <button type="button" aria-label="Limpar seleção" onClick={() => { onChange(""); setQuery(""); setOpen(true); }}><X size={15} /></button> : <button type="button" aria-label="Abrir lista" tabIndex={-1} className="smart-combobox-chevron-button" onClick={() => setOpen(true)}><ChevronDown size={15} /></button>}
+        {loading ? (
+          <LoaderCircle className="smart-combobox-spinner" size={16} aria-label="Carregando" />
+        ) : value || query ? (
+          <button type="button" aria-label="Limpar seleção" onClick={() => { onChange(""); setQuery(""); setOpen(true); }}><X size={15} /></button>
+        ) : (
+          <button type="button" aria-label="Abrir lista" tabIndex={-1} className="smart-combobox-chevron-button" onClick={() => setOpen(true)}><ChevronDown size={15} /></button>
+        )}
       </span>
       {open && portalTarget && createPortal(
-        <div className="smart-combobox-list" id={`${id}-list`} role="listbox" style={popupStyle} ref={list} data-modal-floating="">
+        <div className="smart-combobox-list" style={popupStyle} ref={list} data-modal-floating="">
           <div className="smart-combobox-mobile-head">
             <div className="smart-combobox-mobile-title"><strong>{label}</strong><button type="button" aria-label="Fechar" onClick={() => setOpen(false)}><X size={20} /></button></div>
             <span className="smart-combobox-mobile-search">
               <Search size={16} aria-hidden="true" />
               <input ref={sheetInput} value={query} placeholder={placeholder} aria-label={`Buscar ${typeof label === "string" ? label.toLowerCase() : "item"}`} onChange={(event) => setQuery(event.target.value)} onKeyDown={keyDown} />
             </span>
-          </div>
+            </div>
+            <div className="smart-combobox-filters" aria-label="Filtros de joias">
+              {filterFields.map(([key, title]) => (
+                <Select
+                  key={key}
+                  label={title}
+                  portalContainer={list.current}
+                  value={filters[key]}
+                  onChange={(value) => setFilters((current) => ({ ...current, [key]: value }))}
+                >
+                  <option value="">Todas</option>
+                  {[
+                    ...new Set(
+                      options
+                        .flatMap((item) => [item[key], ...variantsOf(item).map((variant) => variant[key])])
+                        .filter(Boolean),
+                    ),
+                  ]
+                    .sort((a, b) => String(a).localeCompare(String(b), "pt-BR"))
+                    .map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                </Select>
+              ))}
+              <Select
+                label="Estoque"
+                portalContainer={list.current}
+                value={filters.stock}
+                onChange={(value) => setFilters((current) => ({ ...current, stock: value }))}
+              >
+                <option value="">Todos</option>
+                <option value="available">Com estoque</option>
+                <option value="out">Esgotado</option>
+              </Select>
+              {Object.values(filters).some(Boolean) && (
+                <button type="button" onClick={() => setFilters({ category: "", material: "", color: "", stock: "" })}>
+                  Limpar filtros
+                </button>
+              )}
+            </div>
           <p className="smart-combobox-status" aria-live="polite">{loading ? "Buscando joias…" : `${matches.length} resultado${matches.length === 1 ? "" : "s"} disponível${matches.length === 1 ? "" : "is"}`}</p>
-          {loading ? <p className="smart-combobox-empty"><LoaderCircle className="smart-combobox-spinner" size={18} /> Buscando joias…</p> : filtered.length ? filtered.map((item, index) => {
-            const disabled = isDisabled(item);
+            <div
+              className="smart-combobox-results"
+              id={`${id}-list`}
+              role="listbox"
+              aria-label={typeof label === "string" ? label : "Joias"}
+            >
+              {loading ? (
+                <p className="smart-combobox-empty"><LoaderCircle className="smart-combobox-spinner" size={18} /> Buscando joias…</p>
+              ) : filtered.length ? (
+                filtered.map((item, index) => {
+            const disabled = optionDisabled(item);
             const meta = getMeta?.(item) || defaultMeta(item);
             const quantity = stock(item);
             const status = stockStatus(item);
             const displayMeta = [meta, compactMeasure(item)].filter(Boolean).join(" • ");
             const labelText = getLabel(item) || "Joia sem nome";
             const picture = imageUrl(item);
-            return <button id={`${id}-option-${item.id}`} type="button" role="option" aria-selected={String(item.id) === String(value)} aria-disabled={disabled} disabled={disabled} className={index === active ? "active" : ""} key={item.id} onMouseEnter={() => setActive(index)} onMouseDown={keepFocusOnPress} onClick={(event) => selectOnClick(event, item)}>
+            return (
+                    <button id={`${id}-option-${item.id}`} type="button" role="option" aria-selected={String(item.id) === String(value)} aria-disabled={disabled} disabled={disabled} className={index === active ? "active" : ""} key={item.id} onMouseEnter={() => setActive(index)} onMouseDown={keepFocusOnPress} onClick={(event) => selectOnClick(event, item)}>
               <span className="smart-combobox-thumb">{picture ? <img src={picture} alt={labelText} /> : <span aria-hidden="true">◇</span>}</span>
               <span className="smart-combobox-copy">
                 <strong>{labelText}</strong>
                 {displayMeta && <small>{displayMeta}</small>}
-                <small className="smart-combobox-sku">SKU: {item.sku || "não informado"}</small>
+                <small className="smart-combobox-sku">SKU: {item.sku || "não informado"}
+                          {variantsOf(item).some((variant) => skuKey(variant.sku) === skuKey(query)) &&
+                            ` · Variação: ${query.trim()}`}</small>
               </span>
               <span className="smart-combobox-values">
                 <strong>{price(item)}</strong>
                 <small className="smart-combobox-stock-meta">Estoque: {quantity} {quantity === 1 ? "unidade" : "unidades"}</small>
                 <span className={`smart-combobox-stock ${status.tone}`}>{status.text}</span>
               </span>
-            </button>;
-          }) : <p className="smart-combobox-empty">{emptyLabel}</p>}
-          {visible < matches.length && <button type="button" className="smart-combobox-more" onClick={() => setVisible((count) => Math.min(count + PAGE_SIZE, MAX_RESULTS))}>Mostrar mais resultados</button>}
-          {matches.length === MAX_RESULTS && visible >= MAX_RESULTS && <p className="smart-combobox-hint">Refine a busca para ver outros resultados.</p>}
+            </button>
+                  );
+          })
+              ) : (
+                <p className="smart-combobox-empty">{emptyLabel}</p>
+              )}
+            </div>
+            {visible < matches.length && (
+              <button type="button" className="smart-combobox-more" onClick={() => setVisible((count) => Math.min(count + PAGE_SIZE, MAX_RESULTS))}>Mostrar mais resultados</button>
+            )}
+          {matches.length === MAX_RESULTS && visible >= MAX_RESULTS && (
+              <p className="smart-combobox-hint">Refine a busca para ver outros resultados.</p>
+            )}
         </div>,
-        document.body
-      )}
-    </label>
+          portalTarget,
+        )}
+    </div>
   );
 }

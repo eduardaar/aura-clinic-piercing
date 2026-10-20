@@ -20,9 +20,13 @@ import "./styles/operations-responsive.css";
 import "./styles/responsive.css";
 import { Sidebar } from "./components/layout/Sidebar";
 import { Loading } from "./components/common/Feedback";
+import { ConnectionStatus } from "./components/common/ConnectionStatus";
 import { AppErrorBoundary } from "./components/common/AppErrorBoundary";
 import { asArray, asNumber } from "./lib/utils";
-import { ACCESS_SESSION_ENDED_EVENT, API_ORIGIN, apiFetch, readStoredSession } from "./lib/api";
+import { ACCESS_SESSION_ENDED_EVENT, API_ORIGIN, apiFetch,
+  clearAccessSession, readStoredSession,
+  storeAccessSession,
+} from "./lib/api";
 import { queryClient } from "./lib/queryClient";
 import { installGlobalErrorReporting } from "./lib/errorReporter";
 import { canAccessPage, defaultPageForRole, pageTitle, resolveAccessiblePage } from "./lib/permissions";
@@ -38,6 +42,7 @@ if (typeof __AURA_BUILD__ !== "undefined") {
 const AlertsPopup = lazy(() => import("./features/dashboard/Dashboard").then((m) => ({ default: m.AlertsPopup })));
 
 function App() {
+  const [sessionMessage, setSessionMessage] = useState("");
   const [session, setSession] = useState(readStoredSession);
   const [page, setPage] = useState(() => pageForAppPath() || "dashboard");
   const [agendaTarget, setAgendaTarget] = useState(null);
@@ -78,7 +83,7 @@ function App() {
 
   // Monta a URL do logo do tenant (arquivos em /uploads são servidos pelo backend).
   const brandLogoUrl = identity?.logo_url
-    ? (identity.logo_url.startsWith("/uploads") ? `${API_ORIGIN}${identity.logo_url}` : identity.logo_url)
+    ? identity.logo_url.startsWith("/uploads") ? `${API_ORIGIN}${identity.logo_url}` : identity.logo_url
     : "";
   const brandName = identity?.store_name || "Aura Clinic Piercing";
   
@@ -108,7 +113,11 @@ function App() {
   }, [normalizedSession?.user?.id]);
 
   useEffect(() => {
-    const syncStoredSession = () => setSession(readStoredSession());
+    const syncStoredSession = (event) => {
+      if (event.type === ACCESS_SESSION_ENDED_EVENT)
+        setSessionMessage("Sua sessão expirou ou foi encerrada. Entre novamente para continuar.");
+      setSession(readStoredSession());
+    };
     window.addEventListener(ACCESS_SESSION_ENDED_EVENT, syncStoredSession);
     window.addEventListener("storage", syncStoredSession);
     return () => {
@@ -132,7 +141,8 @@ function App() {
       ...(nextToken ? { token: nextToken } : {}),
       user: { ...normalizedSession.user, ...nextUser }
     };
-    try { localStorage.setItem("aura-session", JSON.stringify(nextSession)); } catch { /* sessão atual segue em memória */ }
+    try {
+      storeAccessSession(nextSession); } catch { /* sessão atual segue em memória */ }
     setSession(nextSession);
   }
 
@@ -140,7 +150,7 @@ function App() {
     // Revoga também o refresh HttpOnly da sessão ativa. A limpeza local
     // continua imediata, então o usuário não espera a rede para sair.
     void apiFetch("/auth/logout", { method: "POST" }).catch(() => {});
-    localStorage.removeItem("aura-session");
+    clearAccessSession();
     localStorage.removeItem("aura-admin-authenticated");
     setSession(null);
   }
@@ -268,11 +278,15 @@ function App() {
   // Landing pública na raiz "/" quando não há sessão.
   if (isLanding && !normalizedSession) {
     const LandingPage = publicRoute.component;
-    return <Suspense fallback={<Loading />}><LandingPage /></Suspense>;
+    return (
+      <Suspense fallback={<Loading />}><LandingPage /></Suspense>
+    );
   }
   if (isAbout) {
     const AboutPage = publicRoute.component;
-    return <Suspense fallback={<Loading />}><AboutPage /></Suspense>;
+    return (
+      <Suspense fallback={<Loading />}><AboutPage /></Suspense>
+    );
   }
   // Planos faz parte da landing. Mantemos a URL antiga apenas como atalho para
   // não quebrar links já compartilhados, sem sustentar uma tela separada.
@@ -284,7 +298,14 @@ function App() {
   // Se está em /login, renderizar APENAS login (sem app shell)
   if (isLoginPath) {
     const LoginPage = publicRoute.component;
-    return <Suspense fallback={<Loading />}><LoginPage onLogin={setSession} /></Suspense>;
+    return (
+      <Suspense fallback={<Loading />}><LoginPage
+          sessionMessage={sessionMessage}
+          onLogin={(next) => {
+            setSessionMessage("");
+            setSession(next);
+          }} /></Suspense>
+    );
   }
 
   // Rotas públicas: sempre acessíveis (carregadas sob demanda).
@@ -293,7 +314,9 @@ function App() {
     const params = new URLSearchParams(window.location.search);
     const hasTenant = ["t", "tenant", "clinic"].some((key) => params.get(key));
     const CatalogPage = hasTenant ? publicRoute.component : appPageById("catalog-directory").component;
-    return <Suspense fallback={<Loading />}><CatalogPage /></Suspense>;
+    return (
+      <Suspense fallback={<Loading />}><CatalogPage /></Suspense>
+    );
   }
   // /agendar SEM ?t=<slug> → diretório de clínicas com agendamento online;
   // com ?t → a agenda daquela clínica.
@@ -301,11 +324,15 @@ function App() {
     const params = new URLSearchParams(window.location.search);
     const hasTenant = ["t", "tenant", "clinic"].some((key) => params.get(key));
     const BookingPage = hasTenant ? publicRoute.component : appPageById("booking-directory").component;
-    return <Suspense fallback={<Loading />}><BookingPage /></Suspense>;
+    return (
+      <Suspense fallback={<Loading />}><BookingPage /></Suspense>
+    );
   }
   if (isPublicCheckout || isSignup || isPlatform || isNewsPage || legalDocumentKey || isPublicTerm) {
     const PublicPage = publicRoute.component;
-    return <Suspense fallback={<Loading />}><PublicPage {...(legalDocumentKey ? { documentKey: legalDocumentKey } : {})} /></Suspense>;
+    return (
+      <Suspense fallback={<Loading />}><PublicPage {...(legalDocumentKey ? { documentKey: legalDocumentKey } : {})} /></Suspense>
+    );
   }
   
   // Se não tem sessão, renderizar nada (useEffect acima vai redirecionar)
@@ -345,6 +372,7 @@ function App() {
   }[activePage] || {};
   return (
     <div className={`app-shell ${navCollapsed ? "nav-collapsed" : ""}`}>
+      <ConnectionStatus />
       {/* Sidebar apenas renderizado se autenticado */}
       {isAdminAuthenticated && (
         <Sidebar
@@ -378,7 +406,11 @@ function App() {
             title={navCollapsed ? "Expandir menu" : "Recolher menu"}
           >
             <Menu size={20} className="nav-toggle-mobile" />
-            {navCollapsed ? <PanelLeftOpen size={20} className="nav-toggle-desk" /> : <PanelLeftClose size={20} className="nav-toggle-desk" />}
+            {navCollapsed ? (
+              <PanelLeftOpen size={20} className="nav-toggle-desk" />
+            ) : (
+              <PanelLeftClose size={20} className="nav-toggle-desk" />
+            )}
           </button>
           {trialDays !== null && !subscriptionInactive && !subscriptionInGrace && activePage !== "meu-plano" && (
             <div className="topbar-trial-notice" title={`Teste grátis: ${trialDays} dia(s) restante(s).`}>
@@ -396,10 +428,18 @@ function App() {
               <DropdownMenu.Trigger className="primary-button" aria-label="Criar novo registro"><Plus size={17} /> Novo</DropdownMenu.Trigger>
               <DropdownMenu.Portal>
                 <DropdownMenu.Content className="user-menu-popover" align="end" sideOffset={8}>
-                  {canAccessPage(normalizedSession.user, "agenda", planFeatures) && <DropdownMenu.Item onSelect={() => openQuickCreate("agenda")}>Novo agendamento</DropdownMenu.Item>}
-                  {canAccessPage(normalizedSession.user, "client-center", planFeatures) && <DropdownMenu.Item onSelect={() => openQuickCreate("client-center")}>Novo cliente</DropdownMenu.Item>}
-                  {canAccessPage(normalizedSession.user, "sales", planFeatures) && <DropdownMenu.Item onSelect={() => openQuickCreate("sales")}>Nova venda</DropdownMenu.Item>}
-                  {canAccessPage(normalizedSession.user, "purchases", planFeatures) && <DropdownMenu.Item onSelect={() => openQuickCreate("purchases")}>Nova compra</DropdownMenu.Item>}
+                  {canAccessPage(normalizedSession.user, "agenda", planFeatures) && (
+                    <DropdownMenu.Item onSelect={() => openQuickCreate("agenda")}>Novo agendamento</DropdownMenu.Item>
+                  )}
+                  {canAccessPage(normalizedSession.user, "client-center", planFeatures) && (
+                    <DropdownMenu.Item onSelect={() => openQuickCreate("client-center")}>Novo cliente</DropdownMenu.Item>
+                  )}
+                  {canAccessPage(normalizedSession.user, "sales", planFeatures) && (
+                    <DropdownMenu.Item onSelect={() => openQuickCreate("sales")}>Nova venda</DropdownMenu.Item>
+                  )}
+                  {canAccessPage(normalizedSession.user, "purchases", planFeatures) && (
+                    <DropdownMenu.Item onSelect={() => openQuickCreate("purchases")}>Nova compra</DropdownMenu.Item>
+                  )}
                 </DropdownMenu.Content>
               </DropdownMenu.Portal>
             </DropdownMenu.Root>
@@ -414,7 +454,9 @@ function App() {
                 <DropdownMenu.Content className="user-menu-popover" align="end" sideOffset={8}>
                   <DropdownMenu.Item onSelect={() => navigate("manual")}><BookOpen size={16} /> Manual do usuário</DropdownMenu.Item>
                   <DropdownMenu.Item onSelect={() => navigate("product-news")}><Newspaper size={16} /> Novidades</DropdownMenu.Item>
-                  {canAccessPage(normalizedSession.user, "support") && <DropdownMenu.Item onSelect={() => navigate("support")}><LifeBuoy size={16} /> Suporte</DropdownMenu.Item>}
+                  {canAccessPage(normalizedSession.user, "support") && (
+                    <DropdownMenu.Item onSelect={() => navigate("support")}><LifeBuoy size={16} /> Suporte</DropdownMenu.Item>
+                  )}
                 </DropdownMenu.Content>
               </DropdownMenu.Portal>
             </DropdownMenu.Root>
@@ -427,7 +469,9 @@ function App() {
               <DropdownMenu.Portal>
                 <DropdownMenu.Content className="user-menu-popover" align="end" sideOffset={8}>
                   <DropdownMenu.Item onSelect={() => navigate("settings")}><SettingsIcon size={16} /> Configurações</DropdownMenu.Item>
-                  {canAccessPage(normalizedSession.user, "meu-plano") && <DropdownMenu.Item onSelect={() => navigate("meu-plano")}><Sparkles size={16} /> Meu plano</DropdownMenu.Item>}
+                  {canAccessPage(normalizedSession.user, "meu-plano") && (
+                    <DropdownMenu.Item onSelect={() => navigate("meu-plano")}><Sparkles size={16} /> Meu plano</DropdownMenu.Item>
+                  )}
                   <DropdownMenu.Separator />
                   <DropdownMenu.Item className="danger" onSelect={handleLogout}><LogOut size={16} /> Sair</DropdownMenu.Item>
                 </DropdownMenu.Content>
@@ -453,7 +497,9 @@ function App() {
           </div>
         )}
         <Suspense fallback={<Loading />}>
-          {activePage !== "dashboard" && alertsOpen && <AlertsPopup alerts={alertsData} loading={alertsLoading} onClose={() => setAlertsOpen(false)} onAction={(nextPage) => { setAlertsOpen(false); navigate(nextPage); }} />}
+          {activePage !== "dashboard" && alertsOpen && (
+              <AlertsPopup alerts={alertsData} loading={alertsLoading} onClose={() => setAlertsOpen(false)} onAction={(nextPage) => { setAlertsOpen(false); navigate(nextPage); }} />
+            )}
           {ActivePage && <ActivePage key={activePage} {...activePageProps} />}
         </Suspense>
         </div>

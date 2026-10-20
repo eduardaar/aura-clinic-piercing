@@ -47,7 +47,10 @@ function emptyPurchase() {
 }
 
 function emptyItem() {
-  return { item_type: "product", product_id: "", consumable_id: "", product_variant_id: "", quantity: /** @type {string | number} */ (1), unit_cost: "" };
+  return { item_type: "product", product_id: "", consumable_id: "", product_variant_id: "", quantity: /** @type {string | number} */ (1), unit_cost: "",
+    purchase_unit: "unidade",
+    stock_conversion_factor: /** @type {string | number} */ (1),
+  };
 }
 
 function formatDate(value) {
@@ -77,6 +80,7 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
   const [installments, setInstallments] = useState([]);
   const [automaticInstallments, setAutomaticInstallments] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
+  const [purchaseChoice, setPurchaseChoice] = useState(false);
   const [details, setDetails] = useState(null);
   const [error, setError] = useState("");
   const [nfeXml, setNfeXml] = useState("");
@@ -107,7 +111,7 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
     },
   });
   // biome-ignore lint/correctness/useExhaustiveDependencies: createSignal representa uma borda de evento externa.
-  useEffect(() => { if (createSignal) openNew(); }, [createSignal]);
+  useEffect(() => { if (createSignal) setPurchaseChoice(true); }, [createSignal]);
 
   const purchasePayload = asObject(data);
   const purchases = Array.isArray(data) ? data : asArray(purchasePayload.items);
@@ -170,6 +174,8 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
     setLine({
       ...emptyItem(),
       product_id: productId,
+      stock_conversion_factor: product?.purchase_to_stock_factor || 1,
+      purchase_unit: product?.purchase_unit || "unidade",
       product_variant_id: variant?.id ? String(variant.id) : "",
       unit_cost: variant?.cost_value ?? variant?.purchase_cost ?? product?.cost_value ?? "",
     });
@@ -178,7 +184,10 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
   function selectConsumable(consumableId) {
     const consumable = safeConsumables.find((item) => String(item.id) === String(consumableId));
     const variant = asArray(consumable?.variants).find((item) => Number(item.is_active ?? 1)) || null;
-    setLine({ ...emptyItem(), item_type: "consumable", product_id: consumableId, consumable_id: consumableId, product_variant_id: variant?.id ? String(variant.id) : "", unit_cost: variant?.cost_value ?? consumable?.cost_value ?? "" });
+    setLine({ ...emptyItem(), item_type: "consumable", product_id: consumableId, consumable_id: consumableId, product_variant_id: variant?.id ? String(variant.id) : "", unit_cost: variant?.cost_value ?? consumable?.cost_value ?? "",
+      stock_conversion_factor: consumable?.purchase_to_stock_factor || 1,
+      purchase_unit: consumable?.purchase_unit || "unidade",
+    });
   }
 
   function selectVariant(variantId) {
@@ -199,6 +208,8 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
     if (!isConsumable && !selectedProduct) return setError("Selecione um produto para adicionar.");
     if (variants.length && !selectedVariant) return setError("Selecione a variação do item para adicionar.");
     if (asNumber(line.quantity) <= 0) return setError("A quantidade deve ser maior que zero.");
+    if (!Number.isInteger(Number(line.stock_conversion_factor)) || Number(line.stock_conversion_factor) <= 0)
+      return setError("Informe um conteúdo por embalagem inteiro e positivo.");
     if (asNumber(line.unit_cost) <= 0) return setError("O custo unitário deve ser maior que zero.");
     const label = isConsumable
       ? `${selectedConsumable.name}${selectedVariant ? ` - ${selectedVariant.variation_name || selectedVariant.sku}` : ""}`
@@ -216,11 +227,13 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
         product_variant_id: selectedVariant?.id ? Number(selectedVariant.id) : null,
         item_name: label,
         quantity: Number(line.quantity),
-        unit_cost: Number(line.unit_cost),
+      stock_conversion_factor: Number(line.stock_conversion_factor || 1),
+      purchase_unit: line.purchase_unit || "unidade",
+      unit_cost: Number(line.unit_cost),
       };
     setItems((current) => editingItemKey
-      ? current.map((item) => item.row_key === editingItemKey ? nextItem : item)
-      : [...current, nextItem]);
+      ? current.map((item) => (item.row_key === editingItemKey ? nextItem : item))
+        : [...current, nextItem]);
     setLine(emptyItem());
     setEditingItemKey("");
     setError("");
@@ -314,10 +327,10 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
       grouped.set(imported.selected_target, {
         row_key: crypto.randomUUID?.() || `nfe-${Date.now()}-${imported.line_number}`,
         item_type: isNewItem ? rawId : itemType,
-        product_id: product ? Number(product.id) : (consumable ? Number(consumable.id) : null),
+        product_id: product ? Number(product.id) : consumable ? Number(consumable.id) : null,
         consumable_id: consumable ? Number(consumable.id) : null,
         product_variant_id: variant ? Number(variant.id) : null,
-        item_name: isNewItem ? imported.name : (consumable?.name || (variant ? `${product.name} - ${variant.variation_name || variant.sku}` : product.name)),
+        item_name: isNewItem ? imported.name : consumable?.name || (variant ? `${product.name} - ${variant.variation_name || variant.sku}` : product.name),
         new_inventory_item: isNewItem ? {
           name: imported.name,
           kind: rawId,
@@ -395,8 +408,49 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
             { label: "Centros de custo", icon: Landmark, onClick: () => onNavigate?.("cost-centers") }
           ]}
           actionLabel="Nova compra"
-          onAction={openNew}
+          onAction={() => setPurchaseChoice(true)}
         />
+        <Modal
+          open={purchaseChoice}
+          title="Novas compras"
+          subtitle="Escolha o que deseja registrar."
+          onClose={() => setPurchaseChoice(false)}
+        >
+          <div className="stack">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setPurchaseChoice(false);
+                openNew();
+                setLine({ ...emptyItem(), item_type: "product" });
+              }}
+            >
+              Produtos para revenda
+            </Button>
+            <p>Joias, conectores e acessórios comercializados aos clientes.</p>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setPurchaseChoice(false);
+                openNew();
+                setLine({ ...emptyItem(), item_type: "consumable" });
+              }}
+            >
+              Materiais de consumo
+            </Button>
+            <p>Materiais do cadastro central, com entrada nas unidades reais de estoque.</p>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setPurchaseChoice(false);
+                onNavigate?.("payables");
+              }}
+            >
+              Contas e despesas a pagar
+            </Button>
+            <p>Aluguel, água, energia e outras despesas sem movimentação de estoque.</p>
+          </div>
+        </Modal>
         <DataView
           rows={purchases}
           loading={loading}
@@ -461,7 +515,7 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
           <>
             <Button
               variant="secondary"
-              onClick={() => activeStep === "details" ? closePurchaseModal() : movePurchaseStep(-1)}
+              onClick={() => (activeStep === "details" ? closePurchaseModal() : movePurchaseStep(-1))}
             >
               {activeStep === "details" ? "Cancelar" : "Voltar"}
             </Button>
@@ -496,7 +550,8 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
                   <div className="form-grid">
                     <Select label="Fornecedor" value={form.supplier_id} onChange={(supplier_id) => setForm({ ...form, supplier_id })} required>
                       <option value="">Selecione</option>
-                      {asArray(suppliers).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                      {asArray(suppliers).map((item) => (
+                        <option key={item.id} value={item.id}>{item.name}</option>))}
                     </Select>
                     <Input type="date" label="Data da compra" value={form.purchase_date} onChange={(purchase_date) => setForm({ ...form, purchase_date })} required />
                     <Input label="Descrição da compra (opcional)" value={form.description} onChange={(description) => setForm({ ...form, description })} />
@@ -517,12 +572,17 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
                         <input type="file" accept=".xml,text/xml,application/xml" hidden disabled={importingNfe} onChange={importNfe} />
                       </label>
                     </div>
-                    {nfePreview && <>
-                      <small>NF-e {nfePreview.number} · série {nfePreview.series} · emitente {nfePreview.issuer?.name} · {nfePreview.access_key}</small>
-                      {!nfePreview.supplier && <span className="form-error">Fornecedor não localizado pelo documento. Selecione-o antes de confirmar.</span>}
+                    {nfePreview && (
+                      <>
+                      <small>NF-e {nfePreview.number} · série {nfePreview.series} · emitente {nfePreview.issuer?.name} · {" "}
+                          {nfePreview.access_key}</small>
+                      {!nfePreview.supplier && (
+                          <span className="form-error">Fornecedor não localizado pelo documento. Selecione-o antes de confirmar.</span>
+                        )}
                       <div className="clean-list">
-                        {asArray(nfePreview.items).map((imported, index) => <div key={`${imported.line_number}-${imported.supplier_code}`}>
-                          <span><strong>{imported.name}</strong><small>{imported.quantity} {imported.unit} × {currency.format(asNumber(imported.unit_cost))} · cód. {imported.supplier_code || "—"}</small></span>
+                        {asArray(nfePreview.items).map((imported, index) => (
+                            <div key={`${imported.line_number}-${imported.supplier_code}`}>
+                          <span><strong>{imported.name}</strong><small>{imported.quantity} {imported.unit} × {currency.format(asNumber(imported.unit_cost))}{" "} · cód. {imported.supplier_code || "—"}</small></span>
                           <Select ariaLabel={`Associar ${imported.name}`} value={imported.selected_target} onChange={(selected_target) => setNfePreview((current) => ({ ...current, items: current.items.map((item, itemIndex) => itemIndex === index ? { ...item, selected_target } : item) }))}>
                             <option value="">Selecione o item</option>
                             <option value="ignore">Ignorar esta linha</option>
@@ -531,31 +591,37 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
                             {safeProducts.flatMap((product) => {
                               const productVariants = asArray(product.variants).filter((variant) => Number(variant.is_active ?? 1));
                               return productVariants.length
-                                ? productVariants.map((variant) => <option key={`p-${product.id}-${variant.id}`} value={`product:${product.id}:${variant.id}`}>{product.name} · {variant.variation_name || variant.sku}</option>)
+                                ? productVariants.map((variant) => (
+                                        <option key={`p-${product.id}-${variant.id}`} value={`product:${product.id}:${variant.id}`}>{product.name} · {variant.variation_name || variant.sku}</option>))
                                 : [<option key={`p-${product.id}`} value={`product:${product.id}:0`}>{product.name}</option>];
                             })}
                             {safeConsumables.flatMap((item) => {
                               const activeVariants = asArray(item.variants).filter((variant) => Number(variant.is_active ?? 1));
                               return activeVariants.length
-                                ? activeVariants.map((variant) => <option key={`c-${item.id}-${variant.id}`} value={`consumable:${item.id}:${variant.id}`}>{item.name} · {variant.variation_name || variant.sku} · material</option>)
+                                ? activeVariants.map((variant) => (
+                                        <option key={`c-${item.id}-${variant.id}`} value={`consumable:${item.id}:${variant.id}`}>{item.name} · {variant.variation_name || variant.sku} · material</option>))
                                 : [<option key={`c-${item.id}`} value={`consumable:${item.id}:0`}>{item.name} · material</option>];
                             })}
                           </Select>
-                        </div>)}
+                        </div>))}
                       </div>
                       <Button type="button" variant="secondary" onClick={applyNfeItems}>Aplicar itens conferidos</Button>
-                    </>}
+                    </>
+                    )}
                   </section>
                 </AdvancedFields>
               </FormWorkflow.Page>
             )}
 
-            {activeStep === "items" && <FormWorkflow.Page title="Itens da compra" description="Monte a lista em uma única tela, sem abrir formulários sobrepostos.">
+            {activeStep === "items" && (
+              <FormWorkflow.Page title="Itens da compra" description="Monte a lista em uma única tela, sem abrir formulários sobrepostos.">
           <FormSection title="Adicionar item" description="Informe o custo unitário negociado.">
             {line.item_type === "consumable" && (
               <div className="section-inline-header">
                 <span>{productsLoading ? "Carregando materiais…" : safeConsumables.length ? "Materiais cadastrados no estoque, inclusive os que também podem ser vendidos." : "Nenhum material ativo cadastrado. Em Estoque → Materiais de procedimento, cadastre ou habilite um item para uso em procedimento."}</span>
-                {onNavigate && can(sessionUser, "inventory.view") && <Button variant="secondary" onClick={() => { closePurchaseModal(); onNavigate("inventory", { target: "materiais" }); }}>{can(sessionUser, "inventory.create") ? "Cadastrar material no estoque" : "Ver materiais no estoque"}</Button>}
+                {onNavigate && can(sessionUser, "inventory.view") && (
+                        <Button variant="secondary" onClick={() => { closePurchaseModal(); onNavigate("inventory", { target: "materiais" }); }}>{can(sessionUser, "inventory.create") ? "Cadastrar material no estoque" : "Ver materiais no estoque"}</Button>
+                      )}
               </div>
             )}
             <div className="section-inline-header">
@@ -570,17 +636,21 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
               {line.item_type === "consumable" ? (
                 <Select label="Material" value={line.consumable_id} onChange={selectConsumable}>
                   <option value="">Selecione</option>
-                  {safeConsumables.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.quantity || 0} {item.stock_unit || "un."}</option>)}
+                  {safeConsumables.map((item) => (
+                          <option key={item.id} value={item.id}>{item.name} · {item.quantity || 0} {item.stock_unit || "un."}</option>))}
                 </Select>
-              ) : <Select label="Produto" value={line.product_id} onChange={selectProduct}>
+              ) : (
+                      <Select label="Produto" value={line.product_id} onChange={selectProduct}>
                 <option value="">Selecione</option>
                 {safeProducts.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
                   </option>
                 ))}
-              </Select>}
-              {(line.item_type === "product" || variants.length > 0) && <Select label="Variação" value={line.product_variant_id} onChange={selectVariant}>
+              </Select>
+                    )}
+              {(line.item_type === "product" || variants.length > 0) && (
+                      <Select label="Variação" value={line.product_variant_id} onChange={selectVariant}>
                 <option value="" disabled={variants.length > 0}>
                   Sem variação
                 </option>
@@ -589,7 +659,8 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
                     {item.variation_name || item.sku}
                   </option>
                 ))}
-              </Select>}
+              </Select>
+                    )}
               <Input
                 type="number"
                 min="1"
@@ -598,14 +669,32 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
                 onChange={(quantity) => setLine({ ...line, quantity })}
               />
               <Input
+                      label="Unidade de compra"
+                      value={line.purchase_unit || "unidade"}
+                      onChange={(purchase_unit) => setLine({ ...line, purchase_unit })}
+              />
+              <Input
                 type="number"
-                min="0.01"
+                min="1"
+                      step="1"
+                      label="Conteúdo por embalagem"
+                      value={line.stock_conversion_factor ?? 1}
+                      onChange={(stock_conversion_factor) => setLine({ ...line, stock_conversion_factor })}
+                    />
+                    <Input
+                      type="number"
+                      min="0.01"
                 step="0.01"
                 label="Custo unitário"
                 value={line.unit_cost}
                 onChange={(unit_cost) => setLine({ ...line, unit_cost })}
               />
             </div>
+            <p>
+                    Entrada prevista: {Number(line.quantity || 0) * Number(line.stock_conversion_factor || 1)}{" "}
+                    {selectedProduct?.stock_unit || "unidades"}. Custo por unidade de estoque:{" "}
+                    {currency.format(Number(line.unit_cost || 0) / Number(line.stock_conversion_factor || 1))}.
+                  </p>
             <Button type="button" variant="secondary" onClick={addItem}>
               {editingItemKey ? "Salvar alteração" : "Adicionar item"}
             </Button>
@@ -615,7 +704,8 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
               getKey={(item) => item.row_key}
               columns={[
                 { key: "item", label: "Item", render: (item) => item.item_name },
-                { key: "type", label: "Tipo", render: (item) => item.item_type === "consumable" ? "Material" : "Revenda" },
+                { key: "type", label: "Tipo", render: (item) => (item.item_type === "consumable" ? "Material" : "Revenda"),
+                      },
                 { key: "quantity", label: "Qtd.", value: (item) => item.quantity },
                 { key: "unit_cost", label: "Custo", align: "right", render: (item) => currency.format(item.unit_cost) },
                 { key: "subtotal", label: "Subtotal", align: "right", render: (item) => currency.format(item.quantity * item.unit_cost) },
@@ -625,9 +715,11 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
             />
             <TransactionTotals rows={[{ id: "total", label: "Total da compra", value: currency.format(total), emphasis: true }]} />
           </FormSection>
-            </FormWorkflow.Page>}
+            </FormWorkflow.Page>
+            )}
 
-            {activeStep === "payment" && <FormWorkflow.Page title="Pagamento e conferência" description="Defina as contas a pagar e confirme os totais.">
+            {activeStep === "payment" && (
+              <FormWorkflow.Page title="Pagamento e conferência" description="Defina as contas a pagar e confirme os totais.">
               <FormSection title="Condições de pagamento" badge="Obrigatório">
                 <div className="form-grid">
                   <PaymentSelect label="Forma de pagamento" value={form.payment_method} onChange={(payment_method) => setForm({ ...form, payment_method })} />
@@ -645,7 +737,8 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
                     emptyLabel="Outros (opcional)" createTitle="Nova categoria de compra" createLabel="Nome da categoria" onCreate={createCategory} />
                   <Select label="Centro de custo" value={form.cost_center_id} onChange={(cost_center_id) => setForm({ ...form, cost_center_id })}>
                     <option value="">Sem centro</option>
-                    {asArray(centers).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                    {asArray(centers).map((item) => (
+                        <option key={item.id} value={item.id}>{item.name}</option>))}
                   </Select>
                 </div>
                 <Textarea label="Observações" value={form.notes} onChange={(notes) => setForm({ ...form, notes })} />
@@ -662,7 +755,8 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
                   { label: "Pagamento", value: `${form.installment_count || 1} parcela(s) · ${form.payment_method}` },
                 ]}
               />
-            </FormWorkflow.Page>}
+            </FormWorkflow.Page>
+            )}
           </FormWorkflow>
         </form>
       </Modal>
@@ -702,7 +796,7 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
                   <div key={item.id}>
                     <span>
                       <strong>{item.item_name || item.product_name || item.consumable_name}</strong>
-                      <small>{item.item_type === "consumable" ? "Material de consumo" : (item.variation_name || item.variant_sku || "Sem variação")}</small>
+                      <small>{item.item_type === "consumable" ? "Material de consumo" : item.variation_name || item.variant_sku || "Sem variação"}</small>
                     </span>
                     <em>
                       {item.quantity} un. · {currency.format(asNumber(item.line_total))}

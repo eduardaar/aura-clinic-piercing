@@ -1,0 +1,48 @@
+{
+  "id": "2026-10-20-gestao-operacional",
+  "source_digest": "a19c40748a2485c5456f295cf0164b8c393f18f4d80b4bf2f1e658be703f222d",
+  "announcements": [
+    {
+      "slug": "contas-do-estudio-do-vencimento-ao-pagamento",
+      "title": "Controle as contas do estúdio até o pagamento",
+      "summary": "Despesas, vencimentos, competência e histórico de pagamentos ficam reunidos em Contas a Pagar.",
+      "category": "Financeiro",
+      "content": "Registre aluguel, água, energia, internet e outras despesas sem movimentar o estoque. Acompanhe as contas em aberto, vencidas e pagas e filtre por categoria, competência ou vencimento.\n\nAo pagar uma conta, escolha Registrar pagamento e informe o valor, a data e a forma de pagamento. O histórico fica disponível na própria conta e repetir o envio não cria um segundo pagamento."
+    },
+    {
+      "slug": "compras-materiais-e-kits-de-consumo",
+      "title": "Compras e materiais organizados por finalidade",
+      "summary": "Escolha entre produtos para revenda, materiais de consumo e despesas. Monte também os kits dos procedimentos.",
+      "category": "Compras e estoque",
+      "content": "Em Nova compra, escolha o que deseja registrar. Produtos e materiais usam o cadastro central de estoque; despesas seguem para Contas a Pagar. Ao comprar uma embalagem, informe quantas unidades ela contém e confira a entrada prevista.\n\nEm Configurações da agenda, abra o procedimento e configure seu kit de consumo. Defina os materiais, as quantidades, os itens opcionais e a finalidade de uso. Consulte a disponibilidade dos kits no Estoque e confira o consumo real ao finalizar o atendimento. Reutilizáveis ficam sem baixa automática. As reaberturas mantêm o estorno rastreável."
+    },
+    {
+      "slug": "taxas-de-cartao-salvas-por-maquininha",
+      "title": "Salve as taxas da maquininha uma única vez",
+      "summary": "Configure débito e crédito de 1x a 12x por operadora, com data de vigência.",
+      "category": "Financeiro",
+      "content": "Nas Configurações, abra Taxas das maquininhas e informe os percentuais utilizados pelo seu estúdio. Cada quantidade de parcelas tem sua própria taxa.\n\nNos pagamentos com cartão, escolha a maquininha e confira a taxa e o líquido estimado. A taxa não aumenta o valor cobrado do cliente. Atualizações na tabela preservam as taxas que já foram aplicadas aos pagamentos anteriores."
+    },
+    {
+      "slug": "mais-estabilidade-ao-manter-o-sistema-aberto",
+      "title": "Melhorias para manter sua sessão estável",
+      "summary": "A renovação do acesso trata melhor várias abas e falhas temporárias de conexão.",
+      "category": "Estabilidade",
+      "content": "A renovação do acesso agora evita disputas entre requisições e abas abertas. Uma falha temporária durante a renovação não apaga a sessão salva.\n\nQuando a internet cair, o sistema avisa e preserva a tela aberta. Ao reconectar, as consultas são atualizadas. Se a sessão realmente expirar ou for encerrada, uma mensagem explica a necessidade de entrar novamente."
+    },
+    {
+      "slug": "agenda-publica-com-periodos-e-busca-de-joias",
+      "title": "Libere exatamente os períodos da agenda pública",
+      "summary": "Escolha semanas, meses ou períodos personalizados por profissional e encontre joias pelo código correto.",
+      "category": "Agendamentos",
+      "content": "Em Configurações da agenda → Agenda semanal, selecione o profissional e configure a Disponibilidade do link público. Combine datas, dias da semana e faixas de horário. As liberações respeitam o expediente, o almoço, os bloqueios e os atendimentos existentes.\n\nO cliente pode navegar entre os meses e escolher entre as datas disponíveis. A seleção de joias também recebeu filtros de categoria, material, cor e estoque, além da correção da busca pelo SKU e da escolha de variações."
+    },
+    {
+      "slug": "identidade-da-plataforma-de-gestao",
+      "title": "A identidade da plataforma ficou mais clara",
+      "summary": "A página institucional apresenta a Aura Clinic ERP como plataforma de gestão para estúdios de piercing.",
+      "category": "Plataforma",
+      "content": "A página inicial, o menu público e o rodapé passam a identificar a Aura Clinic ERP de forma consistente. A apresentação institucional explica a proposta do produto de gestão.\n\nAs marcas dos estúdios, seus catálogos e suas páginas próprias continuam com suas identidades. As próximas atualizações publicadas também terão um anúncio em Novidades."
+    }
+  ]
+}

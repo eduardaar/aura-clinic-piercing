@@ -20,11 +20,12 @@ import {
   Star
 } from "lucide-react";
 import { Loading, ApiError } from "../components/common/Feedback";
+import { PublicBookingCalendar } from "../components/common/PublicBookingCalendar";
 import { BookingChoiceGrid, Checkbox, Input, Select } from "../components/common/Ui";
 import { API_ORIGIN, publicApiFetch, usePublicFetch } from "../lib/api";
 import { asArray, asNumber, asObject, formatLongDate, removeAccents } from "../lib/utils";
 import { readRecentSearches, saveRecentSearch, smartSearchMatches, useDebouncedValue } from "../lib/smartSearch";
-import { JEWELRY_CATEGORY_OPTIONS, defaultPublicBooking, nextBookingDates, parseGalleryUrls } from "../lib/defaultForms";
+import { JEWELRY_CATEGORY_OPTIONS, defaultPublicBooking, parseGalleryUrls } from "../lib/defaultForms";
 import {
   catalogAvailabilityMatches,
   catalogItemIsAvailable,
@@ -286,7 +287,9 @@ export function PublicCatalog() {
     const sizeMatch = !filters.size || item.size === filters.size || matchesVariant("size", filters.size);
     const topSizeMatch = !filters.topSize || Number(item.top_size_mm) === Number(filters.topSize) || variants.some((variant) => Number(variant.top_size_mm) === Number(filters.topSize));
     const availabilityMatch = catalogAvailabilityMatches(item, filters.availability);
-    return categoryMatch && searchMatch && materialMatch && colorMatch && stoneMatch && sizeMatch && topSizeMatch && availabilityMatch;
+    return (
+      categoryMatch && searchMatch && materialMatch && colorMatch && stoneMatch && sizeMatch && topSizeMatch && availabilityMatch
+    );
   });
   const items = [...filteredItems].sort((a, b) => sort === "menor-preco" ? a.sale_value - b.sale_value : sort === "maior-preco" ? b.sale_value - a.sale_value : sort === "nome-az" ? a.name.localeCompare(b.name) : sort === "nome-za" ? b.name.localeCompare(a.name) : sort === "estoque" ? Number(b.quantity) - Number(a.quantity) : b.id - a.id);
   const options = catalogFilterOptions(publishedItems);
@@ -300,7 +303,8 @@ export function PublicCatalog() {
   const catalogStyle = {
     "--catalog-primary": theme.primary_color || "#C8A96A",
     "--catalog-secondary": theme.secondary_color || "#D8C3A5",
-    "--catalog-accent": settings.footer_inherit_main_palette === "1" ? (theme.button_color || theme.primary_color) : (settings.footer_accent_color || theme.primary_color),
+    "--catalog-accent": settings.footer_inherit_main_palette === "1" ? theme.button_color || theme.primary_color
+        : settings.footer_accent_color || theme.primary_color,
     "--catalog-bg": settings.site_background || theme.background_color || "#F8F5F0",
     "--catalog-section-bg": settings.section_background || "#ffffff",
     "--catalog-button": theme.button_color || "#C8A96A",
@@ -353,16 +357,20 @@ function addToOrder(item) {
     }));
   }
 
-  const drawerContent = drawer && <CatalogDrawer type={drawer} favorites={favoriteItems}
+  const drawerContent = drawer && (
+    <CatalogDrawer type={drawer} favorites={favoriteItems}
     orderItems={orderItems} orderTotal={orderTotal} whatsappPhone={data.whatsapp_phone}
     onClose={() => setDrawer(null)}
     onRemoveFavorite={(id) => setFavoriteIds((current) => current.filter((itemId) => itemId !== id))}
     onRemoveOrder={removeFromOrder} onUpdateOrderNotes={updateOrderItemNotes}
-    onUpdateOrderQuantity={updateOrderItemQuantity} onClearOrder={() => setOrderItems([])} />;
+    onUpdateOrderQuantity={updateOrderItemQuantity} onClearOrder={() => setOrderItems([])} />
+  );
 
   if (selectedProductId && !selectedProduct) {
-    return <main className="catalog-page"><section className="catalog-main"><h1>Joia indisponível neste catálogo</h1>
-      <p>O produto pode ter sido removido ou deixado de ser publicado.</p><a className="primary-button" href={catalogUrl()}>Voltar ao catálogo</a></section></main>;
+    return (
+      <main className="catalog-page"><section className="catalog-main"><h1>Joia indisponível neste catálogo</h1>
+      <p>O produto pode ter sido removido ou deixado de ser publicado.</p><a className="primary-button" href={catalogUrl()}>Voltar ao catálogo</a></section></main>
+    );
   }
   if (selectedProduct) {
     return (
@@ -400,9 +408,12 @@ function addToOrder(item) {
   return (
     <main className={`catalog-page theme-${theme.theme || "premium"}`} style={catalogStyle}>
       <section className="catalog-main">
-        {!hasBuilderMenu && <header className="catalog-topbar" style={{ order: -30 }}>
+        {!hasBuilderMenu && (
+          <header className="catalog-topbar" style={{ order: -30 }}>
           <a className="catalog-client-brand" href={catalogUrl()}>
-            {theme.logo_url && <img src={catalogImageUrl(theme.logo_url)} alt={theme.brand_name || settings.company_display_name || "Estúdio"} onError={(event) => { event.currentTarget.hidden = true; }} />}
+            {theme.logo_url && (
+                <img src={catalogImageUrl(theme.logo_url)} alt={theme.brand_name || settings.company_display_name || "Estúdio"} onError={(event) => { event.currentTarget.hidden = true; }} />
+              )}
             <strong>{theme.brand_name || settings.company_display_name || data.brand_name || "Estúdio"}</strong>
             <span>{theme.slogan || data.slogan || "Piercing e joias selecionadas"}</span>
           </a>
@@ -417,20 +428,29 @@ function addToOrder(item) {
                 placeholder="Buscar joia, SKU, material, pedra ou tamanho"
               />
               <datalist id="catalog-search-history">
-                {recentSearches.map((item) => <option key={item} value={item} />)}
+                {recentSearches.map((item) => (
+                    <option key={item} value={item} />
+                  ))}
               </datalist>
             </label>
-            {Boolean(Number(theme.show_favorites ?? 1)) && <button className="catalog-icon-action" onClick={() => setDrawer("favorites")} aria-label="Favoritos"><Heart size={18} /><span>{favoriteIds.length}</span></button>}
-            {Boolean(Number(theme.show_buy_button ?? 1)) && <button className="catalog-icon-action primary-cart" aria-label="Carrinho" onClick={() => setDrawer("order")}><ShoppingCart size={19} /><span>{orderItems.reduce((sum, item) => sum + Number(item.qty || 1), 0)}</span></button>}
+            {Boolean(Number(theme.show_favorites ?? 1)) && (
+                <button className="catalog-icon-action" onClick={() => setDrawer("favorites")} aria-label="Favoritos"><Heart size={18} /><span>{favoriteIds.length}</span></button>
+              )}
+            {Boolean(Number(theme.show_buy_button ?? 1)) && (
+                <button className="catalog-icon-action primary-cart" aria-label="Carrinho" onClick={() => setDrawer("order")}><ShoppingCart size={19} /><span>{orderItems.reduce((sum, item) => sum + Number(item.qty || 1), 0)}</span></button>
+              )}
           </div>
-        </header>}
+        </header>
+        )}
 
-        {!hasLayoutRows && <div className="catalog-title" style={{ order: -20 }}>
+        {!hasLayoutRows && (
+          <div className="catalog-title" style={{ order: -20 }}>
           <span className="eyebrow">Catálogo online</span>
           <h1 style={{ fontFamily: theme.title_font || "Georgia" }}>{settings.page_title || "Catálogo Online"} <Sparkles size={26} /></h1>
           <p>{data.title || "Escolha a joia perfeita para você"}</p>
           {data.subtitle && <small>{data.subtitle}</small>}
-        </div>}
+        </div>
+        )}
 
         {layoutRows.map((row) => (
           <CatalogLayoutRow
@@ -512,15 +532,19 @@ function addToOrder(item) {
             footerDisplayName={footerDisplayName}
           />
         ))}
-        {!hasFullProductSection && <CatalogProductsBlock
+        {!hasFullProductSection && (
+          <CatalogProductsBlock
           fullCatalog
           section={{ title: "Todas as joias", subtitle: "Catálogo completo" }} style={undefined} className="catalog-results"
           productsRef={productsRef} items={items} activeCategory={activeCategory}
           data={data} theme={theme} settings={settings} favoriteIds={favoriteIds}
           onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }}
-        />}
+        />
+        )}
         <CatalogNativePlugins plugins={safeData.plugins} settings={settings} theme={theme} />
-        {Boolean(Number(theme.show_whatsapp_button ?? 1)) && data.whatsapp_phone && <a className="floating-whatsapp" href={whatsappCatalogUrl(data.whatsapp_message, data.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle size={24} /><span>WhatsApp</span></a>}
+        {Boolean(Number(theme.show_whatsapp_button ?? 1)) && data.whatsapp_phone && (
+          <a className="floating-whatsapp" href={whatsappCatalogUrl(data.whatsapp_message, data.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle size={24} /><span>WhatsApp</span></a>
+        )}
       </section>
       {drawerContent}
     </main>
@@ -624,8 +648,12 @@ function CatalogLayoutRow({ row, ...blockProps }) {
       {row.columns.map((column) => (
         <div className="catalog-layout-column" key={column.column_key}>
           {column.components.map((component) => component.section_type === "menu"
-            ? <CatalogMenuBlock key={component.section_key} section={component} {...blockProps} />
-            : <CatalogLayoutBlock key={component.section_key} section={component} {...blockProps} />)}
+            ? (
+              <CatalogMenuBlock key={component.section_key} section={component} {...blockProps} />
+            ) : (
+              <CatalogLayoutBlock key={component.section_key} section={component} {...blockProps} />
+            ),
+          )}
         </div>
       ))}
     </section>
@@ -655,12 +683,16 @@ function CatalogMenuBlock({ section, data, settings, theme, search, setSearch, r
           <strong>{brand}</strong>
           {slogan && <span>{slogan}</span>}
         </a>
-        {items.length > 0 && <nav className="catalog-builder-menu__links" aria-label="Menu principal">
-          {items.map((item) => <a key={`${item.label}-${item._sourceIndex}`} {...catalogLinkProps(item.url, catalogUrl())}>{item.label}</a>)}
-        </nav>}
+        {items.length > 0 && (
+          <nav className="catalog-builder-menu__links" aria-label="Menu principal">
+          {items.map((item) => (
+              <a key={`${item.label}-${item._sourceIndex}`} {...catalogLinkProps(item.url, catalogUrl())}>{item.label}</a>))}
+        </nav>
+        )}
       </div>
       <div className="catalog-top-actions catalog-builder-menu__actions">
-        {showSearch && <label className="catalog-search catalog-builder-menu__search">
+        {showSearch && (
+          <label className="catalog-search catalog-builder-menu__search">
           <Search size={17} />
           <input
             value={search}
@@ -670,12 +702,20 @@ function CatalogMenuBlock({ section, data, settings, theme, search, setSearch, r
             placeholder="Buscar no catálogo"
           />
           <datalist id={searchHistoryId}>
-            {asArray(recentSearches).map((item) => <option key={item} value={item} />)}
+            {asArray(recentSearches).map((item) => (
+                <option key={item} value={item} />))}
           </datalist>
-        </label>}
-        {showBooking && <a className="catalog-icon-action" href={publicUrl("/agendar")}><Clock size={18} /> Agendar</a>}
-        {showFavorites && <button type="button" className="catalog-icon-action" onClick={onOpenFavorites} aria-label="Favoritos"><Heart size={18} /><span>{asArray(favoriteIds).length}</span></button>}
-        {showCart && <button type="button" className="catalog-icon-action primary-cart" onClick={onOpenOrder}><ShoppingCart size={19} /> Pedido <span>{Number(orderCount || 0)}</span></button>}
+        </label>
+        )}
+        {showBooking && (
+          <a className="catalog-icon-action" href={publicUrl("/agendar")}><Clock size={18} /> Agendar</a>
+        )}
+        {showFavorites && (
+          <button type="button" className="catalog-icon-action" onClick={onOpenFavorites} aria-label="Favoritos"><Heart size={18} /><span>{asArray(favoriteIds).length}</span></button>
+        )}
+        {showCart && (
+          <button type="button" className="catalog-icon-action primary-cart" onClick={onOpenOrder}><ShoppingCart size={19} /> Pedido <span>{Number(orderCount || 0)}</span></button>
+        )}
       </div>
     </header>
   );
@@ -771,11 +811,16 @@ function CatalogLayoutBlock({
 
   switch (type) {
     case "hero":
-      return <PublicCatalogBanner banner={activeBanner} banners={banners} activeIndex={activeBannerIndex} layout={data.layout_style || "premium"} style={style} className={className("catalog-premium-hero catalog-carousel-hero")} onChange={onBannerChange} />;
+      return (
+        <PublicCatalogBanner banner={activeBanner} banners={banners} activeIndex={activeBannerIndex} layout={data.layout_style || "premium"} style={style} className={className("catalog-premium-hero catalog-carousel-hero")} onChange={onBannerChange} />
+      );
     case "secondary_banners":
-      return <CatalogSecondaryBanners banners={banners} section={section} style={style} className={className("catalog-secondary-banners")} />;
+      return (
+        <CatalogSecondaryBanners banners={banners} section={section} style={style} className={className("catalog-secondary-banners")} />
+      );
     case "categories":
-      return <CatalogDiscovery
+      return (
+        <CatalogDiscovery
         section={section}
         style={style}
         className={className("catalog-discovery")}
@@ -793,13 +838,16 @@ function CatalogLayoutBlock({
         options={options}
         sort={sort}
         setSort={setSort}
-      />;
+      />
+      );
     case "featured_products": {
       // Ao escolher uma categoria, a vitrine deixa de ser uma seleção curada e
       // exibe todos os produtos que passaram pelos filtros públicos.
       const hasCategorySelection = activeCategory && activeCategory !== "Todos";
-      const productSource = section.category_filter ? publishedItems : (hasCategorySelection ? items : (configuredFeatured.length ? configuredFeatured : items));
-      return <CatalogProductsBlock fullCatalog={!section.category_filter && !configuredFeatured.length} section={section} style={style} className={className("catalog-results")} productsRef={productsRef} items={catalogSectionProducts(section, productSource, { category: hasCategorySelection ? activeCategory : "" })} activeCategory={activeCategory} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={onToggleFavorite} onAdd={onAdd} />;
+      const productSource = section.category_filter ? publishedItems : hasCategorySelection ? items : configuredFeatured.length ? configuredFeatured : items;
+      return (
+        <CatalogProductsBlock fullCatalog={!section.category_filter && !configuredFeatured.length} section={section} style={style} className={className("catalog-results")} productsRef={productsRef} items={catalogSectionProducts(section, productSource, { category: hasCategorySelection ? activeCategory : "" })} activeCategory={activeCategory} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={onToggleFavorite} onAdd={onAdd} />
+      );
     }
     case "best_sellers":
       return rail("Mais desejadas", "Peças premium em destaque para composições especiais.", bestSellerItems, { forceSort: "best_sellers" });
@@ -816,29 +864,51 @@ function CatalogLayoutBlock({
     case "category_products":
       return rail("Joias por categoria", "Explore a seleção que mais combina com você.", publishedItems, { category: activeCategory });
     case "services":
-      return <CatalogBookingDirectory kind="services" section={section} style={style} className={className("catalog-booking-directory")} />;
+      return (
+        <CatalogBookingDirectory kind="services" section={section} style={style} className={className("catalog-booking-directory")} />
+      );
     case "professionals":
-      return <CatalogBookingDirectory kind="professionals" section={section} style={style} className={className("catalog-booking-directory")} />;
+      return (
+        <CatalogBookingDirectory kind="professionals" section={section} style={style} className={className("catalog-booking-directory")} />
+      );
     case "location":
-      return <CatalogLocationBlock section={section} settings={settings} style={style} className={className("catalog-information-block")} />;
+      return (
+        <CatalogLocationBlock section={section} settings={settings} style={style} className={className("catalog-information-block")} />
+      );
     case "contact":
-      return <CatalogContactBlock section={section} settings={settings} style={style} className={className("catalog-information-block")} />;
+      return (
+        <CatalogContactBlock section={section} settings={settings} style={style} className={className("catalog-information-block")} />
+      );
     case "policies":
-      return <CatalogPoliciesBlock section={section} settings={settings} style={style} className={className("catalog-information-block")} />;
+      return (
+        <CatalogPoliciesBlock section={section} settings={settings} style={style} className={className("catalog-information-block")} />
+      );
     case "biosafety":
-      return <CatalogTextBlock section={section} style={style} className={className("catalog-guide-section")} eyebrow="Biossegurança" text={section.body_text || settings.biosafety_text} />;
+      return (
+        <CatalogTextBlock section={section} style={style} className={className("catalog-guide-section")} eyebrow="Biossegurança" text={section.body_text || settings.biosafety_text} />
+      );
     case "materials":
-      return <CatalogTextBlock section={section} style={style} className={className("catalog-guide-section")} eyebrow="Materiais" text={section.body_text || settings.materials_text} />;
+      return (
+        <CatalogTextBlock section={section} style={style} className={className("catalog-guide-section")} eyebrow="Materiais" text={section.body_text || settings.materials_text} />
+      );
     case "testimonials":
-      return <CatalogTextBlock section={section} style={style} className={className("catalog-guide-section")} eyebrow="Experiências" text={section.body_text || section.subtitle} />;
+      return (
+        <CatalogTextBlock section={section} style={style} className={className("catalog-guide-section")} eyebrow="Experiências" text={section.body_text || section.subtitle} />
+      );
     case "instagram":
-      return <CatalogInstagramBlock section={section} settings={settings} style={style} className={className("catalog-information-block")} />;
+      return (
+        <CatalogInstagramBlock section={section} settings={settings} style={style} className={className("catalog-information-block")} />
+      );
     case "booking_cta":
       return <CatalogBookingWidget section={section} style={style} className={className("catalog-booking-widget")} />;
     case "footer":
-      return <CatalogFooter section={section} settings={settings} theme={theme} footerLogo={footerLogo} footerDisplayName={footerDisplayName} style={style} className={className("catalog-footer-benefits catalog-dynamic-footer")} />;
+      return (
+        <CatalogFooter section={section} settings={settings} theme={theme} footerLogo={footerLogo} footerDisplayName={footerDisplayName} style={style} className={className("catalog-footer-benefits catalog-dynamic-footer")} />
+      );
     case "custom_content":
-      return <CatalogContentSections sections={contentSections} style={style} className={className("catalog-content-sections")} />;
+      return (
+        <CatalogContentSections sections={contentSections} style={style} className={className("catalog-content-sections")} />
+      );
     default:
       return null;
   }
@@ -891,9 +961,12 @@ function CatalogProductsBlock({ fullCatalog = false, section, style, className, 
         <strong>{items.length} {items.length === 1 ? "joia encontrada" : "joias encontradas"}</strong>
       </div>
       <div className={`catalog-grid catalog-display-${section.display_mode || "grid"}`} id={fullCatalog ? "catalog-products" : undefined}>
-        {items.map((item) => <CatalogProductCard item={item} favorite={favoriteIds.includes(item.id)} onToggleFavorite={() => onToggleFavorite(item)} theme={theme} settings={settings} promotion={catalogPromotionForItem(item, data.promotions || [])} onAddToOrder={() => onAdd(item)} key={item.id} />)}
+        {items.map((item) => (
+          <CatalogProductCard item={item} favorite={favoriteIds.includes(item.id)} onToggleFavorite={() => onToggleFavorite(item)} theme={theme} settings={settings} promotion={catalogPromotionForItem(item, data.promotions || [])} onAddToOrder={() => onAdd(item)} key={item.id} />))}
       </div>
-      {!items.length && <p className="empty-state catalog-empty">Nenhuma joia encontrada em {cleanDisplayText(activeCategory)} com os filtros selecionados.</p>}
+      {!items.length && (
+        <p className="empty-state catalog-empty">Nenhuma joia encontrada em {cleanDisplayText(activeCategory)} com os filtros selecionados.</p>
+      )}
     </section>
   );
 }
@@ -907,8 +980,12 @@ function CatalogSecondaryBanners({ banners, section, style, className }) {
       <div className={`catalog-secondary-banners__grid catalog-display-${section.display_mode || "grid"}`}>
         {secondary.map((banner) => (
           <article key={banner.id || banner.banner_id || banner.sort_order || banner.image_url || banner.title}>
-            {banner.image_url && <img src={catalogImageUrl(banner.image_url)} alt={banner.alt_text || banner.title || "Destaque"} loading="lazy" onError={useNeutralImageFallback} />}
-            <div>{banner.title && <h3>{banner.title}</h3>}{banner.subtitle && <p>{banner.subtitle}</p>}{banner.button_text && <a className="secondary-button" {...catalogLinkProps(banner.button_link)}>{banner.button_text}</a>}</div>
+            {banner.image_url && (
+              <img src={catalogImageUrl(banner.image_url)} alt={banner.alt_text || banner.title || "Destaque"} loading="lazy" onError={useNeutralImageFallback} />
+            )}
+            <div>{banner.title && <h3>{banner.title}</h3>}{banner.subtitle && <p>{banner.subtitle}</p>}{banner.button_text && (
+                <a className="secondary-button" {...catalogLinkProps(banner.button_link)}>{banner.button_text}</a>
+              )}</div>
           </article>
         ))}
       </div>
@@ -938,7 +1015,9 @@ function CatalogLocationBlock({ section, settings, style, className }) {
   const address = String(settings.company_address || "").trim();
   const mapUrl = String(settings.company_maps_url || "").trim() || (address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : "");
   if (!address && !mapUrl) return null;
-  return <CatalogInformationBlock style={style} className={className} icon={<MapPin size={22} />} eyebrow="Visite o estúdio" title={catalogSectionTitle(section, "Localização")} text={section.body_text || address} action={mapUrl ? { label: "Abrir no mapa", href: mapUrl } : null} />;
+  return (
+    <CatalogInformationBlock style={style} className={className} icon={<MapPin size={22} />} eyebrow="Visite o estúdio" title={catalogSectionTitle(section, "Localização")} text={section.body_text || address} action={mapUrl ? { label: "Abrir no mapa", href: mapUrl } : null} />
+  );
 }
 
 function CatalogContactBlock({ section, settings, style, className }) {
@@ -951,7 +1030,9 @@ function CatalogContactBlock({ section, settings, style, className }) {
     email && { label: "Enviar e-mail", href: email, icon: <Mail size={17} /> },
     website && { label: "Visitar site", href: website }
   ].filter(Boolean);
-  return <CatalogInformationBlock style={style} className={className} icon={<MessageCircle size={22} />} eyebrow="Atendimento" title={catalogSectionTitle(section, "Fale com a equipe")} text={section.body_text || settings.institutional_text} actions={actions} />;
+  return (
+    <CatalogInformationBlock style={style} className={className} icon={<MessageCircle size={22} />} eyebrow="Atendimento" title={catalogSectionTitle(section, "Fale com a equipe")} text={section.body_text || settings.institutional_text} actions={actions} />
+  );
 }
 
 function CatalogPoliciesBlock({ section, settings, style, className }) {
@@ -960,7 +1041,8 @@ function CatalogPoliciesBlock({ section, settings, style, className }) {
   return (
     <section className={className} style={style}>
       <div className="catalog-section-heading"><span className="eyebrow">Transparência</span><h2>{catalogSectionTitle(section, "Políticas do estúdio")}</h2>{catalogSectionSubtitle(section) && <p>{catalogSectionSubtitle(section)}</p>}</div>
-      <div className="catalog-policy-grid">{policies.map(([label, text]) => <article key={label}><strong>{label}</strong><p>{text}</p></article>)}</div>
+      <div className="catalog-policy-grid">{policies.map(([label, text]) => (
+          <article key={label}><strong>{label}</strong><p>{text}</p></article>))}</div>
     </section>
   );
 }
@@ -968,7 +1050,9 @@ function CatalogPoliciesBlock({ section, settings, style, className }) {
 function CatalogInstagramBlock({ section, settings, style, className }) {
   const handle = String(settings.company_instagram || "").trim();
   if (!handle) return null;
-  return <CatalogInformationBlock style={style} className={className} icon={<Instagram size={22} />} eyebrow="Bastidores e novidades" title={catalogSectionTitle(section, "Acompanhe no Instagram")} text={section.body_text || catalogSectionSubtitle(section, `Siga ${handle} para acompanhar nosso trabalho.`)} action={{ label: "Abrir Instagram", href: instagramCatalogUrl(handle) }} />;
+  return (
+    <CatalogInformationBlock style={style} className={className} icon={<Instagram size={22} />} eyebrow="Bastidores e novidades" title={catalogSectionTitle(section, "Acompanhe no Instagram")} text={section.body_text || catalogSectionSubtitle(section, `Siga ${handle} para acompanhar nosso trabalho.`)} action={{ label: "Abrir Instagram", href: instagramCatalogUrl(handle) }} />
+  );
 }
 
 function CatalogTextBlock({ section, style, className, eyebrow, text }) {
@@ -988,7 +1072,10 @@ function CatalogInformationBlock({ style, className, icon, eyebrow, title, text,
     <section className={className} style={style}>
       <div className="catalog-information-block__icon">{icon}</div>
       <div><span className="eyebrow">{eyebrow}</span><h2>{title}</h2>{text && <p>{text}</p>}</div>
-      {availableActions.length > 0 && <div className="catalog-information-block__actions">{availableActions.map((item) => <a key={item.label} className="secondary-button" {...catalogActionProps(item.href)}>{item.icon}{item.label}</a>)}</div>}
+      {availableActions.length > 0 && (
+        <div className="catalog-information-block__actions">{availableActions.map((item) => (
+            <a key={item.label} className="secondary-button" {...catalogActionProps(item.href)}>{item.icon}{item.label}</a>))}</div>
+      )}
     </section>
   );
 }
@@ -1004,7 +1091,7 @@ function CatalogFooter({ section, settings, theme, footerLogo, footerDisplayName
     company_instagram: settings.company_instagram, company_email: settings.company_email, company_hours: settings.company_hours,
     company_address: settings.company_address, logo_url: footerLogo,
     display_name: settings.footer_show_business_name !== "0" ? footerDisplayName : "",
-    slogan: settings.footer_show_slogan !== "0" ? (settings.footer_slogan || theme.slogan) : "",
+    slogan: settings.footer_show_slogan !== "0" ? settings.footer_slogan || theme.slogan : "",
     copyright_text: settings.footer_copyright_text || theme.footer_text || settings.footer_text
   });
   if (!showFooter) return null;
@@ -1012,17 +1099,31 @@ function CatalogFooter({ section, settings, theme, footerLogo, footerDisplayName
     <footer className={className} style={{ ...catalogFooterStyle(settings, theme), ...style }}>
       <div className="catalog-contact-heading"><span className="eyebrow">{catalogSectionSubtitle(section, "Atendimento")}</span><h2>{catalogSectionTitle(section, "Fale com a nossa equipe")}</h2>{settings.institutional_text && <p>{settings.institutional_text}</p>}</div>
       <div className="catalog-company-contact">
-        {settings.whatsapp_phone && <a href={whatsappCatalogUrl(settings.whatsapp_message, settings.whatsapp_phone)} target="_blank" rel="noreferrer"><i><MessageCircle size={20} /></i><span><small>Atendimento rápido</small><strong>WhatsApp</strong><em>{settings.whatsapp_phone}</em></span><ChevronRight size={17} /></a>}
-        {settings.company_instagram && <a href={instagramCatalogUrl(settings.company_instagram)} target="_blank" rel="noreferrer"><i><Instagram size={20} /></i><span><small>Acompanhe nosso trabalho</small><strong>Instagram</strong><em>{settings.company_instagram}</em></span><ChevronRight size={17} /></a>}
-        {safeMailto(settings.company_email) && <a href={safeMailto(settings.company_email)}><i><Mail size={20} /></i><span><small>Envie sua dúvida</small><strong>E-mail</strong><em>{settings.company_email}</em></span><ChevronRight size={17} /></a>}
-        {settings.company_hours && <div><i><Clock size={20} /></i><span><small>Quando falar conosco</small><strong>Atendimento</strong><em>{settings.company_hours}</em></span></div>}
-        {settings.company_address && <a {...catalogLinkProps(settings.company_maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(settings.company_address)}`)}><i><MapPin size={20} /></i><span><small>Visite a clínica</small><strong>Endereço</strong><em>{settings.company_address}</em></span><ChevronRight size={17} /></a>}
+        {settings.whatsapp_phone && (
+          <a href={whatsappCatalogUrl(settings.whatsapp_message, settings.whatsapp_phone)} target="_blank" rel="noreferrer"><i><MessageCircle size={20} /></i><span><small>Atendimento rápido</small><strong>WhatsApp</strong><em>{settings.whatsapp_phone}</em></span><ChevronRight size={17} /></a>
+        )}
+        {settings.company_instagram && (
+          <a href={instagramCatalogUrl(settings.company_instagram)} target="_blank" rel="noreferrer"><i><Instagram size={20} /></i><span><small>Acompanhe nosso trabalho</small><strong>Instagram</strong><em>{settings.company_instagram}</em></span><ChevronRight size={17} /></a>
+        )}
+        {safeMailto(settings.company_email) && (
+          <a href={safeMailto(settings.company_email)}><i><Mail size={20} /></i><span><small>Envie sua dúvida</small><strong>E-mail</strong><em>{settings.company_email}</em></span><ChevronRight size={17} /></a>
+        )}
+        {settings.company_hours && (
+          <div><i><Clock size={20} /></i><span><small>Quando falar conosco</small><strong>Atendimento</strong><em>{settings.company_hours}</em></span></div>
+        )}
+        {settings.company_address && (
+          <a {...catalogLinkProps(settings.company_maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(settings.company_address)}`)}><i><MapPin size={20} /></i><span><small>Visite a clínica</small><strong>Endereço</strong><em>{settings.company_address}</em></span><ChevronRight size={17} /></a>
+        )}
       </div>
       <div className="catalog-footer-signature">
         {footerLogo && <img src={catalogImageUrl(footerLogo)} alt={footerDisplayName || "Marca do estúdio"} />}
         {settings.footer_show_business_name !== "0" && <strong>{footerDisplayName || "Estúdio"}</strong>}
-        {settings.footer_show_slogan !== "0" && (settings.footer_slogan || theme.slogan) && <small>{settings.footer_slogan || theme.slogan}</small>}
-        {(settings.footer_copyright_text || theme.footer_text || settings.footer_text) && <small>{settings.footer_copyright_text || theme.footer_text || settings.footer_text}</small>}
+        {settings.footer_show_slogan !== "0" && (settings.footer_slogan || theme.slogan) && (
+          <small>{settings.footer_slogan || theme.slogan}</small>
+        )}
+        {(settings.footer_copyright_text || theme.footer_text || settings.footer_text) && (
+          <small>{settings.footer_copyright_text || theme.footer_text || settings.footer_text}</small>
+        )}
       </div>
     </footer>
   );
@@ -1051,7 +1152,9 @@ function PublicCatalogBanner({ banner, banners, activeIndex, layout, style, clas
       tabIndex={banners.length > 1 ? 0 : undefined}
     >
       <picture className="public-banner__media">
-        {banner.mobile_image_url && <source media="(max-width: 768px)" srcSet={catalogImageUrl(banner.mobile_image_url)} />}
+        {banner.mobile_image_url && (
+          <source media="(max-width: 768px)" srcSet={catalogImageUrl(banner.mobile_image_url)} />
+        )}
         <img
           className="public-banner__image"
           src={catalogImageUrl(banner.image_url)}
@@ -1067,10 +1170,13 @@ function PublicCatalogBanner({ banner, banners, activeIndex, layout, style, clas
         <div className="catalog-banner-copy">
           {banner.title && <h2>{banner.title}</h2>}
           {banner.subtitle && <p>{banner.subtitle}</p>}
-          {banner.button_text && <a className="catalog-banner-cta" {...catalogLinkProps(banner.button_link, "#catalog-products")}>{banner.button_text}</a>}
+          {banner.button_text && (
+            <a className="catalog-banner-cta" {...catalogLinkProps(banner.button_link, "#catalog-products")}>{banner.button_text}</a>
+          )}
         </div>
       )}
-      {banners.length > 1 && <>
+      {banners.length > 1 && (
+        <>
         <button type="button" className="catalog-carousel-arrow previous" aria-label="Banner anterior" onClick={() => go(-1)}><ChevronLeft /></button>
         <button type="button" className="catalog-carousel-arrow next" aria-label="Próximo banner" onClick={() => go(1)}><ChevronRight /></button>
         <div className="catalog-carousel-dots" aria-label="Selecionar banner">
@@ -1078,7 +1184,8 @@ function PublicCatalogBanner({ banner, banners, activeIndex, layout, style, clas
             <button key={item.id || item.banner_id || item.sort_order || item.image_url || item.title} className={index === activeIndex ? "active" : ""} aria-label={`Banner ${index + 1}`} aria-current={index === activeIndex ? "true" : undefined} onClick={() => onChange(index)} />
           ))}
         </div>
-      </>}
+      </>
+      )}
     </section>
   );
 }
@@ -1090,15 +1197,16 @@ function catalogFooterStyle(settings, theme) {
     ? `linear-gradient(${settings.footer_gradient_direction || "135deg"}, ${settings.footer_gradient_start_color || theme.primary_color}, ${settings.footer_gradient_end_color || theme.secondary_color})`
     : backgroundType === "image" && settings.footer_background_image_url
       ? `linear-gradient(${hexOverlay(settings.footer_overlay_color, settings.footer_overlay_opacity)}), url(${catalogImageUrl(settings.footer_background_image_url)})`
-    : inherit ? (theme.background_color || "#f8f5f0") : (settings.footer_background_color || theme.background_color || "#f8f5f0");
+    : inherit ? theme.background_color || "#f8f5f0"
+          : settings.footer_background_color || theme.background_color || "#f8f5f0";
   return {
-    "--footer-text": inherit ? (settings.text_color || "#1c1c1c") : settings.footer_text_color,
-    "--footer-muted": inherit ? (settings.muted_text_color || "#74685e") : settings.footer_muted_text_color,
-    "--footer-heading": inherit ? (settings.heading_color || "#1c1c1c") : settings.footer_heading_color,
-    "--footer-link": inherit ? (settings.link_color || theme.primary_color) : settings.footer_link_color,
-    "--footer-link-hover": inherit ? (settings.link_hover_color || theme.button_color) : settings.footer_link_hover_color,
-    "--footer-icon": inherit ? (settings.icon_color || theme.primary_color) : settings.footer_icon_color,
-    "--footer-border": inherit ? (settings.border_color || theme.secondary_color) : settings.footer_border_color,
+    "--footer-text": inherit ? settings.text_color || "#1c1c1c" : settings.footer_text_color,
+    "--footer-muted": inherit ? settings.muted_text_color || "#74685e" : settings.footer_muted_text_color,
+    "--footer-heading": inherit ? settings.heading_color || "#1c1c1c" : settings.footer_heading_color,
+    "--footer-link": inherit ? settings.link_color || theme.primary_color : settings.footer_link_color,
+    "--footer-link-hover": inherit ? settings.link_hover_color || theme.button_color : settings.footer_link_hover_color,
+    "--footer-icon": inherit ? settings.icon_color || theme.primary_color : settings.footer_icon_color,
+    "--footer-border": inherit ? settings.border_color || theme.secondary_color : settings.footer_border_color,
     "--footer-accent": inherit ? theme.primary_color : settings.footer_accent_color,
     "--footer-logo-width": `${Number(settings.footer_logo_max_width || 180)}px`,
     "--footer-logo-height": `${Number(settings.footer_logo_max_height || 96)}px`,
@@ -1133,7 +1241,9 @@ function CatalogSelect({ label, value, options, onChange }) {
         {safeOptions.map((option) => {
           const optionValue = typeof option === "object" ? option.value : option;
           const optionLabel = typeof option === "object" ? option.label : elegantProductName(option);
-          return <option key={optionValue} value={optionValue}>{optionLabel}</option>;
+          return (
+          <option key={optionValue} value={optionValue}>{optionLabel}</option>
+        );
         })}
     </Select>
   );
@@ -1189,17 +1299,23 @@ function CatalogBookingWidget({ section = {}, style, className = "catalog-bookin
       </div>
       <div className="catalog-booking-controls">
         <Select label="Serviço" value={form.service_id} onChange={(value) => setForm({ ...form, service_id: value, professional_id: "", appointment_time: "" })}>
-          {services.map((service) => <option value={service.id} key={service.id}>{service.name}</option>)}
+          {services.map((service) => (
+            <option value={service.id} key={service.id}>{service.name}</option>))}
         </Select>
         {professionals.length ? (
           <Select label="Profissional" value={form.professional_id} onChange={(value) => setForm({ ...form, professional_id: value, appointment_time: "" })}>
-            {professionals.map((professional) => <option value={professional.id} key={professional.id}>{professional.name}</option>)}
+            {professionals.map((professional) => (
+              <option value={professional.id} key={professional.id}>{professional.name}</option>
+            ))}
           </Select>
-        ) : <p className="empty-state">Este serviço ainda não possui profissional vinculado.</p>}
+        ) : (
+          <p className="empty-state">Este serviço ainda não possui profissional vinculado.</p>
+        )}
         <Input type="date" label="Data" value={form.appointment_date} onChange={(value) => setForm({ ...form, appointment_date: value, appointment_time: "" })} />
       </div>
       <div className="catalog-slot-row">
-          {slots.slice(0, 8).map((slot) => <button type="button" key={slot.time} className={form.appointment_time === slot.time ? "active" : ""} onClick={() => setForm({ ...form, appointment_time: slot.time })}>{slot.time}</button>)}
+          {slots.slice(0, 8).map((slot) => (
+          <button type="button" key={slot.time} className={form.appointment_time === slot.time ? "active" : ""} onClick={() => setForm({ ...form, appointment_time: slot.time })}>{slot.time}</button>))}
         {!slots.length && <span>Nenhum horário nesta seleção.</span>}
       </div>
       <a className={`primary-button booking-wide-button${professionals.length ? "" : " disabled"}`} href={professionals.length ? href : "#catalog-agenda"}>Continuar Agendamento</a>
@@ -1223,7 +1339,9 @@ function CatalogContentSections({ sections, style, className = "catalog-content-
             <span className="eyebrow">{section.kicker || "Conteúdo especial"}</span>
             <h2>{section.title}</h2>
             <p>{section.text}</p>
-            {section.button_text && section.button_link && <a className="secondary-button" {...catalogLinkProps(section.button_link)}>{section.button_text}</a>}
+            {section.button_text && section.button_link && (
+                <a className="secondary-button" {...catalogLinkProps(section.button_link)}>{section.button_text}</a>
+              )}
           </div>
           {section.media_url && section.media_type === "video" && safeCatalogEmbedUrl(section.media_url) ? (
             <iframe
@@ -1292,27 +1410,48 @@ function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, th
   return (
     <article className="catalog-product-card">
       <figure>
-        {(item.badge || promotion || !available) && <em className={`catalog-product-badge ${!available ? "unavailable" : ""}`}>{!available ? "Indisponível" : promotion ? "Promoção" : cleanDisplayText(item.badge)}</em>}
+        {(item.badge || promotion || !available) && (
+          <em className={`catalog-product-badge ${!available ? "unavailable" : ""}`}>{!available ? "Indisponível" : promotion ? "Promoção" : cleanDisplayText(item.badge)}</em>
+        )}
         <a className="catalog-product-image-link" href={catalogProductUrl(item.id)} aria-label={`Abrir ${productName}`}>
           <img src={catalogImageUrl(item.photo_url || item.image_url)} alt="" loading="lazy" decoding="async" width="400" height="400" onError={useNeutralImageFallback} />
         </a>
-        {Boolean(Number(theme.show_favorites ?? 1)) && <button type="button" className={favorite ? "favorite active" : "favorite"} onClick={onToggleFavorite} aria-label={favorite ? "Remover dos favoritos" : "Favoritar"} aria-pressed={favorite}>
+        {Boolean(Number(theme.show_favorites ?? 1)) && (
+          <button type="button" className={favorite ? "favorite active" : "favorite"} onClick={onToggleFavorite} aria-label={favorite ? "Remover dos favoritos" : "Favoritar"} aria-pressed={favorite}>
           <Heart size={19} />
-        </button>}
+        </button>
+        )}
       </figure>
       <div className="catalog-product-info">
         <h2><a href={catalogProductUrl(item.id)}>{productName}</a></h2>
         {technicalSummary && <p className="catalog-technical-summary">{technicalSummary}</p>}
-        <strong>{finalValue > 0 ? <>{promotion && <del>{currency.format(saleValue)}</del>}{currency.format(finalValue)}</> : "Valor Sob Consulta"}</strong>
-        {variantCount > 0 && <small className="catalog-variation-summary">{variantCount} {variantCount === 1 ? "variação" : "variações"}</small>}
-        {stockText && <small title={stockText} className={Number(item.quantity || 0) <= 2 ? "catalog-stock warning" : "catalog-stock"}>{available ? stockText : "Esgotado"}</small>}
+        <strong>{finalValue > 0 ? (
+            <>{promotion && <del>{currency.format(saleValue)}</del>}{currency.format(finalValue)}</>
+          ) : (
+            "Valor Sob Consulta"
+          )}</strong>
+        {variantCount > 0 && (
+          <small className="catalog-variation-summary">{variantCount} {variantCount === 1 ? "variação" : "variações"}</small>
+        )}
+        {stockText && (
+          <small title={stockText} className={Number(item.quantity || 0) <= 2 ? "catalog-stock warning" : "catalog-stock"}>{available ? stockText : "Esgotado"}</small>
+        )}
         <div className="catalog-actions">
-          {available && Boolean(Number(theme.show_schedule_button ?? 1)) && <a className="primary-button" href={catalogProductUrl(item.id)}>Ver detalhes</a>}
-          {available && !Boolean(Number(theme.show_schedule_button ?? 1)) && !Boolean(Number(theme.show_buy_button)) && <a className="primary-button" href={catalogProductUrl(item.id)}>Ver detalhes</a>}
+          {available && Boolean(Number(theme.show_schedule_button ?? 1)) && (
+            <a className="primary-button" href={catalogProductUrl(item.id)}>Ver detalhes</a>
+          )}
+          {available && !Boolean(Number(theme.show_schedule_button ?? 1)) && !Boolean(Number(theme.show_buy_button)) && (
+              <a className="primary-button" href={catalogProductUrl(item.id)}>Ver detalhes</a>
+            )}
           {available && !Boolean(Number(theme.show_schedule_button ?? 1)) && Boolean(Number(theme.show_buy_button)) && (requiresVariant
-            ? <a className="secondary-button" href={catalogUrl(`/catalogo/produto/${item.id}`)}>Escolher variação</a>
-            : <button className="secondary-button" type="button" onClick={onAddToOrder}>Adicionar ao carrinho</button>)}
-          {!available && <a className="primary-button" aria-label="Consultar disponibilidade" href={requiresVariant || !settings.whatsapp_phone ? catalogProductUrl(item.id) : whatsappCatalogUrl(notifyText, settings.whatsapp_phone)} target={requiresVariant || !settings.whatsapp_phone ? undefined : "_blank"} rel="noreferrer">Consultar</a>}
+            ? (
+              <a className="secondary-button" href={catalogUrl(`/catalogo/produto/${item.id}`)}>Escolher variação</a>
+            ) : (
+              <button className="secondary-button" type="button" onClick={onAddToOrder}>Adicionar ao carrinho</button>
+            ))}
+          {!available && (
+            <a className="primary-button" aria-label="Consultar disponibilidade" href={requiresVariant || !settings.whatsapp_phone ? catalogProductUrl(item.id) : whatsappCatalogUrl(notifyText, settings.whatsapp_phone)} target={requiresVariant || !settings.whatsapp_phone ? undefined : "_blank"} rel="noreferrer">Consultar</a>
+          )}
           <a className="catalog-share-action" href={whatsappShareUrl(shareText)} target="_blank" rel="noreferrer" aria-label="Compartilhar"><MessageCircle size={15} /></a>
         </div>
       </div>
@@ -1333,14 +1472,14 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
   const galleryImages = [
     ...asArray(selectedVariant.images),
     ...asArray(item.images),
-    ...(parseGalleryUrls(item.gallery_urls).map((image_url) => ({ image_url })))
+    ...parseGalleryUrls(item.gallery_urls).map((image_url) => ({ image_url }))
   ].filter((image) => image?.image_url);
   const uniqueGalleryImages = galleryImages.filter((image, index, list) => list.findIndex((entry) => entry.image_url === image.image_url) === index);
   const [activeImage, setActiveImage] = useState(uniqueGalleryImages[0]?.image_url || item.photo_url || item.image_url);
 
   useEffect(() => {
     const nextColors = splitColorOptions(selectedVariant.color);
-    setSelectedColor((current) => nextColors.includes(current) ? current : nextColors[0] || "");
+    setSelectedColor((current) => (nextColors.includes(current) ? current : nextColors[0] || ""));
     setActiveImage(uniqueGalleryImages[0]?.image_url || item.photo_url || item.image_url || "");
   }, [item.id, selectedVariantId]);
 
@@ -1373,13 +1512,17 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
       <section className="catalog-main catalog-product-detail-page">
         <header className="catalog-topbar">
           <a className="catalog-client-brand" href={catalogUrl()}>
-            {theme.logo_url && <img src={catalogImageUrl(theme.logo_url)} alt={theme.brand_name || settings.company_display_name || "Estúdio"} onError={(event) => { event.currentTarget.hidden = true; }} />}
+            {theme.logo_url && (
+              <img src={catalogImageUrl(theme.logo_url)} alt={theme.brand_name || settings.company_display_name || "Estúdio"} onError={(event) => { event.currentTarget.hidden = true; }} />
+            )}
             <strong>{theme.brand_name || settings.company_display_name || data.brand_name || "Estúdio"}</strong>
             <span>{theme.slogan || data.slogan || "Clinic Piercing"}</span>
           </a>
           <div className="catalog-top-actions">
             <a className="secondary-button" href={catalogUrl()}>Voltar ao catálogo</a>
-            {Boolean(Number(theme.show_favorites ?? 1)) && <button className="catalog-icon-action" onClick={onToggleFavorite} aria-label={favorite ? "Remover dos favoritos" : "Favoritar"}><Heart size={18} /></button>}
+            {Boolean(Number(theme.show_favorites ?? 1)) && (
+              <button className="catalog-icon-action" onClick={onToggleFavorite} aria-label={favorite ? "Remover dos favoritos" : "Favoritar"}><Heart size={18} /></button>
+            )}
           </div>
         </header>
 
@@ -1396,7 +1539,8 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
           </div>
           <div className="catalog-product-sidebar">
             <span className={`catalog-product-badge detail ${available ? "" : "unavailable"}`}>{available ? item.badge || "Disponível" : "Indisponível"}</span>
-            <p className="catalog-breadcrumb">Catálogo / {cleanDisplayText(item.category || "Joias")} / {cleanDisplayText(item.subcategory || productName)}</p>
+            <p className="catalog-breadcrumb">Catálogo / {cleanDisplayText(item.category || "Joias")} / {" "}
+              {cleanDisplayText(item.subcategory || productName)}</p>
             <h1>{productName}</h1>
             {description && <p className="catalog-product-description">{description}</p>}
             {item.sku && <small className="catalog-sku">SKU {item.sku}</small>}
@@ -1405,13 +1549,16 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
                 <Select label="Escolha a Variação" value={selectedVariantId} onChange={(value) => { setSelectedVariantId(value); setQuantity(1); }}>
                     {availableVariants.map((variant) => (
                       <option key={variant.id} value={variant.id}>
-                        {variantCatalogLabel(variant)} · {variant.quantity > 0 ? `${variant.quantity} disponíveis` : "Indisponível"}
+                        {variantCatalogLabel(variant)} · {" "}
+                      {variant.quantity > 0 ? `${variant.quantity} disponíveis` : "Indisponível"}
                       </option>
                     ))}
                 </Select>
                 {colorOptions.length > 0 && (
                   <Select label="Observação de Cor / Anodização" value={selectedColor} onChange={setSelectedColor}>
-                      {colorOptions.map((color) => <option key={color}>{color}</option>)}
+                      {colorOptions.map((color) => (
+                      <option key={color}>{color}</option>
+                    ))}
                   </Select>
                 )}
               </div>
@@ -1420,7 +1567,9 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
               <strong>{saleValue > 0 ? currency.format(saleValue) : "Valor Sob Consulta"}</strong>
               <span>{stockText || "Disponibilidade sob consulta"}</span>
             </div>
-            {available && <div className="catalog-quantity-picker" aria-label="Quantidade"><button type="button" onClick={() => setQuantity((current) => Math.max(1, current - 1))} disabled={quantity <= 1}>−</button><strong>{quantity}</strong><button type="button" onClick={() => setQuantity((current) => Math.min(maximumQuantity, current + 1))} disabled={quantity >= maximumQuantity}>+</button><small>{maximumQuantity} disponível(is)</small></div>}
+            {available && (
+              <div className="catalog-quantity-picker" aria-label="Quantidade"><button type="button" onClick={() => setQuantity((current) => Math.max(1, current - 1))} disabled={quantity <= 1}>−</button><strong>{quantity}</strong><button type="button" onClick={() => setQuantity((current) => Math.min(maximumQuantity, current + 1))} disabled={quantity >= maximumQuantity}>+</button><small>{maximumQuantity} disponível(is)</small></div>
+            )}
             <div className="catalog-detail-grid">
               {detailItems.map((entry) => (
                 <div key={entry.label}>
@@ -1430,14 +1579,26 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
               ))}
             </div>
             <div className="catalog-detail-actions">
-              {available && Boolean(Number(theme.show_schedule_button ?? 1)) && <button className="primary-button" type="button" onClick={() => onScheduleWithJewelry({ ...selectedVariant, selected_color: selectedColor })}>Quero Agendar Com Essa Joia</button>}
-              {available && Boolean(Number(theme.show_buy_button ?? 1)) && <button className="secondary-button" type="button" onClick={() => onAddToOrder({ ...selectedVariant, selected_color: selectedColor, requested_qty: quantity })}>Adicionar {quantity} ao carrinho</button>}
-              {!available && settings.whatsapp_phone && <a className="primary-button" href={whatsappCatalogUrl(`Ola! Gostaria de consultar a disponibilidade desta joia:\n\nProduto: ${productName}\nVariacao: ${variantCatalogLabel(selectedVariant)}\nMaterial: ${selectedVariant.material || item.material || "nao informado"}\nCor: ${selectedColor || selectedVariant.color || item.color || "nao informada"}\nTamanho: ${variantCatalogLabel(selectedVariant)}\nLink: ${selectedProductLink}\n\nPodem me informar prazo e valor?`, settings.whatsapp_phone)} target="_blank" rel="noreferrer">Pedir pelo WhatsApp</a>}
-              {!available && !settings.whatsapp_phone && <span className="form-error">WhatsApp de vendas nao configurado. Avise a administracao.</span>}
-              {settings.whatsapp_phone && <a className="secondary-button" href={whatsappCatalogUrl(`Olá! Quero informações sobre ${productName}, ${variantCatalogLabel(selectedVariant)}${selectedColor ? `, na cor ${selectedColor}` : ""}. ${selectedProductLink}`, settings.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Falar com a Aura</a>}
+              {available && Boolean(Number(theme.show_schedule_button ?? 1)) && (
+                <button className="primary-button" type="button" onClick={() => onScheduleWithJewelry({ ...selectedVariant, selected_color: selectedColor })}>Quero Agendar Com Essa Joia</button>
+              )}
+              {available && Boolean(Number(theme.show_buy_button ?? 1)) && (
+                <button className="secondary-button" type="button" onClick={() => onAddToOrder({ ...selectedVariant, selected_color: selectedColor, requested_qty: quantity })}>Adicionar {quantity} ao carrinho</button>
+              )}
+              {!available && settings.whatsapp_phone && (
+                <a className="primary-button" href={whatsappCatalogUrl(`Ola! Gostaria de consultar a disponibilidade desta joia:\n\nProduto: ${productName}\nVariacao: ${variantCatalogLabel(selectedVariant)}\nMaterial: ${selectedVariant.material || item.material || "nao informado"}\nCor: ${selectedColor || selectedVariant.color || item.color || "nao informada"}\nTamanho: ${variantCatalogLabel(selectedVariant)}\nLink: ${selectedProductLink}\n\nPodem me informar prazo e valor?`, settings.whatsapp_phone)} target="_blank" rel="noreferrer">Pedir pelo WhatsApp</a>
+              )}
+              {!available && !settings.whatsapp_phone && (
+                <span className="form-error">WhatsApp de vendas nao configurado. Avise a administracao.</span>
+              )}
+              {settings.whatsapp_phone && (
+                <a className="secondary-button" href={whatsappCatalogUrl(`Olá! Quero informações sobre ${productName}, ${variantCatalogLabel(selectedVariant)}${selectedColor ? `, na cor ${selectedColor}` : ""}. ${selectedProductLink}`, settings.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Falar com a Aura</a>
+              )}
               <a className="secondary-button" href={whatsappShareUrl(`${settings.product_share_text || "Olha esta joia:"} ${item.name} - ${variantCatalogLabel(selectedVariant)} - ${currency.format(saleValue)}. ${selectedProductLink}`)} target="_blank" rel="noreferrer">Compartilhar</a>
             </div>
-            {item.notes && <div className="catalog-notes-box"><strong>Observações</strong><p>{item.notes}</p></div>}
+            {item.notes && (
+              <div className="catalog-notes-box"><strong>Observações</strong><p>{item.notes}</p></div>
+            )}
           </div>
         </section>
 
@@ -1549,19 +1710,26 @@ function CatalogDrawer({ type, favorites, orderItems, orderTotal, whatsappPhone,
           <button onClick={onClose} aria-label="Fechar">X</button>
         </header>
         <div className="catalog-drawer-list">
-          {items.length ? items.map((item) => (
+          {items.length ? (
+            items.map((item) => (
             <article key={item.order_key || item.id}>
               <img src={catalogImageUrl(item.photo_url)} alt={item.name} />
               <div>
                 <strong>{item.name}</strong>
                 <span>{[item.material, item.selected_color || item.color, item.selected_variant_name || item.size].map(elegantProductName).filter(Boolean).join(" · ")}</span>
                 <small>{isFavorites ? currency.format(item.sale_value || 0) : `${catalogOrderQuantityIsValid(item) ? `${item.qty ?? 1}x` : "Quantidade inválida"} · ${currency.format(item.sale_value || 0)}`}</small>
-                {!isFavorites && <label>Quantidade<input type="number" min="1" max={Math.max(1, Number(item.quantity || 1))} value={item.qty ?? 1} onChange={(event) => onUpdateOrderQuantity(item.order_key || item.id, event.target.value)} /></label>}
-                {!isFavorites && <textarea value={item.customer_notes || ""} onChange={(event) => onUpdateOrderNotes(item.order_key || item.id, event.target.value)} placeholder="Observações de cor, tamanho ou envio" />}
+                {!isFavorites && (
+                    <label>Quantidade<input type="number" min="1" max={Math.max(1, Number(item.quantity || 1))} value={item.qty ?? 1} onChange={(event) => onUpdateOrderQuantity(item.order_key || item.id, event.target.value)} /></label>
+                  )}
+                {!isFavorites && (
+                    <textarea value={item.customer_notes || ""} onChange={(event) => onUpdateOrderNotes(item.order_key || item.id, event.target.value)} placeholder="Observações de cor, tamanho ou envio" />
+                  )}
               </div>
-              <button onClick={() => isFavorites ? onRemoveFavorite(item.id) : onRemoveOrder(item.order_key || item.id)}>Remover</button>
+              <button onClick={() => (isFavorites ? onRemoveFavorite(item.id) : onRemoveOrder(item.order_key || item.id))}>Remover</button>
             </article>
-          )) : <p className="empty-state">{isFavorites ? "Nenhuma joia favoritada ainda." : "Seu pedido ainda está vazio."}</p>}
+            ))) : (
+            <p className="empty-state">{isFavorites ? "Nenhuma joia favoritada ainda." : "Seu pedido ainda está vazio."}</p>
+          )}
         </div>
         {!isFavorites && (
           <footer>
@@ -1570,18 +1738,30 @@ function CatalogDrawer({ type, favorites, orderItems, orderTotal, whatsappPhone,
               <button type="button" className="secondary-button" onClick={applyCoupon} disabled={!couponCode.trim() || !safeOrderItems.length || invalidQuantities}>Aplicar</button>
             </div>
             {couponError && <span className="form-error">{couponError}</span>}
-            {couponQuote?.promotion_discount > 0 && <span className="form-success">Promoções: −{currency.format(couponQuote.promotion_discount)}</span>}
-            {couponQuote?.coupon_discount > 0 && <span className="form-success">Cupom aplicado: −{currency.format(couponQuote.coupon_discount)}</span>}
+            {couponQuote?.promotion_discount > 0 && (
+              <span className="form-success">Promoções: −{currency.format(couponQuote.promotion_discount)}</span>
+            )}
+            {couponQuote?.coupon_discount > 0 && (
+              <span className="form-success">Cupom aplicado: −{currency.format(couponQuote.coupon_discount)}</span>
+            )}
             <div><span>Total aproximado</span><strong>{currency.format(finalTotal)}</strong></div>
-            {invalidQuantities && <p className="form-error" role="alert">Informe quantidades inteiras, maiores que zero e dentro do estoque disponível.</p>}
-            {invalidQuantities ? <>
+            {invalidQuantities && (
+              <p className="form-error" role="alert">Informe quantidades inteiras, maiores que zero e dentro do estoque disponível.</p>
+            )}
+            {invalidQuantities ? (
+              <>
               <button className="secondary-button" type="button" disabled>Finalizar no site</button>
               <button className="primary-button whatsapp-checkout" type="button" disabled>Finalizar pelo WhatsApp</button>
-            </> : <>
+            </>
+            ) : (
+              <>
               <a className="secondary-button" href={publicUrl("/comprar")}>Finalizar no site</a>
               <a className="primary-button whatsapp-checkout" href={whatsappCatalogUrl(message, whatsappPhone)} target="_blank" rel="noreferrer"><MessageCircle size={17} /> Finalizar pelo WhatsApp</a>
-            </>}
-            {safeOrderItems.length > 0 && <button className="secondary-button" onClick={onClearOrder}>Limpar pedido</button>}
+            </>
+            )}
+            {safeOrderItems.length > 0 && (
+              <button className="secondary-button" onClick={onClearOrder}>Limpar pedido</button>
+            )}
           </footer>
         )}
         {isFavorites && (
@@ -1731,19 +1911,25 @@ export function PublicCheckout() {
                 <option value="pickup">Retirada na clínica</option>
                 <option value="delivery">Entrega</option>
               </Select>
-              {form.fulfillment_method === "delivery" && <Input label="Endereço de entrega" value={form.delivery_address} onChange={(value) => setForm({ ...form, delivery_address: value })} required />}
+              {form.fulfillment_method === "delivery" && (
+                <Input label="Endereço de entrega" value={form.delivery_address} onChange={(value) => setForm({ ...form, delivery_address: value })} required />
+              )}
             </div>
             <div className="catalog-coupon-field">
               <input value={form.coupon_code} onChange={(event) => { setForm((current) => ({ ...current, coupon_code: event.target.value })); setQuote(null); }} onBlur={() => setForm((current) => ({ ...current, coupon_code: current.coupon_code.trim().toUpperCase() }))} placeholder="Cupom de desconto" />
               <button type="button" className="secondary-button" onClick={applyCheckoutCoupon} disabled={!form.coupon_code.trim() || invalidQuantities}>Aplicar cupom</button>
-              {quote?.coupon_discount > 0 && <button type="button" className="secondary-button" onClick={() => { setForm({ ...form, coupon_code: "" }); setQuote(null); }}>Remover</button>}
+              {quote?.coupon_discount > 0 && (
+                <button type="button" className="secondary-button" onClick={() => { setForm({ ...form, coupon_code: "" }); setQuote(null); }}>Remover</button>
+              )}
             </div>
             <label>Observações
               <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Observação de cor, tamanho, envio ou retirada." />
             </label>
             <Checkbox className="checkout-policy" label="Li e aceito as políticas da clínica." checked={form.accepted_policies} onChange={(accepted_policies) => setForm({ ...form, accepted_policies })} />
             {error && <span className="form-error">{error}</span>}
-            {invalidQuantities && <p className="form-error" role="alert">Corrija as quantidades no pedido: use números inteiros, maiores que zero e dentro do estoque disponível.</p>}
+            {invalidQuantities && (
+              <p className="form-error" role="alert">Corrija as quantidades no pedido: use números inteiros, maiores que zero e dentro do estoque disponível.</p>
+            )}
             <button className="primary-button" type="submit" disabled={invalidQuantities || !safeOrderItems.length}>Confirmar compra</button>
           </form>
           <div className="panel">
@@ -1752,21 +1938,26 @@ export function PublicCheckout() {
               <span>{safeOrderItems.length} item(ns)</span>
             </div>
             <div className="sales-checkout-items">
-              {safeOrderItems.length ? safeOrderItems.map((item) => (
+              {safeOrderItems.length ? (
+                safeOrderItems.map((item) => (
                 <article key={item.id} className="sales-checkout-item">
                   <img src={catalogImageUrl(item.photo_url)} alt={item.name} />
                   <div>
                     <strong>{item.name}</strong>
                     <small>{[item.material, item.color, item.size].filter(Boolean).join(" · ")}</small>
-                    <span>{catalogOrderQuantityIsValid(item) ? `${item.qty ?? 1}x` : "Quantidade inválida"} {currency.format(item.sale_value || 0)}</span>
+                    <span>{catalogOrderQuantityIsValid(item) ? `${item.qty ?? 1}x` : "Quantidade inválida"} {" "} {currency.format(item.sale_value || 0)}</span>
                   </div>
                 </article>
-              )) : <p className="empty-state">Seu carrinho está vazio. Volte ao catálogo e adicione joias.</p>}
+              ))) : (
+                <p className="empty-state">Seu carrinho está vazio. Volte ao catálogo e adicione joias.</p>
+              )}
             </div>
             <div className="checkout-total-row">
               <strong>Subtotal</strong><span>{currency.format(subtotal)}</span>
             </div>
-            {quote?.discount_amount > 0 && <div className="checkout-total-row"><strong>Desconto</strong><span>−{currency.format(quote.discount_amount)}</span></div>}
+            {quote?.discount_amount > 0 && (
+              <div className="checkout-total-row"><strong>Desconto</strong><span>−{currency.format(quote.discount_amount)}</span></div>
+            )}
             <div className="checkout-total-row">
               <strong>Total final</strong>
               <span>{currency.format(total)}</span>
@@ -1800,7 +1991,6 @@ export function PublicBooking() {
   const allProfessionals = asArray(safeData.professionals);
   const effectiveServiceIds = serviceIds.length ? serviceIds : form.service_id ? [form.service_id] : [];
   const professionals = allProfessionals.filter((professional) => effectiveServiceIds.every((serviceId) => professionalMatchesService(professional, serviceId)));
-  const bookingDates = nextBookingDates(10);
   const selectedService = services.find((item) => String(item.id) === String(form.service_id));
   const selectedProfessional = allProfessionals.find((item) => String(item.id) === String(form.professional_id));
   const selectedJewelry = catalogItems.find((item) => String(item.id) === String(form.jewelry_id));
@@ -1836,16 +2026,33 @@ export function PublicBooking() {
   }, [form.service_id, form.professional_id, professionals.length]);
 
   useEffect(() => {
+    let cancelled = false;
     async function loadSlots() {
+      setSlots([]);
       if (!form.service_id || !form.professional_id || !form.appointment_date) return setSlots([]);
       setLoadingSlots(true);
-      const response = await publicApiFetch("/booking/slots?service_id=" + form.service_id + "&professional_id=" + form.professional_id + "&date=" + form.appointment_date);
+      try {
+        const response = await publicApiFetch("/booking/slots?service_id=" + form.service_id + "&professional_id=" + form.professional_id + "&date=" + form.appointment_date);
       const json = await response.json().catch(() => ({}));
-      setLoadingSlots(false);
-      setSlots(response.ok ? asArray(json.slots) : []);
+        if (cancelled) return;
+        const nextSlots = response.ok ? asArray(json.slots) : [];
+        setSlots(nextSlots);
       setError(response.ok ? "" : json.error || "Não foi possível carregar os horários.");
+        setForm((current) =>
+          current.appointment_time && !nextSlots.some((slot) => slot.time === current.appointment_time)
+            ? { ...current, appointment_time: "" }
+            : current,
+        );
+      } catch {
+        if (!cancelled) setError("Não foi possível carregar os horários.");
+    } finally {
+        if (!cancelled) setLoadingSlots(false);
+      }
     }
     loadSlots();
+    return () => {
+      cancelled = true;
+    };
   }, [form.service_id, form.professional_id, form.appointment_date]);
 
   if (!data) return <Loading />;
@@ -1919,7 +2126,9 @@ export function PublicBooking() {
                     setForm({ ...form, service_id: next[0] || "", professional_id: "", appointment_time: "" });
                   }}>
                     <strong>{item.name}</strong><p>{item.description}</p><span>{item.duration_minutes} min · {currency.format(item.base_price || item.price || 0)}</span>
-                    {(item.minimum_age_years != null || item.requires_guardian || item.requires_signed_term) && <small>{[item.minimum_age_years != null ? `${item.minimum_age_years}+ anos` : "", item.requires_guardian ? "responsável para menor" : "", item.requires_signed_term ? "termo obrigatório" : ""].filter(Boolean).join(" · ")}</small>}
+                    {(item.minimum_age_years != null || item.requires_guardian || item.requires_signed_term) && (
+                      <small>{[item.minimum_age_years != null ? `${item.minimum_age_years}+ anos` : "", item.requires_guardian ? "responsável para menor" : "", item.requires_signed_term ? "termo obrigatório" : ""].filter(Boolean).join(" · ")}</small>
+                    )}
                   </button>
                 );
               })}
@@ -1929,24 +2138,27 @@ export function PublicBooking() {
         )}
         {step === 2 && (
           professionals.length
-            ? <BookingChoiceGrid title="Escolha A Profissional" items={professionals} value={form.professional_id} onSelect={(id) => { setForm({ ...form, professional_id: id, appointment_time: "" }); setStep(3); }} render={(item) => <><strong>{item.name}</strong><p>{item.specialty || "Body Piercer Aura"}</p></>} />
-            : <section className="booking-panel"><h2>Nenhuma Profissional Vinculada</h2><p className="empty-state">Este serviço ainda não possui profissional ativo vinculado. Volte e escolha outro serviço ou fale com o estúdio pelo WhatsApp.</p><button type="button" className="secondary-button" onClick={() => setStep(1)}>Escolher Outro Serviço</button></section>
-        )}
+            ? (
+            <BookingChoiceGrid title="Escolha A Profissional" items={professionals} value={form.professional_id} onSelect={(id) => { setForm({ ...form, professional_id: id, appointment_time: "" }); setStep(3); }} render={(item) => (
+                <><strong>{item.name}</strong><p>{item.specialty || "Body Piercer Aura"}</p></>
+              )} />
+          ) : (
+            <section className="booking-panel"><h2>Nenhuma Profissional Vinculada</h2><p className="empty-state">Este serviço ainda não possui profissional ativo vinculado. Volte e escolha outro serviço ou fale com o estúdio pelo WhatsApp.</p><button type="button" className="secondary-button" onClick={() => setStep(1)}>Escolher Outro Serviço</button></section>
+        ))}
         {step === 3 && (
           <section className="booking-panel booking-date-card">
             <span className="booking-section-kicker">Etapa 3 · Data</span>
             <h2>Escolha a Data</h2>
-            <p>Os horários serão carregados automaticamente para o dia escolhido.</p>
-            <div className="booking-date-strip">
-              {bookingDates.map((date) => (
-                <button key={date.value} type="button" className={form.appointment_date === date.value ? "active" : ""} onClick={() => {
-                  setForm({ ...form, appointment_date: date.value, appointment_time: "" });
+            <p>Escolha o mês para consultar somente as datas com horários disponíveis.</p>
+            <PublicBookingCalendar
+              serviceId={form.service_id}
+              professionalId={form.professional_id}
+              value={form.appointment_date}
+              onChange={(appointment_date) => {
+                  setForm({ ...form, appointment_date, appointment_time: "" });
                   setStep(4);
-                }}>
-                  <strong>{date.day}</strong><span>{date.weekday}</span><small>{date.month}</small>
-                </button>
-              ))}
-            </div>
+              }}
+            />
           </section>
         )}
         {step === 4 && (
@@ -1954,16 +2166,16 @@ export function PublicBooking() {
             <span className="booking-section-kicker">Etapa 4 · Horários</span>
             <h2>Agende seu Horário</h2>
             <p className="booking-selected-date">{form.appointment_date ? formatLongDate(form.appointment_date) : "Selecione uma data para ver os horários."}</p>
-            <div className="booking-date-strip compact">
-              {bookingDates.map((date) => (
-                <button key={date.value} type="button" className={form.appointment_date === date.value ? "active" : ""} onClick={() => setForm({ ...form, appointment_date: date.value, appointment_time: "" })}>
-                  <strong>{date.day}</strong><span>{date.weekday}</span>
-                </button>
-              ))}
-            </div>
+            <PublicBookingCalendar
+              serviceId={form.service_id}
+              professionalId={form.professional_id}
+              value={form.appointment_date}
+              onChange={(appointment_date) => setForm({ ...form, appointment_date, appointment_time: "" })}
+            />
             {loadingSlots && <p className="empty-state">Carregando horários...</p>}
             <div className="slot-grid">
-              {slots.map((slot) => <button key={slot.time} className={form.appointment_time === slot.time ? "active" : ""} onClick={() => setForm({ ...form, appointment_time: slot.time })}>{slot.time}</button>)}
+              {slots.map((slot) => (
+                <button key={slot.time} className={form.appointment_time === slot.time ? "active" : ""} onClick={() => setForm({ ...form, appointment_time: slot.time })}>{slot.time}</button>))}
             </div>
             {error && <span className="form-error">{error}</span>}
             {!loadingSlots && !slots.length && <p className="empty-state">Nenhum horário disponível nesta data.</p>}
@@ -1983,11 +2195,15 @@ export function PublicBooking() {
                   fatura e o recibo do sinal. */}
               <Input label="E-mail (opcional)" type="email" value={form.email} onChange={(value) => setForm({ ...form, email: value })} />
               <Input label="Instagram" value={form.instagram} onChange={(value) => setForm({ ...form, instagram: value })} />
-              {needsBirthDate && <Input label="Data de nascimento" type="date" value={form.birth_date} onChange={(value) => setForm({ ...form, birth_date: value })} required />}
-              {guardianRequired && <>
+              {needsBirthDate && (
+                <Input label="Data de nascimento" type="date" value={form.birth_date} onChange={(value) => setForm({ ...form, birth_date: value })} required />
+              )}
+              {guardianRequired && (
+                <>
                 <Input label="Nome do responsável legal" value={form.guardian_name} onChange={(value) => setForm({ ...form, guardian_name: value })} required />
                 <Input label="Documento do responsável" value={form.guardian_document} onChange={(value) => setForm((current) => ({ ...current, guardian_document: value }))} onBlur={() => setForm((current) => ({ ...current, guardian_document: formatTaxId(current.guardian_document) }))} inputMode="numeric" required />
-              </>}
+              </>
+              )}
               <label>Foto de referência<input type="file" accept="image/*" onChange={(event) => setForm({ ...form, reference_photo: event.target.files?.[0] })} /></label>
             </div>
             <span className={cpfError && form.cpf ? "field-hint is-error" : "field-hint"}>
@@ -1998,7 +2214,9 @@ export function PublicBooking() {
                   : "Sem CPF o sinal não pode ser cobrado online: você envia o comprovante do Pix pelo WhatsApp e a equipe confirma na mão."}
             </span>
             <label>Observações<textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
-            {ageBlocked && <span className="field-hint is-error">Este procedimento exige idade mínima de {minimumAge} anos.</span>}
+            {ageBlocked && (
+              <span className="field-hint is-error">Este procedimento exige idade mínima de {minimumAge} anos.</span>
+            )}
             <button className="primary-button booking-wide-button" disabled={!form.full_name || !form.whatsapp || Boolean(cpfError) || rulesDataMissing || ageBlocked} onClick={() => setStep(6)}>Ver Resumo</button>
           </section>
         )}
@@ -2008,15 +2226,26 @@ export function PublicBooking() {
             <h2>Resumo Da Solicitação</h2>
             <p><strong>Serviços:</strong> {selectedServices.map((item) => item.name).join(", ")}</p>
             {bookingOrderItems.length > 0
-              ? <p><strong>Joias:</strong> {bookingOrderItems.map((item) => `${item.qty || 1}x ${elegantProductName(item.name)}`).join(", ")}</p>
-              : selectedJewelry && <p><strong>Joia escolhida:</strong> {elegantProductName(selectedJewelry.name)}{selectedJewelryVariant ? ` · ${variantCatalogLabel(selectedJewelryVariant)}` : ""}{form.selected_color ? ` · ${form.selected_color}` : ""}</p>}
+              ? (
+              <p><strong>Joias:</strong>{" "}
+                {bookingOrderItems.map((item) => `${item.qty || 1}x ${elegantProductName(item.name)}`).join(", ")}</p>
+            ) : (
+              selectedJewelry && (
+                <p><strong>Joia escolhida:</strong> {elegantProductName(selectedJewelry.name)}{selectedJewelryVariant ? ` · ${variantCatalogLabel(selectedJewelryVariant)}` : ""}{form.selected_color ? ` · ${form.selected_color}` : ""}</p>
+              )
+            )}
             <p><strong>Profissional:</strong> {selectedProfessional?.name}</p>
             <p><strong>Data E Horário:</strong> {formatLongDate(form.appointment_date)} às {form.appointment_time}</p>
             <p><strong>Valor do procedimento:</strong> {currency.format(selectedServiceValue)}</p>
-            {(selectedJewelry || bookingOrderItems.length > 0) && <p><strong>Valor das joias:</strong> {currency.format(bookingOrderItems.length ? orderJewelryValue : selectedJewelryValue)}</p>}
+            {(selectedJewelry || bookingOrderItems.length > 0) && (
+              <p><strong>Valor das joias:</strong>{" "}
+                {currency.format(bookingOrderItems.length ? orderJewelryValue : selectedJewelryValue)}</p>
+            )}
             <p><strong>Valor total:</strong> {currency.format(selectedTotal)}</p>
             <p><strong>Sinal obrigatório:</strong> {currency.format(selectedDeposit)}</p>
-            {selectedServices.some((item) => Boolean(item.requires_signed_term)) && <p><strong>Termo digital:</strong> deverá estar assinado antes da conclusão do atendimento.</p>}
+            {selectedServices.some((item) => Boolean(item.requires_signed_term)) && (
+              <p><strong>Termo digital:</strong> deverá estar assinado antes da conclusão do atendimento.</p>
+            )}
             <p><strong>Valor restante:</strong> {currency.format(selectedRemaining)}</p>
             <p><strong>Regras:</strong> {data.rules?.cancellation}</p>
             <Input label="Cupom (opcional)" value={form.coupon_code || ""} onChange={(value) => setForm((current) => ({ ...current, coupon_code: value }))} onBlur={() => setForm((current) => ({ ...current, coupon_code: current.coupon_code.trim().toUpperCase() }))} />
@@ -2036,9 +2265,15 @@ export function PublicBooking() {
                 esperando algo que nunca chega. */}
             <p>{confirmed?.payment_instructions || "Seu horário ficou aguardando o comprovante do sinal. Envie o comprovante pelo WhatsApp da profissional para a Aura confirmar manualmente."}</p>
             <strong>{confirmed?.procedure}  {formatLongDate(confirmed?.appointment_date)} às {confirmed?.appointment_time}</strong>
-            <p><strong>Sinal:</strong> {currency.format(asNumber(confirmed?.deposit_value || selectedDeposit))} · <strong>Restante:</strong> {currency.format(asNumber(confirmed?.remaining_value || selectedRemaining))}</p>
-            {confirmed?.online_payment_available && confirmed?.payment_url && <a className="primary-button booking-wide-button" href={confirmed.payment_url} target="_blank" rel="noreferrer"><CircleDollarSign size={16} /> Pagar o sinal agora</a>}
-            {confirmed?.professional_whatsapp_url && <a className={confirmed?.online_payment_available ? "secondary-button booking-wide-button" : "primary-button booking-wide-button"} href={confirmed.professional_whatsapp_url} target="_blank" rel="noreferrer"><MessageCircle size={16} /> {confirmed?.online_payment_available ? "Falar com a profissional" : "Enviar comprovante pelo WhatsApp"}</a>}
+            <p><strong>Sinal:</strong> {currency.format(asNumber(confirmed?.deposit_value || selectedDeposit))} · {" "}
+              <strong>Restante:</strong> {currency.format(asNumber(confirmed?.remaining_value || selectedRemaining))}</p>
+            {confirmed?.online_payment_available && confirmed?.payment_url && (
+              <a className="primary-button booking-wide-button" href={confirmed.payment_url} target="_blank" rel="noreferrer"><CircleDollarSign size={16} /> Pagar o sinal agora</a>
+            )}
+            {confirmed?.professional_whatsapp_url && (
+              <a className={confirmed?.online_payment_available ? "secondary-button booking-wide-button" : "primary-button booking-wide-button"} href={confirmed.professional_whatsapp_url} target="_blank" rel="noreferrer"><MessageCircle size={16} /> {" "}
+                {confirmed?.online_payment_available ? "Falar com a profissional" : "Enviar comprovante pelo WhatsApp"}</a>
+            )}
             <a className="primary-button booking-wide-button" href={catalogUrl()}>Voltar Ao Catálogo</a>
           </section>
         )}
@@ -2164,9 +2399,9 @@ function catalogCategories(names = []) {
     Surface: Sparkles,
     "Ouro 14k": Gem,
     "Ouro 18k": Gem,
-    "Titânio": CircleDollarSign,
+    Titânio: CircleDollarSign,
     Opalas: Gem,
-    "Lançamentos": Star,
+    Lançamentos: Star,
     Lancamentos: Star
   };
   const safeNames = asArray(names);
@@ -2191,12 +2426,14 @@ function catalogCategoriesFromCatalog(data) {
 }
 
 function catalogIcon(icon) {
-  return {
+  return (
+    {
     gem: Gem,
     heart: Heart,
     star: Star,
     sparkles: Sparkles,
     shield: ShieldCheck,
     circle: CircleDollarSign
-  }[icon] || Gem;
+  }[icon] || Gem
+  );
 }

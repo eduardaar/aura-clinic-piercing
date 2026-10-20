@@ -63,7 +63,7 @@ export function NewsPage() {
         ) : (
           <>
             <header className="public-news-header">
-              <span className="au-l-kicker">Aura Clinic</span>
+              <span className="au-l-kicker">Aura Clinic ERP</span>
               <h1>Notícias e novidades</h1>
               <p>Acompanhe lançamentos, melhorias e orientações para aproveitar melhor a plataforma.</p>
             </header>
@@ -71,6 +71,7 @@ export function NewsPage() {
               {articles.map((item) => (
                 <article key={item.id} className="public-news-card">
                   <span>{item.category}</span>
+                  <time dateTime={item.published_at}>{new Date(item.published_at).toLocaleDateString("pt-BR")}</time>
                   <h2>{item.title}</h2>
                   <p>{item.summary}</p>
                   <a href={`/novidades/${item.slug}`}>Ler novidade</a>

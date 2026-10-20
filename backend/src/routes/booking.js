@@ -4,7 +4,9 @@ import { createHash } from "crypto";
 import { withDb, withFeature } from "../middleware/withDb.js";
 import { parseUpload, privateUpload, registerPrivateFiles } from "../middleware/upload.js";
 import { addMinutesToTime } from "../services/utils.js";
-import { availableBookingSlots, upsertClient, listAppointments } from "../services/appointments.js";
+import { availableBookingSlots,
+  bookingCalendarContext,
+  upsertClient, listAppointments } from "../services/appointments.js";
 import { getStoreName, queueProfessionalBookingNotification, whatsappLink } from "../services/notifications.js";
 import { quotePromotions } from "../services/promotions.js";
 import { validateCoupon } from "../services/discounts.js";
@@ -16,6 +18,7 @@ import { bookingTaxId } from "../services/taxId.js";
 import { scheduleAppointmentClientAutomations } from "../services/communications.js";
 import { resolveServiceRules, validateAppointmentTimingRules, validateClientServiceRules } from "../services/serviceRules.js";
 import { getClinicOperationalSettings, mergeOperationalRequirements, resolveOperationalRequirements } from "../services/operationalRequirements.js";
+import { validBookingDate } from "../services/publicBookingAvailability.js";
 
 const router = Router();
 
@@ -180,21 +183,60 @@ router.get("/api/booking/config", withFeature("online_booking", async (req, res,
       cancellation: "Remarcações e cancelamentos devem ser solicitados com antecedência.",
       payment: gatewayEnabled
         ? "O sinal é pago por link online e confirma o horário automaticamente."
-        : "O sinal obrigatório reserva o horário após conferência manual do comprovante pela equipe."
+        : "O sinal obrigatório reserva o horário após conferência manual do comprovante pela equipe.",
+      },
+    });
+}),
+);
+
+router.get(
+  "/api/booking/dates",
+  withFeature("online_booking", async (req, res, db) => {
+    const serviceId = Number(req.query.service_id || 0);
+    const professionalId = Number(req.query.professional_id || 0);
+    const month = String(req.query.month || "");
+    if (!serviceId || !professionalId || !validBookingDate(`${month}-01`)) {
+      return res.status(400).json({ error: "Informe serviço, profissional e mês válido (AAAA-MM)." });
     }
-  });
-}));
+    const service = await db.get(
+      "SELECT * FROM services WHERE id = ? AND is_active=true AND active_online_booking = 1",
+      [serviceId],
+    );
+    const professional = await db.get("SELECT id FROM professionals WHERE id = ? AND active = 1", [professionalId]);
+    const linked = await db.get("SELECT id FROM professional_services WHERE professional_id = ? AND service_id = ?", [
+      professionalId,
+      serviceId,
+    ]);
+    if (!service || !professional || !linked)
+      return res.status(404).json({ error: "Serviço ou profissional indisponível." });
+    const days = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5)), 0)).getUTCDate();
+    const calendarContext = await bookingCalendarContext(db, {
+      professionalId,
+      from: `${month}-01`,
+      to: `${month}-${String(days).padStart(2, "0")}`,
+    });
+    const dates = [];
+    for (let day = 1; day <= days; day += 1) {
+      const date = `${month}-${String(day).padStart(2, "0")}`;
+      const slots = await availableBookingSlots(db, { service, professionalId, date, calendarContext });
+      if (slots.length) dates.push(date);
+    }
+    res.json({ month, dates });
+  }),
+);
 
 router.get("/api/booking/slots", withFeature("online_booking", async (req, res, db) => {
   const serviceId = Number(req.query.service_id || 0);
   const professionalId = Number(req.query.professional_id || 0);
   const date = String(req.query.date || "");
   console.info("[booking-slots] request recebido", { tenant: req.tenant, serviceId, professionalId, date });
-  if (!serviceId || !professionalId || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+  if (!serviceId || !professionalId || !validBookingDate(date)) {
     return res.status(400).json({ error: "Servico, profissional e data sao obrigatorios." });
   }
   const service = await db.get("SELECT * FROM services WHERE id = ? AND is_active=true AND active_online_booking = 1", [serviceId]);
   if (!service) return res.status(404).json({ error: "Servico nao encontrado." });
+  const professional = await db.get("SELECT id FROM professionals WHERE id = ? AND active = 1", [professionalId]);
+    if (!professional) return res.status(404).json({ error: "Profissional não encontrado ou inativo." });
   const linked = await db.get("SELECT id FROM professional_services WHERE professional_id = ? AND service_id = ?", [professionalId, serviceId]);
   if (!linked) return res.status(409).json({ error: "Este profissional nao realiza o servico selecionado." });
   const slots = await availableBookingSlots(db, { service, professionalId, date });

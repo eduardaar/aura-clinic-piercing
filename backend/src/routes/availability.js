@@ -4,8 +4,44 @@ import { withFeature } from "../middleware/withDb.js";
 import { authorizePermission } from "../middleware/requirePermission.js";
 import { P } from "../config/permissions.js";
 import { boolNumber } from "../services/utils.js";
+import { getPublicAvailability, normalizePublicAvailability } from "../services/publicBookingAvailability.js";
 
 const router = Router();
+
+router.get(
+  "/api/availability/public/:professionalId",
+  withFeature("agenda", async (req, res, db) => {
+    if (!authorizePermission(req, res, P.APPOINTMENTS_VIEW)) return;
+    const id = Number(req.params.professionalId);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "Profissional inválido." });
+    const professional = await db.get("SELECT id FROM professionals WHERE id = ?", [id]);
+    if (!professional) return res.status(404).json({ error: "Profissional não encontrado." });
+    res.json(await getPublicAvailability(db, id));
+  }),
+);
+
+router.put(
+  "/api/availability/public/:professionalId",
+  withFeature("agenda", async (req, res, db) => {
+    if (!authorizePermission(req, res, P.APPOINTMENTS_EDIT)) return;
+    const id = Number(req.params.professionalId);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "Profissional inválido." });
+    const professional = await db.get("SELECT id FROM professionals WHERE id = ? AND active = 1", [id]);
+    if (!professional) return res.status(404).json({ error: "Profissional ativo não encontrado." });
+    let config;
+    try {
+      config = normalizePublicAvailability(req.body);
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+    await db.run(
+      `INSERT INTO catalog_settings (key, value) VALUES (?, ?)
+    ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
+      [`public_booking_availability_${id}`, JSON.stringify(config)],
+    );
+    res.json(config);
+  }),
+);
 
 function normalizeAvailabilityBody(body = {}, current = {}) {
   return {

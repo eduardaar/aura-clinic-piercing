@@ -54,6 +54,26 @@ const MONEY_BREAKDOWN_COLUMNS = [
 
 export const REPORT_CATALOG = Object.freeze([
   {
+    type: "material_consumption",
+      label: "Consumo de materiais por atendimento",
+      category: "Estoque e compras",
+      pagination: "server",
+      filters: [...PERIOD_FILTERS, PROFESSIONAL_FILTER, filter("product_id", "Material")],
+      columns: columns(
+        ["id", "ID"],
+        ["consumed_at", "Data", "datetime"],
+        ["appointment_id", "Atendimento"],
+        ["procedure", "Procedimento"],
+        ["professional", "Profissional"],
+        ["material", "Material"],
+        ["stock_unit", "Unidade"],
+        ["quantity", "Quantidade", "count"],
+        ["usage_stage", "Finalidade"],
+        ["cost_value", "Custo do consumo", "money"],
+        ["status", "Situação", "status"],
+      ),
+    },
+    {
     type: "appointments", label: "Agendamentos", category: "Atendimento",
     filters: [...PERIOD_FILTERS, APPOINTMENT_STATUS_FILTER, PROFESSIONAL_FILTER],
     columns: columns(["id", "ID"], ["appointment_date", "Data", "date"], ["appointment_time", "Hora", "time"], ["client", "Cliente"],
@@ -222,7 +242,9 @@ export function validReportType(type) {
 // ---------------------------------------------------------------------------
 
 export const FINANCIAL_REPORT_TYPES = new Set(["financial", "payables", "receivables", "purchases", "payments", "value_adjustments"]);
-export const OWN_REPORT_TYPES = new Set(["appointments", "cancellations", "services", "professionals", "biosafety", "chemical_indicators"]);
+export const OWN_REPORT_TYPES = new Set(["appointments", "cancellations", "services", "professionals", "biosafety", "chemical_indicators",
+  "material_consumption",
+]);
 const COMMISSION_COLUMNS = new Set(["commission_base", "commission"]);
 const COST_COLUMNS = new Set(["cost_value"]);
 
@@ -281,7 +303,7 @@ export function reportColumns(type, context = {}) {
   const definition = getReportDefinition(type);
   return (definition?.columns || []).filter(({ key }) => {
     if (COMMISSION_COLUMNS.has(key) && type === "professionals" && !context.commissionColumns) return false;
-    if (COST_COLUMNS.has(key) && type === "stock" && !context.canViewCost) return false;
+    if (COST_COLUMNS.has(key) && ["stock", "material_consumption"].includes(type) && !context.canViewCost) return false;
     return true;
   });
 }
@@ -318,7 +340,7 @@ const TRANSLATED_KINDS = new Set(["status", "enum"]);
 const fallbackLabel = (key) => String(key).replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
 
 export function reportExportColumns(report) {
-  const declared = Array.isArray(report?.columns) && report.columns.length ? report.columns : (getReportDefinition(report?.type)?.columns || []);
+  const declared = Array.isArray(report?.columns) && report.columns.length ? report.columns : getReportDefinition(report?.type)?.columns || [];
   const rowKeys = report?.rows?.length ? Object.keys(report.rows[0]) : [];
   if (!declared.length) return rowKeys.map((key) => ({ key, label: fallbackLabel(key) }));
   // As colunas declaradas mandam (ordem e rótulo); a linha só remove o que
@@ -387,7 +409,7 @@ function period(filters = {}) {
   };
 }
 
-const toInteger = (value, fallback = 0) => Number.isInteger(Number(value)) ? Number(value) : fallback;
+const toInteger = (value, fallback = 0) => (Number.isInteger(Number(value)) ? Number(value) : fallback);
 const positiveInteger = (value) => {
   const number = Number(value);
   return Number.isInteger(number) && number > 0 ? number : 0;
@@ -444,7 +466,32 @@ export async function buildReport(db, type, filters = {}, context = {}) {
     });
     rows = pageMeta.rows;
   };
-  if (type === "purchases") {
+  if (type === "material_consumption") {
+    const clauses = ["SUBSTRING(ac.consumed_at::text,1,10) BETWEEN ? AND ?"];
+    const params = [from, to];
+    if (professionalId) {
+      clauses.push("a.professional_id=?");
+      params.push(professionalId);
+    }
+    if (productId) {
+      clauses.push("ac.inventory_item_id=?");
+      params.push(productId);
+    }
+    await setPaged(
+      `SELECT ac.id,ac.appointment_id,ac.consumed_at::text AS consumed_at,a.procedure,p.name AS professional,i.name AS material,i.stock_unit,
+      ac.quantity,ac.usage_stage,${context.canViewCost ? "ac.quantity*ac.unit_cost" : "NULL::numeric"} AS cost_value,
+      CASE WHEN ac.reversed_at IS NULL THEN 'active' ELSE 'refunded' END AS status
+      FROM appointment_consumptions ac JOIN appointments a ON a.id=ac.appointment_id
+      LEFT JOIN professionals p ON p.id=a.professional_id JOIN jewelry_inventory i ON i.id=ac.inventory_item_id
+      WHERE ${clauses.join(" AND ")}`,
+      params,
+      {
+        searchColumns: ["material", "professional", "procedure"],
+        sortColumns: { id: "id", consumed_at: "consumed_at", material: "material", professional: "professional" },
+        defaultSort: "consumed_at",
+      },
+    );
+  } else if (type === "purchases") {
     const clauses = ["po.purchase_date BETWEEN ? AND ?"];
     const params = [from, to];
     if (status) { clauses.push("po.status=?"); params.push(status); }

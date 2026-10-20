@@ -17,6 +17,8 @@ export function normalizeCompletionPayments(rawPayments) {
     if (!method) throw new Error("Informe a forma de pagamento.");
     const date = item.expected_receipt_date || null;
     if (date && (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(new Date(`${date}T12:00:00Z`).getTime()) || (date && new Date(`${date}T12:00:00Z`).toISOString().slice(0, 10) !== date))) throw new Error("Previsão de recebimento inválida.");
-    return { amount: Math.round(amount * 100) / 100, method, status, installments, fee_amount: Math.round(fee * 100) / 100, expected_receipt_date: date, notes: String(item.notes || "") };
+    return { amount: Math.round(amount * 100) / 100, method, status, installments, fee_amount: Math.round(fee * 100) / 100, expected_receipt_date: date, notes: String(item.notes || ""),
+        ...(item.card_fee_table_id ? { card_fee_table_id: Number(item.card_fee_table_id) } : {}),
+      };
   }).filter((item) => item.amount > 0);
 }

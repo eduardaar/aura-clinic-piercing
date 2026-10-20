@@ -8,6 +8,7 @@ import { PRICE_MULTIPLIER_OPTIONS, PRICE_ROUNDING_OPTIONS } from "../../lib/defa
 import { UI_THEMES } from "../../lib/uiTheme";
 import { roleLabel } from "../shared/helpers";
 import "../../styles/agenda-admin-responsive.css";
+import { CardFeesSettings } from "../finance/CardFees";
 
 export function Settings({ user, theme, onThemeChange, navCollapsed, onNavCollapsedChange, onUserChanged, onNavigate }) {
   const [profile, setProfile] = useState({ name: user?.name || "", email: user?.email || "" });
@@ -86,11 +87,16 @@ export function Settings({ user, theme, onThemeChange, navCollapsed, onNavCollap
         <div className="theme-choice-grid" role="radiogroup" aria-label="Tema do sistema">
           {UI_THEMES.map((item) => {
             const active = theme === item.id;
-            return <button type="button" key={item.id} className={`theme-choice ${active ? "active" : ""}`} role="radio" aria-checked={active} onClick={() => onThemeChange(item.id)}>
-              <span className="theme-choice-swatches" aria-hidden="true">{item.swatches.map((color) => <i key={color} style={{ background: color }} />)}</span>
+            return (
+              <button type="button" key={item.id} className={`theme-choice ${active ? "active" : ""}`} role="radio" aria-checked={active} onClick={() => onThemeChange(item.id)}>
+              <span className="theme-choice-swatches" aria-hidden="true">{item.swatches.map((color) => (
+                    <i key={color} style={{ background: color }} />))}</span>
               <strong>{item.name}</strong><small>{item.description}</small>
-              {active && <em><Check size={15} /> Em uso</em>}
-            </button>;
+              {active && (
+                  <em><Check size={15} /> Em uso</em>
+                )}
+            </button>
+            );
           })}
         </div>
         <Checkbox className="settings-toggle" checked={navCollapsed} onChange={onNavCollapsedChange} label={<span><strong>Menu lateral compacto</strong><small>Deixa mais espaço livre para tabelas e relatórios.</small></span>} />
@@ -103,15 +109,19 @@ export function Settings({ user, theme, onThemeChange, navCollapsed, onNavCollap
           </div>
           <div className="settings-form pricing-settings-form">
             <Select label="Multiplicador padrão" value={pricingSettings.default_price_multiplier || 3} onChange={(value) => savePricingSettings({ default_price_multiplier: Number(value) })}>
-              {PRICE_MULTIPLIER_OPTIONS.map((option) => <option key={option} value={option}>{option}x</option>)}
+              {PRICE_MULTIPLIER_OPTIONS.map((option) => (
+                <option key={option} value={option}>{option}x</option>))}
             </Select>
             <Select label="Arredondamento" value={pricingSettings.price_rounding_mode || "exact"} onChange={(value) => savePricingSettings({ price_rounding_mode: value })}>
-              {PRICE_ROUNDING_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              {PRICE_ROUNDING_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>))}
             </Select>
           </div>
           {pricingSaving && <p className="form-success">Salvando...</p>}
         </div>
       )}
+
+      {user?.role === "admin" && <CardFeesSettings />}
 
       <div className="panel settings-account">
         <div className="panel-heading"><div><h2>Sua conta</h2><span>Atualize seus dados de acesso. Seu nível atual é {roleLabel(user?.role)}.</span></div><UserRound size={22} /></div>

@@ -39,36 +39,36 @@ export const LANDING_DEFAULTS = {
     subtitle: "",
     items: [
       {
-        "title": "Agendamento online",
-        "text": "Seus clientes marcam horário sozinhos por um link só seu.",
-        "image": "/assets/landing/features/agendamento-online.jpg",
-        "image_alt": "Cliente consultando o agendamento online pelo celular",
-        "image_width": 1536,
-        "image_height": 1024
+        title: "Agendamento online",
+        text: "Seus clientes marcam horário sozinhos por um link só seu.",
+        image: "/assets/landing/features/agendamento-online.jpg",
+        image_alt: "Cliente consultando o agendamento online pelo celular",
+        image_width: 1536,
+        image_height: 1024
       },
       {
-        "title": "Controle de estoque",
-        "text": "Joias, materiais e alertas de estoque baixo organizados no mesmo lugar.",
-        "image": "/assets/landing/features/controle-de-estoque.jpg",
-        "image_alt": "Profissional conferindo o estoque de joias pelo tablet",
-        "image_width": 1600,
-        "image_height": 900
+        title: "Controle de estoque",
+        text: "Joias, materiais e alertas de estoque baixo organizados no mesmo lugar.",
+        image: "/assets/landing/features/controle-de-estoque.jpg",
+        image_alt: "Profissional conferindo o estoque de joias pelo tablet",
+        image_width: 1600,
+        image_height: 900
       },
       {
-        "title": "Ficha digital",
-        "text": "Anamnese e termo de consentimento assinados sem papel.",
-        "image": "/assets/landing/features/ficha-digital.jpg",
-        "image_alt": "Profissional preenchendo a ficha digital com a cliente",
-        "image_width": 1600,
-        "image_height": 900
+        title: "Ficha digital",
+        text: "Anamnese e termo de consentimento assinados sem papel.",
+        image: "/assets/landing/features/ficha-digital.jpg",
+        image_alt: "Profissional preenchendo a ficha digital com a cliente",
+        image_width: 1600,
+        image_height: 900
       },
       {
-        "title": "Controle financeiro",
-        "text": "Acompanhe caixa, vendas e despesas do seu estúdio.",
-        "image": "/assets/landing/features/controle-financeiro.jpg",
-        "image_alt": "Profissional acompanhando o financeiro do estúdio no computador",
-        "image_width": 1600,
-        "image_height": 900
+        title: "Controle financeiro",
+        text: "Acompanhe caixa, vendas e despesas do seu estúdio.",
+        image: "/assets/landing/features/controle-financeiro.jpg",
+        image_alt: "Profissional acompanhando o financeiro do estúdio no computador",
+        image_width: 1600,
+        image_height: 900
       }
     ]
   },
@@ -96,9 +96,9 @@ export const LANDING_DEFAULTS = {
 
   about: {
     kicker: "",
-    title: "Sobre a Aura Clinic",
-    body: "A Aura Clinic nasceu com o propósito de transformar o body piercing em uma experiência que une estética, segurança e cuidado.\n\nCada atendimento é realizado de forma individualizada, respeitando a anatomia, o estilo e as necessidades de cada cliente. Trabalhamos com protocolos rigorosos de biossegurança e esterilização, priorizando materiais de alta qualidade, como titânio grau implante ASTM F136 e ouro sólido 14k e 18k.\n\nMais do que realizar uma perfuração, buscamos acompanhar cada etapa da experiência — desde a escolha da joia e planejamento da composição até as orientações de cuidados e acompanhamento da cicatrização.\n\nNa Aura Clinic, acreditamos que cada joia pode representar uma escolha, um momento ou uma parte da sua identidade.",
-    signature: "Aura Clinic — técnica, cuidado e joalheria para valorizar a sua essência.",
+    title: "Sobre a Aura Clinic ERP",
+    body: "A Aura Clinic ERP é uma plataforma de gestão para estúdios de piercing, criada a partir das necessidades de quem atende e administra o próprio negócio.\n\nAgenda, clientes, catálogo, compras, materiais e financeiro ficam conectados para facilitar a rotina e acompanhar cada operação.\n\nIdealizada por Eduarda Santos, a plataforma atende profissionais e estabelecimentos com identidades próprias. A Aura Clinic é o estúdio da idealizadora; o ERP é o produto de gestão oferecido a outros estúdios.",
+    signature: "Aura Clinic ERP — gestão para a rotina do seu estúdio.",
     image: "/assets/landing/aura-portfolio/sobre-nos-eduarda.jpeg",
     image_alt: "Eduarda, idealizadora e proprietária da Aura Clinic",
     image_caption: "Eduarda Santos · idealizadora do projeto"

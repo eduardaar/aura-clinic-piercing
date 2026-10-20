@@ -121,6 +121,7 @@ export function Inventory2({ initialTab = "produtos" }) {
   const { data: inventorySuggestions } = useFetch("/inventory/suggestions");
   const { data: inventoryLots } = useFetch("/inventory/lots");
   const { data: inventoryMovements } = useFetch("/inventory/movements");
+  const { data: inventoryKits } = useFetch("/inventory/kits");
   const debouncedSearch = useDebouncedValue(filters.search);
   const { status: _statusFilter, ...queryFilters } = filters;
   queryFilters.search = debouncedSearch;
@@ -198,8 +199,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
     if (effectiveStatus === "esgotados" || effectiveStatus === "esgotado") return inventoryStockState(item) === "sold-out";
     return true;
   });
-  const displayItems = filteredItems.filter((item) => inventoryMode === "virtual" ? (
-    Boolean(Number(item.is_catalog_active)) && Boolean(Number(item.is_published)) && Boolean(Number(item.virtual_store_active))
+  const displayItems = filteredItems.filter((item) => inventoryMode === "virtual" ? Boolean(Number(item.is_catalog_active)) && Boolean(Number(item.is_published)) && Boolean(Number(item.virtual_store_active)
   ) : true);
   const sectionItems = sectionTab === "vendaveis"
     ? displayItems.filter((item) => Boolean(Number(item.can_sell)))
@@ -219,6 +219,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
     { id: "todos", label: "Todos os itens", icon: Table2 },
     { id: "vendaveis", label: "Produtos para venda", icon: LayoutGrid },
     { id: "materiais", label: "Materiais de procedimento", icon: ListFilter },
+    { id: "kits", label: "Kits de consumo", icon: ListFilter },
     { id: "lotes", label: "Lotes e validades", icon: CheckCircle2 },
     { id: "movimentacoes", label: "Movimentações", icon: Table2 },
     { id: "inteligencia", label: "Inteligência", icon: SlidersHorizontal }
@@ -346,7 +347,8 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
             <DataView rows={asArray(inventoryLots)} defaultSort={{ key: "expiry_date", dir: "asc" }} searchPlaceholder="Buscar item, SKU ou lote" columns={[
               { key: "item_name", label: "Item" },
               { key: "batch_code", label: "Lote", render: (item) => item.batch_code || "Sem código" },
-              { key: "expiry_date", label: "Validade", render: (item) => item.expiry_date ? formatDate(item.expiry_date) : "Sem validade" },
+              { key: "expiry_date", label: "Validade", render: (item) => (item.expiry_date ? formatDate(item.expiry_date) : "Sem validade"),
+                },
               { key: "remaining_quantity", label: "Saldo do lote", render: (item) => `${item.remaining_quantity} ${item.stock_unit || "un"}` },
               { key: "unit_cost", label: "Custo", render: (item) => currency.format(item.unit_cost || 0) }
             ]} empty="Nenhum item controla lote ou validade." />
@@ -362,6 +364,34 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
             ]} empty="Nenhuma movimentação registrada." />
           )}
 
+          {sectionTab === "kits" && (
+            <div className="inventory-section-card">
+              <h2>Kits de consumo por procedimento</h2>
+              <p>
+                Edite a composição em Configurações da agenda → Procedimentos. A disponibilidade usa o material
+                limitante e desconta reservas.
+              </p>
+              <DataView
+                rows={asArray(inventoryKits)}
+                columns={[
+                  { key: "name", label: "Kit" },
+                  { key: "service_name", label: "Procedimento" },
+                  { key: "components", label: "Componentes" },
+                  {
+                    key: "available_kits",
+                    label: "Kits completos",
+                    render: (item) => item.available_kits ?? "Sem limite por estoque",
+                  },
+                  {
+                    key: "cost_value",
+                    label: "Custo estimado",
+                    render: (item) => (item.cost_value == null ? "—" : currency.format(item.cost_value)),
+                  },
+                ]}
+                empty="Cadastre materiais no kit de um procedimento para acompanhar a disponibilidade."
+              />
+            </div>
+          )}
           {sectionTab === "categorias" && (
             <CategoryManager
               categories={categoryManagement}
@@ -388,7 +418,8 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
                 <Metric label="Lucro potencial" value={currency.format(stockSummary.potential - stockSummary.invested)} />
               </div></CollapsibleIndicators>
               <div className="inventory-quick-flags">
-                <span><strong>Visíveis no Catálogo</strong><small>{allJewelry.filter((item) => Boolean(Number(item.is_catalog_active)) && Boolean(Number(item.is_published)) && Boolean(Number(item.virtual_store_active))).length} peças visíveis na vitrine</small></span>
+                <span><strong>Visíveis no Catálogo</strong><small>{allJewelry.filter((item) => Boolean(Number(item.is_catalog_active)) && Boolean(Number(item.is_published)) && Boolean(Number(item.virtual_store_active))).length
+                    }{" "} peças visíveis na vitrine</small></span>
                 <span><strong>Destaques Comerciais</strong><small>Lançamentos, promoções e últimas unidades ficam na Loja Virtual</small></span>
                 <span><strong>Alertas</strong><small>Criticidade e reposição continuam no fluxo interno</small></span>
               </div>
@@ -424,19 +455,21 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
           )}
         </div>
       </div>
-      {movementTarget && <StockMovementModal item={movementTarget} initialType={movementTarget.movement_type} onClose={() => setMovementTarget(null)} onSave={handleMovementSave} />}
+      {movementTarget && (
+        <StockMovementModal item={movementTarget} initialType={movementTarget.movement_type} onClose={() => setMovementTarget(null)} onSave={handleMovementSave} />
+      )}
       <Modal
         open={showEditor}
         size="lg"
         title={editingJewelry ? "Editar item de estoque" : "Novo item de estoque"}
         subtitle="Dados, comportamento, variações e saldo na mesma origem."
         onClose={() => closeProduct({ keepCategory: false })}
-        footer={(
+        footer={
           <>
             <Button variant="secondary" onClick={() => closeProduct({ keepCategory: false })}>Cancelar</Button>
             <Button variant="primary" type="submit" form="jewelry-editor-form">{editingJewelry ? "Salvar item" : "Cadastrar item"}</Button>
           </>
-        )}
+        }
       >
         <JewelryEditor
           materialMode={sectionTab === "materiais"}
@@ -483,7 +516,7 @@ function InventoryIntelligence({ data, suggestions, onRefresh, onReview }) {
   function updateCountItem(id, value) {
     setCount((current) => ({
       ...current,
-      items: asArray(current?.items).map((item) => item.id === id ? { ...item, counted_quantity: value } : item)
+      items: asArray(current?.items).map((item) => (item.id === id ? { ...item, counted_quantity: value } : item)),
     }));
   }
 
@@ -543,7 +576,9 @@ function InventoryIntelligence({ data, suggestions, onRefresh, onReview }) {
             key: "name",
             label: "Produto",
             value: (item) => `${item.name || ""} ${item.sku || ""}`,
-            render: (item) => <><strong>{item.name}</strong><br /><small>{item.sku || "Sem SKU"}</small></>
+            render: (item) => (
+              <><strong>{item.name}</strong><br /><small>{item.sku || "Sem SKU"}</small></>
+            ),
           },
           {
             key: "abc_class",
@@ -563,7 +598,7 @@ function InventoryIntelligence({ data, suggestions, onRefresh, onReview }) {
             label: "Ruptura",
             // `null` = sem consumo: o DataView já joga vazios para o fim da ordenação.
             value: (item) => item.days_to_stockout,
-            render: (item) => item.days_to_stockout === null ? "Sem consumo" : `${item.days_to_stockout} dias`
+            render: (item) => (item.days_to_stockout === null ? "Sem consumo" : `${item.days_to_stockout} dias`),
           },
           {
             key: "suggested_purchase",
@@ -580,23 +615,26 @@ function InventoryIntelligence({ data, suggestions, onRefresh, onReview }) {
           <article className="detail-card" key={item.id}>
             <strong>{item.jewelry_name}</strong>
             <span>{item.reason}</span>
-            <small>Atual: {item.quantity} un. · sugerido: {item.suggested_value} un. · confiança: {Math.round(Number(item.confidence || 0) * 100)}%</small>
+            <small>Atual: {item.quantity} un. · sugerido: {item.suggested_value} un. · confiança: {" "}
+              {Math.round(Number(item.confidence || 0) * 100)}%</small>
             <div className="form-actions">
               <Button variant="primary" onClick={() => onReview(item.id, "accepted")}>Aprovar</Button>
               <Button variant="secondary" onClick={() => onReview(item.id, "rejected")}>Descartar</Button>
             </div>
           </article>
         ))}
-        {!reviews.length && <p className="empty-state">Atualize as sugestões para analisar a necessidade de reposição.</p>}
+        {!reviews.length && (
+          <p className="empty-state">Atualize as sugestões para analisar a necessidade de reposição.</p>
+        )}
       </div>
       {count && (
         <Modal open title={`Inventário #${count.id}`} subtitle="Informe a quantidade física de cada SKU." size="lg" onClose={() => setCount(null)}
-          footer={(
+          footer={
             <>
               <Button variant="secondary" onClick={() => saveCount(false)} disabled={countBusy}>Salvar rascunho</Button>
               <Button variant="primary" onClick={() => saveCount(true)} disabled={countBusy}>Concluir e ajustar</Button>
             </>
-          )}>
+          }>
           <div className="table-wrap">
             <table>
               <thead><tr><th>Produto/SKU</th><th>Esperado</th><th>Contado</th></tr></thead>
@@ -738,7 +776,9 @@ function ProductGalleryManager({ images = [], productName = "", onChange }) {
             </div>
           </article>
         ))}
-        {!safeImages.length && <p className="empty-state">Nenhuma imagem cadastrada. O catálogo usará a imagem padrão até você enviar uma foto.</p>}
+        {!safeImages.length && (
+          <p className="empty-state">Nenhuma imagem cadastrada. O catálogo usará a imagem padrão até você enviar uma foto.</p>
+        )}
       </div>
       {preview && (
         <div className="gallery-preview-modal" onClick={() => setPreview(null)}>
@@ -752,12 +792,12 @@ function ProductGalleryManager({ images = [], productName = "", onChange }) {
         title="Remover imagem"
         size="sm"
         onClose={() => setRemovingIndex(null)}
-        footer={(
+        footer={
           <>
             <Button variant="secondary" onClick={() => setRemovingIndex(null)}>Cancelar</Button>
             <Button variant="danger" onClick={() => remove(removingIndex)}>Remover</Button>
           </>
-        )}
+        }
       >
         <p>Remover esta imagem da galeria do produto?</p>
       </Modal>
@@ -765,10 +805,11 @@ function ProductGalleryManager({ images = [], productName = "", onChange }) {
   );
 }
 
+/** @returns {Record<string, any>} */
 function defaultInventoryForm(materialMode) {
   const form = defaultJewelry();
   if (materialMode) Object.assign(form, { can_sell: false, can_use_in_service: true, can_publish: false, photo_url: "", weight_grams: 0 });
-  return form;
+  return { ...form, item_classification: materialMode ? "material" : "resale" };
 }
 
 /** @param {{ materialMode?: boolean, suppliers?: any[], options?: any, categoryOptions?: any[], categories?: any[], pricingSettings?: Record<string, any>, editing?: any, onSaved?: (...args: any[]) => any, onMovementOpen?: (...args: any[]) => any }} props */
@@ -795,9 +836,9 @@ export function JewelryEditor({ materialMode = false, suppliers = [], options, c
     if (!form.name) return;
     setForm((current) => ({
       ...current,
-      variants: current.variants.map((variant, index) => (
-        variant.sku ? variant : { ...variant, sku: `${jewelrySkuBase(current)}-${String(index + 1).padStart(2, "0")}` }
-      ))
+      variants: current.variants.map((variant, index) =>
+        variant.sku ? variant : { ...variant, sku: `${jewelrySkuBase(current)}-${String(index + 1).padStart(2, "0")}` },
+      )
     }));
   }, [form.name, form.category]);
 
@@ -932,7 +973,8 @@ export function JewelryEditor({ materialMode = false, suppliers = [], options, c
           ["movimentacao", "Movimentação"],
           ["comercial", "Comercial"],
           ["virtual", "Catálogo"]
-        ].map(([id, label]) => <Tabs.Trigger key={id} value={id}>{label}</Tabs.Trigger>)}
+        ].map(([id, label]) => (
+            <Tabs.Trigger key={id} value={id}>{label}</Tabs.Trigger>))}
       </Tabs.List>
       </Tabs>
 
@@ -940,6 +982,14 @@ export function JewelryEditor({ materialMode = false, suppliers = [], options, c
         <div className="editor-section">
           <div className="form-grid">
             <Input label={materialMode ? "Nome do material" : "Nome do Produto"} value={form.name} onChange={(value) => setForm({ ...form, name: value })} required />
+            <Select
+              label="Finalidade principal"
+              value={form.item_classification || (form.can_sell ? "resale" : "material")}
+              onChange={(item_classification) => setForm({ ...form, item_classification })}
+            >
+              <option value="resale">Produto para revenda</option>
+              <option value="material">Material de consumo</option>
+            </Select>
             <Select
               label="Categoria"
               value={form.category}
@@ -950,12 +1000,15 @@ export function JewelryEditor({ materialMode = false, suppliers = [], options, c
               required
             >
               <option value="">Selecione</option>
-              {[...new Set([...editorCategoryOptions, ...(editing?.category ? [editing.category] : [])])].map((item) => <option key={item} value={item}>{item}</option>)}
+              {[...new Set([...editorCategoryOptions, ...(editing?.category ? [editing.category] : [])])].map((item) => (
+                  <option key={item} value={item}>{item}</option>),
+              )}
             </Select>
             {form.category === "Argolas" && (
               <Select label="Subcategoria" value={form.subcategory} onChange={(value) => setForm({ ...form, subcategory: value })}>
                 <option value="">Selecione</option>
-                {["Segmento", "Clicker", "D-Ring", "Captive", "Hinged Ring"].map((item) => <option key={item}>{item}</option>)}
+                {["Segmento", "Clicker", "D-Ring", "Captive", "Hinged Ring"].map((item) => (
+                  <option key={item}>{item}</option>))}
               </Select>
             )}
             <ProductGalleryManager
@@ -975,15 +1028,18 @@ export function JewelryEditor({ materialMode = false, suppliers = [], options, c
           </div>
           <Textarea label="Descrição curta" value={form.description} onChange={(value) => setForm({ ...form, description: value })} />
           <Textarea label="Observações internas" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} />
-          {materialMode && form.variants.length === 1 && <div className="form-grid">
+          {materialMode && form.variants.length === 1 && (
+            <div className="form-grid">
             <Input type="number" min="0" step="1" label="Quantidade em estoque" value={form.variants[0].quantity} onChange={(quantity) => updateVariant(0, { quantity })} />
             <Input type="number" min="0" step="0.01" label="Custo unitário" value={form.variants[0].purchase_cost} onChange={(purchase_cost) => updateVariant(0, { purchase_cost })} />
             <Input type="number" min="0" step="1" label="Estoque mínimo" value={form.low_stock_threshold} onChange={(low_stock_threshold) => { setForm((current) => ({ ...current, low_stock_threshold, variants: current.variants.map((variant) => ({ ...variant, low_stock_threshold })) })); }} />
             <Select label="Fornecedor (opcional)" value={String(form.supplier_id || "")} onChange={(supplier_id) => { const supplier = suppliers.find((item) => String(item.id) === supplier_id)?.name || ""; setForm((current) => ({ ...current, supplier_id, supplier, variants: current.variants.map((variant) => ({ ...variant, supplier })) })); }}>
               <option value="">Sem fornecedor vinculado</option>
-              {suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+              {suppliers.map((supplier) => (
+                  <option key={supplier.id} value={supplier.id}>{supplier.name}</option>))}
             </Select>
-          </div>}
+          </div>
+          )}
           <div className="form-grid">
             <Input label="Unidade de estoque" value={form.stock_unit} onChange={(value) => setForm({ ...form, stock_unit: value })} />
             <Input label="Unidade de compra" value={form.purchase_unit} onChange={(value) => setForm({ ...form, purchase_unit: value })} />
@@ -1030,12 +1086,18 @@ export function JewelryEditor({ materialMode = false, suppliers = [], options, c
                 <article className="variant-editor-card compact" key={variant.id || index}>
                   <div className="variant-card-measure">
                     <strong>{measure}</strong>
-                    {variant.variation_name && !measure.toLocaleLowerCase("pt-BR").includes(String(variant.variation_name).toLocaleLowerCase("pt-BR")) && <small>{variant.variation_name}</small>}
+                    {variant.variation_name && !measure.toLocaleLowerCase("pt-BR").includes(String(variant.variation_name).toLocaleLowerCase("pt-BR")) && (
+                        <small>{variant.variation_name}</small>
+                      )}
                   </div>
                   <div className="variant-card-specs">
                     {specifications.length
-                      ? specifications.map((specification) => <span key={specification}>{specification}</span>)
-                      : <span>Configure as especificações</span>}
+                      ? (
+                      specifications.map((specification) => <span key={specification}>{specification}</span>)
+                    )
+                      : (
+                      <span>Configure as especificações</span>
+                    )}
                   </div>
                   <div className="variant-card-business">
                     <span><small>Estoque</small><strong>{Number(variant.quantity || 0)} un</strong></span>
@@ -1055,12 +1117,12 @@ export function JewelryEditor({ materialMode = false, suppliers = [], options, c
             title="Aplicar precificação a todas as variações"
             size="sm"
             onClose={() => setConfirmPricing(false)}
-            footer={(
+            footer={
               <>
                 <Button variant="secondary" onClick={() => setConfirmPricing(false)}>Cancelar</Button>
                 <Button variant="primary" onClick={applyPricingToAll}>Aplicar</Button>
               </>
-            )}
+            }
           >
             <p>Aplicar custo, frete, multiplicador e arredondamento da primeira variação para todas as variações?</p>
             <p>Preços finais definidos manualmente serão recalculados.</p>
@@ -1092,8 +1154,11 @@ export function JewelryEditor({ materialMode = false, suppliers = [], options, c
             )}
           </div>
           {editing?.id
-            ? <StockMovementHistory jewelryId={editing.id} />
-            : <p className="empty-state">Salve o produto antes de registrar movimentações.</p>}
+            ? (
+            <StockMovementHistory jewelryId={editing.id} />
+          ) : (
+            <p className="empty-state">Salve o produto antes de registrar movimentações.</p>
+          )}
         </div>
       )}
 
@@ -1195,18 +1260,25 @@ export function VariantEditModal({ category, variant, pricingSettings = {}, onCh
       <div className="variant-modal-fields">
           <Input label="Nome da Variação" value={variant.variation_name} onChange={(value) => onChange({ variation_name: value })} />
           <Input type="number" step="0.1" min="0" label="Tamanho do Topo (mm)" value={variant.top_size_mm ?? ""} onChange={(value) => onChange({ top_size_mm: value })} />
-          {usesSize && <Input label="Tamanho / Medida" value={variant.size} onChange={(value) => onChange({ size: value })} />}
-          {usesDiameter && <Input label="Diâmetro" value={variant.diameter} onChange={(value) => onChange({ diameter: value })} />}
+          {usesSize && (
+          <Input label="Tamanho / Medida" value={variant.size} onChange={(value) => onChange({ size: value })} />
+        )}
+          {usesDiameter && (
+          <Input label="Diâmetro" value={variant.diameter} onChange={(value) => onChange({ diameter: value })} />
+        )}
           {usesLength && (
             <Select label="Comprimento" value={variant.length} onChange={(value) => onChange({ length: value })}>
               <option value="">Selecione</option>
-              {JEWELRY_LENGTH_OPTIONS.map((option) => <option key={option}>{option}</option>)}
+              {JEWELRY_LENGTH_OPTIONS.map((option) => (
+              <option key={option}>{option}</option>
+            ))}
             </Select>
           )}
           {usesThickness && (
             <Select label="Espessura" value={variant.thickness} onChange={(value) => onChange({ thickness: value })}>
               <option value="">Selecione</option>
-              {JEWELRY_THICKNESS_OPTIONS.map((option) => <option key={option}>{option}</option>)}
+              {JEWELRY_THICKNESS_OPTIONS.map((option) => (
+              <option key={option}>{option}</option>))}
             </Select>
           )}
           <Select label="Material" value={variant.material} onChange={(value) => onChange({ material: value })}>
@@ -1237,7 +1309,8 @@ export function VariantEditModal({ category, variant, pricingSettings = {}, onCh
           {usesThread && (
             <Select label="Tipo de Rosca" value={variant.thread_type} onChange={(value) => onChange({ thread_type: value })}>
               <option value="">Sem Rosca</option>
-              {JEWELRY_THREAD_OPTIONS.map((option) => <option key={option}>{option}</option>)}
+              {JEWELRY_THREAD_OPTIONS.map((option) => (
+              <option key={option}>{option}</option>))}
             </Select>
           )}
           <Input label="SKU" value={variant.sku} onChange={(value) => onChange({ sku: value, sku_manually_edited: true })} required />
@@ -1247,7 +1320,9 @@ export function VariantEditModal({ category, variant, pricingSettings = {}, onCh
             productName={variant.variation_name || variant.sku || "Variação"}
             onChange={(images) => onChange({ images })}
           />
-          {!(variant.images || []).length && <small className="pricing-note">Sem imagens próprias: esta variação herdará a galeria do produto principal no catálogo.</small>}
+          {!(variant.images || []).length && (
+          <small className="pricing-note">Sem imagens próprias: esta variação herdará a galeria do produto principal no catálogo.</small>
+        )}
           <section className="pricing-builder price-formation">
             <div className="price-formation-head">
               <div>
@@ -1273,10 +1348,13 @@ export function VariantEditModal({ category, variant, pricingSettings = {}, onCh
                 <strong>Estratégia de preço</strong>
                 <div className="form-grid">
                   <Select label="Multiplicador" value={variant.price_multiplier || pricingSettings.default_price_multiplier || 3} onChange={(value) => updatePricing({ price_multiplier: Number(value), price_manually_overridden: false })}>
-                    {PRICE_MULTIPLIER_OPTIONS.map((option) => <option key={option} value={option}>{option}x</option>)}
+                    {PRICE_MULTIPLIER_OPTIONS.map((option) => (
+                    <option key={option} value={option}>{option}x</option>))}
                   </Select>
                   <Select label="Arredondamento" value={variant.price_rounding_mode || pricingSettings.price_rounding_mode || "exact"} onChange={(value) => updatePricing({ price_rounding_mode: value, price_manually_overridden: false })}>
-                    {PRICE_ROUNDING_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    {PRICE_ROUNDING_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
                   </Select>
                   <Input type="number" min="0" step="0.01" inputMode="decimal" label="Preço Final de Venda" value={variant.sale_value} onChange={(value) => updatePricing({ sale_value: value, price_manually_overridden: true })} required />
                   <div className="pricing-actions-inline">
@@ -1293,7 +1371,9 @@ export function VariantEditModal({ category, variant, pricingSettings = {}, onCh
               <span><small>Preço Final</small><strong>{currency.format(centsToMoney(pricing.sale_price_cents))}</strong></span>
               <span><small>Margem estimada</small><strong>{margin}%</strong></span>
             </div>
-            {(variant.cost_estimated || pricing.cost_estimated) && <small className="pricing-note">Custo estimado a partir do preço final. Revise o custo real quando tiver a nota ou custo de compra.</small>}
+            {(variant.cost_estimated || pricing.cost_estimated) && (
+            <small className="pricing-note">Custo estimado a partir do preço final. Revise o custo real quando tiver a nota ou custo de compra.</small>
+          )}
           </section>
           <div className="form-grid">
             <Input type="number" min="0" label="Estoque Atual" value={variant.quantity} onChange={(value) => onChange({ quantity: value })} required />
@@ -1492,12 +1572,12 @@ export function CategoryManager({ categories = [], onChanged, headerActions }) {
         open={modalOpen}
         title={editing ? "Editar categoria" : "Nova categoria"}
         onClose={() => setModalOpen(false)}
-        footer={(
+        footer={
           <>
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>
             <Button type="submit" form="category-form">Salvar</Button>
           </>
-        )}
+        }
       >
         <form id="category-form" onSubmit={save} className="stack">
           <Input label="Nome" value={form.name} onChange={(value) => setForm({ ...form, name: value })} required />
@@ -1513,12 +1593,12 @@ export function CategoryManager({ categories = [], onChanged, headerActions }) {
         open={!!deleteTarget}
         title="Excluir ou tratar categoria"
         onClose={() => setDeleteTarget(null)}
-        footer={(
+        footer={
           <>
             <Button variant="secondary" onClick={() => setDeleteTarget(null)}>Cancelar</Button>
             <Button onClick={confirmCategoryAction}>Confirmar</Button>
           </>
-        )}
+        }
       >
         {deleteTarget && (
           <div className="stack">
@@ -1533,7 +1613,8 @@ export function CategoryManager({ categories = [], onChanged, headerActions }) {
                 {deleteMode === "move" && (
                   <Select label="Categoria de destino" value={targetCategory} onChange={setTargetCategory}>
                     <option value="">Selecione</option>
-                    {activeTargets.filter((item) => item.name !== deleteTarget.name).map((item) => <option key={item.name}>{item.name}</option>)}
+                    {activeTargets.filter((item) => item.name !== deleteTarget.name).map((item) => (
+                        <option key={item.name}>{item.name}</option>))}
                   </Select>
                 )}
               </>
@@ -1573,7 +1654,9 @@ function CategoryManagementTable({ rows = [], onEdit, onToggleStatus, onDelete }
             render: (category) => (
               <>
                 <strong>{category.name}</strong>
-                {category.description && <><br /><small>{category.description}</small></>}
+                {category.description && (
+                  <><br /><small>{category.description}</small></>
+                )}
               </>
             )
           },
@@ -1658,7 +1741,9 @@ export function JewelryTable({ items, search, onSearchChange, filters, filterVal
             key: "status",
             label: "Status",
             value: (item) => inventoryStatusLabel(item),
-            render: (item) => <StatusBadge status={inventoryStatusLabel(item)} className={`inventory-status ${inventoryStatusClass(item)}`} />
+            render: (item) => (
+              <StatusBadge status={inventoryStatusLabel(item)} className={`inventory-status ${inventoryStatusClass(item)}`} />
+            ),
           },
           {
             key: "sale_value",

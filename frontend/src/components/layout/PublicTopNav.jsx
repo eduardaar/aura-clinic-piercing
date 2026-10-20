@@ -1,5 +1,5 @@
 
-import { BrandMark } from "../common/BrandMark";
+import { PlatformBrandMark } from "../common/PlatformBrandMark";
 
 // Menu de topo compartilhado pelas três telas públicas: landing ("/"),
 // login e cadastro. É sempre o mesmo — só o conteúdo abaixo dele muda.
@@ -11,9 +11,9 @@ export function PublicTopNav({ current }) {
   return (
     <header className="au-nav au-nav-dark">
       <div className="au-nav-inner">
-        <a className="au-nav-brand" href="/" aria-label="Aura Clinic — página inicial">
-          <BrandMark size={34} className="au-nav-mark" />
-          <strong>Aura Clinic</strong>
+        <a className="au-nav-brand" href="/" aria-label="Aura Clinic ERP — página inicial">
+          <PlatformBrandMark size={34} className="au-nav-mark" />
+          <strong>Aura Clinic ERP</strong>
         </a>
 
         {/* Âncoras absolutas ("/#..."): a partir de /login e /cadastro elas
