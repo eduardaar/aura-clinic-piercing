@@ -7,6 +7,8 @@
     "node": ">=20.19.0"
   },
   "scripts": {
+    "release:prepare": "node backend/scripts/release-notes.mjs prepare",
+    "release:check": "node backend/scripts/release-notes.mjs check",
     "dev": "concurrently -n backend,frontend -c blue,magenta \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
     "start": "npm --prefix backend run start",
     "build": "npm --prefix frontend run build",

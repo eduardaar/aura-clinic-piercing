@@ -23,6 +23,9 @@ import { calculateOperationTotals } from "../../lib/operationTotals";
 import { AppointmentValueAdjustments } from "./AppointmentValueAdjustments";
 import { ChemicalIndicatorHistory, ChemicalIndicatorPanel } from "./ChemicalIndicatorPanel";
 import { ProfessionalCommissionRules } from "./ProfessionalCommissionRules";
+import { PublicAvailabilityEditor } from "./PublicAvailabilityEditor";
+import { AppointmentMaterials } from "./AppointmentMaterials";
+import { CardFeePreview } from "../finance/CardFees";
 import { AppointmentCommissionSummary } from "../finance/CommissionStatement";
 import "../../styles/agenda-admin-responsive.css";
 import "../../styles/appointment-workspace.css";
@@ -89,7 +92,9 @@ function AppointmentStatusSelect({ value, current, onChange }) {
     : APPOINTMENT_EDITABLE_STATUSES;
   return (
     <Select label="Status" value={value} onChange={onChange}>
-      {options.map((status) => <option key={status} value={status}>{appointmentStatusLabel(status)}</option>)}
+      {options.map((status) => (
+        <option key={status} value={status}>{appointmentStatusLabel(status)}</option>
+      ))}
     </Select>
   );
 }
@@ -98,9 +103,10 @@ function AppointmentStatusSelect({ value, current, onChange }) {
 // acumula resíduo (0,1 + 0,2 = 0,30000000000000004).
 // Valor digitado em formato brasileiro ("50,5", "1.234,56") virava 0 em
 // `Number()` e o sinal sumia da prévia e da gravação sem aviso.
-const moneyNumber = (value) => (typeof value === "string" && value.includes(",")
+const moneyNumber = (value) =>
+  typeof value === "string" && value.includes(",")
   ? asNumber(value.replace(/\./g, "").replace(",", "."))
-  : asNumber(value));
+  : asNumber(value);
 const toCents = (value) => Math.round(moneyNumber(value) * 100);
 const fromCents = (cents) => cents / 100;
 let draftRowSequence = 0;
@@ -126,8 +132,11 @@ export function AgendaWorkspace({ initialScreen = "agenda", initialSettingsTab, 
   useEffect(() => setScreen(initialScreen), [initialScreen]);
   useEffect(() => setSettingsTab(initialSettingsTab), [initialSettingsTab]);
   return screen === "settings"
-    ? <BookingAdmin initialTab={settingsTab} features={features} onUpgrade={onUpgrade} onBack={() => { setScreen("agenda"); onSettingsClosed?.(); }} />
-    : <VisualCalendar navigationTarget={navigationTarget} features={features} onUpgrade={onUpgrade} onOpenSettings={(tab) => { setSettingsTab(tab); setScreen("settings"); }} createSignal={createSignal} />;
+    ? (
+    <BookingAdmin initialTab={settingsTab} features={features} onUpgrade={onUpgrade} onBack={() => { setScreen("agenda"); onSettingsClosed?.(); }} />
+  ) : (
+    <VisualCalendar navigationTarget={navigationTarget} features={features} onUpgrade={onUpgrade} onOpenSettings={(tab) => { setSettingsTab(tab); setScreen("settings"); }} createSignal={createSignal} />
+  );
 }
 
 function PublicBookingLink() {
@@ -151,10 +160,14 @@ function PublicBookingLink() {
   return (
     <div className="agenda-public-link">
       <span className="agenda-public-link-label">Agendamento público</span>
-      {url ? <>
+      {url ? (
+        <>
         <button type="button" className="agenda-link-copy" onClick={copy} title="Copiar link público"><Copy size={15} /> {copied ? "Copiado!" : "Copiar"}</button>
         <a className="agenda-link-open" href={url} target="_blank" rel="noreferrer" title="Abrir agendamento público" aria-label="Abrir agendamento público"><ExternalLink size={16} /></a>
-      </> : <span className="form-error">Defina o código público da clínica.</span>}
+      </>
+      ) : (
+        <span className="form-error">Defina o código público da clínica.</span>
+      )}
     </div>
   );
 }
@@ -181,7 +194,9 @@ function priceAppointmentDraft(draft, services = [], jewelryList = []) {
 }
 
 function itemGrossCents(item) {
-  return toCents(item.procedure_price) + Math.round(toCents(item.jewelry_unit_price) * Math.max(1, asNumber(item.quantity, 1)));
+  return (
+    toCents(item.procedure_price) + Math.round(toCents(item.jewelry_unit_price) * Math.max(1, asNumber(item.quantity, 1)))
+  );
 }
 
 function appointmentValueParts(form, services = [], jewelryList = [], normalizedItems = null) {
@@ -267,7 +282,7 @@ function normalizeAppointmentFormItems(form, services = [], jewelryList = []) {
         ? asNumber(raw.procedure_price)
         : asNumber(raw.procedure_price ?? service?.base_price ?? service?.price ?? 0),
       jewelry_unit_price: raw.jewelry_id
-        ? (storedPrice(raw.jewelry_unit_price) ? asNumber(raw.jewelry_unit_price) : asNumber(raw.jewelry_unit_price ?? variant?.sale_value ?? jewelry?.sale_value ?? 0))
+        ? storedPrice(raw.jewelry_unit_price) ? asNumber(raw.jewelry_unit_price) : asNumber(raw.jewelry_unit_price ?? variant?.sale_value ?? jewelry?.sale_value ?? 0)
         : 0,
       duration_minutes: asNumber(raw.duration_minutes || service?.duration_minutes || 40)
     };
@@ -297,7 +312,7 @@ function appointmentItemsError(form) {
 function AppointmentItemsEditor({ form, services, procedures = [], jewelry, onChange, compact = false }) {
   const items = rawAppointmentItems(form);
   function updateItem(index, patch) {
-    const nextItems = items.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item);
+    const nextItems = items.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item));
     onChange(withAppointmentItems(form, nextItems, services, jewelry));
   }
   function removeItem(index) {
@@ -336,7 +351,9 @@ function AppointmentItemsEditor({ form, services, procedures = [], jewelry, onCh
               });
             }} required={index === 0}>
               <option value="">Selecione</option>
-              {asArray(services).map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
+              {asArray(services).map((service) => (
+                <option key={service.id} value={service.id}>{service.name}</option>
+              ))}
             </Select>
             <Select label="Procedimento" value={item.procedure_id} onChange={(value) => {
               const procedure = asArray(procedures).find((option) => String(option.id) === String(value));
@@ -349,11 +366,14 @@ function AppointmentItemsEditor({ form, services, procedures = [], jewelry, onCh
               });
             }}>
               <option value="">Sem procedimento específico</option>
-              {asArray(procedures).filter((procedure) => !item.service_id || String(procedure.service_id) === String(item.service_id)).map((procedure) => <option key={procedure.id} value={procedure.id}>{procedure.name}</option>)}
+              {asArray(procedures).filter((procedure) => !item.service_id || String(procedure.service_id) === String(item.service_id)).map((procedure) => (
+                  <option key={procedure.id} value={procedure.id}>{procedure.name}</option>))}
             </Select>
             <Input label="Região" value={item.region} onChange={(value) => updateItem(index, { region: value })} required={index === 0} />
-            <SmartCombobox label="Joia" value={item.jewelry_id} options={asArray(jewelry)} onChange={(value) => { if (!value) updateItem(index, { jewelry_id: "", jewelry_variant_id: "", jewelry_unit_price: 0 }); }} onSelect={(product) => {
-              const variant = asArray(product.variants).find((option) => asNumber(option.quantity) > 0) || asArray(product.variants)[0];
+            <SmartCombobox label="Joia" value={item.jewelry_id} options={asArray(jewelry)} onChange={(value) => { if (!value) updateItem(index, { jewelry_id: "", jewelry_variant_id: "", jewelry_unit_price: 0 }); }} onSelect={(product, matchedVariant) => {
+              const variant =
+                  matchedVariant ||
+                  asArray(product.variants).find((option) => asNumber(option.quantity) > 0) || asArray(product.variants)[0];
               updateItem(index, { jewelry_id: String(product.id), jewelry_variant_id: variant?.id ? String(variant.id) : "", jewelry_unit_price: asNumber(variant?.sale_value || product.sale_value || 0) });
             }} getMeta={(product) => [product.category, product.material, product.sku].filter(Boolean).join(" · ")} isDisabled={(product) => asArray(product.variants).length ? !asArray(product.variants).some((variant) => asNumber(variant.quantity) > 0) : asNumber(product.inventory_quantity ?? product.quantity) <= 0} />
             <Select label="Variação" value={item.jewelry_variant_id} onChange={(value) => {
@@ -372,12 +392,15 @@ function AppointmentItemsEditor({ form, services, procedures = [], jewelry, onCh
             </div>
             <Button variant="secondary" className="danger" onClick={() => removeItem(index)} disabled={items.length === 1} aria-label={`Remover item ${index + 1}`}>Remover</Button>
             {ruleSummary.length > 0 && <span className="field-hint">Regras: {ruleSummary.join(" · ")}</span>}
-            {selectedJewelry && <div className="appointment-jewelry-selected" data-product-id={selectedJewelry.id}>
+            {selectedJewelry && (
+              <div className="appointment-jewelry-selected" data-product-id={selectedJewelry.id}>
               <strong>{selectedJewelry.name}</strong><span>ID {selectedJewelry.id}</span>
               <span>{selectedVariant ? `Variação: ${selectedVariant.variation_name || selectedVariant.sku}` : "Sem variação"}</span>
               <span>Qtd. {Math.max(1, asNumber(item.quantity, 1))}</span><span>Preço {currency.format(asNumber(item.jewelry_unit_price))}</span>
-              <span>Estoque {selectedStock} un.</span><span>Subtotal {currency.format(fromCents(Math.round(toCents(item.jewelry_unit_price) * Math.max(1, asNumber(item.quantity, 1)))))}</span>
-            </div>}
+              <span>Estoque {selectedStock} un.</span><span>Subtotal {" "}
+                  {currency.format(fromCents(Math.round(toCents(item.jewelry_unit_price) * Math.max(1, asNumber(item.quantity, 1)))))}</span>
+            </div>
+            )}
           </div>
         );
       })}
@@ -506,7 +529,7 @@ function AppointmentValueSummary({ form, services, jewelry, appointment = null, 
   const summary = {
     // "Cupom aplicado" só quando o cupom de fato abateu algo; código digitado
     // e recusado não pode aparecer como aplicado.
-    couponCode: totals.couponDiscount > 0 ? (String(form.coupon_code || "").trim() || null) : null,
+    couponCode: totals.couponDiscount > 0 ? String(form.coupon_code || "").trim() || null : null,
     couponDiscount,
     manualDiscount,
     adjustmentTotal,
@@ -536,8 +559,12 @@ function AppointmentValueSummary({ form, services, jewelry, appointment = null, 
         discountMax={fromCents(discountMaxCents)}
       />
       {!canEditDiscount && discountLockedReason && <small className="field-hint">{discountLockedReason}</small>}
-      {loading && <small className="field-hint" role="status">Atualizando a prévia oficial do valor…</small>}
-      {shownError && <small className="form-error" role="alert">{shownError}</small>}
+      {loading && (
+        <small className="field-hint" role="status">Atualizando a prévia oficial do valor…</small>
+      )}
+      {shownError && (
+        <small className="form-error" role="alert">{shownError}</small>
+      )}
     </div>
   );
 }
@@ -560,8 +587,12 @@ function AppointmentDepositFields({ form, onChange, lockedReason = "" }) {
   }
   return (
     <section className="appointment-deposit-fields" aria-label="Sinal do agendamento">
-      <div className="section-inline-header"><strong>Sinal</strong>{received && form.deposit_paid_at ? <small>Recebido em {formatDateWithYear(form.deposit_paid_at)}</small> : null}</div>
-      {form.deposit_expected_value != null && <small className="field-hint">Sinal esperado: {currency.format(asNumber(form.deposit_expected_value))}</small>}
+      <div className="section-inline-header"><strong>Sinal</strong>{received && form.deposit_paid_at ? (
+          <small>Recebido em {formatDateWithYear(form.deposit_paid_at)}</small>
+        ) : null}</div>
+      {form.deposit_expected_value != null && (
+        <small className="field-hint">Sinal esperado: {currency.format(asNumber(form.deposit_expected_value))}</small>
+      )}
       <div className="form-grid">
         <Input type="number" min="0" step="0.01" inputMode="decimal" label="Valor do sinal (R$)" value={form.deposit_value} onChange={(deposit_value) => onChange({ deposit_value })} />
         <PaymentSelect label="Forma do sinal" value={form.deposit_payment_method || "Pix"} onChange={(deposit_payment_method) => onChange({ deposit_payment_method })} />
@@ -571,7 +602,7 @@ function AppointmentDepositFields({ form, onChange, lockedReason = "" }) {
         label="Sinal recebido"
         description="Marque quando o valor do sinal já estiver com a clínica."
         checked={received}
-        onChange={(checked) => onChange({ deposit_status: checked ? "pago" : "pendente", deposit_paid_at: checked ? (form.deposit_paid_at || localDateValue(new Date())) : "" })}
+        onChange={(checked) => onChange({ deposit_status: checked ? "pago" : "pendente", deposit_paid_at: checked ? form.deposit_paid_at || localDateValue(new Date()) : "" })}
       />
     </section>
   );
@@ -597,7 +628,7 @@ function appointmentPatchPayload(form, services, jewelry, { depositDirty = false
     payload.deposit_value = moneyNumber(priced.deposit_value);
     payload.deposit_status = form.deposit_status || "pendente";
     payload.deposit_payment_method = form.deposit_payment_method || "Pix";
-    payload.deposit_paid_at = depositReceived(form.deposit_status) ? (form.deposit_paid_at || localDateValue(new Date())) : "";
+    payload.deposit_paid_at = depositReceived(form.deposit_status) ? form.deposit_paid_at || localDateValue(new Date()) : "";
   }
   return payload;
 }
@@ -680,7 +711,8 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
     ? Math.round(completedWithTiming.reduce((sum, item) => sum + Math.max(0, (new Date(item.started_at).getTime() - new Date(item.arrived_at).getTime()) / 60000), 0) / completedWithTiming.length)
     : 0;
   const cancellationRate = operationalRows.length
-    ? Math.round(operationalRows.filter((item) => ["cancelado", "nao_compareceu"].includes(item.status)).length / operationalRows.length * 100)
+    ? Math.round(
+        (operationalRows.filter((item) => ["cancelado", "nao_compareceu"].includes(item.status)).length / operationalRows.length) * 100)
     : 0;
   const activeFilterCount = ["professional_id", "status"].filter((key) => filters[key]).length;
   const hasPeriod = Boolean(filters.from || filters.to);
@@ -728,7 +760,9 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
     <section className="stack agenda-visual-page">
       {linkedId > 0 && linkedLoading && <Loading />}
       {linkedId > 0 && linkedError && <ApiError message={linkedError} />}
-      {linkedId > 0 && !linkedLoading && !linkedError && linkedAppointments && !asArray(linkedAppointments).length && <ApiError message="O atendimento de origem não foi encontrado ou não está disponível para este usuário." />}
+      {linkedId > 0 && !linkedLoading && !linkedError && linkedAppointments && !asArray(linkedAppointments).length && (
+        <ApiError message="O atendimento de origem não foi encontrado ou não está disponível para este usuário." />
+      )}
       <CollapsibleIndicators screenId="agenda">
         <div className="metric-grid">
           <Metric label="Agenda de hoje" value={todayRows.length} />
@@ -763,38 +797,57 @@ export function VisualCalendar({ navigationTarget, onOpenSettings, features = []
         </div>
         <div className="toolbar">
         <div className="segmented">
-          {[["mensal", "Mensal"], ["semanal", "Semanal"], ["diario", "Diário"], ["lista", "Agendamentos"]].map(([mode, label]) => <button key={mode} className={filters.mode === mode ? "active" : ""} onClick={() => setFilters({ ...filters, mode })}>{label}</button>)}
+          {[["mensal", "Mensal"], ["semanal", "Semanal"], ["diario", "Diário"], ["lista", "Agendamentos"]].map(([mode, label]) => (
+              <button key={mode} className={filters.mode === mode ? "active" : ""} onClick={() => setFilters({ ...filters, mode })}>{label}</button>
+            ))}
         </div>
-        {["mensal", "semanal", "diario", "lista"].includes(filters.mode) && <div className="calendar-nav">
-          {calendar && !hasPeriod && <button className="calendar-nav-previous" aria-label="Período anterior" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, -1))}><ChevronLeft size={18} /></button>}
+        {["mensal", "semanal", "diario", "lista"].includes(filters.mode) && (
+            <div className="calendar-nav">
+          {calendar && !hasPeriod && (
+                <button className="calendar-nav-previous" aria-label="Período anterior" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, -1))}><ChevronLeft size={18} /></button>
+              )}
           <strong>{hasPeriod ? periodLabel : calendar?.title || "Todos os períodos"}</strong>
-          {calendar && !hasPeriod && <button className="calendar-nav-next" aria-label="Próximo período" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, 1))}><ChevronRight size={18} /></button>}
-          {!hasPeriod && calendar && <button className="calendar-nav-today" onClick={() => setCurrentDate(new Date())}>Hoje</button>}
+          {calendar && !hasPeriod && (
+                <button className="calendar-nav-next" aria-label="Próximo período" onClick={() => setCurrentDate(movePeriod(currentDate, filters.mode, 1))}><ChevronRight size={18} /></button>
+              )}
+          {!hasPeriod && calendar && (
+                <button className="calendar-nav-today" onClick={() => setCurrentDate(new Date())}>Hoje</button>
+              )}
           <button className="calendar-nav-period" onClick={openPeriod}>Período</button>
-          {hasPeriod && <button className="calendar-nav-clear" onClick={clearPeriod}>Limpar</button>}
-        </div>}
+          {hasPeriod && (
+                <button className="calendar-nav-clear" onClick={clearPeriod}>Limpar</button>
+              )}
         </div>
-        {["mensal", "semanal", "diario", "lista"].includes(filters.mode) && <div className="dataview-toolbar agenda-shared-filters">
+          )}
+        </div>
+        {["mensal", "semanal", "diario", "lista"].includes(filters.mode) && (
+          <div className="dataview-toolbar agenda-shared-filters">
         <label className="dataview-search">
           <Search size={16} aria-hidden="true" />
           <input type="search" value={filters.search} placeholder="Buscar cliente, telefone ou procedimento" onChange={(event) => setFilters({ ...filters, search: event.target.value })} />
-          {filters.search && <button type="button" onClick={() => setFilters({ ...filters, search: "" })} aria-label="Limpar busca"><X size={14} /></button>}
+          {filters.search && (
+                <button type="button" onClick={() => setFilters({ ...filters, search: "" })} aria-label="Limpar busca"><X size={14} /></button>
+              )}
         </label>
         <button type="button" className={`dataview-filter-toggle ${activeFilterCount ? "has-filters" : ""}`} onClick={openFilters} aria-haspopup="dialog">
           <Filter size={15} /> Filtros
           {activeFilterCount > 0 && <span className="dataview-filter-count">{activeFilterCount}</span>}
         </button>
-        </div>}
+        </div>
+        )}
       </div>
       <Modal open={filterModalOpen} title="Filtros da Agenda" subtitle="Aplicados às quatro visualizações" onClose={() => setFilterModalOpen(false)} footer={<><Button variant="secondary" onClick={clearFilters}>Limpar</Button><Button onClick={applyFilters}>Aplicar filtros</Button></>}>
         <div className="dataview-filter-modal-grid">
           <Select label="Profissional" value={draftFilters.professional_id} onChange={(professional_id) => setDraftFilters({ ...draftFilters, professional_id })}>
             <option value="">Todos</option>
-            {asArray(safeOptions.professionals).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            {asArray(safeOptions.professionals).map((item) => (
+              <option key={item.id} value={item.id}>{item.name}</option>))}
           </Select>
           <Select label="Status" value={draftFilters.status} onChange={(status) => setDraftFilters({ ...draftFilters, status })}>
             <option value="">Todos</option>
-            {APPOINTMENT_STATUS_OPTIONS.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+            {APPOINTMENT_STATUS_OPTIONS.map((status) => (
+              <option key={status.value} value={status.value}>{status.label}</option>
+            ))}
           </Select>
         </div>
       </Modal>
@@ -897,18 +950,24 @@ function Waitlist({ onSchedule }) {
           { key: "priority", label: "Prioridade", render: (item) => `${Number(item.priority || 0)}/5` },
           { key: "status", label: "Status", render: (item) => <StatusBadge status={item.status} /> }
         ]}
-        actions={(item) => <RowActions actions={[
+        actions={(item) => (
+          <RowActions actions={[
           item.status === "waiting" && { label: "Marcar contato", onClick: () => changeStatus(item, "contacted") },
           !["scheduled", "closed"].includes(item.status) && { label: "Criar encaixe", primary: true, onClick: () => onSchedule?.(item) },
           item.status !== "closed" && { label: "Encerrar", onClick: () => changeStatus(item, "closed") }
-        ].filter(Boolean)} />}
+        ].filter(Boolean)} />
+        )}
         empty="Nenhum cliente aguardando uma vaga."
       />
       <Modal open={open} title="Adicionar à lista de espera" subtitle="Preferências são opcionais e ajudam a encontrar o melhor encaixe." onClose={() => setOpen(false)} footer={<><Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button><Button type="submit" form="waitlist-form">Salvar</Button></>}>
         <form id="waitlist-form" className="stack" onSubmit={save}>
-          <Select label="Cliente cadastrado" value={form.client_id} onChange={(client_id) => { const client = asArray(clients).find((item) => String(item.id) === String(client_id)); setForm({ ...form, client_id, client_name: personName(client), contact: client?.whatsapp || "" }); }}><option value="">Contato avulso</option>{asArray(clients).map((item) => <option key={item.id} value={item.id}>{personName(item)}</option>)}</Select>
+          <Select label="Cliente cadastrado" value={form.client_id} onChange={(client_id) => { const client = asArray(clients).find((item) => String(item.id) === String(client_id)); setForm({ ...form, client_id, client_name: personName(client), contact: client?.whatsapp || "" }); }}><option value="">Contato avulso</option>{asArray(clients).map((item) => (
+              <option key={item.id} value={item.id}>{personName(item)}</option>))}</Select>
           <div className="form-grid"><Input label="Nome" value={form.client_name} onChange={(client_name) => setForm({ ...form, client_name })} required /><Input label="Contato" value={form.contact} onChange={(contact) => setForm({ ...form, contact })} /></div>
-          <div className="form-grid"><Select label="Procedimento" value={form.service_id} onChange={(service_id) => setForm({ ...form, service_id })}><option value="">Qualquer</option>{asArray(services).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select><Select label="Profissional" value={form.professional_id} onChange={(professional_id) => setForm({ ...form, professional_id })}><option value="">Qualquer</option>{asArray(professionals).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></div>
+          <div className="form-grid"><Select label="Procedimento" value={form.service_id} onChange={(service_id) => setForm({ ...form, service_id })}><option value="">Qualquer</option>{asArray(services).map((item) => (
+                <option key={item.id} value={item.id}>{item.name}</option>))}</Select><Select label="Profissional" value={form.professional_id} onChange={(professional_id) => setForm({ ...form, professional_id })}><option value="">Qualquer</option>{asArray(professionals).map((item) => (
+                <option key={item.id} value={item.id}>{item.name}</option>
+              ))}</Select></div>
           <div className="form-grid"><Input type="date" label="A partir de" value={form.preferred_date_from} onChange={(preferred_date_from) => setForm({ ...form, preferred_date_from })} /><Input type="date" label="Até" value={form.preferred_date_to} onChange={(preferred_date_to) => setForm({ ...form, preferred_date_to })} /><Select label="Período" value={form.preferred_period} onChange={(preferred_period) => setForm({ ...form, preferred_period })}><option value="qualquer">Qualquer</option><option value="manha">Manhã</option><option value="tarde">Tarde</option><option value="noite">Noite</option></Select><Input type="number" min="0" max="5" label="Prioridade" value={form.priority} onChange={(priority) => setForm({ ...form, priority })} /></div>
           <Textarea label="Observações" value={form.notes} onChange={(notes) => setForm({ ...form, notes })} />
           {error && <span className="form-error">{error}</span>}
@@ -954,7 +1013,9 @@ function AgendaResources() {
           { key: "capacity", label: "Capacidade" },
           { key: "active", label: "Status", render: (item) => <StatusBadge status={item.active ? "Ativo" : "Inativo"} /> }
         ]}
-        actions={(item) => <RowActions actions={[{ label: item.active ? "Desativar" : "Ativar", onClick: () => toggle(item) }]} />}
+        actions={(item) => (
+          <RowActions actions={[{ label: item.active ? "Desativar" : "Ativar", onClick: () => toggle(item) }]} />
+        )}
         empty="Nenhuma sala ou recurso cadastrado. A agenda continua funcionando normalmente."
       />
       <Modal open={open} title="Novo recurso da agenda" subtitle="Use para salas, cadeiras, estações ou equipamentos compartilhados." onClose={() => setOpen(false)} footer={<><Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button><Button type="submit" form="agenda-resource-form">Salvar</Button></>}>
@@ -996,7 +1057,9 @@ function ServiceExecutionHistory() {
           { key: "total_value", label: "Valor", value: (item) => asNumber(item.total_value), render: (item) => currency.format(item.total_value || 0) },
           { key: "status", label: "Status", render: (item) => <StatusBadge status={item.status === "completed" ? "Concluído" : "Cancelado"} /> }
         ]}
-        actions={(item) => <RowActions actions={[{ label: "Ver atendimento", primary: true, onClick: () => setSelectedId(item.id) }]} />}
+        actions={(item) => (
+          <RowActions actions={[{ label: "Ver atendimento", primary: true, onClick: () => setSelectedId(item.id) }]} />
+        )}
         empty="Nenhum atendimento foi finalizado pela Agenda."
         emptyFiltered="Nenhum atendimento corresponde aos filtros aplicados."
       />
@@ -1037,7 +1100,10 @@ function ServiceExecutionDetail({ executionId, onClose }) {
   const signedMoney = (value) => `${value < 0 ? "− " : "+ "}${currency.format(Math.abs(value))}`;
   return (
     <Modal open={Boolean(executionId)} title="Atendimento realizado" subtitle={executionId ? `Registro #${executionId}` : ""} onClose={onClose} footer={<Button variant="secondary" onClick={onClose}>Fechar</Button>}>
-      {!data ? <Loading /> : <div className="stack">
+      {!data ? (
+        <Loading />
+      ) : (
+        <div className="stack">
         <div className="summary-grid">
           <span>Cliente <strong>{snapshot.client_name || "—"}</strong></span>
           <span>Serviço <strong>{snapshot.procedure || "Atendimento"}</strong></span>
@@ -1055,39 +1121,69 @@ function ServiceExecutionDetail({ executionId, onClose }) {
             <div><span>A receber</span><strong>{currency.format(composition.receivable)}</strong></div>
           </div>
         </section>
-        {(execution.clinical_notes || execution.occurrences || execution.aftercare_notes) ? <div className="soft-card stack">
-          {execution.clinical_notes && <div><strong>Observações clínicas</strong><p>{execution.clinical_notes}</p></div>}
-          {execution.occurrences && <div><strong>Intercorrências</strong><p>{execution.occurrences}</p></div>}
-          {execution.aftercare_notes && <div><strong>Orientações pós-atendimento</strong><p>{execution.aftercare_notes}</p></div>}
-        </div> : <p className="empty-state">Nenhuma informação clínica opcional foi registrada.</p>}
-        {(checklist.length > 0 || biosafety.enabled) && <div className="soft-card stack">
+        {execution.clinical_notes || execution.occurrences || execution.aftercare_notes ? (
+            <div className="soft-card stack">
+          {execution.clinical_notes && (
+                <div><strong>Observações clínicas</strong><p>{execution.clinical_notes}</p></div>
+              )}
+          {execution.occurrences && (
+                <div><strong>Intercorrências</strong><p>{execution.occurrences}</p></div>
+              )}
+          {execution.aftercare_notes && (
+                <div><strong>Orientações pós-atendimento</strong><p>{execution.aftercare_notes}</p></div>
+              )}
+        </div>
+          ) : (
+            <p className="empty-state">Nenhuma informação clínica opcional foi registrada.</p>
+          )}
+        {(checklist.length > 0 || biosafety.enabled) && (
+            <div className="soft-card stack">
           <strong>Checklist e rastreabilidade</strong>
-          {checklist.length > 0 && <div>{checklist.map((item) => <p key={item.key}>{item.completed ? "✓" : "○"} {item.label}{item.required ? " (obrigatório)" : ""}</p>)}</div>}
-          {biosafety.enabled && <div>
-            {biosafety.sterilization_cycle && <p>Ciclo: <strong>{biosafety.sterilization_cycle}</strong></p>}
-            {biosafety.sterilization_record && <p>Registro: <strong>{biosafety.sterilization_record}</strong></p>}
-            {asArray(biosafety.material_lots).map((item, index) => <p key={`${item.batch_code}-${index}`}>Material/lote: <strong>{item.batch_code || item.inventory_item_lot_id}</strong> · qtd. {item.quantity}</p>)}
+          {checklist.length > 0 && (
+                <div>{checklist.map((item) => (
+                    <p key={item.key}>{item.completed ? "✓" : "○"} {item.label}{item.required ? " (obrigatório)" : ""}</p>
+                  ))}</div>
+              )}
+          {biosafety.enabled && (
+                <div>
+            {biosafety.sterilization_cycle && (
+                    <p>Ciclo: <strong>{biosafety.sterilization_cycle}</strong></p>
+                  )}
+            {biosafety.sterilization_record && (
+                    <p>Registro: <strong>{biosafety.sterilization_record}</strong></p>
+                  )}
+            {asArray(biosafety.material_lots).map((item, index) => (
+                    <p key={`${item.batch_code}-${index}`}>Material/lote: <strong>{item.batch_code || item.inventory_item_lot_id}</strong> · qtd. {" "}
+                      {item.quantity}</p>))}
             {biosafety.notes && <p>Observações: {biosafety.notes}</p>}
-          </div>}
-          {asArray(execution.operationalHistory).length > 1 && <small>{asArray(execution.operationalHistory).length} revisões preservadas no histórico.</small>}
-        </div>}
+          </div>
+              )}
+          {asArray(execution.operationalHistory).length > 1 && (
+                <small>{asArray(execution.operationalHistory).length} revisões preservadas no histórico.</small>
+              )}
+        </div>
+          )}
         <DataView
           rows={asArray(execution.items)}
           columns={[
             { key: "item_name", label: "Item" },
-            { key: "item_type", label: "Tipo", render: (item) => item.item_type === "service" ? "Serviço" : "Produto aplicado" },
+            { key: "item_type", label: "Tipo", render: (item) => (item.item_type === "service" ? "Serviço" : "Produto aplicado"),
+              },
             { key: "quantity", label: "Quantidade" },
             { key: "total_value", label: "Valor", render: (item) => currency.format(item.total_value || 0) }
           ]}
           empty="Nenhum item registrado."
         />
-        {appointmentId && <section className="soft-card stack" aria-label="Indicadores químicos">
+        {appointmentId && (
+            <section className="soft-card stack" aria-label="Indicadores químicos">
           <strong>Indicadores químicos</strong>
           <ChemicalIndicatorHistory appointmentId={appointmentId} compact />
-        </section>}
+        </section>
+          )}
         {/* O resumo tem cabeçalho próprio e some sozinho para quem não pode ver comissão. */}
         {appointmentId && <AppointmentCommissionSummary appointmentId={appointmentId} />}
-      </div>}
+      </div>
+      )}
     </Modal>
   );
 }
@@ -1095,7 +1191,9 @@ function ServiceExecutionDetail({ executionId, onClose }) {
 export function GoogleLikeCalendar({ days, mode, refresh, onSelect, onEmptySlot }) {
   return (
     <div className={`google-calendar ${mode === "semanal" ? "week-view" : ""}`}>
-      {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day) => <div className="calendar-weekday" key={day}>{day}</div>)}
+      {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day) => (
+        <div className="calendar-weekday" key={day}>{day}</div>
+      ))}
       {days.map((day) => (
         <article className={`calendar-cell ${day.isOutside ? "outside" : ""} ${day.isToday ? "today" : ""}`} key={day.key} onClick={() => onEmptySlot?.({ appointment_date: day.key })}>
           <header>
@@ -1103,7 +1201,8 @@ export function GoogleLikeCalendar({ days, mode, refresh, onSelect, onEmptySlot 
             {day.isToday && <strong>Hoje</strong>}
           </header>
           <div className="calendar-events">
-            {asArray(day.items).map((item) => <CalendarEvent item={item} key={item.id} refresh={refresh} onSelect={onSelect} />)}
+            {asArray(day.items).map((item) => (
+              <CalendarEvent item={item} key={item.id} refresh={refresh} onSelect={onSelect} />))}
           </div>
         </article>
       ))}
@@ -1122,7 +1221,8 @@ export function DailyAgenda({ day, refresh, onSelect, onEmptySlot }) {
       {slots.map((slot) => (
         <div className="time-slot" key={slot.hour} onClick={() => onEmptySlot?.({ appointment_date: dateKey(day.date), appointment_time: slot.hour })}>
           <span>{slot.hour}</span>
-          <div>{asArray(slot.items).map((item) => <CalendarEvent item={item} key={item.id} refresh={refresh} onSelect={onSelect} />)}</div>
+          <div>{asArray(slot.items).map((item) => (
+              <CalendarEvent item={item} key={item.id} refresh={refresh} onSelect={onSelect} />))}</div>
         </div>
       ))}
     </div>
@@ -1270,7 +1370,8 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
     delete body.deposit_manual;
     body.deposit_status = form.deposit_status || "pendente";
     body.deposit_payment_method = form.deposit_payment_method || "Pix";
-    body.deposit_paid_at = depositReceived(form.deposit_status) ? (form.deposit_paid_at || localDateValue(new Date())) : "";
+    body.deposit_paid_at = depositReceived(form.deposit_status) ? form.deposit_paid_at || localDateValue(new Date())
+      : "";
     if (canDiscount) {
       const gross = toCents(appointmentValueParts(form, safeServices, safeJewelry).totalValue);
       const manual = Math.max(0, toCents(form.manual_discount_value));
@@ -1312,12 +1413,16 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
       size="workspace"
       formId="visual-appointment-form"
       onClose={closeCreate}
-      footer={(
+      footer={
         <>
-          <Button variant="secondary" onClick={() => activeStep === "schedule" ? closeCreate() : setActiveStep("schedule")}>{activeStep === "schedule" ? "Cancelar" : "Voltar"}</Button>
-          {activeStep === "operation" ? <Button type="submit" form="visual-appointment-form">Salvar agendamento</Button> : <Button onClick={goToOperation}>Continuar</Button>}
+          <Button variant="secondary" onClick={() => (activeStep === "schedule" ? closeCreate() : setActiveStep("schedule"))}>{activeStep === "schedule" ? "Cancelar" : "Voltar"}</Button>
+          {activeStep === "operation" ? (
+            <Button type="submit" form="visual-appointment-form">Salvar agendamento</Button>
+          ) : (
+            <Button onClick={goToOperation}>Continuar</Button>
+          )}
         </>
-      )}
+      }
     >
       <FormWorkflow
         as="form"
@@ -1327,36 +1432,44 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
         title="Novo agendamento"
         description="Identificação e horário primeiro; procedimento e valores na sequência."
         draft={draft}
-        actions={draft.hasDraft ? <><Button type="button" variant="secondary" onClick={draft.restoreDraft}>Restaurar</Button><Button type="button" variant="ghost" onClick={draft.discardDraft}>Descartar</Button></> : null}
+        actions={draft.hasDraft ? (
+            <><Button type="button" variant="secondary" onClick={draft.restoreDraft}>Restaurar</Button><Button type="button" variant="ghost" onClick={draft.discardDraft}>Descartar</Button></>
+          ) : null}
         onSubmit={submit}
       >
         <StepNavigator
           steps={[{ id: "schedule", label: "Agenda", description: "Cliente e horário" }, { id: "operation", label: "Atendimento", description: "Itens e valores" }]}
           currentStep={activeStep}
-          onStepChange={(step) => step === "operation" ? goToOperation() : setActiveStep(step)}
+          onStepChange={(step) => (step === "operation" ? goToOperation() : setActiveStep(step))}
           canNavigateTo={undefined}
         />
         <ValidationSummary errors={[...(activeStep === "schedule" ? stepErrors : []), ...(error ? [error] : [])]} />
-        {activeStep === "schedule" && <FormWorkflow.Page title="Cliente e horário">
+        {activeStep === "schedule" && (
+          <FormWorkflow.Page title="Cliente e horário">
         <FormSection title="Informações principais" badge="Obrigatório">
         <div className="form-grid appointment-schedule-grid">
           <Select label="Cliente cadastrado" value={form.client_id} onChange={setClient}>
             <option value="">Novo cliente</option>
-            {safeClients.map((client) => <option key={client.id} value={client.id}>{personName(client)} - {client.whatsapp}</option>)}
+            {safeClients.map((client) => (
+                    <option key={client.id} value={client.id}>{personName(client)} - {client.whatsapp}</option>
+                  ))}
           </Select>
           <Input label="Nome completo" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} required />
           <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => setForm({ ...form, whatsapp: value })} required />
           <Select label="Profissional" value={form.professional_id} onChange={(value) => setForm({ ...form, professional_id: value })} required>
             <option value="">Selecione</option>
-            {safeProfessionals.map((professional) => <option key={professional.id} value={professional.id}>{professional.name}</option>)}
+            {safeProfessionals.map((professional) => (
+                    <option key={professional.id} value={professional.id}>{professional.name}</option>))}
           </Select>
           <Input type="date" label="Data" value={form.appointment_date} onChange={(value) => setForm({ ...form, appointment_date: value })} required />
           <Input type="time" label="Horário" value={form.appointment_time} onChange={(value) => setForm({ ...form, appointment_time: value })} required />
           <AppointmentStatusSelect value={form.status} onChange={(value) => setForm({ ...form, status: value })} />
         </div>
         </FormSection>
-        </FormWorkflow.Page>}
-        {activeStep === "operation" && <FormWorkflow.Page title="Itens, valores e confirmação">
+        </FormWorkflow.Page>
+        )}
+        {activeStep === "operation" && (
+          <FormWorkflow.Page title="Itens, valores e confirmação">
         <AppointmentItemsEditor
           form={form}
           services={safeServices}
@@ -1402,7 +1515,8 @@ export function AppointmentCreateModal({ seed, options, clients, services, proce
             ...(manualDiscount > 0 ? [{ label: "Desconto manual", value: currency.format(fromCents(manualDiscount)) }] : []),
           ]}
         />
-        </FormWorkflow.Page>}
+        </FormWorkflow.Page>
+        )}
       </FormWorkflow>
     </Modal>
   );
@@ -1433,6 +1547,7 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
   const [paymentsTouched, setPaymentsTouched] = useState(false);
   const [outstandingBalance, setOutstandingBalance] = useState(0);
   const [completing, setCompleting] = useState(false);
+  const [materialConsumption, setMaterialConsumption] = useState(undefined);
   // `deposit_*` só vai no PATCH quando o sinal foi editado aqui.
   const [depositDirty, setDepositDirty] = useState(false);
   const [financialOverride, setFinancialOverride] = useState(/** @type {Record<string, any> | null} */ (null));
@@ -1684,6 +1799,9 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
 
   async function completeAppointment() {
     if (completing) return;
+    if (materialConsumption === undefined) return setError(
+        "Aguarde a conferência dos materiais do atendimento. Se houver falha de conexão, tente novamente.",
+      );
     setError("");
     if (!canFinalize) return setError("Você não tem permissão para finalizar atendimentos.");
     // Refazer o fechamento por aqui SUBSTITUIRIA os pagamentos finais pela grade
@@ -1718,7 +1836,9 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
     const finalPayments = !paymentsTouched && payments.length === 1 && updateData.remaining_value != null
       ? [{ ...payments[0], amount: asNumber(updateData.remaining_value) }]
       : payments;
-    const response = await apiFetch(`/appointments/${appointment.id}/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ payments: finalPayments.map(({ row_key, ...row }) => ({ ...row, amount: moneyNumber(row.amount), installments: Number(row.installments), fee_amount: moneyNumber(row.fee_amount) })), financial_notes: financialNotes, clinical_notes: clinicalNotes, occurrences, aftercare_notes: aftercareNotes, checklist: operationalChecklist, biosafety }) });
+    const response = await apiFetch(`/appointments/${appointment.id}/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ payments: finalPayments.map(({ row_key, ...row }) => ({ ...row, amount: moneyNumber(row.amount), installments: Number(row.installments), fee_amount: moneyNumber(row.fee_amount) })), financial_notes: financialNotes, clinical_notes: clinicalNotes, occurrences, aftercare_notes: aftercareNotes, checklist: operationalChecklist, biosafety,
+          material_consumption: materialConsumption,
+        }) });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) return setError(data.error || "Não foi possível concluir o atendimento.");
     quickDraft.clearDraft();
@@ -1753,7 +1873,7 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
     onSaved?.();
   }
 
-  const updatePayment = (index, patch) => editPayments(payments.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item));
+  const updatePayment = (index, patch) => editPayments(payments.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)));
 
   return (
     <Modal
@@ -1762,12 +1882,12 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
       subtitle={appointment ? `${personName(appointment)} · ${appointment.procedure || "Atendimento"}` : ""}
       size="workspace"
       onClose={closeQuickModal}
-      footer={(
+      footer={
         <>
           <Button variant="secondary" onClick={closeQuickModal}>Fechar</Button>
           <Button onClick={() => saveAppointment()}>Salvar alterações</Button>
         </>
-      )}
+      }
     >
       {appointment && (
         <FormWorkflow
@@ -1776,14 +1896,17 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
           title="Atendimento"
           description="Dados operacionais, clínicos e financeiros no mesmo fluxo."
           draft={quickDraft}
-          actions={quickDraft.hasDraft ? <><Button variant="secondary" onClick={quickDraft.restoreDraft}>Restaurar</Button><Button variant="ghost" onClick={quickDraft.discardDraft}>Descartar</Button></> : null}
+          actions={quickDraft.hasDraft ? (
+              <><Button variant="secondary" onClick={quickDraft.restoreDraft}>Restaurar</Button><Button variant="ghost" onClick={quickDraft.discardDraft}>Descartar</Button></>
+            ) : null}
         >
           <ValidationSummary errors={error ? [error] : []} />
           <div className="appointment-workspace-pair">
             <div className="soft-card">
               <strong>{personName(appointment)}</strong>
               <p>{appointment.whatsapp || "WhatsApp não informado"}</p>
-              <p>{appointment.service_name || appointment.procedure || "Procedimento não informado"} · {appointment.professional_name || "Sem profissional"}</p>
+              <p>{appointment.service_name || appointment.procedure || "Procedimento não informado"} · {" "}
+                {appointment.professional_name || "Sem profissional"}</p>
               {appointment.arrived_at && <p>Chegada registrada: {formatOperationalTime(appointment.arrived_at)}</p>}
               {appointment.started_at && <p>Atendimento iniciado: {formatOperationalTime(appointment.started_at)}</p>}
               {appointment.no_show_at && <p>Ausência registrada: {formatOperationalTime(appointment.no_show_at)}</p>}
@@ -1836,34 +1959,54 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
             </div>
           </div>
           <div className="appointment-workspace-pair">
-            {!attended ? <section className="soft-card stack" aria-label="Registro clínico">
+            {!attended ? (
+              <section className="soft-card stack" aria-label="Registro clínico">
+                <AppointmentMaterials
+                  appointmentId={appointment.id}
+                  serviceIds={rawAppointmentItems(form)
+                    .map((item) => item.service_id)
+                    .filter(Boolean)
+                    .join(",")}
+                  onChange={setMaterialConsumption}
+                />
               <div className="section-inline-header"><strong>Registro clínico</strong><small>Campos opcionais</small></div>
               <Textarea label="Observações clínicas (opcional)" value={clinicalNotes} onChange={setClinicalNotes} />
               <Textarea label="Intercorrências (opcional)" value={occurrences} onChange={setOccurrences} />
               <Textarea label="Orientações pós-atendimento (opcional)" value={aftercareNotes} onChange={setAftercareNotes} />
-              {operationalChecklist.length > 0 && <div className="soft-card stack">
+              {operationalChecklist.length > 0 && (
+                  <div className="soft-card stack">
                 <div className="section-inline-header"><strong>Checklist do atendimento</strong><small>Opcionais podem ficar em branco</small></div>
-                {operationalChecklist.map((item) => <Checkbox key={item.key} label={`${item.label}${item.required ? " *" : ""}`} checked={Boolean(item.completed)} onChange={(completed) => setOperationalChecklist(operationalChecklist.map((row) => row.key === item.key ? { ...row, completed } : row))} />)}
-              </div>}
-              {operationalRules.biosafety.enabled && <div className="soft-card stack">
+                {operationalChecklist.map((item) => (
+                      <Checkbox key={item.key} label={`${item.label}${item.required ? " *" : ""}`} checked={Boolean(item.completed)} onChange={(completed) => setOperationalChecklist(operationalChecklist.map((row) => (row.key === item.key ? { ...row, completed } : row)))} />
+                    ))}
+              </div>
+                )}
+              {operationalRules.biosafety.enabled && (
+                  <div className="soft-card stack">
                 <div className="section-inline-header"><strong>Rastreabilidade de biossegurança</strong><small>Dados preservados no histórico</small></div>
                 <div className="form-grid">
                   <Input label={`Ciclo de esterilização${operationalRules.biosafety.required_fields.includes("sterilization_cycle") ? " *" : ""}`} value={biosafety.sterilization_cycle} onChange={(sterilization_cycle) => setBiosafety({ ...biosafety, sterilization_cycle })} />
                   <Input label={`Registro/comprovante${operationalRules.biosafety.required_fields.includes("sterilization_record") ? " *" : ""}`} value={biosafety.sterilization_record} onChange={(sterilization_record) => setBiosafety({ ...biosafety, sterilization_record })} />
-                  <Select label={`Joia aplicada${operationalRules.biosafety.required_fields.includes("applied_jewelry") ? " *" : ""}`} value={biosafety.applied_jewelry_id} onChange={(applied_jewelry_id) => setBiosafety({ ...biosafety, applied_jewelry_id })}><option value="">Não informar</option>{safeJewelry.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select>
+                  <Select label={`Joia aplicada${operationalRules.biosafety.required_fields.includes("applied_jewelry") ? " *" : ""}`} value={biosafety.applied_jewelry_id} onChange={(applied_jewelry_id) => setBiosafety({ ...biosafety, applied_jewelry_id })}><option value="">Não informar</option>{safeJewelry.map((item) => (
+                          <option key={item.id} value={item.id}>{item.name}</option>))}</Select>
                 </div>
-                {asArray(biosafety.material_lots).map((material, index) => <div className="form-grid" key={index}>
+                {asArray(biosafety.material_lots).map((material, index) => (
+                      <div className="form-grid" key={index}>
                   <Input label={`Material/lote${operationalRules.biosafety.required_fields.includes("material_lots") ? " *" : ""}`} value={material.batch_code} onChange={(batch_code) => setBiosafety({ ...biosafety, material_lots: biosafety.material_lots.map((row, rowIndex) => rowIndex === index ? { ...row, batch_code } : row) })} placeholder="Ex.: Agulha lote ABC123" />
                   <Input type="number" min="1" label="Quantidade" value={material.quantity} onChange={(quantity) => setBiosafety({ ...biosafety, material_lots: biosafety.material_lots.map((row, rowIndex) => rowIndex === index ? { ...row, quantity } : row) })} />
                   <Button variant="secondary" onClick={() => setBiosafety({ ...biosafety, material_lots: biosafety.material_lots.filter((_, rowIndex) => rowIndex !== index) })}>Remover</Button>
-                </div>)}
+                </div>))}
                 <Button variant="secondary" onClick={() => setBiosafety({ ...biosafety, material_lots: [...biosafety.material_lots, { batch_code: "", quantity: 1 }] })}>Adicionar material/lote</Button>
                 <Textarea label="Observações de biossegurança (opcional)" value={biosafety.notes} onChange={(notes) => setBiosafety({ ...biosafety, notes })} />
-              </div>}
-            </section> : <section className="soft-card stack" aria-label="Registro clínico">
+              </div>
+                )}
+            </section>
+            ) : (
+              <section className="soft-card stack" aria-label="Registro clínico">
               <strong>Registro clínico</strong>
               <p className="appointment-locked-note">Registrado na finalização. Consulte em Agenda → Histórico de atendimentos.</p>
-            </section>}
+            </section>
+            )}
             {/* Fora da condição acima: o indicador químico continua visível e
                 registrável depois que o atendimento é finalizado. */}
             <ChemicalIndicatorPanel appointment={appointment} canEdit={can(currentUser, "clinical_files.edit")} />
@@ -1871,7 +2014,9 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
           <section className="soft-card stack" aria-label="Conferência financeira">
             <div className="section-inline-header">
               <strong>Formas de pagamento</strong>
-              {!attended && <Button variant="secondary" onClick={() => editPayments([...payments, newPaymentRow()])}>{payments.length > 1 ? "Adicionar forma de pagamento" : "Dividir pagamento"}</Button>}
+              {!attended && (
+                <Button variant="secondary" onClick={() => editPayments([...payments, newPaymentRow()])}>{payments.length > 1 ? "Adicionar forma de pagamento" : "Dividir pagamento"}</Button>
+              )}
             </div>
             <AppointmentValueAdjustments
               appointment={appointment}
@@ -1880,18 +2025,49 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
               requireReason
               onChanged={handleAdjustmentsChanged}
             />
-            {!attended && <>
+            {!attended && (
+              <>
               <ResponsiveEditableList
                 items={payments}
                 ariaLabel="Pagamentos do atendimento"
                 getKey={(payment, index) => payment.row_key || index}
                 columns={[
-                  { key: "method", label: "Forma", render: (payment, index) => <PaymentSelect ariaLabel={`Forma ${index + 1}`} value={payment.method} onChange={(value) => updatePayment(index, { method: value })} /> },
-                  { key: "amount", label: "Valor", render: (payment, index) => <Input type="number" aria-label={`Valor ${index + 1}`} value={payment.amount} onChange={(value) => updatePayment(index, { amount: value })} /> },
-                  { key: "status", label: "Status", render: (payment, index) => <Select ariaLabel={payments.length === 1 ? "Status" : `Status ${index + 1}`} value={payment.status} onChange={(value) => updatePayment(index, { status: value })}><option value="pago">Pago</option><option value="pendente" disabled={!canGenerateReceivables}>Pendente{canGenerateReceivables ? "" : " — Profissional"}</option></Select> },
-                  { key: "installments", label: "Parcelas", render: (payment, index) => String(payment.method).toLowerCase().includes("crédito") ? <Input type="number" aria-label={`Parcelas ${index + 1}`} value={payment.installments} onChange={(value) => updatePayment(index, { installments: value })} /> : "—" },
-                  { key: "fee", label: "Taxa da operadora (R$)", render: (payment, index) => String(payment.method).toLowerCase().includes("crédito") ? <Input type="number" aria-label={`Taxa ${index + 1}`} value={payment.fee_amount} onChange={(value) => updatePayment(index, { fee_amount: value })} /> : "—" },
-                  { key: "receipt", label: "Previsão", render: (payment, index) => String(payment.method).toLowerCase().includes("crédito") ? <Input type="date" aria-label={`Previsão ${index + 1}`} value={payment.expected_receipt_date} onChange={(value) => updatePayment(index, { expected_receipt_date: value })} /> : "—" },
+                  { key: "method", label: "Forma", render: (payment, index) => (
+                        <PaymentSelect ariaLabel={`Forma ${index + 1}`} value={payment.method} onChange={(value) => updatePayment(index, { method: value })} />
+                      ),
+                    },
+                  { key: "amount", label: "Valor", render: (payment, index) => (
+                        <Input type="number" aria-label={`Valor ${index + 1}`} value={payment.amount} onChange={(value) => updatePayment(index, { amount: value })} />
+                      ),
+                    },
+                  { key: "status", label: "Status", render: (payment, index) => (
+                        <Select ariaLabel={payments.length === 1 ? "Status" : `Status ${index + 1}`} value={payment.status} onChange={(value) => updatePayment(index, { status: value })}><option value="pago">Pago</option><option value="pendente" disabled={!canGenerateReceivables}>Pendente{canGenerateReceivables ? "" : " — Profissional"}</option></Select>
+                      ),
+                    },
+                  { key: "installments", label: "Parcelas", render: (payment, index) => String(payment.method).toLowerCase().includes("crédito") ? (
+                          <Input type="number" aria-label={`Parcelas ${index + 1}`} value={payment.installments} onChange={(value) => updatePayment(index, { installments: value })} />
+                        ) : (
+                          "—"
+                        ),
+                    },
+                  { key: "card",
+                      label: "Maquininha e valor líquido",
+                      render: (payment, index) => (
+                        <CardFeePreview payment={payment} onChange={(patch) => updatePayment(index, patch)} />
+                      ),
+                    },
+                  { key: "fee", label: "Taxa da operadora (R$)", render: (payment, index) => String(payment.method).toLowerCase().includes("crédito") ? (
+                          <Input type="number" aria-label={`Taxa ${index + 1}`} value={payment.fee_amount} onChange={(value) => updatePayment(index, { fee_amount: value })} />
+                        ) : (
+                          "—"
+                        ),
+                    },
+                  { key: "receipt", label: "Previsão", render: (payment, index) => String(payment.method).toLowerCase().includes("crédito") ? (
+                          <Input type="date" aria-label={`Previsão ${index + 1}`} value={payment.expected_receipt_date} onChange={(value) => updatePayment(index, { expected_receipt_date: value })} />
+                        ) : (
+                          "—"
+                        ),
+                    },
                 ]}
                 onRemove={payments.length > 1 ? (_payment, index) => editPayments(payments.filter((_, itemIndex) => itemIndex !== index)) : null}
               />
@@ -1902,36 +2078,75 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
               )}
               <div className="appointment-payment-summary" aria-live="polite">
                 <span>Saldo antes destes pagamentos: <strong>{currency.format(outstandingBalance)}</strong></span>
-                <span>Recebido nesta finalização: <strong>{currency.format(fromCents(payments.filter((row) => depositReceived(row.status)).reduce((sum, row) => sum + Math.max(0, toCents(row.amount)), 0)))}</strong></span>
-                <span>Saldo pendente: <strong>{currency.format(fromCents(Math.max(0, toCents(outstandingBalance) - payments.filter((row) => depositReceived(row.status)).reduce((sum, row) => sum + Math.max(0, toCents(row.amount)), 0))))}</strong></span>
+                <span>Recebido nesta finalização: {" "}
+                    <strong>{currency.format(fromCents(payments.filter((row) => depositReceived(row.status)).reduce((sum, row) => sum + Math.max(0, toCents(row.amount)), 0)))}</strong></span>
+                <span>Saldo pendente: {" "}
+                    <strong>{currency.format(fromCents(Math.max(0, toCents(outstandingBalance) - payments.filter((row) => depositReceived(row.status)).reduce((sum, row) => sum + Math.max(0, toCents(row.amount)), 0))))}</strong></span>
               </div>
-              {paymentValidation(payments, outstandingBalance) && <p className="form-error" role="alert">{paymentValidation(payments, outstandingBalance)}</p>}
+              {paymentValidation(payments, outstandingBalance) && (
+                  <p className="form-error" role="alert">{paymentValidation(payments, outstandingBalance)}</p>
+                )}
               <small>Registro manual de recebimento. A taxa da operadora reduz o valor líquido recebido pela clínica; não acrescenta juros ao cliente nem confirma aprovação pelo cartão.</small>
               <Textarea label="Observações financeiras" value={financialNotes} onChange={setFinancialNotes} />
               <small>Sinal conferido: {currency.format(asNumber(form.deposit_value))} ({depositReceived(form.deposit_status) ? "recebido" : "pendente"}). Confira o saldo atualizado no resumo financeiro acima.</small>
-            </>}
+            </>
+            )}
           </section>
           <div className="toolbar compact-actions">
             {/* Finalizado: atalhos de status reabririam o atendimento (estornando
                 comissão) num clique; a reabertura fica só no seletor de status. */}
-            {!attended && <Button variant="secondary" onClick={() => saveAppointment({ status: "confirmado" })}>Confirmar</Button>}
-            {!attended && form.status === "confirmado" && <Button variant="secondary" onClick={() => saveAppointment({ status: "chegou" })}>Registrar chegada</Button>}
-            {!attended && form.status === "chegou" && <Button variant="secondary" onClick={() => saveAppointment({ status: "em_atendimento" })}>Iniciar atendimento</Button>}
-            {!attended && <Button variant="secondary" onClick={() => saveAppointment({ status: "remarcado" })}>Reagendar</Button>}
-            {canCancel && <Button variant="secondary" className="danger" onClick={() => setCancellation({ resolution: hasPaidDeposit ? "retain_deposit" : "no_payment", refund_method: "Pix", reason: "" })}>Cancelar</Button>}
-            {canCancel && !["atendido", "cancelado", "nao_compareceu"].includes(form.status) && <Button variant="secondary" onClick={() => setCancellation({ outcome: "no_show", resolution: hasPaidDeposit ? "retain_deposit" : "no_payment", refund_method: "Pix", reason: "" })}>Não compareceu</Button>}
-            {!attended && <Button onClick={completeAppointment} disabled={!canFinalize || completing} title={canFinalize ? undefined : "Finalizar exige a permissão de finalizar atendimentos."}>Revisar e finalizar</Button>}
+            {!attended && (
+              <Button variant="secondary" onClick={() => saveAppointment({ status: "confirmado" })}>Confirmar</Button>
+            )}
+            {!attended && form.status === "confirmado" && (
+              <Button variant="secondary" onClick={() => saveAppointment({ status: "chegou" })}>Registrar chegada</Button>
+            )}
+            {!attended && form.status === "chegou" && (
+              <Button variant="secondary" onClick={() => saveAppointment({ status: "em_atendimento" })}>Iniciar atendimento</Button>
+            )}
+            {!attended && (
+              <Button variant="secondary" onClick={() => saveAppointment({ status: "remarcado" })}>Reagendar</Button>
+            )}
+            {canCancel && (
+              <Button variant="secondary" className="danger" onClick={() => setCancellation({ resolution: hasPaidDeposit ? "retain_deposit" : "no_payment", refund_method: "Pix", reason: "" })}>Cancelar</Button>
+            )}
+            {canCancel && !["atendido", "cancelado", "nao_compareceu"].includes(form.status) && (
+              <Button variant="secondary" onClick={() => setCancellation({ outcome: "no_show", resolution: hasPaidDeposit ? "retain_deposit" : "no_payment", refund_method: "Pix", reason: "" })}>Não compareceu</Button>
+            )}
+            {!attended && (
+              <Button onClick={completeAppointment} disabled={!canFinalize || completing} title={canFinalize ? undefined : "Finalizar exige a permissão de finalizar atendimentos."}>Revisar e finalizar</Button>
+            )}
           </div>
           {attended
-            ? <small className="field-hint">Atendimento finalizado: diferenças de valor entram como ajuste na Conferência financeira; pagamentos são corrigidos pelo Financeiro.</small>
-            : !canFinalize && <small className="field-hint">Finalizar o atendimento exige a permissão “Finalizar atendimento”.</small>}
-          {canResolveFinance && form.status !== "atendido" && form.status !== "cancelado" && <Button variant="secondary" onClick={applyClientCredit}>Aplicar crédito disponível</Button>}
-          {readStoredSession()?.user?.role === "admin" && <Button variant="secondary" className="danger" onClick={openDeletion}>Excluir definitivamente</Button>}
+            ? (
+            <small className="field-hint">Atendimento finalizado: diferenças de valor entram como ajuste na Conferência financeira; pagamentos são corrigidos pelo Financeiro.</small>
+          ) : (
+            !canFinalize && (
+              <small className="field-hint">Finalizar o atendimento exige a permissão “Finalizar atendimento”.</small>
+            )
+          )}
+          {canResolveFinance && form.status !== "atendido" && form.status !== "cancelado" && (
+            <Button variant="secondary" onClick={applyClientCredit}>Aplicar crédito disponível</Button>
+          )}
+          {readStoredSession()?.user?.role === "admin" && (
+            <Button variant="secondary" className="danger" onClick={openDeletion}>Excluir definitivamente</Button>
+          )}
           <Modal open={!!deletion} title="Excluir definitivamente" subtitle="Esta ação exige análise e confirmação" onClose={() => !deletion?.busy && setDeletion(null)} footer={<><Button variant="secondary" onClick={() => setDeletion(null)}>Voltar</Button><Button variant="danger" disabled={!deletion?.canDelete || deletion?.busy || deletion?.confirmation !== "EXCLUIR AGENDAMENTO" || !deletion?.reason?.trim()} onClick={deleteAppointment}>{deletion?.busy ? "Excluindo…" : "Excluir agendamento"}</Button></>}>
-            {deletion && <div className="stack"><div className="soft-card"><strong>{deletion.canDelete ? "Agendamento de teste sem vínculos" : "Exclusão bloqueada"}</strong><p>{deletion.canDelete ? "A exclusão é irreversível e ficará registrada na auditoria." : "Existem vínculos financeiros, clínicos ou de estoque. Cancele o agendamento para preservar o histórico."}</p></div><div className="summary-grid">{Object.entries(deletion.impact).map(([key, value]) => <span key={key}>{key.replaceAll("_", " ")}: <strong>{value}</strong></span>)}</div><Input label="Motivo obrigatório" value={deletion.reason} onChange={(reason) => setDeletion({ ...deletion, reason })} /><Input label="Digite EXCLUIR AGENDAMENTO" value={deletion.confirmation} onChange={(confirmation) => setDeletion({ ...deletion, confirmation })} /></div>}
+            {deletion && (
+              <div className="stack"><div className="soft-card"><strong>{deletion.canDelete ? "Agendamento de teste sem vínculos" : "Exclusão bloqueada"}</strong><p>{deletion.canDelete ? "A exclusão é irreversível e ficará registrada na auditoria." : "Existem vínculos financeiros, clínicos ou de estoque. Cancele o agendamento para preservar o histórico."}</p></div><div className="summary-grid">{Object.entries(deletion.impact).map(([key, value]) => (
+                    <span key={key}>{key.replaceAll("_", " ")}: <strong>{value}</strong></span>))}</div><Input label="Motivo obrigatório" value={deletion.reason} onChange={(reason) => setDeletion({ ...deletion, reason })} /><Input label="Digite EXCLUIR AGENDAMENTO" value={deletion.confirmation} onChange={(confirmation) => setDeletion({ ...deletion, confirmation })} /></div>
+            )}
           </Modal>
           <Modal open={!!cancellation} title={cancellation?.outcome === "no_show" ? "Registrar ausência" : "Cancelar agendamento"} subtitle="Defina o destino do sinal; a decisão ficará auditada." onClose={() => setCancellation(null)} footer={<><Button variant="secondary" onClick={() => setCancellation(null)}>Voltar</Button><Button variant="danger" disabled={!cancellation?.reason?.trim()} onClick={cancelWithResolution}>Confirmar</Button></>}>
-            {cancellation && <div className="stack"><Select label="Resolução financeira" value={cancellation.resolution} onChange={(resolution) => setCancellation({ ...cancellation, resolution })}>{hasPaidDeposit ? <><option value="retain_deposit">Reter sinal</option>{canResolveFinance && <option value="client_credit">Converter sinal em crédito</option>}{canResolveFinance && <option value="manual_refund">Reembolso manual</option>}</> : <option value="no_payment">Sem pagamento recebido</option>}</Select>{cancellation.resolution === "manual_refund" && <PaymentSelect label="Forma do reembolso" value={cancellation.refund_method} onChange={(refund_method) => setCancellation({ ...cancellation, refund_method })} />}<Textarea label="Motivo obrigatório" value={cancellation.reason} onChange={(reason) => setCancellation({ ...cancellation, reason })} /></div>}
+            {cancellation && (
+              <div className="stack"><Select label="Resolução financeira" value={cancellation.resolution} onChange={(resolution) => setCancellation({ ...cancellation, resolution })}>{hasPaidDeposit ? (
+                    <><option value="retain_deposit">Reter sinal</option>{canResolveFinance && <option value="client_credit">Converter sinal em crédito</option>}{canResolveFinance && <option value="manual_refund">Reembolso manual</option>}</>
+                  ) : (
+                    <option value="no_payment">Sem pagamento recebido</option>
+                  )}</Select>{cancellation.resolution === "manual_refund" && (
+                  <PaymentSelect label="Forma do reembolso" value={cancellation.refund_method} onChange={(refund_method) => setCancellation({ ...cancellation, refund_method })} />
+                )}<Textarea label="Motivo obrigatório" value={cancellation.reason} onChange={(reason) => setCancellation({ ...cancellation, reason })} /></div>
+            )}
           </Modal>
         </FormWorkflow>
       )}
@@ -2060,7 +2275,7 @@ export function BookingAdmin({ onBack, initialTab, features = [], onUpgrade }) {
   function updateWeeklyDay(weekday, patch) {
     setWeeklyDays((current) => {
       const base = current.length ? current : weeklyDaysForProfessional(weeklyProfessionalId);
-      return base.map((day) => Number(day.weekday) === Number(weekday) ? { ...day, ...patch } : day);
+      return base.map((day) => (Number(day.weekday) === Number(weekday) ? { ...day, ...patch } : day));
     });
   }
 
@@ -2252,7 +2467,8 @@ export function BookingAdmin({ onBack, initialTab, features = [], onUpgrade }) {
             ["recursos", "Salas e recursos"],
             ["bloqueios", "Disponibilidade avançada"],
             ["solicitacoes", "Solicitações pendentes"]
-          ].map(([id, label]) => <Tabs.Trigger key={id} value={id}>{label}</Tabs.Trigger>)}
+          ].map(([id, label]) => (
+            <Tabs.Trigger key={id} value={id}>{label}</Tabs.Trigger>))}
         </Tabs.List>
       </Tabs>
 
@@ -2299,15 +2515,19 @@ export function BookingAdmin({ onBack, initialTab, features = [], onUpgrade }) {
                 value: (professional) => professionalCommissionLabel(professional).sort,
                 render: (professional) => {
                   const commission = professionalCommissionLabel(professional);
-                  return <span className="appointment-commission-cell">{commission.label}{commission.extra && <small>{commission.extra}</small>}</span>;
+                  return (
+                          <span className="appointment-commission-cell">{commission.label}{commission.extra && <small>{commission.extra}</small>}</span>
+                        );
                 }
               }] : []),
-              { key: "active", label: "Status", value: (professional) => professional.active ? "Ativo" : "Inativo", render: (professional) => <StatusBadge status={professional.active ? "Ativo" : "Inativo"} /> },
+              { key: "active", label: "Status", value: (professional) => (professional.active ? "Ativo" : "Inativo"), render: (professional) => <StatusBadge status={professional.active ? "Ativo" : "Inativo"} /> },
             ]}
-            actions={(professional) => <RowActions actions={[
+            actions={(professional) => (
+              <RowActions actions={[
               { label: "Editar", onClick: () => editProfessional(professional), primary: true },
               { label: "Excluir", onClick: () => removeProfessional(professional), danger: true },
-            ]} />}
+            ]} />
+            )}
             empty="Cadastre pelo menos um profissional para liberar o agendamento online."
             emptyFiltered="Nenhum profissional corresponde aos filtros aplicados."
           />
@@ -2319,12 +2539,12 @@ export function BookingAdmin({ onBack, initialTab, features = [], onUpgrade }) {
             // Com regra de comissão pendente, a guarda de saída liga; sem ela, o
             // modal segue detectando sozinho as edições do cadastro.
             dirty={commissionDirty || undefined}
-            footer={(
+            footer={
               <>
                 <Button variant="secondary" onClick={() => setProfessionalModalOpen(false)}>Cancelar</Button>
                 <Button type="submit" form="professional-form">Salvar profissional</Button>
               </>
-            )}
+            }
           >
             <form id="professional-form" onSubmit={saveProfessional}>
               <div className="form-grid">
@@ -2351,7 +2571,9 @@ export function BookingAdmin({ onBack, initialTab, features = [], onUpgrade }) {
                 </div>
               </div>
               {professionalError && <span className="form-error">{professionalError}</span>}
-              {professionalNotice && <p className="field-hint" role="status">{professionalNotice}</p>}
+              {professionalNotice && (
+                <p className="field-hint" role="status">{professionalNotice}</p>
+              )}
             </form>
             {/* Fora do <form> do profissional: as regras têm salvamento próprio
                 (PUT /professionals/:id/commission-rules) e histórico. */}
@@ -2364,16 +2586,20 @@ export function BookingAdmin({ onBack, initialTab, features = [], onUpgrade }) {
       )}
 
       {tab === "horarios" && (
-        <article className="panel weekly-schedule-panel">
+        <>
+          <article className="panel weekly-schedule-panel">
           <div className="panel-heading">
             <div><h2>Agenda semanal</h2><span>Escolha o profissional e defina os dias e horários de atendimento.</span></div>
           </div>
-          {readinessMessage && <p className={readinessMessage.includes("sucesso") ? "form-success" : "form-error"}>{readinessMessage}</p>}
+          {readinessMessage && (
+              <p className={readinessMessage.includes("sucesso") ? "form-success" : "form-error"}>{readinessMessage}</p>
+            )}
           <form onSubmit={saveWeeklyAvailability}>
             <div className="weekly-schedule-toolbar">
               <Select label="Profissional" value={weeklyProfessionalId} onChange={(value) => setWeeklyProfessionalId(value)}>
                 <option value="">Escolha um profissional</option>
-                {activeProfessionals.map((professional) => <option value={professional.id} key={professional.id}>{professional.name}</option>)}
+                {activeProfessionals.map((professional) => (
+                    <option value={professional.id} key={professional.id}>{professional.name}</option>))}
               </Select>
               <Button variant="primary" type="submit" disabled={!weeklyProfessionalId}>Salvar agenda semanal</Button>
             </div>
@@ -2381,7 +2607,8 @@ export function BookingAdmin({ onBack, initialTab, features = [], onUpgrade }) {
               {weeklyWeekdays.map((weekday) => {
                 const day = weeklyDays.find((item) => Number(item.weekday) === weekday) || defaultWeeklyDay(weekday);
                 const active = Boolean(day.is_active);
-                return <article className={`weekly-schedule-row ${active ? "" : "is-inactive"}`} key={weekday}>
+                return (
+                    <article className={`weekly-schedule-row ${active ? "" : "is-inactive"}`} key={weekday}>
                   <Checkbox className="weekly-day-toggle" checked={active} onChange={(is_active) => updateWeeklyDay(weekday, { is_active })} label={<span><strong>{weekdayLabel(weekday)}</strong><small>{active ? "Atende" : "Fechado"}</small></span>} />
                   <label><span>Início</span><input type="time" value={day.start_time || "09:00"} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { start_time: event.target.value })} /></label>
                   <label><span>Fim</span><input type="time" value={day.end_time || "18:00"} disabled={!active} onChange={(event) => updateWeeklyDay(weekday, { end_time: event.target.value })} /></label>
@@ -2398,12 +2625,15 @@ export function BookingAdmin({ onBack, initialTab, features = [], onUpgrade }) {
                       </Accordion.Content>
                     </Accordion.Item>
                   </Accordion>
-                </article>;
+                </article>
+                  );
               })}
             </div>
             <p className="field-optional">Domingo começa fechado. Para exceções pontuais, use Disponibilidade avançada.</p>
           </form>
         </article>
+          <PublicAvailabilityEditor key={weeklyProfessionalId} professionalId={weeklyProfessionalId} />
+        </>
       )}
 
       {tab === "bloqueios" && (
@@ -2447,10 +2677,12 @@ export function BookingAdmin({ onBack, initialTab, features = [], onUpgrade }) {
                 { key: "start_datetime", label: "Início", render: (block) => new Date(block.start_datetime).toLocaleString("pt-BR") },
                 { key: "end_datetime", label: "Final", render: (block) => new Date(block.end_datetime).toLocaleString("pt-BR") },
               ]}
-              actions={(block) => <RowActions actions={[
+              actions={(block) => (
+                <RowActions actions={[
                 { label: "Editar", onClick: () => editBlock(block), primary: true },
                 { label: "Excluir", onClick: () => removeBlock(block), danger: true },
-              ]} />}
+              ]} />
+              )}
               empty="Nenhuma regra avançada cadastrada ainda."
               emptyFiltered="Nenhuma regra corresponde aos filtros aplicados."
             />
@@ -2461,18 +2693,19 @@ export function BookingAdmin({ onBack, initialTab, features = [], onUpgrade }) {
             title={editingBlockId ? "Editar regra" : "Nova regra"}
             subtitle="Bloqueios removem horários. Horários especiais liberam uma data específica, inclusive domingo."
             onClose={() => { setBlockModalOpen(false); setEditingBlockId(null); }}
-            footer={(
+            footer={
               <>
                 <Button variant="secondary" onClick={() => { setBlockModalOpen(false); setEditingBlockId(null); }}>Cancelar</Button>
                 <Button type="submit" form="block-form">Salvar regra</Button>
               </>
-            )}
+            }
           >
             <form id="block-form" onSubmit={saveBlock}>
               <div className="form-grid">
                 <Select label="Profissional" value={blockForm.professional_id} onChange={(value) => setBlockForm({ ...blockForm, professional_id: value })}>
                   <option value="">Selecione</option>
-                  {professionals.map((professional) => <option value={professional.id} key={professional.id}>{professional.name}</option>)}
+                  {professionals.map((professional) => (
+                    <option value={professional.id} key={professional.id}>{professional.name}</option>))}
                 </Select>
                 <Select label="Tipo de regra" value={blockForm.block_type} onChange={(value) => setBlockForm({
                   ...blockForm,
@@ -2508,7 +2741,9 @@ export function BookingAdmin({ onBack, initialTab, features = [], onUpgrade }) {
       {tab === "solicitacoes" && (
         <div className="panel">
           <div className="panel-heading"><h2>Solicitações pendentes</h2><span>Confirme ou recuse manualmente</span></div>
-          {requestError && <p className="form-error" role="alert">{requestError}</p>}
+          {requestError && (
+            <p className="form-error" role="alert">{requestError}</p>
+          )}
           <div className="appointment-list">
             {safeAppointments.map((item) => (
               <article className="appointment-row" key={item.id}>

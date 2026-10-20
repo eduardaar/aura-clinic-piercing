@@ -37,7 +37,7 @@ export function InstallmentGrid({
   return (
     <section className="soft-card stack installment-grid" aria-label={title}>
       <div className="section-inline-header">
-        <div>
+        <div className="installment-grid-heading">
           <strong>{title}</strong>
           <span>Distribua automaticamente ou personalize cada vencimento, valor e forma.</span>
         </div>
@@ -59,13 +59,19 @@ export function InstallmentGrid({
         columns={[
           { key: "number", label: "Parcela", render: (_installment, index) => index + 1 },
           { key: "due_date", label: "Vencimento", render: (installment, index) => {
-            return <Input type="date" label="Vencimento" value={installment.due_date} onChange={(value) => updateRow(index, "due_date", value)} required />;
+            return (
+                <Input type="date" label="Vencimento" value={installment.due_date} onChange={(value) => updateRow(index, "due_date", value)} required />
+              );
           } },
           { key: "amount", label: "Valor", render: (installment, index) => {
-            return <Input type="number" min="0.01" step="0.01" label="Valor" value={installment.amount} onChange={(value) => updateRow(index, "amount", value)} required />;
+            return (
+                <Input type="number" min="0.01" step="0.01" label="Valor" value={installment.amount} onChange={(value) => updateRow(index, "amount", value)} required />
+              );
           } },
           { key: "payment_method", label: "Forma", render: (installment, index) => {
-            return <PaymentSelect ariaLabel={`Forma da parcela ${index + 1}`} value={installment.payment_method} onChange={(value) => updateRow(index, "payment_method", value)} />;
+            return (
+                <PaymentSelect ariaLabel={`Forma da parcela ${index + 1}`} value={installment.payment_method} onChange={(value) => updateRow(index, "payment_method", value)} />
+              );
           } },
         ]}
       />

@@ -1,0 +1,37 @@
+Validação local — gestão operacional e agendamentos — 20/10/2026
+
+Backend: suíte completa com 757 testes aprovados. Após a conferência adicional
+dos recebimentos, 21 testes de financeiro/consumo passaram novamente; o teste
+do bloqueio de anúncios incompletos também foi aprovado.
+Frontend: 68 testes unitários e 359 testes de componentes aprovados.
+Verificação de tipos, build, lint (sem erros) e auditoria de dependências aprovados.
+
+Cenários verificados:
+- Energia pendente com vencimento futuro; aluguel, água e internet individuais.
+- Pagamento posterior e repetição idempotente, histórico único e caixa correto.
+- Despesas sem alteração de quantidade ou custo de estoque.
+- Conversão de pacote com 100 unidades e custo médio da entrada.
+- Kit com quatro componentes: 100 disponíveis, 99 após um procedimento.
+- Finalização repetida, reabertura com estorno, correção e estoque insuficiente.
+- Opcionais e reutilizáveis sem baixa inicial; relatório de consumo.
+- Categorias consolidadas com compras, movimentos, saldos e vínculos preservados.
+- Débito e crédito de 1x a 12x; taxa e líquido; tabelas antigas preservadas.
+- Renovação concorrente de sessão e falha temporária de rede sem apagar acesso.
+- Busca exata por SKU/variação e filtros de seleção de joias.
+- Liberações públicas por período, semana e mês, respeitando expediente,
+  almoço, bloqueios, ocupações, duração e antecedência.
+
+Navegador real Edge (1440 x 1000) e WebKit com perfil iPhone 13 (390 x 664):
+cadastro de despesa, filtros, pagamento e histórico, queda/reconexão mantendo
+formulário, recarga mantendo acesso, três fluxos de compras, material central,
+salvamento das 13 taxas, editor de kit e identidade pública da plataforma.
+Telas revisadas por captura; sem transbordamento horizontal nos fluxos medidos.
+Nenhum erro de aplicação; aviso benigno conhecido do ResizeObserver ignorado.
+
+Limites da evidência: o iPhone foi emulado em WebKit; não houve teste em aparelho
+físico. Renovação foi exercitada com tokens expirados e chamadas concorrentes,
+sem aguardar 30 dias de calendário. Nenhum protocolo clínico foi predefinido:
+materiais e quantidades devem ser configurados pelo estúdio.
+
+Este arquivo registra QA local. A confirmação de produção depende dos jobs
+de migração/deploy e da conferência pública dos seis anúncios da versão.

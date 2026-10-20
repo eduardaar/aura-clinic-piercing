@@ -26,7 +26,7 @@ export function SecureImage({ src, alt, ...props }) {
       return undefined;
     }
     apiFetch(String(src).replace(/^\/api/, ""))
-      .then((response) => response.ok ? response.blob() : Promise.reject())
+      .then((response) => (response.ok ? response.blob() : Promise.reject()))
       .then((blob) => {
         objectUrl = URL.createObjectURL(blob);
         if (active) setUrl(objectUrl);
@@ -114,7 +114,9 @@ function FinancialFlowCard({ icon: Icon, label, value, operator, variant = "", c
   return (
     <article className={`financial-flow__card${variant ? ` ${variant}` : ""}`}>
       <span className="financial-flow__label">
-        {operator && <span className="financial-flow__operator" aria-hidden="true">{operator}</span>}
+        {operator && (
+          <span className="financial-flow__operator" aria-hidden="true">{operator}</span>
+        )}
         <Icon size={18} aria-hidden="true" />
         {label}
       </span>
@@ -208,7 +210,9 @@ function FinancialDiscountField({ value, percentBase, max, onChange }) {
           fieldClassName="financial-discount-field__percent"
         />
       </div>
-      {error && <small id={errorId} className="financial-discount-field__error" role="alert">{error}</small>}
+      {error && (
+        <small id={errorId} className="financial-discount-field__error" role="alert">{error}</small>
+      )}
     </div>
   );
 }
@@ -266,16 +270,23 @@ export function FinancialSummary({ summary = {}, discountEditable = false, onDis
       <div className="financial-flow" role="group" aria-label={`Composição do valor: bruto menos descontos${showAdjustments ? ", mais ou menos ajustes" : ""}, igual ao líquido; líquido menos o pago, igual ao restante`}>
         <FinancialFlowCard icon={Receipt} label="Valor bruto" value={formatMoney(gross)} />
         <FinancialFlowCard icon={Tag} operator="−" label="Descontos" value={`− ${formatMoney(discount)}`} variant={`is-discount${editable ? " is-editable" : ""}`}>
-          {editable && <FinancialDiscountField value={manualDiscount} percentBase={percentBase} max={maxDiscount} onChange={onDiscountChange} />}
+          {editable && (
+            <FinancialDiscountField value={manualDiscount} percentBase={percentBase} max={maxDiscount} onChange={onDiscountChange} />
+          )}
           {breakdown.length > 0 && (
             <ul className="financial-flow__breakdown" aria-label="Detalhamento do desconto">
-              {breakdown.map((item) => <li key={item.key}><span>{item.label}</span><span>− {formatMoney(item.value)}</span></li>)}
+              {breakdown.map((item) => (
+                <li key={item.key}><span>{item.label}</span><span>− {formatMoney(item.value)}</span></li>))}
             </ul>
           )}
           {/* Somente leitura: o motivo gravado continua visível para quem confere. */}
-          {!editable && manualDiscount > 0 && String(discountReason ?? "").trim() && <small className="financial-flow__reason">Motivo: {String(discountReason).trim()}</small>}
+          {!editable && manualDiscount > 0 && String(discountReason ?? "").trim() && (
+            <small className="financial-flow__reason">Motivo: {String(discountReason).trim()}</small>
+          )}
         </FinancialFlowCard>
-        {showAdjustments && <FinancialFlowCard icon={ArrowUpDown} operator="±" label="Ajustes" value={adjustmentLabel} variant={adjustment > 0 ? "is-increase" : adjustment < 0 ? "is-discount" : ""} />}
+        {showAdjustments && (
+          <FinancialFlowCard icon={ArrowUpDown} operator="±" label="Ajustes" value={adjustmentLabel} variant={adjustment > 0 ? "is-increase" : adjustment < 0 ? "is-discount" : ""} />
+        )}
         <FinancialFlowCard icon={CreditCard} operator="=" label="Valor líquido" value={formatMoney(net)} variant="is-featured" />
         <FinancialFlowCard icon={CircleDollarSign} operator="−" label="Total pago" value={formatMoney(totalPaid)} variant="is-paid" />
         <FinancialFlowCard icon={Clock3} operator="=" label="Valor restante" value={formatMoney(outstanding)} variant="is-featured" />
@@ -294,7 +305,9 @@ export function FinancialSummary({ summary = {}, discountEditable = false, onDis
         <div><Banknote size={19} aria-hidden="true" /><span>Sinal pago</span><strong>{formatMoney(deposit)}</strong></div>
         <div><CreditCard size={19} aria-hidden="true" /><span>Outros pagamentos</span><strong>{formatMoney(otherPayments)}</strong></div>
         <div className={`financial-balance__final${overpayment > 0 ? " is-overpaid" : ""}`}><CircleDollarSign size={19} aria-hidden="true" /><span>{overpayment > 0 ? "Excedente" : "Saldo final"}</span><strong>{formatMoney(overpayment > 0 ? overpayment : outstanding)}</strong>{overpayment > 0 && <small>Pago acima do líquido</small>}</div>
-        {couponCode && <div><Tag size={19} aria-hidden="true" /><span>Cupom aplicado</span><strong>{couponCode} <BadgeCheck size={17} aria-label="válido" /></strong><small>− {formatMoney(couponShown)}{couponPercent > 0 ? ` (${couponPercent}%)` : ""}</small></div>}
+        {couponCode && (
+          <div><Tag size={19} aria-hidden="true" /><span>Cupom aplicado</span><strong>{couponCode} <BadgeCheck size={17} aria-label="válido" /></strong><small>− {formatMoney(couponShown)}{couponPercent > 0 ? ` (${couponPercent}%)` : ""}</small></div>
+        )}
       </div>
       <Accordion className="financial-composition">
         <Accordion.Item value="composition">
@@ -302,7 +315,9 @@ export function FinancialSummary({ summary = {}, discountEditable = false, onDis
           <Accordion.Content><div className="financial-composition-values"><span>Serviços <strong>{formatMoney(summary.serviceSubtotal ?? summary.service_value)}</strong></span><span>Produtos <strong>{formatMoney(summary.productSubtotal ?? summary.product_value)}</strong></span></div></Accordion.Content>
         </Accordion.Item>
       </Accordion>
-      {couponCode && <div className="coupon-success"><BadgeCheck size={24} aria-hidden="true" /><div><strong>Cupom aplicado com sucesso.</strong><span>Desconto de {formatMoney(couponShown)}{couponPercent > 0 ? ` (${couponPercent}%)` : ""} aplicado sobre o valor elegível.</span></div></div>}
+      {couponCode && (
+        <div className="coupon-success"><BadgeCheck size={24} aria-hidden="true" /><div><strong>Cupom aplicado com sucesso.</strong><span>Desconto de {formatMoney(couponShown)}{couponPercent > 0 ? ` (${couponPercent}%)` : ""} aplicado sobre o valor elegível.</span></div></div>
+      )}
     </section>
   );
 }
@@ -336,7 +351,7 @@ export const Input = React.forwardRef(
   }
 );
 
-/** @typedef {{ label?: React.ReactNode, value?: string | number, onChange: (value: string) => void, children?: React.ReactNode, required?: boolean, className?: string, triggerClassName?: string, id?: string, ariaLabel?: string }} SelectProps */
+/** @typedef {{ label?: React.ReactNode, value?: string | number, onChange: (value: string) => void, children?: React.ReactNode, required?: boolean, className?: string, triggerClassName?: string, id?: string, ariaLabel?: string, portalContainer?: HTMLElement | null }} SelectProps */
 const EMPTY_SELECT_VALUE = "__aura_empty_select_value__";
 
 function selectItems(children) {
@@ -363,7 +378,9 @@ function selectItems(children) {
 }
 
 /** @param {SelectProps} props */
-export function Select({ label, value, onChange, children, required, className = "", triggerClassName = "", id, ariaLabel }) {
+export function Select({ label, value, onChange, children, required, className = "", triggerClassName = "", id, ariaLabel,
+  portalContainer,
+}) {
   const normalizedValue = String(value ?? "") || EMPTY_SELECT_VALUE;
   const content = (
     <SelectPrimitive.Root value={normalizedValue} onValueChange={(nextValue) => onChange(nextValue === EMPTY_SELECT_VALUE ? "" : nextValue)} required={required}>
@@ -371,7 +388,7 @@ export function Select({ label, value, onChange, children, required, className =
         <SelectPrimitive.Value />
         <SelectPrimitive.Icon className="ui-select-icon"><ChevronDown size={17} /></SelectPrimitive.Icon>
       </SelectPrimitive.Trigger>
-      <SelectPrimitive.Portal>
+      <SelectPrimitive.Portal container={portalContainer}>
         <SelectPrimitive.Content className="ui-select-content" position="popper" sideOffset={6}>
           <SelectPrimitive.Viewport className="ui-select-viewport">{selectItems(children)}</SelectPrimitive.Viewport>
         </SelectPrimitive.Content>
@@ -431,7 +448,9 @@ export function StatusSelect({ value, onChange, options = ["pendente", "confirma
       {options.map((option) => {
         const code = typeof option === "string" ? option : option.value;
         const label = typeof option === "string" ? STATUS_SELECT_LABELS[option] || option.replace(/_/g, " ") : option.label;
-        return <option key={code} value={code}>{label}</option>;
+        return (
+          <option key={code} value={code}>{label}</option>
+        );
       })}
     </Select>
   );
@@ -561,15 +580,21 @@ export function Tabs({ value, defaultValue, onValueChange, onChange, className =
 
 /** @param {{ className?: string, children?: React.ReactNode, "aria-label"?: string, [key: string]: any }} props */
 Tabs.List = function TabsList({ className = "", children, "aria-label": ariaLabel = "Abas", ...props }) {
-  return <TabsPrimitive.List {...props} aria-label={ariaLabel} className={`ui-tabs-list${className ? ` ${className}` : ""}`}>{children}</TabsPrimitive.List>;
+  return (
+    <TabsPrimitive.List {...props} aria-label={ariaLabel} className={`ui-tabs-list${className ? ` ${className}` : ""}`}>{children}</TabsPrimitive.List>
+  );
 };
 /** @param {{ value: string, className?: string, children?: React.ReactNode, [key: string]: any }} props */
 Tabs.Trigger = function TabsTrigger({ className = "", children, ...props }) {
-  return <TabsPrimitive.Trigger {...props} className={`ui-tabs-trigger${className ? ` ${className}` : ""}`}>{children}</TabsPrimitive.Trigger>;
+  return (
+    <TabsPrimitive.Trigger {...props} className={`ui-tabs-trigger${className ? ` ${className}` : ""}`}>{children}</TabsPrimitive.Trigger>
+  );
 };
 /** @param {{ value: string, className?: string, children?: React.ReactNode, [key: string]: any }} props */
 Tabs.Content = function TabsContent({ className = "", children, ...props }) {
-  return <TabsPrimitive.Content {...props} className={`ui-tabs-content${className ? ` ${className}` : ""}`}>{children}</TabsPrimitive.Content>;
+  return (
+    <TabsPrimitive.Content {...props} className={`ui-tabs-content${className ? ` ${className}` : ""}`}>{children}</TabsPrimitive.Content>
+  );
 };
 
 /**
@@ -610,19 +635,27 @@ export function Accordion({ type = "single", value, defaultValue, onValueChange,
 
 /** @param {{ value: string, className?: string, children?: React.ReactNode, [key: string]: any }} props */
 Accordion.Item = function AccordionItem({ className = "", children, ...props }) {
-  return <AccordionPrimitive.Item {...props} className={`ui-accordion-item${className ? ` ${className}` : ""}`}>{children}</AccordionPrimitive.Item>;
+  return (
+    <AccordionPrimitive.Item {...props} className={`ui-accordion-item${className ? ` ${className}` : ""}`}>{children}</AccordionPrimitive.Item>
+  );
 };
 /** @param {{ className?: string, children?: React.ReactNode, [key: string]: any }} props */
 Accordion.Header = function AccordionHeader({ className = "", children, ...props }) {
-  return <AccordionPrimitive.Header {...props} className={`ui-accordion-header${className ? ` ${className}` : ""}`}>{children}</AccordionPrimitive.Header>;
+  return (
+    <AccordionPrimitive.Header {...props} className={`ui-accordion-header${className ? ` ${className}` : ""}`}>{children}</AccordionPrimitive.Header>
+  );
 };
 /** @param {{ className?: string, children?: React.ReactNode, [key: string]: any }} props */
 Accordion.Trigger = function AccordionTrigger({ className = "", children, ...props }) {
-  return <AccordionPrimitive.Trigger {...props} className={`ui-accordion-trigger${className ? ` ${className}` : ""}`}>{children}<ChevronDown className="ui-accordion-chevron" size={18} aria-hidden="true" /></AccordionPrimitive.Trigger>;
+  return (
+    <AccordionPrimitive.Trigger {...props} className={`ui-accordion-trigger${className ? ` ${className}` : ""}`}>{children}<ChevronDown className="ui-accordion-chevron" size={18} aria-hidden="true" /></AccordionPrimitive.Trigger>
+  );
 };
 /** @param {{ className?: string, children?: React.ReactNode, [key: string]: any }} props */
 Accordion.Content = function AccordionContent({ className = "", children, ...props }) {
-  return <AccordionPrimitive.Content {...props} className={`ui-accordion-content${className ? ` ${className}` : ""}`}><div className="ui-accordion-content-inner">{children}</div></AccordionPrimitive.Content>;
+  return (
+    <AccordionPrimitive.Content {...props} className={`ui-accordion-content${className ? ` ${className}` : ""}`}><div className="ui-accordion-content-inner">{children}</div></AccordionPrimitive.Content>
+  );
 };
 
 /**

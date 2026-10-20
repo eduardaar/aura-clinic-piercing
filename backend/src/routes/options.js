@@ -106,7 +106,8 @@ async function listInventoryCategories(db) {
 }
 
 async function ensureCategoryExists(db, name, { activeOnly = false } = {}) {
-  const category = await db.get("SELECT * FROM inventory_options WHERE type = 'category' AND name = ?", [name]);
+  const category = await db.get(
+    "SELECT * FROM inventory_options WHERE type='category' AND translate(lower(trim(name)),'áàâãäéèêëíìîïóòôõöúùûüç','aaaaaeeeeiiiiooooouuuuc')=translate(lower(trim(?)),'áàâãäéèêëíìîïóòôõöúùûüç','aaaaaeeeeiiiiooooouuuuc') ORDER BY is_active DESC,id LIMIT 1", [name]);
   if (!category) return null;
   if (activeOnly && !Number(category.is_active ?? 1)) return null;
   return category;
@@ -117,7 +118,15 @@ async function categoryById(db, id) {
 }
 
 async function moveCategoryProducts(db, fromName, toName) {
-  const result = await db.run("UPDATE jewelry_inventory SET category = ? WHERE category = ?", [toName, fromName]);
+  const column = await db.get(
+    "SELECT 1 AS present FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='jewelry_inventory' AND column_name='category_id'",
+  );
+  const result = column
+    ? await db.run(
+        "UPDATE jewelry_inventory SET category=?,category_id=(SELECT id FROM inventory_options WHERE type='category' AND name=?) WHERE category=?",
+        [toName, toName, fromName],
+      )
+    : await db.run("UPDATE jewelry_inventory SET category = ? WHERE category = ?", [toName, fromName]);
   return result.changes || 0;
 }
 

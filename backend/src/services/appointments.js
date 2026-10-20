@@ -1,4 +1,6 @@
 import { normalizeCompletionPayments } from "./completionPayments.js";
+import { applyConfiguredCardFee } from "./cardFees.js";
+import { getPublicAvailability, publicSlotIsReleased, validBookingDate } from "./publicBookingAvailability.js";
 // Serviços de agendamentos, clientes vinculados, serviços e slots de agenda.
 import {
   timeToMinutes,
@@ -101,7 +103,8 @@ export async function normalizeAppointmentItems(db, body = {}) {
   const items = [];
   const clinicOperationalSettings = await getClinicOperationalSettings(db);
   for (const raw of baseItems) {
-    const serviceId = raw.service_id !== undefined ? (raw.service_id ? Number(raw.service_id) : null) : (body.service_id ? Number(body.service_id) : null);
+    const serviceId = raw.service_id !== undefined ? raw.service_id ? Number(raw.service_id) : null
+        : body.service_id ? Number(body.service_id) : null;
     const procedureId = raw.procedure_id ? Number(raw.procedure_id) : null;
     const jewelryId = raw.jewelry_id ? Number(raw.jewelry_id) : null;
     const variantId = raw.jewelry_variant_id ? Number(raw.jewelry_variant_id) : null;
@@ -112,11 +115,11 @@ export async function normalizeAppointmentItems(db, body = {}) {
     const jewelry = jewelryId ? await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [jewelryId]) : null;
     const variant = variantId ? await db.get("SELECT * FROM jewelry_variants WHERE id = ?", [variantId]) : null;
     const procedureValue = submittedItems.length
-      ? raw.procedure_price ?? raw.service_price ?? procedure?.price ?? service?.price ?? body.procedure_value ?? body.service_value ?? 0
+      ? (raw.procedure_price ?? raw.service_price ?? procedure?.price ?? service?.price ?? body.procedure_value ?? body.service_value ?? 0)
       : raw.procedure_price || raw.service_price || procedure?.price || service?.price || body.procedure_value || body.service_value || 0;
     const procedurePrice = parseMoneyInputCents(procedureValue, "O valor do procedimento") / 100;
     const jewelryValue = submittedItems.length
-      ? raw.jewelry_unit_price ?? raw.unit_price ?? variant?.sale_value ?? jewelry?.sale_value ?? body.jewelry_value ?? 0
+      ? (raw.jewelry_unit_price ?? raw.unit_price ?? variant?.sale_value ?? jewelry?.sale_value ?? body.jewelry_value ?? 0)
       : raw.jewelry_unit_price || raw.unit_price || variant?.sale_value || jewelry?.sale_value || body.jewelry_value || 0;
     const jewelryUnitPrice = jewelryId ? parseMoneyInputCents(jewelryValue, "O valor da joia") / 100 : 0;
     const duration = Number(raw.duration_minutes || procedure?.duration_minutes || service?.duration_minutes || body.duration_minutes || 0);
@@ -382,7 +385,7 @@ async function decorateService(db, service) {
   service.base_price = service.price;
   service.online_booking_enabled = service.active_online_booking;
   service.professional_ids = (await db.all("SELECT professional_id FROM professional_services WHERE service_id = ?", [service.id])).map((item) => item.professional_id);
-  service.inventory_items = await db.all("SELECT inventory_item_id,quantity,notes FROM service_inventory_recipes WHERE service_id=? ORDER BY id", [service.id]);
+  service.inventory_items = await db.all("SELECT * FROM service_inventory_recipes WHERE service_id=? ORDER BY id", [service.id]);
   service.compatible_jewelry_ids = (await db.all("SELECT inventory_item_id FROM service_compatible_inventory_items WHERE service_id=? ORDER BY inventory_item_id", [service.id])).map((item) => item.inventory_item_id);
   return service;
 }
@@ -402,7 +405,7 @@ export async function listServices(db, { where = "", params = [], paging = null 
     services.map((service) => service.id)
   );
   const recipes = await db.all(
-    `SELECT service_id,inventory_item_id,quantity,notes FROM service_inventory_recipes WHERE service_id IN (${services.map(() => "?").join(",")}) ORDER BY id`,
+    `SELECT * FROM service_inventory_recipes WHERE service_id IN (${services.map(() => "?").join(",")}) ORDER BY id`,
     services.map((service) => service.id)
   );
   const compatible = await db.all(
@@ -414,7 +417,7 @@ export async function listServices(db, { where = "", params = [], paging = null 
     base_price: service.price,
     online_booking_enabled: service.active_online_booking,
     professional_ids: links.filter((link) => link.service_id === service.id).map((link) => link.professional_id),
-    inventory_items: recipes.filter((item) => item.service_id === service.id).map(({ inventory_item_id, quantity, notes }) => ({ inventory_item_id, quantity, notes })),
+    inventory_items: recipes.filter((item) => item.service_id === service.id),
     compatible_jewelry_ids: compatible.filter((item) => item.service_id === service.id).map((item) => item.inventory_item_id)
   }));
 }
@@ -442,23 +445,54 @@ export async function replaceCompatibleServiceItems(db, serviceId, inventoryItem
   for (const id of ids) {
     const item = await db.get("SELECT id FROM jewelry_inventory WHERE id=? AND can_use_in_service=true AND status!='arquivado'", [id]);
     if (!item) throw new Error(`Joia compatível ${id} não está disponível para atendimento.`);
-    await db.run("INSERT INTO service_compatible_inventory_items (service_id,inventory_item_id) VALUES (?,?) ON CONFLICT DO NOTHING", [serviceId, id]);
+    await db.run("INSERT INTO service_compatible_inventory_items (service_id,inventory_item_id) VALUES (?,?) ON CONFLICT DO NOTHING", [serviceId, id],
+    );
   }
 }
 
-export async function availableBookingSlots(db, { service, professionalId, date, now = new Date() }) {
+// Monthly lookups share these rows instead of issuing queries for every day.
+export async function bookingCalendarContext(db, { professionalId, from, to }) {
+  const availability = await db.all(
+    "SELECT * FROM professional_availability WHERE professional_id = ? AND is_active = 1",
+    [professionalId],
+  );
+  const appointments = await db.all(
+    `SELECT appointment_date, appointment_time, end_time, service_rules_snapshot FROM appointments
+      WHERE professional_id = ? AND appointment_date >= ? AND appointment_date <= ?
+      AND status NOT IN ('cancelado', 'recusado', 'remarcado', 'nao_compareceu')`,
+    [professionalId, from, to],
+  );
+  const blocks = await db.all(
+    `SELECT * FROM schedule_blocks WHERE professional_id = ?
+      AND DATE(start_datetime) <= DATE(?) AND DATE(end_datetime) >= DATE(?)`,
+    [professionalId, to, from]);
+  const publicAvailability = await getPublicAvailability(db, professionalId);
+  return { availability, appointments, blocks, publicAvailability };
+}
+
+export async function availableBookingSlots(db, { service, professionalId, date, now = new Date(), calendarContext }) {
+  if (!validBookingDate(date)) return [];
+  const releases = calendarContext?.publicAvailability || (await getPublicAvailability(db, professionalId));
   const weekday = new Date(`${date}T12:00:00`).getDay();
-  const availability = await db.get(
+  const availability = calendarContext
+    ? calendarContext.availability.find((row) => Number(row.weekday) === weekday)
+    : await db.get(
     "SELECT * FROM professional_availability WHERE professional_id = ? AND weekday = ? AND is_active = 1",
     [professionalId, weekday]
   );
-  const appointments = await db.all(
+  const appointments = calendarContext
+    ? calendarContext.appointments.filter((row) => String(row.appointment_date).slice(0, 10) === date)
+    : await db.all(
     `SELECT appointment_time, end_time, service_rules_snapshot
      FROM appointments
      WHERE professional_id = ? AND appointment_date = ? AND status NOT IN ('cancelado', 'recusado', 'remarcado', 'nao_compareceu')`,
     [professionalId, date]
   );
-  const blocks = await db.all(
+  const blocks = calendarContext
+    ? calendarContext.blocks.filter(
+        (row) => String(row.start_datetime).slice(0, 10) <= date && String(row.end_datetime).slice(0, 10) >= date,
+      )
+    : await db.all(
     `SELECT *
      FROM schedule_blocks
      WHERE professional_id = ? AND DATE(start_datetime) <= DATE(?) AND DATE(end_datetime) >= DATE(?)`,
@@ -490,10 +524,21 @@ export async function availableBookingSlots(db, { service, professionalId, date,
     return [];
   }
 
+  const releasedWindows = releases.restricted
+    ? availabilityWindows.flatMap((window) =>
+        releases.windows
+          .filter((release) => date >= release.from && date <= release.to && release.weekdays.includes(weekday))
+          .map((release) => ({
+            ...window,
+            start_time: window.start_time > release.start_time ? window.start_time : release.start_time,
+            end_time: window.end_time < release.end_time ? window.end_time : release.end_time,
+          })),
+      )
+    : availabilityWindows;
   const slots = [];
   const serviceInterval = Math.max(0, Number(service.scheduling_interval_minutes || 0));
   const minimumStart = now.getTime() + Math.max(0, Number(service.minimum_advance_minutes || 0)) * 60_000;
-  for (const window of availabilityWindows) {
+  for (const window of releasedWindows) {
     const duration = Number(service.duration_minutes || window.duration_minutes || 40);
     const interval = Math.max(serviceInterval, Number(window.buffer_minutes || 0));
     const step = duration + interval;
@@ -501,13 +546,16 @@ export async function availableBookingSlots(db, { service, professionalId, date,
       const start = cursor;
       const end = cursor + duration;
       const slotTime = minutesToTime(start);
+      if (!publicSlotIsReleased(releases, date, slotTime, minutesToTime(end))) continue;
       if (new Date(`${date}T${slotTime}:00`).getTime() < minimumStart) continue;
       if (window.lunch_start && window.lunch_end && rangesOverlap(start, end, timeToMinutes(window.lunch_start), timeToMinutes(window.lunch_end))) continue;
       if (appointments.some((item) => {
         const existingInterval = Math.max(0, ...parseServiceRulesSnapshot(item.service_rules_snapshot).map((rule) => Number(rule.scheduling_interval_minutes || 0)));
         return rangesOverlap(start, end + interval, timeToMinutes(item.appointment_time), timeToMinutes(item.end_time || addMinutesToTime(item.appointment_time, duration)) + existingInterval);
       })) continue;
-      if (blocks.some((block) => blockType(block) !== "special_hours" && !Number(block.is_full_day || 0) && rangesOverlap(start, end, dateTimeToDayMinutes(block.start_datetime), dateTimeToDayMinutes(block.end_datetime)))) continue;
+      if (blocks.some((block) => blockType(block) !== "special_hours" && !Number(block.is_full_day || 0) && rangesOverlap(start, end,
+              String(block.start_datetime).slice(0, 10) < date ? 0 : dateTimeToDayMinutes(block.start_datetime),
+              String(block.end_datetime).slice(0, 10) > date ? 1440 : dateTimeToDayMinutes(block.end_datetime)))) continue;
       slots.push({ time: slotTime, end_time: minutesToTime(end), source: window.source });
     }
   }
@@ -857,27 +905,32 @@ export async function registerCompletionPayments(db, appointmentId, rawPayments 
     [appointmentId]
   );
   for (let index = 0; index < payments.length; index += 1) {
-    const item = payments[index];
+    const item = await applyConfiguredCardFee(db, payments[index], { current: existing[index] });
     const current = existing[index];
     if (current) {
       await db.run(
         `UPDATE payments SET amount=?, payment_type='restante', method=?, status=?, paid_at=?, installments=?,
-           fee_amount=?, net_amount=?, expected_receipt_date=?, notes=?, created_by_user_id=? WHERE id=?`,
-        [item.amount, item.method, item.status, ["pago", "confirmado"].includes(item.status) ? (current.paid_at || localTimestamp()) : null,
+           fee_amount=?, net_amount=?, expected_receipt_date=?, notes=?, created_by_user_id=?,card_fee_table_id=?,card_fee_snapshot=? WHERE id=?`,
+        [item.amount, item.method, item.status, ["pago", "confirmado"].includes(item.status) ? current.paid_at || localTimestamp() : null,
           item.installments, item.fee_amount, Math.max(0, item.amount - item.fee_amount), item.expected_receipt_date,
-          item.notes, userId, current.id]
+          item.notes, userId,
+          item.card_fee_table_id,
+          JSON.stringify(item.card_fee_snapshot), current.id]
       );
     } else {
       await db.run(
         `INSERT INTO payments
           (appointment_id, client_id, amount, payment_type, method, status, paid_at, installments,
-           fee_amount, net_amount, expected_receipt_date, notes, created_by_user_id, idempotency_key)
-         VALUES (?, ?, ?, 'restante', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           fee_amount, net_amount, expected_receipt_date, notes, created_by_user_id, idempotency_key,card_fee_table_id,card_fee_snapshot)
+         VALUES (?, ?, ?, 'restante', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?)
          ON CONFLICT DO NOTHING`,
         [appointmentId, appointment.client_id, item.amount, item.method, item.status,
           ["pago", "confirmado"].includes(item.status) ? localTimestamp() : null, item.installments, item.fee_amount,
           Math.max(0, item.amount - item.fee_amount), item.expected_receipt_date, item.notes, userId,
-          `appointment:${appointmentId}:completion:${index + 1}`]
+          `appointment:${appointmentId}:completion:${index + 1}`,
+          item.card_fee_table_id,
+          JSON.stringify(item.card_fee_snapshot),
+        ]
       );
     }
   }

@@ -352,4 +352,7 @@ REMOTE
 
 health_check
 
+echo "==> Publicando anúncios da atualização em Novidades"
+${rsh} "${target}" "cd '${REMOTE_COMPOSE_DIR}' && docker compose exec -T aura-api node scripts/release-notes.mjs publish"
+
 echo "==> Deploy concluído com sucesso: ${SITE_URL}"

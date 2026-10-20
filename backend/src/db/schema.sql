@@ -57,6 +57,9 @@ CREATE TABLE IF NOT EXISTS user_sessions (
 );
 CREATE INDEX IF NOT EXISTS idx_user_sessions_user_active
   ON user_sessions(user_id, last_used_at DESC) WHERE revoked_at IS NULL;
+ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS previous_refresh_token_hash TEXT;
+ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS previous_refresh_valid_until TIMESTAMPTZ;
+ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS remember_access BOOLEAN NOT NULL DEFAULT true;
 
 -- TOTP é opcional durante a transição para não bloquear administradores já
 -- existentes. Depois de habilitado, é obrigatório no login. O segredo é
@@ -1967,3 +1970,29 @@ BEGIN
   END LOOP;
 END
 $$;
+
+CREATE TABLE IF NOT EXISTS financial_entry_payments (
+  id SERIAL PRIMARY KEY,
+  entry_id INTEGER NOT NULL REFERENCES financial_entries(id),
+  amount NUMERIC(12,2) NOT NULL,
+  paid_at TEXT NOT NULL,
+  payment_method TEXT NOT NULL,
+  notes TEXT NOT NULL DEFAULT '',
+  user_id INTEGER REFERENCES users(id),
+  idempotency_key TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (entry_id, idempotency_key)
+);
+
+CREATE TABLE IF NOT EXISTS card_fee_tables (
+  id SERIAL PRIMARY KEY,
+  operator_name TEXT NOT NULL,
+  valid_from DATE NOT NULL,
+  debit_percent NUMERIC(7,4) NOT NULL CHECK (debit_percent BETWEEN 0 AND 100),
+  credit_rates JSONB NOT NULL,
+  created_by_user_id INTEGER REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS card_fee_table_id INTEGER REFERENCES card_fee_tables(id);
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS card_fee_snapshot JSONB;
+ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS card_fee_table_id INTEGER REFERENCES card_fee_tables(id);

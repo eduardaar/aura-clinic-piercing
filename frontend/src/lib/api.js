@@ -7,7 +7,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 // própria máquina em builds que não receberam VITE_API_URL.
 export const API = import.meta.env.PROD
   ? "/api"
-  : (import.meta.env.VITE_API_URL || "http://localhost:4000/api");
+  : import.meta.env.VITE_API_URL || "http://localhost:4000/api";
 export const API_ORIGIN = API.replace(/\/api$/, "");
 
 // --- Contratos da camada de dados -------------------------------------------
@@ -105,7 +105,7 @@ try {
 export function readStoredSession() {
   try {
     // Retorna a sessão armazenada no localStorage ou null. Não fabrica sessão de admin em nenhum ambiente.
-    const storedSession = JSON.parse(localStorage.getItem("aura-session") || "null");
+    const storedSession = JSON.parse(localStorage.getItem("aura-session") || sessionStorage.getItem("aura-session") || "null");
     return storedSession || null;
   } catch {
     localStorage.removeItem("aura-session");
@@ -117,27 +117,33 @@ export function readStoredSession() {
  * @returns {string} Token da sessão, ou "" quando não há sessão.
  */
 export function authToken() {
-  try {
-    return JSON.parse(localStorage.getItem("aura-session") || "null")?.token || "";
-  } catch {
-    localStorage.removeItem("aura-session");
-    return "";
+    return readStoredSession()?.token || "";
   }
+
+/** @param {any} session @param {boolean} [remember] */
+export function storeAccessSession(session, remember = !sessionStorage.getItem("aura-session")) {
+  const target = remember ? localStorage : sessionStorage;
+  const other = remember ? sessionStorage : localStorage;
+  other.removeItem("aura-session");
+  target.setItem("aura-session", JSON.stringify(session));
+    return session;
 }
 
 function saveAccessSession(payload) {
   try {
     const current = readStoredSession() || {};
     const next = { ...current, token: payload.token, ...(payload.user ? { user: payload.user } : {}) };
-    localStorage.setItem("aura-session", JSON.stringify(next));
+    storeAccessSession(next);
     return next;
   } catch {
     return null;
   }
 }
 
-function clearAccessSession() {
+export function clearAccessSession() {
   try { localStorage.removeItem("aura-session"); } catch { /* storage indisponível */ }
+  try {
+    sessionStorage.removeItem("aura-session"); } catch { /* storage indisponível */ }
 }
 
 export const ACCESS_SESSION_ENDED_EVENT = "aura:session-ended";
@@ -154,15 +160,30 @@ async function isTenantSessionError(response) {
   return TENANT_SESSION_ERROR_CODES.has(payload?.code);
 }
 
-async function refreshAccessToken() {
-  const response = await fetch(`${API}/auth/refresh`, {
+const refreshRequests = new Map();
+async function refreshAccessToken(failedToken, tenant) {
+  const lockKey = `aura-refresh-${tenant}`;
+  if (refreshRequests.has(lockKey)) return refreshRequests.get(lockKey);
+  const refresh = async () => {
+    if (authToken() && authToken() !== failedToken) return readStoredSession();
+    const response = await fetch(`${API}/auth/refresh`, {
     method: "POST",
     credentials: "include",
-    headers: { "X-Tenant": tenantSlug() }
+    headers: { "X-Tenant": tenant }
   });
-  if (!response.ok) return null;
+  if (response.status === 401) return null;
+    if (!response.ok)
+      throw new Error("Conexão temporariamente indisponível. Sua sessão foi preservada; tente novamente.");
   const payload = await response.json().catch(() => null);
-  return payload?.token ? saveAccessSession(payload) : null;
+    if (!payload?.token) throw new Error("Não foi possível renovar o acesso. Tente novamente.");
+    if (tenantSlug() !== tenant || authToken() !== failedToken) return readStoredSession();
+    return saveAccessSession(payload);
+  };
+  const request = (navigator.locks?.request ? navigator.locks.request(lockKey, refresh) : refresh()).finally(() =>
+    refreshRequests.delete(lockKey),
+  );
+  refreshRequests.set(lockKey, request);
+  return request;
 }
 
 /**
@@ -189,14 +210,15 @@ export async function apiFetch(path, options = {}) {
   if (!headers.has("X-Tenant") && tenant) headers.set("X-Tenant", tenant);
   let response = await fetch(`${API}${path}`, { ...options, headers, credentials: "include" });
   const isSessionEndpoint = ["/login", "/auth/refresh", "/auth/logout"].includes(path);
-  if (!isSessionEndpoint && await isTenantSessionError(response)) {
+  if (!isSessionEndpoint && (await isTenantSessionError(response))) {
     endAccessSession();
     return response;
   }
   // Um token copiado do localStorage só vale 15 min. A credencial duradoura
   // fica no cookie HttpOnly e é rotacionada aqui antes de repetir UMA vez.
   if (response.status !== 401 || isSessionEndpoint) return response;
-  const session = await refreshAccessToken().catch(() => null);
+  // Network/5xx failures must not erase a valid refresh credential or forms.
+  const session = await refreshAccessToken(token, tenant);
   if (session?.token) {
     headers.set("Authorization", `Bearer ${session.token}`);
     response = await fetch(`${API}${path}`, { ...options, headers, credentials: "include" });
@@ -345,14 +367,14 @@ export function useFetch(path) {
     enabled: Boolean(path)
   });
 
-  const errorMessage = query.isError ? (query.error?.message || "Não foi possível carregar os dados.") : "";
+  const errorMessage = query.isError ? query.error?.message || "Não foi possível carregar os dados." : "";
   const refresh = useCallback(
     () => queryClient.invalidateQueries({ queryKey: apiQueryKey(path) }),
     [queryClient, path]
   );
 
   return {
-    data: errorMessage ? { error: errorMessage } : (query.data ?? null),
+    data: query.data ?? (errorMessage ? { error: errorMessage } : null),
     refresh,
     loading: query.isPending,
     error: errorMessage,

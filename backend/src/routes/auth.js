@@ -128,7 +128,7 @@ router.post("/api/login", loginLimiter, withDb(async (req, res, db) => {
   }
   const session = await createClinicSession(db, user, req);
   const authorizedUser = await hydrateUserPermissions(db, user);
-  setRefreshCookie(res, session.refreshToken);
+  setRefreshCookie(res, session.refreshToken, session.rememberAccess);
   await recordAudit(db, { req, actor: user, module: "auth", action: "login", entityType: "session", entityId: session.id, reason: "Login realizado" });
   // Token amarrado à clínica resolvida (multi-tenant); devolve também a clínica.
   res.json({
@@ -155,7 +155,7 @@ router.post("/api/auth/refresh", withDb(async (req, res, db) => {
     clearRefreshCookie(res);
     return res.status(401).json({ error: "Sessão expirada. Entre novamente." });
   }
-  setRefreshCookie(res, rotated.refreshToken);
+  setRefreshCookie(res, rotated.refreshToken, rotated.rememberAccess);
   const authorizedUser = await hydrateUserPermissions(db, rotated.user);
   res.json({
     token: createToken(rotated.user, req.tenant, { sessionId: rotated.sessionId }),

@@ -18,6 +18,7 @@ describe("formulário extenso de compras", () => {
     const user = userEvent.setup();
     render(<Purchases />);
     await user.click(screen.getByRole("button", { name: "Nova compra" }));
+    await user.click(screen.getByRole("button", { name: "Produtos para revenda" }));
     await user.click(screen.getByRole("button", { name: /2\. Itens/i }));
     const quantity = screen.getByLabelText("Quantidade");
     await user.clear(quantity);
@@ -39,6 +40,7 @@ describe("formulário extenso de compras", () => {
     render(<Purchases />);
 
     await user.click(screen.getByRole("button", { name: "Nova compra" }));
+    await user.click(screen.getByRole("button", { name: "Produtos para revenda" }));
     expect(screen.getByRole("heading", { name: "Fornecedor e data" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Importar XML da NF-e/i })).toHaveAttribute("data-state", "closed");
     expect(screen.queryByLabelText("Tipo de item")).not.toBeInTheDocument();
@@ -73,6 +75,7 @@ describe("formulário extenso de compras", () => {
     render(<Purchases />);
 
     await user.click(screen.getByRole("button", { name: "Nova compra" }));
+    await user.click(screen.getByRole("button", { name: "Produtos para revenda" }));
     expect(screen.getByRole("button", { name: "Restaurar" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Restaurar" }));
     expect(screen.getByLabelText("Data da compra")).toHaveValue("2026-09-15");

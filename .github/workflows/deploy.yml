@@ -86,6 +86,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
 
       - name: Setup Node
         uses: actions/setup-node@v5
@@ -112,6 +114,9 @@ jobs:
       # como bloqueante: era a metade que faltava da pendência 9 das docs.
       - name: Verificação de tipos
         run: npm run typecheck
+
+      - name: Conferir anúncios da atualização
+        run: npm run release:check
 
       - name: Testes do backend e migrations multi-tenant
         run: npm --prefix backend test

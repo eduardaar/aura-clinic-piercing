@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Instagram, Mail, MessageCircle } from "lucide-react";
 import { API } from "../../lib/api";
 import { asArray } from "../../lib/utils";
-import { BrandMark } from "../common/BrandMark";
+import { PlatformBrandMark } from "../common/PlatformBrandMark";
 import { LegalDocumentModal, useLegalDocuments } from "../common/LegalDocumentModal";
 
 const FALLBACK = {
@@ -26,7 +26,7 @@ export function PublicFooter({ content }) {
     if (content) return undefined;
     let active = true;
     fetch(`${API}/landing`)
-      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((response) => (response.ok ? response.json() : Promise.reject()))
       .then((payload) => {
         const closing = asArray(payload.sections).find((section) => section.section_key === "closing");
         if (active && closing?.content) setRemote(closing.content);
@@ -36,13 +36,20 @@ export function PublicFooter({ content }) {
   }, [content]);
   const data = { ...FALLBACK, ...(content || remote || {}) };
   const whatsapp = whatsappUrl(data.contact_whatsapp);
-  return <footer className="au-public-footer">
+  return (
+    <footer className="au-public-footer">
     <div className="au-public-footer-inner">
-      <div className="au-public-footer-brand"><div><BrandMark size={32} /><strong>Aura</strong></div><span>{data.footer_text}</span></div>
+      <div className="au-public-footer-brand"><div><PlatformBrandMark size={32} /><strong>Aura Clinic ERP</strong></div><span>{data.footer_text}</span></div>
       <div className="au-public-footer-group au-public-footer-contact" aria-label="Canais de contato"><span>Contato</span>
-        {whatsapp && <a href={whatsapp} target="_blank" rel="noreferrer"><MessageCircle size={18} aria-hidden="true" /> WhatsApp</a>}
-        {data.contact_email && <a href={`mailto:${data.contact_email}`}><Mail size={18} aria-hidden="true" /> E-mail</a>}
-        {data.contact_instagram && <a href={data.contact_instagram} target="_blank" rel="noreferrer"><Instagram size={18} aria-hidden="true" /> Instagram</a>}
+        {whatsapp && (
+            <a href={whatsapp} target="_blank" rel="noreferrer"><MessageCircle size={18} aria-hidden="true" /> WhatsApp</a>
+          )}
+        {data.contact_email && (
+            <a href={`mailto:${data.contact_email}`}><Mail size={18} aria-hidden="true" /> E-mail</a>
+          )}
+        {data.contact_instagram && (
+            <a href={data.contact_instagram} target="_blank" rel="noreferrer"><Instagram size={18} aria-hidden="true" /> Instagram</a>
+          )}
       </div>
       <div className="au-public-footer-group au-public-footer-links"><span>Institucional</span>
         <a href="/novidades">Notícias e novidades</a>
@@ -51,5 +58,6 @@ export function PublicFooter({ content }) {
       </div>
     </div>
     <LegalDocumentModal documentKey={openLegalDocument} documents={legalDocuments} onClose={() => setOpenLegalDocument(null)} />
-  </footer>;
+  </footer>
+  );
 }

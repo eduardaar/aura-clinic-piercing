@@ -15,6 +15,9 @@ import { parsePaging } from "../services/pagination.js";
 import { textSearch } from "../services/textSearch.js";
 import { recordPrivacyAudit } from "../services/privacy.js";
 import { recordAudit } from "../services/audit.js";
+import { payFinancialEntry, recordPayableChange } from "../services/payablePayments.js";
+import { normalizeCardFeeTable } from "../services/cardFees.js";
+import { requireRole } from "../middleware/auth.js";
 import { financialOriginJoins, FINANCIAL_ORIGIN_COLUMNS, financialEntryOrigin } from "../services/financialOrigins.js";
 import {
   normalizeSupplierInput,
@@ -24,6 +27,40 @@ import {
 } from "../services/suppliers.js";
 
 const router = Router();
+
+router.get(
+  "/api/finance/card-fees",
+  withFeature("basic_finance", async (_req, res, db) => {
+    res.json(await db.all("SELECT * FROM card_fee_tables ORDER BY valid_from DESC,id DESC"));
+  }),
+);
+router.post(
+  "/api/finance/card-fees",
+  withFeature("basic_finance", async (req, res, db) => {
+    if (!requireRole(req, res, ["admin"])) return;
+    try {
+      const table = normalizeCardFeeTable(req.body || {});
+      const created = await db.run(
+        "INSERT INTO card_fee_tables (operator_name,valid_from,debit_percent,credit_rates,created_by_user_id) VALUES (?,?,?,?,?) RETURNING id",
+        [table.operator_name, table.valid_from, table.debit_percent, JSON.stringify(table.credit_rates), req.user.id],
+      );
+      const after = await db.get("SELECT * FROM card_fee_tables WHERE id=?", [created.returnedId]);
+      await recordAudit(db, {
+        req,
+        module: "finance",
+        action: "card_fees_create",
+        entityType: "card_fee_table",
+        entityId: created.returnedId,
+        reason: "Nova tabela de taxas de cartão",
+        after,
+      });
+      res.status(201).json(after);
+    } catch (error) {
+      if (error instanceof FinancialRuleError) return res.status(error.status).json({ error: error.message });
+      throw error;
+    }
+  }),
+);
 
 // Whitelist de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
 const LEDGER_SORTABLE = {
@@ -87,8 +124,8 @@ router.patch("/api/expenses/:id", withFeature("basic_finance", async (req, res, 
   if (!expense) return res.status(404).json({ error: "Despesa nao encontrada." });
   const status = req.body.status ?? expense.status;
   if (!["pendente", "paga", "vencida", "cancelada"].includes(status)) return res.status(400).json({ error: "Status invalido." });
-  const paidAt = status === "paga" ? (req.body.paid_at || expense.paid_at || new Date().toISOString()) : null;
-  const paidBy = status === "paga" ? (expense.paid_by_user_id || req.user?.id || null) : null;
+  const paidAt = status === "paga" ? req.body.paid_at || expense.paid_at || new Date().toISOString() : null;
+  const paidBy = status === "paga" ? expense.paid_by_user_id || req.user?.id || null : null;
   await db.run("BEGIN");
   try {
     await db.run(`UPDATE expenses SET description = ?, expense_type = ?, category = ?, amount = ?, due_date = ?, status = ?, payment_method = ?, payment_account = ?, paid_at = ?, paid_by_user_id = ?, notes = ? WHERE id = ?`, [
@@ -175,8 +212,24 @@ router.get("/api/finance/entries/:id/details", withFeature("basic_finance", asyn
   if (!entry) return res.status(404).json({ error: "Lançamento não encontrado." });
   const audit = await db.all(`SELECT a.*, u.name AS user_name FROM financial_entry_audit a
     LEFT JOIN users u ON u.id=a.user_id WHERE a.entry_id=? ORDER BY a.created_at DESC, a.id DESC`, [entry.id]);
-  res.json({ ...entry, origin: await financialEntryOrigin(db, entry), audit });
+    const payments = await db.all(
+      "SELECT p.*, u.name AS user_name FROM financial_entry_payments p LEFT JOIN users u ON u.id=p.user_id WHERE entry_id=? ORDER BY p.created_at DESC,p.id DESC", [entry.id],
+    );
+  res.json({ ...entry, origin: await financialEntryOrigin(db, entry), audit, payments });
 }));
+
+router.post(
+  "/api/finance/entries/:id/payments",
+  withFeature("basic_finance", async (req, res, db) => {
+    if (!authorizePermission(req, res, P.FINANCE_EDIT)) return;
+    try {
+      res.json(await payFinancialEntry(db, req.params.id, req.body || {}, req));
+    } catch (error) {
+      if (error instanceof FinancialRuleError) return res.status(error.status).json({ error: error.message });
+      throw error;
+    }
+  }),
+);
 
 router.post("/api/finance/entries/:id/lifecycle", withFeature("basic_finance", async (req, res, db) => {
   const permission = req.body?.action === "test" ? P.FINANCE_MARK_TEST : P.FINANCE_CANCEL;
@@ -250,7 +303,8 @@ router.post("/api/finance/entries", withFeature("basic_finance", async (req, res
   };
   const sameIdempotentRequest = (rows) => rows.length === schedule.length && rows.every((row, index) => {
     const installment = schedule[index];
-    return Number(row.installment_number) === installment.number &&
+    return (
+          Number(row.installment_number) === installment.number &&
       Number(row.installment_count) === installment.count &&
       installmentMoneyCents(row.amount, "Valor armazenado") === installment.amountCents &&
       row.due_date === installment.dueDate && row.payment_method === installment.paymentMethod &&
@@ -262,7 +316,8 @@ router.post("/api/finance/entries", withFeature("basic_finance", async (req, res
       String(row.attachment_url || "") === String(entry.attachment_url || "") &&
       String(row.notes || "") === String(entry.notes || "") &&
       String(row.recurrence || "") === String(entry.recurrence || "") &&
-      String(row.recurrence_end_date || "") === String(entry.recurrence_end_date || "");
+      String(row.recurrence_end_date || "") === String(entry.recurrence_end_date || "")
+        );
   });
   const existing = await getExistingGroup();
   if (existing.length) {
@@ -312,7 +367,9 @@ router.post("/api/finance/entries", withFeature("basic_finance", async (req, res
       created.push(result.returnedId);
     }
     const createdEntries = await db.all(`SELECT * FROM financial_entries WHERE id IN (${created.map(() => "?").join(",")}) ORDER BY id`, created);
-    await recordAudit(db, { req, module: "finance", action: "create", entityType: "financial_entry_group", entityId: parentId, reason: "Lançamento financeiro cadastrado", after: { entries: createdEntries }, metadata: { installment_count: createdEntries.length } });
+      for (const item of createdEntries)
+        await recordPayableChange(db, null, item, req.user?.id, { notes: "Pagamento informado no cadastro da conta" });
+      await recordAudit(db, { req, module: "finance", action: "create", entityType: "financial_entry_group", entityId: parentId, reason: "Lançamento financeiro cadastrado", after: { entries: createdEntries }, metadata: { installment_count: createdEntries.length } });
     await db.run("COMMIT");
     res.status(201).json(createdEntries);
   } catch (error) {
@@ -352,7 +409,10 @@ router.patch("/api/finance/entries/:id", withFeature("basic_finance", async (req
     ]);
     const updated = await db.get("SELECT * FROM financial_entries WHERE id=?", [current.id]);
     await syncEntrySettlement(db, current, updated, req.user?.id);
-    await db.run("INSERT INTO financial_entry_audit (entry_id, user_id, action, before_data, after_data) VALUES (?, ?, 'update', ?, ?)", [
+    await recordPayableChange(db, current, updated, req.user?.id, {
+        notes: String(req.body.reason || "Correção do pagamento"),
+      });
+      await db.run("INSERT INTO financial_entry_audit (entry_id, user_id, action, before_data, after_data) VALUES (?, ?, 'update', ?, ?)", [
       current.id, req.user?.id || null, JSON.stringify(current), JSON.stringify(updated)
     ]);
     await recordAudit(db, { req, module: "finance", action: "update", entityType: "financial_entry", entityId: current.id, reason: String(req.body.reason || "Lançamento financeiro alterado"), before: current, after: updated, severity: "warning" });
@@ -499,7 +559,7 @@ router.post("/api/finance/suppliers", withFeature("basic_finance", async (req, r
   try {
     const supplier = normalizeSupplierInput(req.body);
     await ensureUniqueSupplierDocument(db, supplier.document);
-    const placeholders = SUPPLIER_COLUMNS.map((column) => SUPPLIER_JSON_COLUMNS.has(column) ? "?::jsonb" : "?");
+    const placeholders = SUPPLIER_COLUMNS.map((column) => (SUPPLIER_JSON_COLUMNS.has(column) ? "?::jsonb" : "?"));
     const result = await db.run(
       `INSERT INTO suppliers (${SUPPLIER_COLUMNS.join(", ")}) VALUES (${placeholders.join(", ")}) RETURNING id`,
       supplierWriteValues(supplier)

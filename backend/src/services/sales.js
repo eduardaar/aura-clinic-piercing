@@ -2,6 +2,7 @@
 import { normalizeSalesOrderItems, variantStatus, localTimestamp } from "./utils.js";
 import { upsertClient } from "./appointments.js";
 import { syncProductInventory } from "./inventory.js";
+import { applyConfiguredCardFee } from "./cardFees.js";
 import { limitOffset, countRows } from "./pagination.js";
 import { allocateCents, percentOfCents, salesItemDiscountCents, salesItemGrossCents, validateCoupon } from "./discounts.js";
 import { availableStock, releaseExpiredReservations } from "./reservations.js";
@@ -326,9 +327,11 @@ async function withProductCategories(db, items) {
     missing
   );
   const categories = new Map(rows.map((row) => [Number(row.id), row.category]));
-  return items.map((item) => (item.product_id && !item.category
+  return items.map((item) =>
+    item.product_id && !item.category
     ? { ...item, category: categories.get(Number(item.product_id)) || "" }
-    : item));
+    : item,
+  );
 }
 
 // Cálculo oficial da venda, em centavos inteiros:
@@ -395,9 +398,9 @@ export async function priceSalesOrder(db, {
     coupon_discount_value: fromCents(couponCents),
     manual_discount_value: fromCents(manualCents),
     manual_discount_percent: manualDiscount?.valueCents === null || manualDiscount?.valueCents === undefined
-      ? (manualDiscount?.percentHundredths ? manualDiscount.percentHundredths / 100 : null)
-      : null,
-    manual_discount_reason: manualCents > 0 ? (manualDiscount?.reason || null) : null,
+      ? manualDiscount?.percentHundredths ? manualDiscount.percentHundredths / 100 : null
+        : null,
+    manual_discount_reason: manualCents > 0 ? manualDiscount?.reason || null : null,
     discount_value: fromCents(discountCents),
     total_value: fromCents(totalCents)
   };
@@ -636,6 +639,8 @@ export async function createSalesOrder(db, body, user, { req = null } = {}) {
       ]
     );
     const orderId = result.returnedId;
+    if (body.card_fee_table_id)
+      await tx.run("UPDATE sales_orders SET card_fee_table_id=? WHERE id=?", [Number(body.card_fee_table_id), orderId]);
 
     // Uso do cupom gravado com a venda: é o que faz o limite de usos, o limite
     // por cliente, o relatório de Cupons e o histórico do cliente enxergarem
@@ -696,13 +701,20 @@ export async function createSalesOrder(db, body, user, { req = null } = {}) {
     }
 
     if (total > 0 && (status === "concluida" || status === "pago") && receivableMode === "paid") {
+      const card = await applyConfiguredCardFee(tx, {
+        amount: total,
+        method: paymentMethod,
+        installments: installmentCount,
+        fee_amount: 0,
+        card_fee_table_id: body.card_fee_table_id,
+      });
       // `sales_order_id` é o que faz este pagamento ser reconhecido como a
       // baixa do título — sem ele, `payments` e `sales_orders` só se
       // encontrariam por acaso (mesmo cliente, mesmo valor).
       await tx.run(
         `INSERT INTO payments
-          (appointment_id, client_id, sales_order_id, amount, payment_type, method, status, paid_at, idempotency_key)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
+          (appointment_id, client_id, sales_order_id, amount, payment_type, method, status, paid_at, idempotency_key,installments,fee_amount,net_amount,card_fee_table_id,card_fee_snapshot)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?) ON CONFLICT DO NOTHING`,
         [
           appointmentId,
           client.id,
@@ -712,7 +724,12 @@ export async function createSalesOrder(db, body, user, { req = null } = {}) {
           paymentMethod,
           "pago",
           localTimestamp(),
-          `sales-order:${orderId}:paid`
+          `sales-order:${orderId}:paid`,
+          card.installments,
+          card.fee_amount,
+          total - card.fee_amount,
+          card.card_fee_table_id,
+          JSON.stringify(card.card_fee_snapshot),
         ]
       );
     } else if (total > 0 && (status === "concluida" || status === "pago") && receivableMode === "pending") {

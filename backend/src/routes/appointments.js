@@ -45,7 +45,9 @@ import { authorizePermission } from "../middleware/requirePermission.js";
 import { hasPermission } from "../services/permissionService.js";
 import { configuresReceivableSchedule } from "../services/receivables.js";
 import { requireFeature } from "../services/subscriptions.js";
-import { consumeAppointmentRecipe, restoreAppointmentConsumptions } from "../services/consumableUsage.js";
+import {
+  appointmentRecipePreview,
+  consumeAppointmentRecipe, restoreAppointmentConsumptions } from "../services/consumableUsage.js";
 import { cancelAppointmentWithResolution } from "../services/appointmentCancellations.js";
 import { applyCreditToAppointment } from "../services/clientCredits.js";
 import {
@@ -61,6 +63,24 @@ import { assertCompletionServiceRules, parseServiceRulesSnapshot, validateAppoin
 import { mergeOperationalRequirements } from "../services/operationalRequirements.js";
 
 const router = Router();
+
+router.get(
+  "/api/appointments/:id/materials",
+  withFeature("agenda", async (req, res, db) => {
+    if (!authorizePermission(req, res, P.APPOINTMENTS_VIEW)) return;
+    const appointment = await db.get("SELECT id FROM appointments WHERE id=?", [req.params.id]);
+    if (!appointment) return res.status(404).json({ error: "Agendamento não encontrado." });
+    const serviceIds =
+      req.query.service_ids === undefined ? null : String(req.query.service_ids).split(",").filter(Boolean).map(Number);
+    if (serviceIds && (serviceIds.length > 100 || serviceIds.some((id) => !Number.isSafeInteger(id) || id <= 0)))
+      return res.status(400).json({ error: "Procedimentos inválidos." });
+    try {
+      res.json({ items: await appointmentRecipePreview(db, req.params.id, serviceIds) });
+    } catch (error) {
+      res.status(409).json({ error: error.message });
+    }
+  }),
+);
 const APPOINTMENT_STATUSES = new Set(["pendente", "awaiting_deposit_proof", "confirmado", "chegou", "em_atendimento", "atendido", "cancelado", "nao_compareceu", "remarcado", "recusado"]);
 
 // Whitelist de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
@@ -166,7 +186,7 @@ async function syncDepositPayment(tx, appointmentId, userId) {
   } else if (wantsPayment) {
     const confirmed = isConfirmed(requestedStatus);
     const paymentStatus = confirmed ? "pago" : "pendente";
-    paidAt = confirmed ? (current.deposit_paid_at || localTimestamp()) : null;
+    paidAt = confirmed ? current.deposit_paid_at || localTimestamp() : null;
     if (primary) {
       const changed = cents(primary.amount) !== cents(expected) || primary.status !== paymentStatus || String(primary.method || "") !== method;
       if (changed) {
@@ -390,13 +410,13 @@ router.post("/api/appointments", withFeature("agenda", async (req, res, db) => {
       `INSERT INTO appointments
       (client_id, professional_id, service_id, jewelry_id, jewelry_variant_id, procedure, description, piercing_region, appointment_date, appointment_time, end_time, total_value, service_value, jewelry_value, subtotal_value, discount_value, coupon_id, coupon_code, coupon_snapshot, deposit_value, remaining_value, deposit_payment_method, remaining_payment_method, deposit_status, deposit_paid_at, financial_notes, status, notes, reference_photo_url, duration_minutes, service_rules_snapshot, operational_requirements_snapshot, manual_discount_value, manual_discount_reason, manual_discount_updated_by, manual_discount_updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-      [client.id, body.professional_id, serviceId || firstItem.service_id || null, jewelryId, variantId, body.procedure || firstItem.procedure_name || service?.name || "Atendimento", body.description, body.piercing_region || firstItem.region || "Atendimento", body.appointment_date, body.appointment_time, endTime, totalValue, operationTotals.serviceSubtotal, operationTotals.productSubtotal, operationTotals.grossTotal, operationTotals.discountTotal, coupon.couponId, coupon.couponCode, jsonParam(coupon.couponSnapshot), depositValue, remainingValue, body.deposit_payment_method, body.remaining_payment_method, depositStatus, depositReceived ? (body.deposit_paid_at || localTimestamp()) : null, body.financial_notes || "", body.status || "pendente", body.notes, photoUrl, duration, JSON.stringify(serviceRulesSnapshot), JSON.stringify(operationalRequirementsSnapshot), manualDiscountCents / 100, manualDiscountReason, hasManualDiscount ? req.user?.id || null : null, hasManualDiscount ? new Date() : null]
+      [client.id, body.professional_id, serviceId || firstItem.service_id || null, jewelryId, variantId, body.procedure || firstItem.procedure_name || service?.name || "Atendimento", body.description, body.piercing_region || firstItem.region || "Atendimento", body.appointment_date, body.appointment_time, endTime, totalValue, operationTotals.serviceSubtotal, operationTotals.productSubtotal, operationTotals.grossTotal, operationTotals.discountTotal, coupon.couponId, coupon.couponCode, jsonParam(coupon.couponSnapshot), depositValue, remainingValue, body.deposit_payment_method, body.remaining_payment_method, depositStatus, depositReceived ? body.deposit_paid_at || localTimestamp() : null, body.financial_notes || "", body.status || "pendente", body.notes, photoUrl, duration, JSON.stringify(serviceRulesSnapshot), JSON.stringify(operationalRequirementsSnapshot), manualDiscountCents / 100, manualDiscountReason, hasManualDiscount ? req.user?.id || null : null, hasManualDiscount ? new Date() : null]
     );
     await replaceAppointmentItems(tx, result.returnedId, items);
     if (depositValue > 0) {
       await tx.run(
         "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, 'sinal', ?, ?, ?)",
-        [result.returnedId, client.id, depositValue, body.deposit_payment_method || "Pix", depositReceived ? "pago" : "pendente", depositReceived ? (body.deposit_paid_at || localTimestamp()) : localTimestamp()]
+        [result.returnedId, client.id, depositValue, body.deposit_payment_method || "Pix", depositReceived ? "pago" : "pendente", depositReceived ? body.deposit_paid_at || localTimestamp() : localTimestamp()]
       );
     }
     await tx.run("UPDATE appointments SET deposit_expected_value=? WHERE id=?", [depositExpectedValue, result.returnedId]);
@@ -457,7 +477,7 @@ router.post("/api/appointments/financial-preview", withFeature("agenda", async (
     manualDiscountReason: body.manual_discount_reason ?? appointment?.manual_discount_reason ?? null,
     adjustments: preview.adjustments,
     coupon: {
-      code: preview.coupon.couponCode || (couponCode(body.coupon_code) || null),
+      code: preview.coupon.couponCode || couponCode(body.coupon_code) || null,
       valid: !preview.coupon.error && Boolean(preview.coupon.couponId),
       error: preview.coupon.error,
       discount: totals.couponDiscount
@@ -494,11 +514,12 @@ router.post("/api/appointments/:id/complete", withFeature("agenda", async (req, 
     await db.transaction(async (tx) => {
       await assertCompletionServiceRules(tx, req.params.id);
       await registerCompletionPayments(tx, req.params.id, req.body.payments, req.user?.id);
-      await tx.run("UPDATE appointments SET status = 'atendido', financial_notes = ?, updated_at = ? WHERE id = ?", [req.body.financial_notes === undefined ? (before.financial_notes || "") : String(req.body.financial_notes ?? ""), localTimestamp(), req.params.id]);
+      await tx.run("UPDATE appointments SET status = 'atendido', financial_notes = ?, updated_at = ? WHERE id = ?", [req.body.financial_notes === undefined ? before.financial_notes || ""
+            : String(req.body.financial_notes ?? ""), localTimestamp(), req.params.id]);
       const after = await tx.get("SELECT * FROM appointments WHERE id = ?", [req.params.id]);
       await tx.run("INSERT INTO appointment_financial_audit (appointment_id, user_id, action, reason, before_snapshot, after_snapshot) VALUES (?, ?, ?, ?, ?, ?)", [req.params.id, req.user?.id, before.status === "atendido" ? "reopen_financial_close" : "financial_close", req.body.reason || null, JSON.stringify(before), JSON.stringify(after)]);
       await deductJewelryStock(tx, req.params.id);
-      await consumeAppointmentRecipe(tx, req.params.id, req.user?.id || null);
+      await consumeAppointmentRecipe(tx, req.params.id, req.user?.id || null, req.body.material_consumption);
       // A execução também vincula ajustes e indicadores químicos do atendimento.
       await ensureServiceExecution(tx, req.params.id, req.user, req.body);
       await refreshAppointmentCommissions(tx, req.params.id, {
@@ -677,7 +698,8 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
   // agendamento); com o mesmo código e itens novos, só o valor é recalculado.
   let coupon = null;
   if (couponChanged || hasSubmittedItems) {
-    const couponBaseItems = pendingItems || await db.all("SELECT * FROM appointment_items WHERE appointment_id = ? ORDER BY id", [appointment.id]);
+    const couponBaseItems = pendingItems ||
+        (await db.all("SELECT * FROM appointment_items WHERE appointment_id = ? ORDER BY id", [appointment.id]));
     const grossOnly = calculateOperationTotals(appointmentFinancialInput(appointment, { items: couponBaseItems }, {
       couponDiscount: 0, manualDiscount: 0, adjustmentTotal: 0, payments: []
     }));
@@ -756,7 +778,7 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
       if (discountChanged || coupon) {
         const couponPart = !coupon
           ? storedCouponDiscount(locked)
-          : coupon.couponId || coupon.couponCode ? coupon.couponDiscount : (coupon.changed ? 0 : storedCouponDiscount(locked));
+          : coupon.couponId || coupon.couponCode ? coupon.couponDiscount : coupon.changed ? 0 : storedCouponDiscount(locked);
         const manualPart = discountChanged ? derived.manual_discount_value : Number(locked.manual_discount_value || 0);
         await tx.run("UPDATE appointments SET discount_value = ? WHERE id = ?", [(cents(couponPart) + cents(manualPart)) / 100, req.params.id]);
       }
@@ -774,7 +796,7 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
       // um título recebido. A correção vai pelo Financeiro (SPEC 9, item 9).
       if (locked.status === "atendido" && !leavingFinalized &&
           cents(recalculated.appointment.total_value) !== cents(locked.total_value) &&
-          await hasSettledServiceExecutionReceivable(tx, req.params.id)) {
+          (await hasSettledServiceExecutionReceivable(tx, req.params.id))) {
         throw new FinancialRuleError(SETTLED_RECEIVABLE_MESSAGE, 409);
       }
       if (coupon) await syncCouponUsage(tx, recalculated.appointment, coupon, recalculated.totals);
@@ -783,7 +805,7 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
       if (req.body.status === "atendido") {
         await assertCompletionServiceRules(tx, req.params.id);
         await deductJewelryStock(tx, req.params.id);
-        await consumeAppointmentRecipe(tx, req.params.id, userId);
+        await consumeAppointmentRecipe(tx, req.params.id, userId, req.body.material_consumption);
         const configuredReceivable = configuresReceivableSchedule(req.body);
         if (configuredReceivable) {
           await supersedePendingDeposit(tx, req.params.id);

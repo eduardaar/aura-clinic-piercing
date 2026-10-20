@@ -19,6 +19,7 @@ it("compra material também vendável e envia a variação que receberá estoque
   const user = userEvent.setup();
   render(<Purchases />);
   await user.click(screen.getByRole("button", { name: "Nova compra" }));
+  await user.click(screen.getByRole("button", { name: "Produtos para revenda" }));
   await user.click(screen.getByLabelText("Fornecedor"));
   await user.click(screen.getByRole("option", { name: "Fornecedor" }));
   await user.click(screen.getByRole("button", { name: /2\. Itens/ }));
@@ -43,6 +44,7 @@ it("abre o cadastro existente e preserva o rascunho da compra", async () => {
   const user = userEvent.setup();
   render(<Purchases onNavigate={navigate} />);
   await user.click(screen.getByRole("button", { name: "Nova compra" }));
+  await user.click(screen.getByRole("button", { name: "Produtos para revenda" }));
   await user.click(screen.getByRole("button", { name: /2\. Itens/ }));
   await user.click(screen.getByLabelText("Tipo de item"));
   await user.click(screen.getByRole("option", { name: "Material de consumo" }));

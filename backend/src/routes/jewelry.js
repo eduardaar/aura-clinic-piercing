@@ -32,8 +32,17 @@ import { invalidateUsageCache, requireWithinLimit } from "../services/planLimits
 import { JEWELRY_CATEGORIES } from "../config/index.js";
 import { hasPermission } from "../services/permissionService.js";
 import { recordAudit } from "../services/audit.js";
+import { procedureKits } from "../services/consumableUsage.js";
 
 const router = Router();
+
+router.get(
+  "/api/inventory/kits",
+  withFeature("basic_inventory", async (req, res, db) => {
+    if (!authorizePermission(req, res, P.INVENTORY_VIEW)) return;
+    res.json(await procedureKits(db, hasPermission(req.user, P.INVENTORY_VIEW_COST)));
+  }),
+);
 
 class InsufficientStockError extends Error {
   constructor(available) {
@@ -80,9 +89,20 @@ async function resolveActiveCategory(db, body) {
   let category = categoryId
     ? await db.get("SELECT id, name FROM inventory_options WHERE id=? AND type='category' AND is_active=1", [categoryId])
     : null;
-  const categoryName = String(body.category || "").trim();
+  if (!category && categoryId)
+    category = await db.get(
+      "SELECT o.id,o.name FROM inventory_category_consolidations c JOIN inventory_options o ON o.id=c.target_category_id AND o.is_active=1 WHERE c.source_category_id=? ORDER BY c.id DESC LIMIT 1",
+      [categoryId],
+    );
+  const originalName = String(body.category || "").trim();
+  const categoryName =
+    { Argola: "Argolas", Topos: "Topo", "Material de consumo": "Materiais de consumo" }[originalName] || originalName;
   if (!category && categoryName) {
     category = await db.get("SELECT id, name FROM inventory_options WHERE type='category' AND name=? AND is_active=1", [categoryName]);
+    if (!category)
+      category = await db.get(
+        "SELECT o.id,o.name FROM inventory_category_consolidations c JOIN inventory_options o ON o.id=c.target_category_id AND o.is_active=1 WHERE c.source_name=? ORDER BY c.id DESC LIMIT 1", [categoryName],
+      );
     if (!category && JEWELRY_CATEGORIES.includes(categoryName)) {
       await db.run("INSERT INTO inventory_options(type,name,is_active) VALUES('category',?,1) ON CONFLICT(type,name) DO NOTHING", [categoryName]);
       category = await db.get("SELECT id, name FROM inventory_options WHERE type='category' AND name=? AND is_active=1", [categoryName]);
@@ -579,7 +599,9 @@ router.get("/api/jewelry", withFeature("basic_inventory", async (req, res, db) =
 router.post("/api/jewelry", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_CREATE)) return;
   if (!validateBody(jewelryCreateSchema, req, res)) return;
-  const category = await resolveActiveCategory(db, req.body);
+    if (req.body.item_classification !== undefined && !["resale", "material"].includes(req.body.item_classification))
+      return res.status(400).json({ error: "Finalidade principal inválida." });
+    const category = await resolveActiveCategory(db, req.body);
   if (!category) return res.status(400).json({ error: "Selecione uma categoria principal válida." });
   const hasCategoryReference = await supportsCategoryReference(db);
   if (hasCategoryReference) req.body.category_id = category.id;
@@ -594,7 +616,7 @@ router.post("/api/jewelry", withFeature("basic_inventory", async (req, res, db) 
 
   const requestedSku = String(req.body.sku || "").trim();
   const manualSku = requestedSku;
-  if (manualSku && await jewelrySkuExists(db, manualSku)) {
+  if (manualSku && (await jewelrySkuExists(db, manualSku))) {
     return skuConflict(res, "Já existe uma joia com este SKU.");
   }
 
@@ -612,7 +634,12 @@ router.post("/api/jewelry", withFeature("basic_inventory", async (req, res, db) 
         : jewelryPayload(req.body, sku, pricing).filter((_value, index) => index !== 5)
     );
     await replaceJewelryVariants(db, result.returnedId, req.body.variants || [variantFromLegacy({ ...req.body, sku: "" })]);
-    await syncProductImages(db, result.returnedId, req.body.images || req.body.gallery_urls || [req.body.image_url || req.body.photo_url].filter(Boolean));
+    await syncProductImages(db, result.returnedId, req.body.images || req.body.gallery_urls || [req.body.image_url || req.body.photo_url].filter(Boolean),
+      );
+      await db.run("UPDATE jewelry_inventory SET item_classification=? WHERE id=?", [
+        req.body.item_classification || (req.body.can_sell === false ? "material" : "resale"),
+        result.returnedId,
+      ]);
     const product = (await attachVariants(db, [await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [result.returnedId])]))[0];
     await recordAudit(db, {
       req,
@@ -638,6 +665,7 @@ router.post("/api/jewelry", withFeature("basic_inventory", async (req, res, db) 
 
 router.patch("/api/jewelry/:id", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_EDIT)) return;
+    if (req.body.item_classification !== undefined && !["resale", "material"].includes(req.body.item_classification)) return res.status(400).json({ error: "Finalidade principal inválida." });
   if (!validateBody(jewelryUpdateSchema, req, res)) return;
   if (req.body.category !== undefined || req.body.category_id !== undefined) {
     const category = await resolveActiveCategory(db, req.body);
@@ -652,7 +680,7 @@ router.patch("/api/jewelry/:id", withFeature("basic_inventory", async (req, res,
   if (!jewelry) return res.status(404).json({ error: "Joia não encontrada." });
 
   let nextSku = req.body.sku !== undefined ? String(req.body.sku || "").trim() : "";
-  if (nextSku && await jewelrySkuExists(db, nextSku, jewelry.id)) {
+  if (nextSku && (await jewelrySkuExists(db, nextSku, jewelry.id))) {
     if (req.body.sku_manually_edited === true) return skuConflict(res, "Já existe uma joia com este SKU.");
     nextSku = await generateSku(db, req.body);
     req.body.sku = nextSku;
@@ -677,7 +705,12 @@ router.patch("/api/jewelry/:id", withFeature("basic_inventory", async (req, res,
     if (req.body.images !== undefined || req.body.gallery_urls !== undefined || req.body.image_url !== undefined || req.body.photo_url !== undefined) {
       await syncProductImages(db, jewelry.id, req.body.images || req.body.gallery_urls || [req.body.image_url || req.body.photo_url].filter(Boolean));
     }
-    const product = (await attachVariants(db, [await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [req.params.id])]))[0];
+      if (req.body.item_classification !== undefined)
+        await db.run("UPDATE jewelry_inventory SET item_classification=? WHERE id=?", [
+          req.body.item_classification,
+          req.params.id,
+        ]);
+      const product = (await attachVariants(db, [await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [req.params.id])]))[0];
     await recordAudit(db, {
       req,
       module: "inventory",

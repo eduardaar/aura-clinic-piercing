@@ -8,8 +8,8 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import {
-  req,
+import { withTenantSchema } from "../src/db/tenantSession.js";
+import { req,
   createTenant,
   loginTenant,
   platformLogin,
@@ -361,7 +361,7 @@ test("troca de senha revoga tokens anteriores e devolve uma sessão nova", async
   ctx.a.adminPassword = "SenhaNovaForte456";
 });
 
-test("refresh rotativo mantém sessão curta e rejeita a credencial já usada", async () => {
+test("refresh rotativo tolera abas simultâneas e rejeita a credencial anterior fora da tolerância", async () => {
   const login = await req("/login", {
     method: "POST",
     tenant: ctx.a.slug,
@@ -383,7 +383,18 @@ test("refresh rotativo mantém sessão curta e rejeita a credencial já usada", 
     tenant: ctx.a.slug,
     headers: { Cookie: firstCookie }
   });
-  assert.equal(replay.status, 401, JSON.stringify(replay.json));
+  assert.equal(replay.status, 200, JSON.stringify(replay.json));
+  assert.equal(replay.headers.get("set-cookie").split(";")[0], secondCookie.split(";")[0]);
+  const sessionId = JSON.parse(Buffer.from(refreshed.json.token.split(".")[0], "base64url").toString()).sid;
+  await withTenantSchema(ctx.a.tenant.id, (db) =>
+    db.run("UPDATE user_sessions SET previous_refresh_valid_until=now()-interval '1 second' WHERE id=?", [sessionId]),
+  );
+  const expiredReplay = await req("/auth/refresh", {
+    method: "POST",
+    tenant: ctx.a.slug,
+    headers: { Cookie: firstCookie },
+  });
+  assert.equal(expiredReplay.status, 401);
   const sessions = await req("/account/sessions", { tenant: ctx.a.slug, token: refreshed.json.token });
   assert.equal(sessions.status, 200, JSON.stringify(sessions.json));
   assert.ok(sessions.json.sessions.some((session) => session.current));

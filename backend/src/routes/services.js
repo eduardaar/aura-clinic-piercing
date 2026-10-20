@@ -10,6 +10,9 @@ import { parsePaging, pageResponse } from "../services/pagination.js";
 import { replaceServiceRecipe, serviceRecipe } from "../services/consumableUsage.js";
 import { normalizePostcareDays } from "../services/serviceRules.js";
 import { getClinicOperationalSettings, normalizeBiosafetyConfig, normalizeChecklistConfig } from "../services/operationalRequirements.js";
+import { attachVariants, redactInventoryCosts } from "../services/inventory.js";
+import { hasPermission } from "../services/permissionService.js";
+import { P } from "../config/permissions.js";
 
 const router = Router();
 
@@ -30,13 +33,15 @@ router.put("/api/service-operational-settings", withFeature("procedures", async 
   res.json({ checklist, biosafety });
 }));
 
-router.get("/api/service-catalog-options", withFeature("procedures", async (_req, res, db) => {
+router.get("/api/service-catalog-options", withFeature("procedures", async (req, res, db) => {
   const [professionals, inventoryItems] = await Promise.all([
     db.all("SELECT id,name FROM professionals WHERE active=1 ORDER BY name"),
-    db.all(`SELECT id,name,category,stock_unit,can_sell,can_use_in_service
+    db.all(`SELECT id,name,category,stock_unit,can_sell,can_use_in_service,quantity,cost_value,track_stock
       FROM jewelry_inventory WHERE status!='arquivado' AND can_use_in_service=true ORDER BY name`)
   ]);
-  res.json({ professionals, inventoryItems });
+    const items = await attachVariants(db, inventoryItems);
+    res.json({ professionals, inventoryItems: hasPermission(req.user, P.INVENTORY_VIEW_COST) ? items : redactInventoryCosts(items),
+    });
 }));
 
 // Whitelist de ordenação: a query escolhe a CHAVE, o servidor define a coluna.
@@ -106,6 +111,11 @@ router.post("/api/services", withFeature("procedures", async (req, res, db) => {
   );
   await replaceProfessionalServices(db, result.returnedId, req.body.professional_ids || []);
   if (req.body.inventory_items) await replaceServiceRecipe(db, result.returnedId, req.body.inventory_items);
+    if (req.body.inventory_kit_name !== undefined)
+      await db.run("UPDATE services SET inventory_kit_name=? WHERE id=?", [
+        String(req.body.inventory_kit_name).trim().slice(0, 160),
+        result.returnedId,
+      ]);
   await replaceCompatibleServiceItems(db, result.returnedId, req.body.compatible_jewelry_ids || []);
   res.status(201).json(await getService(db, result.returnedId));
 }));
@@ -130,10 +140,10 @@ async function updateService(req, res, db) {
       Boolean(boolNumber(req.body.is_active ?? service.is_active)),
       boolNumber(req.body.active_online_booking ?? req.body.online_booking_enabled ?? service.active_online_booking),
       req.body.pre_service_notes ?? service.pre_service_notes,
-      req.body.minimum_age_years === undefined ? service.minimum_age_years : (req.body.minimum_age_years === "" || req.body.minimum_age_years === null ? null : Number(req.body.minimum_age_years)),
+      req.body.minimum_age_years === undefined ? service.minimum_age_years : req.body.minimum_age_years === "" || req.body.minimum_age_years === null ? null : Number(req.body.minimum_age_years),
       Boolean(boolNumber(req.body.requires_guardian ?? service.requires_guardian)),
       Boolean(boolNumber(req.body.requires_signed_term ?? service.requires_signed_term)),
-      req.body.return_after_days === undefined ? service.return_after_days : (req.body.return_after_days === "" || req.body.return_after_days === null ? null : Number(req.body.return_after_days)),
+      req.body.return_after_days === undefined ? service.return_after_days : req.body.return_after_days === "" || req.body.return_after_days === null ? null : Number(req.body.return_after_days),
       Number(req.body.scheduling_interval_minutes ?? service.scheduling_interval_minutes ?? 0),
       Number(req.body.minimum_advance_minutes ?? service.minimum_advance_minutes ?? 0),
       Boolean(boolNumber(req.body.postcare_enabled ?? service.postcare_enabled)),
@@ -146,6 +156,11 @@ async function updateService(req, res, db) {
   );
   if (req.body.professional_ids) await replaceProfessionalServices(db, req.params.id, req.body.professional_ids);
   if (req.body.inventory_items) await replaceServiceRecipe(db, req.params.id, req.body.inventory_items);
+  if (req.body.inventory_kit_name !== undefined)
+    await db.run("UPDATE services SET inventory_kit_name=? WHERE id=?", [
+      String(req.body.inventory_kit_name).trim().slice(0, 160),
+      req.params.id,
+    ]);
   if (req.body.compatible_jewelry_ids) await replaceCompatibleServiceItems(db, req.params.id, req.body.compatible_jewelry_ids);
   res.json(await getService(db, req.params.id));
 }

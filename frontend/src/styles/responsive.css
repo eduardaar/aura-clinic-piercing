@@ -1,6 +1,7 @@
 /* Fundação responsiva única. Componentes e telas podem especializar o visual,
    mas não devem reintroduzir overflow horizontal ou ações inacessíveis. */
 @layer telas {
+  .installment-grid-heading { display: grid; gap: 0.25rem; }
 
 :root {
   --responsive-page-gap: clamp(14px, 2.4vw, 28px);
@@ -213,3 +214,6 @@ select,
 }
 
 } /* @layer telas */
+@layer telas {
+  .connection-status { position: fixed; top: 0; left: 0; right: 0; z-index: 12000; padding: .75rem 1rem; background: #fff2d5; color: #654500; text-align: center; font-size: .9rem; }
+}

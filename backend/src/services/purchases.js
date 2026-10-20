@@ -66,6 +66,12 @@ export function normalizePurchase(body = {}, idempotencyKey = "") {
       throw new PurchaseValidationError(`Quantidade inválida no item ${index + 1}.`);
     }
     const unitCostCents = moneyToCents(item.unit_cost, `Custo unitário do item ${index + 1}`);
+    const conversion = item.stock_conversion_factor == null ? null : Number(item.stock_conversion_factor);
+    if (
+      conversion !== null &&
+      (!Number.isSafeInteger(conversion) || conversion <= 0 || !Number.isSafeInteger(conversion * quantity))
+    )
+      throw new PurchaseValidationError("Informe um conteúdo por embalagem inteiro e positivo.");
     if (unitCostCents <= 0) throw new PurchaseValidationError(`Custo unitário do item ${index + 1} deve ser maior que zero.`);
     const lineTotalCents = unitCostCents * quantity;
     if (!Number.isSafeInteger(lineTotalCents)) throw new PurchaseValidationError(`Total do item ${index + 1} fora do limite permitido.`);
@@ -87,6 +93,8 @@ export function normalizePurchase(body = {}, idempotencyKey = "") {
     seenTargets.add(target);
     return {
       item_type: itemType,
+      stock_conversion_factor: conversion,
+      purchase_unit: String(item.purchase_unit || "").trim(),
       product_id: productId,
       product_variant_id: productVariantId,
       new_inventory_item: newInventoryItem,
@@ -145,6 +153,12 @@ async function createMissingInventoryItems(tx, purchase) {
     const draft = item.new_inventory_item;
     if (!draft) continue;
     const consumable = draft.kind === "consumable";
+    const category = await tx.get(
+      "SELECT id,name FROM inventory_options WHERE type='category' AND is_active=1 AND usage_scope IN (?, 'both') ORDER BY CASE WHEN name='Materiais de consumo' THEN 0 ELSE 1 END,id LIMIT 1",
+      [consumable ? "material" : "product"],
+    );
+    if (!category)
+      throw new PurchaseValidationError("Cadastre uma categoria de estoque antes de importar novos itens.");
     const inserted = await tx.run(`
       INSERT INTO jewelry_inventory
         (name,description,category,material,color,quantity,cost_value,sale_value,supplier_id,
@@ -153,13 +167,18 @@ async function createMissingInventoryItems(tx, purchase) {
       VALUES (?,?,?,?,?,0,0,0,?,?,?,?,?,?,?,?,true,?,?,0,0,?) RETURNING id
     `, [
       draft.name, "Item criado durante a conferência da NF-e",
-      consumable ? "Material de consumo" : "Produto/joia", "Não informado", "Não informado",
+        category.name, "Não informado", "Não informado",
       purchase.supplier_id, draft.gtin || null, draft.supplier_item_code || null,
       draft.stock_unit, draft.stock_unit, draft.stock_unit,
       !consumable, consumable, consumable, false,
       `Origem: NF-e. Revise o cadastro antes de publicar ou vender.`
     ]);
     item.product_id = inserted.returnedId;
+    await tx.run("UPDATE jewelry_inventory SET item_classification=?,category_id=? WHERE id=?", [
+      consumable ? "material" : "resale",
+      category.id,
+      inserted.returnedId,
+    ]);
     item.product_variant_id = null;
   }
 }
@@ -261,8 +280,10 @@ async function confirmPurchaseLocked(tx, purchase, userId) {
     const product = await tx.get("SELECT * FROM jewelry_inventory WHERE id = ? FOR UPDATE", [item.product_id]);
     if (!product || product.status === "arquivado") throw new PurchaseValidationError(`Item ${item.product_id} não está disponível para entrada.`, 409);
     if (!product.track_stock) continue;
-    const stockQuantity = Number(item.quantity) * Number(product.purchase_to_stock_factor || 1);
-    const incomingStockUnitCostCents = Math.round(moneyToCents(item.unit_cost, "Custo da compra") / Number(product.purchase_to_stock_factor || 1));
+    const factor = Number(item.stock_conversion_factor || product.purchase_to_stock_factor || 1);
+    const stockQuantity = Number(item.quantity) * factor;
+    const incomingTotalCents = Number(item.quantity) * moneyToCents(item.unit_cost, "Custo da compra");
+    const incomingStockUnitCostCents = Math.round(moneyToCents(item.unit_cost, "Custo da compra") / factor);
     if (item.product_variant_id) {
       const variant = await tx.get("SELECT * FROM jewelry_variants WHERE id = ? FOR UPDATE", [item.product_variant_id]);
       if (!variant || Number(variant.jewelry_id) !== Number(item.product_id) || Number(variant.is_active) !== 1) {
@@ -271,7 +292,7 @@ async function confirmPurchaseLocked(tx, purchase, userId) {
       const previousQuantity = Number(variant.quantity || 0);
       const nextQuantity = previousQuantity + stockQuantity;
       const previousCostCents = Number(variant.purchase_cost_cents || 0) || moneyToCents(variant.cost_value || 0, "Custo anterior");
-      const averageCostCents = Math.round((previousQuantity * previousCostCents + stockQuantity * incomingStockUnitCostCents) / nextQuantity);
+      const averageCostCents = Math.round((previousQuantity * previousCostCents + incomingTotalCents) / nextQuantity);
       const totalCostCents = averageCostCents + Number(variant.allocated_freight_cents || 0) + Number(variant.additional_cost_cents || 0);
       const suggestedPriceCents = applyPriceRounding(Math.round(totalCostCents * Number(variant.price_multiplier || 3)), variant.price_rounding_mode || "exact");
       const manualPrice = Number(variant.price_manually_overridden || 0) === 1;
@@ -293,7 +314,7 @@ async function confirmPurchaseLocked(tx, purchase, userId) {
       const previousQuantity = Number(product.quantity || 0);
       const nextQuantity = previousQuantity + stockQuantity;
       const previousCostCents = Number(product.purchase_cost_cents || 0) || moneyToCents(product.cost_value || 0, "Custo anterior");
-      const averageCostCents = Math.round((previousQuantity * previousCostCents + stockQuantity * incomingStockUnitCostCents) / nextQuantity);
+      const averageCostCents = Math.round((previousQuantity * previousCostCents + incomingTotalCents) / nextQuantity);
       const totalCostCents = averageCostCents + Number(product.allocated_freight_cents || 0) + Number(product.additional_cost_cents || 0);
       const suggestedPriceCents = applyPriceRounding(Math.round(totalCostCents * Number(product.price_multiplier || 3)), product.price_rounding_mode || "exact");
       const manualPrice = Number(product.price_manually_overridden || 0) === 1;
@@ -410,11 +431,19 @@ export async function createPurchase(db, body, { idempotencyKey = "", userId = n
         purchase.idempotency_key, purchase.notes, userId, purchase.description
       ]);
       for (const item of purchase.items) {
+        const inventory = await tx.get(
+          "SELECT purchase_to_stock_factor,purchase_unit,stock_unit FROM jewelry_inventory WHERE id=?",
+          [item.product_id],
+        );
         await tx.run(`
           INSERT INTO purchase_order_items
-          (purchase_order_id, item_type, product_id, product_variant_id, quantity, unit_cost, line_total, batch_code, expiry_date)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [inserted.returnedId, item.item_type, item.product_id, item.product_variant_id, item.quantity, item.unit_cost_cents / 100, item.line_total_cents / 100, item.batch_code, item.expiry_date]);
+          (purchase_order_id, item_type, product_id, product_variant_id, quantity, unit_cost, line_total, batch_code, expiry_date,stock_conversion_factor,purchase_unit,stock_unit)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?)
+        `, [inserted.returnedId, item.item_type, item.product_id, item.product_variant_id, item.quantity, item.unit_cost_cents / 100, item.line_total_cents / 100, item.batch_code, item.expiry_date,
+            item.stock_conversion_factor || inventory.purchase_to_stock_factor || 1,
+            item.purchase_unit || inventory.purchase_unit,
+            inventory.stock_unit,
+          ]);
       }
       await registerPurchaseFiscalDocument(tx, inserted.returnedId, fiscalDocument, userId);
       if (purchase.status === "draft") return { purchaseId: inserted.returnedId, idempotent: false };
