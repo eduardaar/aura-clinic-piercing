@@ -270,6 +270,14 @@ export function defaultServiceForm() {
     postcare_enabled: false,
     postcare_days: "7, 15, 30",
     aftercare_instructions: "",
+    short_description: "",
+    image_url: "",
+    image_alt: "",
+    requires_evaluation: false,
+    requires_acknowledgement: false,
+    // Seções editáveis da etapa final do agendamento online; o salvamento
+    // converte para `public_info_sections` (lib/servicePresentation.js).
+    info_sections: [],
     checklist_config: null,
     biosafety_config: null,
     professional_ids: [],

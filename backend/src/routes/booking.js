@@ -19,6 +19,7 @@ import { scheduleAppointmentClientAutomations } from "../services/communications
 import { resolveServiceRules, validateAppointmentTimingRules, validateClientServiceRules } from "../services/serviceRules.js";
 import { getClinicOperationalSettings, mergeOperationalRequirements, resolveOperationalRequirements } from "../services/operationalRequirements.js";
 import { validBookingDate } from "../services/publicBookingAvailability.js";
+import { parseAcknowledgedServiceIds, serviceAcknowledgementHash } from "../services/servicePresentation.js";
 
 const router = Router();
 
@@ -277,12 +278,15 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
   if (variantId && !variant) return res.status(404).json({ error: "Variação selecionada não encontrada." });
   const requestedItems = parseItems(body.items);
   const bookingItems = [];
+  // Cadastro de cada serviço solicitado, para a ciência das informações completas.
+  const bookedServices = new Map();
   const clinicOperationalSettings = await getClinicOperationalSettings(db);
   const serviceSnapshot = (item) => {
     const operationalRequirements = resolveOperationalRequirements({ clinic: clinicOperationalSettings, service: item });
     return { ...resolveServiceRules(item), operational_requirements: operationalRequirements };
   };
   if (!requestedItems.length || !requestedItems.some((item) => item.item_type === "service")) {
+    bookedServices.set(Number(service.id), service);
     bookingItems.push({ item_type: "service", service_id: service.id, name: service.name, quantity: 1, unit_price: Number(service.price || service.base_price || 0), duration_minutes: Number(service.duration_minutes || 40), deposit_value: Number(service.deposit_value ?? 0), service_rules_snapshot: serviceSnapshot(service) });
   }
   for (const requested of requestedItems) {
@@ -292,6 +296,7 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
       if (!itemService) return res.status(404).json({ error: "Um dos serviços selecionados não está disponível." });
       const itemLinked = await db.get("SELECT id FROM professional_services WHERE professional_id=? AND service_id=?", [professionalId, itemService.id]);
       if (!itemLinked) return res.status(409).json({ error: "O profissional selecionado não realiza todos os serviços escolhidos." });
+      bookedServices.set(Number(itemService.id), itemService);
       bookingItems.push({ item_type: "service", service_id: itemService.id, name: itemService.name, quantity, unit_price: Number(itemService.price || itemService.base_price || 0), duration_minutes: Number(itemService.duration_minutes || 40), deposit_value: Number(itemService.deposit_value ?? 0), notes: requested.notes || "", service_rules_snapshot: serviceSnapshot(itemService) });
     } else if (requested.jewelry_id || requested.product_id) {
       const itemJewelryId = Number(requested.jewelry_id || requested.product_id);
@@ -333,6 +338,20 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
   if (clientRuleError) return res.status(400).json({ error: clientRuleError });
   const timingRuleError = validateAppointmentTimingRules({ rules: serviceRulesSnapshot, appointmentDate: date, appointmentTime: time });
   if (timingRuleError) return res.status(400).json({ error: timingRuleError });
+
+  // Ciência das informações completas: obrigatória só nos serviços marcados
+  // pela clínica. Não substitui o termo de consentimento formal, que continua
+  // sendo exigido na conclusão do atendimento quando o serviço pede.
+  const acknowledgedIds = parseAcknowledgedServiceIds(body.acknowledged_service_ids);
+  const missingAcknowledgement = [...bookedServices.values()].find((item) => item.requires_acknowledgement && !acknowledgedIds.has(Number(item.id)));
+  if (missingAcknowledgement) {
+    return res.status(400).json({ error: `Confirme a leitura das informações de ${missingAcknowledgement.name} antes de enviar.`, code: "acknowledgement_required" });
+  }
+  const acknowledgedAt = new Date().toISOString();
+  const publicAcknowledgements = [...bookedServices.values()]
+    .filter((item) => acknowledgedIds.has(Number(item.id)))
+    .map((item) => ({ service_id: Number(item.id), service_name: item.name, content_hash: serviceAcknowledgementHash(item), acknowledged_at: acknowledgedAt }));
+  const serviceNames = [...bookedServices.values()].map((item) => item.name).join(", ") || service.name;
 
   // A clínica tem gateway configurado? A checagem é só uma leitura do cofre
   // (sem rede) e precisa acontecer ANTES da transação, porque decide duas
@@ -442,7 +461,7 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
           [lockedCoupon.coupon.id, client.id, result.returnedId, grossValue, lockedCoupon.snapshot.coupon_discount_amount, totalValue]
         );
       }
-      await tx.run("UPDATE appointments SET deposit_expected_value=? WHERE id=?", [depositValue, result.returnedId]);
+      await tx.run("UPDATE appointments SET deposit_expected_value=?, public_acknowledgements=?::jsonb WHERE id=?", [depositValue, JSON.stringify(publicAcknowledgements), result.returnedId]);
       if (depositValue > 0) {
         await tx.run(
           "INSERT INTO payments (appointment_id, client_id, amount, payment_type, method, status, paid_at) VALUES (?, ?, ?, 'sinal', 'Pix', 'pendente', ?)",
@@ -529,7 +548,7 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
   const proofMessage = [
     `Olá, ${professional.name}. Tudo bem?`,
     `Sou ${String(body.full_name).trim()} e acabei de solicitar meu agendamento na Aura Clinic.`,
-    `Serviço: ${service.name}`,
+    `${bookedServices.size > 1 ? "Serviços" : "Serviço"}: ${serviceNames}`,
     jewelry ? `Joia: ${jewelry.name}${variant ? ` - ${variant.variation_name}` : ""}` : "",
     `Data: ${date} às ${time}`,
     `Sinal: R$ ${depositValue.toFixed(2).replace(".", ",")}`,
@@ -542,7 +561,8 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
     appointmentId,
     professionalId,
     client,
-    service,
+    // A mensagem à profissional lista todos os serviços pedidos, não só o primeiro.
+    service: { ...service, name: serviceNames },
     appointment,
     storeName: await getStoreName(db, req.tenant?.name)
   });

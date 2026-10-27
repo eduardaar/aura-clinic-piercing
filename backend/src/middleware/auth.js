@@ -35,6 +35,8 @@ export function requiresAuth(req) {
   const publicRoute = `${req.method.toUpperCase()} ${req.path}`;
   if (PUBLIC_ROUTE_METHODS.has(publicRoute)) return false;
   if (req.method === "POST" && req.path === "/api/catalog/events") return false;
+  // Estado de uma coleção pelo link público (ex.: encerrada). Só o slug, só GET.
+  if (req.method === "GET" && /^\/api\/catalog\/campaigns\/[a-z0-9-]{1,90}$/.test(req.path)) return false;
   // Ingestão de erros do frontend: pública (captura erros de telas sem sessão).
   // A leitura/gestão (GET/PATCH/DELETE) continua exigindo auth + papel admin.
   if (req.method === "POST" && req.path === "/api/error-logs") return false;

@@ -13,8 +13,22 @@ import { getClinicOperationalSettings, normalizeBiosafetyConfig, normalizeCheckl
 import { attachVariants, redactInventoryCosts } from "../services/inventory.js";
 import { hasPermission } from "../services/permissionService.js";
 import { P } from "../config/permissions.js";
+import { ServicePresentationError, saveServicePresentation, servicePresentationFields } from "../services/servicePresentation.js";
 
 const router = Router();
+
+// Valida a apresentação pública antes de qualquer escrita: um erro de seção
+// não pode deixar o serviço salvo pela metade.
+function presentationError(req, res) {
+  try {
+    servicePresentationFields(req.body);
+    return false;
+  } catch (error) {
+    if (!(error instanceof ServicePresentationError)) throw error;
+    res.status(400).json({ error: error.message });
+    return true;
+  }
+}
 
 function nullableConfig(value, normalizer) {
   return value === null || value === undefined ? null : JSON.stringify(normalizer(value));
@@ -79,6 +93,7 @@ router.get("/api/services", withFeature("procedures", async (req, res, db) => {
 router.post("/api/services", withFeature("procedures", async (req, res, db) => {
   if (!requireRole(req, res, ["admin", "reception", "piercer"])) return;
   if (!validateBody(serviceCreateSchema, req, res)) return;
+  if (presentationError(req, res)) return;
   const result = await db.run(
     `INSERT INTO services
       (name,category,body_area,description,duration_minutes,price,deposit_value,is_active,active_online_booking,pre_service_notes,
@@ -117,6 +132,7 @@ router.post("/api/services", withFeature("procedures", async (req, res, db) => {
         result.returnedId,
       ]);
   await replaceCompatibleServiceItems(db, result.returnedId, req.body.compatible_jewelry_ids || []);
+  await saveServicePresentation(db, result.returnedId, req.body);
   res.status(201).json(await getService(db, result.returnedId));
 }));
 
@@ -125,6 +141,7 @@ async function updateService(req, res, db) {
   if (!validateBody(serviceUpdateSchema, req, res)) return;
   const service = await db.get("SELECT * FROM services WHERE id = ?", [req.params.id]);
   if (!service) return res.status(404).json({ error: "Servico nao encontrado." });
+  if (presentationError(req, res)) return;
   await db.run(
     `UPDATE services SET name=?,category=?,body_area=?,description=?,duration_minutes=?,price=?,deposit_value=?,is_active=?,active_online_booking=?,pre_service_notes=?,
       minimum_age_years=?,requires_guardian=?,requires_signed_term=?,return_after_days=?,scheduling_interval_minutes=?,
@@ -162,6 +179,7 @@ async function updateService(req, res, db) {
       req.params.id,
     ]);
   if (req.body.compatible_jewelry_ids) await replaceCompatibleServiceItems(db, req.params.id, req.body.compatible_jewelry_ids);
+  await saveServicePresentation(db, req.params.id, req.body);
   res.json(await getService(db, req.params.id));
 }
 

@@ -136,7 +136,7 @@ function CatalogPublicLinks() {
   );
 }
 
-export function CatalogCustomization({ initialSection = "layout" }) {
+export function CatalogCustomization({ initialSection = "layout", onNavigate }) {
   const { data, refresh } = useFetch("/catalog-customization");
   const { data: historyData, refresh: refreshHistory } = useFetch("/catalog-customization/history");
   const [form, setFormState] = useState(defaultCatalogCustomization());
@@ -326,6 +326,13 @@ export function CatalogCustomization({ initialSection = "layout" }) {
                   {CATALOG_MORE_SECTIONS.map(([id, label]) => (
                     <DropdownMenu.Item key={id} className={activeSection === id ? "active" : ""} onSelect={() => setActiveSection(id)}>{label}</DropdownMenu.Item>
                   ))}
+                  {onNavigate && (
+                    <>
+                      <DropdownMenu.Separator />
+                      <DropdownMenu.Item onSelect={() => onNavigate("catalog-categories")}>Categorias da vitrine</DropdownMenu.Item>
+                      <DropdownMenu.Item onSelect={() => onNavigate("catalog-campaigns")}>Campanhas e coleções</DropdownMenu.Item>
+                    </>
+                  )}
                   <DropdownMenu.Separator />
                   <DropdownMenu.Item onSelect={reviewPublication} disabled={checkingPublication}>{checkingPublication ? "Revisando publicação…" : "Revisar publicação"}</DropdownMenu.Item>
                   <DropdownMenu.Item onSelect={() => setUtilitiesOpen((open) => !open)}>{utilitiesOpen ? "Ocultar histórico e links" : "Histórico, versões e links"}</DropdownMenu.Item>

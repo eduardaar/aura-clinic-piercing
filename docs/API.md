@@ -1,5 +1,56 @@
 # Referência da API
 
+Atualização de 27/10/2026 — vitrine comercial (categorias e campanhas):
+
+- `GET /api/catalog` (público) acrescenta `catalogCategories` (categorias
+  visíveis, com `parent_id`, `slug`, `path` e `depth`), `category_ids` em cada
+  item e `campaigns` (só as no ar agora, e só se o plano tiver `campaigns`), com
+  `sections` e `products` (`product_id`, `section_id` e, quando a promoção
+  ligada se aplica, `promotional_price`). O nome interno da campanha não sai.
+- `GET /api/catalog/campaigns/:slug` (público): `{ state: "ended", title }`
+  para coleção encerrada, `{ state: "unavailable" }` para agendada ou pausada
+  e `404` para inexistente ou rascunho.
+- Categorias (`basic_catalog`; `admin`/`reception`, exclusão só `admin`):
+  `GET/POST /api/catalog-categories`; `PATCH/DELETE /api/catalog-categories/:id`;
+  `PATCH /api/catalog-categories/order` (`parent_id` + `ids` das irmãs);
+  `POST /api/catalog-categories/suggested`; `GET/POST
+  /api/catalog-categories/:id/products` (`product_ids` em lote);
+  `DELETE /api/catalog-categories/:id/products/:productId`. Nome repetido no
+  mesmo nível, endereço repetido e ciclo respondem `409`; exclusão com
+  subcategorias ou produtos responde `409` com as contagens.
+- Campanhas (feature `campaigns`; `admin`/`reception`, exclusão de rascunho e
+  fuso só `admin`): `GET/POST /api/catalog-campaigns`; `GET/PATCH/DELETE
+  /api/catalog-campaigns/:id`; `POST /api/catalog-campaigns/:id/status`
+  (`publish`, `pause`, `resume`, `end`, `reactivate`); seções em
+  `/api/catalog-campaigns/:id/sections[/:sectionId]`; produtos em
+  `/api/catalog-campaigns/:id/products[/:productId]`; `GET/PUT
+  /api/catalog-campaigns/settings` (`timezone`). Datas entram como
+  `starts_local`, `ends_local` e `highlight_until_local` (`AAAA-MM-DDTHH:mm` no
+  fuso da loja) e voltam também como instantes absolutos.
+- `GET /api/catalog-products?search=&limit=` lista produtos para os seletores
+  (nome, SKU do produto ou da variação, estoque e se está publicado).
+
+Atualização de 27/10/2026 — apresentação pública dos serviços:
+
+- `POST/PUT/PATCH /api/services` aceitam `short_description` (até 240
+  caracteres), `image_url` (caminho `/uploads/...` ou URL `https://`, enviada
+  antes por `POST /api/uploads`), `image_alt`, `requires_evaluation`,
+  `requires_acknowledgement` e `public_info_sections`: lista ordenada
+  `[{ key, title?, body }]`. Chaves aceitas: `how_it_works`, `pre_service`,
+  `rules`, `eligibility`, `evaluation`, `contraindications`, `jewelry`,
+  `commercial`, `warranty`, `warranty_limits`, `aftercare`, `returns`,
+  `contact`, `consent` e `custom` (repetível, exige `title`). `pre_service` e
+  `aftercare` só marcam a posição: o texto continua em `pre_service_notes` e
+  `aftercare_instructions`. Seção desconhecida, imagem fora do formato ou
+  descrição curta longa respondem `400` antes de qualquer escrita. Campos não
+  enviados são preservados na edição.
+- `POST /api/booking/requests` aceita `acknowledged_service_ids` (JSON). Se um
+  serviço pedido tem `requires_acknowledgement`, a falta da ciência responde
+  `400 acknowledgement_required`. As ciências ficam em
+  `appointments.public_acknowledgements` com o hash SHA-256 do conteúdo exibido,
+  e a resposta e a listagem de agendamentos as devolvem. A mensagem de WhatsApp e
+  a notificação à profissional listam todos os serviços pedidos.
+
 Atualização de 09/10/2026 — edição e finalização:
 
 - `POST /api/appointments/:id/complete` valida a lista de pagamentos antes das

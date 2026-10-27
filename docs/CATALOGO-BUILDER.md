@@ -70,6 +70,17 @@ vitrine não corta as listas por quantidade: o campo **Quantidade**
 exibição, e `product_limit` das categorias em destaque é descartado ao
 normalizar.
 
+## Categorias da vitrine e campanhas
+
+Categorias comerciais e campanhas não fazem parte do snapshot do editor: são
+dados vivos, como os produtos, geridos em Catálogo › Mais opções › Categorias
+da vitrine e Campanhas e coleções. Por isso não passam por rascunho/publicação
+e uma campanha entra e sai do ar sozinha pelo período. Quando existem
+categorias comerciais, a barra do bloco **Categorias** usa a árvore delas; sem
+nenhuma, continua usando as categorias configuradas no editor. A faixa de
+coleções aparece abaixo do bloco **Menu** (posição "topo") ou antes da lista
+completa de produtos. Detalhes em [ESTADO-ATUAL.md](./ESTADO-ATUAL.md), seção 15.
+
 ## Revisões e concorrência
 
 Cada clínica possui, dentro do próprio schema Postgres:

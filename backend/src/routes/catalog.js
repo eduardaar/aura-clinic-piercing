@@ -12,6 +12,7 @@ import { parsePaging, fetchPage, pageResponse } from "../services/pagination.js"
 import { planLimit } from "../services/plans.js";
 import { requireFeature, tenantSubscription } from "../services/subscriptions.js";
 import { upload, parseUpload } from "../middleware/upload.js";
+import { publicActiveCampaigns, publicCatalogCategories } from "../services/catalogCollections.js";
 import {
   CatalogCustomizationError,
   getCatalogCustomization,
@@ -96,7 +97,7 @@ async function catalogPluginAccess(req) {
   };
 }
 
-router.get("/api/catalog", withFeature("basic_catalog", async (_req, res, db) => {
+router.get("/api/catalog", withFeature("basic_catalog", async (req, res, db) => {
   const customization = await getCatalogCustomization(db, { published: true });
   const featuredByProduct = new Map(
     asArray(customization.featuredProducts)
@@ -185,6 +186,14 @@ router.get("/api/catalog", withFeature("basic_catalog", async (_req, res, db) =>
       const orderB = Number(featuredByProduct.get(Number(b.id))?.sort_order ?? 999999);
       return orderA - orderB || String(a.category || "").localeCompare(String(b.category || "")) || String(a.name || "").localeCompare(String(b.name || ""));
     });
+  // Vitrine comercial: categorias ativas (com o vínculo de cada produto) e as
+  // campanhas no ar agora. Os vínculos só apontam para produtos publicados.
+  const { categories: catalogCategories, productCategories } = await publicCatalogCategories(db, new Set(items.map((item) => Number(item.id))));
+  for (const item of items) item.category_ids = productCategories.get(Number(item.id)) || [];
+  const subscription = await tenantSubscription(req.tenant?.id);
+  const campaigns = Array.isArray(subscription?.features) && subscription.features.includes("campaigns")
+    ? await publicActiveCampaigns(db, items)
+    : [];
   res.json({
     ...customization.settings,
     theme: customization.theme,
@@ -202,6 +211,8 @@ router.get("/api/catalog", withFeature("basic_catalog", async (_req, res, db) =>
       published_at: customization.version?.published_at || null
     },
     categories: splitCatalogCategories(customization.settings.categories),
+    catalogCategories,
+    campaigns,
     items
   });
 }));

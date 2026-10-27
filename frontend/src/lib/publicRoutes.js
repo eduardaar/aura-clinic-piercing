@@ -1,5 +1,5 @@
 const TENANT_KEYS = ["t", "tenant", "clinic"];
-const CATALOG_STATE_KEYS = ["category", "q", "material", "color", "stone", "size", "topSize", "available", "sort"];
+const CATALOG_STATE_KEYS = ["category", "q", "material", "color", "stone", "size", "topSize", "available", "thickness", "thread", "min", "max", "secao", "sort"];
 
 export function publicTenant(search = window.location.search) {
   const params = new URLSearchParams(search);

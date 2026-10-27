@@ -78,10 +78,10 @@ documento legal.
 | Tabelas | Responsabilidade |
 | --- | --- |
 | `clients` | Cadastro, estado de anonimização/arquivamento, dados de contato e endereço, nome social, canal preferido, origem e indicação, tags, `lifecycle_status`, consentimentos, contato de emergência, responsável legal e o rastro de mesclagem (`merged_into_client_id`, `merged_at`, `merged_by_user_id`, `merge_reason`). |
-| `professionals`, `services`, `procedures`, `professional_services` | Equipe, cadastro único de tipos de atendimento (`services`, com categoria, área do corpo e regras opcionais: idade mínima, responsável, termo assinado, antecedência, intervalo, retorno e pós-atendimento), procedimentos antigos mantidos só para leitura do histórico e a relação N:N entre profissional e serviço. |
+| `professionals`, `services`, `procedures`, `professional_services` | Equipe, cadastro único de tipos de atendimento (`services`, com categoria, área do corpo e regras opcionais: idade mínima, responsável, termo assinado, antecedência, intervalo, retorno e pós-atendimento), procedimentos antigos mantidos só para leitura do histórico e a relação N:N entre profissional e serviço. Desde a migration `0052`, `services` guarda também a apresentação do agendamento online: `short_description` (cartão), `image_url`/`image_alt`, `requires_evaluation`, `requires_acknowledgement` e `public_info_sections` (JSONB ordenado de `{ key, title, body }`; `pre_service` e `aftercare` só marcam posição e leem `pre_service_notes`/`aftercare_instructions`). `description` continua sendo a descrição completa. |
 | `service_compatible_inventory_items`, `service_operational_settings` | Itens de estoque marcados como compatíveis com o serviço e configuração única da clínica para checklist e biossegurança (opt-in). |
 | `professional_availability`, `schedule_blocks` | Regras semanais de disponibilidade e indisponibilidades pontuais. |
-| `appointments`, `appointment_items`, `inventory_reservations` | Agendamento, vários itens por atendimento e reserva temporária de estoque. O agendamento guarda os horários de chegada, início e ausência (`arrived_at`, `started_at`, `no_show_at`) e snapshots das regras do serviço e dos requisitos operacionais. |
+| `appointments`, `appointment_items`, `inventory_reservations` | Agendamento, vários itens por atendimento e reserva temporária de estoque. O agendamento guarda os horários de chegada, início e ausência (`arrived_at`, `started_at`, `no_show_at`), snapshots das regras do serviço e dos requisitos operacionais e, no agendamento online, `public_acknowledgements` (JSONB: serviço, nome, hash do conteúdo lido e data da ciência; migration `0052`). |
 | `appointment_reschedule_history` | Data e horário anteriores e novos, motivo e autor de cada reagendamento. |
 | `appointment_waitlist`, `agenda_resources` | Lista de espera (cliente ou contato avulso, período preferido, prioridade 0–5, status) e cadastro de salas, cadeiras, estações e equipamentos. Nenhuma coluna liga um recurso a um agendamento. |
 | `service_executions`, `service_execution_items`, `service_execution_operational_revisions` | Fechamento do atendimento concluído, 1:1 com o agendamento e separado das vendas: snapshot, subtotais, pago, a receber, parcelas, notas clínicas, checklist e biossegurança, com as revisões desses dois registros. |
@@ -164,6 +164,16 @@ originou a movimentação, impedindo uma segunda baixa/entrada por reenvio.
 | `notification_queue` | Fila de mensagens e lembretes. |
 | `communication_templates`, `automation_rules`, `automation_runs` | Templates, regras de automação e execuções. |
 | `communication_credit_wallets`, `communication_credit_ledger`, `communication_credit_reservations`, `communication_credit_purchase_intents` | Saldo, extrato, reserva e intenção de compra de créditos por canal. |
+
+### Vitrine comercial (categorias e campanhas)
+
+| Tabelas | Responsabilidade |
+| --- | --- |
+| `catalog_categories`, `catalog_category_products` | Categorias do catálogo público em árvore (`parent_id`, sem limite de níveis, `slug` único, nome único entre irmãs) e o vínculo N:N com `jewelry_inventory`. Independentes de `inventory_options` (categorias internas do estoque). Migration `0053`. |
+| `catalog_campaigns`, `catalog_campaign_sections`, `catalog_campaign_products` | Campanhas temporárias: `status` guarda a decisão (`draft`, `published`, `paused`, `ended`) e `starts_at`/`ends_at` (`TIMESTAMPTZ`) definem agendada/ativa/encerrada a cada leitura. Subcategorias próprias e vínculo de produtos (chave `(campaign_id, product_id)`). `promotion_id` aponta para uma promoção de `catalog_promotions`. |
+
+`clinic_settings.timezone` (migration `0053`) é o fuso da loja usado para
+interpretar e exibir as datas das campanhas.
 
 ### Catálogo público e builder
 

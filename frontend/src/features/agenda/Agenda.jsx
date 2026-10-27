@@ -2748,7 +2748,7 @@ export function BookingAdmin({ onBack, initialTab, features = [], onUpgrade }) {
             {safeAppointments.map((item) => (
               <article className="appointment-row" key={item.id}>
                 <div className="time-box"><strong>{item.appointment_time}</strong><span>{formatDate(item.appointment_date)}</span></div>
-                <div><h3>{personName(item)}</h3><p>{item.procedure} · {currency.format(item.deposit_value || 0)} de sinal</p><small>{item.professional_name} · {item.whatsapp}</small></div>
+                <div><h3>{personName(item)}</h3><p>{requestServiceNames(item)} · {currency.format(item.deposit_value || 0)} de sinal</p><small>{item.professional_name} · {item.whatsapp}</small>{requestAcknowledgementText(item) && <><br /><small>{requestAcknowledgementText(item)}</small></>}</div>
                 <div className="row-actions">
                   <Button onClick={() => updateRequest(item.id, "confirmado")}>Confirmar</Button>
                   <Button variant="secondary" className="danger" onClick={() => updateRequest(item.id, "recusado")}>Recusar</Button>
@@ -2768,6 +2768,22 @@ export function BookingAdmin({ onBack, initialTab, features = [], onUpgrade }) {
       />
     </section>
   );
+}
+
+// Solicitação online com vários serviços: `procedure` guarda só o primeiro.
+function requestServiceNames(item = {}) {
+  const names = asArray(item.items).map((row) => row.service_name).filter(Boolean);
+  return names.length ? names.join(", ") : item.procedure;
+}
+
+// Ciência registrada pelo cliente na etapa final do agendamento online.
+function requestAcknowledgementText(item = {}) {
+  let rows = item.public_acknowledgements;
+  if (typeof rows === "string") {
+    try { rows = JSON.parse(rows); } catch { rows = []; }
+  }
+  const names = asArray(rows).map((row) => row.service_name).filter(Boolean);
+  return names.length ? `Leitura confirmada no agendamento online: ${names.join(", ")}` : "";
 }
 
 /** @param {{ appointments?: any[], onChanged?: () => any, compact?: boolean }} props */

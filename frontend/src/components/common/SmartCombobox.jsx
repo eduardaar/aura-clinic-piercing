@@ -107,6 +107,9 @@ export function SmartCombobox({ label, value, onChange, onSelect, options = [], 
   const root = useRef(null);
   const list = useRef(null);
   const sheetInput = useRef(null);
+  const triggerInput = useRef(null);
+  // Esc devolve o foco ao campo sem reabrir a lista no onFocus.
+  const keepClosedOnFocus = useRef(false);
   // Dentro de um modal a lista monta no próprio diálogo (foco e ponteiro
   // ficam presos lá pelo Radix); fora, no body.
   const modal = useModal();
@@ -124,10 +127,12 @@ export function SmartCombobox({ label, value, onChange, onSelect, options = [], 
   // Cada termo novo recomeça a paginação e o destaque do topo da lista.
   // biome-ignore lint/correctness/useExhaustiveDependencies: query/filter changes intentionally reset pagination and keyboard focus.
   useEffect(() => { setVisible(PAGE_SIZE); setActive(0); }, [query, filters]);
-  // No celular a folha inferior cobre o campo original; quem digita precisa
-  // ver o que digita, então a busca passa para o campo dentro da folha.
+  // A busca mora no topo da lista, antes dos filtros, no celular e no
+  // computador: a lista pode cobrir o campo original (folha inferior no
+  // celular; perto do rodapé da tela no computador), e quem digita precisa
+  // ver o que digita.
   useEffect(() => {
-    if (!open || window.innerWidth > MOBILE_SHEET_MAX_WIDTH) return undefined;
+    if (!open) return undefined;
     const timer = window.setTimeout(() => sheetInput.current?.focus({ preventScroll: true }), 30);
     return () => window.clearTimeout(timer);
   }, [open]);
@@ -158,10 +163,21 @@ export function SmartCombobox({ label, value, onChange, onSelect, options = [], 
       // inteira) a lista de joias pode ser bem mais alta: mostra mais opções
       // sem rolar. Nos demais modais segue o teto de 520px.
       const inWorkspace = Boolean(root.current.closest(".modal-workspace"));
-      const maxHeight = Math.min(inWorkspace ? 720 : 520, Math.max(420, viewportHeight - 96));
-      const top = Math.min(rect.bottom + 8, viewportHeight - maxHeight - 8);
+      const cap = inWorkspace ? 720 : 520;
       const left = Math.min(Math.max(rect.left, 8), Math.max(8, viewportWidth - width - 8));
-      setPopupStyle({ top: `${Math.max(8, top)}px`, left: `${left}px`, width: `${width}px`, maxWidth: `${Math.max(420, Math.min(viewportWidth - 16, 520))}px`, maxHeight: `${maxHeight}px` });
+      const sizing = { left: `${left}px`, width: `${width}px`, maxWidth: `${Math.max(420, Math.min(viewportWidth - 16, 520))}px` };
+      const spaceBelow = viewportHeight - rect.bottom - 16;
+      const spaceAbove = rect.top - 16;
+      // Abaixo do campo quando cabe; acima quando o espaço lá é maior (campo
+      // perto do rodapé); só em tela muito baixa a lista sobrepõe o campo.
+      if (spaceBelow >= 360 || (spaceBelow >= spaceAbove && spaceBelow >= 300)) {
+        setPopupStyle({ ...sizing, top: `${rect.bottom + 8}px`, maxHeight: `${Math.min(cap, spaceBelow)}px` });
+      } else if (spaceAbove > spaceBelow && spaceAbove >= 300) {
+        setPopupStyle({ ...sizing, bottom: `${viewportHeight - rect.top + 8}px`, maxHeight: `${Math.min(cap, spaceAbove)}px` });
+      } else {
+        const maxHeight = Math.min(cap, Math.max(300, viewportHeight - 16));
+        setPopupStyle({ ...sizing, top: `${Math.max(8, viewportHeight - maxHeight - 8)}px`, maxHeight: `${maxHeight}px` });
+      }
     };
     updatePosition();
     window.addEventListener("resize", updatePosition);
@@ -220,7 +236,13 @@ export function SmartCombobox({ label, value, onChange, onSelect, options = [], 
   }
 
   function keyDown(event) {
-    if (event.key === "Escape") { setOpen(false); return; }
+    if (event.key === "Escape") {
+      setOpen(false);
+      keepClosedOnFocus.current = true;
+      triggerInput.current?.focus({ preventScroll: true });
+      keepClosedOnFocus.current = false;
+      return;
+    }
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault(); setOpen(true);
       setActive((current) => Math.max(0, Math.min(filtered.length - 1, current + (event.key === "ArrowDown" ? 1 : -1))));
@@ -234,7 +256,7 @@ export function SmartCombobox({ label, value, onChange, onSelect, options = [], 
       <label htmlFor={id} className="smart-combobox-label">{label}</label>
       <span className="smart-combobox-input" aria-busy={loading}>
         <Search size={16} className="smart-combobox-search-icon" />
-        <input id={id} role="combobox" aria-expanded={open} aria-controls={`${id}-list`} aria-autocomplete="list" aria-activedescendant={open && filtered[active] ? `${id}-option-${filtered[active].id}` : undefined} required={required} value={query} placeholder={placeholder} onFocus={() => setOpen(true)} onChange={(event) => { setQuery(event.target.value); setOpen(true); }} onKeyDown={keyDown} />
+        <input ref={triggerInput} id={id} role="combobox" aria-expanded={open} aria-controls={`${id}-list`} aria-autocomplete="list" aria-activedescendant={open && filtered[active] ? `${id}-option-${filtered[active].id}` : undefined} required={required} value={query} placeholder={placeholder} onFocus={() => { if (!keepClosedOnFocus.current) setOpen(true); }} onChange={(event) => { setQuery(event.target.value); setOpen(true); }} onKeyDown={keyDown} />
         {loading ? (
           <LoaderCircle className="smart-combobox-spinner" size={16} aria-label="Carregando" />
         ) : value || query ? (

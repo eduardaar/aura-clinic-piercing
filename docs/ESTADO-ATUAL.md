@@ -1,8 +1,8 @@
 # Estado atual do projeto
 
-> Situação em **19/10/2026**: ajustes de compras, materiais e despesas operacionais (seção 13), sobre `d7f6da31`, e troca das quatro imagens de recursos da landing **publicados às 13:19 BRT**, a partir da árvore de trabalho local. Migrations `0045` aplicadas às quatro clínicas e `0009` à plataforma, sem pendências. Backup restaurado com sucesso em base temporária antes da publicação; totais de registros, estoque e financeiro preservados. Validação pública em 390/1366 px e relatório em `outputs/deploy-2026-10-19/RELATORIO.md`. Imagens também verificadas localmente em Chromium/WebKit nas larguras 320, 390, 768 e 1366 px.
+> Situação em **27/10/2026**: reformulação da apresentação dos serviços no agendamento online, busca do seletor de joias no computador e respostas da revisão do cliente (seção 14), implementadas localmente sobre `b6254efb`, **sem commit nem publicação**. Exige as migrations tenant `0052` e `0053`. A seção 15 registra o catálogo com categorias hierárquicas e campanhas.
 >
-> Nesta revisão foram reexecutados o typecheck de backend/frontend, o build, as suítes de backend/frontend e a validação automatizada em Chromium/WebKit (seção 13). Integrações externas e iPhone físico não foram exercitados; os resultados anteriores preservam suas datas.
+> Publicação anterior: **19/10/2026** (seção 13), com a `0045` aplicada às quatro clínicas e a `0009` à plataforma; relatório em `outputs/deploy-2026-10-19/RELATORIO.md`. Confira no ledger de produção se as migrations `0046`–`0051` e a platform `0010` (entrega de 20/10) já foram aplicadas antes de publicar a `0052`.
 >
 > Este documento existe para responder uma pergunta só: **o que já está feito e o que ainda não está.** Ele não propõe roadmap nem assume compromisso de produto — para isso, use [IDEIAS.md](./IDEIAS.md). Quando o código e este documento discordarem, o código vence: registre a correção aqui.
 
@@ -24,7 +24,7 @@
 | --- | --- | --- |
 | Multi-tenancy por schema Postgres | **Entregue** | `middleware/withDb.js`; `scripts/test-isolation.mjs` (9 checagens, incluindo token cruzado, suspensão e 30 requisições alternadas sem vazamento de pool) |
 | Provisionamento e desprovisionamento de clínica | **Entregue** | `services/tenants.js`; clínica nova nasce com `schema.sql` + todas as migrations de tenant na mesma transação |
-| Migrations versionadas com ledger e checksum | **Entregue** | `src/db/migrations/` (platform `0001`–`0009`; tenant `0001`–`0045`, sem `0026` e `0027`, que nunca existiram); CLI `npm --prefix backend run migrations:apply` |
+| Migrations versionadas com ledger e checksum | **Entregue** | `src/db/migrations/` (platform `0001`–`0010`; tenant `0001`–`0053`, sem `0026` e `0027`, que nunca existiram); CLI `npm --prefix backend run migrations:apply` |
 | Painel de super-admin | **Entregue** | `routes/platform.js`, `features/platform/PlatformAdmin.jsx` |
 | Cadastro público de clínica | **Entregue** | `POST /api/signup`, com verificação de disponibilidade de nome e e-mail antes do aceite; exige plano existente (`plano_obrigatorio`) e aceite das versões vigentes dos documentos legais (`legal_acceptance_required`) |
 
@@ -125,7 +125,10 @@
 
 | Camada | Resultado | Quando |
 | --- | --- | --- |
-| Suíte backend | 715/715 em 161 s; oito regressões específicas reexecutadas após os ajustes finais | 06/10, banco PostgreSQL temporário separado da base local, sem credenciais de provedores externos |
+| Suíte backend | 769/769 em 186 s | 27/10, base PostgreSQL local, sobre as seções 14 e 15 |
+| Frontend unitário e de componentes | 77/77 unitários e 381/381 de componentes em 47 arquivos Vitest | 27/10, sobre as seções 14 e 15 |
+| Typecheck, build e Novidades | typecheck aprovado; build com 1.846 módulos; `release:check` com 3 anúncios | 27/10 |
+| Suíte backend (anterior) | 715/715 em 161 s; oito regressões específicas reexecutadas após os ajustes finais | 06/10, banco PostgreSQL temporário separado da base local, sem credenciais de provedores externos |
 | Homologação crítica ponta a ponta | 123/123 (`scripts/qa-homologation-critical.mjs`) | 27/08, tenant novo, após as correções. O script ainda chama `/api/consumables` (removida em `48e5bfa1`) e precisa ser atualizado antes de rodar de novo |
 | Frontend unitário e de componentes | 65/65 unitários e 308/308 de componentes em 36 arquivos Vitest | reexecutados em 06/10, com as alterações da seção 10 |
 | Typecheck backend e frontend | aprovado | reexecutado em 06/10, via `npm run verify:static` |
@@ -319,7 +322,146 @@ provisionamento. As quatro imagens da landing e a imagem do login foram recebida
 publicadas e verificadas em desktop e celular. Evidências visuais e pacotes locais
 ficam fora do Git; relatórios e testes permanecem versionados.
 
+## 14. Agendamento online, seletor de joias e revisão do cliente — 27/10/2026
+
+Respostas à revisão do cliente de 27/10 e à especificação "Melhoria do
+agendamento online". Implementado localmente sobre `b6254efb`; não houve
+commit, publicação nem migration em produção.
+
+**Agendamento online (`/agendar`)**
+
+- Etapa 1 com cartões compactos (foto, nome, preço, resumo, duração e
+  "Selecionar"/"Selecionado" com ícone e `aria-pressed`, sem depender só da cor),
+  busca e filtro de categoria (com mais de uma categoria) e grade de 3/2/1
+  colunas. Componentes compartilhados em `components/common/ServicePresentation.jsx`.
+- Etapa final com resumo (serviços com preço e duração, profissional, data,
+  duração total, valores, sinal e forma, situação "sujeito à confirmação") e
+  as informações completas de cada serviço selecionado em blocos recolhíveis,
+  sem misturar regras entre serviços. Confirmação de leitura por serviço quando
+  a clínica a exige; o termo formal continua separado e é avisado.
+- Sinal exibido passou a seguir a regra do backend (soma dos sinais dos
+  serviços, limitada ao total). Antes a tela mostrava só o do primeiro serviço
+  e R$ 25 quando ele era zero.
+- Cabeçalho com a logo da vitrine (ou a inicial), WhatsApp quando configurado e
+  textos em caixa de frase ("Escolha a profissional", "Seus dados" etc.).
+- Mensagem de WhatsApp e notificação à profissional listam todos os serviços
+  pedidos (antes, só o primeiro). "Solicitações pendentes" mostra todos os
+  serviços e a ciência registrada.
+
+**Cadastro do procedimento** — seção "Apresentação no agendamento online"
+(imagem com envio/troca/remoção e texto alternativo, descrição curta com
+contador de 160, avaliação prévia, confirmação de leitura), "Informações
+completas para o cliente" (seções ordenáveis; "Antes do atendimento" e
+"Cuidados após o atendimento" continuam gravadas em `pre_service_notes` e
+`aftercare_instructions`) e "Pré-visualização" com os mesmos componentes da
+página pública.
+Textos existentes foram preservados: a descrição atual é a descrição completa
+e o cartão usa um resumo dela enquanto não houver descrição curta.
+
+**Migration `0052_service_public_presentation`** — `short_description`,
+`image_url`, `image_alt`, `requires_evaluation`, `requires_acknowledgement` e
+`public_info_sections` (JSONB) em `services`; `public_acknowledgements` em
+`appointments` (serviço, hash do conteúdo exibido e data). Só adiciona colunas.
+
+**Seletor de joias** — no computador a busca aparece no topo da lista, antes
+dos filtros, recebe o foco e Esc devolve o foco ao campo; a lista abre acima do
+campo quando falta espaço abaixo, em vez de cobri-lo.
+
+**Novidades** — manifesto `2026-10-27-agendamento-online-visual` com
+"Agendamento online mais visual e organizado" e "Busca de joias sempre à vista",
+publicado pelo deploy.
+
+**Validação** — testes novos `servicePresentation.test.mjs` (backend:
+validação, ciência obrigatória e registrada, sinal somado,
+mensagem com todos os serviços), `PublicBookingPresentation.test.jsx`,
+`ServicePresentationEditor.test.jsx`, `servicePresentation.test.mjs`
+(frontend) e caso novo em `SmartCombobox.test.jsx`. Capturas reais (Chrome
+headless) da clínica local `qa-shots` em 1366, 820 e 390 px: etapa 1, seleção,
+resumo com ciência e envio, cadastro com pré-visualização e seletor de joias em
+1366×768 e 390 px, sem erros de console nem rolagem horizontal. Não houve teste
+em iPhone físico.
+
+## 15. Catálogo com categorias hierárquicas e campanhas — 27/10/2026
+
+Evolução do catálogo existente (não é uma loja separada), implementada
+localmente sobre `b6254efb`, sem commit nem publicação.
+
+**Estrutura (migration `0053_catalog_categories_campaigns`)** — tabelas novas,
+separadas das categorias internas do estoque (`inventory_options`) e das
+financeiras: `catalog_categories` (hierarquia por `parent_id`, sem limite de
+níveis, endereço único, ordem, imagem e visibilidade), `catalog_category_products`
+(N:N com `jewelry_inventory`), `catalog_campaigns`, `catalog_campaign_sections`
+(subcategorias da campanha) e `catalog_campaign_products`. Produtos entram só
+por relacionamento: nenhum cadastro, SKU, variação, imagem ou saldo é copiado;
+as chaves primárias impedem vínculo repetido. `clinic_settings.timezone` guarda
+o fuso da loja (padrão `America/Sao_Paulo`).
+
+**Categorias** — painel em Catálogo › Mais opções › Categorias da vitrine
+(`/app/catalogo/categorias`): criar, editar, mover de categoria principal (sem
+ciclos), reordenar, ocultar, vincular e remover produtos em lote, ver contagem
+de produtos e subcategorias. Nome repetido só é recusado no mesmo nível (sem
+diferenciar acento e caixa); endereço é único. A exclusão é recusada (`409`)
+quando há subcategorias ou produtos — a opção é ocultar. "Criar estrutura
+sugerida" cria a árvore de exemplo da especificação sem tocar no que já existe.
+
+**Campanhas** — painel em Catálogo › Mais opções › Campanhas e coleções
+(`/app/catalogo/campanhas`, feature `campaigns`): nome interno, título,
+endereço, resumo, banner para computador e para celular, capa, início e fim no
+horário da loja, destaque até uma data, posição (topo ou antes da lista de
+produtos), prioridade, página inicial e navegação, subcategorias próprias,
+produtos em lote e prévia com o mesmo layout público. Estados: rascunho,
+agendada, ativa, pausada, encerrada. A entrada e a saída do ar são calculadas
+pelo banco a cada leitura (`now()` contra instantes absolutos): não há
+tarefa agendada nem publicação manual extra. Encerrar não apaga produtos nem
+estoque; campanhas publicadas ficam no histórico e podem ser reativadas com
+novo período. Avisos para campanha sem produtos ou com produtos indisponíveis.
+Desconto: a campanha só aponta para uma promoção existente; o preço
+promocional é calculado no servidor pelas regras de `services/promotions.js`.
+
+**Vitrine** — com categorias comerciais cadastradas, a barra de categorias usa a
+árvore (categoria inclui as subcategorias), com trilha, subcategorias, modal
+"Todas as categorias" e atalhos das coleções. Sem nenhuma cadastrada, a vitrine
+continua com as categorias do editor, como antes. Filtros novos de espessura,
+fixação e faixa de preço (só aparecem quando há dados no cadastro), contador de
+filtros ativos, "Limpar filtros", ordenações por relevância e lançamentos,
+"Mostrar mais" de 24 em 24 e SKU no card. O bloco de produtos do editor passou
+a respeitar a ordenação escolhida pelo visitante quando o bloco não define uma
+ordem própria (antes sempre ordenava por mais recentes). Coleções aparecem na
+faixa da página inicial e em `/catalogo/colecao/<endereço>`; link encerrado
+mostra página própria (`GET /api/catalog/campaigns/:slug`, público).
+
+**Validação** — `catalogCollections.test.mjs` (backend: níveis, duplicidade,
+endereços, ciclos, vínculo em várias categorias sem alterar estoque/SKU,
+ocultação da descendência, agendamento, vigência, pausa, encerramento
+automático, reativação, fuso da loja, permissões, isolamento entre clínicas e
+plano sem campanhas), `catalogNavigation.test.mjs`,
+`PublicCatalogCollections.test.jsx` e `CatalogCollectionsAdmin.test.jsx`.
+Capturas reais da clínica local `qa-shots` em 1366 e 390 px: vitrine, categoria,
+árvore, coleção, coleção indisponível e painel, sem rolagem horizontal.
+
 ## Pendências abertas
+
+### P-09 — compras e estoque precisam de alinhamento com o cliente
+
+**Severidade: decisão de produto.** Na revisão de 27/10, o fluxo de compras em
+três caminhos, a consolidação de categorias e a conversão de embalagem em
+unidades foram considerados confusos para a rotina do estúdio. O cliente pediu
+uma chamada antes de qualquer mudança; nada foi alterado nesta área.
+
+### P-10 — fotos e textos dos serviços dependem da clínica
+
+As imagens dos procedimentos não podem ser inventadas: cada clínica envia as
+suas no cadastro. Até lá os cartões usam a ilustração padrão. Da mesma forma,
+regras, garantias, prazos e condições só aparecem quando a clínica as
+escreve; nenhum texto genérico foi criado.
+
+### P-11 — horários do agendamento online com vários serviços
+
+A lista de horários do link público é calculada com a duração do primeiro
+serviço escolhido. A soma das durações só é conferida no envio, que recusa com
+`409` ("O horário não comporta a duração total…") quando não cabe. A regra de
+disponibilidade foi preservada nesta entrega, como pedido; ajustar a consulta
+para a duração total é uma decisão separada.
 
 ### Decisões guardadas da execução de 09/10/2026
 

@@ -248,8 +248,8 @@ backend/src/
 ├── schemas/
 │   └── index.js             Schemas de validação Zod
 ├── db/migrations/           Migrations versionadas com ledger e checksum
-│   ├── platform/            0001–0008
-│   └── tenant/              0001–0025 e 0028–0044 (0026 e 0027 não existem)
+│   ├── platform/            0001–0010
+│   └── tenant/              0001–0025 e 0028–0053 (0026 e 0027 não existem)
 ├── text-normalizer.js       Normalização de encoding das respostas
 └── data/uploads/            Arquivos enviados (fallback local, quando o R2 está desligado)
 
@@ -367,7 +367,8 @@ O frontend não usa um framework visual externo; a UI compartilhada vive em `fro
 - **`CrudHeader`** (`Crud.jsx`) — cabeçalho padrão das telas de gestão: `title`, `subtitle`, botão primário (`actionLabel`, default "Novo") via `onAction` e `actions` secundárias (`[{ label, icon, onClick }]`) agrupadas no menu "Mais opções".
 - **`ConfirmDeleteModal`** (`Crud.jsx`) — modal de confirmação de exclusão que **exige digitar uma palavra** (`confirmWord`, padrão "SIM", comparada sem diferenciar maiúsculas) para habilitar o botão Excluir, evitando remoções acidentais. Props: `open`, `onClose`, `onConfirm`, `title`, `message`, `confirmWord`, `loading`.
 - **`FormWorkflow`** (`FormWorkflow.jsx` + `form-workflow.css`) — base dos formulários longos: `FormWorkflow`, `FormPage`, `FormSection`, `StepNavigator` (etapas), `AdvancedFields` (campos recolhidos), `ValidationSummary` e `ReviewSummary`. Combina com o hook `useFormDraft` (`lib/useFormDraft.js`), que guarda rascunho no `localStorage` por clínica, usuário e formulário (`aura:form-draft:<clínica>:<usuário>:<formulário>`) e só volta a gravar depois que a pessoa restaura ou descarta o rascunho anterior — nada é criado no backend antes de salvar. `TransactionFields.jsx` (`ResponsiveEditableList`, `TransactionTotals`) completa o padrão para itens e totais de compras e vendas.
-- **`SmartCombobox`** (`SmartCombobox.jsx`) — seletor com busca (padrão: joias por nome, SKU ou medida, com situação do estoque); dentro de um `Modal`, a lista monta no próprio diálogo e, até 640px, vira folha inferior com busca própria.
+- **`SmartCombobox`** (`SmartCombobox.jsx`) — seletor com busca (padrão: joias por nome, SKU ou medida, com situação do estoque); dentro de um `Modal`, a lista monta no próprio diálogo. A busca fica no topo da lista, antes dos filtros, em qualquer largura, e recebe o foco ao abrir; no computador a lista abre acima do campo quando falta espaço abaixo e, até 640px, vira folha inferior.
+- **`ServiceCard` / `ServiceInfoBlock` / `ServiceImage`** (`ServicePresentation.jsx`) — cartão do serviço e bloco de informações completas do agendamento online, reaproveitados na pré-visualização do cadastro; regras de resumo, seções e requisitos em `lib/servicePresentation.js`. Serviço sem foto usa imagem padrão com ícone pelo tipo de serviço.
 - **`SignaturePad`** (`SignaturePad.jsx`) — assinatura desenhada em canvas (mouse, caneta ou dedo), devolvida como data URL PNG; usada nos termos digitais, inclusive na página pública `/termo`.
 - **`CollapsibleIndicators`** (`CollapsibleIndicators.jsx`) — envolve os cartões de métricas com "Ocultar/Mostrar indicadores" e lembra a escolha por clínica, usuário e tela no `localStorage`.
 

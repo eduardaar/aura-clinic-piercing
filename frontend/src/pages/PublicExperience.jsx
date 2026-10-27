@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   CheckCircle2,
   ChevronLeft,
@@ -21,7 +21,23 @@ import {
 } from "lucide-react";
 import { Loading, ApiError } from "../components/common/Feedback";
 import { PublicBookingCalendar } from "../components/common/PublicBookingCalendar";
-import { BookingChoiceGrid, Checkbox, Input, Select } from "../components/common/Ui";
+import { Accordion, Checkbox, Input, Select } from "../components/common/Ui";
+import { ServiceCard, ServiceImage, ServiceInfoBlock, formatServicePrice } from "../components/common/ServicePresentation";
+import { bookingDepositTotal, bookingDurationTotal, formatDuration, serviceCardSummary, servicePrice } from "../lib/servicePresentation";
+import "../styles/public-booking.css";
+import { Modal } from "../components/common/Crud";
+import { CampaignShowcase, CampaignUnavailable, CatalogCampaignBand, CatalogCategoryTree, campaignUrl } from "../features/catalog/CatalogCollections";
+import {
+  buildCategoryTree,
+  campaignItems,
+  catalogFieldValues,
+  categoryDescendantIds,
+  categoryTrail,
+  commercialFiltersMatch,
+  countActiveCatalogFilters,
+  itemInCategory,
+  sortCatalogItems
+} from "../lib/catalogNavigation";
 import { API_ORIGIN, publicApiFetch, usePublicFetch } from "../lib/api";
 import { asArray, asNumber, asObject, formatLongDate, removeAccents } from "../lib/utils";
 import { readRecentSearches, saveRecentSearch, smartSearchMatches, useDebouncedValue } from "../lib/smartSearch";
@@ -169,7 +185,10 @@ export function PublicCatalog() {
   const [search, setSearch] = useState(initialQuery.get("q") || "");
   const debouncedSearch = useDebouncedValue(search);
   const [recentSearches, setRecentSearches] = useState(() => readRecentSearches("aura-catalog-recent-searches"));
-  const [filters, setFilters] = useState({ material: initialQuery.get("material") || "", color: initialQuery.get("color") || "", stone: initialQuery.get("stone") || "", size: initialQuery.get("size") || "", topSize: initialQuery.get("topSize") || "", availability: initialQuery.get("available") || "" });
+  const [filters, setFilters] = useState({ material: initialQuery.get("material") || "", color: initialQuery.get("color") || "", stone: initialQuery.get("stone") || "", size: initialQuery.get("size") || "", topSize: initialQuery.get("topSize") || "", availability: initialQuery.get("available") || "", thickness: initialQuery.get("thickness") || "", thread: initialQuery.get("thread") || "", priceMin: initialQuery.get("min") || "", priceMax: initialQuery.get("max") || "" });
+  const [campaignSection, setCampaignSection] = useState(initialQuery.get("secao") || "");
+  const [categoryTreeOpen, setCategoryTreeOpen] = useState(false);
+  const [campaignStatus, setCampaignStatus] = useState(null);
   const [sort, setSort] = useState(initialQuery.get("sort") || "recentes");
   const [favoriteIds, setFavoriteIds] = useState(() => readCatalogStorage("aura-catalog-favorites", []));
   const [orderItems, setOrderItems] = useState(() => readCatalogStorage("aura-catalog-order", []));
@@ -177,6 +196,7 @@ export function PublicCatalog() {
   const [bannerIndex, setBannerIndex] = useState(0);
   const catalogRoute = window.location.pathname;
   const selectedProductId = Number((catalogRoute.match(/^\/catalogo\/produto\/(\d+)/) || [])[1] || 0);
+  const selectedCampaignSlug = (catalogRoute.match(/^\/catalogo\/colecao\/([a-z0-9-]{1,90})/) || [])[1] || "";
 
   // O editor manda o snapshot atual para um iframe da própria vitrine. Não há
   // endpoint público de rascunho: a mensagem só é aceita da mesma origem e o
@@ -215,9 +235,28 @@ export function PublicCatalog() {
       size: filters.size,
       topSize: filters.topSize,
       available: filters.availability,
+      thickness: filters.thickness,
+      thread: filters.thread,
+      min: filters.priceMin,
+      max: filters.priceMax,
+      secao: selectedCampaignSlug ? campaignSection : "",
       sort: sort !== "recentes" ? sort : ""
     });
-  }, [activeCategory, debouncedSearch, filters, sort, previewMode]);
+  }, [activeCategory, debouncedSearch, filters, sort, previewMode, campaignSection, selectedCampaignSlug]);
+
+  // Coleção fora do ar: pergunta à API só o estado (encerrada ou indisponível)
+  // para mostrar uma página adequada em vez de um erro.
+  const activeCampaignFound = asArray(data?.campaigns).some((campaign) => campaign.slug === selectedCampaignSlug);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: consulta uma vez por endereço, quando o catálogo carregou e a coleção não está no ar.
+  useEffect(() => {
+    if (!selectedCampaignSlug || !data || data.error || activeCampaignFound || previewMode) return undefined;
+    let cancelled = false;
+    publicApiFetch(`/catalog/campaigns/${selectedCampaignSlug}`)
+      .then((response) => response.json().catch(() => ({})))
+      .then((json) => { if (!cancelled) setCampaignStatus(asObject(json).state ? json : { state: "not_found" }); })
+      .catch(() => { if (!cancelled) setCampaignStatus({ state: "not_found" }); });
+    return () => { cancelled = true; };
+  }, [selectedCampaignSlug, Boolean(data && !data.error), activeCampaignFound, previewMode]);
 
   useEffect(() => {
     const activeCount = asArray(data?.banners).filter((banner) => Boolean(asNumber(banner?.is_active))).length;
@@ -243,7 +282,8 @@ export function PublicCatalog() {
   const layoutSections = asArray(safeData.catalogSections);
   const layoutRows = catalogLayoutRows(layoutSections);
   const hasLayoutRows = layoutRows.length > 0;
-  const hasBuilderMenu = layoutRows.some((row) => row.columns.some((column) => column.components.some((component) => component.section_type === "menu")));
+  const menuRowIndex = layoutRows.findIndex((row) => row.columns.some((column) => column.components.some((component) => component.section_type === "menu")));
+  const hasBuilderMenu = menuRowIndex >= 0;
   // A ordem é parte do conteúdo publicado. Nunca usamos `.find()` aqui: duas
   // seções do mesmo tipo precisam continuar sendo duas instâncias distintas.
   const publishedLayout = hasLayoutRows ? [] : catalogLayoutSections(layoutSections);
@@ -261,7 +301,16 @@ export function PublicCatalog() {
   };
     const banners = activeBanners.length ? activeBanners : [fallbackBanner];
   const activeBanner = banners[bannerIndex % banners.length] || fallbackBanner;
-  const categories = asArray(catalogCategoriesFromCatalog(safeData));
+  // Categorias comerciais da vitrine (painel › Categorias da vitrine). Sem
+  // nenhuma cadastrada, a vitrine segue com as categorias do editor, como antes.
+  const commercialCategories = asArray(safeData.catalogCategories);
+  const commercialMode = commercialCategories.length > 0;
+  const categoryTree = buildCategoryTree(commercialCategories);
+  const selectedCommercialCategory = commercialMode ? commercialCategories.find((category) => category.slug === activeCategory) || null : null;
+  const categories = commercialMode
+    ? [{ name: "Todos", value: "Todos", icon: LayoutGrid }, ...categoryTree.map((node) => ({ name: node.name, value: node.slug, icon: Gem, image_url: node.image_url }))]
+    : asArray(catalogCategoriesFromCatalog(safeData));
+  const activeCampaigns = asArray(safeData.campaigns);
   const catalogItems = asArray(safeData.items);
   // Durante a transição dos campos legados, a vitrine só recebe produto cuja
   // publicação esteja completa. O backend aplica a mesma regra.
@@ -274,11 +323,15 @@ export function PublicCatalog() {
   const hasFullProductSection = productSections.some((section) => section.section_type === "featured_products"
     && !section.category_filter && !hasCuratedProducts);
   const selectedProduct = publishedItems.find((item) => asNumber(item?.id) === selectedProductId) || null;
+  const selectedCategoryIds = selectedCommercialCategory ? categoryDescendantIds(commercialCategories, selectedCommercialCategory.id) : null;
   const filteredItems = publishedItems.filter((item) => {
     const variants = asArray(item.variants);
     const haystack = removeAccents(`${item.name} ${item.description} ${item.category} ${item.subcategory} ${item.material} ${item.color} ${item.stone} ${item.size} ${item.thickness} ${item.sku} ${variants.map((variant) => Object.values(variant).join(" ")).join(" ")}`.toLowerCase());
     const activeCategoryConfig = categories.find((category) => category.name === activeCategory);
-    const categoryMatch = activeCategory === "Todos" || catalogCategoryTerms(activeCategoryConfig?.match || activeCategory).some((term) => haystack.includes(term));
+    // Categoria comercial: a escolhida e todas as subcategorias. Um nome antigo
+    // (de bloco do editor, por exemplo) continua usando a busca por termos.
+    const categoryMatch = activeCategory === "Todos"
+      || (selectedCategoryIds ? itemInCategory(item, selectedCategoryIds) : catalogCategoryTerms(activeCategoryConfig?.match || activeCategory).some((term) => haystack.includes(term)));
     const searchMatch = smartSearchMatches(haystack, debouncedSearch);
     const matchesVariant = (key, value) => !value || variants.some((variant) => String(variant[key] ?? "").toLowerCase().includes(String(value).toLowerCase()));
     const materialMatch = !filters.material || item.material === filters.material || matchesVariant("material", filters.material);
@@ -289,10 +342,33 @@ export function PublicCatalog() {
     const availabilityMatch = catalogAvailabilityMatches(item, filters.availability);
     return (
       categoryMatch && searchMatch && materialMatch && colorMatch && stoneMatch && sizeMatch && topSizeMatch && availabilityMatch
+        && commercialFiltersMatch(item, filters)
     );
   });
-  const items = [...filteredItems].sort((a, b) => sort === "menor-preco" ? a.sale_value - b.sale_value : sort === "maior-preco" ? b.sale_value - a.sale_value : sort === "nome-az" ? a.name.localeCompare(b.name) : sort === "nome-za" ? b.name.localeCompare(a.name) : sort === "estoque" ? Number(b.quantity) - Number(a.quantity) : b.id - a.id);
-  const options = catalogFilterOptions(publishedItems);
+  const items = sortCatalogItems(filteredItems, sort, debouncedSearch);
+  const options = {
+    ...catalogFilterOptions(publishedItems),
+    thicknesses: catalogFieldValues(publishedItems, "thickness"),
+    threads: catalogFieldValues(publishedItems, "thread_type")
+  };
+  const activeFilterCount = countActiveCatalogFilters(filters, { category: activeCategory, search: debouncedSearch });
+  const clearCatalogFilters = () => {
+    setFilters({ material: "", color: "", stone: "", size: "", topSize: "", availability: "", thickness: "", thread: "", priceMin: "", priceMax: "" });
+    setSearch("");
+    setActiveCategory("Todos");
+  };
+  const navCampaigns = activeCampaigns.filter((campaign) => campaign.show_in_nav);
+  const homeCampaigns = (position) => activeCampaigns.filter((campaign) => campaign.show_on_home && (campaign.display_position || "top") === position);
+  const commercialNavigation = {
+    enabled: commercialMode,
+    tree: categoryTree,
+    trail: selectedCommercialCategory ? categoryTrail(commercialCategories, selectedCommercialCategory.id) : [],
+    children: selectedCommercialCategory ? commercialCategories.filter((category) => Number(category.parent_id) === Number(selectedCommercialCategory.id)) : [],
+    navCampaigns,
+    activeFilterCount,
+    clearFilters: clearCatalogFilters,
+    openTree: () => setCategoryTreeOpen(true)
+  };
   const latestItems = [...publishedItems].sort((a, b) => b.id - a.id);
   const bestSellerItems = [...publishedItems].sort((a, b) => Number(b.sale_value || 0) - Number(a.sale_value || 0));
   const promoItems = publishedItems.filter((item) => catalogPromotionForItem(item, asArray(safeData.promotions)));
@@ -365,6 +441,60 @@ function addToOrder(item) {
     onRemoveOrder={removeFromOrder} onUpdateOrderNotes={updateOrderItemNotes}
     onUpdateOrderQuantity={updateOrderItemQuantity} onClearOrder={() => setOrderItems([])} />
   );
+
+  if (selectedCampaignSlug) {
+    const campaign = activeCampaigns.find((entry) => entry.slug === selectedCampaignSlug);
+    const brandName = theme.brand_name || settings.company_display_name || data.brand_name || "Estúdio";
+    const campaignTopbar = (
+      <header className="catalog-campaign-topbar">
+        <a className="catalog-client-brand" href={catalogUrl()}>
+          {theme.logo_url && <img src={catalogImageUrl(theme.logo_url)} alt={brandName} onError={(event) => { event.currentTarget.hidden = true; }} />}
+          <strong>{brandName}</strong>
+        </a>
+        {Boolean(Number(theme.show_buy_button ?? 1)) && (
+          <button type="button" className="catalog-icon-action primary-cart" aria-label="Carrinho" onClick={() => setDrawer("order")}><ShoppingCart size={19} /><span>{orderItems.reduce((sum, item) => sum + Number(item.qty || 1), 0)}</span></button>
+        )}
+      </header>
+    );
+    if (!campaign) {
+      return (
+        <main className={`catalog-page theme-${theme.theme || "premium"}`} style={catalogStyle}>
+          <section className="catalog-main">
+            {campaignTopbar}
+            {campaignStatus ? <CampaignUnavailable state={campaignStatus.state} title={campaignStatus.title} backHref={publicUrl("/catalogo")} /> : <Loading />}
+          </section>
+          {drawerContent}
+        </main>
+      );
+    }
+    const productsInCampaign = campaignItems(campaign, publishedItems, campaignSection);
+    return (
+      <main className={`catalog-page theme-${theme.theme || "premium"}`} style={catalogStyle}>
+        <section className="catalog-main">
+          {campaignTopbar}
+          <CampaignShowcase campaign={campaign} sectionSlug={campaignSection} onSectionChange={setCampaignSection} count={productsInCampaign.length} backHref={publicUrl("/catalogo")}>
+            <div className="catalog-grid catalog-display-grid">
+              {productsInCampaign.map((item) => (
+                <CatalogProductCard
+                  key={item.id}
+                  item={item}
+                  favorite={favoriteIds.includes(item.id)}
+                  onToggleFavorite={() => toggleFavorite(item)}
+                  theme={theme}
+                  settings={settings}
+                  promotion={item.campaign_price !== undefined
+                    ? { discount_type: "fixed", discount_value: Math.max(Number(item.sale_value || 0) - item.campaign_price, 0) }
+                    : catalogPromotionForItem(item, data.promotions || [])}
+                  onAddToOrder={() => { addToOrder(item); setDrawer("order"); }}
+                />
+              ))}
+            </div>
+          </CampaignShowcase>
+        </section>
+        {drawerContent}
+      </main>
+    );
+  }
 
   if (selectedProductId && !selectedProduct) {
     return (
@@ -452,10 +582,16 @@ function addToOrder(item) {
         </div>
         )}
 
-        {layoutRows.map((row) => (
+        {!hasBuilderMenu && homeCampaigns("top").length > 0 && (
+          <div style={{ order: -19 }}><CatalogCampaignBand campaigns={homeCampaigns("top")} /></div>
+        )}
+
+        {layoutRows.map((row, rowIndex) => (
+          <Fragment key={`${row.section_key}-${row._sourceIndex}`}>
           <CatalogLayoutRow
-            key={`${row.section_key}-${row._sourceIndex}`}
             row={row}
+            commercialNavigation={commercialNavigation}
+            campaignBand={<CatalogCampaignBand campaigns={homeCampaigns("before_products")} />}
             data={data}
             settings={settings}
             theme={theme}
@@ -492,12 +628,17 @@ function addToOrder(item) {
             footerLogo={footerLogo}
             footerDisplayName={footerDisplayName}
           />
+          {/* Coleções em destaque logo abaixo do menu montado no editor. */}
+          {rowIndex === menuRowIndex && <CatalogCampaignBand campaigns={homeCampaigns("top")} />}
+          </Fragment>
         ))}
 
         {publishedLayout.map((section) => (
           <CatalogLayoutBlock
             key={`${section.section_key || section.section_type}-${section.sort_order}-${section._sourceIndex}`}
             section={section}
+            commercialNavigation={commercialNavigation}
+            campaignBand={<CatalogCampaignBand campaigns={homeCampaigns("before_products")} />}
             data={data}
             settings={settings}
             theme={theme}
@@ -532,6 +673,7 @@ function addToOrder(item) {
             footerDisplayName={footerDisplayName}
           />
         ))}
+        {!hasFullProductSection && <CatalogCampaignBand campaigns={homeCampaigns("before_products")} />}
         {!hasFullProductSection && (
           <CatalogProductsBlock
           fullCatalog
@@ -542,6 +684,24 @@ function addToOrder(item) {
         />
         )}
         <CatalogNativePlugins plugins={safeData.plugins} settings={settings} theme={theme} />
+        {commercialMode && (
+          <Modal open={categoryTreeOpen} title="Categorias" subtitle="Escolha uma categoria ou subcategoria" dismissible confirmClose={false} onClose={() => setCategoryTreeOpen(false)}>
+            <CatalogCategoryTree
+              tree={categoryTree}
+              activeSlug={activeCategory}
+              onSelect={(slug) => {
+                setActiveCategory(slug);
+                setCategoryTreeOpen(false);
+                requestAnimationFrame(() => productsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+              }}
+            />
+            {navCampaigns.length > 0 && (
+              <div className="catalog-subcategories" aria-label="Coleções">
+                {navCampaigns.map((campaign) => <a key={campaign.id} className="secondary-button" href={campaignUrl(campaign.slug)}>{campaign.title}</a>)}
+              </div>
+            )}
+          </Modal>
+        )}
         {Boolean(Number(theme.show_whatsapp_button ?? 1)) && data.whatsapp_phone && (
           <a className="floating-whatsapp" href={whatsappCatalogUrl(data.whatsapp_message, data.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle size={24} /><span>WhatsApp</span></a>
         )}
@@ -764,14 +924,16 @@ function catalogSectionSubtitle(section, fallback = "") {
   return String(section.subtitle || fallback || "").trim();
 }
 
-function catalogSectionProducts(section, source, { category = "", forceSort = "" } = {}) {
+function catalogSectionProducts(section, source, { category = "", forceSort = "", keepOrder = false } = {}) {
   let items = [...asArray(source)];
   const categoryFilter = String(section.category_filter || category || "").trim();
   if (categoryFilter && categoryFilter !== "Todos") {
     const terms = catalogCategoryTerms(categoryFilter);
     items = items.filter((item) => terms.some((term) => removeAccents(`${item.category || ""} ${item.subcategory || ""} ${item.name || ""}`.toLowerCase()).includes(removeAccents(term.toLowerCase()))));
   }
-  const productSort = forceSort || String(section.product_sort || "recent");
+  // `keepOrder`: a lista já vem na ordenação escolhida pelo visitante; só uma
+  // ordem configurada no próprio bloco do editor a substitui.
+  const productSort = forceSort || String(section.product_sort || (keepOrder ? "" : "recent"));
   const compare = productSort === "best_sellers" ? (left, right) => Number(right.sale_value || 0) - Number(left.sale_value || 0)
     : productSort === "price_asc" ? (left, right) => Number(left.sale_value || 0) - Number(right.sale_value || 0)
       : productSort === "price_desc" ? (left, right) => Number(right.sale_value || 0) - Number(left.sale_value || 0)
@@ -784,7 +946,7 @@ function catalogSectionProducts(section, source, { category = "", forceSort = ""
 
 /** @param {Record<string, any>} props */
 function CatalogLayoutBlock({
-  section, data, settings, theme, banners, activeBanner, activeBannerIndex, onBannerChange,
+  section, data, settings, theme, banners, activeBanner, activeBannerIndex, onBannerChange, commercialNavigation = {}, campaignBand = null,
   categories, activeCategory, setActiveCategory, search, setSearch, recentSearches, setRecentSearches,
   filters, setFilters, options, sort, setSort, productsRef, discoveryRef, items, publishedItems,
   latestItems, bestSellerItems, promoItems, contentSections, favoriteIds,
@@ -838,6 +1000,7 @@ function CatalogLayoutBlock({
         options={options}
         sort={sort}
         setSort={setSort}
+        commercialNavigation={commercialNavigation}
       />
       );
     case "featured_products": {
@@ -845,8 +1008,15 @@ function CatalogLayoutBlock({
       // exibe todos os produtos que passaram pelos filtros públicos.
       const hasCategorySelection = activeCategory && activeCategory !== "Todos";
       const productSource = section.category_filter ? publishedItems : hasCategorySelection ? items : configuredFeatured.length ? configuredFeatured : items;
+      const fullCatalog = !section.category_filter && !configuredFeatured.length;
+      // Com categorias comerciais, `items` já vem filtrado pela categoria e suas
+      // subcategorias; repetir o filtro por termo esconderia os produtos.
+      const categoryOption = hasCategorySelection && !commercialNavigation.enabled ? activeCategory : "";
       return (
-        <CatalogProductsBlock fullCatalog={!section.category_filter && !configuredFeatured.length} section={section} style={style} className={className("catalog-results")} productsRef={productsRef} items={catalogSectionProducts(section, productSource, { category: hasCategorySelection ? activeCategory : "" })} activeCategory={activeCategory} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={onToggleFavorite} onAdd={onAdd} />
+        <>
+          {fullCatalog && campaignBand}
+          <CatalogProductsBlock fullCatalog={fullCatalog} section={section} style={style} className={className("catalog-results")} productsRef={productsRef} items={catalogSectionProducts(section, productSource, { category: categoryOption, keepOrder: productSource === items })} activeCategory={commercialNavigation.trail?.at(-1)?.name || activeCategory} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={onToggleFavorite} onAdd={onAdd} />
+        </>
       );
     }
     case "best_sellers":
@@ -862,7 +1032,9 @@ function CatalogLayoutBlock({
     case "out_of_stock":
       return rail("Esgotados", "Consulte a possibilidade de reposição.", publishedItems.filter((item) => !catalogItemIsAvailable(item)));
     case "category_products":
-      return rail("Joias por categoria", "Explore a seleção que mais combina com você.", publishedItems, { category: activeCategory });
+      return commercialNavigation.enabled
+        ? rail("Joias por categoria", "Explore a seleção que mais combina com você.", items)
+        : rail("Joias por categoria", "Explore a seleção que mais combina com você.", publishedItems, { category: activeCategory });
     case "services":
       return (
         <CatalogBookingDirectory kind="services" section={section} style={style} className={className("catalog-booking-directory")} />
@@ -915,7 +1087,14 @@ function CatalogLayoutBlock({
 }
 
 /** @param {Record<string, any>} props */
-function CatalogDiscovery({ section, style, className, discoveryRef, productsRef, categories, activeCategory, setActiveCategory, search, setSearch, filters, setFilters, options, sort, setSort }) {
+function CatalogDiscovery({ section, style, className, discoveryRef, productsRef, categories, activeCategory, setActiveCategory, search, setSearch, filters, setFilters, options, sort, setSort, commercialNavigation = {} }) {
+  const chooseCategory = (value) => {
+    setActiveCategory(value);
+    requestAnimationFrame(() => productsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
+  const trail = asArray(commercialNavigation.trail);
+  const children = asArray(commercialNavigation.children);
+  const activeCount = Number(commercialNavigation.activeFilterCount || 0);
   return (
     <section ref={discoveryRef} className={className} style={style} aria-label={catalogSectionTitle(section, "Categorias e filtros")}>
       <label className="catalog-search catalog-search-mobile">
@@ -923,37 +1102,89 @@ function CatalogDiscovery({ section, style, className, discoveryRef, productsRef
         <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar joia, SKU, material ou tamanho" />
       </label>
       <div className="catalog-category-strip">
-        {categories.map(({ name, icon: Icon }) => (
-          <button key={name} className={activeCategory === name ? "active" : ""} onClick={() => {
-            setActiveCategory(name);
-            requestAnimationFrame(() => productsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
-          }}>
-            <Icon size={25} />
-            <span>{cleanDisplayText(name)}</span>
-          </button>
+        {asArray(commercialNavigation.navCampaigns).map((campaign) => (
+          <a key={`campaign-${campaign.id}`} className="catalog-campaign-chip" href={campaignUrl(campaign.slug)}>
+            <Sparkles size={25} />
+            <span>{campaign.title}</span>
+          </a>
         ))}
+        {categories.map(({ name, value, icon: Icon }) => {
+          const key = value ?? name;
+          const active = activeCategory === key || (key !== "Todos" && trail[0]?.slug === key);
+          return (
+            <button type="button" key={key} className={active ? "active" : ""} aria-pressed={active} onClick={() => chooseCategory(key)}>
+              <Icon size={25} />
+              <span>{cleanDisplayText(name)}</span>
+            </button>
+          );
+        })}
+        {commercialNavigation.enabled && (
+          <button type="button" className="catalog-browse-button" onClick={commercialNavigation.openTree}>
+            <LayoutGrid size={25} />
+            <span>Todas as categorias</span>
+          </button>
+        )}
       </div>
+      {commercialNavigation.enabled && trail.length > 0 && (
+        <div className="catalog-subcategories">
+          <nav aria-label="Você está em">
+            <button type="button" onClick={() => chooseCategory("Todos")}>Todas</button>
+            {trail.map((category, index) => (
+              <Fragment key={category.id}>
+                <ChevronRight size={14} aria-hidden="true" />
+                {index === trail.length - 1
+                  ? <strong aria-current="page">{category.name}</strong>
+                  : <button type="button" onClick={() => chooseCategory(category.slug)}>{category.name}</button>}
+              </Fragment>
+            ))}
+          </nav>
+          {children.map((category) => (
+            <button type="button" key={category.id} onClick={() => chooseCategory(category.slug)}>{category.name}</button>
+          ))}
+        </div>
+      )}
       <div className="catalog-filters">
         <span className="catalog-filter-label">{catalogSectionSubtitle(section, "Refinar")}</span>
         <CatalogSelect label="Material" value={filters.material} options={options.materials} onChange={(value) => setFilters({ ...filters, material: value })} />
         <CatalogSelect label="Observação de cor" value={filters.color} options={options.colors} onChange={(value) => setFilters({ ...filters, color: value })} />
         <CatalogSelect label="Pedra" value={filters.stone} options={options.stones} onChange={(value) => setFilters({ ...filters, stone: value })} />
         <CatalogSelect label="Tamanho" value={filters.size} options={options.sizes} onChange={(value) => setFilters({ ...filters, size: value })} />
+        <CatalogSelect label="Espessura" value={filters.thickness} options={options.thicknesses} onChange={(value) => setFilters({ ...filters, thickness: value })} />
+        <CatalogSelect label="Fixação" value={filters.thread} options={options.threads} onChange={(value) => setFilters({ ...filters, thread: value })} />
         <CatalogSelect label="Tamanho do topo" value={filters.topSize} options={options.topSizes.map((number) => ({ value: String(number), label: `${number.toLocaleString("pt-BR", { minimumFractionDigits: 1 })} mm` }))} onChange={(value) => setFilters({ ...filters, topSize: value })} />
         <CatalogSelect label="Disponibilidade" value={filters.availability} options={[{ value: "true", label: "Em estoque" }, { value: "false", label: "Esgotados" }]} onChange={(value) => setFilters({ ...filters, availability: value })} />
+        <span className="catalog-price-filter" role="group" aria-label="Faixa de preço">
+          <input type="number" min="0" step="1" inputMode="numeric" placeholder="Preço mín." aria-label="Preço mínimo" value={filters.priceMin || ""} onChange={(event) => setFilters({ ...filters, priceMin: event.target.value })} />
+          <input type="number" min="0" step="1" inputMode="numeric" placeholder="Preço máx." aria-label="Preço máximo" value={filters.priceMax || ""} onChange={(event) => setFilters({ ...filters, priceMax: event.target.value })} />
+        </span>
         <div className="catalog-sort">
           <SlidersHorizontal size={16} />
           <Select label={null} ariaLabel="Ordenar catálogo" value={sort} onChange={setSort}>
-            <option value="recentes">Mais recentes</option><option value="menor-preco">Menor preço</option><option value="maior-preco">Maior preço</option><option value="nome-az">Nome de A a Z</option><option value="nome-za">Nome de Z a A</option><option value="estoque">Em estoque primeiro</option>
+            <option value="recentes">Mais recentes</option><option value="relevancia">Relevância</option><option value="lancamentos">Lançamentos</option><option value="menor-preco">Menor preço</option><option value="maior-preco">Maior preço</option><option value="nome-az">Nome de A a Z</option><option value="nome-za">Nome de Z a A</option><option value="estoque">Em estoque primeiro</option>
           </Select>
         </div>
       </div>
+      {activeCount > 0 && commercialNavigation.clearFilters && (
+        <div className="catalog-filters-summary" aria-live="polite">
+          <span>{activeCount} {activeCount === 1 ? "filtro ativo" : "filtros ativos"}</span>
+          <button type="button" onClick={commercialNavigation.clearFilters}>Limpar filtros</button>
+        </div>
+      )}
     </section>
   );
 }
 
+const CATALOG_PAGE_SIZE = 24;
+
 function CatalogProductsBlock({ fullCatalog = false, section, style, className, productsRef, items, activeCategory, data, theme, settings, favoriteIds, onToggleFavorite, onAdd }) {
   const title = catalogSectionTitle(section, "Produtos em destaque");
+  // Carregamento progressivo: a contagem mostra o total encontrado e a grade
+  // cresce aos poucos. Uma nova busca ou filtro recomeça do início.
+  const [visible, setVisible] = useState(CATALOG_PAGE_SIZE);
+  const resultKey = items.map((item) => item.id).join(",");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: recomeça a paginação quando o conjunto de resultados muda.
+  useEffect(() => setVisible(CATALOG_PAGE_SIZE), [resultKey]);
+  const shown = items.slice(0, visible);
   return (
     <section ref={productsRef} className={className} style={style}>
       <div className="catalog-results-heading">
@@ -961,9 +1192,14 @@ function CatalogProductsBlock({ fullCatalog = false, section, style, className, 
         <strong>{items.length} {items.length === 1 ? "joia encontrada" : "joias encontradas"}</strong>
       </div>
       <div className={`catalog-grid catalog-display-${section.display_mode || "grid"}`} id={fullCatalog ? "catalog-products" : undefined}>
-        {items.map((item) => (
+        {shown.map((item) => (
           <CatalogProductCard item={item} favorite={favoriteIds.includes(item.id)} onToggleFavorite={() => onToggleFavorite(item)} theme={theme} settings={settings} promotion={catalogPromotionForItem(item, data.promotions || [])} onAddToOrder={() => onAdd(item)} key={item.id} />))}
       </div>
+      {visible < items.length && (
+        <div className="catalog-load-more">
+          <button type="button" className="secondary-button" onClick={() => setVisible((count) => count + CATALOG_PAGE_SIZE)}>Mostrar mais ({items.length - visible} restantes)</button>
+        </div>
+      )}
       {!items.length && (
         <p className="empty-state catalog-empty">Nenhuma joia encontrada em {cleanDisplayText(activeCategory)} com os filtros selecionados.</p>
       )}
@@ -1003,7 +1239,7 @@ function CatalogBookingDirectory({ kind, section, style, className }) {
       <div className="catalog-section-heading"><span className="eyebrow">Agenda online</span><h2>{title}</h2>{catalogSectionSubtitle(section) && <p>{catalogSectionSubtitle(section)}</p>}</div>
       <div className={`catalog-directory-grid catalog-display-${section.display_mode || "grid"}`}>
         {rows.map((row) => (
-          <article key={row.id || row.name}><i>{kind === "services" ? <Sparkles size={21} /> : <Star size={21} />}</i><strong>{row.name}</strong>{row.description && <p>{row.description}</p>}</article>
+          <article key={row.id || row.name}><i>{kind === "services" ? <Sparkles size={21} /> : <Star size={21} />}</i><strong>{row.name}</strong>{kind === "services" ? serviceCardSummary(row) && <p>{serviceCardSummary(row)}</p> : row.description && <p>{row.description}</p>}</article>
         ))}
       </div>
       <a className="secondary-button" href={publicUrl("/agendar")}>Ver horários disponíveis</a>
@@ -1235,6 +1471,8 @@ function safeJson(value) {
 
 function CatalogSelect({ label, value, options, onChange }) {
   const safeOptions = asArray(options);
+  // Filtro sem valores no cadastro não aparece (e um valor já escolhido segue visível para poder ser limpo).
+  if (!safeOptions.length && !value) return null;
   return (
     <Select className="catalog-filter-select" label={null} ariaLabel={label} value={value} onChange={onChange}>
         <option value="">{label}</option>
@@ -1424,6 +1662,7 @@ function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, th
       </figure>
       <div className="catalog-product-info">
         <h2><a href={catalogProductUrl(item.id)}>{productName}</a></h2>
+        {item.sku && <small className="catalog-product-sku">SKU {item.sku}</small>}
         {technicalSummary && <p className="catalog-technical-summary">{technicalSummary}</p>}
         <strong>{finalValue > 0 ? (
             <>{promotion && <del>{currency.format(saleValue)}</del>}{currency.format(finalValue)}</>
@@ -1969,6 +2208,23 @@ export function PublicCheckout() {
   );
 }
 
+const BOOKING_STEPS = ["Serviço", "Profissional", "Data", "Horário", "Dados", "Resumo"];
+
+function bookingServiceMatches(service, query) {
+  const terms = removeAccents(String(query || "").toLowerCase()).split(/\s+/).filter(Boolean);
+  if (!terms.length) return true;
+  const haystack = removeAccents([service.name, service.category, service.body_area, service.short_description, service.description].filter(Boolean).join(" ").toLowerCase());
+  return terms.every((term) => haystack.includes(term));
+}
+
+function BookingStepBack({ onBack, label = "Voltar" }) {
+  return (
+    <button type="button" className="booking-back-button" onClick={onBack}>
+      <ChevronLeft size={16} aria-hidden="true" /> {label}
+    </button>
+  );
+}
+
 export function PublicBooking() {
   const { data } = usePublicFetch("/booking/config");
   const { data: catalogData } = usePublicFetch("/catalog");
@@ -1985,13 +2241,18 @@ export function PublicBooking() {
   const [error, setError] = useState("");
   const [confirmed, setConfirmed] = useState(null);
   const [serviceIds, setServiceIds] = useState([]);
+  const [serviceSearch, setServiceSearch] = useState("");
+  const [serviceCategory, setServiceCategory] = useState("");
+  const [acknowledgedIds, setAcknowledgedIds] = useState([]);
+  const [logoFailed, setLogoFailed] = useState(false);
+  const shellRef = useRef(null);
+  const stepChanged = useRef(false);
   const safeData = asObject(data);
   const services = asArray(safeData.services);
   const catalogItems = asArray(catalogData?.items);
   const allProfessionals = asArray(safeData.professionals);
   const effectiveServiceIds = serviceIds.length ? serviceIds : form.service_id ? [form.service_id] : [];
   const professionals = allProfessionals.filter((professional) => effectiveServiceIds.every((serviceId) => professionalMatchesService(professional, serviceId)));
-  const selectedService = services.find((item) => String(item.id) === String(form.service_id));
   const selectedProfessional = allProfessionals.find((item) => String(item.id) === String(form.professional_id));
   const selectedJewelry = catalogItems.find((item) => String(item.id) === String(form.jewelry_id));
   const selectedJewelryVariant = asArray(selectedJewelry?.variants).find((variant) => String(variant.id) === String(form.jewelry_variant_id));
@@ -2005,19 +2266,32 @@ export function PublicBooking() {
   const guardianRequired = selectedServices.some((item) => Boolean(item.requires_guardian)) && ageAtAppointment !== null && ageAtAppointment < 18;
   const ageBlocked = minimumAge > 0 && ageAtAppointment !== null && ageAtAppointment < minimumAge;
   const rulesDataMissing = (needsBirthDate && !form.birth_date) || (guardianRequired && (!form.guardian_name.trim() || !String(form.guardian_document || "").replace(/\D/g, "")));
-  const selectedServiceValue = selectedServices.reduce((sum, item) => sum + asNumber(item.base_price || item.price || 0), 0);
+  const selectedServiceValue = selectedServices.reduce((sum, item) => sum + servicePrice(item), 0);
   const bookingOrderItems = readCatalogStorage("aura-catalog-order", []);
   const orderJewelryValue = asArray(bookingOrderItems).reduce((sum, item) => sum + asNumber(item.sale_value) * asNumber(item.qty, 1), 0);
   const selectedTotal = selectedServiceValue + (bookingOrderItems.length ? orderJewelryValue : selectedJewelryValue);
-  const selectedDeposit = asNumber(selectedService?.deposit_value || 25);
+  // Mesma regra do backend: soma dos sinais dos serviços, limitada ao total.
+  // Antes a tela mostrava só o sinal do primeiro serviço (e R$ 25 quando ele
+  // era zero), diferente do valor gravado na solicitação.
+  const selectedDeposit = bookingDepositTotal(selectedServices, selectedTotal);
   const selectedRemaining = Math.max(selectedTotal - selectedDeposit, 0);
+  const selectedDuration = bookingDurationTotal(selectedServices);
   // Sinal online = clínica com gateway configurado E solicitação que gera sinal.
   // Só nesse caso o CPF é barreira: o Asaas recusa criar o pagador sem ele e o
   // link de pagamento nunca existiria. Sem gateway o campo continua opcional —
   // pedir documento para agendar um horário que será pago no balcão afasta
   // cliente sem nenhum ganho.
-  const onlineDeposit = Boolean(asObject(safeData.payment).gateway_enabled) && selectedDeposit > 0;
+  const gatewayEnabled = Boolean(asObject(safeData.payment).gateway_enabled);
+  const onlineDeposit = gatewayEnabled && selectedDeposit > 0;
   const cpfError = taxIdError(form.cpf, onlineDeposit);
+  const acknowledgementServices = selectedServices.filter((item) => Boolean(item.requires_acknowledgement));
+  const missingAcknowledgements = acknowledgementServices.filter((item) => !acknowledgedIds.some((id) => String(id) === String(item.id)));
+  const serviceCategories = [...new Set(services.map((item) => String(item.category || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const visibleServices = services.filter((item) => (!serviceCategory || item.category === serviceCategory) && bookingServiceMatches(item, serviceSearch));
+  const theme = asObject(catalogData?.theme);
+  const brandName = String(theme.brand_name || catalogData?.company_display_name || catalogData?.brand_name || "Estúdio").trim();
+  const brandLogo = String(theme.logo_url || "").trim();
+  const whatsappPhone = String(catalogData?.whatsapp_phone || "").trim();
 
   useEffect(() => {
     if (!form.professional_id) return;
@@ -2055,8 +2329,27 @@ export function PublicBooking() {
     };
   }, [form.service_id, form.professional_id, form.appointment_date]);
 
+  // A troca de etapa leva o cliente ao topo do conteúdo novo, e não ao meio da
+  // página anterior (os cartões de serviço podem ser longos no celular).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: roda só na troca de etapa.
+  useEffect(() => {
+    if (!stepChanged.current) { stepChanged.current = true; return; }
+    shellRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+  }, [step]);
+
   if (!data) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
+
+  function toggleService(item) {
+    const selected = effectiveServiceIds.some((id) => String(id) === String(item.id));
+    const next = selected ? effectiveServiceIds.filter((id) => String(id) !== String(item.id)) : [...effectiveServiceIds, item.id];
+    setServiceIds(next);
+    setForm({ ...form, service_id: next[0] || "", professional_id: "", appointment_time: "" });
+  }
+
+  function toggleAcknowledgement(serviceId, checked) {
+    setAcknowledgedIds((current) => (checked ? [...current.filter((id) => String(id) !== String(serviceId)), serviceId] : current.filter((id) => String(id) !== String(serviceId))));
+  }
 
   async function submit() {
     if (submitting) return;
@@ -2066,6 +2359,7 @@ export function PublicBooking() {
     if (cpfError) return setError(`${cpfError} Volte à etapa "Dados" para corrigir.`);
     if (ageBlocked) return setError(`Este procedimento exige idade mínima de ${minimumAge} anos.`);
     if (rulesDataMissing) return setError("Preencha os dados necessários para validar idade e responsável legal.");
+    if (missingAcknowledgements.length) return setError(`Confirme a leitura das informações de ${missingAcknowledgements.map((item) => item.name).join(", ")}.`);
     setError("");
     setSubmitting(true);
     const body = new FormData();
@@ -2084,6 +2378,7 @@ export function PublicBooking() {
         notes: item.customer_notes || ""
       }))
     ]));
+    body.append("acknowledged_service_ids", JSON.stringify(selectedServices.filter((item) => acknowledgedIds.some((id) => String(id) === String(item.id))).map((item) => item.id)));
     const response = await publicApiFetch("/booking/requests", { method: "POST", body });
     const json = await response.json().catch(() => ({}));
     setSubmitting(false);
@@ -2093,62 +2388,105 @@ export function PublicBooking() {
   }
 
   return (
-    <main className="public-booking-page">
-      <section className="booking-shell">
-        <header className="booking-public-header">
-          <a className="catalog-client-brand" href={catalogUrl()}><strong>{catalogData?.theme?.brand_name || catalogData?.brand_name || "Estúdio"}</strong><span>{catalogData?.theme?.slogan || "Agendamento"}</span></a>
-          <a className="secondary-button" href={catalogUrl()}>Ver Catálogo</a>
+    <main className="public-booking-page service-presentation-theme">
+      <section className="booking-shell" ref={shellRef}>
+        <header className="booking-brand-header">
+          <a className="booking-brand" href={catalogUrl()}>
+            {brandLogo && !logoFailed
+              ? <img src={catalogImageUrl(brandLogo)} alt={`Logo ${brandName}`} onError={() => setLogoFailed(true)} />
+              : <span className="booking-brand-initial" aria-hidden="true">{brandName.charAt(0).toUpperCase()}</span>}
+            <span className="booking-brand-copy"><strong>{brandName}</strong><small>{String(theme.slogan || "").trim() || "Agendamento online"}</small></span>
+          </a>
+          <nav className="booking-header-actions" aria-label="Atalhos do estúdio">
+            {whatsappPhone && (
+              <a className="booking-header-link" href={whatsappCatalogUrl("Olá! Tenho uma dúvida sobre o agendamento online.", whatsappPhone)} target="_blank" rel="noreferrer"><MessageCircle size={16} aria-hidden="true" /> Dúvidas? Fale conosco</a>
+            )}
+            <a className="booking-header-link" href={catalogUrl()}>Ver catálogo</a>
+          </nav>
         </header>
-        <div className="booking-hero">
-          <span className="eyebrow">Agendamento online</span>
-          <h1>Reserve seu horário</h1>
-          <p>Escolha Serviço, Profissional, Data E Horário Disponível. A equipe confirma manualmente sua solicitação.</p>
-        </div>
-        <div className="booking-progress">
-          {["Serviço", "Profissional", "Data", "Horário", "Dados", "Resumo"].map((label, index) => (
-            <button key={label} className={step === index + 1 ? "active" : step > index + 1 ? "done" : ""} onClick={() => step > index + 1 && setStep(index + 1)}>
-              <strong>{index + 1}</strong>
-              <span>{label}</span>
-            </button>
-          ))}
-        </div>
-
-        {step === 1 && (
-          <section className="booking-panel">
-            <h2>Escolha um ou mais serviços</h2>
-            <div className="booking-choice-grid">
-              {services.map((item) => {
-                const selected = effectiveServiceIds.some((id) => String(id) === String(item.id));
+        {step < 7 && (
+          <div className="booking-hero">
+            <span className="booking-hero-kicker">Agendamento online</span>
+            <h1>Reserve seu horário</h1>
+            <p>Escolha o serviço, profissional, data e horário disponível. A equipe confirma manualmente sua solicitação.</p>
+            <ol className="booking-steps" aria-label="Etapas do agendamento">
+              {BOOKING_STEPS.map((label, index) => {
+                const number = index + 1;
+                const state = step === number ? "active" : step > number ? "done" : "";
                 return (
-                  <button type="button" key={item.id} className={selected ? "active" : ""} onClick={() => {
-                    const next = selected ? effectiveServiceIds.filter((id) => String(id) !== String(item.id)) : [...effectiveServiceIds, item.id];
-                    setServiceIds(next);
-                    setForm({ ...form, service_id: next[0] || "", professional_id: "", appointment_time: "" });
-                  }}>
-                    <strong>{item.name}</strong><p>{item.description}</p><span>{item.duration_minutes} min · {currency.format(item.base_price || item.price || 0)}</span>
-                    {(item.minimum_age_years != null || item.requires_guardian || item.requires_signed_term) && (
-                      <small>{[item.minimum_age_years != null ? `${item.minimum_age_years}+ anos` : "", item.requires_guardian ? "responsável para menor" : "", item.requires_signed_term ? "termo obrigatório" : ""].filter(Boolean).join(" · ")}</small>
-                    )}
-                  </button>
+                  <li key={label} className={state}>
+                    <button type="button" aria-current={step === number ? "step" : undefined} disabled={step <= number} onClick={() => setStep(number)}>
+                      <strong>{step > number ? <CheckCircle2 size={14} aria-hidden="true" /> : number}</strong>
+                      <span>{label}</span>
+                    </button>
+                    {number < BOOKING_STEPS.length && <ChevronRight className="booking-steps-separator" size={15} aria-hidden="true" />}
+                  </li>
                 );
               })}
+            </ol>
+          </div>
+        )}
+
+        {step === 1 && (
+          <section className="booking-panel booking-services-step">
+            <div className="booking-step-heading">
+              <span className="booking-section-kicker">Etapa 1 · Serviço</span>
+              <h2>Escolha um ou mais serviços</h2>
+              <p>Selecione os cartões desejados. As informações completas de cada serviço aparecem no resumo, antes do envio.</p>
             </div>
-            <button type="button" className="primary-button booking-wide-button" disabled={!effectiveServiceIds.length} onClick={() => setStep(2)}>Continuar com {effectiveServiceIds.length} serviço(s)</button>
+            <div className="booking-service-toolbar">
+              <label className="booking-service-search">
+                <Search size={17} aria-hidden="true" />
+                <input type="search" value={serviceSearch} onChange={(event) => setServiceSearch(event.target.value)} placeholder="Pesquisar serviço" aria-label="Pesquisar serviço" />
+              </label>
+              {serviceCategories.length > 1 && (
+                <Select label={null} ariaLabel="Filtrar por categoria" value={serviceCategory} onChange={setServiceCategory} className="booking-service-category">
+                  <option value="">Todas as categorias</option>
+                  {serviceCategories.map((category) => <option key={category} value={category}>{category}</option>)}
+                </Select>
+              )}
+              <span className="booking-service-count" aria-live="polite">Exibindo {visibleServices.length} {visibleServices.length === 1 ? "serviço" : "serviços"}</span>
+            </div>
+            {visibleServices.length ? (
+              <div className="booking-service-grid">
+                {visibleServices.map((item) => (
+                  <ServiceCard key={item.id} service={item} selected={effectiveServiceIds.some((id) => String(id) === String(item.id))} onToggle={() => toggleService(item)} />
+                ))}
+              </div>
+            ) : (
+              <p className="empty-state">{services.length ? "Nenhum serviço encontrado com esses filtros." : "Nenhum serviço disponível para agendamento online no momento."}</p>
+            )}
+            <div className="booking-step-actions">
+              <span>{effectiveServiceIds.length ? `${effectiveServiceIds.length} ${effectiveServiceIds.length === 1 ? "serviço selecionado" : "serviços selecionados"} · ${formatServicePrice(selectedServiceValue)}` : "Nenhum serviço selecionado"}</span>
+              <button type="button" className="primary-button" disabled={!effectiveServiceIds.length} onClick={() => setStep(2)}>Continuar <ChevronRight size={16} aria-hidden="true" /></button>
+            </div>
           </section>
         )}
         {step === 2 && (
           professionals.length
             ? (
-            <BookingChoiceGrid title="Escolha A Profissional" items={professionals} value={form.professional_id} onSelect={(id) => { setForm({ ...form, professional_id: id, appointment_time: "" }); setStep(3); }} render={(item) => (
-                <><strong>{item.name}</strong><p>{item.specialty || "Body Piercer Aura"}</p></>
-              )} />
+            <section className="booking-panel">
+              <BookingStepBack onBack={() => setStep(1)} />
+              <div className="booking-step-heading">
+                <span className="booking-section-kicker">Etapa 2 · Profissional</span>
+                <h2>Escolha a profissional</h2>
+              </div>
+              <div className="booking-choice-grid">
+                {professionals.map((item) => (
+                  <button type="button" key={item.id} className={String(form.professional_id) === String(item.id) ? "active" : ""} aria-pressed={String(form.professional_id) === String(item.id)} onClick={() => { setForm({ ...form, professional_id: item.id, appointment_time: "" }); setStep(3); }}>
+                    <strong>{item.name}</strong><p>{item.specialty || "Body piercer"}</p>
+                  </button>
+                ))}
+              </div>
+            </section>
           ) : (
-            <section className="booking-panel"><h2>Nenhuma Profissional Vinculada</h2><p className="empty-state">Este serviço ainda não possui profissional ativo vinculado. Volte e escolha outro serviço ou fale com o estúdio pelo WhatsApp.</p><button type="button" className="secondary-button" onClick={() => setStep(1)}>Escolher Outro Serviço</button></section>
+            <section className="booking-panel"><BookingStepBack onBack={() => setStep(1)} /><h2>Nenhuma profissional vinculada</h2><p className="empty-state">Este serviço ainda não possui profissional ativo vinculado. Volte e escolha outro serviço ou fale com o estúdio pelo WhatsApp.</p><button type="button" className="secondary-button" onClick={() => setStep(1)}>Escolher outro serviço</button></section>
         ))}
         {step === 3 && (
           <section className="booking-panel booking-date-card">
+            <BookingStepBack onBack={() => setStep(2)} />
             <span className="booking-section-kicker">Etapa 3 · Data</span>
-            <h2>Escolha a Data</h2>
+            <h2>Escolha a data</h2>
             <p>Escolha o mês para consultar somente as datas com horários disponíveis.</p>
             <PublicBookingCalendar
               serviceId={form.service_id}
@@ -2163,8 +2501,9 @@ export function PublicBooking() {
         )}
         {step === 4 && (
           <section className="booking-panel booking-time-card">
-            <span className="booking-section-kicker">Etapa 4 · Horários</span>
-            <h2>Agende seu Horário</h2>
+            <BookingStepBack onBack={() => setStep(3)} />
+            <span className="booking-section-kicker">Etapa 4 · Horário</span>
+            <h2>Agende seu horário</h2>
             <p className="booking-selected-date">{form.appointment_date ? formatLongDate(form.appointment_date) : "Selecione uma data para ver os horários."}</p>
             <PublicBookingCalendar
               serviceId={form.service_id}
@@ -2175,17 +2514,18 @@ export function PublicBooking() {
             {loadingSlots && <p className="empty-state">Carregando horários...</p>}
             <div className="slot-grid">
               {slots.map((slot) => (
-                <button key={slot.time} className={form.appointment_time === slot.time ? "active" : ""} onClick={() => setForm({ ...form, appointment_time: slot.time })}>{slot.time}</button>))}
+                <button type="button" key={slot.time} className={form.appointment_time === slot.time ? "active" : ""} aria-pressed={form.appointment_time === slot.time} onClick={() => setForm({ ...form, appointment_time: slot.time })}>{slot.time}</button>))}
             </div>
             {error && <span className="form-error">{error}</span>}
             {!loadingSlots && !slots.length && <p className="empty-state">Nenhum horário disponível nesta data.</p>}
-            <button className="primary-button booking-wide-button" disabled={!form.appointment_time} onClick={() => setStep(5)}>Continuar</button>
+            <button type="button" className="primary-button booking-wide-button" disabled={!form.appointment_time} onClick={() => setStep(5)}>Continuar</button>
           </section>
         )}
         {step === 5 && (
           <section className="booking-panel">
-            <span className="booking-section-kicker">Etapa 5  Dados</span>
-            <h2>Seus Dados</h2>
+            <BookingStepBack onBack={() => setStep(4)} />
+            <span className="booking-section-kicker">Etapa 5 · Dados</span>
+            <h2>Seus dados</h2>
             <div className="form-grid">
               <Input label="Nome" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} required />
               <Input label="WhatsApp" value={form.whatsapp} onChange={(value) => setForm({ ...form, whatsapp: value })} required />
@@ -2217,56 +2557,106 @@ export function PublicBooking() {
             {ageBlocked && (
               <span className="field-hint is-error">Este procedimento exige idade mínima de {minimumAge} anos.</span>
             )}
-            <button className="primary-button booking-wide-button" disabled={!form.full_name || !form.whatsapp || Boolean(cpfError) || rulesDataMissing || ageBlocked} onClick={() => setStep(6)}>Ver Resumo</button>
+            <button type="button" className="primary-button booking-wide-button" disabled={!form.full_name || !form.whatsapp || Boolean(cpfError) || rulesDataMissing || ageBlocked} onClick={() => setStep(6)}>Ver resumo</button>
           </section>
         )}
         {step === 6 && (
           <section className="booking-panel booking-summary">
-            <span className="booking-section-kicker">Etapa 6  Resumo</span>
-            <h2>Resumo Da Solicitação</h2>
-            <p><strong>Serviços:</strong> {selectedServices.map((item) => item.name).join(", ")}</p>
-            {bookingOrderItems.length > 0
-              ? (
-              <p><strong>Joias:</strong>{" "}
-                {bookingOrderItems.map((item) => `${item.qty || 1}x ${elegantProductName(item.name)}`).join(", ")}</p>
-            ) : (
-              selectedJewelry && (
-                <p><strong>Joia escolhida:</strong> {elegantProductName(selectedJewelry.name)}{selectedJewelryVariant ? ` · ${variantCatalogLabel(selectedJewelryVariant)}` : ""}{form.selected_color ? ` · ${form.selected_color}` : ""}</p>
-              )
+            <BookingStepBack onBack={() => setStep(5)} />
+            <div className="booking-step-heading">
+              <span className="booking-section-kicker">Etapa 6 · Resumo</span>
+              <h2>Resumo da solicitação</h2>
+              <p>Confira os dados e leia as informações de cada serviço antes de enviar. Para corrigir uma escolha, volte à etapa correspondente: os dados preenchidos são mantidos.</p>
+            </div>
+            <div className="booking-status-note" role="note">
+              <Clock size={20} aria-hidden="true" />
+              <div>
+                <strong>Horário sujeito à confirmação</strong>
+                <p>{selectedDeposit > 0 ? data.rules?.payment : "A equipe confirma o horário manualmente após receber sua solicitação."}</p>
+              </div>
+            </div>
+            <div className="booking-summary-card">
+              <h3>Serviços selecionados</h3>
+              <ul className="booking-summary-services">
+                {selectedServices.map((item) => (
+                  <li key={item.id}>
+                    <span><strong>{item.name}</strong>{formatDuration(item.duration_minutes) && <small>{formatDuration(item.duration_minutes)}</small>}</span>
+                    <span>{formatServicePrice(servicePrice(item))}</span>
+                  </li>
+                ))}
+              </ul>
+              <dl className="booking-summary-facts">
+                {bookingOrderItems.length > 0
+                  ? <div><dt>Joias</dt><dd>{bookingOrderItems.map((item) => `${item.qty || 1}x ${elegantProductName(item.name)}`).join(", ")}</dd></div>
+                  : selectedJewelry && <div><dt>Joia escolhida</dt><dd>{elegantProductName(selectedJewelry.name)}{selectedJewelryVariant ? ` · ${variantCatalogLabel(selectedJewelryVariant)}` : ""}{form.selected_color ? ` · ${form.selected_color}` : ""}</dd></div>}
+                <div><dt>Profissional</dt><dd>{selectedProfessional?.name || "—"}</dd></div>
+                <div><dt>Data e horário</dt><dd>{formatLongDate(form.appointment_date)} às {form.appointment_time}</dd></div>
+                {selectedDuration > 0 && <div><dt>Duração estimada</dt><dd>{formatDuration(selectedDuration)}</dd></div>}
+                <div><dt>Valor dos serviços</dt><dd>{currency.format(selectedServiceValue)}</dd></div>
+                {(selectedJewelry || bookingOrderItems.length > 0) && <div><dt>Valor das joias</dt><dd>{currency.format(bookingOrderItems.length ? orderJewelryValue : selectedJewelryValue)}</dd></div>}
+                <div className="is-total"><dt>Valor total</dt><dd>{currency.format(selectedTotal)}</dd></div>
+                {selectedDeposit > 0 && <div><dt>Sinal</dt><dd>{currency.format(selectedDeposit)} · {gatewayEnabled ? "link de pagamento online" : "Pix, com envio do comprovante"}</dd></div>}
+                <div><dt>Valor restante</dt><dd>{currency.format(selectedRemaining)}</dd></div>
+              </dl>
+              {data.rules?.cancellation && <p className="booking-summary-policy"><ShieldCheck size={16} aria-hidden="true" /> {data.rules.cancellation}</p>}
+              <p className="field-hint">Cupons e promoções válidos são aplicados no envio e podem reduzir o valor final.</p>
+            </div>
+
+            <div className="booking-full-info">
+              <h3>Informações completas</h3>
+              <Accordion type="multiple" defaultValue={selectedServices.slice(0, 1).map((item) => `service-${item.id}`)} className="booking-full-info-list">
+                {selectedServices.map((item) => (
+                  <Accordion.Item key={item.id} value={`service-${item.id}`}>
+                    <Accordion.Header>
+                      <Accordion.Trigger>
+                        <span className="booking-full-info-trigger">
+                          <ServiceImage service={item} />
+                          <span><strong>{item.name}</strong><small>{item.requires_acknowledgement ? "Leitura obrigatória" : "Ver regras, condições e orientações"}</small></span>
+                        </span>
+                      </Accordion.Trigger>
+                    </Accordion.Header>
+                    <Accordion.Content>
+                      <ServiceInfoBlock service={item} showHeader={false} />
+                    </Accordion.Content>
+                  </Accordion.Item>
+                ))}
+              </Accordion>
+            </div>
+
+            {(acknowledgementServices.length > 0 || selectedServices.some((item) => Boolean(item.requires_signed_term))) && (
+              <div className="booking-acknowledgements">
+                <h3>Confirmação de leitura</h3>
+                {acknowledgementServices.map((item) => (
+                  <Checkbox key={item.id} label={`Li e estou ciente das informações de ${item.name}.`} checked={acknowledgedIds.some((id) => String(id) === String(item.id))} onChange={(checked) => toggleAcknowledgement(item.id, checked)} />
+                ))}
+                {selectedServices.some((item) => Boolean(item.requires_signed_term)) && (
+                  <p className="field-hint">
+                    {selectedServices.filter((item) => Boolean(item.requires_signed_term)).map((item) => item.name).join(", ")} {selectedServices.filter((item) => Boolean(item.requires_signed_term)).length === 1 ? "exige" : "exigem"} termo de consentimento assinado antes da conclusão do atendimento, no estúdio ou por link enviado pela equipe. A confirmação de leitura não substitui esse termo.
+                  </p>
+                )}
+              </div>
             )}
-            <p><strong>Profissional:</strong> {selectedProfessional?.name}</p>
-            <p><strong>Data E Horário:</strong> {formatLongDate(form.appointment_date)} às {form.appointment_time}</p>
-            <p><strong>Valor do procedimento:</strong> {currency.format(selectedServiceValue)}</p>
-            {(selectedJewelry || bookingOrderItems.length > 0) && (
-              <p><strong>Valor das joias:</strong>{" "}
-                {currency.format(bookingOrderItems.length ? orderJewelryValue : selectedJewelryValue)}</p>
-            )}
-            <p><strong>Valor total:</strong> {currency.format(selectedTotal)}</p>
-            <p><strong>Sinal obrigatório:</strong> {currency.format(selectedDeposit)}</p>
-            {selectedServices.some((item) => Boolean(item.requires_signed_term)) && (
-              <p><strong>Termo digital:</strong> deverá estar assinado antes da conclusão do atendimento.</p>
-            )}
-            <p><strong>Valor restante:</strong> {currency.format(selectedRemaining)}</p>
-            <p><strong>Regras:</strong> {data.rules?.cancellation}</p>
+
             <Input label="Cupom (opcional)" value={form.coupon_code || ""} onChange={(value) => setForm((current) => ({ ...current, coupon_code: value }))} onBlur={() => setForm((current) => ({ ...current, coupon_code: current.coupon_code.trim().toUpperCase() }))} />
-            <label>Comprovante Do Sinal Pix (opcional)<input type="file" accept="image/*,.pdf" onChange={(event) => setForm({ ...form, payment_proof: event.target.files?.[0] })} /></label>
+            <label>Comprovante do sinal Pix (opcional)<input type="file" accept="image/*,.pdf" onChange={(event) => setForm({ ...form, payment_proof: event.target.files?.[0] })} /></label>
+            {missingAcknowledgements.length > 0 && <span className="field-hint">Para enviar, confirme a leitura de: {missingAcknowledgements.map((item) => item.name).join(", ")}.</span>}
             {error && <span className="form-error">{error}</span>}
-            <button className="primary-button booking-wide-button" disabled={submitting} onClick={submit}>{submitting ? "Enviando..." : "Confirmar Solicitação"}</button>
+            <button type="button" className="primary-button booking-wide-button" disabled={submitting || missingAcknowledgements.length > 0} onClick={submit}>{submitting ? "Enviando..." : "Confirmar solicitação"}</button>
           </section>
         )}
         {step === 7 && (
           <section className="booking-panel booking-confirmation">
             <CheckCircle2 size={42} />
             <span className="booking-section-kicker">Solicitação enviada</span>
-            <h2>Solicitação Enviada</h2>
+            <h2>Recebemos sua solicitação</h2>
             {/* O texto vem do backend porque só ele sabe qual caminho de fato
                 existiu: com link de pagamento, mandar enviar comprovante é
                 ruído; sem link, prometer pagamento online deixa o cliente
                 esperando algo que nunca chega. */}
-            <p>{confirmed?.payment_instructions || "Seu horário ficou aguardando o comprovante do sinal. Envie o comprovante pelo WhatsApp da profissional para a Aura confirmar manualmente."}</p>
-            <strong>{confirmed?.procedure}  {formatLongDate(confirmed?.appointment_date)} às {confirmed?.appointment_time}</strong>
-            <p><strong>Sinal:</strong> {currency.format(asNumber(confirmed?.deposit_value || selectedDeposit))} · {" "}
-              <strong>Restante:</strong> {currency.format(asNumber(confirmed?.remaining_value || selectedRemaining))}</p>
+            <p>{confirmed?.payment_instructions || "Seu horário ficou aguardando o comprovante do sinal. Envie o comprovante pelo WhatsApp da profissional para a equipe confirmar manualmente."}</p>
+            <strong>{selectedServices.map((item) => item.name).join(", ") || confirmed?.procedure} · {formatLongDate(confirmed?.appointment_date)} às {confirmed?.appointment_time}</strong>
+            <p><strong>Sinal:</strong> {currency.format(asNumber(confirmed?.deposit_value ?? selectedDeposit))} · {" "}
+              <strong>Restante:</strong> {currency.format(asNumber(confirmed?.remaining_value ?? selectedRemaining))}</p>
             {confirmed?.online_payment_available && confirmed?.payment_url && (
               <a className="primary-button booking-wide-button" href={confirmed.payment_url} target="_blank" rel="noreferrer"><CircleDollarSign size={16} /> Pagar o sinal agora</a>
             )}
@@ -2274,7 +2664,7 @@ export function PublicBooking() {
               <a className={confirmed?.online_payment_available ? "secondary-button booking-wide-button" : "primary-button booking-wide-button"} href={confirmed.professional_whatsapp_url} target="_blank" rel="noreferrer"><MessageCircle size={16} /> {" "}
                 {confirmed?.online_payment_available ? "Falar com a profissional" : "Enviar comprovante pelo WhatsApp"}</a>
             )}
-            <a className="primary-button booking-wide-button" href={catalogUrl()}>Voltar Ao Catálogo</a>
+            <a className="secondary-button booking-wide-button" href={catalogUrl()}>Voltar ao catálogo</a>
           </section>
         )}
       </section>

@@ -1,48 +1,27 @@
 {
-  "id": "2026-10-20-gestao-operacional",
-  "source_digest": "a19c40748a2485c5456f295cf0164b8c393f18f4d80b4bf2f1e658be703f222d",
+  "id": "2026-10-27-agendamento-online-visual",
+  "source_digest": "8803e0763cbfe3e44428f147f866374fe51aba3ff429b9b9d3fb4d649ce2aba0",
   "announcements": [
     {
-      "slug": "contas-do-estudio-do-vencimento-ao-pagamento",
-      "title": "Controle as contas do estúdio até o pagamento",
-      "summary": "Despesas, vencimentos, competência e histórico de pagamentos ficam reunidos em Contas a Pagar.",
-      "category": "Financeiro",
-      "content": "Registre aluguel, água, energia, internet e outras despesas sem movimentar o estoque. Acompanhe as contas em aberto, vencidas e pagas e filtre por categoria, competência ou vencimento.\n\nAo pagar uma conta, escolha Registrar pagamento e informe o valor, a data e a forma de pagamento. O histórico fica disponível na própria conta e repetir o envio não cria um segundo pagamento."
-    },
-    {
-      "slug": "compras-materiais-e-kits-de-consumo",
-      "title": "Compras e materiais organizados por finalidade",
-      "summary": "Escolha entre produtos para revenda, materiais de consumo e despesas. Monte também os kits dos procedimentos.",
-      "category": "Compras e estoque",
-      "content": "Em Nova compra, escolha o que deseja registrar. Produtos e materiais usam o cadastro central de estoque; despesas seguem para Contas a Pagar. Ao comprar uma embalagem, informe quantas unidades ela contém e confira a entrada prevista.\n\nEm Configurações da agenda, abra o procedimento e configure seu kit de consumo. Defina os materiais, as quantidades, os itens opcionais e a finalidade de uso. Consulte a disponibilidade dos kits no Estoque e confira o consumo real ao finalizar o atendimento. Reutilizáveis ficam sem baixa automática. As reaberturas mantêm o estorno rastreável."
-    },
-    {
-      "slug": "taxas-de-cartao-salvas-por-maquininha",
-      "title": "Salve as taxas da maquininha uma única vez",
-      "summary": "Configure débito e crédito de 1x a 12x por operadora, com data de vigência.",
-      "category": "Financeiro",
-      "content": "Nas Configurações, abra Taxas das maquininhas e informe os percentuais utilizados pelo seu estúdio. Cada quantidade de parcelas tem sua própria taxa.\n\nNos pagamentos com cartão, escolha a maquininha e confira a taxa e o líquido estimado. A taxa não aumenta o valor cobrado do cliente. Atualizações na tabela preservam as taxas que já foram aplicadas aos pagamentos anteriores."
-    },
-    {
-      "slug": "mais-estabilidade-ao-manter-o-sistema-aberto",
-      "title": "Melhorias para manter sua sessão estável",
-      "summary": "A renovação do acesso trata melhor várias abas e falhas temporárias de conexão.",
-      "category": "Estabilidade",
-      "content": "A renovação do acesso agora evita disputas entre requisições e abas abertas. Uma falha temporária durante a renovação não apaga a sessão salva.\n\nQuando a internet cair, o sistema avisa e preserva a tela aberta. Ao reconectar, as consultas são atualizadas. Se a sessão realmente expirar ou for encerrada, uma mensagem explica a necessidade de entrar novamente."
-    },
-    {
-      "slug": "agenda-publica-com-periodos-e-busca-de-joias",
-      "title": "Libere exatamente os períodos da agenda pública",
-      "summary": "Escolha semanas, meses ou períodos personalizados por profissional e encontre joias pelo código correto.",
+      "slug": "agendamento-online-mais-visual-e-organizado",
+      "title": "Agendamento online mais visual e organizado",
+      "summary": "Cartões mais limpos, descrições resumidas e imagens de referência para cada serviço.",
       "category": "Agendamentos",
-      "content": "Em Configurações da agenda → Agenda semanal, selecione o profissional e configure a Disponibilidade do link público. Combine datas, dias da semana e faixas de horário. As liberações respeitam o expediente, o almoço, os bloqueios e os atendimentos existentes.\n\nO cliente pode navegar entre os meses e escolher entre as datas disponíveis. A seleção de joias também recebeu filtros de categoria, material, cor e estoque, além da correção da busca pelo SKU e da escolha de variações."
+      "content": "Melhoramos a apresentação dos serviços no agendamento online! Agora, os procedimentos contam com cartões mais limpos, descrições resumidas e imagens de referência. As informações completas, incluindo regras, condições, garantias e orientações, ficam organizadas na etapa final, facilitando a consulta antes de enviar sua solicitação.\n\nPara configurar, abra Agenda › Mais opções › Configurações da Agenda › Procedimentos e edite cada tipo de atendimento. Em Apresentação no agendamento online, envie a foto e escreva a descrição curta. Em Informações completas para o cliente, organize as seções na ordem desejada e confira tudo na pré-visualização. Se quiser, peça ao cliente que confirme a leitura antes de enviar; essa confirmação não substitui o termo assinado.\n\nServiços sem foto aparecem com uma imagem padrão, e serviços sem descrição curta mostram um resumo da descrição já cadastrada. A página de agendamento também passou a exibir a logo do estúdio."
     },
     {
-      "slug": "identidade-da-plataforma-de-gestao",
-      "title": "A identidade da plataforma ficou mais clara",
-      "summary": "A página institucional apresenta a Aura Clinic ERP como plataforma de gestão para estúdios de piercing.",
-      "category": "Plataforma",
-      "content": "A página inicial, o menu público e o rodapé passam a identificar a Aura Clinic ERP de forma consistente. A apresentação institucional explica a proposta do produto de gestão.\n\nAs marcas dos estúdios, seus catálogos e suas páginas próprias continuam com suas identidades. As próximas atualizações publicadas também terão um anúncio em Novidades."
+      "slug": "busca-de-joias-no-topo-da-lista",
+      "title": "Busca de joias sempre à vista",
+      "summary": "No computador, a pesquisa por nome, SKU ou medida aparece no topo da lista de joias, antes dos filtros.",
+      "category": "Atendimento",
+      "content": "Ao escolher uma joia no agendamento, na venda ou no estoque, a barra de pesquisa agora aparece no topo da lista também no computador, antes dos filtros de categoria, material, cor e estoque. Quando o campo fica perto do fim da tela, a lista abre acima dele, sem esconder o que você digitou."
+    },
+    {
+      "slug": "catalogo-com-categorias-e-colecoes-sazonais",
+      "title": "Novo catálogo com categorias personalizadas e coleções sazonais",
+      "summary": "Organize o catálogo em categorias e subcategorias e crie coleções como Halloween, Natal, lançamentos e ofertas.",
+      "category": "Catálogo",
+      "content": "Agora você pode organizar seu catálogo por categorias e subcategorias, facilitando a localização de produtos. Também é possível criar coleções especiais, como Halloween, Natal, lançamentos e ofertas, programando quando elas serão exibidas. Um mesmo produto pode aparecer em várias categorias sem duplicar seu cadastro ou estoque.\n\nPara começar, abra Catálogo › Mais opções › Categorias da vitrine. Você pode criar suas categorias ou usar a estrutura sugerida e depois ajustar nomes, ordem e visibilidade. Em Campanhas e coleções, defina título, banners, período e produtos; a coleção entra e sai do catálogo sozinha nas datas escolhidas, e os produtos continuam nas categorias de sempre.\n\nNo catálogo, seus clientes encontram filtros por material, espessura, fixação, faixa de preço e disponibilidade, que podem ser combinados e limpos com um clique."
     }
   ]
 }

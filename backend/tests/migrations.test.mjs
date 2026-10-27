@@ -42,6 +42,16 @@ test("migrations versionadas têm baseline válido por escopo", () => {
   assert.ok(platform.every((item) => /^[a-f0-9]{64}$/.test(item.checksum)));
 });
 
+test("migration 0052 separa a apresentação pública do serviço sem reescrever textos", () => {
+  const presentation = loadMigrations("tenant").find((item) => item.version === "0052");
+  assert.ok(presentation, "a migration tenant 0052 é obrigatória");
+  for (const column of ["short_description", "image_url", "image_alt", "requires_evaluation", "requires_acknowledgement", "public_info_sections"]) {
+    assert.match(presentation.sql, new RegExp(`ALTER TABLE services ADD COLUMN IF NOT EXISTS ${column}\\b`));
+  }
+  assert.match(presentation.sql, /ALTER TABLE appointments ADD COLUMN IF NOT EXISTS public_acknowledgements JSONB/);
+  assert.doesNotMatch(presentation.sql, /UPDATE\s+services/i, "a descrição existente não pode ser reescrita");
+});
+
 test("migration platform 0008 versiona documentos e centraliza conteúdo público", () => {
   const content = loadMigrations("platform").find((item) => item.version === "0008");
   assert.ok(content, "a migration platform 0008 é obrigatória");

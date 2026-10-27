@@ -55,8 +55,8 @@ function HintedInput({ label, value, onChange, placeholder, type = "text", requi
   );
 }
 
-export function CatalogWorkspace({ area = "catalogo", initialTab = "produtos" }) {
-  if (area === "catalogo") return <CatalogCustomization />;
+export function CatalogWorkspace({ area = "catalogo", initialTab = "produtos", onNavigate }) {
+  if (area === "catalogo") return <CatalogCustomization onNavigate={onNavigate} />;
   return <Inventory2 initialTab={initialTab} />;
 }
 

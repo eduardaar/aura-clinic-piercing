@@ -34,8 +34,8 @@ ao criar uma clínica nova.
 
 | Escopo | Versões | Observação |
 | --- | --- | --- |
-| `platform` | `0001`–`0008` | Sequência contínua. |
-| `tenant` | `0001`–`0025` e `0028`–`0042` | `0026` e `0027` não existem. |
+| `platform` | `0001`–`0010` | Sequência contínua. |
+| `tenant` | `0001`–`0025` e `0028`–`0053` | `0026` e `0027` não existem. |
 
 As versões tenant `0026` e `0027` nunca foram criadas no histórico do
 repositório: a `0025_unified_inventory_items` e a `0028_client_relationship`

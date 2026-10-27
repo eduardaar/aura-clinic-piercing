@@ -72,6 +72,17 @@ export const APP_PAGES = Object.freeze([
     roleRank: { admin: 8 }, feature: "basic_catalog",
     component: lazyNamed(() => import("../features/inventory/Inventory"), "CatalogWorkspace")
   },
+  // Vitrine comercial: abertas pelo "Mais opções" do Catálogo.
+  {
+    id: "catalog-categories", path: "/app/catalogo/categorias", title: "Categorias da vitrine", group: null, menu: false,
+    roleRank: { admin: 30 }, feature: "basic_catalog",
+    component: lazyNamed(() => import("../features/catalog/CatalogCategoriesAdmin"), "CatalogCategoriesAdmin")
+  },
+  {
+    id: "catalog-campaigns", path: "/app/catalogo/campanhas", title: "Campanhas e coleções", group: null, menu: false,
+    roleRank: { admin: 31 }, feature: "campaigns",
+    component: lazyNamed(() => import("../features/catalog/CatalogCampaignsAdmin"), "CatalogCampaignsAdmin")
+  },
   {
     id: "catalog-customization", path: "/app/catalogo/personalizar", title: "Personalização do Catálogo", group: null, menu: false,
     roleRank: { admin: 9 }, feature: "public_catalog_customization",

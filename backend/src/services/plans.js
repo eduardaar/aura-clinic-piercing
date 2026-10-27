@@ -248,6 +248,8 @@ export const PAGE_FEATURE = {
   reports: "basic_reports",
   catalog: "basic_catalog",
   "catalog-customization": "public_catalog_customization",
+  "catalog-categories": "basic_catalog",
+  "catalog-campaigns": "campaigns",
   sales: "basic_catalog",
   commissions: "commissions"
 };

@@ -1,4 +1,5 @@
 import { ProcedureKitEditor } from "./ProcedureKitEditor";
+import { ServiceImageField, ServiceInfoSectionsEditor, ServicePresentationPreview, ShortDescriptionField, servicePresentationPayload, withColumnSections } from "./ServicePresentationEditor";
 import { useEffect, useState } from "react";
 import { Button, Checkbox, Input, Select, StatusBadge, Switch, Textarea } from "../../components/common/Ui";
 import { ConfirmDeleteModal, CrudHeader, Modal, RowActions } from "../../components/common/Crud";
@@ -10,6 +11,7 @@ import { defaultServiceForm } from "../../lib/defaultForms";
 import { useFormDraft } from "../../lib/useFormDraft";
 import { asArray, asNumber, asObject } from "../../lib/utils";
 import { currency } from "../shared/helpers";
+import { editableInfoSections } from "../../lib/servicePresentation";
 
 const CATEGORIES = ["Piercing", "Avaliação", "Retorno", "Troca de joia", "Manutenção", "Outro"];
 const CHECKLIST_PRESETS = [
@@ -99,7 +101,9 @@ export function ServicesWorkspace() {
     tenantId: tenantSlug() || "tenant",
     userId: sessionUser.id || "user",
     formId: editingId ? `service-${editingId}` : "service-new",
-    schemaKey: "service-v2",
+    // v3: apresentação do agendamento online (info_sections). Rascunhos v2 não
+    // têm as seções e não são restaurados.
+    schemaKey: "service-v3",
     value: form,
     onRestore: setForm,
     enabled: modalOpen
@@ -119,7 +123,7 @@ export function ServicesWorkspace() {
 
   function openNew() {
     setEditingId(null);
-    setForm(defaultServiceForm());
+    setForm({ ...defaultServiceForm(), info_sections: withColumnSections([]) });
     setError("");
     setModalOpen(true);
   }
@@ -137,6 +141,12 @@ export function ServicesWorkspace() {
       requires_guardian: Boolean(Number(item.requires_guardian)),
       requires_signed_term: Boolean(Number(item.requires_signed_term)),
       postcare_enabled: Boolean(Number(item.postcare_enabled)),
+      short_description: item.short_description || "",
+      image_url: item.image_url || "",
+      image_alt: item.image_alt || "",
+      requires_evaluation: Boolean(item.requires_evaluation),
+      requires_acknowledgement: Boolean(item.requires_acknowledgement),
+      info_sections: withColumnSections(editableInfoSections(item)),
       professional_ids: asArray(item.professional_ids),
       inventory_items: asArray(item.inventory_items),
       compatible_jewelry_ids: asArray(item.compatible_jewelry_ids),
@@ -152,7 +162,7 @@ export function ServicesWorkspace() {
     if (!form.name.trim()) return setError("Informe o nome do tipo de atendimento.");
     if (Number(form.base_price || 0) < 0 || Number(form.deposit_value || 0) < 0) return setError("Preço e sinal não podem ser negativos.");
     if (Number(form.duration_minutes || 0) <= 0) return setError("Informe uma duração válida.");
-    const payloadToSave = { ...form, inventory_items: form.inventory_items.filter((item) => item.inventory_item_id) };
+    const payloadToSave = { ...servicePresentationPayload(form), inventory_items: form.inventory_items.filter((item) => item.inventory_item_id) };
     const response = await apiFetch(editingId ? `/services/${editingId}` : "/services", { method: editingId ? "PUT" : "POST", body: JSON.stringify(payloadToSave) });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) return setError(payload.error || "Não foi possível salvar o tipo de atendimento.");
@@ -208,14 +218,25 @@ export function ServicesWorkspace() {
         <FormSection title="Informações principais" badge="Essencial">
         <div className="form-grid"><Select label="Categoria" value={form.category} onChange={(category) => setForm({ ...form, category })}>{CATEGORIES.map((item) => (
                   <option key={item}>{item}</option>))}</Select><Input label="Nome" value={form.name} onChange={(name) => setForm({ ...form, name })} required /><Input label="Região do corpo" value={form.body_area} onChange={(body_area) => setForm({ ...form, body_area })} /><Input type="number" min="1" label="Duração (min)" value={form.duration_minutes} onChange={(duration_minutes) => setForm({ ...form, duration_minutes })} /><Input type="number" min="0" step="0.01" inputMode="decimal" label="Preço" value={form.base_price} onChange={(base_price) => setForm({ ...form, base_price })} /><Input type="number" min="0" step="0.01" inputMode="decimal" label="Sinal" value={form.deposit_value} onChange={(deposit_value) => setForm({ ...form, deposit_value })} /></div>
-        <Textarea label="Descrição" value={form.description} onChange={(description) => setForm({ ...form, description })} />
+        <Textarea label="Descrição completa" value={form.description} onChange={(description) => setForm({ ...form, description })} />
+        <small className="field-hint">Aparece na etapa final do agendamento online, em "Sobre o procedimento". O cartão usa a descrição curta abaixo.</small>
         </FormSection>
-        <AdvancedFields title="Regras e orientações" description="Idade, responsável, termo, retornos e comunicação pós-atendimento.">
-        <Textarea label="Orientações pré-atendimento" value={form.pre_service_notes} onChange={(pre_service_notes) => setForm({ ...form, pre_service_notes })} />
+        <FormSection title="Apresentação no agendamento online" badge="Online">
+        <ServiceImageField form={form} onChange={(patch) => setForm({ ...form, ...patch })} />
+        <ShortDescriptionField value={form.short_description} onChange={(short_description) => setForm({ ...form, short_description })} />
+        <div className="chip-toggle-grid"><Switch id="type-evaluation" label="Exige avaliação prévia" description="Informado ao cliente nas informações completas." checked={form.requires_evaluation} onChange={(requires_evaluation) => setForm({ ...form, requires_evaluation })} /><Switch id="type-acknowledgement" label="Exigir confirmação de leitura" description="O cliente confirma que leu as informações antes de enviar. Não substitui o termo assinado." checked={form.requires_acknowledgement} onChange={(requires_acknowledgement) => setForm({ ...form, requires_acknowledgement })} /></div>
+        </FormSection>
+        <AdvancedFields title="Informações completas para o cliente" description="Seções exibidas na etapa final do agendamento online, na ordem abaixo. Seções vazias não aparecem.">
+        <ServiceInfoSectionsEditor sections={form.info_sections || []} onChange={(info_sections) => setForm({ ...form, info_sections })} />
+        </AdvancedFields>
+        <AdvancedFields title="Pré-visualização" description="Cartão público e apresentação completa, como o cliente verá.">
+        <ServicePresentationPreview form={form} />
+        </AdvancedFields>
+        <AdvancedFields title="Regras e orientações" description="Idade, responsável, termo, retornos e comunicação pós-atendimento. Os textos de orientação ficam nas informações completas.">
         <div className="form-grid"><Input type="number" min="0" max="120" label="Idade mínima" value={form.minimum_age_years} onChange={(minimum_age_years) => setForm({ ...form, minimum_age_years })} /><Input type="number" min="1" label="Retorno após dias" value={form.return_after_days} onChange={(return_after_days) => setForm({ ...form, return_after_days })} /><Input type="number" min="0" label="Intervalo após atendimento (min)" value={form.scheduling_interval_minutes} onChange={(scheduling_interval_minutes) => setForm({ ...form, scheduling_interval_minutes })} /><Input type="number" min="0" label="Antecedência mínima (min)" value={form.minimum_advance_minutes} onChange={(minimum_advance_minutes) => setForm({ ...form, minimum_advance_minutes })} /></div>
         <div className="chip-toggle-grid"><Switch id="type-guardian" label="Exigir responsável para menor" description="" checked={form.requires_guardian} onChange={(requires_guardian) => setForm({ ...form, requires_guardian })} /><Switch id="type-term" label="Exigir termo assinado" description="" checked={form.requires_signed_term} onChange={(requires_signed_term) => setForm({ ...form, requires_signed_term })} /><Switch id="type-postcare" label="Gerar pós-atendimento" description="" checked={form.postcare_enabled} onChange={(postcare_enabled) => setForm({ ...form, postcare_enabled })} /><Switch id="type-online" label="Disponível online" description="" checked={form.active_online_booking} onChange={(active_online_booking) => setForm({ ...form, active_online_booking })} /><Switch id="type-active" label="Ativo" description="" checked={form.is_active} onChange={(is_active) => setForm({ ...form, is_active })} /></div>
         {form.postcare_enabled && (
-              <><Input label="Dias do pós-atendimento" value={form.postcare_days} onChange={(postcare_days) => setForm({ ...form, postcare_days })} placeholder="7, 15, 30" /><Textarea label="Orientações pós-atendimento" value={form.aftercare_instructions} onChange={(aftercare_instructions) => setForm({ ...form, aftercare_instructions })} /></>
+              <><Input label="Dias do pós-atendimento" value={form.postcare_days} onChange={(postcare_days) => setForm({ ...form, postcare_days })} placeholder="7, 15, 30" /><small className="field-hint">As orientações enviadas no pós-atendimento ficam em "Informações completas para o cliente › Cuidados após o atendimento".</small></>
             )}
         </AdvancedFields>
         <AdvancedFields title="Equipe, estoque e operação" description="Profissionais habilitados, materiais, joias, checklist e biossegurança.">

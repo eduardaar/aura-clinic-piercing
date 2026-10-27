@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { SmartCombobox } from "../src/components/common/SmartCombobox";
 import { Modal } from "../src/components/common/Crud";
 import userEvent from "@testing-library/user-event";
@@ -167,6 +167,29 @@ describe("SmartCombobox", () => {
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByRole("dialog", { name: "Novo Agendamento" })).toBeInTheDocument();
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
+  // No computador a lista pode cobrir o campo (perto do rodapé da tela): a
+  // busca precisa estar no topo da lista, antes dos filtros, como no celular.
+  it("no computador a busca aparece no topo da lista, antes dos filtros, e filtra", async () => {
+    const width = window.innerWidth;
+    window.innerWidth = 1366;
+    try {
+      render(<SmartCombobox label="Joia" value="" onChange={() => {}} options={options} />);
+      fireEvent.focus(screen.getByRole("combobox"));
+      const popupSearch = screen.getByRole("textbox", { name: "Buscar joia" });
+      const list = popupSearch.closest(".smart-combobox-list");
+      const filters = within(list).getByLabelText("Filtros de joias");
+      expect(popupSearch.compareDocumentPosition(filters) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      await waitFor(() => expect(popupSearch).toHaveFocus());
+      fireEvent.change(popupSearch, { target: { value: "LAB-002" } });
+      expect(within(screen.getByRole("listbox")).getAllByRole("option")).toHaveLength(1);
+      fireEvent.keyDown(popupSearch, { key: "Escape" });
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+      expect(screen.getByRole("combobox")).toHaveFocus();
+    } finally {
+      window.innerWidth = width;
+    }
   });
 
   it("a lista só fecha por toque fora dela e do campo", async () => {

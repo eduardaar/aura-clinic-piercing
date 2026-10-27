@@ -3,7 +3,7 @@ import { calculateDiscount } from "./discounts.js";
 const csv = (value) => String(value || "").split(",").map((entry) => entry.trim()).filter(Boolean);
 const normalizedCsv = (value) => csv(value).map((entry) => entry.toLocaleLowerCase("pt-BR"));
 
-function isPromotionActive(promotion, now = new Date()) {
+export function isPromotionActive(promotion, now = new Date()) {
   if (!promotion || promotion.deleted_at || promotion.status !== "active" || !Number(promotion.is_active ?? 1)) return false;
   const date = now.toISOString().slice(0, 10);
   const time = now.toTimeString().slice(0, 5);
@@ -12,6 +12,10 @@ function isPromotionActive(promotion, now = new Date()) {
   if (promotion.start_time && promotion.start_time > time) return false;
   if (promotion.end_time && promotion.end_time < time) return false;
   return true;
+}
+
+export function promotionMatchesItem(promotion, item) {
+  return itemMatches(promotion, item);
 }
 
 function itemMatches(promotion, item) {
