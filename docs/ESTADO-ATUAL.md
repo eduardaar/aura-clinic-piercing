@@ -325,8 +325,8 @@ ficam fora do Git; relatórios e testes permanecem versionados.
 ## 14. Agendamento online, seletor de joias e revisão do cliente — 27/10/2026
 
 Respostas à revisão do cliente de 27/10 e à especificação "Melhoria do
-agendamento online". Implementado localmente sobre `b6254efb`; não houve
-commit, publicação nem migration em produção.
+agendamento online". Implementado inicialmente sobre `b6254efb`. O registro abaixo descreve a
+validação local; o rollout está registrado na seção 16.
 
 **Agendamento online (`/agendar`)**
 
@@ -350,7 +350,7 @@ commit, publicação nem migration em produção.
 
 **Cadastro do procedimento** — seção "Apresentação no agendamento online"
 (imagem com envio/troca/remoção e texto alternativo, descrição curta com
-contador de 160, avaliação prévia, confirmação de leitura), "Informações
+contador (160 recomendados, limite de 240 caracteres), avaliação prévia, confirmação de leitura), "Informações
 completas para o cliente" (seções ordenáveis; "Antes do atendimento" e
 "Cuidados após o atendimento" continuam gravadas em `pre_service_notes` e
 `aftercare_instructions`) e "Pré-visualização" com os mesmos componentes da
@@ -384,7 +384,7 @@ em iPhone físico.
 ## 15. Catálogo com categorias hierárquicas e campanhas — 27/10/2026
 
 Evolução do catálogo existente (não é uma loja separada), implementada
-localmente sobre `b6254efb`, sem commit nem publicação.
+inicialmente sobre `b6254efb`; o rollout está registrado na seção 16.
 
 **Estrutura (migration `0053_catalog_categories_campaigns`)** — tabelas novas,
 separadas das categorias internas do estoque (`inventory_options`) e das
@@ -438,6 +438,24 @@ plano sem campanhas), `catalogNavigation.test.mjs`,
 `PublicCatalogCollections.test.jsx` e `CatalogCollectionsAdmin.test.jsx`.
 Capturas reais da clínica local `qa-shots` em 1366 e 390 px: vitrine, categoria,
 árvore, coleção, coleção indisponível e painel, sem rolagem horizontal.
+
+## 16. Validação e preparação da publicação — 27/10/2026
+
+- Alterações das seções 14 e 15 versionadas em `5881f58b`.
+- Suíte completa: 769 testes de backend, 77 unitários de frontend e 381
+  testes de componentes aprovados. Typecheck, build, lint sem erros e
+  manifesto com três anúncios de Novidades conferidos.
+- Locks atualizados dentro das faixas existentes para corrigir as
+  vulnerabilidades encontradas pela auditoria. Auditoria dos três projetos
+  passou sem vulnerabilidades. Após instalar as versões corrigidas, typecheck,
+  build e 31 regressões de backend (autenticação, migrations, apresentação dos
+  serviços e coleções) passaram. Componentes testados com Vitest 4.1.12.
+- Workflow [Aplicar migrations em produção](https://github.com/eduardaar/aura-clinic-piercing/actions/runs/40541866357)
+  concluído com sucesso antes do envio à `main`: restore point validado,
+  aplicação e verificação das migrations, recriação da API e health check do
+  banco aprovado. Inclui as migrations tenant `0052` e `0053`.
+- Publicação pelo workflow `CI e Deploy`, disparado pelo push na `main`,
+  com validação completa antes de liberar o deploy de produção.
 
 ## Pendências abertas
 
