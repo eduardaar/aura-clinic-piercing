@@ -264,6 +264,13 @@ test("dashboard não expõe valores financeiros sem dashboard.financial", async 
   assert.notEqual(finance.json.adminDashboard.executive.received, undefined);
 });
 
+test("central de atenção não expõe retornos clínicos para a recepção", async () => {
+  const reception = await req("/dashboard/attention?period=week", { token: ctx.tokens.reception });
+  assert.equal(reception.status, 200, JSON.stringify(reception.json));
+  assert.equal(reception.json.returns, null);
+  assert.equal(typeof reception.json.birthdays, "number");
+});
+
 test("opções de estoque só incluem configuração de custo para papel autorizado", async () => {
   const reception = await req("/options", { token: ctx.tokens.reception });
   assert.equal(reception.status, 200, JSON.stringify(reception.json));

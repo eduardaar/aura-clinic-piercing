@@ -8,8 +8,9 @@ import { asArray, asNumber, asObject, formatDate, formatLongDate, localDateValue
 import { useFetch } from "../../lib/api";
 import { currency, formatRevenueAxisLabel, formatRevenueLabel, personName, statusClass } from "../../features/shared/helpers";
 import "../../styles/agenda-admin-responsive.css";
+import { AttentionCenter } from "./AttentionCenter";
 
-export function Dashboard({ user, setPage, alertsOpen, setAlertsOpen, alertsData, alertsLoading }) {
+export function Dashboard({ user, setPage }) {
   const [period, setPeriod] = useState("30d");
   const { data, refresh } = useFetch(`/dashboard?period=${period}`);
   const nextStart = data?.adminDashboard?.nextAppointment?.starts_at;
@@ -30,7 +31,7 @@ export function Dashboard({ user, setPage, alertsOpen, setAlertsOpen, alertsData
 
   if (data == null) return <Loading />;
   if (data.error) return <ApiError message={data.error} />;
-  return <PremiumDashboard data={data} user={user} setPage={setPage} period={period} setPeriod={setPeriod} alertsOpen={alertsOpen} setAlertsOpen={setAlertsOpen} alertsData={alertsData} alertsLoading={alertsLoading} />;
+  return <PremiumDashboard data={data} user={user} setPage={setPage} period={period} setPeriod={setPeriod} />;
 }
 
 // Indicador ausente no payload vira "—" em vez de zero, para não mascarar falha de dado.
@@ -42,7 +43,7 @@ function statCount(value) {
   return value === undefined || value === null ? "—" : String(value);
 }
 
-export function PremiumDashboard({ data, user, setPage, period, setPeriod, alertsOpen, setAlertsOpen, alertsData, alertsLoading }) {
+export function PremiumDashboard({ data, user, setPage, period, setPeriod }) {
   const [clock, setClock] = useState(Date.now);
   useEffect(() => {
     const timer = setInterval(() => setClock(Date.now()), 10000);
@@ -95,8 +96,6 @@ export function PremiumDashboard({ data, user, setPage, period, setPeriod, alert
 
   return (
     <section className="premium-dashboard">
-      {alertsOpen && <AlertsPopup alerts={alertsData} loading={alertsLoading} onClose={() => setAlertsOpen(false)} onAction={(nextPage) => { setAlertsOpen(false); setPage(nextPage); }} />}
-
       <div className="panel-heading dashboard-period-heading">
         <div><h2>Visão executiva</h2><span>Indicadores consolidados do período.</span></div>
         <div className="segmented compact">
@@ -312,6 +311,11 @@ export function DashboardList({ title, items = [], render }) {
 }
 
 export function AlertsPopup({ alerts, loading, onClose, onAction }) {
+  useEffect(() => {
+    const handleKey = (event) => { if (event.key === "Escape") onClose?.(); };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [onClose]);
   const safeAlerts = asObject(alerts);
   const items = asArray(safeAlerts.items);
   const iconByCategory = {
@@ -321,14 +325,10 @@ export function AlertsPopup({ alerts, loading, onClose, onAction }) {
   };
   return (
     <div className="popup-backdrop" role="presentation" onClick={onClose}>
-      <section className="alerts-popup" role="dialog" aria-modal="true" aria-label="Alertas da Aura Clinic" onClick={(event) => event.stopPropagation()}>
-        <header>
-          <div>
-            <span className="eyebrow">Pendências ativas</span>
-            <h2>O que precisa de atenção</h2>
-          </div>
-          <button className="icon-button" onClick={onClose} aria-label="Fechar pendências">X</button>
-        </header>
+      <section className="alerts-popup attention-popup" role="dialog" aria-modal="true" aria-label="Central de atenção" onClick={(event) => event.stopPropagation()}>
+        <AttentionCenter setPage={onAction} onClose={onClose} />
+        <section className="attention-popup__details" aria-label="Alertas detalhados">
+        <h3>Alertas detalhados</h3>
         {loading ? <Loading /> : items.length ? (
           <div className="alerts-grid real-alerts-grid">
             {items.map((item) => {
@@ -349,7 +349,8 @@ export function AlertsPopup({ alerts, loading, onClose, onAction }) {
               );
             })}
           </div>
-        ) : <div className="alerts-empty-state"><Bell size={28} /><strong>Nenhum alerta importante no momento.</strong><span>Está tudo em ordem por aqui.</span></div>}
+        ) : <p className="empty-state">Nenhuma outra pendência detalhada no momento.</p>}
+        </section>
       </section>
     </div>
   );

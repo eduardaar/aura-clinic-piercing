@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, ImageIcon, LayoutGrid, ListFilter, Pencil, SlidersHorizontal, Table2, Trash2 } from "lucide-react";
 import { Button, Input, Metric, Select, StatusBadge, Switch, Tabs, Textarea } from "../../components/common/Ui";
-import { Modal, CrudHeader, RowActions } from "../../components/common/Crud";
+import { Modal, CrudHeader, RowActions, ConfirmDeleteModal } from "../../components/common/Crud";
 import { DataView } from "../../components/common/DataView";
 import { CollapsibleIndicators } from "../../components/common/CollapsibleIndicators";
 import { asArray, asObject, formatDate, removeAccents } from "../../lib/utils";
@@ -64,7 +64,7 @@ export function InventoryMaterialsWorkspace() {
   return <Inventory2 initialTab="materiais" />;
 }
 
-export function JewelryCards({ items, onOpen, onEdit, onMovement, onArchive }) {
+export function JewelryCards({ items, onOpen, onEdit, onMovement, onArchive, onDelete }) {
   const safeItems = asArray(items);
   return (
     <div className="inventory-product-list">
@@ -94,7 +94,8 @@ export function JewelryCards({ items, onOpen, onEdit, onMovement, onArchive }) {
                 onMovement ? { label: "Entrada", onClick: () => onMovement(item, "Entrada") } : null,
                 onMovement ? { label: "Saída", onClick: () => onMovement(item, "Saída") } : null,
                 { label: "Editar", onClick: () => onEdit(item) },
-                onArchive ? { label: "Arquivar", onClick: () => onArchive(item), danger: true } : null
+                onArchive ? { label: item.status === "arquivado" ? "Ativar" : "Desativar", onClick: () => onArchive(item) } : null,
+                onDelete ? { label: "Excluir permanentemente", onClick: () => onDelete(item), danger: true } : null
               ]} />
             </div>
           </div>
@@ -116,6 +117,10 @@ export function Inventory2({ initialTab = "produtos" }) {
   const [statusTab, setStatusTab] = useState("todos");
   const [badgeTab, setBadgeTab] = useState("todos");
   const [showEditor, setShowEditor] = useState(false);
+  const [deleting, setDeleting] = useState(null);
+  const [actionError, setActionError] = useState("");
+  const canEdit = can(readStoredSession()?.user || {}, "inventory.edit");
+  const canDelete = can(readStoredSession()?.user || {}, "inventory.delete");
   const { data: options } = useFetch("/options");
   const { data: intelligence } = useFetch("/inventory/intelligence?days=90");
   const { data: inventorySuggestions } = useFetch("/inventory/suggestions");
@@ -172,7 +177,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
   const variantOptions = (field) => [...new Set(allVariants.map((variant) => variant[field]).filter(Boolean))].sort();
   const productFilters = [
     { key: "category", label: "Categoria", type: "select", options: catalogFilterOptions(allJewelry).categories },
-    { key: "status", label: "Status do estoque", type: "select", options: [{ value: "ativos", label: "Ativos" }, { value: "critico", label: "Crítico" }, { value: "esgotados", label: "Esgotados" }] },
+    { key: "status", label: "Status do estoque", type: "select", options: [{ value: "ativos", label: "Ativos" }, { value: "inativos", label: "Inativos" }, { value: "critico", label: "Crítico" }, { value: "esgotados", label: "Esgotados" }] },
     ...[["material", "Material"], ["color", "Observação de cor"], ["thread_type", "Tipo de rosca"], ["thickness", "Espessura"], ["length", "Comprimento"], ["diameter", "Diâmetro"], ["supplier", "Fornecedor"]].map(([key, label]) => ({ key, label, type: "select", options: variantOptions(key) }))
   ];
   const productFilterValues = Object.fromEntries(Object.entries(filters).filter(([key]) => key !== "search"));
@@ -195,6 +200,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
     const effectiveStatus = statusTab !== "todos" ? statusTab : filters.status;
     if (!effectiveStatus || effectiveStatus === "todos") return true;
     if (effectiveStatus === "ativos") return inventoryStockState(item) === "active";
+    if (effectiveStatus === "inativos") return inventoryStockState(item) === "inactive";
     if (effectiveStatus === "critico" || effectiveStatus === "crítico") return inventoryStockState(item) === "critical";
     if (effectiveStatus === "esgotados" || effectiveStatus === "esgotado") return inventoryStockState(item) === "sold-out";
     return true;
@@ -232,15 +238,40 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
   }, [inventoryMode]);
 
   async function archiveJewelry(item) {
-    const response = await apiFetch(`/jewelry/${item.id}`, {
+    setActionError("");
+    try {
+    const response = await apiFetch(`/jewelry/${item.id}/status`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "arquivado", is_catalog_active: 0 })
+      body: JSON.stringify({ is_active: item.status === "arquivado" })
     });
     if (response.ok) {
       refreshJewelry();
       refreshOptions();
+    } else {
+      setActionError((await response.json().catch(() => ({}))).error || "Não foi possível alterar o status.");
     }
+    } catch {
+      setActionError("Não foi possível alterar o status. Tente novamente.");
+    }
+  }
+
+  async function deleteJewelry() {
+    setActionError("");
+    try {
+      const response = await apiFetch(`/jewelry/${deleting.id}`, { method: "DELETE" });
+      if (!response.ok) return setActionError((await response.json().catch(() => ({}))).error || "Não foi possível excluir o produto.");
+      setDeleting(null);
+      refreshJewelry();
+      refreshOptions();
+    } catch {
+      setActionError("Não foi possível excluir o produto. Tente novamente.");
+    }
+  }
+
+  function confirmProductDeletion(item) {
+    setActionError("");
+    setDeleting(item);
   }
 
   function openMovement(item, movement_type) {
@@ -287,6 +318,8 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
 
   return (
     <section className="inventory-studio">
+      {actionError && !deleting && <p role="alert" className="form-error">{actionError}</p>}
+      <ConfirmDeleteModal open={Boolean(deleting)} onClose={() => setDeleting(null)} onConfirm={deleteJewelry} message={<>Excluir permanentemente {deleting?.name}? Esta ação não pode ser desfeita. Produtos com histórico precisam ser desativados.{actionError && <span role="alert" className="form-error">{actionError}</span>}</>} />
       <div className="inventory-main">
         {(inventoryWorkspace || sectionTab === "produtos") && (
           <div className="panel products-crud-header">
@@ -325,7 +358,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
           {["produtos", "todos", "vendaveis", "materiais"].includes(sectionTab) && (
             <>
               {view === "cards" ? (
-                <JewelryCards items={sectionItems} onOpen={openProduct} onEdit={openProduct} onMovement={openMovement} onArchive={archiveJewelry} />
+                <JewelryCards items={sectionItems} onOpen={openProduct} onEdit={openProduct} onMovement={openMovement} onArchive={canEdit ? archiveJewelry : undefined} onDelete={canDelete ? confirmProductDeletion : undefined} />
               ) : (
                 <JewelryTable
                   items={sectionItems}
@@ -337,7 +370,8 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
                   onOpen={openProduct}
                   onEdit={openProduct}
                   onMovement={openMovement}
-                  onArchive={archiveJewelry}
+                  onArchive={canEdit ? archiveJewelry : undefined}
+                  onDelete={canDelete ? confirmProductDeletion : undefined}
                 />
               )}
             </>
@@ -1693,7 +1727,7 @@ function CategoryManagementTable({ rows = [], onEdit, onToggleStatus, onDelete }
     </div>
   );
 }
-export function JewelryTable({ items, search, onSearchChange, filters, filterValues, onFilterChange, onOpen, onEdit, onMovement, onArchive }) {
+export function JewelryTable({ items, search, onSearchChange, filters, filterValues, onFilterChange, onOpen, onEdit, onMovement, onArchive, onDelete }) {
   return (
     <div className="inventory-admin-table compact-inventory-table">
       <DataView
@@ -1757,7 +1791,8 @@ export function JewelryTable({ items, search, onSearchChange, filters, filterVal
             { label: "Editar", onClick: () => onEdit?.(item) },
             onMovement ? { label: "Entrada", onClick: () => onMovement(item, "Entrada") } : null,
             onMovement ? { label: "Saída", onClick: () => onMovement(item, "Saída") } : null,
-            onArchive ? { label: "Arquivar", onClick: () => onArchive(item), danger: true } : null
+            onArchive ? { label: item.status === "arquivado" ? "Ativar" : "Desativar", onClick: () => onArchive(item) } : null,
+            onDelete ? { label: "Excluir permanentemente", onClick: () => onDelete(item), danger: true } : null
           ].filter(Boolean)} />
         )}
         empty="Nenhuma joia cadastrada ainda."

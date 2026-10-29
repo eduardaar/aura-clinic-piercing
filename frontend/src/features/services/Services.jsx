@@ -177,11 +177,23 @@ export function ServicesWorkspace() {
   }
 
   function remove(item) {
-    setDeleting({ message: `Excluir ${item.name}? Se já estiver em uso, será arquivado para preservar o histórico.`, run: async () => {
+    setError("");
+    setDeleting({ message: `Excluir permanentemente ${item.name}? Esta ação não pode ser desfeita. Cadastros com histórico vinculado precisam ser desativados.`, run: async () => {
       const response = await apiFetch(`/services/${item.id}`, { method: "DELETE" });
       if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || "Não foi possível excluir.");
       refresh();
     } });
+  }
+
+  async function toggleActive(item) {
+    setError("");
+    try {
+    const response = await apiFetch(`/services/${item.id}`, { method: "PATCH", body: JSON.stringify({ is_active: !Boolean(Number(item.is_active)) }) });
+    if (!response.ok) return setError((await response.json().catch(() => ({}))).error || "Não foi possível alterar o status.");
+    refresh();
+    } catch {
+      setError("Não foi possível alterar o status. Tente novamente.");
+    }
   }
 
   async function saveSettings() {
@@ -194,6 +206,7 @@ export function ServicesWorkspace() {
   return (
     <section className="booking-admin-page stack">
     <header className="availability-header agenda-settings-header"><div><span className="eyebrow">Configuração da Agenda</span><h2>Tipos de atendimento</h2><p>Procedimento, agenda, regras clínicas e recursos em um único cadastro.</p></div></header>
+    {error && !modalOpen && !deleting && <p role="alert" className="form-error">{error}</p>}
     <div className="panel stack"><CrudHeader title="Checklist e biossegurança" subtitle="Padrão opcional da clínica, copiado para cada agendamento." /><OperationalEditor checklist={settings.checklist} biosafety={settings.biosafety} onChange={setSettings} /><div className="toolbar"><Button onClick={saveSettings}>Salvar padrão</Button>{settingsMessage && <small>{settingsMessage}</small>}</div></div>
     <div className="panel"><CrudHeader title="Procedimentos e tipos de atendimento" subtitle="Fonte única usada na Agenda, execução, estoque e agendamento online." actionLabel="Novo tipo de atendimento" onAction={openNew} />
       <DataView rows={services} defaultSort={{ key: "name", dir: "asc" }} searchPlaceholder="Buscar por nome, categoria ou região" filters={[{ key: "category", label: "Categoria", type: "select", options: CATEGORIES.map((value) => ({ value, label: value })) }]} columns={[
@@ -206,7 +219,7 @@ export function ServicesWorkspace() {
         { key: "deposit_value", label: "Sinal", render: (item) => currency.format(item.deposit_value || 0) },
         { key: "is_active", label: "Status", render: (item) => <StatusBadge status={Boolean(Number(item.is_active)) ? "Ativo" : "Inativo"} /> }
       ]} actions={(item) => (
-            <RowActions actions={[{ label: "Editar cadastro", primary: true, onClick: () => openEdit(item) }, { label: "Excluir", danger: true, onClick: () => remove(item) }]} />
+            <RowActions actions={[{ label: "Editar cadastro", primary: true, onClick: () => openEdit(item) }, { label: Boolean(Number(item.is_active)) ? "Desativar" : "Ativar", onClick: () => toggleActive(item) }, sessionUser.role === "admin" ? { label: "Excluir permanentemente", danger: true, onClick: () => remove(item) } : null]} />
           )} empty="Cadastre o primeiro tipo de atendimento para liberar a Agenda." />
     </div>
 
@@ -255,7 +268,7 @@ export function ServicesWorkspace() {
         </AdvancedFields>
       </FormWorkflow>
     </Modal>
-    <ConfirmDeleteModal open={Boolean(deleting)} message={deleting?.message} onClose={() => setDeleting(null)} onConfirm={async () => { await deleting.run(); setDeleting(null); }} />
+    <ConfirmDeleteModal open={Boolean(deleting)} message={<>{deleting?.message}{error && <span role="alert" className="form-error">{error}</span>}</>} onClose={() => setDeleting(null)} onConfirm={async () => { try { await deleting.run(); setDeleting(null); } catch (failure) { setError(failure.message); } }} />
   </section>
   );
 }

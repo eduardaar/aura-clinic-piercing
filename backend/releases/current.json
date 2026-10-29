@@ -1,27 +1,27 @@
 {
-  "id": "2026-10-27-agendamento-online-visual",
-  "source_digest": "8803e0763cbfe3e44428f147f866374fe51aba3ff429b9b9d3fb4d649ce2aba0",
+  "id": "2026-10-29-finalizacao-central-atencao",
   "announcements": [
     {
-      "slug": "agendamento-online-mais-visual-e-organizado",
-      "title": "Agendamento online mais visual e organizado",
-      "summary": "Cartões mais limpos, descrições resumidas e imagens de referência para cada serviço.",
-      "category": "Agendamentos",
-      "content": "Melhoramos a apresentação dos serviços no agendamento online! Agora, os procedimentos contam com cartões mais limpos, descrições resumidas e imagens de referência. As informações completas, incluindo regras, condições, garantias e orientações, ficam organizadas na etapa final, facilitando a consulta antes de enviar sua solicitação.\n\nPara configurar, abra Agenda › Mais opções › Configurações da Agenda › Procedimentos e edite cada tipo de atendimento. Em Apresentação no agendamento online, envie a foto e escreva a descrição curta. Em Informações completas para o cliente, organize as seções na ordem desejada e confira tudo na pré-visualização. Se quiser, peça ao cliente que confirme a leitura antes de enviar; essa confirmação não substitui o termo assinado.\n\nServiços sem foto aparecem com uma imagem padrão, e serviços sem descrição curta mostram um resumo da descrição já cadastrada. A página de agendamento também passou a exibir a logo do estúdio."
-    },
-    {
-      "slug": "busca-de-joias-no-topo-da-lista",
-      "title": "Busca de joias sempre à vista",
-      "summary": "No computador, a pesquisa por nome, SKU ou medida aparece no topo da lista de joias, antes dos filtros.",
+      "slug": "finalizacao-sem-bloqueio-de-antecedencia",
+      "title": "Finalize atendimentos anteriores sem bloqueio de antecedência",
+      "summary": "A finalização dos atendimentos foi ajustada para não ser bloqueada pelas regras de antecedência de agendamento.",
       "category": "Atendimento",
-      "content": "Ao escolher uma joia no agendamento, na venda ou no estoque, a barra de pesquisa agora aparece no topo da lista também no computador, antes dos filtros de categoria, material, cor e estoque. Quando o campo fica perto do fim da tela, a lista abre acima dele, sem esconder o que você digitou."
+      "content": "Agora você pode abrir, preencher e finalizar um atendimento já realizado, inclusive um retorno com data e horário passados, sem receber o bloqueio de antecedência mínima de agendamento. Alterações na ficha que mantêm a data e o horário originais também estão liberadas dessa regra.\n\nA data original do agendamento continua registrada, e a conclusão mantém seu próprio registro de data e hora. Os controles de pagamentos, valores, estoque, informações clínicas e histórico continuam sendo conferidos normalmente.\n\nA antecedência mínima de cada procedimento continua valendo para novos agendamentos, inclusive no agendamento online, e para mudanças reais de data ou horário. Não é necessário alterar a configuração dos procedimentos para finalizar atendimentos anteriores."
     },
     {
-      "slug": "catalogo-com-categorias-e-colecoes-sazonais",
-      "title": "Novo catálogo com categorias personalizadas e coleções sazonais",
-      "summary": "Organize o catálogo em categorias e subcategorias e crie coleções como Halloween, Natal, lançamentos e ofertas.",
-      "category": "Catálogo",
-      "content": "Agora você pode organizar seu catálogo por categorias e subcategorias, facilitando a localização de produtos. Também é possível criar coleções especiais, como Halloween, Natal, lançamentos e ofertas, programando quando elas serão exibidas. Um mesmo produto pode aparecer em várias categorias sem duplicar seu cadastro ou estoque.\n\nPara começar, abra Catálogo › Mais opções › Categorias da vitrine. Você pode criar suas categorias ou usar a estrutura sugerida e depois ajustar nomes, ordem e visibilidade. Em Campanhas e coleções, defina título, banners, período e produtos; a coleção entra e sai do catálogo sozinha nas datas escolhidas, e os produtos continuam nas categorias de sempre.\n\nNo catálogo, seus clientes encontram filtros por material, espessura, fixação, faixa de preço e disponibilidade, que podem ser combinados e limpos com um clique."
+      "slug": "central-de-atencao-no-sininho",
+      "title": "Central de atenção no sininho de alertas",
+      "summary": "Abra o sininho para consultar pendências de agenda, joias esgotadas, aniversários e contatos de retorno em um só lugar.",
+      "category": "Alertas",
+      "content": "Acesse a Central de atenção pelo sininho de alertas no topo do sistema, em qualquer tela. Ela reúne quatro categorias e atalhos para agir: agendamentos com pendências, joias esgotadas, aniversários e contatos de acompanhamento.\n\nEscolha Hoje, Esta semana ou Este mês para consultar as pendências, os aniversários e os retornos do período. As joias esgotadas mostram a situação atual do estoque, independentemente do período escolhido. As contagens consideram todos os registros correspondentes, mesmo quando há mais itens do que cabem nas listas resumidas.\n\nOs dados são atualizados automaticamente enquanto a tela está aberta, e você também pode usar o botão de atualizar. Cada pessoa vê as categorias permitidas pelo seu acesso e pelo plano da clínica.\n\nOs alertas detalhados, incluindo pendências financeiras, continuam disponíveis na mesma janela."
+    },
+    {
+      "slug": "ativacao-e-exclusao-de-cadastros",
+      "title": "Ative, desative ou exclua cadastros com clareza",
+      "summary": "Os menus de procedimentos e produtos agora separam edição, ativação, desativação e exclusão permanente.",
+      "category": "Cadastros e estoque",
+      "content": "Nos três pontinhos dos tipos de atendimento e dos produtos de estoque, as ações de ativar ou desativar ficam separadas de editar e excluir permanentemente. Você pode reativar um cadastro quando precisar voltar a utilizá-lo.\n\nA exclusão permanente pede confirmação e remove os cadastros sem vínculos que precisam ser preservados. Quando existem atendimentos, vendas ou registros de estoque vinculados, o sistema explica o impedimento e orienta a usar Desativar, preservando o histórico. A opção de excluir não transforma mais o cadastro em inativo silenciosamente.\n\nNo estoque, alterar a disponibilidade mantém os preços, os saldos e as configurações de publicação. Uma movimentação de estoque também não reativa um produto que foi desativado. A exclusão continua respeitando as permissões de acesso de cada pessoa."
     }
-  ]
+  ],
+  "source_digest": "c4d45f46d41f017a8c32a96604d15a1fe1d4d56402838c87e32215eacc8ced50"
 }

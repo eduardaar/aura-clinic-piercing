@@ -123,6 +123,7 @@ export function catalogIcon(icon) {
 
 export function inventoryStatusLabel(item) {
   const state = inventoryStockState(item);
+  if (state === "inactive") return "Inativo";
   if (state === "sold-out") return "Esgotado";
   if (state === "critical") return "Crítico";
   return "Ativo";
@@ -134,6 +135,7 @@ export function inventoryStatusClass(item) {
 
 export function inventoryStockState(item) {
   const stored = removeAccents(String(item.status || "").toLowerCase());
+  if (stored === "arquivado") return "inactive";
   if (stored === "esgotado") return "sold-out";
   // O backend calcula estes estados a partir de cada variação. Preservá-los
   // evita que um total alto esconda uma medida/cor já crítica.

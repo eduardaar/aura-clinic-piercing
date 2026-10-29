@@ -14,6 +14,7 @@ import { attachVariants, redactInventoryCosts } from "../services/inventory.js";
 import { hasPermission } from "../services/permissionService.js";
 import { P } from "../config/permissions.js";
 import { ServicePresentationError, saveServicePresentation, servicePresentationFields } from "../services/servicePresentation.js";
+import { recordAudit } from "../services/audit.js";
 
 const router = Router();
 
@@ -211,22 +212,34 @@ router.put("/api/services/:id/consumables", putInventoryRecipe);
 
 router.delete("/api/services/:id", withFeature("procedures", async (req, res, db) => {
   if (!requireRole(req, res, ["admin"])) return;
-  // appointment_items.service_id não tem FK: sem contar os itens, um serviço
-  // usado só em itens de atendimento era apagado e deixava o item órfão.
-  const linked = await db.get(`
+  try {
+    await db.transaction(async (tx) => {
+      const service = await tx.get("SELECT * FROM services WHERE id=? FOR UPDATE", [req.params.id]);
+      if (!service) return res.status(404).json({ error: "Tipo de atendimento não encontrado." });
+      const linked = await tx.get(`
     SELECT
       (SELECT COUNT(*) FROM appointments WHERE service_id = ?) +
       (SELECT COUNT(*) FROM procedures WHERE service_id = ?) +
       (SELECT COUNT(*) FROM sales_order_items WHERE service_id = ?) +
-      (SELECT COUNT(*) FROM appointment_items WHERE service_id = ?) AS total
-  `, [req.params.id, req.params.id, req.params.id, req.params.id]);
-  await db.run("DELETE FROM professional_services WHERE service_id = ?", [req.params.id]);
-  if (Number(linked?.total || 0) === 0) {
-    await db.run("DELETE FROM services WHERE id = ?", [req.params.id]);
-    return res.json({ ok: true, deleted: true });
+      (SELECT COUNT(*) FROM appointment_items WHERE service_id = ?) +
+      (SELECT COUNT(*) FROM service_executions WHERE service_id = ?) +
+      (SELECT COUNT(*) FROM service_execution_items WHERE service_id = ?) +
+      (SELECT COUNT(*) FROM appointment_consumptions WHERE service_id = ?) +
+      (SELECT COUNT(*) FROM commission_entries WHERE service_id = ?) +
+      (SELECT COUNT(*) FROM procedure_chemical_indicators WHERE service_id = ?) AS total
+  `, Array(9).fill(req.params.id));
+      if (Number(linked?.total || 0)) {
+        return res.status(409).json({ error: "Este tipo de atendimento possui histórico vinculado e não pode ser excluído permanentemente. Use Desativar para preservar os registros." });
+      }
+      await tx.run("DELETE FROM professional_services WHERE service_id = ?", [req.params.id]);
+      await tx.run("DELETE FROM services WHERE id = ?", [req.params.id]);
+      await recordAudit(tx, { req, module: "services", action: "delete", entityType: "service", entityId: service.id, before: service, severity: "critical" });
+    });
+  } catch (error) {
+    if (error.code === "23503") return res.status(409).json({ error: "Este tipo de atendimento possui vínculos e não pode ser excluído permanentemente. Use Desativar." });
+    throw error;
   }
-  await db.run("UPDATE services SET is_active=false, active_online_booking=0 WHERE id = ?", [req.params.id]);
-  res.json({ ok: true, archived: true });
+  if (!res.headersSent) res.json({ ok: true, deleted: true });
 }));
 
 export default router;

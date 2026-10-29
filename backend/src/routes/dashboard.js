@@ -10,8 +10,23 @@ import { authorizePermission } from "../middleware/requirePermission.js";
 import { hasPermission } from "../services/permissionService.js";
 import { P } from "../config/permissions.js";
 import { appointmentDateTime, appointmentCountdown, upcomingAppointmentsAt } from "../services/appointmentClock.js";
+import { dashboardAttention } from "../services/dashboardAttention.js";
+import { hasFeature, tenantSubscription } from "../services/subscriptions.js";
 
 const router = Router();
+
+router.get("/api/dashboard/attention", withDb(async (req, res, db) => {
+  if (!authorizePermission(req, res, P.DASHBOARD_VIEW)) return;
+  const period = ["today", "week", "month"].includes(String(req.query.period)) ? String(req.query.period) : "today";
+  const subscription = await tenantSubscription(req.tenant.id);
+  res.json(await dashboardAttention(db, {
+    period,
+    appointments: hasPermission(req.user, P.APPOINTMENTS_VIEW) && hasFeature(subscription, "agenda"),
+    inventory: hasPermission(req.user, P.INVENTORY_VIEW) && hasFeature(subscription, "basic_inventory"),
+    clients: hasPermission(req.user, P.CLIENTS_VIEW),
+    followups: hasPermission(req.user, P.CLINICAL_FILES_VIEW) && hasFeature(subscription, "automatic_followup")
+  }));
+}));
 
 function buildAppointmentAlerts(appointments, now = new Date()) {
   const seen = new Set();

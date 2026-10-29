@@ -110,6 +110,19 @@ beforeEach(() => {
 });
 
 describe("Detalhes do Agendamento — área de trabalho", () => {
+  it("profissional abre retorno passado, preenche a ficha e finaliza preservando a data agendada", async () => {
+    mocks.session = { user: { id: 2, role: "piercer" } };
+    const user = userEvent.setup();
+    const { onSaved } = renderQuick({ ...baseAppointment, appointment_date: "2020-01-10", procedure: "Retorno", service_rules_snapshot: [{ minimum_advance_minutes: 60 }] });
+    await user.type(screen.getByLabelText("Observações clínicas (opcional)"), "Cicatrização adequada.");
+    await user.click(screen.getByRole("button", { name: "Revisar e finalizar" }));
+    await waitFor(() => expect(callsTo((path) => path === "/appointments/10/complete")).toHaveLength(1));
+    expect(patchBodies()[0].appointment_date).toBe("2020-01-10");
+    expect(patchBodies()[0].appointment_time.slice(0, 5)).toBe("10:00");
+    const [, options] = callsTo((path) => path === "/appointments/10/complete")[0];
+    expect(JSON.parse(options.body).clinical_notes).toBe("Cicatrização adequada.");
+    expect(onSaved).toHaveBeenCalled();
+  });
   it("conferir sinal preserva expectativa e recalcula o pagamento antes da finalização", async () => {
     const user = userEvent.setup();
     mocks.apiFetch.mockImplementation(async (path, options) => path === "/appointments/10" && options?.method === "PATCH"

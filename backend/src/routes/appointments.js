@@ -647,7 +647,7 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
     if (!String(req.body.reason || "").trim()) return res.status(400).json({ error: "Informe o motivo da alteração financeira." });
   }
   const scheduleChanged = (req.body.appointment_date !== undefined && req.body.appointment_date !== appointment.appointment_date)
-    || (req.body.appointment_time !== undefined && req.body.appointment_time !== appointment.appointment_time);
+    || (req.body.appointment_time !== undefined && String(req.body.appointment_time).padEnd(8, ":00") !== String(appointment.appointment_time).padEnd(8, ":00"));
   if (scheduleChanged && !String(req.body.reason || "").trim()) {
     return res.status(400).json({ error: "Informe o motivo do reagendamento." });
   }
@@ -685,13 +685,20 @@ router.patch("/api/appointments/:id", withFeature("agenda", async (req, res, db)
     const clientProfile = await db.get("SELECT * FROM clients WHERE id=?", [appointment.client_id]);
     const clientRuleError = validateClientServiceRules({ rules, client: clientProfile, appointmentDate: req.body.appointment_date || appointment.appointment_date });
     if (clientRuleError) return res.status(400).json({ error: clientRuleError });
-    if (req.body.appointment_date !== undefined || req.body.appointment_time !== undefined) {
-      const timingRuleError = validateAppointmentTimingRules({ rules, appointmentDate: req.body.appointment_date || appointment.appointment_date, appointmentTime: req.body.appointment_time || appointment.appointment_time });
-      if (timingRuleError) return res.status(400).json({ error: timingRuleError });
-    }
     derived.service_rules_snapshot = JSON.stringify(rules);
     derived.operational_requirements_snapshot = JSON.stringify(mergeOperationalRequirements(items.map((item) => item.operational_requirements_snapshot)));
     pendingItems = items;
+  }
+
+  // Reenviar a data original ao preencher/finalizar a ficha não é reagendar.
+  // A antecedência continua obrigatória em uma mudança real de data ou hora,
+  // inclusive quando o PATCH não contém os itens do atendimento.
+  if (scheduleChanged) {
+    const rules = pendingItems
+      ? pendingItems.filter((item) => item.service_id || item.procedure_id).map((item) => item.service_rules_snapshot)
+      : parseServiceRulesSnapshot(appointment.service_rules_snapshot);
+    const timingRuleError = validateAppointmentTimingRules({ rules, appointmentDate: req.body.appointment_date || appointment.appointment_date, appointmentTime: req.body.appointment_time || appointment.appointment_time });
+    if (timingRuleError) return res.status(400).json({ error: timingRuleError });
   }
 
   // Cupom: revalidado só quando o código muda (sem contar o uso do próprio

@@ -346,7 +346,7 @@ function App() {
     : undefined;
   const ActivePage = appPageById(activePage)?.component;
   const activePageProps = {
-    dashboard: { user: normalizedSession.user, setPage: navigate, alertsOpen, setAlertsOpen, alertsData, alertsLoading },
+    dashboard: { user: normalizedSession.user, setPage: navigate },
     agenda: { initialScreen: agendaTarget ? "settings" : "agenda", initialSettingsTab: agendaTarget, navigationTarget, onSettingsClosed: () => setAgendaTarget(null), features: planFeatures, onUpgrade: openProfessionalPlan, createSignal: quickCreate.page === "agenda" ? quickCreate.signal : 0 },
     services: { onNavigate: navigate },
     onboarding: { onNavigate: navigate, onOpenAgendaSettings: (tab) => { setAgendaTarget(tab); navigate("agenda"); } },
@@ -446,7 +446,7 @@ function App() {
               </DropdownMenu.Portal>
             </DropdownMenu.Root>
             <button type="button" className="topbar-quick-action topbar-calendar-action" onClick={() => navigate("agenda")} aria-label="Abrir agenda" title="Agenda"><Calendar size={20} /></button>
-            <button className="topbar-quick-action topbar-notification-action" aria-label="Pendências ativas" title="Pendências ativas" onClick={openAlerts}>
+            <button type="button" className="topbar-quick-action topbar-notification-action" aria-label="Central de atenção" title="Central de atenção" aria-haspopup="dialog" aria-expanded={alertsOpen} onClick={openAlerts}>
               <Bell size={20} />
               {asNumber(alertsData.count) > 0 && <span>{asNumber(alertsData.count)}</span>}
             </button>
@@ -481,6 +481,9 @@ function App() {
             </DropdownMenu.Root>
           </div>
         </header>
+        <Suspense fallback={null}>
+          {alertsOpen && <AlertsPopup alerts={alertsData} loading={alertsLoading} onClose={() => setAlertsOpen(false)} onAction={(nextPage) => { setAlertsOpen(false); navigate(nextPage); }} />}
+        </Suspense>
         {/* Único elemento com rolagem: o menu lateral e o topo ficam fixos. */}
         <div className="content-scroll">
         {(subscriptionInactive || subscriptionInGrace) && activePage !== "meu-plano" && (
@@ -499,9 +502,6 @@ function App() {
           </div>
         )}
         <Suspense fallback={<Loading />}>
-          {activePage !== "dashboard" && alertsOpen && (
-              <AlertsPopup alerts={alertsData} loading={alertsLoading} onClose={() => setAlertsOpen(false)} onAction={(nextPage) => { setAlertsOpen(false); navigate(nextPage); }} />
-            )}
           {ActivePage && <ActivePage key={activePage} {...activePageProps} />}
         </Suspense>
         </div>

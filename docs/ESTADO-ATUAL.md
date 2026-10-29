@@ -1,6 +1,6 @@
 # Estado atual do projeto
 
-> Situação em **27/10/2026**: reformulação da apresentação dos serviços no agendamento online, busca do seletor de joias no computador e respostas da revisão do cliente (seção 14), implementadas localmente sobre `b6254efb`, **sem commit nem publicação**. Exige as migrations tenant `0052` e `0053`. A seção 15 registra o catálogo com categorias hierárquicas e campanhas.
+> Preparação de publicação em **29/10/2026**: correção da antecedência na finalização de atendimentos, Central de atenção no sininho e ações de ativação/exclusão dos cadastros, descritas na seção 17. A entrega usa as migrations existentes, sem alteração de banco. A publicação das seções 14–16 foi enviada pelo workflow de produção após a aplicação das migrations `0052` e `0053`.
 >
 > Publicação anterior: **19/10/2026** (seção 13), com a `0045` aplicada às quatro clínicas e a `0009` à plataforma; relatório em `outputs/deploy-2026-10-19/RELATORIO.md`. Confira no ledger de produção se as migrations `0046`–`0051` e a platform `0010` (entrega de 20/10) já foram aplicadas antes de publicar a `0052`.
 >
@@ -456,6 +456,30 @@ Capturas reais da clínica local `qa-shots` em 1366 e 390 px: vitrine, categoria
   banco aprovado. Inclui as migrations tenant `0052` e `0053`.
 - Publicação pelo workflow `CI e Deploy`, disparado pelo push na `main`,
   com validação completa antes de liberar o deploy de produção.
+
+## 17. Finalização, Central de atenção e ações dos cadastros — 29/10/2026
+
+- A antecedência mínima é conferida na criação e nas mudanças reais de data ou
+  horário. Reenviar a data original ao preencher/finalizar um retorno passado
+  não dispara a validação nem cria histórico de reagendamento. Pagamentos,
+  estoque, requisitos clínicos e data original continuam preservados.
+- A Central de atenção fica na janela do sininho, disponível em qualquer tela,
+  com períodos Hoje/Semana/Mês, contagens completas, atualização automática e
+  atalhos. O dashboard mantém sua organização anterior. Os alertas detalhados e
+  financeiros continuam na janela, e os dados respeitam as permissões e o plano.
+- Procedimentos e estoque separam editar, ativar/desativar e excluir
+  permanentemente. A exclusão de cadastros com vínculos históricos retorna uma
+  explicação, sem desativá-los silenciosamente. Alterar o status do produto não
+  altera preço/saldo/publicação, e movimentações não reativam itens desativados.
+- Validação local: 777 testes de backend aprovados; 77 testes unitários e 384
+  testes de componentes do frontend na rodada completa, além das regressões
+  adicionais dos menus e da janela do sininho. Typecheck e build aprovados;
+  lint sem erros e auditoria dos três projetos sem vulnerabilidades.
+- Três anúncios preparados em `backend/releases/current.json`. O workflow de
+  produção publica Novidades após ativar o frontend e conferir a saúde da API
+  e do banco. Não há migrations novas nesta entrega.
+- Revisão visual em navegador indisponível nesta sessão; as verificações de
+  interface realizadas foram automatizadas.
 
 ## Pendências abertas
 

@@ -11,6 +11,7 @@ it("contagem acompanha o relógio sem depender do fuso do navegador", () => {
     starts_at: "2026-10-06T16:30:00Z", countdown: "Texto antigo", status: "confirmado"
   } } }} user={{ role: "admin", name: "Admin" }} setPage={() => {}} setPeriod={() => {}} setAlertsOpen={() => {}} />);
   expect(screen.getByText("Em 1h30")).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Central de atenção" })).not.toBeInTheDocument();
   act(() => vi.advanceTimersByTime(60000));
   expect(screen.getByText("Em 1h29")).toBeInTheDocument();
   act(() => vi.advanceTimersByTime(90 * 60000));

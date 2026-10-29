@@ -371,7 +371,7 @@ router.post("/api/inventory/counts/:id/complete", withFeature("basic_inventory",
         ]);
         await syncProductInventory(db, item.jewelry_id);
       } else {
-        await db.run("UPDATE jewelry_inventory SET quantity=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", [
+        await db.run("UPDATE jewelry_inventory SET quantity=?, status=CASE WHEN status='arquivado' THEN status ELSE ? END, updated_at=CURRENT_TIMESTAMP WHERE id=?", [
           item.counted_quantity,
           Number(item.counted_quantity) <= 0 ? "esgotado" : Number(item.counted_quantity) <= Number(product.critical_stock_threshold || 3) ? "crítico" : "disponível",
           item.jewelry_id
@@ -663,6 +663,25 @@ router.post("/api/jewelry", withFeature("basic_inventory", async (req, res, db) 
   }
 }));
 
+router.patch("/api/jewelry/:id/status", withFeature("basic_inventory", async (req, res, db) => {
+  if (!authorizePermission(req, res, P.INVENTORY_EDIT)) return;
+  if (typeof req.body.is_active !== "boolean") return res.status(400).json({ error: "Informe se o produto deve ficar ativo." });
+  let product;
+  await db.transaction(async (tx) => {
+    const before = await tx.get("SELECT * FROM jewelry_inventory WHERE id=? FOR UPDATE", [req.params.id]);
+    if (!before) return;
+    const quantity = Number(before.quantity || 0);
+    const activeStatus = quantity <= 0 ? "esgotado" : quantity <= Number(before.low_stock_threshold ?? 5) ? "baixo estoque" : "disponível";
+    // Alterar disponibilidade não altera preços, saldos ou publicação no catálogo.
+    const status = req.body.is_active ? activeStatus : "arquivado";
+    await tx.run("UPDATE jewelry_inventory SET status=? WHERE id=?", [status, before.id]);
+    product = (await attachVariants(tx, [{ ...before, status }]))[0];
+    await recordAudit(tx, { req, module: "inventory", action: req.body.is_active ? "activate" : "deactivate", entityType: "inventory_item", entityId: before.id, before, after: product });
+  });
+  if (!product) return res.status(404).json({ error: "Item de estoque não encontrado." });
+  res.json(hasPermission(req.user, P.INVENTORY_VIEW_COST) ? product : redactInventoryCosts([product])[0]);
+}));
+
 router.patch("/api/jewelry/:id", withFeature("basic_inventory", async (req, res, db) => {
   if (!authorizePermission(req, res, P.INVENTORY_EDIT)) return;
     if (req.body.item_classification !== undefined && !["resale", "material"].includes(req.body.item_classification)) return res.status(400).json({ error: "Finalidade principal inválida." });
@@ -858,7 +877,7 @@ router.post("/api/jewelry/:id/movements", withFeature("basic_inventory", async (
         await tx.run("UPDATE jewelry_variants SET quantity = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [nextQuantity, variantStatus(nextQuantity, variants[0].low_stock_threshold), variants[0].id]);
         await syncProductInventory(tx, jewelry.id);
       } else {
-        await tx.run("UPDATE jewelry_inventory SET quantity = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [nextQuantity, status, req.params.id]);
+        await tx.run("UPDATE jewelry_inventory SET quantity = ?, status = CASE WHEN status='arquivado' THEN status ELSE ? END, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [nextQuantity, status, req.params.id]);
       }
       await recordAudit(tx, {
         req,
@@ -889,29 +908,27 @@ router.delete("/api/jewelry/:id", withFeature("basic_inventory", async (req, res
   if (!authorizePermission(req, res, P.INVENTORY_DELETE)) return;
   const jewelry = await db.get("SELECT * FROM jewelry_inventory WHERE id = ?", [req.params.id]);
   if (!jewelry) return res.status(404).json({ error: "Item de estoque não encontrado." });
-  const linked = await db.get(`
+  try {
+    await db.transaction(async (tx) => {
+      await tx.get("SELECT id FROM jewelry_inventory WHERE id=? FOR UPDATE", [req.params.id]);
+      const linked = await tx.get(`
     SELECT
       (SELECT COUNT(*) FROM appointments WHERE jewelry_id = ?) +
       (SELECT COUNT(*) FROM stock_movements WHERE jewelry_id = ?) +
-      (SELECT COUNT(*) FROM sales_order_items WHERE product_id = ?) AS count
-  `, [req.params.id, req.params.id, req.params.id]);
-  if (linked.count > 0) {
-    await db.run("UPDATE jewelry_inventory SET status = 'arquivado', is_catalog_active = 0 WHERE id = ?", [req.params.id]);
-    await recordAudit(db, {
-      req,
-      module: "inventory",
-      action: "archive",
-      entityType: "inventory_item",
-      entityId: jewelry.id,
-      reason: String(req.body?.reason || "Item arquivado por possuir histórico vinculado"),
-      before: jewelry,
-      after: { ...jewelry, status: "arquivado", is_catalog_active: 0 },
-      severity: "warning"
-    });
-    return res.json({ ok: true, archived: true });
-  }
-  await db.run("DELETE FROM jewelry_inventory WHERE id = ?", [req.params.id]);
-  await recordAudit(db, {
+      (SELECT COUNT(*) FROM sales_order_items WHERE product_id = ?) +
+      (SELECT COUNT(*) FROM appointment_items WHERE jewelry_id = ?) +
+      (SELECT COUNT(*) FROM service_execution_items WHERE product_id = ?) +
+      (SELECT COUNT(*) FROM commission_entries WHERE product_id = ?) +
+      (SELECT COUNT(*) FROM procedure_chemical_indicators WHERE jewelry_id = ?) +
+      (SELECT COUNT(*) FROM appointment_consumptions WHERE inventory_item_id = ?) AS count
+  `, Array(8).fill(req.params.id));
+      if (Number(linked?.count || 0)) {
+        return res.status(409).json({ error: "Este produto possui histórico de atendimentos, vendas ou estoque e não pode ser excluído permanentemente. Use Desativar para preservar os registros." });
+      }
+      // A auditoria mantém seus snapshots mesmo após excluir um cadastro sem uso.
+      await tx.run("UPDATE inventory_audit_log SET jewelry_id=NULL WHERE jewelry_id=?", [req.params.id]);
+      await tx.run("DELETE FROM jewelry_inventory WHERE id = ?", [req.params.id]);
+      await recordAudit(tx, {
     req,
     module: "inventory",
     action: "delete",
@@ -921,9 +938,15 @@ router.delete("/api/jewelry/:id", withFeature("basic_inventory", async (req, res
     before: jewelry,
     severity: "critical"
   });
+    });
+  } catch (error) {
+    if (error.code === "23503") return res.status(409).json({ error: "Este produto possui vínculos de estoque e não pode ser excluído permanentemente. Use Desativar ou remova os vínculos de configuração." });
+    throw error;
+  }
+  if (res.headersSent) return;
   // Arquivar mantém a linha (e a contagem); excluir de verdade não.
   invalidateUsageCache(req.tenant?.id);
-  res.json({ ok: true, archived: false });
+  res.json({ ok: true, deleted: true });
 }));
 
 export default router;

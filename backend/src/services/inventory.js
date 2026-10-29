@@ -452,7 +452,7 @@ export async function syncProductInventory(db, jewelryId) {
   await db.run(
     `UPDATE jewelry_inventory
      SET quantity = ?, sale_value = ?, cost_value = ?, material = ?, color = ?, size = ?, thickness = ?,
-         stem_length = ?, thread_type = ?, supplier = ?, sku = ?, status = ?, purchase_cost_cents = ?,
+           stem_length = ?, thread_type = ?, supplier = ?, sku = ?, status = CASE WHEN status='arquivado' THEN status ELSE ? END, purchase_cost_cents = ?,
          allocated_freight_cents = ?, additional_cost_cents = ?, total_cost_cents = ?, price_multiplier = ?,
          price_rounding_mode = ?, suggested_price_cents = ?, sale_price_cents = ?, price_manually_overridden = ?, cost_estimated = ?
      WHERE id = ?`,

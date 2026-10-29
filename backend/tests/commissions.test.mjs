@@ -519,10 +519,10 @@ test("serviço apagado que só estava no item não derruba o recálculo (id órf
       { service_id: extra.json.id, procedure_price: 80, region: "Nostril" }
     ]
   });
-  // A rota agora arquiva serviço usado em item de atendimento (não apaga).
+  // Exclusão permanente recusa vínculos históricos sem mudar o cadastro.
   const removed = await api(`/services/${extra.json.id}`, { method: "DELETE" });
-  assert.equal(removed.status, 200, JSON.stringify(removed.json));
-  assert.equal(removed.json.archived, true, JSON.stringify(removed.json));
+  assert.equal(removed.status, 409, JSON.stringify(removed.json));
+  assert.match(removed.json.error, /Desativar/);
   // Dado legado (apagado antes dessa regra): appointment_items.service_id não
   // tem FK, então o item fica apontando para um id inexistente, enquanto
   // commission_entries.service_id tem FK.
