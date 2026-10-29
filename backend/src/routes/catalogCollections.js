@@ -1,5 +1,6 @@
 // Gestão da vitrine comercial: categorias hierárquicas e campanhas.
 import { Router } from "express";
+import { transactionalJson } from "../middleware/transactionalJson.js";
 import { withFeature } from "../middleware/withDb.js";
 import { requireRole } from "../middleware/auth.js";
 import { requireFeature } from "../services/subscriptions.js";
@@ -55,7 +56,8 @@ const handled = (roles, handler) => async (req, res, db) => {
 };
 
 // Toda escrita roda numa transação: validação e gravação entram juntas.
-const transactional = (roles, handler) => handled(roles, (req, res, db) => db.transaction((tx) => handler(req, res, tx)));
+const transactional = (roles, handler) => handled(roles, (req, res, db) =>
+  transactionalJson(db, res, (tx, pendingResponse) => handler(req, pendingResponse, tx)));
 
 const audit = (db, req, action, entityType, entityId, before, after) =>
   recordAudit(db, { req, module: "catalog", action, entityType, entityId, before, after });

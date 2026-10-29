@@ -1,5 +1,5 @@
 {
-  "id": "2026-10-29-horarios-completos-e-campanhas",
+  "id": "2026-10-29-horarios-completos-e-campanhas-v2",
   "announcements": [
     {
       "slug": "horarios-com-a-duracao-de-todos-os-servicos",
@@ -23,5 +23,5 @@
       "content": "Ao registrar uma conta a pagar, o campo “Conta ou caixa” orienta você a indicar de onde sairá o dinheiro, como a conta PJ do banco ou o caixa do balcão. Em contas a receber, a orientação indica onde o dinheiro entrará.\n\nO preenchimento continua identificando a origem ou o destino do lançamento. Não houve mudança nos valores, nas datas ou no histórico financeiro."
     }
   ],
-  "source_digest": "c69f51dc0ce1f4190020d0b6b067190eb17946e9caf1117a72d9f85e05511dae"
+  "source_digest": "1ad22e088e827430ad6277f22fc0c580b8dfb2c742620a44bf884fa8b74f2469"
 }

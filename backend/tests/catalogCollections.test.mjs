@@ -182,7 +182,7 @@ test("campanhas: rascunho, agendamento, vigência, encerramento automático, pau
   assert.equal(active.json.state, "active");
   catalog = await req("/catalog", { tenant: ctx.slug });
   const publicCampaign = catalog.json.campaigns.find((campaign) => campaign.slug === "halloween");
-  assert.ok(publicCampaign);
+  assert.ok(publicCampaign, JSON.stringify({ status: catalog.status, campaigns: catalog.json.campaigns }));
   assert.equal(publicCampaign.timezone, "America/Sao_Paulo");
   assert.deepEqual(publicCampaign.products.map((product) => product.product_id).sort(), [topo.id, esgotado.id].sort());
   assert.equal(publicCampaign.sections[0].name, "Topos temáticos");
@@ -223,6 +223,7 @@ test("o horário digitado é interpretado no fuso configurado da loja", async ()
   await api("/catalog-campaigns/settings", { method: "PUT", body: { timezone: "Asia/Tokyo" } });
   // A mesma data já gravada continua no mesmo instante, exibida no novo fuso.
   const shown = await api(`/catalog-campaigns/${campaign.json.id}`);
+  assert.equal(shown.status, 200, JSON.stringify(shown.json));
   assert.equal(shown.json.timezone, "Asia/Tokyo", "prévia usa o mesmo fuso da loja");
   assert.equal(shown.json.starts_local, "2030-12-01T22:00");
   const updated = await api(`/catalog-campaigns/${campaign.json.id}`, { method: "PATCH", body: { starts_local: "2030-12-01T10:00" } });

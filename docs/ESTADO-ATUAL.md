@@ -492,6 +492,10 @@ Capturas reais da clínica local `qa-shots` em 1366 e 390 px: vitrine, categoria
   continuam sendo recusados antes de gravar.
 - O encerramento das campanhas é exibido no fuso da loja, tanto na vitrine
   quanto na prévia administrativa. Não depende do fuso do navegador.
+- As gravações de categorias e campanhas só respondem sucesso após o COMMIT.
+  Isso evita ler o estado anterior em um acesso imediato e impede confirmar
+  uma operação cuja gravação falhou. Regressões com confirmação adiada e falha
+  de COMMIT em `transactionalJson.test.mjs`.
 - Os campos "Conta ou caixa" explicam onde o dinheiro entra ou sai. Isso não
   cria controle de saldos bancários ou abertura/fechamento de caixa físico.
 - Validação local completa: 779 testes do servidor, 77 unitários e 391 de
@@ -501,6 +505,9 @@ Capturas reais da clínica local `qa-shots` em 1366 e 390 px: vitrine, categoria
   em São Paulo e Tóquio. Tipos e build aprovados, lint sem erros (91 avisos
   existentes) e auditoria dos três projetos sem vulnerabilidades. O workflow
   repete as verificações antes da publicação. Sem migrations novas.
+- Após o ajuste transacional, 11 testes direcionados de campanhas,
+  disponibilidade e resposta após COMMIT passaram também em Node 20 e UTC,
+  incluindo três novas regressões do envio da resposta HTTP.
 - Aguardam resposta do cliente: desenho de compras, saldos por conta/caixa,
   repasse de taxas e tabelas reais das maquininhas, visibilidade de preços,
   abrangência da capitalização, fotos/textos e critério de "Mais vendidos".
