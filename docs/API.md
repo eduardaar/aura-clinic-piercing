@@ -1,5 +1,20 @@
 # Referência da API
 
+Atualização de 29/10/2026 — disponibilidade com vários serviços e fuso das campanhas:
+
+- `GET /api/booking/dates` e `GET /api/booking/slots` aceitam `service_ids`
+  como lista de IDs separada por vírgula. `service_id` continua aceito para
+  consultas antigas de um serviço. A lista usa a duração somada e os maiores
+  intervalos/antecedências da seleção; a profissional precisa realizar todos
+  os serviços, ativos e disponíveis online. Datas usam `month=AAAA-MM`;
+  horários usam `date=AAAA-MM-DD`; ambos exigem `professional_id`.
+- `POST /api/booking/requests` continua validando os itens e a disponibilidade
+  completa antes de gravar. Não compara mais um horário de vários serviços
+  contra a grade exclusiva do primeiro serviço.
+- As campanhas de `GET /api/catalog` e o detalhe administrativo de
+  `GET /api/catalog-campaigns/:id` incluem `timezone`, usado também na prévia
+  e no texto público de encerramento.
+
 Atualização de 27/10/2026 — vitrine comercial (categorias e campanhas):
 
 - `GET /api/catalog` (público) acrescenta `catalogCategories` (categorias

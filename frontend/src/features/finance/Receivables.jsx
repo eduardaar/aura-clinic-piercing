@@ -307,11 +307,15 @@ export function AccountsReceivable({ onNavigate }) {
               value={form.payment_method}
               onChange={(value) => setForm({ ...form, payment_method: value })}
             />
-            <Input
-              label="Conta ou caixa"
-              value={form.payment_account}
-              onChange={(value) => setForm({ ...form, payment_account: value })}
-            />
+            <div className="stack">
+              <Input
+                label="Conta ou caixa"
+                aria-describedby="receivable-account-help"
+                value={form.payment_account}
+                onChange={(value) => setForm({ ...form, payment_account: value })}
+              />
+              <small id="receivable-account-help" className="field-hint">Informe onde entrará o recebimento. Ex.: conta PJ do banco ou caixa do balcão.</small>
+            </div>
           </div>
           <Textarea label="Observações" value={form.notes} onChange={(notes) => setForm({ ...form, notes })} />
           {error && <span className="form-error">{error}</span>}

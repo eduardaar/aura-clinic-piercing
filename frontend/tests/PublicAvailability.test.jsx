@@ -58,6 +58,21 @@ describe("Liberação de agenda pública", () => {
 });
 
 describe("Calendário público", () => {
+  it("reconsulta as datas quando muda a composição, mesmo mantendo o primeiro serviço", async () => {
+    mocks.publicApiFetch.mockImplementation(async (path) => {
+      const params = new URL(path, "https://aura.test").searchParams;
+      return ok({ dates: params.get("service_ids") === "1,2" ? ["2030-11-11"] : ["2030-11-10", "2030-11-11"] });
+    });
+    const onChange = vi.fn();
+    const { rerender } = render(<PublicBookingCalendar serviceId={1} serviceIds={[1]} professionalId={7} value="2030-11-10" onChange={onChange} />);
+    await waitFor(() => expect(document.querySelectorAll(".booking-date-strip button")).toHaveLength(2));
+    rerender(<PublicBookingCalendar serviceId={1} serviceIds={[1, 2]} professionalId={7} value="2030-11-10" onChange={onChange} />);
+    await waitFor(() => expect(document.querySelectorAll(".booking-date-strip button")).toHaveLength(1));
+    fireEvent.click(document.querySelector(".booking-date-strip button"));
+    expect(onChange).toHaveBeenLastCalledWith("2030-11-11");
+    const query = new URL(mocks.publicApiFetch.mock.calls.at(-1)[0], "https://aura.test").searchParams;
+    expect(query.get("service_ids")).toBe("1,2");
+  });
   it("navega entre meses e mostra somente as datas retornadas pela disponibilidade", async () => {
     mocks.publicApiFetch.mockImplementation(async (path) =>
       ok({ dates: path.includes("month=2030-11") ? ["2030-11-04", "2030-11-12"] : ["2030-12-02"] }),

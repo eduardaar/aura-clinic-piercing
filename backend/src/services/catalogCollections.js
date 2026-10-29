@@ -508,7 +508,7 @@ async function campaignOrFail(db, id) {
     LEFT JOIN catalog_promotions p ON p.id = c.promotion_id
     WHERE c.id = ?`, [timezone, timezone, timezone, positiveId(id)]);
   if (!row) fail("Campanha não encontrada.", 404, "catalog_campaign_not_found");
-  return decorateCampaign(row);
+  return decorateCampaign({ ...row, timezone });
 }
 
 export async function getCampaign(db, id) {
@@ -723,6 +723,7 @@ export async function publicActiveCampaigns(db, publishedItems) {
       AND (c.ends_at IS NULL OR c.ends_at > now())
     ORDER BY c.priority DESC, c.starts_at DESC NULLS LAST, c.id DESC`);
   if (!rows.length) return [];
+  const timezone = await getStoreTimezone(db);
   const ids = rows.map((row) => row.id);
   const placeholders = ids.map(() => "?").join(",");
   const sections = await db.all(`SELECT id, campaign_id, name, slug, sort_order FROM catalog_campaign_sections WHERE campaign_id IN (${placeholders}) ORDER BY sort_order, id`, ids);
@@ -760,6 +761,7 @@ export async function publicActiveCampaigns(db, publishedItems) {
       image_alt: row.image_alt,
       starts_at: row.starts_at,
       ends_at: row.ends_at,
+      timezone,
       display_position: row.display_position,
       priority: row.priority,
       show_on_home: Boolean(row.show_on_home),

@@ -520,11 +520,15 @@ export function PayablesAdmin({ onNavigate }) {
                 required
               />
             )}
-            <Input
-              label="Conta ou caixa"
-              value={form.payment_account || ""}
-              onChange={(value) => setForm({ ...form, payment_account: value })}
-            />
+            <div className="stack">
+              <Input
+                label="Conta ou caixa"
+                aria-describedby="payable-account-help"
+                value={form.payment_account || ""}
+                onChange={(value) => setForm({ ...form, payment_account: value })}
+              />
+              <small id="payable-account-help" className="field-hint">Informe de onde sairá o pagamento. Ex.: conta PJ do banco ou caixa do balcão.</small>
+            </div>
           </div>
           {!editing && (
             <InstallmentGrid

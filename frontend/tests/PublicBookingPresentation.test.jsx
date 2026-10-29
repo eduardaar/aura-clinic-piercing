@@ -132,6 +132,10 @@ describe("PublicBooking · apresentação dos serviços", () => {
     const user = userEvent.setup();
     render(<PublicBooking />);
     await goToSummary(user, ["Perfuração de lóbulo", "Anodização de joias"]);
+    for (const endpoint of ["/booking/dates?", "/booking/slots?"]) {
+      const request = requests.filter((request) => request.address.includes(endpoint)).at(-1);
+      expect(new URL(request.address, "https://aura.test").searchParams.get("service_ids")).toBe("1,2");
+    }
 
     // Resumo: sinal somado como no backend (40 + 0), total e situação manual.
     expect(screen.getByText("Horário sujeito à confirmação")).toBeInTheDocument();

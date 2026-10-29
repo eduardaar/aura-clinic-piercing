@@ -20,6 +20,7 @@ import { resolveServiceRules, validateAppointmentTimingRules, validateClientServ
 import { getClinicOperationalSettings, mergeOperationalRequirements, resolveOperationalRequirements } from "../services/operationalRequirements.js";
 import { validBookingDate } from "../services/publicBookingAvailability.js";
 import { parseAcknowledgedServiceIds, serviceAcknowledgementHash } from "../services/servicePresentation.js";
+import { BookingSelectionError, resolveBookingSelection } from "../services/bookingSelection.js";
 
 const router = Router();
 
@@ -193,23 +194,18 @@ router.get("/api/booking/config", withFeature("online_booking", async (req, res,
 router.get(
   "/api/booking/dates",
   withFeature("online_booking", async (req, res, db) => {
-    const serviceId = Number(req.query.service_id || 0);
     const professionalId = Number(req.query.professional_id || 0);
     const month = String(req.query.month || "");
-    if (!serviceId || !professionalId || !validBookingDate(`${month}-01`)) {
+    if (!Number.isSafeInteger(professionalId) || professionalId <= 0 || !validBookingDate(`${month}-01`)) {
       return res.status(400).json({ error: "Informe serviço, profissional e mês válido (AAAA-MM)." });
     }
-    const service = await db.get(
-      "SELECT * FROM services WHERE id = ? AND is_active=true AND active_online_booking = 1",
-      [serviceId],
-    );
-    const professional = await db.get("SELECT id FROM professionals WHERE id = ? AND active = 1", [professionalId]);
-    const linked = await db.get("SELECT id FROM professional_services WHERE professional_id = ? AND service_id = ?", [
-      professionalId,
-      serviceId,
-    ]);
-    if (!service || !professional || !linked)
-      return res.status(404).json({ error: "Serviço ou profissional indisponível." });
+    let service;
+    try {
+      service = await resolveBookingSelection(db, req.query, professionalId);
+    } catch (error) {
+      if (error instanceof BookingSelectionError) return res.status(error.status).json({ error: error.message });
+      throw error;
+    }
     const days = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5)), 0)).getUTCDate();
     const calendarContext = await bookingCalendarContext(db, {
       professionalId,
@@ -227,19 +223,18 @@ router.get(
 );
 
 router.get("/api/booking/slots", withFeature("online_booking", async (req, res, db) => {
-  const serviceId = Number(req.query.service_id || 0);
   const professionalId = Number(req.query.professional_id || 0);
   const date = String(req.query.date || "");
-  console.info("[booking-slots] request recebido", { tenant: req.tenant, serviceId, professionalId, date });
-  if (!serviceId || !professionalId || !validBookingDate(date)) {
+  if (!Number.isSafeInteger(professionalId) || professionalId <= 0 || !validBookingDate(date)) {
     return res.status(400).json({ error: "Servico, profissional e data sao obrigatorios." });
   }
-  const service = await db.get("SELECT * FROM services WHERE id = ? AND is_active=true AND active_online_booking = 1", [serviceId]);
-  if (!service) return res.status(404).json({ error: "Servico nao encontrado." });
-  const professional = await db.get("SELECT id FROM professionals WHERE id = ? AND active = 1", [professionalId]);
-    if (!professional) return res.status(404).json({ error: "Profissional não encontrado ou inativo." });
-  const linked = await db.get("SELECT id FROM professional_services WHERE professional_id = ? AND service_id = ?", [professionalId, serviceId]);
-  if (!linked) return res.status(409).json({ error: "Este profissional nao realiza o servico selecionado." });
+  let service;
+  try {
+    service = await resolveBookingSelection(db, req.query, professionalId);
+  } catch (error) {
+    if (error instanceof BookingSelectionError) return res.status(error.status).json({ error: error.message });
+    throw error;
+  }
   const slots = await availableBookingSlots(db, { service, professionalId, date });
   res.json({ date, slots });
 }));
@@ -266,8 +261,6 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
 
   const date = String(body.appointment_date || "");
   const time = String(body.appointment_time || "");
-  const slots = await availableBookingSlots(db, { service, professionalId, date });
-  if (!slots.some((slot) => slot.time === time)) return res.status(409).json({ error: "Este horario nao esta mais disponivel." });
   if (!body.full_name?.trim() || !body.whatsapp?.trim()) return res.status(400).json({ error: "Nome e WhatsApp sao obrigatorios." });
 
   const jewelryId = Number(body.jewelry_id || 0) || null;
@@ -339,6 +332,14 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
   const timingRuleError = validateAppointmentTimingRules({ rules: serviceRulesSnapshot, appointmentDate: date, appointmentTime: time });
   if (timingRuleError) return res.status(400).json({ error: timingRuleError });
 
+  // Valida a composição completa antes de criar/alterar o cadastro da cliente.
+  const durationMinutes = bookingItems.filter((item) => item.item_type === "service").reduce((sum, item) => sum + Number(item.duration_minutes || 0) * Number(item.quantity || 1), 0) || Number(service.duration_minutes || 40);
+  const multiItemSlots = await availableBookingSlots(db, { service: { ...service, duration_minutes: durationMinutes,
+    scheduling_interval_minutes: Math.max(0, ...serviceRulesSnapshot.map((rule) => Number(rule.scheduling_interval_minutes || 0))),
+    minimum_advance_minutes: Math.max(0, ...serviceRulesSnapshot.map((rule) => Number(rule.minimum_advance_minutes || 0))) }, professionalId, date });
+  if (!multiItemSlots.some((slot) => slot.time === time)) return res.status(409).json({ error: "O horário não está disponível para a duração total dos serviços selecionados." });
+  const endTime = addMinutesToTime(time, durationMinutes);
+
   // Ciência das informações completas: obrigatória só nos serviços marcados
   // pela clínica. Não substitui o termo de consentimento formal, que continua
   // sendo exigido na conclusão do atendimento quando o serviço pede.
@@ -380,12 +381,6 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
   }, { publicFlow: true });
   const referencePhoto = req.files?.reference_photo?.[0] ? `/api/private-files/${req.files.reference_photo[0].filename}` : "";
   const paymentProof = req.files?.payment_proof?.[0] ? `/api/private-files/${req.files.payment_proof[0].filename}` : "";
-  const durationMinutes = bookingItems.filter((item) => item.item_type === "service").reduce((sum, item) => sum + Number(item.duration_minutes || 0) * Number(item.quantity || 1), 0) || Number(service.duration_minutes || 40);
-  const multiItemSlots = await availableBookingSlots(db, { service: { ...service, duration_minutes: durationMinutes,
-    scheduling_interval_minutes: Math.max(0, ...serviceRulesSnapshot.map((rule) => Number(rule.scheduling_interval_minutes || 0))),
-    minimum_advance_minutes: Math.max(0, ...serviceRulesSnapshot.map((rule) => Number(rule.minimum_advance_minutes || 0))) }, professionalId, date });
-  if (!multiItemSlots.some((slot) => slot.time === time)) return res.status(409).json({ error: "O horário não comporta a duração total dos serviços selecionados." });
-  const endTime = addMinutesToTime(time, durationMinutes);
 
   // Joia reservada = peça física presa. Manda a cobrança ser PIX com janela
   // curta, para não segurar estoque contra um boleto de dois dias.

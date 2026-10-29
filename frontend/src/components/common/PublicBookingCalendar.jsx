@@ -2,25 +2,28 @@ import { useEffect, useState } from "react";
 import { publicApiFetch } from "../../lib/api";
 import { localDateValue } from "../../lib/utils";
 
-/** @param {{ serviceId: any, professionalId: any, value: string, onChange: (date: string) => void }} props */
-export function PublicBookingCalendar({ serviceId, professionalId, value, onChange }) {
+/** @param {{ serviceId: any, serviceIds?: any[], professionalId: any, value: string, onChange: (date: string) => void }} props */
+export function PublicBookingCalendar({ serviceId, serviceIds = [], professionalId, value, onChange }) {
   const currentMonth = localDateValue(new Date()).slice(0, 7);
   const [month, setMonth] = useState(value?.slice(0, 7) || currentMonth);
   const [result, setResult] = useState({ key: "", dates: [], error: "" });
-  const key = `${serviceId}/${professionalId}/${month}`;
+  const selection = serviceIds.length ? serviceIds.join(",") : String(serviceId || "");
+  const primaryService = serviceId || serviceIds[0];
+  const key = `${selection}/${professionalId}/${month}`;
   const loading = result.key !== key;
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        if (!serviceId || !professionalId) {
+        if (!selection || !professionalId) {
           if (!cancelled)
             setResult({ key, dates: [], error: "Escolha o serviço e o profissional para consultar as datas." });
           return;
         }
         const params = new URLSearchParams({
-          service_id: String(serviceId),
+          service_id: String(primaryService),
+          service_ids: selection,
           professional_id: String(professionalId),
           month,
         });
@@ -35,7 +38,7 @@ export function PublicBookingCalendar({ serviceId, professionalId, value, onChan
     return () => {
       cancelled = true;
     };
-  }, [serviceId, professionalId, month, key]);
+  }, [primaryService, selection, professionalId, month, key]);
 
   function moveMonth(offset) {
     const date = new Date(`${month}-01T12:00:00`);

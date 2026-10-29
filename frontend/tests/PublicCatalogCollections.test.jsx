@@ -47,6 +47,15 @@ afterEach(cleanup);
 const results = () => document.querySelector("#catalog-products");
 
 describe("PublicCatalog · vitrine comercial", () => {
+  it.each([
+    ["America/Sao_Paulo", "Disponível até 31 de outubro"],
+    ["Asia/Tokyo", "Disponível até 01 de novembro"]
+  ])("exibe o encerramento no fuso da loja %s", (timezone, expected) => {
+    window.history.replaceState({}, "", "/catalogo/colecao/halloween?t=clinica-a");
+    Object.assign(catalog.data.campaigns[0], { timezone, ends_at: "2099-11-01T01:00:00Z" });
+    render(<PublicCatalog />);
+    expect(screen.getByText(expected)).toBeInTheDocument();
+  });
   it("categoria principal inclui todas as subcategorias e mostra trilha e filhas", async () => {
     const user = userEvent.setup();
     render(<PublicCatalog />);

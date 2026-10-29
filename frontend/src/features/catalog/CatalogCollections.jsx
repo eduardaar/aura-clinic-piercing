@@ -17,12 +17,18 @@ export function campaignUrl(slug) {
   return publicUrl(`/catalogo/colecao/${slug}`);
 }
 
-const dateFormat = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "long" });
-
 export function campaignPeriodText(campaign = {}) {
   if (!campaign.ends_at) return "";
   const end = new Date(campaign.ends_at);
-  return Number.isNaN(end.getTime()) ? "" : `Disponível até ${dateFormat.format(end)}`;
+  if (Number.isNaN(end.getTime())) return "";
+  const options = { day: /** @type {const} */ ("2-digit"), month: /** @type {const} */ ("long"), timeZone: campaign.timezone || "America/Sao_Paulo" };
+  let dateFormat;
+  try {
+    dateFormat = new Intl.DateTimeFormat("pt-BR", options);
+  } catch {
+    dateFormat = new Intl.DateTimeFormat("pt-BR", { ...options, timeZone: "America/Sao_Paulo" });
+  }
+  return `Disponível até ${dateFormat.format(end)}`;
 }
 
 /** @param {{ campaign: any, className?: string, eager?: boolean }} props */

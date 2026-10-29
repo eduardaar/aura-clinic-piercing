@@ -2258,6 +2258,7 @@ export function PublicBooking() {
   const selectedJewelryVariant = asArray(selectedJewelry?.variants).find((variant) => String(variant.id) === String(form.jewelry_variant_id));
   const selectedJewelryValue = form.jewelry_id ? asNumber(selectedJewelryVariant?.sale_value || selectedJewelry?.sale_value || 0) : 0;
   const selectedServices = services.filter((item) => effectiveServiceIds.some((id) => String(id) === String(item.id)));
+  const selectedServiceKey = effectiveServiceIds.join(",");
   const needsBirthDate = selectedServices.some((item) => (item.minimum_age_years !== null && item.minimum_age_years !== undefined) || Boolean(item.requires_guardian));
   const minimumAge = Math.max(0, ...selectedServices.map((item) => asNumber(item.minimum_age_years, 0)));
   const birthDate = form.birth_date ? new Date(`${form.birth_date}T12:00:00`) : null;
@@ -2303,10 +2304,14 @@ export function PublicBooking() {
     let cancelled = false;
     async function loadSlots() {
       setSlots([]);
-      if (!form.service_id || !form.professional_id || !form.appointment_date) return setSlots([]);
+      if (!selectedServiceKey || !form.professional_id || !form.appointment_date) {
+        setLoadingSlots(false);
+        return;
+      }
       setLoadingSlots(true);
       try {
-        const response = await publicApiFetch("/booking/slots?service_id=" + form.service_id + "&professional_id=" + form.professional_id + "&date=" + form.appointment_date);
+        const params = new URLSearchParams({ service_id: String(form.service_id), service_ids: selectedServiceKey, professional_id: String(form.professional_id), date: form.appointment_date });
+        const response = await publicApiFetch(`/booking/slots?${params}`);
       const json = await response.json().catch(() => ({}));
         if (cancelled) return;
         const nextSlots = response.ok ? asArray(json.slots) : [];
@@ -2327,7 +2332,7 @@ export function PublicBooking() {
     return () => {
       cancelled = true;
     };
-  }, [form.service_id, form.professional_id, form.appointment_date]);
+  }, [form.service_id, selectedServiceKey, form.professional_id, form.appointment_date]);
 
   // A troca de etapa leva o cliente ao topo do conteúdo novo, e não ao meio da
   // página anterior (os cartões de serviço podem ser longos no celular).
@@ -2490,6 +2495,7 @@ export function PublicBooking() {
             <p>Escolha o mês para consultar somente as datas com horários disponíveis.</p>
             <PublicBookingCalendar
               serviceId={form.service_id}
+              serviceIds={effectiveServiceIds}
               professionalId={form.professional_id}
               value={form.appointment_date}
               onChange={(appointment_date) => {
@@ -2507,6 +2513,7 @@ export function PublicBooking() {
             <p className="booking-selected-date">{form.appointment_date ? formatLongDate(form.appointment_date) : "Selecione uma data para ver os horários."}</p>
             <PublicBookingCalendar
               serviceId={form.service_id}
+              serviceIds={effectiveServiceIds}
               professionalId={form.professional_id}
               value={form.appointment_date}
               onChange={(appointment_date) => setForm({ ...form, appointment_date, appointment_time: "" })}

@@ -1,6 +1,6 @@
 # Estado atual do projeto
 
-> Preparação de publicação em **29/10/2026**: correção da antecedência na finalização de atendimentos, Central de atenção no sininho e ações de ativação/exclusão dos cadastros, descritas na seção 17. A entrega usa as migrations existentes, sem alteração de banco. A publicação das seções 14–16 foi enviada pelo workflow de produção após a aplicação das migrations `0052` e `0053`.
+> Preparação de publicação em **29/10/2026**: disponibilidade com a duração de todos os serviços, fuso das campanhas e orientações de conta/caixa (seção 18). A seção 17 já foi publicada com a correção da finalização, Central de atenção no sininho e ações dos cadastros. Esta entrega usa as migrations existentes, sem alteração de banco. A publicação das seções 14–16 foi enviada pelo workflow de produção após a aplicação das migrations `0052` e `0053`.
 >
 > Publicação anterior: **19/10/2026** (seção 13), com a `0045` aplicada às quatro clínicas e a `0009` à plataforma; relatório em `outputs/deploy-2026-10-19/RELATORIO.md`. Confira no ledger de produção se as migrations `0046`–`0051` e a platform `0010` (entrega de 20/10) já foram aplicadas antes de publicar a `0052`.
 >
@@ -481,6 +481,31 @@ Capturas reais da clínica local `qa-shots` em 1366 e 390 px: vitrine, categoria
 - Revisão visual em navegador indisponível nesta sessão; as verificações de
   interface realizadas foram automatizadas.
 
+## 18. Horários completos e fuso das campanhas — 29/10/2026
+
+- Calendário mensal e horários recebem todos os serviços selecionados e usam
+  a duração total. Mantêm expediente, liberações, bloqueios, ocupações e as
+  maiores regras de antecedência/intervalo dos serviços. Consultas antigas de
+  um serviço permanecem compatíveis.
+- O envio usa a disponibilidade completa. Um horário oferecido para vários
+  serviços não é mais recusado pela grade do primeiro serviço; conflitos
+  continuam sendo recusados antes de gravar.
+- O encerramento das campanhas é exibido no fuso da loja, tanto na vitrine
+  quanto na prévia administrativa. Não depende do fuso do navegador.
+- Os campos "Conta ou caixa" explicam onde o dinheiro entra ou sai. Isso não
+  cria controle de saldos bancários ou abertura/fechamento de caixa físico.
+- Validação local completa: 779 testes do servidor, 77 unitários e 391 de
+  componentes do frontend aprovados. Inclui dois serviços de 75 minutos em uma
+  janela de 60 minutos, envio de horário intermediário, bloqueio de conflito
+  antes de cadastrar a cliente, vínculos da profissional e datas de campanha
+  em São Paulo e Tóquio. Tipos e build aprovados, lint sem erros (91 avisos
+  existentes) e auditoria dos três projetos sem vulnerabilidades. O workflow
+  repete as verificações antes da publicação. Sem migrations novas.
+- Aguardam resposta do cliente: desenho de compras, saldos por conta/caixa,
+  repasse de taxas e tabelas reais das maquininhas, visibilidade de preços,
+  abrangência da capitalização, fotos/textos e critério de "Mais vendidos".
+  O bloco "Mais desejadas" mantém o comportamento anterior até essa definição.
+
 ## Pendências abertas
 
 ### P-09 — compras e estoque precisam de alinhamento com o cliente
@@ -499,11 +524,9 @@ escreve; nenhum texto genérico foi criado.
 
 ### P-11 — horários do agendamento online com vários serviços
 
-A lista de horários do link público é calculada com a duração do primeiro
-serviço escolhido. A soma das durações só é conferida no envio, que recusa com
-`409` ("O horário não comporta a duração total…") quando não cabe. A regra de
-disponibilidade foi preservada nesta entrega, como pedido; ajustar a consulta
-para a duração total é uma decisão separada.
+**Corrigido em 29/10/2026 (seção 18).** Datas, horários e envio consideram a
+duração completa. Testes em `publicBookingMultiService.test.mjs` e regressões
+do calendário e da apresentação pública.
 
 ### Decisões guardadas da execução de 09/10/2026
 
