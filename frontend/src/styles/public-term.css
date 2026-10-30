@@ -6,7 +6,7 @@
     padding: 18px 16px 14px; background: var(--ink, #102033); color: #fff;
   }
   .term-public-header-inner { width: min(100%, 720px); margin: 0 auto; display: grid; gap: 4px; }
-  .term-public-kicker { font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--gold, #C9A86A); }
+  .term-public-kicker { font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: none; color: var(--gold, #C9A86A); }
   .term-public-header h1 { margin: 0; font-family: var(--title-font, inherit); font-size: clamp(20px, 4.5vw, 28px); line-height: 1.2; }
   .term-public-header p { margin: 0; font-size: 14px; opacity: .85; }
 

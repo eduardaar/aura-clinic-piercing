@@ -14,6 +14,44 @@ vi.mock("../src/lib/api", () => ({
 }));
 beforeEach(() => { state.calls = []; state.products = []; localStorage.clear(); });
 
+it("edição preserva embalagens e custo por embalagem de um material", async () => {
+  state.products = [{ id: 5, name: "Gaze", can_sell: false, can_use_in_service: true, quantity: 0, stock_unit: "unidade", purchase_unit: "caixa", purchase_to_stock_factor: 100, cost_value: .10, variants: [] }];
+  const user = userEvent.setup();render(<Purchases />);
+  await user.click(screen.getByRole("button", { name: "Nova compra" }));
+  await user.click(screen.getByRole("button", { name: "Materiais de consumo" }));
+  await user.click(screen.getByRole("button", { name: /2\. Itens/ }));
+  await user.click(screen.getByLabelText("Material"));
+  await user.click(screen.getByRole("option", { name: /Gaze/ }));
+  expect(screen.getByLabelText("Preço por embalagem")).toHaveValue(10);
+  fireEvent.change(screen.getByLabelText("Quantidade de embalagens"), { target: { value: "2" } });
+  await user.click(screen.getByRole("button", { name: "Adicionar item" }));
+  await user.click(screen.getByRole("button", { name: "Editar" }));
+  expect(screen.getByLabelText("Quantidade de embalagens")).toHaveValue(2);
+  expect(screen.getByLabelText("Unidades em cada embalagem")).toHaveValue(100);
+  expect(screen.getByLabelText("Preço por embalagem")).toHaveValue(10);
+  expect(screen.getByLabelText("Unidade de compra")).toHaveValue("caixa");
+});
+
+it("cadastra material na compra com duas embalagens de cem unidades", async () => {
+  const user = userEvent.setup();render(<Purchases />);
+  await user.click(screen.getByRole("button", { name: "Nova compra" }));
+  await user.click(screen.getByRole("button", { name: "Materiais de consumo" }));
+  await user.click(screen.getByLabelText("Fornecedor"));
+  await user.click(screen.getByRole("option", { name: "Fornecedor" }));
+  await user.click(screen.getByRole("button", { name: /2\. Itens/ }));
+  await user.click(screen.getByRole("button", { name: "Cadastrar novo item nesta compra" }));
+  fireEvent.change(screen.getByLabelText("Nome do novo item"), { target: { value: "Agulha estéril" } });
+  fireEvent.change(screen.getByLabelText("Quantidade de embalagens"), { target: { value: "2" } });
+  fireEvent.change(screen.getByLabelText("Unidades em cada embalagem"), { target: { value: "100" } });
+  fireEvent.change(screen.getByLabelText("Preço por embalagem"), { target: { value: "50" } });
+  expect(screen.getByText(/Entrada prevista:/)).toHaveTextContent(/200/);
+  await user.click(screen.getByRole("button", { name: "Adicionar item" }));
+  await user.click(screen.getByRole("button", { name: /3\. Pagamento/ }));
+  fireEvent.submit(document.querySelector("form"));
+  await waitFor(() => expect(state.calls.some(call => call.path === "/purchases")).toBe(true));
+  expect(state.calls.find(call => call.path === "/purchases").body.items[0]).toMatchObject({quantity:2,stock_conversion_factor:100,unit_cost:50,purchase_purpose:"consumption",new_inventory_item:{name:"Agulha estéril",kind:"consumable"}});
+});
+
 it("compra material também vendável e envia a variação que receberá estoque", async () => {
   state.products = [{ id: 5, name: "Gaze", can_sell: 1, can_use_in_service: 1, quantity: 2, stock_unit: "pacote", variants: [{ id: 51, variation_name: "Estéril", cost_value: 10, quantity: 2, is_active: 1 }, { id: 52, variation_name: "Inativa", is_active: 0 }] }];
   const user = userEvent.setup();

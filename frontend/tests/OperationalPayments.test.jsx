@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 import { CardFeePreview, CardFeesSettings } from "../src/features/finance/CardFees";
 import { AppointmentMaterials } from "../src/features/agenda/AppointmentMaterials";
 
@@ -36,13 +37,32 @@ it("aplica a taxa da parcela selecionada, calcula líquido e ignora vigência fu
       onChange={onChange}
     />,
   );
-  await waitFor(() => expect(onChange).toHaveBeenCalledWith({ card_fee_table_id: 1, fee_amount: 17 }));
+  await waitFor(() => expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ card_fee_table_id: 1, fee_amount: 17, fee_policy: "studio", quoted_charged_amount: 200, card_surcharge_amount: 0 })));
   expect(screen.getByText(/Líquido/)).toHaveTextContent(/183,00/);
 });
 
 it("não consulta taxas de cartão para pagamento Pix", () => {
   render(<CardFeePreview payment={{ method: "Pix", amount: 100 }} onChange={vi.fn()} />);
   expect(state.calls).toHaveLength(0);
+});
+
+it("informa o total com repasse antes da confirmação, sem cobrar duas taxas", async () => {
+  state.tables = [{ id: 1, operator_name: "InfinitePay", valid_from: "2020-01-01", debit_percent: 1.37, credit_rates: { 12: 10 } }];
+  const onChange = vi.fn();
+  render(<CardFeePreview payment={{ method: "Cartão de crédito", amount: 100, installments: 12, fee_policy: "customer" }} onChange={onChange} />);
+  await waitFor(() => expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ fee_amount: 11.11, card_surcharge_amount: 11.11, quoted_charged_amount: 111.11 })));
+  expect(screen.getByText(/Total a cobrar/)).toHaveTextContent(/111,11/);
+  expect(screen.getByText(/repasse já está incluído/)).toBeInTheDocument();
+});
+
+it("referência pública da InfinitePay preenche condições e taxas sem salvar automaticamente", async () => {
+  const user = userEvent.setup();
+  render(<CardFeesSettings />);
+  await user.click(screen.getByRole("button", { name: "Carregar referência para conferir" }));
+  expect(screen.getByLabelText("Operadora ou maquininha").value).toContain("Visa/Mastercard");
+  expect(screen.getByLabelText("Débito (%)")).toHaveValue(1.37);
+  expect(screen.getByLabelText("Crédito 12x (%)")).toHaveValue(12.4);
+  expect(state.calls.filter(({ options }) => options?.method === "POST")).toHaveLength(0);
 });
 
 it("envia débito e cada uma das doze taxas independentes", async () => {

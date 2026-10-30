@@ -11,6 +11,7 @@ import { apiFetch, useApiInvalidate, useFetch } from "../../lib/api";
 import { installmentSummary, installmentsForPayload } from "../../lib/installments";
 import { asArray, asNumber, asObject, localDateValue } from "../../lib/utils";
 import { currency } from "../shared/helpers";
+import { FinancialAccountSelect } from "./FinancialAccountSelect";
 import { financeLabel } from "../../lib/financeLabels";
 
 const today = () => localDateValue(new Date());
@@ -29,6 +30,7 @@ function emptyPayable() {
     competence_date: today(),
     payment_method: "Pix",
     payment_account: "",
+    financial_account_id: "",
     cost_center_id: "",
     supplier_id: "",
     installment_count: "1",
@@ -202,6 +204,7 @@ export function PayablesAdmin({ onNavigate }) {
           amount: Number(payment.value),
           paid_at: payment.paid_at,
           payment_method: payment.payment_method,
+          financial_account_id: payment.financial_account_id,
           notes: payment.notes,
           idempotency_key: payment.key,
         }),
@@ -368,6 +371,7 @@ export function PayablesAdmin({ onNavigate }) {
                       item,
                       value: String(Math.max(0, asNumber(item.amount) - asNumber(item.paid_amount))),
                       paid_at: today(),
+                      financial_account_id: item.financial_account_id || "",
                       payment_method: item.payment_method || "Pix",
                       notes: "",
                       key: crypto.randomUUID(),
@@ -520,9 +524,10 @@ export function PayablesAdmin({ onNavigate }) {
                 required
               />
             )}
+            <FinancialAccountSelect value={form.financial_account_id} onChange={(financial_account_id) => setForm({ ...form, financial_account_id })} label="Conta de saída" />
             <div className="stack">
               <Input
-                label="Conta ou caixa"
+                label="Identificação anterior / observação da conta"
                 aria-describedby="payable-account-help"
                 value={form.payment_account || ""}
                 onChange={(value) => setForm({ ...form, payment_account: value })}
@@ -597,6 +602,7 @@ export function PayablesAdmin({ onNavigate }) {
             value={payment?.notes || ""}
             onChange={(notes) => setPayment((current) => ({ ...current, notes }))}
           />
+          <FinancialAccountSelect value={payment?.financial_account_id} onChange={(financial_account_id) => setPayment((current) => ({ ...current, financial_account_id }))} label="De onde saiu o dinheiro" />
           {error && (
             <p className="form-error" role="alert">
               {error}

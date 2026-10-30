@@ -3,6 +3,7 @@ import { normalizeSalesOrderItems, variantStatus, localTimestamp } from "./utils
 import { upsertClient } from "./appointments.js";
 import { syncProductInventory } from "./inventory.js";
 import { applyConfiguredCardFee } from "./cardFees.js";
+import { accountSelection } from "./financialAccounts.js";
 import { limitOffset, countRows } from "./pagination.js";
 import { allocateCents, percentOfCents, salesItemDiscountCents, salesItemGrossCents, validateCoupon } from "./discounts.js";
 import { availableStock, releaseExpiredReservations } from "./reservations.js";
@@ -707,14 +708,17 @@ export async function createSalesOrder(db, body, user, { req = null } = {}) {
         installments: installmentCount,
         fee_amount: 0,
         card_fee_table_id: body.card_fee_table_id,
+        fee_policy: body.fee_policy,
+        quoted_charged_amount: body.quoted_charged_amount,
       });
+      const accountId = await accountSelection(tx, body.financial_account_id);
       // `sales_order_id` é o que faz este pagamento ser reconhecido como a
       // baixa do título — sem ele, `payments` e `sales_orders` só se
       // encontrariam por acaso (mesmo cliente, mesmo valor).
       await tx.run(
         `INSERT INTO payments
-          (appointment_id, client_id, sales_order_id, amount, payment_type, method, status, paid_at, idempotency_key,installments,fee_amount,net_amount,card_fee_table_id,card_fee_snapshot)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?) ON CONFLICT DO NOTHING`,
+          (appointment_id, client_id, sales_order_id, amount, payment_type, method, status, paid_at, idempotency_key,installments,fee_amount,net_amount,card_fee_table_id,card_fee_snapshot,card_surcharge_amount,financial_account_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`,
         [
           appointmentId,
           client.id,
@@ -727,9 +731,10 @@ export async function createSalesOrder(db, body, user, { req = null } = {}) {
           `sales-order:${orderId}:paid`,
           card.installments,
           card.fee_amount,
-          total - card.fee_amount,
+          total + Number(card.card_surcharge_amount || 0) - card.fee_amount,
           card.card_fee_table_id,
           JSON.stringify(card.card_fee_snapshot),
+          Number(card.card_surcharge_amount || 0), accountId,
         ]
       );
     } else if (total > 0 && (status === "concluida" || status === "pago") && receivableMode === "pending") {

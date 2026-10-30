@@ -1,5 +1,6 @@
 import { normalizeCompletionPayments } from "./completionPayments.js";
 import { applyConfiguredCardFee } from "./cardFees.js";
+import { accountSelection } from "./financialAccounts.js";
 import { getPublicAvailability, publicSlotIsReleased, validBookingDate } from "./publicBookingAvailability.js";
 // Serviços de agendamentos, clientes vinculados, serviços e slots de agenda.
 import {
@@ -907,29 +908,31 @@ export async function registerCompletionPayments(db, appointmentId, rawPayments 
   for (let index = 0; index < payments.length; index += 1) {
     const item = await applyConfiguredCardFee(db, payments[index], { current: existing[index] });
     const current = existing[index];
+    const accountId = await accountSelection(db, item.financial_account_id, current?.financial_account_id);
     if (current) {
       await db.run(
         `UPDATE payments SET amount=?, payment_type='restante', method=?, status=?, paid_at=?, installments=?,
-           fee_amount=?, net_amount=?, expected_receipt_date=?, notes=?, created_by_user_id=?,card_fee_table_id=?,card_fee_snapshot=? WHERE id=?`,
+           fee_amount=?, net_amount=?, expected_receipt_date=?, notes=?, created_by_user_id=?,card_fee_table_id=?,card_fee_snapshot=?,card_surcharge_amount=?,financial_account_id=? WHERE id=?`,
         [item.amount, item.method, item.status, ["pago", "confirmado"].includes(item.status) ? current.paid_at || localTimestamp() : null,
-          item.installments, item.fee_amount, Math.max(0, item.amount - item.fee_amount), item.expected_receipt_date,
+          item.installments, item.fee_amount, Math.max(0, item.amount + Number(item.card_surcharge_amount || 0) - item.fee_amount), item.expected_receipt_date,
           item.notes, userId,
           item.card_fee_table_id,
-          JSON.stringify(item.card_fee_snapshot), current.id]
+          JSON.stringify(item.card_fee_snapshot), Number(item.card_surcharge_amount || 0), accountId, current.id]
       );
     } else {
       await db.run(
         `INSERT INTO payments
           (appointment_id, client_id, amount, payment_type, method, status, paid_at, installments,
-           fee_amount, net_amount, expected_receipt_date, notes, created_by_user_id, idempotency_key,card_fee_table_id,card_fee_snapshot)
-         VALUES (?, ?, ?, 'restante', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?)
+           fee_amount, net_amount, expected_receipt_date, notes, created_by_user_id, idempotency_key,card_fee_table_id,card_fee_snapshot,card_surcharge_amount,financial_account_id)
+         VALUES (?, ?, ?, 'restante', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?)
          ON CONFLICT DO NOTHING`,
         [appointmentId, appointment.client_id, item.amount, item.method, item.status,
           ["pago", "confirmado"].includes(item.status) ? localTimestamp() : null, item.installments, item.fee_amount,
-          Math.max(0, item.amount - item.fee_amount), item.expected_receipt_date, item.notes, userId,
+          Math.max(0, item.amount + Number(item.card_surcharge_amount || 0) - item.fee_amount), item.expected_receipt_date, item.notes, userId,
           `appointment:${appointmentId}:completion:${index + 1}`,
           item.card_fee_table_id,
           JSON.stringify(item.card_fee_snapshot),
+          Number(item.card_surcharge_amount || 0), accountId,
         ]
       );
     }

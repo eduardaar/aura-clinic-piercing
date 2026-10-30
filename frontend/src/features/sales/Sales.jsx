@@ -23,6 +23,7 @@ import { installmentSummary, installmentsForPayload } from "../../lib/installmen
 import { currency, saleItemLabel, saleOrderTypeLabel, saleSourceLabel } from "../../features/shared/helpers";
 import { SmartCombobox } from "../../components/common/SmartCombobox";
 import { CardFeePreview } from "../finance/CardFees";
+import { FinancialAccountSelect } from "../finance/FinancialAccountSelect";
 import { PlanUpgradeNotice } from "../../components/common/PlanUpgradeNotice";
 import { can, planAllowsAction } from "../../lib/permissions";
 import "./sales.css";
@@ -1077,9 +1078,12 @@ export function SalesWorkspace({ features = [], onUpgrade, initialView = "histor
                       amount: saleTotal,
                       fee_amount: form.fee_amount || 0,
                       card_fee_table_id: form.card_fee_table_id,
+                      fee_policy: form.fee_policy,
+                      quoted_charged_amount: form.quoted_charged_amount,
                     }}
                     onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
                   />
+                  {form.receivable_mode === "paid" && <FinancialAccountSelect value={form.financial_account_id} onChange={(financial_account_id) => setForm({ ...form, financial_account_id })} label="Conta de recebimento" />}
                   {form.receivable_mode === "pending" && canGenerateReceivables && (
                     <InstallmentGrid total={saleTotal} count={form.installment_count} firstDueDate={form.first_due_date} paymentMethod={form.payment_method} installments={installments} onChange={setInstallments} automatic={automaticInstallments} onAutomaticChange={setAutomaticInstallments} title="Parcelas da venda" />
                   )}

@@ -7,6 +7,33 @@ import { deprovisionTenant } from "../src/services/tenants.js";
 
 const context = {};
 
+test("compra manual cadastra material por embalagem e separa entrada, pagamento e finalidade", async () => {
+  const result = await api("/purchases", { method: "POST", body: {
+    supplier_id: context.supplierId, description: "Duas caixas de agulhas", purchase_date: "2026-10-30", first_due_date: "2026-11-30",
+    installment_count: 2, payment_method: "Pix", status: "confirmed", idempotency_key: "inline-material-package",
+    items: [{ item_type: "consumable", new_inventory_item: { name: "Agulha caixa QA", kind: "consumable", stock_unit: "unidade" },
+      quantity: 2, stock_conversion_factor: 100, purchase_unit: "caixa", unit_cost: 50 }],
+  } });
+  assert.equal(result.status, 201, JSON.stringify(result.json));
+  const purchase = result.json;
+  assert.equal(Number(purchase.paid_value), 0);
+  assert.equal(Number(purchase.pending_value), 100);
+  assert.equal(purchase.items[0].purchase_purpose, "consumption");
+  const material = await withTenantSchema(context.tenant.id, db => db.get("SELECT * FROM jewelry_inventory WHERE id=?", [purchase.items[0].product_id]));
+  assert.equal(Number(material.quantity), 200);
+  assert.equal(Number(material.cost_value), .5);
+  assert.equal(material.can_sell, false);
+  assert.equal(material.can_use_in_service, true);
+  const paid = await api(`/finance/entries/${purchase.payables[0].id}/payments`, { method: "POST", body: {
+    amount: 25, paid_at: "2026-10-30", payment_method: "Pix", idempotency_key: "inline-material-paid" } });
+  assert.equal(paid.status, 200, JSON.stringify(paid.json));
+  const updated = (await api(`/purchases/${purchase.id}`)).json;
+  assert.equal(Number(updated.paid_value), 25);
+  assert.equal(Number(updated.pending_value), 75);
+  const afterPayment = await withTenantSchema(context.tenant.id, db => db.get("SELECT quantity FROM jewelry_inventory WHERE id=?", [material.id]));
+  assert.equal(Number(afterPayment.quantity), 200, "pagar não movimenta estoque");
+});
+
 async function createTenantWithCurrentLegal() {
   const slug = testSlug("purchases");
   const adminEmail = `admin@${slug}.test`;

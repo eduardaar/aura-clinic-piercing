@@ -9,6 +9,7 @@ import { financeLabel } from "../../lib/financeLabels";
 import { canAccessPage } from "../../lib/permissions";
 import { currency } from "../shared/helpers";
 import { AccountsReceivable } from "./Receivables";
+import { FinancialAccounts } from "./FinancialAccounts";
 import { CommissionStatement, commissionAccess } from "./CommissionStatement";
 
 function formatDate(value) {
@@ -119,5 +120,6 @@ export function FinanceWorkspace({ initialView = "receivables", onNavigate, feat
       : <CommissionsAreaWithPlan onUpgrade={onUpgrade} onNavigate={onNavigate} />;
   }
   if (initialView === "receivables") return <AccountsReceivable onNavigate={onNavigate} />;
+  if (initialView === "caixa") return <FinancialAccounts onNavigate={onNavigate} />;
   return <FinancialSummary view={initialView === "caixa" ? "caixa" : "visao"} onNavigate={onNavigate} />;
 }

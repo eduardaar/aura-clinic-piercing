@@ -1,6 +1,6 @@
 # Estado atual do projeto
 
-> Preparação de publicação em **29/10/2026**: disponibilidade com a duração de todos os serviços, fuso das campanhas e orientações de conta/caixa (seção 18). A seção 17 já foi publicada com a correção da finalização, Central de atenção no sininho e ações dos cadastros. Esta entrega usa as migrations existentes, sem alteração de banco. A publicação das seções 14–16 foi enviada pelo workflow de produção após a aplicação das migrations `0052` e `0053`.
+> Entrega de **30/10/2026**: contas financeiras com saldos e transferências, compras por embalagem, política de taxas de cartão e ranking real de mais vendidos (seção 19). Requer as migrations aditivas `0054` e `0055` antes de ativar o código. As seções 17 e 18 já foram publicadas, incluindo finalização de retornos anteriores, Central de atenção no sininho e disponibilidade com todos os serviços.
 >
 > Publicação anterior: **19/10/2026** (seção 13), com a `0045` aplicada às quatro clínicas e a `0009` à plataforma; relatório em `outputs/deploy-2026-10-19/RELATORIO.md`. Confira no ledger de produção se as migrations `0046`–`0051` e a platform `0010` (entrega de 20/10) já foram aplicadas antes de publicar a `0052`.
 >
@@ -24,7 +24,7 @@
 | --- | --- | --- |
 | Multi-tenancy por schema Postgres | **Entregue** | `middleware/withDb.js`; `scripts/test-isolation.mjs` (9 checagens, incluindo token cruzado, suspensão e 30 requisições alternadas sem vazamento de pool) |
 | Provisionamento e desprovisionamento de clínica | **Entregue** | `services/tenants.js`; clínica nova nasce com `schema.sql` + todas as migrations de tenant na mesma transação |
-| Migrations versionadas com ledger e checksum | **Entregue** | `src/db/migrations/` (platform `0001`–`0010`; tenant `0001`–`0053`, sem `0026` e `0027`, que nunca existiram); CLI `npm --prefix backend run migrations:apply` |
+| Migrations versionadas com ledger e checksum | **Entregue** | `src/db/migrations/` (platform `0001`–`0010`; tenant `0001`–`0055`, sem `0026` e `0027`, que nunca existiram); CLI `npm --prefix backend run migrations:apply` |
 | Painel de super-admin | **Entregue** | `routes/platform.js`, `features/platform/PlatformAdmin.jsx` |
 | Cadastro público de clínica | **Entregue** | `POST /api/signup`, com verificação de disponibilidade de nome e e-mail antes do aceite; exige plano existente (`plano_obrigatorio`) e aceite das versões vigentes dos documentos legais (`legal_acceptance_required`) |
 
@@ -512,6 +512,47 @@ Capturas reais da clínica local `qa-shots` em 1366 e 390 px: vitrine, categoria
   repasse de taxas e tabelas reais das maquininhas, visibilidade de preços,
   abrangência da capitalização, fotos/textos e critério de "Mais vendidos".
   O bloco "Mais desejadas" mantém o comportamento anterior até essa definição.
+
+## 19. Contas, embalagens, cartão e catálogo — 30/10/2026
+
+- **Contas e caixa:** Financeiro → Caixa permite cadastrar bancos, dinheiro físico,
+  carteiras e saldo na operadora, com saldo inicial datado, histórico paginado,
+  transferências, ajustes e estorno por novo registro. O histórico não é apagado.
+  Pagamentos e recebimentos efetivos alimentam o saldo; títulos pendentes ficam
+  fora. Valores anteriores à data inicial não são somados novamente.
+- **Identificação das origens:** os pagamentos existentes sem conta ficam em
+  “A identificar”. Associar uma conta não cria nova receita/despesa. Recebimentos
+  parciais podem usar contas diferentes; a linha agregada da operação não é
+  contada novamente. Para dinheiro ainda com a maquininha, use “Saldo na operadora”
+  e transfira ao banco quando receber.
+- **Compras:** quantidade de embalagens × conteúdo por embalagem determina a
+  entrada individual. Custo por embalagem, total pago e saldo a pagar ficam
+  separados. É possível cadastrar um item na própria compra. A edição preserva
+  quantidade, fator e unidade; despesas continuam sem movimentar estoque.
+- **Kits:** já disponíveis no cadastro do procedimento, em “Equipe, estoque e
+  operação” → “Kit de consumo”. Consumo na conclusão e estorno na reabertura
+  continuam transacionais e cobertos pelos testes operacionais.
+- **Cartão:** débito e crédito de 1x a 12x por versão de tabela. A política permite
+  absorver a taxa ou repassá-la explicitamente, com total a cobrar antes de salvar.
+  A taxa/sobretaxa tem histórico individual por recebimento, sem duplicar a baixa
+  do título. Pagamentos antigos mantêm sua tabela e seus valores.
+- **Referência InfinitePay:** carregamento opcional, sem salvar automaticamente,
+  com fonte e data de consulta: [tabela oficial](https://www.infinitepay.io/taxas),
+  30/10/2026, Maquininha/InfiniteTap, D+1, até R$ 20 mil/mês, Visa/Mastercard.
+  É necessário conferir as condições do contrato antes de usar; não houve teste
+  de uma cobrança real na maquininha.
+- **Catálogo:** “Mais vendidos” usa unidades vendidas nos últimos 30 dias, com
+  dedução de devoluções e exclusão de cancelados/estornados. Destacar manualmente
+  não altera o ranking; campanhas e categorias editáveis, como Halloween,
+  continuam separadas. Não foi criada restrição geral de preços a profissionais.
+- **Textos:** removida a transformação visual forçada em maiúsculas nas páginas
+  internas, autenticação, landing page, catálogo e agenda. Dados cadastrados,
+  marcas, siglas e SKUs não são reescritos automaticamente.
+- **Validação:** 789 testes de backend, 77 unitários e 399 de componentes aprovados;
+  typecheck, lint sem erros, build e auditoria sem vulnerabilidades. A tentativa
+  de inspeção visual foi encerrada pelo Computer Use
+  por não conseguir identificar a URL do navegador; não há homologação visual
+  manual desta entrega.
 
 ## Pendências abertas
 

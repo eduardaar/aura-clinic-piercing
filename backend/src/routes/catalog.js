@@ -13,6 +13,7 @@ import { planLimit } from "../services/plans.js";
 import { requireFeature, tenantSubscription } from "../services/subscriptions.js";
 import { upload, parseUpload } from "../middleware/upload.js";
 import { publicActiveCampaigns, publicCatalogCategories } from "../services/catalogCollections.js";
+import { catalogSalesRanking } from "../services/catalogSalesRanking.js";
 import {
   CatalogCustomizationError,
   getCatalogCustomization,
@@ -99,6 +100,7 @@ async function catalogPluginAccess(req) {
 
 router.get("/api/catalog", withFeature("basic_catalog", async (req, res, db) => {
   const customization = await getCatalogCustomization(db, { published: true });
+  const salesRanking = await catalogSalesRanking(db);
   const featuredByProduct = new Map(
     asArray(customization.featuredProducts)
       .filter((product) => Number(product.is_active ?? 1) === 1)
@@ -119,6 +121,7 @@ router.get("/api/catalog", withFeature("basic_catalog", async (req, res, db) => 
     .map((item) => ({
       // Dados públicos
       id: item.id,
+      units_sold_30d: salesRanking.get(Number(item.id)) || 0,
       name: item.name,
       photo_url: item.photo_url || item.image_url,
       image_url: item.image_url || item.photo_url,

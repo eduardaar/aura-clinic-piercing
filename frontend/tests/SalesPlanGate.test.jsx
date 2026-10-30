@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { SalesWorkspace } from "../src/features/sales/Sales";
 
 vi.mock("../src/lib/api", () => ({
-  apiFetch: vi.fn(),
+  apiFetch: vi.fn(async () => ({ ok: true, json: async () => [] })),
   readStoredSession: () => ({ user: { id: 7, role: "admin" } }),
   tenantSlug: () => "clinica-teste",
   useApiInvalidate: () => vi.fn(),

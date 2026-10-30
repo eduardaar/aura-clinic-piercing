@@ -93,6 +93,7 @@ export function normalizePurchase(body = {}, idempotencyKey = "") {
     seenTargets.add(target);
     return {
       item_type: itemType,
+      purchase_purpose: item.purchase_purpose === "consumption" || item.item_type === "consumable" || newInventoryItem?.kind === "consumable" ? "consumption" : "resale",
       stock_conversion_factor: conversion,
       purchase_unit: String(item.purchase_unit || "").trim(),
       product_id: productId,
@@ -183,10 +184,14 @@ async function createMissingInventoryItems(tx, purchase) {
   }
 }
 
+const PURCHASE_PAYMENT_TOTALS = `
+  COALESCE((SELECT SUM(e.paid_amount) FROM financial_entries e WHERE e.source_type='purchase_order' AND e.source_id=po.id AND e.status<>'canceled' AND COALESCE(e.lifecycle_status,'active')='active'),0) AS paid_value,
+  COALESCE((SELECT SUM(GREATEST(e.amount-e.paid_amount,0)) FROM financial_entries e WHERE e.source_type='purchase_order' AND e.source_id=po.id AND e.status IN ('pending','overdue','partially_paid') AND COALESCE(e.lifecycle_status,'active')='active'),0) AS pending_value`;
+
 export async function getPurchase(db, id) {
   const purchase = await db.get(`
     SELECT po.*, s.name AS supplier_name, s.person_type AS supplier_person_type,
-      c.name AS cost_center_name
+      c.name AS cost_center_name, ${PURCHASE_PAYMENT_TOTALS}
     FROM purchase_orders po
     JOIN suppliers s ON s.id = po.supplier_id
     LEFT JOIN financial_cost_centers c ON c.id = po.cost_center_id
@@ -195,7 +200,7 @@ export async function getPurchase(db, id) {
   if (!purchase) return null;
   const items = await db.all(`
     SELECT poi.*, j.name AS item_name, poi.item_type,
-      j.name AS product_name, j.stock_unit, j.sku AS product_sku,
+      j.name AS product_name, COALESCE(poi.stock_unit,j.stock_unit) AS stock_unit, j.sku AS product_sku,
       v.variation_name, v.sku AS variant_sku
     FROM purchase_order_items poi
     LEFT JOIN jewelry_inventory j ON j.id = poi.product_id
@@ -235,7 +240,8 @@ export async function listPurchases(db, { status = "", supplierId = null } = {})
   const purchases = await db.all(`
     SELECT po.*, s.name AS supplier_name, s.person_type AS supplier_person_type,
       c.name AS cost_center_name,
-      (SELECT COUNT(*)::int FROM purchase_order_items poi WHERE poi.purchase_order_id = po.id) AS item_count
+      (SELECT COUNT(*)::int FROM purchase_order_items poi WHERE poi.purchase_order_id = po.id) AS item_count,
+      ${PURCHASE_PAYMENT_TOTALS}
     FROM purchase_orders po
     JOIN suppliers s ON s.id = po.supplier_id
     LEFT JOIN financial_cost_centers c ON c.id = po.cost_center_id
@@ -437,12 +443,13 @@ export async function createPurchase(db, body, { idempotencyKey = "", userId = n
         );
         await tx.run(`
           INSERT INTO purchase_order_items
-          (purchase_order_id, item_type, product_id, product_variant_id, quantity, unit_cost, line_total, batch_code, expiry_date,stock_conversion_factor,purchase_unit,stock_unit)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?)
+          (purchase_order_id, item_type, product_id, product_variant_id, quantity, unit_cost, line_total, batch_code, expiry_date,stock_conversion_factor,purchase_unit,stock_unit,purchase_purpose)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?)
         `, [inserted.returnedId, item.item_type, item.product_id, item.product_variant_id, item.quantity, item.unit_cost_cents / 100, item.line_total_cents / 100, item.batch_code, item.expiry_date,
             item.stock_conversion_factor || inventory.purchase_to_stock_factor || 1,
             item.purchase_unit || inventory.purchase_unit,
             inventory.stock_unit,
+            item.purchase_purpose,
           ]);
       }
       await registerPurchaseFiscalDocument(tx, inserted.returnedId, fiscalDocument, userId);

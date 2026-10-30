@@ -38,7 +38,7 @@
   font-weight: 700;
   letter-spacing: 0.08em;
   margin-bottom: 0.35rem;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .form-workflow__header-actions,

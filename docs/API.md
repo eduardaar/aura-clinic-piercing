@@ -1,5 +1,31 @@
 # Referência da API
 
+Atualização de 30/10/2026 — contas financeiras e recebimentos:
+
+- `GET /api/finance/accounts/options` lista apenas identificação/tipo/status para
+  seleção no pagamento. `GET /api/finance/accounts` calcula saldos; `POST` cria
+  conta (`name`, `kind=bank|cash|wallet|card`, `opening_balance`, `opening_date`);
+  `PATCH /:id` altera nome/atividade, preservando saldo e data iniciais.
+- `GET /api/finance/account-movements` aceita `account_id`, `from`, `to`, `offset`
+  e devolve página de 30 registros, com saldo acumulado quando há uma conta.
+  `POST` aceita `kind=transfer|adjustment`, origem/destino, valor positivo, data,
+  descrição e `idempotency_key`. `POST /:id/reverse` exige motivo e acrescenta
+  estorno; registros anteriores são imutáveis.
+- `GET /api/finance/accounts/unallocated` lista pagamentos efetivos sem conta.
+  `POST /api/finance/accounts/allocate` recebe `source_type`, `source_id` e
+  `financial_account_id`, sem fabricar outro pagamento. Esse mesmo campo é
+  aceito nas baixas financeiras e nos pagamentos de vendas/finalizações.
+- Tabelas de cartão aceitam `fee_policy=studio|customer` e procedência opcional
+  `source_details`. Repasse exige `quoted_charged_amount` igual ao total calculado
+  pelo servidor. `amount` continua sendo o principal da compra/atendimento;
+  `card_surcharge_amount` guarda o acréscimo, e `fee_amount` guarda a taxa.
+  Eventos de recebimento parcial preservam conta, taxa e fotografia da tabela.
+- Itens de compra incluem `purchase_purpose=resale|consumption`; quantidade de
+  embalagens, fator e custo continuam congelados por item. Pedido e lista trazem
+  `paid_value` e `pending_value`. Cadastro na compra usa `new_inventory_item`.
+- Produtos de `GET /api/catalog` incluem `units_sold_30d`, agregado público para
+  classificação por mais vendidos, sem expor os pedidos ou custos da loja.
+
 Atualização de 29/10/2026 — disponibilidade com vários serviços e fuso das campanhas:
 
 - `GET /api/booking/dates` e `GET /api/booking/slots` aceitam `service_ids`

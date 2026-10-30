@@ -17,7 +17,7 @@
   .catalog-campaign-card::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgb(20 14 10 / 0%) 30%, rgb(20 14 10 / 78%)); }
   .catalog-campaign-card.is-highlighted { outline: 2px solid var(--catalog-primary, #c8a96a); outline-offset: 2px; }
   .catalog-campaign-card__copy { position: relative; z-index: 1; align-self: end; display: grid; gap: 6px; padding: 20px; }
-  .catalog-campaign-card__copy small { font-size: .72rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--catalog-primary, #e6c98c); }
+  .catalog-campaign-card__copy small { font-size: .72rem; font-weight: 800; letter-spacing: .12em; text-transform: none; color: var(--catalog-primary, #e6c98c); }
   .catalog-campaign-card__copy strong { font-size: clamp(1.15rem, 2.4vw, 1.7rem); line-height: 1.15; }
   .catalog-campaign-card:not(.catalog-campaign-card--featured) .catalog-campaign-card__copy strong { font-size: 1.05rem; }
   .catalog-campaign-card__copy > span { max-width: 46ch; color: rgb(255 255 255 / 86%); line-height: 1.45; }
@@ -80,7 +80,7 @@
   .catalog-campaign-hero__copy { position: relative; z-index: 1; align-self: center; display: grid; gap: 10px; max-width: 560px; padding: clamp(22px, 5vw, 48px); }
   .catalog-campaign-hero__copy h1 { margin: 0; font-size: clamp(1.9rem, 5vw, 3rem); line-height: 1.05; color: #fff; }
   .catalog-campaign-hero__copy p { margin: 0; color: rgb(255 255 255 / 88%); line-height: 1.5; }
-  .catalog-campaign-kicker { font-size: .74rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--catalog-primary, #e6c98c); }
+  .catalog-campaign-kicker { font-size: .74rem; font-weight: 800; letter-spacing: .14em; text-transform: none; color: var(--catalog-primary, #e6c98c); }
   .catalog-campaign-meta { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: .9rem; }
   .catalog-campaign-meta span { display: inline-flex; align-items: center; gap: 6px; }
   .catalog-campaign-badge { padding: 4px 10px; border-radius: 999px; background: var(--catalog-primary, #c8a96a); color: #1f1813; font-weight: 800; }

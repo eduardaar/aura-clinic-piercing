@@ -203,7 +203,7 @@
 .au-public-footer-brand strong { font-family:var(--title-font); font-size:18px; color:var(--ink); }
 .au-public-footer-brand span { color:var(--muted); font-size:13px; line-height:1.45; }
 .au-public-footer-group { display:flex; flex-wrap:wrap; align-items:center; gap:6px 14px; }
-.au-public-footer-group > span { flex-basis:100%; color:var(--gold-dark); font-size:10px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; }
+.au-public-footer-group > span { flex-basis:100%; color:var(--gold-dark); font-size:10px; font-weight:800; letter-spacing:.1em; text-transform: none; }
 .au-public-footer a { display:inline-flex; align-items:center; gap:6px; min-height:36px; color:var(--muted); font-size:13px; font-weight:600; text-decoration:none; }
 .au-public-footer a:hover { color:var(--gold-dark); }
 @media (min-width: 760px) {

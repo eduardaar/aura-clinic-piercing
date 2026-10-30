@@ -26,6 +26,7 @@ import { ProfessionalCommissionRules } from "./ProfessionalCommissionRules";
 import { PublicAvailabilityEditor } from "./PublicAvailabilityEditor";
 import { AppointmentMaterials } from "./AppointmentMaterials";
 import { CardFeePreview } from "../finance/CardFees";
+import { FinancialAccountSelect } from "../finance/FinancialAccountSelect";
 import { AppointmentCommissionSummary } from "../finance/CommissionStatement";
 import "../../styles/agenda-admin-responsive.css";
 import "../../styles/appointment-workspace.css";
@@ -1528,7 +1529,7 @@ function paymentValidation(rows, outstanding) {
     const validMoney = (value) => /^\d+(?:\.\d{1,2})?$/.test(String(value)) && Number(value) <= 9999999999.99;
     const fee = Number(row.fee_amount || 0);
     if (!validMoney(row.amount) || !Number.isFinite(amount) || amount < 0) return "Informe um valor válido para cada pagamento.";
-    if (!validMoney(row.fee_amount || 0) || !Number.isFinite(fee) || fee < 0 || fee > amount) return "A taxa deve estar entre zero e o valor do pagamento.";
+    if (!validMoney(row.fee_amount || 0) || !Number.isFinite(fee) || fee < 0 || (fee > amount && !(row.fee_policy === "customer" && row.card_fee_table_id))) return "A taxa deve estar entre zero e o valor do pagamento.";
     if (String(row.method).toLowerCase().includes("crédito") && (!Number.isInteger(Number(row.installments)) || Number(row.installments) < 1)) return "Informe uma quantidade inteira de parcelas, a partir de 1.";
   }
   if (rows.reduce((sum, row) => sum + toCents(row.amount), 0) > (outstanding === Infinity ? Infinity : toCents(outstanding))) return "A soma dos pagamentos não pode superar o saldo do atendimento.";
@@ -1536,7 +1537,7 @@ function paymentValidation(rows, outstanding) {
 }
 
 const newPaymentRow = (seed = {}) => ({ ...DEFAULT_PAYMENT_ROW, row_key: draftRowKey(), ...seed });
-const DEFAULT_PAYMENT_ROW = { method: "Pix", amount: 0, status: "pago", installments: 1, fee_amount: 0, expected_receipt_date: "" };
+const DEFAULT_PAYMENT_ROW = { method: "Pix", amount: 0, status: "pago", installments: 1, fee_amount: 0, expected_receipt_date: "", card_fee_table_id: "", fee_policy: "", financial_account_id: "", quoted_charged_amount: 0 };
 
 export function AppointmentQuickModal({ appointment, options, services, procedures, onClose, onSaved, features = [], onUpgrade, initialAction = "" }) {
   const initializedAppointment = useRef(null);
@@ -2056,8 +2057,9 @@ export function AppointmentQuickModal({ appointment, options, services, procedur
                         <CardFeePreview payment={payment} onChange={(patch) => updatePayment(index, patch)} />
                       ),
                     },
+                  { key: "financial_account", label: "Destino do dinheiro", render: (payment, index) => <FinancialAccountSelect value={payment.financial_account_id} onChange={(financial_account_id) => updatePayment(index, { financial_account_id })} label="Conta de recebimento" /> },
                   { key: "fee", label: "Taxa da operadora (R$)", render: (payment, index) => String(payment.method).toLowerCase().includes("crédito") ? (
-                          <Input type="number" aria-label={`Taxa ${index + 1}`} value={payment.fee_amount} onChange={(value) => updatePayment(index, { fee_amount: value })} />
+                          <Input type="number" aria-label={`Taxa ${index + 1}`} value={payment.fee_amount} readOnly={Boolean(payment.card_fee_table_id)} onChange={(value) => updatePayment(index, { fee_amount: value })} />
                         ) : (
                           "—"
                         ),

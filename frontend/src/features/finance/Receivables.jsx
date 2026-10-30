@@ -10,6 +10,8 @@ import { apiFetch, readStoredSession, useApiInvalidate, useFetch } from "../../l
 import { asArray, asNumber, asObject, localDateValue } from "../../lib/utils";
 import { FINANCE_STATUS_LABELS, financeLabel } from "../../lib/financeLabels";
 import { currency } from "../shared/helpers";
+import { FinancialAccountSelect } from "./FinancialAccountSelect";
+import { CardFeePreview } from "./CardFees";
 import { commissionAccess } from "./CommissionStatement";
 
 function formatDateWithYear(date) {
@@ -110,15 +112,21 @@ export function AccountsReceivable({ onNavigate }) {
 
   async function registerPayment(event) {
     event.preventDefault();
+    setError("");
     const { item, value } = payment;
     const response = await apiFetch(`/finance/entries/${item.id}`, {
       method: "PATCH",
       body: JSON.stringify({
         paid_amount: asNumber(item.paid_amount) + asNumber(value),
-        payment_method: item.payment_method || "Pix",
+        payment_method: payment.payment_method || item.payment_method || "Pix",
+        financial_account_id: payment.financial_account_id,
+        card_fee_table_id: payment.card_fee_table_id,
+        fee_policy: payment.fee_policy,
+        quoted_charged_amount: payment.quoted_charged_amount,
+        card_installments: payment.card_installments || 1,
       }),
     });
-    if (!response.ok) return;
+    if (!response.ok) { const payload = await response.json().catch(() => ({})); return setError(payload.error || "Não foi possível registrar o recebimento."); }
     setPayment(null);
     refresh();
   }
@@ -236,6 +244,9 @@ export function AccountsReceivable({ onNavigate }) {
                     setPayment({
                       item,
                       value: String(Math.max(0, asNumber(item.amount) - asNumber(item.paid_amount))),
+                      financial_account_id: item.financial_account_id || "",
+                      payment_method: item.payment_method || "Pix",
+                      card_installments: 1,
                     }),
                 },
                 !item.source_key && { label: "Editar", onClick: () => openEdit(item) },
@@ -307,9 +318,10 @@ export function AccountsReceivable({ onNavigate }) {
               value={form.payment_method}
               onChange={(value) => setForm({ ...form, payment_method: value })}
             />
+            <FinancialAccountSelect value={form.financial_account_id} onChange={(financial_account_id) => setForm({ ...form, financial_account_id })} label="Conta de entrada" />
             <div className="stack">
               <Input
-                label="Conta ou caixa"
+                label="Identificação anterior / observação da conta"
                 aria-describedby="receivable-account-help"
                 value={form.payment_account}
                 onChange={(value) => setForm({ ...form, payment_account: value })}
@@ -350,6 +362,13 @@ export function AccountsReceivable({ onNavigate }) {
             Em aberto:{" "}
             {currency.format(Math.max(0, asNumber(payment?.item?.amount) - asNumber(payment?.item?.paid_amount)))}.
           </p>
+          <FinancialAccountSelect value={payment?.financial_account_id} onChange={(financial_account_id) => setPayment((current) => ({ ...current, financial_account_id }))} label="Onde entrou o dinheiro" />
+          <PaymentSelect label="Forma do recebimento" value={payment?.payment_method || "Pix"} onChange={(payment_method) => setPayment((current) => ({ ...current, payment_method }))} />
+          {["sales_order","service_execution","payment"].includes(payment?.item?.source_type) && <>
+            <Input type="number" min="1" max="12" label="Parcelas no cartão" value={payment?.card_installments || 1} onChange={(card_installments) => setPayment((current) => ({ ...current, card_installments }))} />
+            <CardFeePreview payment={{ ...payment, method: payment?.payment_method || "Pix", installments: payment?.card_installments || 1, amount: payment?.value || 0 }} onChange={(patch) => setPayment((current) => ({ ...current, ...patch }))} />
+          </>}
+          {error && <p className="form-error" role="alert">{error}</p>}
         </form>
       </Modal>
       <Modal open={!!details} title="Detalhes do recebível" onClose={() => setDetails(null)}>

@@ -370,7 +370,8 @@ export function PublicCatalog() {
     openTree: () => setCategoryTreeOpen(true)
   };
   const latestItems = [...publishedItems].sort((a, b) => b.id - a.id);
-  const bestSellerItems = [...publishedItems].sort((a, b) => Number(b.sale_value || 0) - Number(a.sale_value || 0));
+  const bestSellerItems = publishedItems.filter((item) => Number(item.units_sold_30d) > 0)
+    .sort((a, b) => Number(b.units_sold_30d) - Number(a.units_sold_30d) || Number(a.id) - Number(b.id));
   const promoItems = publishedItems.filter((item) => catalogPromotionForItem(item, asArray(safeData.promotions)));
   const safeFavoriteIds = asArray(favoriteIds);
   const safeOrderItems = asArray(orderItems);
@@ -718,7 +719,7 @@ const CATALOG_SECTION_TITLES = {
   secondary_banners: "Destaques",
   categories: "Encontre sua joia",
   featured_products: "Produtos em destaque",
-  best_sellers: "Mais desejadas",
+  best_sellers: "Mais vendidos",
   new_products: "Lançamentos",
   promotions: "Promoções",
   premium_products: "Joias premium",
@@ -934,7 +935,7 @@ function catalogSectionProducts(section, source, { category = "", forceSort = ""
   // `keepOrder`: a lista já vem na ordenação escolhida pelo visitante; só uma
   // ordem configurada no próprio bloco do editor a substitui.
   const productSort = forceSort || String(section.product_sort || (keepOrder ? "" : "recent"));
-  const compare = productSort === "best_sellers" ? (left, right) => Number(right.sale_value || 0) - Number(left.sale_value || 0)
+  const compare = productSort === "best_sellers" ? (left, right) => Number(right.units_sold_30d || 0) - Number(left.units_sold_30d || 0) || Number(left.id) - Number(right.id)
     : productSort === "price_asc" ? (left, right) => Number(left.sale_value || 0) - Number(right.sale_value || 0)
       : productSort === "price_desc" ? (left, right) => Number(right.sale_value || 0) - Number(left.sale_value || 0)
         : productSort === "stock" ? (left, right) => Number(right.quantity || 0) - Number(left.quantity || 0)
@@ -1020,7 +1021,7 @@ function CatalogLayoutBlock({
       );
     }
     case "best_sellers":
-      return rail("Mais desejadas", "Peças premium em destaque para composições especiais.", bestSellerItems, { forceSort: "best_sellers" });
+      return rail("Mais vendidos", "Joias mais vendidas nos últimos 30 dias, descontadas as devoluções.", bestSellerItems, { forceSort: "best_sellers" });
     case "new_products":
       return rail("Lançamentos", "Novidades recém-adicionadas à curadoria.", latestItems, { forceSort: "recent" });
     case "promotions":

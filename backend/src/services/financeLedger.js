@@ -35,6 +35,11 @@ export function normalizeEntry(body = {}, current = {}) {
     status: computedStatus,
     payment_method: body.payment_method ?? current.payment_method ?? "",
     payment_account: body.payment_account ?? current.payment_account ?? "",
+    financial_account_id: body.financial_account_id === undefined ? (current.financial_account_id || null) : (body.financial_account_id || null),
+    card_fee_table_id: body.card_fee_table_id || null,
+    fee_policy: body.fee_policy || "",
+    quoted_charged_amount: body.quoted_charged_amount,
+    card_installments: body.card_installments || 1,
     paid_at: computedStatus === "paid" || computedStatus === "partially_paid" ? (body.paid_at ?? current.paid_at ?? new Date().toISOString()) : null,
     cost_center_id: optionalEntryValue(body, current, "cost_center_id"),
     supplier_id: optionalEntryValue(body, current, "supplier_id"),
@@ -94,6 +99,27 @@ const MIRRORED_PAYMENT_CONDITION = `
   )`;
 
 export async function syncFinanceSources(db) {
+  // Taxa é despesa, e o repasse é receita separada. As chaves por pagamento
+  // impedem dupla contagem ao consultar o relatório ou refazer um fechamento.
+  for (const [field, type, source, label] of [
+    ["fee_amount", "expense", "card_fee", "Taxa da operadora"],
+    ["card_surcharge_amount", "income", "card_surcharge", "Repasse de taxa de cartão"],
+  ]) {
+    await db.run(`INSERT INTO financial_entries
+      (entry_type,description,category,amount,paid_amount,due_date,competence_date,status,payment_method,paid_at,source_type,source_id,source_key)
+      SELECT ?,?||' · pagamento #'||p.id,?,p.${field},
+        CASE WHEN p.status IN ('pago','confirmado','refunded','estornado') THEN p.${field} ELSE 0 END,
+        COALESCE(NULLIF(substring(p.paid_at,1,10),''),CURRENT_DATE::text),
+        COALESCE(NULLIF(substring(p.paid_at,1,10),''),CURRENT_DATE::text),
+        CASE WHEN p.${field}=0 OR p.status IN ('cancelado','canceled','recusado') THEN 'canceled'
+          WHEN p.status IN ('pago','confirmado','refunded','estornado') THEN 'paid' ELSE 'pending' END,
+        p.method,p.paid_at,?,p.id,?||':'||p.id FROM payments p
+      WHERE p.${field}>0 OR EXISTS (SELECT 1 FROM financial_entries e WHERE e.source_key=?||':'||p.id)
+      ON CONFLICT (source_key) DO UPDATE SET amount=EXCLUDED.amount,paid_amount=EXCLUDED.paid_amount,
+        status=EXCLUDED.status,payment_method=EXCLUDED.payment_method,paid_at=EXCLUDED.paid_at,
+        due_date=EXCLUDED.due_date,competence_date=EXCLUDED.competence_date,updated_at=now()`,
+      [type,label,label,source,source,source]);
+  }
   await db.run(`
     INSERT INTO financial_entries
       (entry_type, description, category, amount, paid_amount, due_date, competence_date, status, payment_method, paid_at, source_type, source_id, source_key)

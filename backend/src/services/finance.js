@@ -295,9 +295,9 @@ export async function buildFinanceReport(db) {
   const month = today.slice(0, 7);
   const totals = await db.get(`
     SELECT
-      SUM(CASE WHEN substr(paid_at, 1, 10) = ? THEN amount ELSE 0 END) AS day_total,
-      SUM(CASE WHEN paid_at >= to_char(CAST(? AS date) - INTERVAL '6 days', 'YYYY-MM-DD') THEN amount ELSE 0 END) AS week_total,
-      SUM(CASE WHEN paid_at LIKE ? THEN amount ELSE 0 END) AS month_total
+      SUM(CASE WHEN substr(paid_at, 1, 10) = ? THEN amount+card_surcharge_amount ELSE 0 END) AS day_total,
+      SUM(CASE WHEN paid_at >= to_char(CAST(? AS date) - INTERVAL '6 days', 'YYYY-MM-DD') THEN amount+card_surcharge_amount ELSE 0 END) AS week_total,
+      SUM(CASE WHEN paid_at LIKE ? THEN amount+card_surcharge_amount ELSE 0 END) AS month_total
     FROM payments WHERE status IN ('pago', 'confirmado')
   `, [today, today, `${month}%`]);
   // `payments` é a fonte completa do dinheiro recebido — balcão, catálogo e
@@ -317,19 +317,22 @@ export async function buildFinanceReport(db) {
   `);
   const methods = await db.all("SELECT method, COUNT(*) AS total, COALESCE(SUM(amount), 0) AS amount FROM payments GROUP BY method ORDER BY total DESC");
   const expensesSummary = await db.get(`
+    WITH card_cost AS (SELECT COALESCE(SUM(fee_amount),0) AS total FROM payments
+      WHERE status IN ('pago','confirmado','refunded','estornado') AND paid_at LIKE ?)
     SELECT
       COALESCE(SUM(CASE WHEN expense_type = 'fixa' THEN amount ELSE 0 END), 0) AS fixed_total,
-      COALESCE(SUM(CASE WHEN expense_type = 'variavel' THEN amount ELSE 0 END), 0) AS variable_total,
-      COALESCE(SUM(amount), 0) AS total
+      COALESCE(SUM(CASE WHEN expense_type = 'variavel' THEN amount ELSE 0 END), 0)+(SELECT total FROM card_cost) AS variable_total,
+      COALESCE(SUM(amount), 0)+(SELECT total FROM card_cost) AS total,
+      (SELECT total FROM card_cost) AS card_fee_total
     FROM expenses WHERE due_date LIKE ?
-  `, [`${month}%`]);
+  `, [`${month}%`,`${month}%`]);
   const expenses = await db.all("SELECT * FROM expenses ORDER BY due_date DESC, id DESC LIMIT 80");
   // Pegamos os 12 meses mais recentes (ORDER BY DESC no subselect) e só depois
   // reordenamos em ordem cronológica, senão o gráfico congelaria no início do histórico.
   const monthlyRevenue = await db.all(`
     SELECT month, total FROM (
       SELECT month, SUM(total) AS total FROM (
-        SELECT SUBSTR(paid_at, 1, 7) AS month, amount AS total
+        SELECT SUBSTR(paid_at, 1, 7) AS month, amount+card_surcharge_amount AS total
         FROM payments
         WHERE status IN ('pago', 'confirmado')
       ) AS monthly_union
@@ -340,14 +343,14 @@ export async function buildFinanceReport(db) {
     ORDER BY month
   `);
   const dailyRevenue = await db.all(`
-    SELECT substr(paid_at, 1, 10) AS label, SUM(amount) AS total
+    SELECT substr(paid_at, 1, 10) AS label, SUM(amount+card_surcharge_amount) AS total
     FROM payments
     WHERE status IN ('pago', 'confirmado') AND substr(paid_at, 1, 10) >= to_char(CAST(? AS date) - INTERVAL '6 days', 'YYYY-MM-DD')
     GROUP BY label
     ORDER BY label
   `, [today]);
   const weeklyRevenue = await db.all(`
-    SELECT to_char(CAST(paid_at AS timestamp), 'IYYY"-W"IW') AS label, SUM(amount) AS total
+    SELECT to_char(CAST(paid_at AS timestamp), 'IYYY"-W"IW') AS label, SUM(amount+card_surcharge_amount) AS total
     FROM payments
     WHERE status IN ('pago', 'confirmado') AND substr(paid_at, 1, 10) >= to_char(CAST(? AS date) - INTERVAL '42 days', 'YYYY-MM-DD')
     GROUP BY label

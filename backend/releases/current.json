@@ -1,27 +1,34 @@
 {
-  "id": "2026-10-29-horarios-completos-e-campanhas-v2",
+  "id": "2026-10-30-contas-compras-cartao-e-catalogo",
   "announcements": [
     {
-      "slug": "horarios-com-a-duracao-de-todos-os-servicos",
-      "title": "Horários que comportam todos os serviços escolhidos",
-      "summary": "O agendamento online considera a duração de todos os serviços ao mostrar datas e horários disponíveis.",
-      "category": "Agendamento",
-      "content": "Ao escolher mais de um serviço no agendamento online, o calendário e a lista de horários passam a considerar o tempo total do atendimento. Assim, uma janela curta não aparece como disponível quando não comporta todos os serviços.\n\nA confirmação usa a mesma duração completa, evitando recusar um horário oferecido por comparar apenas o primeiro serviço. As regras de antecedência, o expediente, as liberações, os bloqueios e os agendamentos existentes continuam sendo respeitados. A profissional também precisa estar habilitada para realizar todos os serviços escolhidos."
-    },
-    {
-      "slug": "encerramento-das-campanhas-no-fuso-da-loja",
-      "title": "Data de encerramento das campanhas no fuso da loja",
-      "summary": "O texto de encerramento das campanhas acompanha o fuso configurado pela loja.",
-      "category": "Catálogo",
-      "content": "A data exibida em “Disponível até” agora usa o fuso da loja, tanto no catálogo público quanto na prévia da campanha. Isso evita mostrar outro dia para quem acessa de uma região com fuso diferente.\n\nA programação de início e encerramento das campanhas continua seguindo a configuração da loja."
-    },
-    {
-      "slug": "orientacoes-no-campo-conta-ou-caixa",
-      "title": "Orientações no campo Conta ou caixa",
-      "summary": "Os lançamentos financeiros explicam onde o pagamento sai e onde o recebimento entra.",
+      "slug": "contas-e-caixa-com-saldos-separados",
+      "title": "Contas e caixa com saldos separados",
+      "summary": "Acompanhe o dinheiro de cada banco, do caixa físico e da operadora, com transferências e histórico.",
       "category": "Financeiro",
-      "content": "Ao registrar uma conta a pagar, o campo “Conta ou caixa” orienta você a indicar de onde sairá o dinheiro, como a conta PJ do banco ou o caixa do balcão. Em contas a receber, a orientação indica onde o dinheiro entrará.\n\nO preenchimento continua identificando a origem ou o destino do lançamento. Não houve mudança nos valores, nas datas ou no histórico financeiro."
+      "content": "Em Financeiro → Caixa, cadastre cada conta utilizada pelo estúdio e informe seu saldo inicial e a data de referência. Os pagamentos e recebimentos realizados atualizam os saldos, enquanto os valores ainda a pagar ou receber continuam separados.\n\nVocê pode transferir dinheiro entre contas e consultar as entradas, saídas e os ajustes, com histórico preservado. Pagamentos antigos sem conta informada aparecem em “A identificar”: basta associar a conta correta, sem criar outro recebimento. Para valores ainda com a maquininha, use uma conta do tipo “Saldo na operadora” e registre a transferência quando o dinheiro cair no banco."
+    },
+    {
+      "slug": "compras-por-embalagem-e-pagamento-separado",
+      "title": "Compras por embalagem, estoque em unidades",
+      "summary": "Informe quantas embalagens comprou e o conteúdo de cada uma para calcular a entrada no estoque.",
+      "category": "Estoque",
+      "content": "Na entrada de compras, informe a quantidade de embalagens e quantas unidades vêm em cada uma. Por exemplo: duas caixas com cem unidades geram uma entrada de duzentas unidades. O custo por embalagem e o custo individual ficam claros antes da confirmação. A edição do item preserva essas informações.\n\nProdutos para revenda e materiais de consumo têm caminhos próprios. Também é possível cadastrar um novo item durante a compra. O valor já pago e o saldo a pagar aparecem separados da entrada física: pagar uma compra não movimenta o estoque novamente, e despesas continuam sem gerar mercadoria.\n\nOs kits ficam no cadastro do procedimento, em “Equipe, estoque e operação” → “Kit de consumo”. Os materiais são baixados na conclusão do atendimento e devolvidos ao estoque quando ele é reaberto."
+    },
+    {
+      "slug": "taxas-de-cartao-com-total-claro",
+      "title": "Taxas de cartão com o total a cobrar",
+      "summary": "Configure débito e crédito de até 12 vezes e escolha se o estúdio absorve a taxa ou a repassa ao cliente.",
+      "category": "Financeiro",
+      "content": "As tabelas das maquininhas permitem configurar débito, crédito à vista e parcelamento de até 12 vezes. Ao registrar o pagamento, confira a taxa, o líquido previsto e o total a cobrar antes de confirmar. Quando houver repasse ao cliente, o acréscimo fica explícito para evitar cobrar a taxa duas vezes.\n\nPagamentos antigos mantêm os valores e a tabela utilizada. Os recebimentos parciais guardam seu próprio histórico de conta e taxa.\n\nHá uma referência opcional da InfinitePay para adiantar o preenchimento. Ela corresponde às condições informadas na própria tela, não é salva automaticamente e deve ser conferida com o contrato do estúdio antes de usar."
+    },
+    {
+      "slug": "mais-vendidos-por-vendas-recentes",
+      "title": "Mais vendidos pelas vendas dos últimos 30 dias",
+      "summary": "O ranking considera unidades vendidas, com devoluções e estornos descontados.",
+      "category": "Catálogo",
+      "content": "A seção “Mais vendidos” passa a classificar as joias pela quantidade efetivamente vendida nos últimos 30 dias. Devoluções reduzem essa quantidade e vendas canceladas ou estornadas ficam fora da classificação.\n\nOs destaques manuais e as campanhas continuam separados do ranking. Você pode criar uma categoria ou campanha, como Halloween, escolher as joias participantes e organizar a vitrine pelo próprio sistema.\n\nTambém foi removida a transformação visual obrigatória em letras maiúsculas nas telas do site e do painel, preservando os textos cadastrados, as siglas, marcas e os códigos dos produtos."
     }
   ],
-  "source_digest": "1ad22e088e827430ad6277f22fc0c580b8dfb2c742620a44bf884fa8b74f2469"
+  "source_digest": "137c37278258c346f07319283600af0de5a652b6c4814e4a0ea5d7f3ed42f35e"
 }

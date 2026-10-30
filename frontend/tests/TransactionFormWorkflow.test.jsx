@@ -20,7 +20,7 @@ describe("formulário extenso de compras", () => {
     await user.click(screen.getByRole("button", { name: "Nova compra" }));
     await user.click(screen.getByRole("button", { name: "Produtos para revenda" }));
     await user.click(screen.getByRole("button", { name: /2\. Itens/i }));
-    const quantity = screen.getByLabelText("Quantidade");
+    const quantity = screen.getByLabelText("Quantidade de embalagens");
     await user.clear(quantity);
     expect(quantity).toHaveValue(null);
     await user.type(quantity, "12");

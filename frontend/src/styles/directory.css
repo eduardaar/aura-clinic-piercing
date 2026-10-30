@@ -57,7 +57,7 @@
   font-size: 12px;
   font-weight: 600;
   letter-spacing: .06em;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .au-dir-head h1 {

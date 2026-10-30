@@ -17,6 +17,7 @@ import { recordPrivacyAudit } from "../services/privacy.js";
 import { recordAudit } from "../services/audit.js";
 import { payFinancialEntry, recordPayableChange } from "../services/payablePayments.js";
 import { normalizeCardFeeTable } from "../services/cardFees.js";
+import { accountSelection } from "../services/financialAccounts.js";
 import { requireRole } from "../middleware/auth.js";
 import { financialOriginJoins, FINANCIAL_ORIGIN_COLUMNS, financialEntryOrigin } from "../services/financialOrigins.js";
 import {
@@ -41,8 +42,8 @@ router.post(
     try {
       const table = normalizeCardFeeTable(req.body || {});
       const created = await db.run(
-        "INSERT INTO card_fee_tables (operator_name,valid_from,debit_percent,credit_rates,created_by_user_id) VALUES (?,?,?,?,?) RETURNING id",
-        [table.operator_name, table.valid_from, table.debit_percent, JSON.stringify(table.credit_rates), req.user.id],
+        "INSERT INTO card_fee_tables (operator_name,valid_from,debit_percent,credit_rates,created_by_user_id,fee_policy,source_details) VALUES (?,?,?,?,?,?,?) RETURNING id",
+        [table.operator_name, table.valid_from, table.debit_percent, JSON.stringify(table.credit_rates), req.user.id, table.fee_policy, JSON.stringify(table.source_details)],
       );
       const after = await db.get("SELECT * FROM card_fee_tables WHERE id=?", [created.returnedId]);
       await recordAudit(db, {
@@ -272,7 +273,7 @@ router.post("/api/finance/entries/bulk-lifecycle", withFeature("basic_finance", 
 router.post("/api/finance/entries", withFeature("basic_finance", async (req, res, db) => {
   if (!authorizePermission(req, res, P.FINANCE_CREATE)) return;
   let entry;
-  try { entry = normalizeEntry(req.body); } catch (error) { return res.status(400).json({ error: error.message }); }
+  try { entry = normalizeEntry(req.body); entry.financial_account_id = await accountSelection(db, entry.financial_account_id); } catch (error) { return res.status(400).json({ error: error.message }); }
   let schedule;
   try {
     schedule = resolveInstallmentSchedule({
@@ -311,6 +312,7 @@ router.post("/api/finance/entries", withFeature("basic_finance", async (req, res
       row.entry_type === entry.entry_type && row.description === entry.description &&
       String(row.category || "") === String(entry.category || "") &&
       String(row.payment_account || "") === String(entry.payment_account || "") &&
+      Number(row.financial_account_id || 0) === Number(entry.financial_account_id || 0) &&
       Number(row.cost_center_id || 0) === Number(entry.cost_center_id || 0) &&
       Number(row.supplier_id || 0) === Number(entry.supplier_id || 0) &&
       String(row.attachment_url || "") === String(entry.attachment_url || "") &&
@@ -348,15 +350,15 @@ router.post("/api/finance/entries", withFeature("basic_finance", async (req, res
           (entry_type, description, category, amount, paid_amount, due_date, competence_date, status,
            payment_method, payment_account, paid_at, cost_center_id, supplier_id, responsible_user_id, attachment_url,
            notes, recurrence, recurrence_end_date, installment_number, installment_count, parent_entry_id,
-           source_type, source_id, source_key)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
+           source_type, source_id, source_key,financial_account_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?) RETURNING id
       `, [
         entry.entry_type, entry.description, entry.category, installment.amount, paidCents / 100,
         installment.dueDate, installment.number === 1 ? entry.competence_date : installment.dueDate,
         installmentStatus, installment.paymentMethod, entry.payment_account,
         paidCents > 0 ? entry.paid_at : null, entry.cost_center_id, entry.supplier_id, req.user?.id || null, entry.attachment_url,
         entry.notes, entry.recurrence, entry.recurrence_end_date, installment.number, installmentCount, parentId,
-        idempotencyKey ? "manual_entry" : null, parentId, sourceKey
+        idempotencyKey ? "manual_entry" : null, parentId, sourceKey,entry.financial_account_id
       ]);
       if (!parentId) {
         parentId = result.returnedId;
@@ -395,22 +397,24 @@ router.patch("/api/finance/entries/:id", withFeature("basic_finance", async (req
   try {
     current = await db.get("SELECT * FROM financial_entries WHERE id=? FOR UPDATE", [req.params.id]);
     entry = normalizeEntry(req.body, current);
+    entry.financial_account_id = await accountSelection(db, entry.financial_account_id, current.financial_account_id);
     if (current.source_key && current.source_type !== "manual_entry" && (entry.entry_type !== current.entry_type || entry.amount !== Number(current.amount))) {
       throw new FinancialRuleError("O tipo e o valor de lançamentos integrados devem ser corrigidos no módulo de origem.");
     }
     await db.run(`
       UPDATE financial_entries SET entry_type=?, description=?, category=?, amount=?, paid_amount=?, due_date=?,
         competence_date=?, status=?, payment_method=?, payment_account=?, paid_at=?, cost_center_id=?, supplier_id=?,
-        attachment_url=?, notes=?, recurrence=?, recurrence_end_date=?, updated_at=CURRENT_TIMESTAMP WHERE id=?
+        attachment_url=?, notes=?, recurrence=?, recurrence_end_date=?,financial_account_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?
     `, [
       entry.entry_type, entry.description, entry.category, entry.amount, entry.paid_amount, entry.due_date,
       entry.competence_date, entry.status, entry.payment_method, entry.payment_account, entry.paid_at,
-      entry.cost_center_id, entry.supplier_id, entry.attachment_url, entry.notes, entry.recurrence, entry.recurrence_end_date, current.id
+      entry.cost_center_id, entry.supplier_id, entry.attachment_url, entry.notes, entry.recurrence, entry.recurrence_end_date,entry.financial_account_id,current.id
     ]);
     const updated = await db.get("SELECT * FROM financial_entries WHERE id=?", [current.id]);
-    await syncEntrySettlement(db, current, updated, req.user?.id);
+    const cardSettlement = await syncEntrySettlement(db, current, { ...updated, card_fee_table_id: entry.card_fee_table_id, fee_policy: entry.fee_policy, quoted_charged_amount: entry.quoted_charged_amount, card_installments: entry.card_installments }, req.user?.id);
     await recordPayableChange(db, current, updated, req.user?.id, {
         notes: String(req.body.reason || "Correção do pagamento"),
+        card: cardSettlement,
       });
       await db.run("INSERT INTO financial_entry_audit (entry_id, user_id, action, before_data, after_data) VALUES (?, ?, 'update', ?, ?)", [
       current.id, req.user?.id || null, JSON.stringify(current), JSON.stringify(updated)

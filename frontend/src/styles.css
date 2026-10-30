@@ -156,7 +156,7 @@ code {
   place-items: center;
   border: 1px solid var(--gold);
   color: var(--gold);
-  text-transform: uppercase;
+  text-transform: none;
   letter-spacing: 0;
   margin-bottom: 36px;
 }
@@ -209,13 +209,13 @@ code {
   font-size: 74px;
   line-height: .85;
   font-weight: 400;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .catalog-logo span {
   font-family: var(--title-font);
   letter-spacing: 5px;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .catalog-hero h1 {
@@ -318,7 +318,7 @@ code {
   color: var(--nude-strong);
   font-size: .8rem;
   font-weight: 800;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .catalog-product-info h2 {
@@ -660,7 +660,7 @@ code {
 .booking-date-strip button span,
 .booking-date-strip button small {
   font-size: 11px;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .booking-date-strip button.active {
@@ -1006,7 +1006,7 @@ code {
   font-family: var(--title-font);
   font-size: 22px;
   line-height: 1;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .login-brand span {
@@ -1014,7 +1014,7 @@ code {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 1.8px;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .login-copy {
@@ -1029,7 +1029,7 @@ code {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 1.8px;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .login-panel .login-copy h1 {
@@ -1210,7 +1210,7 @@ code {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 2px;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .login-visual h2 {
@@ -1293,7 +1293,7 @@ code {
   color: rgba(255, 255, 255, .7);
   font-size: 10px;
   letter-spacing: .4px;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .login-floating-cards strong {
@@ -1448,7 +1448,7 @@ code {
   color: var(--nude-strong);
   font-size: .68rem;
   font-weight: 800;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .catalog-top-actions {
@@ -1619,7 +1619,7 @@ code {
   color: var(--nude-strong);
   font-size: .78rem;
   font-weight: 900;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .catalog-filter-select,
@@ -1866,7 +1866,7 @@ code {
   color: var(--gold);
   font-size: 13px;
   font-weight: 700;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .login-panel form {
@@ -2047,7 +2047,7 @@ code {
   border: 1px solid #eee3cf;
   border-radius: 10px;
 }
-.catalog-link-label { display: block; font-size: 12px; color: #8a8078; text-transform: uppercase; letter-spacing: .04em; }
+.catalog-link-label { display: block; font-size: 12px; color: #8a8078; text-transform: none; letter-spacing: .04em; }
 .catalog-link-row code { font-size: 13px; word-break: break-all; }
 .catalog-link-actions { display: flex; gap: 8px; align-items: center; }
 .catalog-link-actions .primary-button,
@@ -2111,7 +2111,7 @@ code {
 .eyebrow {
   color: var(--gold);
   font-size: 12px;
-  text-transform: uppercase;
+  text-transform: none;
   letter-spacing: 0;
   font-weight: 700;
 }
@@ -2412,7 +2412,7 @@ code {
   margin: 0;
   font-size: 15px;
   color: var(--gold);
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .appointment-items-editor {
@@ -2537,7 +2537,7 @@ input:focus, select:focus, textarea:focus {
 .ui-select-item[data-state="checked"] { color: var(--gold-dark); font-weight: 700; }
 .ui-select-item[data-disabled] { opacity: .45; cursor: not-allowed; }
 .ui-select-item-indicator { position: absolute; right: 9px; display: grid; place-items: center; }
-.ui-select-group-label { display: block; padding: 7px 10px 4px; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.ui-select-group-label { display: block; padding: 7px 10px 4px; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: none; }
 
 .catalog-filter-select .ui-select-trigger,
 .catalog-sort .ui-select-trigger { min-height: 42px; }
@@ -2837,7 +2837,7 @@ small {
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
-  text-transform: uppercase;
+  text-transform: none;
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
   background: var(--white);
@@ -2895,7 +2895,7 @@ small {
 .calendar-cell header strong {
   color: var(--gold);
   font-size: 11px;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .calendar-events {
@@ -3020,7 +3020,7 @@ small {
   margin: 0;
   color: var(--gold);
   font-size: 14px;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .professionals-manager {
@@ -3051,7 +3051,7 @@ small {
   font-size: 11px;
   font-weight: 800;
   letter-spacing: .04em;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .category-management-row {
@@ -3144,7 +3144,7 @@ small {
   font-size: 11px;
   font-weight: 800;
   letter-spacing: .04em;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .manager-card .data-table td:last-child {
@@ -3188,7 +3188,7 @@ small {
     font-size: 11px;
     font-weight: 800;
     letter-spacing: .04em;
-    text-transform: uppercase;
+    text-transform: none;
   }
 
   .category-management-row > div:last-child {
@@ -3506,7 +3506,7 @@ small {
 .catalog-publish-checklist li.danger { background: rgba(166, 58, 46, .09); color: #7b231d; }
 .catalog-publish-checklist li.warn { background: rgba(180, 119, 31, .1); color: #74500f; }
 
-.catalog-publish-checklist li strong { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.catalog-publish-checklist li strong { font-size: 11px; text-transform: none; letter-spacing: .04em; }
 
 .catalog-revision-list {
   display: grid;
@@ -5103,7 +5103,7 @@ th, td {
 th {
   color: var(--muted);
   font-size: 12px;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .payment-bars {
@@ -5503,7 +5503,7 @@ th {
   margin: 0 0 8px;
   color: var(--gold);
   font-size: 13px;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .benefit-list {
@@ -5797,7 +5797,7 @@ th {
   margin: 0;
   color: var(--gold);
   font-size: 14px;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .history-stack {
@@ -5900,7 +5900,7 @@ th {
   margin: 10px 0 0;
   color: var(--gold);
   font-size: 14px;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .history-item {
@@ -6816,7 +6816,7 @@ tbody tr:hover td {
   padding: 7px 10px;
   font-size: .74rem;
   font-weight: 800;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .erp-status.ativo {
@@ -6927,7 +6927,7 @@ body {
   font-family: var(--title-font);
   font-size: 18px;
   letter-spacing: 5px;
-  text-transform: uppercase;
+  text-transform: none;
   color: var(--gold);
 }
 
@@ -8669,7 +8669,7 @@ body {
   font-size: .78rem;
   font-weight: 900;
   letter-spacing: .03em;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .booking-date-card,
@@ -9392,7 +9392,7 @@ body {
   background: var(--white);
   color: var(--brown-dark);
   font-size: .72rem;
-  text-transform: uppercase;
+  text-transform: none;
   letter-spacing: .04em;
 }
 
@@ -9623,7 +9623,7 @@ body {
   margin: 0;
   font-size: 12px;
   color: #8a7d73;
-  text-transform: uppercase;
+  text-transform: none;
   letter-spacing: .04em;
 }
 
@@ -10599,7 +10599,7 @@ body,
   color: #746454;
   font-size: .75rem;
   font-weight: 800;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .alert-card-heading em {
@@ -10986,7 +10986,7 @@ body,
     text-align: left;
     font-size: 11px;
     letter-spacing: .04em;
-    text-transform: uppercase;
+    text-transform: none;
     font-weight: 800;
     color: var(--muted);
   }
@@ -11093,7 +11093,7 @@ body,
   color: #B85C5C;
 }
 .confirm-delete-message { margin: 0; color: var(--brown-dark); line-height: 1.5; }
-.confirm-delete-field strong { color: #B85C5C; text-transform: uppercase; letter-spacing: .03em; }
+.confirm-delete-field strong { color: #B85C5C; text-transform: none; letter-spacing: .03em; }
 
 /* ============================================================
    Componentes reutilizáveis: Button (ghost), StatusBadge (tons), Checkbox, foco
@@ -11382,7 +11382,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--gold); width: 
 @media (max-width: 900px) { .landing-hero { grid-template-columns: 1fr; } }
 .landing-kicker {
   display: inline-flex; align-items: center; gap: 7px;
-  font-size: 13px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  font-size: 13px; font-weight: 600; letter-spacing: .04em; text-transform: none;
   color: var(--gold-dark);
 }
 .landing-hero-copy h1 {
@@ -11406,7 +11406,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--gold); width: 
   box-shadow: 0 10px 30px rgb(from var(--brown-dark) r g b / .06);
 }
 .landing-hero-cards article svg { grid-row: span 2; align-self: center; color: var(--gold-dark); }
-.landing-hero-cards article span { font-size: 12px; color: #8a8078; text-transform: uppercase; letter-spacing: .04em; }
+.landing-hero-cards article span { font-size: 12px; color: #8a8078; text-transform: none; letter-spacing: .04em; }
 .landing-hero-cards article strong { font-size: 17px; font-family: var(--title-font, "Outfit", sans-serif); }
 
 .landing-section { max-width: 1140px; margin: 0 auto; padding: 56px 24px; }
@@ -11809,7 +11809,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--gold); width: 
   font-size: .76rem;
   font-weight: 800;
   letter-spacing: .08em;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .communications-intro p {

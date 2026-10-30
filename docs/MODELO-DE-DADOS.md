@@ -22,6 +22,28 @@ bootstrap de banco não está desligado — em produção, só com
 `ALLOW_LEGACY_GLOBAL_BOOTSTRAP=true` (`db/migrationPolicy.js`); as migrations
 rodam pelo CLI `backend/scripts/migrations.mjs`.
 
+## Contas financeiras e embalagens — 30/10/2026
+
+As migrations tenant `0054` e `0055` acrescentam:
+
+- `financial_accounts`: tipo, saldo inicial datado e atividade da conta.
+- `financial_account_movements`: origem, destino, valor, data, identificação da
+  fonte, chave idempotente e vínculo único de estorno. Alteração/exclusão é
+  bloqueada; correções geram lançamentos adicionais. As funções dos gatilhos
+  congelam o `search_path` da clínica durante a instalação.
+- `payments.financial_account_id` e `card_surcharge_amount`;
+  `financial_entries.financial_account_id`; eventos `financial_entry_payments`
+  com conta, taxa, acréscimo e fotografia da tabela. Pagamentos agregados de um
+  recebível são excluídos da movimentação bancária: os eventos efetivos individuais
+  são a fonte, permitindo dividir recebimentos entre contas sem duplicação.
+- `card_fee_tables.fee_policy` e `source_details`: política absorvida/repassada e
+  referência informativa. Não há preenchimento automático das taxas contratuais.
+- `purchase_order_items.purchase_purpose`: revenda/consumo, preservando o fator
+  e a unidade de compra já armazenados no item. O saldo é em unidades individuais.
+
+Contas a pagar/receber não representam dinheiro disponível antes da baixa.
+Transferências e ajustes de conferência não são receita/despesa da operação.
+
 ## Convenções
 
 - Chaves primárias usam `SERIAL`, exceto tabelas de configuração de linha única

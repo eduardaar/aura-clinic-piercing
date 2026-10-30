@@ -199,7 +199,7 @@
     font-size: 12px;
     font-weight: 700;
     color: var(--muted);
-    text-transform: uppercase;
+    text-transform: none;
     letter-spacing: .04em;
   }
 
@@ -260,7 +260,7 @@
     font-size: 12px;
     font-weight: 800;
     letter-spacing: .06em;
-    text-transform: uppercase;
+    text-transform: none;
   }
 
   @media (max-width: 1100px) {

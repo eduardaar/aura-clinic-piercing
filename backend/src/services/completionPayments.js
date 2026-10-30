@@ -12,12 +12,15 @@ export function normalizeCompletionPayments(rawPayments) {
     const method = String(item.method || "Pix").trim();
     if (item.amount === "" || item.amount === null || !Number.isFinite(amount) || amount < 0) throw new Error("Informe um valor válido para cada pagamento.");
     if (!Number.isInteger(installments) || installments < 1) throw new Error("Informe uma quantidade inteira de parcelas, a partir de 1.");
-    if (!Number.isFinite(fee) || fee < 0 || fee > amount) throw new Error("A taxa deve estar entre zero e o valor do pagamento.");
+    if (!Number.isFinite(fee) || fee < 0 || (fee > amount && !(item.fee_policy === "customer" && item.card_fee_table_id))) throw new Error("A taxa deve estar entre zero e o valor do pagamento.");
     if (!["pago", "confirmado", "pendente"].includes(status)) throw new Error("Status do pagamento inválido.");
     if (!method) throw new Error("Informe a forma de pagamento.");
     const date = item.expected_receipt_date || null;
     if (date && (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(new Date(`${date}T12:00:00Z`).getTime()) || (date && new Date(`${date}T12:00:00Z`).toISOString().slice(0, 10) !== date))) throw new Error("Previsão de recebimento inválida.");
     return { amount: Math.round(amount * 100) / 100, method, status, installments, fee_amount: Math.round(fee * 100) / 100, expected_receipt_date: date, notes: String(item.notes || ""),
+        ...(item.fee_policy !== undefined ? { fee_policy: String(item.fee_policy) } : {}),
+        ...(item.quoted_charged_amount !== undefined ? { quoted_charged_amount: item.quoted_charged_amount } : {}),
+        ...(item.financial_account_id !== undefined ? { financial_account_id: item.financial_account_id } : {}),
         ...(item.card_fee_table_id ? { card_fee_table_id: Number(item.card_fee_table_id) } : {}),
       };
   }).filter((item) => item.amount > 0);

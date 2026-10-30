@@ -23,9 +23,10 @@ test("sincronização do razão: status explícito, crédito aplicado fora e esp
   assert.match(PAYMENT_LEDGER_STATUS_SQL, /'refunded','estornado'\) THEN 'refunded'/);
   const statements = [];
   await syncFinanceSources({ async run(sql) { statements.push(sql); } });
-  const payments = statements[0];
+  const payments = statements.find((sql) => sql.includes("'payment', p.id, 'payment:'"));
   assert.match(payments, /p\.status <> 'credito_aplicado'/, "crédito aplicado não é espelhado como receita");
   assert.match(payments, /source_type='service_execution'/, "pendente coberto pelo recebível da execução não duplica");
-  assert.match(statements[1], /SET status='canceled'/);
-  assert.match(statements[1], /NOT EXISTS/, "espelho sem pagamento válido é cancelado, nunca apagado");
+  const canceledMirror = statements.find((sql) => sql.includes("UPDATE financial_entries fe"));
+  assert.match(canceledMirror, /SET status='canceled'/);
+  assert.match(canceledMirror, /NOT EXISTS/, "espelho sem pagamento válido é cancelado, nunca apagado");
 });

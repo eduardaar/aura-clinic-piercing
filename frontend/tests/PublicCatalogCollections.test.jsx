@@ -47,6 +47,17 @@ afterEach(cleanup);
 const results = () => document.querySelector("#catalog-products");
 
 describe("PublicCatalog · vitrine comercial", () => {
+  it("mais vendidos usa unidades em 30 dias, sem promover preço alto ou destaque manual", () => {
+    catalog.data.catalogSections = [{ section_type: "best_sellers", is_active: 1, title: "Mais vendidos", items_limit: 8 }];
+    catalog.data.campaigns = [];
+    catalog.data.items = [product(1, { sale_value: 10, units_sold_30d: 10 }), product(2, { sale_value: 500, units_sold_30d: 2 }), product(3, { is_featured: 1, units_sold_30d: 0 })];
+    render(<PublicCatalog />);
+    const ranking = screen.getByRole("heading", { name: "Mais vendidos" }).closest("section");
+    expect(ranking).toHaveTextContent("Joia 1");
+    expect(ranking).toHaveTextContent("Joia 2");
+    expect(ranking).not.toHaveTextContent("Joia 3");
+    expect(ranking.textContent.indexOf("Joia 1")).toBeLessThan(ranking.textContent.indexOf("Joia 2"));
+  });
   it.each([
     ["America/Sao_Paulo", "Disponível até 31 de outubro"],
     ["Asia/Tokyo", "Disponível até 01 de novembro"]

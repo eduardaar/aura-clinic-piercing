@@ -150,7 +150,7 @@
   font-size: 10.5px;
   font-weight: 600;
   letter-spacing: .12em;
-  text-transform: uppercase;
+  text-transform: none;
   color: rgb(from var(--gold) r g b / .8);
   white-space: nowrap;
   overflow: hidden;
@@ -176,7 +176,7 @@
   font-size: 10px;
   font-weight: 700;
   letter-spacing: .14em;
-  text-transform: uppercase;
+  text-transform: none;
   color: rgb(226 234 243 / .67);
 }
 .nav-group-label:first-child { padding-top: 6px; }
@@ -274,7 +274,7 @@
   font-size: 9px;
   font-weight: 700;
   letter-spacing: .08em;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .sidebar nav button:focus-visible,
@@ -368,7 +368,7 @@
   font-size: 10px;
   font-weight: 700;
   letter-spacing: .13em;
-  text-transform: uppercase;
+  text-transform: none;
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
@@ -693,7 +693,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .topbar-page-context span { color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+  .topbar-page-context span { color: var(--muted); font-size: 10px; font-weight: 700; text-transform: none; letter-spacing: .08em; }
   .topbar-page-context strong { color: var(--ink); font-size: 15px; }
   .topbar-actions { margin-left: 0; }
 }
@@ -1101,7 +1101,7 @@
   color: var(--muted);
   font-size: 10.5px;
   letter-spacing: .08em;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .dataview-table tbody td {
@@ -1399,7 +1399,7 @@
   font-size: 11px;
   font-weight: 700;
   letter-spacing: .07em;
-  text-transform: uppercase;
+  text-transform: none;
   color: var(--muted);
 }
 .dataview-filter select,
@@ -1749,7 +1749,7 @@
   background: color-mix(in srgb, var(--nude) 24%, var(--white));
   color: var(--brown-dark);
   font-weight: 750;
-  text-transform: uppercase;
+  text-transform: none;
   letter-spacing: .04em;
 }
 .customization-card .catalog-layout-component {

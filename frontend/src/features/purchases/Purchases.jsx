@@ -47,9 +47,10 @@ function emptyPurchase() {
 }
 
 function emptyItem() {
-  return { item_type: "product", product_id: "", consumable_id: "", product_variant_id: "", quantity: /** @type {string | number} */ (1), unit_cost: "",
+  return { item_type: "product", product_id: "", consumable_id: "", product_variant_id: "", quantity: /** @type {string | number} */ (1), unit_cost: /** @type {string | number} */ (""),
     purchase_unit: "unidade",
     stock_conversion_factor: /** @type {string | number} */ (1),
+    new_inventory_item: /** @type {Record<string, any> | null} */ (null),
   };
 }
 
@@ -110,14 +111,14 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
       setActiveStep("details");
     },
   });
-  // biome-ignore lint/correctness/useExhaustiveDependencies: createSignal representa uma borda de evento externa.
   useEffect(() => { if (createSignal) setPurchaseChoice(true); }, [createSignal]);
 
   const purchasePayload = asObject(data);
   const purchases = Array.isArray(data) ? data : asArray(purchasePayload.items);
-  const safeProducts = asArray(products);
-  const safeConsumables = safeProducts.filter((item) => Boolean(Number(item.can_use_in_service)) && item.status !== "arquivado");
-  const selectedProduct = safeProducts.find((item) => String(item.id) === String(line.product_id));
+  const inventoryItems = asArray(products);
+  const safeProducts = inventoryItems.filter((item) => Number(item.can_sell ?? 1) === 1 && item.status !== "arquivado");
+  const safeConsumables = inventoryItems.filter((item) => Boolean(Number(item.can_use_in_service)) && item.status !== "arquivado");
+  const selectedProduct = inventoryItems.find((item) => String(item.id) === String(line.product_id));
   const selectedConsumable = safeConsumables.find((item) => String(item.id) === String(line.consumable_id));
   const variants = asArray(selectedProduct?.variants).filter((item) => Number(item.is_active ?? 1));
   const selectedVariant = variants.find((item) => String(item.id) === String(line.product_variant_id));
@@ -170,6 +171,7 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
 
   function selectProduct(productId) {
     const product = safeProducts.find((item) => String(item.id) === String(productId));
+    if (!product || String(line.product_id) === String(productId)) return;
     const variant = asArray(product?.variants).find((item) => Number(item.is_active ?? 1)) || null;
     setLine({
       ...emptyItem(),
@@ -177,14 +179,16 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
       stock_conversion_factor: product?.purchase_to_stock_factor || 1,
       purchase_unit: product?.purchase_unit || "unidade",
       product_variant_id: variant?.id ? String(variant.id) : "",
-      unit_cost: variant?.cost_value ?? variant?.purchase_cost ?? product?.cost_value ?? "",
+      unit_cost: Number(variant?.cost_value ?? variant?.purchase_cost ?? product?.cost_value ?? 0) * Number(product?.purchase_to_stock_factor || 1) || "",
     });
   }
 
   function selectConsumable(consumableId) {
     const consumable = safeConsumables.find((item) => String(item.id) === String(consumableId));
+    // Eventos do select ao montar a edição não devem reiniciar a quantidade.
+    if (!consumable || String(line.consumable_id) === String(consumableId)) return;
     const variant = asArray(consumable?.variants).find((item) => Number(item.is_active ?? 1)) || null;
-    setLine({ ...emptyItem(), item_type: "consumable", product_id: consumableId, consumable_id: consumableId, product_variant_id: variant?.id ? String(variant.id) : "", unit_cost: variant?.cost_value ?? consumable?.cost_value ?? "",
+    setLine({ ...emptyItem(), item_type: "consumable", product_id: consumableId, consumable_id: consumableId, product_variant_id: variant?.id ? String(variant.id) : "", unit_cost: Number(variant?.cost_value ?? consumable?.cost_value ?? 0) * Number(consumable?.purchase_to_stock_factor || 1) || "",
       stock_conversion_factor: consumable?.purchase_to_stock_factor || 1,
       purchase_unit: consumable?.purchase_unit || "unidade",
     });
@@ -198,20 +202,22 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
     setLine({
       ...line,
       product_variant_id: variantId,
-      unit_cost: variant?.cost_value ?? variant?.purchase_cost ?? line.unit_cost,
+      unit_cost: variant ? Number(variant.cost_value ?? variant.purchase_cost ?? 0) * Number(line.stock_conversion_factor || 1) : line.unit_cost,
     });
   }
 
   function addItem() {
     const isConsumable = line.item_type === "consumable";
-    if (isConsumable && !selectedConsumable) return setError("Selecione um material para adicionar.");
-    if (!isConsumable && !selectedProduct) return setError("Selecione um produto para adicionar.");
+    const newItem = line.new_inventory_item;
+    if (newItem && !String(newItem.name || "").trim()) return setError("Informe o nome do novo produto ou material.");
+    if (!newItem && isConsumable && !selectedConsumable) return setError("Selecione um material para adicionar.");
+    if (!newItem && !isConsumable && !selectedProduct) return setError("Selecione um produto para adicionar.");
     if (variants.length && !selectedVariant) return setError("Selecione a variação do item para adicionar.");
     if (asNumber(line.quantity) <= 0) return setError("A quantidade deve ser maior que zero.");
     if (!Number.isInteger(Number(line.stock_conversion_factor)) || Number(line.stock_conversion_factor) <= 0)
       return setError("Informe um conteúdo por embalagem inteiro e positivo.");
     if (asNumber(line.unit_cost) <= 0) return setError("O custo unitário deve ser maior que zero.");
-    const label = isConsumable
+    const label = newItem ? String(newItem.name).trim() : isConsumable
       ? `${selectedConsumable.name}${selectedVariant ? ` - ${selectedVariant.variation_name || selectedVariant.sku}` : ""}`
       : selectedVariant
       ? `${selectedProduct.name} - ${selectedVariant.variation_name || selectedVariant.sku}`
@@ -222,8 +228,10 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
             ? crypto.randomUUID()
             : `purchase-item-${Date.now()}-${Math.random()}`),
         item_type: isConsumable ? "consumable" : "product",
-        product_id: isConsumable ? Number(selectedConsumable.id) : Number(selectedProduct.id),
-        consumable_id: isConsumable ? Number(selectedConsumable.id) : null,
+        purchase_purpose: isConsumable ? "consumption" : "resale",
+        product_id: newItem ? null : isConsumable ? Number(selectedConsumable.id) : Number(selectedProduct.id),
+        consumable_id: !newItem && isConsumable ? Number(selectedConsumable.id) : null,
+        new_inventory_item: newItem ? { ...newItem, kind: isConsumable ? "consumable" : "product" } : undefined,
         product_variant_id: selectedVariant?.id ? Number(selectedVariant.id) : null,
         item_name: label,
         quantity: Number(line.quantity),
@@ -249,6 +257,9 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
       product_variant_id: item.product_variant_id ? String(item.product_variant_id) : "",
       quantity: Number(item.quantity || 1),
       unit_cost: item.unit_cost,
+      stock_conversion_factor: Number(item.stock_conversion_factor || 1),
+      purchase_unit: item.purchase_unit || "unidade",
+      new_inventory_item: item.new_inventory_item || null,
     });
   }
 
@@ -493,9 +504,11 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
               value: (item) => asNumber(item.total_value),
               render: (item) => currency.format(asNumber(item.total_value)),
             },
+            { key: "paid_value", label: "Já pago", render: (item) => currency.format(asNumber(item.paid_value)) },
+            { key: "pending_value", label: "A pagar", render: (item) => currency.format(asNumber(item.pending_value)) },
             {
               key: "status",
-              label: "Status",
+              label: "Entrada no estoque",
               value: (item) => purchaseStatusLabel(item.status),
               render: (item) => <StatusBadge status={item.status}>{purchaseStatusLabel(item.status)}</StatusBadge>,
             },
@@ -615,7 +628,7 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
 
             {activeStep === "items" && (
               <FormWorkflow.Page title="Itens da compra" description="Monte a lista em uma única tela, sem abrir formulários sobrepostos.">
-          <FormSection title="Adicionar item" description="Informe o custo unitário negociado.">
+          <FormSection title="Adicionar item" description="Informe quantas embalagens chegaram, o conteúdo de cada uma e o preço por embalagem. O pagamento é registrado separadamente em Contas a pagar.">
             {line.item_type === "consumable" && (
               <div className="section-inline-header">
                 <span>{productsLoading ? "Carregando materiais…" : safeConsumables.length ? "Materiais cadastrados no estoque, inclusive os que também podem ser vendidos." : "Nenhum material ativo cadastrado. Em Estoque → Materiais de procedimento, cadastre ou habilite um item para uso em procedimento."}</span>
@@ -633,7 +646,7 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
                 <option value="product">Produto para revenda</option>
                 <option value="consumable">Material de consumo</option>
               </Select>
-              {line.item_type === "consumable" ? (
+              {!line.new_inventory_item && (line.item_type === "consumable" ? (
                 <Select label="Material" value={line.consumable_id} onChange={selectConsumable}>
                   <option value="">Selecione</option>
                   {safeConsumables.map((item) => (
@@ -648,7 +661,12 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
                   </option>
                 ))}
               </Select>
-                    )}
+                    ))}
+              {line.new_inventory_item && <>
+                <Input label="Nome do novo item" value={line.new_inventory_item.name || ""} onChange={(name) => setLine({ ...line, new_inventory_item: { ...line.new_inventory_item, name } })} />
+                <Input label="Unidade individual no estoque" value={line.new_inventory_item.stock_unit || "unidade"} onChange={(stock_unit) => setLine({ ...line, new_inventory_item: { ...line.new_inventory_item, stock_unit } })} />
+                <small>O cadastro será criado junto com a compra confirmada. O saldo entra somente uma vez.</small>
+              </>}
               {(line.item_type === "product" || variants.length > 0) && (
                       <Select label="Variação" value={line.product_variant_id} onChange={selectVariant}>
                 <option value="" disabled={variants.length > 0}>
@@ -664,7 +682,7 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
               <Input
                 type="number"
                 min="1"
-                label="Quantidade"
+                label="Quantidade de embalagens"
                 value={line.quantity}
                 onChange={(quantity) => setLine({ ...line, quantity })}
               />
@@ -677,7 +695,7 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
                 type="number"
                 min="1"
                       step="1"
-                      label="Conteúdo por embalagem"
+                      label="Unidades em cada embalagem"
                       value={line.stock_conversion_factor ?? 1}
                       onChange={(stock_conversion_factor) => setLine({ ...line, stock_conversion_factor })}
                     />
@@ -685,14 +703,17 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
                       type="number"
                       min="0.01"
                 step="0.01"
-                label="Custo unitário"
+                label="Preço por embalagem"
                 value={line.unit_cost}
                 onChange={(unit_cost) => setLine({ ...line, unit_cost })}
               />
             </div>
+            <Button variant="secondary" type="button" onClick={() => setLine({ ...emptyItem(), item_type: line.item_type, new_inventory_item: line.new_inventory_item ? null : { name: "", stock_unit: "unidade" } })}>
+              {line.new_inventory_item ? "Escolher item já cadastrado" : "Cadastrar novo item nesta compra"}
+            </Button>
             <p>
                     Entrada prevista: {Number(line.quantity || 0) * Number(line.stock_conversion_factor || 1)}{" "}
-                    {selectedProduct?.stock_unit || "unidades"}. Custo por unidade de estoque:{" "}
+                    {line.new_inventory_item?.stock_unit || selectedProduct?.stock_unit || "unidades"}. Custo por unidade de estoque:{" "}
                     {currency.format(Number(line.unit_cost || 0) / Number(line.stock_conversion_factor || 1))}.
                   </p>
             <Button type="button" variant="secondary" onClick={addItem}>
@@ -796,10 +817,10 @@ export function Purchases({ onNavigate, createSignal = 0 }) {
                   <div key={item.id}>
                     <span>
                       <strong>{item.item_name || item.product_name || item.consumable_name}</strong>
-                      <small>{item.item_type === "consumable" ? "Material de consumo" : item.variation_name || item.variant_sku || "Sem variação"}</small>
+                      <small>{item.purchase_purpose === "consumption" ? "Material de consumo" : "Produto para revenda"} · {item.variation_name || item.variant_sku || "Sem variação"}</small>
                     </span>
                     <em>
-                      {item.quantity} un. · {currency.format(asNumber(item.line_total))}
+                      {item.quantity} {item.purchase_unit || "embalagem(ns)"} × {item.stock_conversion_factor || 1} = {Number(item.quantity) * Number(item.stock_conversion_factor || 1)} {item.stock_unit || "unidades"} · {currency.format(asNumber(item.line_total))}
                     </em>
                   </div>
                 ))}

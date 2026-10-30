@@ -88,7 +88,7 @@
     display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 10px; margin: 0;
   }
   .service-info-facts > div { padding: 12px 14px; border: 1px solid var(--sp-line, #e8ddd0); border-radius: 14px; background: var(--sp-bg, #faf7f2); }
-  .service-info-facts dt { color: var(--sp-muted, #75685e); font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
+  .service-info-facts dt { color: var(--sp-muted, #75685e); font-size: .78rem; font-weight: 700; text-transform: none; letter-spacing: .03em; }
   .service-info-facts dd { margin: 4px 0 0; font-weight: 700; }
   .service-info-section { display: grid; gap: 8px; }
   .service-info-section h4 { margin: 0; font-size: 1rem; color: var(--sp-accent-strong, #5b4232); }
