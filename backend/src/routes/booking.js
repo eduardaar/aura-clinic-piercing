@@ -32,6 +32,7 @@ class ReservationConflict extends Error {}
 // Cupom que deixou de valer entre a cotação e a gravação (ex.: outra pessoa
 // usou a última vaga): aborta a transação e volta como 400 para o cliente.
 class CouponConflict extends Error {}
+class BookingSlotConflict extends Error {}
 
 function publicBookingKey(req, body) {
   const provided = String(req.get("Idempotency-Key") || body.idempotency_key || body.public_booking_token || "").trim();
@@ -334,10 +335,15 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
 
   // Valida a composição completa antes de criar/alterar o cadastro da cliente.
   const durationMinutes = bookingItems.filter((item) => item.item_type === "service").reduce((sum, item) => sum + Number(item.duration_minutes || 0) * Number(item.quantity || 1), 0) || Number(service.duration_minutes || 40);
-  const multiItemSlots = await availableBookingSlots(db, { service: { ...service, duration_minutes: durationMinutes,
+  const slotSelection = { service: { ...service, duration_minutes: durationMinutes,
     scheduling_interval_minutes: Math.max(0, ...serviceRulesSnapshot.map((rule) => Number(rule.scheduling_interval_minutes || 0))),
-    minimum_advance_minutes: Math.max(0, ...serviceRulesSnapshot.map((rule) => Number(rule.minimum_advance_minutes || 0))) }, professionalId, date });
-  if (!multiItemSlots.some((slot) => slot.time === time)) return res.status(409).json({ error: "O horário não está disponível para a duração total dos serviços selecionados." });
+    minimum_advance_minutes: Math.max(0, ...serviceRulesSnapshot.map((rule) => Number(rule.minimum_advance_minutes || 0))) }, professionalId, date };
+  const multiItemSlots = await availableBookingSlots(db, slotSelection);
+  if (!multiItemSlots.some((slot) => slot.time === time)) {
+    const repeated = (await listAppointments(db, "WHERE a.public_booking_key = ?", [bookingKey]))[0];
+    if (repeated) return res.status(200).json({ ...repeated, idempotent: true });
+    return res.status(409).json({ error: "O horário não está disponível para a duração total dos serviços selecionados.", code: "booking_slot_unavailable" });
+  }
   const endTime = addMinutesToTime(time, durationMinutes);
 
   // Ciência das informações completas: obrigatória só nos serviços marcados
@@ -368,7 +374,7 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
   const taxId = bookingTaxId({ value: body.cpf || body.tax_id, requiresOnlineCharge: onlinePayment });
   if (!taxId.ok) return res.status(400).json({ error: taxId.error });
 
-  const client = await upsertClient(db, {
+  const clientInput = {
     full_name: body.full_name,
     whatsapp: body.whatsapp,
     instagram: body.instagram || "",
@@ -378,7 +384,8 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
     // mesmo documento gravado de três jeitos conforme a máscara do formulário.
     tax_id: taxId.value,
     email: body.email || ""
-  }, { publicFlow: true });
+  };
+  let client;
   const referencePhoto = req.files?.reference_photo?.[0] ? `/api/private-files/${req.files.reference_photo[0].filename}` : "";
   const paymentProof = req.files?.payment_proof?.[0] ? `/api/private-files/${req.files.payment_proof[0].filename}` : "";
 
@@ -393,6 +400,18 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
   let outcome;
   try {
     outcome = await db.transaction(async (tx) => {
+      // Reenvios da mesma solicitação e pedidos para a mesma profissional
+      // precisam esperar o commit anterior antes de conferir o horário.
+      await tx.get("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", [`booking:${req.tenant.id}:${bookingKey}`]);
+      await tx.get("SELECT id FROM professionals WHERE id=? FOR UPDATE", [professionalId]);
+      const repeated = await tx.get("SELECT id FROM appointments WHERE public_booking_key=?", [bookingKey]);
+      if (repeated) return { appointmentId: repeated.id, paymentIntent: null, idempotent: true };
+      const currentSlots = await availableBookingSlots(tx, slotSelection);
+      if (!currentSlots.some((slot) => slot.time === time)) {
+        throw new BookingSlotConflict("O horário acabou de ser ocupado. Escolha outro horário disponível.");
+      }
+      await tx.get("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", [`booking-client:${req.tenant.id}:${String(body.whatsapp).replace(/\D/g, "")}`]);
+      client = await upsertClient(tx, clientInput, { publicFlow: true });
       // Revalida o cupom com a linha travada e o cliente já resolvido: a
       // contagem de usos e a gravação do uso ficam serializadas, e o limite
       // por cliente passa a valer também no agendamento público.
@@ -507,11 +526,16 @@ router.post("/api/booking/requests", withFeature("online_booking", async (req, r
       return { appointmentId: result.returnedId, paymentIntent: intent };
     });
   } catch (error) {
+    if (error instanceof BookingSlotConflict) return res.status(409).json({ error: error.message, code: "booking_slot_unavailable" });
     if (error instanceof ReservationConflict) return res.status(409).json({ error: error.message });
     if (error instanceof CouponConflict) return res.status(400).json({ valid: false, error: error.message });
     throw error;
   }
   const { appointmentId } = outcome;
+  if (outcome.idempotent) {
+    const repeated = (await listAppointments(db, "WHERE a.id = ?", [appointmentId]))[0];
+    return res.status(200).json({ ...repeated, idempotent: true });
+  }
   let paymentIntent = outcome.paymentIntent;
 
   // Cobrança online FORA da transação, e best-effort.

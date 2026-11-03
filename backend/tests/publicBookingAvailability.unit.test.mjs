@@ -74,7 +74,7 @@ test("duração inteira, antecedência e intervalo obrigatório permanecem respe
     result.map((slot) => slot.time),
     ["10:00", "13:00"],
   );
-  const now = new Date(`${date}T13:00:00`);
+  const now = new Date(`${date}T13:00:00-03:00`);
   const future = await slots({}, { now, service: { id: 1, duration_minutes: 30, minimum_advance_minutes: 60 } });
   assert.deepEqual(
     future.map((slot) => slot.time),

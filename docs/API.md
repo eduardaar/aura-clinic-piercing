@@ -183,6 +183,14 @@ separadamente por `requireWithinLimit`.
 | `POST` | `/api/error-logs` | Ingestão de erro do frontend. |
 | `GET`, `POST` | `/api/webhooks/asaas`, `/api/webhooks/asaas/:slug` | Webhooks autenticados pelo token do Asaas. |
 
+O agendamento público responde `409` com `code: booking_slot_unavailable` quando
+o horário deixa de comportar os serviços selecionados. A tela deve reconsultar
+os horários e preservar os dados do cliente. A disponibilidade é conferida
+novamente dentro da transação, com serialização por profissional e chave de
+idempotência; reenvios da mesma solicitação retornam o registro existente com
+`200` e `idempotent: true`. Datas de agenda e antecedência usam o fuso de São
+Paulo, independentemente do fuso do processo do servidor.
+
 ## Operação da clínica
 
 | Domínio | Rotas |

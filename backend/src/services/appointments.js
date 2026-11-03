@@ -538,7 +538,7 @@ export async function availableBookingSlots(db, { service, professionalId, date,
     : availabilityWindows;
   const slots = [];
   const serviceInterval = Math.max(0, Number(service.scheduling_interval_minutes || 0));
-  const minimumStart = now.getTime() + Math.max(0, Number(service.minimum_advance_minutes || 0)) * 60_000;
+  const minimumStart = localTimestamp(new Date(now.getTime() + Math.max(0, Number(service.minimum_advance_minutes || 0)) * 60_000));
   for (const window of releasedWindows) {
     const duration = Number(service.duration_minutes || window.duration_minutes || 40);
     const interval = Math.max(serviceInterval, Number(window.buffer_minutes || 0));
@@ -548,7 +548,8 @@ export async function availableBookingSlots(db, { service, professionalId, date,
       const end = cursor + duration;
       const slotTime = minutesToTime(start);
       if (!publicSlotIsReleased(releases, date, slotTime, minutesToTime(end))) continue;
-      if (new Date(`${date}T${slotTime}:00`).getTime() < minimumStart) continue;
+      // Datas da agenda são locais da clínica; o contêiner pode estar em UTC.
+      if (`${date} ${slotTime}:00` < minimumStart) continue;
       if (window.lunch_start && window.lunch_end && rangesOverlap(start, end, timeToMinutes(window.lunch_start), timeToMinutes(window.lunch_end))) continue;
       if (appointments.some((item) => {
         const existingInterval = Math.max(0, ...parseServiceRulesSnapshot(item.service_rules_snapshot).map((rule) => Number(rule.scheduling_interval_minutes || 0)));

@@ -1,27 +1,20 @@
 {
-  "id": "2026-11-03-revisao-estoque-e-catalogo",
+  "id": "2026-11-03-recuperacao-do-agendamento-online",
   "announcements": [
     {
-      "slug": "ordenacao-do-catalogo-e-filtros-no-celular",
-      "title": "Catálogo respeita a ordenação escolhida",
-      "summary": "Lançamentos, preços e nomes seguem a opção do visitante, com filtros também disponíveis no celular.",
-      "category": "Catálogo",
-      "content": "Ao escolher Lançamentos, os produtos marcados como lançamento aparecem primeiro, dos mais novos para os mais antigos. A escolha do visitante passa a prevalecer sobre a ordem definida na grade do catálogo. Os filtros de categoria, preço e demais características continuam sendo respeitados.\n\nNo celular, os filtros e a ordenação ficam acessíveis na área de descoberta. Para mostrar um novo produto ao público, mantenha ativas as opções Pode aparecer no catálogo e Visível no catálogo público."
+      "slug": "agendamento-sem-perder-a-escolha",
+      "title": "Mais continuidade no agendamento online",
+      "summary": "Links antigos, falhas de conexão e horários recém-ocupados têm orientação para continuar.",
+      "category": "Agendamento",
+      "content": "A profissional escolhida pelo link é preservada enquanto os dados do estúdio carregam. Quando o link aponta para um serviço antigo ou uma profissional que não atende a seleção, o agendamento orienta a revisar a escolha.\n\nSe a conexão falhar no envio, os dados preenchidos permanecem na tela e você pode tentar novamente. Se o horário acabar de ser ocupado, é possível escolher outro sem redigitar nome e WhatsApp. Combinações de serviços sem profissional em comum também recebem uma explicação."
     },
     {
-      "slug": "cadastro-preservado-nas-edicoes",
-      "title": "Mais proteção para o cadastro dos produtos",
-      "summary": "Alterações de selos e publicação preservam os valores; variações inativas mantêm seu estado.",
-      "category": "Estoque",
-      "content": "Alterar apenas o nome, as observações, os selos ou a publicação preserva os preços e custos cadastrados. Variações inativas também mantêm seu estado ao salvar, sem voltar a somar unidades na vitrine.\n\nO pedido público passa a respeitar todas as opções de publicação do produto, incluindo a ativação da loja virtual."
-    },
-    {
-      "slug": "alertas-de-estoque-mais-claros",
-      "title": "Estoque baixo e crítico com indicação própria",
-      "summary": "O estoque mínimo zero é preservado e a lista diferencia Baixo estoque de Crítico.",
-      "category": "Estoque",
-      "content": "O mínimo informado inclui a própria quantidade limite. Por exemplo: com mínimo 5, de 1 a 5 unidades é crítico; de 6 a 10 é baixo estoque; acima de 10 é disponível. Zero unidades indica esgotado.\n\nA lista passa a mostrar Baixo estoque com seu próprio filtro. O mínimo zero também é mantido ao cadastrar, editar e movimentar os produtos."
+      "slug": "horarios-no-fuso-da-clinica",
+      "title": "Horários e solicitações com mais consistência",
+      "summary": "A disponibilidade respeita o horário de São Paulo e as solicitações simultâneas recebem nova conferência.",
+      "category": "Agenda",
+      "content": "A consulta de horários e a antecedência mínima passam a seguir o horário da clínica em São Paulo, inclusive quando o servidor usa outro fuso.\n\nAntes de registrar uma solicitação online, o horário é conferido novamente. Duas pessoas tentando reservar o mesmo horário recebem uma resposta consistente: a segunda precisa escolher outra opção. O reenvio da mesma solicitação reaproveita o agendamento já registrado."
     }
   ],
-  "source_digest": "4cde4fbbacbb6b7791d9aeaae8e25fa0272031cfab3d2afc1b3809732b21837b"
+  "source_digest": "f4a2a87437ccde857e27c13b05b97dcfeec2f7a1c4105e7fbb667bedbec48043"
 }

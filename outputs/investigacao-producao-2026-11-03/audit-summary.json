@@ -1,0 +1,32 @@
+{
+  "capturedAt": "2026-11-03T12:01:09Z",
+  "sourceCommit": "38240ca142a90accb01312b5540e35a43e0b8d90",
+  "inventory": {
+    "products": 143,
+    "units": 418,
+    "negative_products": 0,
+    "active_products": 130,
+    "published_products": 96
+  },
+  "variants": {
+    "total": 215,
+    "active": 214,
+    "active_units": 418,
+    "negative": 0,
+    "inactive_with_stock": 1
+  },
+  "issues": {
+    "quantity_mismatches": 0,
+    "archived_price_mismatches": 10,
+    "active_partial_publication": 6,
+    "sellable_products_missing_price": 31,
+    "published_products_with_zero_price": 2
+  },
+  "booking": {
+    "online_services": 14,
+    "online_services_without_professional": 0
+  },
+  "historicalOverlaps": {
+    "pairs": 3
+  }
+}

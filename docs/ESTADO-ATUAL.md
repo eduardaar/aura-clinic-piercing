@@ -1,6 +1,11 @@
 # Estado atual do projeto
 
-> Revisão local de **03/11/2026**: regressões de estoque e catálogo (seção 20),
+> **03/11/2026:** seção 20 publicada no commit `38240ca1`, com
+> [CI e deploy concluídos](https://github.com/eduardaar/aura-clinic-piercing/actions/runs/41631280750).
+> A investigação posterior da produção está na seção 21: backup restaurado
+> localmente, diagnóstico do estoque e correções de agendamento ainda locais.
+
+> Entrega de **03/11/2026**: regressões de estoque e catálogo (seção 20),
 > com correções de ordenação pública, preservação de preços em edições parciais,
 > mínimo zero, variações inativas e checkout de produtos ocultos. Sem migration nova.
 
@@ -600,6 +605,46 @@ Relatório e teste de navegador em
 [outputs/estoque-catalogo-2026-11-03](../outputs/estoque-catalogo-2026-11-03/RELATORIO.md).
 Os testes não alteram registros de produção. A publicação desta revisão deve
 ser conferida no workflow “CI e Deploy” da `main`.
+
+## 21. Investigação da base de produção e agendamento — 03/11/2026
+
+- **Cópia preservada:** backup completo posterior ao deploy, às 09:01 de São
+  Paulo, restaurado no banco local somente leitura
+  `aura_prod_snapshot_20261103_090109`. Simulações em
+  `aura_prod_investigation_20261103`, com credenciais externas e workers
+  desativados. Arquivos brutos e detalhes ficam em `backend/backups/`, fora do Git.
+- **Avaliação:** o serviço atual 19 está ativo e vinculado aos dois
+  profissionais. Os antigos 8 e 17 estão desativados. Links antigos e o efeito
+  que apagava a profissional antes de carregar a configuração explicam caminhos
+  reproduzidos de erro; não foi atribuído todo relato a uma causa única.
+- **Correções da release:** preservação da seleção durante carregamento, recuperação
+  de links inválidos, tentativa após falha de rede, retorno à escolha de horário
+  após conflito, explicação para serviços sem profissional em comum e
+  serialização de pedidos públicos concorrentes/idempotentes.
+- **Fuso:** produção confirmada em UTC. A disponibilidade e a antecedência
+  interpretavam horários da clínica como horários do servidor. Ambas usam agora
+  o horário de São Paulo, com regressões em UTC/São Paulo/Tóquio.
+- **Estoque real:** 143 produtos, 215 variações (214 ativas), 418 unidades,
+  sem saldo negativo ou diferença de quantidade pai × variações. Há seis
+  produtos não arquivados com publicação parcial, 31 vendáveis com alguma
+  variação sem preço e dois publicados com preço zero. Dez pais arquivados têm
+  preço zerado, com preço preservado nas variações. Nenhum saldo ou preço real
+  foi reescrito.
+- **Configuração operacional:** liberação pública da Eduarda termina em 30/11;
+  o curso de 840 minutos não cabe nas janelas cadastradas; um bloqueio de dia
+  inteiro cobre 21–28/11. Essas escolhas dependem da clínica e não foram alteradas.
+- **Navegadores:** Chromium e WebKit em 390/1366 px usando a cópia real,
+  incluindo envio de avaliação, falha de rede, links antigos, troca de
+  profissional e as seis etapas até o resumo. Quatro combinações aprovadas.
+- **Verificação:** suíte backend 815/815, frontend 77 unitários + 424 componentes,
+  tipos/build e lint aprovados. Após mover a resolução da cliente para dentro da
+  transação, mais 25 regressões de concorrência/transação passaram, conferindo
+  também que o reenvio não cria uma segunda ficha de cliente.
+
+Relatório, limites e reprodução em
+[RELATORIO.md](../outputs/investigacao-producao-2026-11-03/RELATORIO.md).
+Sem migration nova. Release `2026-11-03-recuperacao-do-agendamento-online`,
+encaminhada para publicação pelo workflow CI e Deploy no push para `main`.
 
 ## Pendências abertas
 

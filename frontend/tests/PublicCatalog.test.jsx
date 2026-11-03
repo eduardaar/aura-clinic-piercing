@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PublicBooking, PublicCatalog, PublicCheckout } from "../src/pages/PublicExperience";
+import { publicApiFetch } from "../src/lib/api";
 
 const { catalog } = vi.hoisted(() => ({ catalog: { data: null } }));
 vi.mock("../src/lib/api", () => ({
@@ -172,6 +173,7 @@ describe("campos públicos com documentos e cupons", () => {
     expect(coupon).toHaveValue("");
   });
   it("agendamento e documento do responsável permitem editar o meio e apagar todo o documento", async () => {
+    publicApiFetch.mockResolvedValue({ ok: true, json: async () => ({ slots: [{ time: "10:00" }], dates: ["2026-10-09"] }) });
     window.history.replaceState({}, "", "/agendar?t=clinica-a&service_id=1&professional_id=1&appointment_date=2026-10-09&appointment_time=10:00");
     catalog.data.services = [{ id: 1, name: "Perfuração", requires_guardian: true, base_price: 100 }];
     catalog.data.professionals = [{ id: 1, name: "Profissional", service_ids: [1] }];

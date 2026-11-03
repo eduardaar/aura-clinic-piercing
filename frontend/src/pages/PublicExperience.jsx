@@ -2238,6 +2238,7 @@ export function PublicBooking() {
   const [form, setForm] = useState(() => ({ ...defaultPublicBooking(), cpf: "", email: "", birth_date: "", guardian_name: "", guardian_document: "", coupon_code: "" }));
   const [slots, setSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const [slotRefresh, setSlotRefresh] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [confirmed, setConfirmed] = useState(null);
@@ -2246,6 +2247,7 @@ export function PublicBooking() {
   const [serviceCategory, setServiceCategory] = useState("");
   const [acknowledgedIds, setAcknowledgedIds] = useState([]);
   const [logoFailed, setLogoFailed] = useState(false);
+  const [selectionNotice, setSelectionNotice] = useState("");
   const shellRef = useRef(null);
   const stepChanged = useRef(false);
   const safeData = asObject(data);
@@ -2296,10 +2298,21 @@ export function PublicBooking() {
   const whatsappPhone = String(catalogData?.whatsapp_phone || "").trim();
 
   useEffect(() => {
+    if (!data || data.error) return;
+    const validIds = effectiveServiceIds.filter((id) => services.some((service) => String(service.id) === String(id)));
+    if (validIds.length !== effectiveServiceIds.length) {
+      setServiceIds(validIds);
+      setForm((current) => ({ ...current, service_id: validIds[0] || "", professional_id: "", appointment_time: "" }));
+      setStep(1);
+      setSelectionNotice("O serviço do link não está disponível. Escolha um dos serviços atuais para continuar.");
+      return;
+    }
     if (!form.professional_id) return;
     if (professionals.some((professional) => String(professional.id) === String(form.professional_id))) return;
     setForm((current) => ({ ...current, professional_id: "", appointment_time: "" }));
-  }, [form.service_id, form.professional_id, professionals.length]);
+    setStep(2);
+    setSelectionNotice("A profissional do link não está disponível para os serviços selecionados. Escolha uma das opções abaixo.");
+  }, [data, form.service_id, selectedServiceKey, form.professional_id, professionals.length]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2323,6 +2336,10 @@ export function PublicBooking() {
             ? { ...current, appointment_time: "" }
             : current,
         );
+        if (response.ok && form.appointment_time && !nextSlots.some((slot) => slot.time === form.appointment_time)) {
+          setStep((current) => current > 4 ? 4 : current);
+          setSelectionNotice("O horário do link não está mais disponível. Escolha outro horário para continuar.");
+        }
       } catch {
         if (!cancelled) setError("Não foi possível carregar os horários.");
     } finally {
@@ -2333,7 +2350,7 @@ export function PublicBooking() {
     return () => {
       cancelled = true;
     };
-  }, [form.service_id, selectedServiceKey, form.professional_id, form.appointment_date]);
+  }, [form.service_id, selectedServiceKey, form.professional_id, form.appointment_date, slotRefresh]);
 
   // A troca de etapa leva o cliente ao topo do conteúdo novo, e não ao meio da
   // página anterior (os cartões de serviço podem ser longos no celular).
@@ -2347,6 +2364,7 @@ export function PublicBooking() {
   if (data.error) return <ApiError message={data.error} />;
 
   function toggleService(item) {
+    setSelectionNotice("");
     const selected = effectiveServiceIds.some((id) => String(id) === String(item.id));
     const next = selected ? effectiveServiceIds.filter((id) => String(id) !== String(item.id)) : [...effectiveServiceIds, item.id];
     setServiceIds(next);
@@ -2385,12 +2403,25 @@ export function PublicBooking() {
       }))
     ]));
     body.append("acknowledged_service_ids", JSON.stringify(selectedServices.filter((item) => acknowledgedIds.some((id) => String(id) === String(item.id))).map((item) => item.id)));
-    const response = await publicApiFetch("/booking/requests", { method: "POST", body });
-    const json = await response.json().catch(() => ({}));
-    setSubmitting(false);
-    if (!response.ok) return setError(json.error || "Não foi possível solicitar o agendamento.");
-    setConfirmed(json);
-    setStep(7);
+    try {
+      const response = await publicApiFetch("/booking/requests", { method: "POST", body });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (response.status === 409 && json.code === "booking_slot_unavailable") {
+          setForm((current) => ({ ...current, appointment_time: "" }));
+          setSelectionNotice(json.error || "O horário acabou de ser ocupado. Escolha outro horário.");
+          setSlotRefresh((current) => current + 1);
+          setStep(4);
+        }
+        return setError(json.error || "Não foi possível solicitar o agendamento.");
+      }
+      setConfirmed(json);
+      setStep(7);
+    } catch {
+      setError("Não foi possível enviar a solicitação. Seus dados foram mantidos; tente novamente.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -2410,6 +2441,7 @@ export function PublicBooking() {
             <a className="booking-header-link" href={catalogUrl()}>Ver catálogo</a>
           </nav>
         </header>
+        {selectionNotice && <p className="booking-status-note" role="alert">{selectionNotice}</p>}
         {step < 7 && (
           <div className="booking-hero">
             <span className="booking-hero-kicker">Agendamento online</span>
@@ -2479,14 +2511,14 @@ export function PublicBooking() {
               </div>
               <div className="booking-choice-grid">
                 {professionals.map((item) => (
-                  <button type="button" key={item.id} className={String(form.professional_id) === String(item.id) ? "active" : ""} aria-pressed={String(form.professional_id) === String(item.id)} onClick={() => { setForm({ ...form, professional_id: item.id, appointment_time: "" }); setStep(3); }}>
+                  <button type="button" key={item.id} className={String(form.professional_id) === String(item.id) ? "active" : ""} aria-pressed={String(form.professional_id) === String(item.id)} onClick={() => { setSelectionNotice(""); setForm({ ...form, professional_id: item.id, appointment_time: "" }); setStep(3); }}>
                     <strong>{item.name}</strong><p>{item.specialty || "Body piercer"}</p>
                   </button>
                 ))}
               </div>
             </section>
           ) : (
-            <section className="booking-panel"><BookingStepBack onBack={() => setStep(1)} /><h2>Nenhuma profissional vinculada</h2><p className="empty-state">Este serviço ainda não possui profissional ativo vinculado. Volte e escolha outro serviço ou fale com o estúdio pelo WhatsApp.</p><button type="button" className="secondary-button" onClick={() => setStep(1)}>Escolher outro serviço</button></section>
+            <section className="booking-panel"><BookingStepBack onBack={() => setStep(1)} /><h2>{selectedServices.length > 1 ? "Revise os serviços selecionados" : "Nenhuma profissional vinculada"}</h2><p className="empty-state">{selectedServices.length > 1 ? "Não há uma profissional que realize todos os serviços escolhidos. Revise a seleção ou faça agendamentos separados." : "Este serviço ainda não possui profissional ativo vinculado. Volte e escolha outro serviço ou fale com o estúdio pelo WhatsApp."}</p><button type="button" className="secondary-button" onClick={() => setStep(1)}>Escolher outro serviço</button></section>
         ))}
         {step === 3 && (
           <section className="booking-panel booking-date-card">
@@ -2500,6 +2532,7 @@ export function PublicBooking() {
               professionalId={form.professional_id}
               value={form.appointment_date}
               onChange={(appointment_date) => {
+                  setSelectionNotice("");
                   setForm({ ...form, appointment_date, appointment_time: "" });
                   setStep(4);
               }}
@@ -2517,12 +2550,12 @@ export function PublicBooking() {
               serviceIds={effectiveServiceIds}
               professionalId={form.professional_id}
               value={form.appointment_date}
-              onChange={(appointment_date) => setForm({ ...form, appointment_date, appointment_time: "" })}
+              onChange={(appointment_date) => { setSelectionNotice(""); setForm({ ...form, appointment_date, appointment_time: "" }); }}
             />
             {loadingSlots && <p className="empty-state">Carregando horários...</p>}
             <div className="slot-grid">
               {slots.map((slot) => (
-                <button type="button" key={slot.time} className={form.appointment_time === slot.time ? "active" : ""} aria-pressed={form.appointment_time === slot.time} onClick={() => setForm({ ...form, appointment_time: slot.time })}>{slot.time}</button>))}
+                <button type="button" key={slot.time} className={form.appointment_time === slot.time ? "active" : ""} aria-pressed={form.appointment_time === slot.time} onClick={() => { setSelectionNotice(""); setForm({ ...form, appointment_time: slot.time }); }}>{slot.time}</button>))}
             </div>
             {error && <span className="form-error">{error}</span>}
             {!loadingSlots && !slots.length && <p className="empty-state">Nenhum horário disponível nesta data.</p>}

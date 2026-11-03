@@ -58,6 +58,6 @@ test("idade, responsável e antecedência só bloqueiam quando configurados", ()
   const rules = [{ minimum_age_years: 16, requires_guardian: true, minimum_advance_minutes: 120 }];
   assert.match(validateClientServiceRules({ rules, client: { birth_date: "2012-01-01" }, appointmentDate: "2026-09-10", guardianProvided: true }), /idade mínima/i);
   assert.match(validateClientServiceRules({ rules: [{ minimum_age_years: null, requires_guardian: true }], client: { birth_date: "2010-01-01" }, appointmentDate: "2026-09-10" }), /responsável legal/i);
-  assert.match(validateAppointmentTimingRules({ rules, appointmentDate: "2026-09-10", appointmentTime: "10:00", now: new Date("2026-09-10T09:00:00") }), /120 minutos/i);
-  assert.equal(validateAppointmentTimingRules({ rules, appointmentDate: "2026-09-10", appointmentTime: "12:00", now: new Date("2026-09-10T09:00:00") }), "");
+  assert.match(validateAppointmentTimingRules({ rules, appointmentDate: "2026-09-10", appointmentTime: "10:00", now: new Date("2026-09-10T09:00:00-03:00") }), /120 minutos/i);
+  assert.equal(validateAppointmentTimingRules({ rules, appointmentDate: "2026-09-10", appointmentTime: "12:00", now: new Date("2026-09-10T09:00:00-03:00") }), "");
 });

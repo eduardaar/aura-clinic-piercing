@@ -1,0 +1,70 @@
+[
+  {
+    "engine": "chromium",
+    "width": 390,
+    "realConfig": true,
+    "validDeepLink": true,
+    "oldServiceLinksRecovered": [
+      8,
+      17
+    ],
+    "invalidProfessionalRecovered": true,
+    "networkRetry": true,
+    "bookingPersisted": true,
+    "professionalSwitchAfterEmptyMonth": true,
+    "fullWizardToSummary": true,
+    "noOverflow": true,
+    "pageErrors": 0
+  },
+  {
+    "engine": "chromium",
+    "width": 1366,
+    "realConfig": true,
+    "validDeepLink": true,
+    "oldServiceLinksRecovered": [
+      8,
+      17
+    ],
+    "invalidProfessionalRecovered": true,
+    "networkRetry": true,
+    "bookingPersisted": true,
+    "professionalSwitchAfterEmptyMonth": true,
+    "fullWizardToSummary": true,
+    "noOverflow": true,
+    "pageErrors": 0
+  },
+  {
+    "engine": "webkit",
+    "width": 390,
+    "realConfig": true,
+    "validDeepLink": true,
+    "oldServiceLinksRecovered": [
+      8,
+      17
+    ],
+    "invalidProfessionalRecovered": true,
+    "networkRetry": true,
+    "bookingPersisted": true,
+    "professionalSwitchAfterEmptyMonth": true,
+    "fullWizardToSummary": true,
+    "noOverflow": true,
+    "pageErrors": 0
+  },
+  {
+    "engine": "webkit",
+    "width": 1366,
+    "realConfig": true,
+    "validDeepLink": true,
+    "oldServiceLinksRecovered": [
+      8,
+      17
+    ],
+    "invalidProfessionalRecovered": true,
+    "networkRetry": true,
+    "bookingPersisted": true,
+    "professionalSwitchAfterEmptyMonth": true,
+    "fullWizardToSummary": true,
+    "noOverflow": true,
+    "pageErrors": 0
+  }
+]

@@ -1,3 +1,5 @@
+import { localTimestamp } from "./utils.js";
+
 function optionalInteger(value, { min = 0, max = Number.MAX_SAFE_INTEGER } = {}) {
   if (value === null || value === undefined || value === "") return null;
   const number = Number(value);
@@ -74,9 +76,10 @@ export function validateClientServiceRules({ rules = [], client = {}, appointmen
 export function validateAppointmentTimingRules({ rules = [], appointmentDate, appointmentTime, now = new Date() } = {}) {
   const requiredAdvance = Math.max(0, ...(Array.isArray(rules) ? rules : []).map((rule) => Number(rule.minimum_advance_minutes || 0)));
   if (!requiredAdvance) return "";
-  const requestedAt = new Date(`${appointmentDate}T${String(appointmentTime || "").slice(0, 5)}:00`).getTime();
-  if (!Number.isFinite(requestedAt)) return "Data ou horário inválido para validar a antecedência mínima.";
-  if (requestedAt < now.getTime() + requiredAdvance * 60_000) {
+  const time = String(appointmentTime || "").slice(0, 5);
+  if (!Number.isFinite(Date.parse(`${appointmentDate}T${time}:00Z`))) return "Data ou horário inválido para validar a antecedência mínima.";
+  const minimumStart = localTimestamp(new Date(now.getTime() + requiredAdvance * 60_000));
+  if (`${appointmentDate} ${time}:00` < minimumStart) {
     return `Este procedimento exige antecedência mínima de ${requiredAdvance} minutos.`;
   }
   return "";
