@@ -1,5 +1,12 @@
 # Estado atual do projeto
 
+> **Correção visual de 03/11/2026 (seção 23):** fontes do editor entregues
+> localmente com fallbacks e novo template Boutique, com composição de loja
+> própria. A adaptação anterior preservava a família `Inter` sem carregá-la,
+> permitindo fallback serifado involuntário, e mantinha as vitrines duplicadas
+> do layout antigo. Validação: 79 unitários e 428 componentes frontend, tipos,
+> build e lint aprovados. Sem migration.
+
 > **Reformulação local de 03/11/2026:** catálogo com navegação escura,
 > filtros laterais no computador e recolhíveis no celular, pesquisa no cabeçalho
 > e ordenação junto aos resultados. Referência: HTML fornecido pelo usuário e
@@ -684,6 +691,29 @@ conseguir determinar a URL atual no Windows. A revisão visual em navegador
 real ainda está pendente; testes de componentes não comprovam a aparência
 final em diferentes telas. A página e a API da cópia local responderam com
 sucesso. Esta rodada não foi publicada em produção.
+
+## 23. Tipografia e template Boutique — 03/11/2026
+
+O catálogo agora resolve as fontes oferecidas pelo editor com pilhas completas.
+`Inter` e `Playfair Display` passaram a ser servidas localmente, além de
+`Cormorant Garamond` e `Plus Jakarta Sans`. Arquivos e pesos variáveis foram
+conferidos com Fontkit, incluindo glifos acentuados de português. O fallback
+de uma família de corpo desconhecida é sem serifa.
+
+O template Boutique é selecionável em Aparência e possui uma composição própria:
+faixa institucional, cabeçalho com pesquisa, navegação escura em largura total,
+destaque principal com os banners publicados, régua de orientação, categorias
+com fotos dos cadastros, campanhas ativas, uma grade filtrável e rodapé com
+informações reais do estúdio. Mantém as rotas de detalhes, favoritos, compra
+e agendamento. As flags do tema continuam controlando a exibição das ações.
+Os templates anteriores e seus layouts personalizados permanecem disponíveis.
+
+Há dois testes novos de componente para a composição única, filtros, flags e
+troca de banners, além de dois unitários para fallback e presença dos arquivos
+de fonte. Frontend completo: **79 unitários e 428 componentes** aprovados;
+tipos, build e lint também aprovados. A ferramenta de controle do navegador
+continuou bloqueada por não identificar a URL do Chrome no Windows; não foi
+possível realizar conferência visual em navegador nesta sessão.
 
 ## Pendências abertas
 

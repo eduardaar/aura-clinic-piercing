@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useId, useRef, useState } from "react";
 import {
   CheckCircle2,
+  ArrowRight,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -64,6 +65,8 @@ import { variantCatalogLabel } from "../features/shared/helpers";
 import { CatalogNativePlugins } from "../features/catalog/CatalogNativePlugins";
 import { catalogUrl, publicTenant, publicUrl, replaceCatalogState } from "../lib/publicRoutes";
 import { imageTransformStyle, normalizeImageTransform } from "../components/common/ImageEditor";
+import { catalogFontStack } from "../features/catalog/catalogTypography";
+import "../styles/catalog-boutique.css";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -395,8 +398,8 @@ export function PublicCatalog() {
     "--catalog-link-hover": settings.link_hover_color || theme.button_color || "#5f421d",
     "--catalog-icon": settings.icon_color || theme.primary_color || "#8b642f",
     "--catalog-border": settings.border_color || theme.secondary_color || "#d8c3a5",
-    "--catalog-title-font": theme.title_font || '"Cormorant Garamond", Georgia, serif',
-    fontFamily: theme.body_font || '"Plus Jakarta Sans", var(--body-font)'
+    "--catalog-title-font": catalogFontStack(theme.title_font, "title"),
+    fontFamily: catalogFontStack(theme.body_font)
   };
   const footerLogo = settings.footer_logo_url || theme.logo_url;
   const footerDisplayName = settings.footer_display_name || theme.brand_name || settings.company_display_name || data.brand_name;
@@ -536,6 +539,22 @@ function addToOrder(item) {
           setDrawer("order");
         }}
       />
+    );
+  }
+
+  if (theme.theme === "boutique") {
+    return (
+      <CatalogBoutiqueHome data={data} theme={theme} settings={settings} catalogStyle={catalogStyle}
+        categories={categories} publishedItems={publishedItems} items={items} activeCategory={activeCategory}
+        setActiveCategory={setActiveCategory} search={search} setSearch={setSearch}
+        productsRef={productsRef} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite}
+        onAdd={(item) => { addToOrder(item); setDrawer("order"); }}
+        onOpenFavorites={() => setDrawer("favorites")} onOpenOrder={() => setDrawer("order")}
+        orderCount={orderItems.reduce((sum, item) => sum + Number(item.qty || 1), 0)}
+        commercialNavigation={commercialNavigation} campaigns={activeCampaigns.filter((campaign) => campaign.show_on_home)}
+        banners={banners} activeBanner={activeBanner} activeBannerIndex={bannerIndex % banners.length} onBannerChange={setBannerIndex}
+        categoryTreeOpen={categoryTreeOpen} onCloseTree={() => setCategoryTreeOpen(false)}
+        footerLogo={footerLogo} footerDisplayName={footerDisplayName} drawerContent={drawerContent} />
     );
   }
 
@@ -718,6 +737,102 @@ function addToOrder(item) {
 }
 
 const DEFAULT_CATALOG_LAYOUT_TYPES = ["hero", "categories", "featured_products", "best_sellers", "new_products", "promotions", "booking_cta", "location", "footer"];
+
+/** Composição de loja do template Boutique. Usa os mesmos produtos, filtros,
+ * carrinho e categorias do catálogo; o construtor continua disponível nos
+ * demais templates. @param {Record<string, any>} props */
+function CatalogBoutiqueHome({ data, theme, settings, catalogStyle, categories, publishedItems, items, activeCategory,
+  setActiveCategory, search, setSearch, productsRef, favoriteIds, onToggleFavorite, onAdd, onOpenFavorites,
+  onOpenOrder, orderCount, commercialNavigation, campaigns, categoryTreeOpen, onCloseTree,
+  footerLogo, footerDisplayName, drawerContent, banners, activeBanner, activeBannerIndex, onBannerChange }) {
+  const brand = theme.brand_name || settings.company_display_name || data.brand_name || "Estúdio";
+  const chooseCategory = (value) => {
+    setActiveCategory(value);
+    requestAnimationFrame(() => productsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
+  const categoryProduct = (category) => publishedItems.find((item) => {
+    const definition = asArray(data.catalogCategories).find((node) => node.slug === category.value);
+    if (definition) return itemInCategory(item, categoryDescendantIds(data.catalogCategories, definition.id));
+    return catalogCategoryTerms(category.match || category.name).some((term) => removeAccents(`${item.category} ${item.subcategory}`.toLowerCase()).includes(term));
+  });
+  const quickCategories = categories.filter((category) => category.name !== "Todos")
+    .map((category) => ({ ...category, product: categoryProduct(category) }))
+    .filter((category) => category.image_url || category.product).slice(0, 6);
+  const heroImage = activeBanner.image_url || settings.hero_image_url || publishedItems.find(catalogItemIsAvailable)?.photo_url;
+  const heroTitle = activeBanner.title || settings.hero_title || "Seu estilo, em cada detalhe.";
+  const heroSubtitle = activeBanner.subtitle || settings.hero_subtitle || settings.subtitle || "Encontre peças para criar uma composição que é só sua.";
+  const heroTransform = normalizeImageTransform(typeof activeBanner.image_transform === "string" ? safeJson(activeBanner.image_transform) : activeBanner.image_transform);
+  const isFiltered = commercialNavigation.activeFilterCount > 0;
+  const selectedCategoryName = categories.find((category) => (category.value || category.name) === activeCategory)?.name || activeCategory;
+  const productTitle = activeCategory !== "Todos" ? selectedCategoryName : search.trim() ? "Resultado da busca" : "Encontre sua próxima joia";
+  const bookingEnabled = Number(theme.show_schedule_button ?? 1) !== 0;
+  const footerEnabled = settings.footer_enabled !== "0";
+
+  return (
+    <main className="catalog-page theme-boutique" style={catalogStyle}>
+      <div className="boutique-announcement"><span>{settings.company_short_description || "Joias selecionadas. Detalhes que fazem a diferença."}</span>{bookingEnabled && <a href={publicUrl("/agendar")}>Agende sua visita <ArrowRight size={12} /></a>}</div>
+      <header className="boutique-header">
+        <div className="boutique-header-inner">
+          <a className="boutique-brand" href={catalogUrl()}>
+            {theme.logo_url && <img src={catalogImageUrl(theme.logo_url)} alt="" onError={(event) => { event.currentTarget.hidden = true; }} />}
+            <span><strong>{brand}</strong><small>{theme.slogan || "PIERCING & JOIAS"}</small></span>
+          </a>
+          <label className="boutique-search"><Search size={18} /><input aria-label="Buscar no catálogo" placeholder="Buscar por joia, material, pedra ou SKU..." value={search} onChange={(event) => setSearch(event.target.value)} />{search && <button type="button" aria-label="Limpar busca" onClick={() => setSearch("")}>×</button>}</label>
+          <div className="boutique-header-actions">
+            {settings.whatsapp_phone && <a className="boutique-contact" href={whatsappCatalogUrl(settings.whatsapp_message, settings.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle size={19} /><span>Atendimento</span></a>}
+            {Number(theme.show_favorites ?? 1) !== 0 && <button type="button" aria-label="Favoritos" className="boutique-header-action" onClick={onOpenFavorites}><Heart size={20} />{favoriteIds.length > 0 && <span>{favoriteIds.length}</span>}</button>}
+            {Number(theme.show_buy_button ?? 1) !== 0 && <button type="button" aria-label="Carrinho" className="boutique-header-action boutique-bag" onClick={onOpenOrder}><ShoppingCart size={20} /><span>{orderCount}</span></button>}
+          </div>
+        </div>
+        <nav className="boutique-navigation" aria-label="Categorias de joias">
+          <div>{categories.map((category) => { const value = category.value || category.name; return <button key={value} type="button" className={activeCategory === value ? "active" : ""} aria-pressed={activeCategory === value} onClick={() => chooseCategory(value)}>{cleanDisplayText(category.name)}</button>; })}
+          {commercialNavigation.enabled && <button type="button" onClick={commercialNavigation.openTree}>Todas as categorias <ChevronDown size={13} /></button>}
+          {asArray(commercialNavigation.navCampaigns).map((campaign) => <a key={campaign.id} href={campaignUrl(campaign.slug)}>{campaign.title}</a>)}
+          </div>
+        </nav>
+      </header>
+
+      {!isFiltered && <>
+        <section className="boutique-hero" aria-label="Destaques do catálogo" aria-roledescription={banners.length > 1 ? "carrossel" : undefined}>
+          <div className="boutique-hero-inner">
+            <div className="boutique-hero-copy"><span>CURADORIA DE JOIAS</span><h1>{heroTitle}</h1><p>{heroSubtitle}</p><a {...catalogLinkProps(activeBanner.button_link, "#catalog-products")} className="boutique-primary-link">{activeBanner.button_text || "Explorar coleção"} <ArrowRight size={16} /></a><small>{settings.company_short_description || "Uma seleção para expressar quem você é."}</small></div>
+            {heroImage && <div className="boutique-hero-media"><img src={catalogImageUrl(heroImage)} alt={activeBanner.alt_text || heroTitle} width="900" height="900" fetchPriority="high" style={imageTransformStyle(heroTransform)} onError={useNeutralImageFallback} /></div>}
+            {banners.length > 1 && <div className="boutique-hero-controls"><button type="button" aria-label="Banner anterior" onClick={() => onBannerChange((activeBannerIndex - 1 + banners.length) % banners.length)}><ChevronLeft size={18} /></button><span>{activeBannerIndex + 1} / {banners.length}</span><button type="button" aria-label="Próximo banner" onClick={() => onBannerChange((activeBannerIndex + 1) % banners.length)}><ChevronRight size={18} /></button></div>}
+          </div>
+        </section>
+        <div className="boutique-benefits">
+          <div><Gem /><span><strong>Joias selecionadas</strong><small>Materiais e acabamentos para seu estilo</small></span></div>
+          <div><Heart /><span><strong>Composições únicas</strong><small>Encontre sua combinação de peças</small></span></div>
+          <div><ShieldCheck /><span><strong>Escolha com orientação</strong><small>Conte com a equipe do estúdio</small></span></div>
+          {settings.whatsapp_phone && <a href={whatsappCatalogUrl(settings.whatsapp_message, settings.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle /><span><strong>Atendimento próximo</strong><small>Tire suas dúvidas pelo WhatsApp</small></span></a>}
+        </div>
+      </>}
+
+      <div className="boutique-content">
+        {!isFiltered && quickCategories.length > 0 && <section className="boutique-categories"><div className="boutique-section-heading"><div><span className="eyebrow">ESCOLHA SEU ESTILO</span><h2>Categorias em destaque</h2><p>Explore a nossa seleção por tipo de joia.</p></div><a href="#catalog-products">Ver todas as joias <ArrowRight size={15} /></a></div><div className="boutique-category-grid">
+          {quickCategories.map((category) => <button key={category.value || category.name} type="button" onClick={() => chooseCategory(category.value || category.name)}>
+            <img src={catalogImageUrl(category.image_url || category.product?.photo_url || category.product?.image_url)} alt="" loading="lazy" width="240" height="240" onError={useNeutralImageFallback} /><span>{cleanDisplayText(category.name)}<ArrowRight size={16} /></span>
+          </button>)}
+        </div></section>}
+        {campaigns.length > 0 && !isFiltered && <CatalogCampaignBand campaigns={campaigns} />}
+        <div className="boutique-breadcrumb"><a href={catalogUrl()}>Início</a><ChevronRight size={12} /><span>Catálogo</span>{activeCategory !== "Todos" && <><ChevronRight size={12} /><strong>{cleanDisplayText(selectedCategoryName)}</strong></>}</div>
+        {asArray(commercialNavigation.trail).length > 0 && <div className="boutique-subcategories" aria-label="Subcategorias">{commercialNavigation.children.map((category) => <button type="button" key={category.id} onClick={() => chooseCategory(category.slug)}>{category.name}<ChevronRight size={13} /></button>)}</div>}
+        <CatalogProductsBlock fullCatalog section={{ title: productTitle, subtitle: "NOSSA SELEÇÃO" }} className="catalog-results boutique-results" productsRef={productsRef} items={items} activeCategory={activeCategory} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={onToggleFavorite} onAdd={onAdd} commercialNavigation={commercialNavigation} />
+        <CatalogNativePlugins plugins={data.plugins} settings={settings} theme={theme} />
+      </div>
+
+      {footerEnabled && <footer className="boutique-footer"><div className="boutique-footer-grid">
+        <div className="boutique-footer-brand"><strong>{footerDisplayName || brand}</strong><p>{settings.institutional_text || "Joias selecionadas para valorizar sua expressão e o seu estilo."}</p>{settings.company_instagram && <a href={instagramCatalogUrl(settings.company_instagram)} target="_blank" rel="noreferrer"><Instagram size={18} /> Instagram</a>}</div>
+        <div><h2>Explore</h2>{categories.filter((category) => category.name !== "Todos").slice(0, 6).map((category) => <button type="button" key={category.value || category.name} onClick={() => chooseCategory(category.value || category.name)}>{cleanDisplayText(category.name)}</button>)}</div>
+        <div><h2>Atendimento</h2>{settings.whatsapp_phone && <a href={whatsappCatalogUrl(settings.whatsapp_message, settings.whatsapp_phone)} target="_blank" rel="noreferrer">WhatsApp <ArrowRight size={13} /></a>}{safeMailto(settings.company_email) && <a href={safeMailto(settings.company_email)}>{settings.company_email}</a>}{bookingEnabled && <a href={publicUrl("/agendar")}>Agendar atendimento</a>}{settings.company_hours && <p>{settings.company_hours}</p>}</div>
+        <div><h2>Visite o estúdio</h2>{settings.company_address ? <p>{settings.company_address}</p> : <p>Fale com a equipe para planejar sua visita.</p>}{settings.company_address && <a {...catalogLinkProps(settings.company_maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(settings.company_address)}`)}>Como chegar <ArrowRight size={13} /></a>}{footerLogo && <img className="boutique-footer-logo" src={catalogImageUrl(footerLogo)} alt="" loading="lazy" />}</div>
+      </div><div className="boutique-footer-bottom"><span>{settings.footer_copyright_text || settings.footer_text || `${brand} · Joias & piercing`}</span><span>Feito para o seu estilo.</span></div></footer>}
+      {commercialNavigation.enabled && <Modal open={categoryTreeOpen} title="Categorias" subtitle="Escolha uma categoria ou subcategoria" dismissible confirmClose={false} onClose={onCloseTree}><CatalogCategoryTree tree={commercialNavigation.tree} activeSlug={activeCategory} onSelect={(slug) => { chooseCategory(slug); onCloseTree(); }} /></Modal>}
+      {Number(theme.show_whatsapp_button ?? 1) !== 0 && settings.whatsapp_phone && <a className="floating-whatsapp" href={whatsappCatalogUrl(settings.whatsapp_message, settings.whatsapp_phone)} target="_blank" rel="noreferrer" aria-label="Fale com a equipe pelo WhatsApp"><MessageCircle size={23} /><span>WhatsApp</span></a>}
+      {drawerContent}
+    </main>
+  );
+}
 
 const CATALOG_SECTION_TITLES = {
   hero: "Banner principal",
@@ -1772,7 +1887,7 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
     .slice(0, 4);
 
   return (
-    <main className="catalog-page theme-detail" style={/** @type {React.CSSProperties} */ ({ "--catalog-primary": theme.primary_color || "#C8A96A", "--catalog-secondary": theme.secondary_color || "#D8C3A5", "--catalog-bg": theme.background_color || "#F8F5F0", "--catalog-button": theme.button_color || "#C8A96A", fontFamily: theme.body_font || "var(--body-font)" })}>
+    <main className="catalog-page theme-detail" style={/** @type {React.CSSProperties} */ ({ "--catalog-primary": theme.primary_color || "#C8A96A", "--catalog-secondary": theme.secondary_color || "#D8C3A5", "--catalog-bg": theme.background_color || "#F8F5F0", "--catalog-button": theme.button_color || "#C8A96A", "--catalog-title-font": catalogFontStack(theme.title_font, "title"), fontFamily: catalogFontStack(theme.body_font) })}>
       <section className="catalog-main catalog-product-detail-page">
         <header className="catalog-topbar">
           <a className="catalog-client-brand" href={catalogUrl()}>

@@ -372,13 +372,13 @@ export function CatalogCustomization({ initialSection = "layout", onNavigate }) 
                 <Input type="color" label="Cor dos botões" value={form.theme.button_color} onChange={(value) => setForm(updateTheme(form, { button_color: value }))} />
                 <Input type="color" label="Cor do fundo" value={form.theme.background_color} onChange={(value) => setForm(updateTheme(form, { background_color: value }))} />
                 <Select label="Fonte do título" value={form.theme.title_font} onChange={(value) => setForm(updateTheme(form, { title_font: value }))}>
-                  <option>Georgia</option><option>Playfair Display</option><option>Inter</option><option>Arial</option>
+                  <option>Cormorant Garamond</option><option>Plus Jakarta Sans</option><option>Georgia</option><option>Playfair Display</option><option>Inter</option><option>Arial</option>
                 </Select>
                 <Select label="Fonte dos textos" value={form.theme.body_font} onChange={(value) => setForm(updateTheme(form, { body_font: value }))}>
-                  <option>Inter</option><option>Arial</option><option>Georgia</option><option>Verdana</option>
+                  <option>Plus Jakarta Sans</option><option>Inter</option><option>Arial</option><option>Georgia</option><option>Verdana</option>
                 </Select>
                 <Select label="Tema" value={form.theme.theme} onChange={(value) => setForm(updateTheme(form, { theme: value }))}>
-                  <option value="claro">claro</option><option value="escuro">escuro</option><option value="premium">premium</option><option value="minimalista">minimalista</option>
+                  <option value="boutique">Boutique · loja de joias</option><option value="claro">claro</option><option value="escuro">escuro</option><option value="premium">premium</option><option value="minimalista">minimalista</option>
                 </Select>
               </div>
             </div>
@@ -2081,6 +2081,15 @@ function defaultCatalogSections() {
 }
 
 const CATALOG_TEMPLATES = [
+  {
+    key: "boutique",
+    name: "Boutique · loja de joias",
+    description: "Composição de loja: menu, destaque, categorias com fotos e uma grade com filtros. Usa o conteúdo do catálogo.",
+    colors: ["#b38b40", "#1a1a1a"],
+    theme: { primary_color: "#b38b40", secondary_color: "#e5e1da", background_color: "#fbf9f5", button_color: "#b38b40", title_font: "Cormorant Garamond", body_font: "Plus Jakarta Sans" },
+    settings: { site_background: "#fbf9f5", section_background: "#ffffff", text_color: "#1a1a1a", heading_color: "#1a1a1a", muted_text_color: "#71717a", border_color: "#e5e1da", footer_inherit_main_palette: "0", footer_background_color: "#1a1a1a" },
+    sections: ["hero", "categories", "featured_products", "footer"]
+  },
   {
     key: "minimalista",
     name: "Minimal clean",

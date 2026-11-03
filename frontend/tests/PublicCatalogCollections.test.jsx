@@ -47,6 +47,45 @@ afterEach(cleanup);
 const results = () => document.querySelector("#catalog-products");
 
 describe("PublicCatalog · vitrine comercial", () => {
+  it("Boutique usa uma composição única mesmo com vitrines repetidas no layout antigo", async () => {
+    const user = userEvent.setup();
+    Object.assign(catalog.data.theme, { theme: "boutique", title_font: "Cormorant Garamond", body_font: "Plus Jakarta Sans", show_buy_button: 0 });
+    catalog.data.catalogSections.unshift({ section_type: "in_stock", is_active: 1 }, { section_type: "in_stock", is_active: 1 });
+    catalog.data.banners = [{ title: "Seu estilo, em cada detalhe.", image_url: "https://cdn.test/hero.webp", is_active: 1 }];
+    render(<PublicCatalog />);
+    expect(screen.getByRole("heading", { name: "Seu estilo, em cada detalhe.", level: 1 })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { name: "Encontre sua próxima joia" })).toHaveLength(1);
+    expect(screen.queryByRole("heading", { name: "Em estoque" })).not.toBeInTheDocument();
+    expect(document.querySelectorAll("#catalog-products")).toHaveLength(1);
+    expect(document.querySelector("main").style.fontFamily).toContain("sans-serif");
+    expect(screen.queryByRole("button", { name: "Carrinho" })).not.toBeInTheDocument();
+    const navigation = screen.getByRole("navigation", { name: "Categorias de joias" });
+    await user.click(within(navigation).getByRole("button", { name: "Argolas", exact: true }));
+    expect(results().querySelectorAll("article")).toHaveLength(3);
+    expect(screen.queryByRole("heading", { name: "Seu estilo, em cada detalhe." })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Filtrar joias/ }));
+    await user.type(screen.getByLabelText("Preço máximo"), "110");
+    expect(results().querySelectorAll("article")).toHaveLength(1);
+    expect(results()).toHaveTextContent("Joia 1");
+  });
+
+  it("Boutique usa os banners publicados e mantém a navegação entre eles", async () => {
+    const user = userEvent.setup();
+    catalog.data.theme.theme = "boutique";
+    catalog.data.banners = [
+      { title: "Coleção titânio", image_url: "https://cdn.test/one.webp", button_text: "Ver joias", button_link: "#catalog-products", is_active: 1 },
+      { title: "Coleção ouro", image_url: "https://cdn.test/two.webp", is_active: 1 }
+    ];
+    render(<PublicCatalog />);
+    expect(screen.getByRole("heading", { name: "Coleção titânio" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Ver joias" })).toHaveAttribute("href", "#catalog-products");
+    await user.click(screen.getByRole("button", { name: "Próximo banner" }));
+    expect(screen.getByRole("heading", { name: "Coleção ouro" })).toBeInTheDocument();
+    expect(results().querySelectorAll("article")).toHaveLength(4);
+    await user.click(screen.getByRole("button", { name: "Banner anterior" }));
+    expect(screen.getByRole("heading", { name: "Coleção titânio" })).toBeInTheDocument();
+  });
+
   it("recolher os filtros preserva a seleção e a ordenação permanece disponível junto aos resultados", async () => {
     const user = userEvent.setup();
     render(<PublicCatalog />);

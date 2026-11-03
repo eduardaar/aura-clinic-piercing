@@ -1,13 +1,13 @@
 {
-  "id": "2026-11-03-catalogo-vitrine-profissional",
+  "id": "2026-11-03-catalogo-boutique-tipografia",
   "announcements": [
     {
-      "slug": "nova-apresentacao-do-catalogo",
-      "title": "Uma nova apresentação para o seu catálogo",
-      "summary": "Navegação por categorias, fotos em destaque e filtros mais organizados para encontrar a joia certa.",
+      "slug": "template-boutique",
+      "title": "Template Boutique e fontes mais consistentes",
+      "summary": "Uma composição de loja para o catálogo, com destaque principal, categorias com fotos e uma única grade de joias.",
       "category": "Catálogo",
-      "content": "O catálogo ganhou uma apresentação mais leve, com navegação por categorias em uma barra escura, cartões de produtos padronizados e mais destaque para as fotos, os preços e a disponibilidade das joias. A identidade e os conteúdos configurados pelo estúdio continuam sendo utilizados.\n\nNo computador, os filtros ficam ao lado dos produtos. No celular, você pode abrir e recolher os filtros sem perder suas escolhas. A pesquisa aparece no cabeçalho e a ordenação fica junto à contagem de resultados. Categorias, subcategorias e coleções sazonais continuam sendo gerenciadas pelo painel, usando os mesmos produtos e estoques."
+      "content": "O template Boutique organiza o catálogo como uma loja: cabeçalho com pesquisa, menu de categorias, destaque principal, atalhos com fotos e uma única grade de produtos com filtros. O rodapé reúne os contatos e as informações do estúdio. Banners, produtos, preços, categorias, favoritos e opções de compra continuam usando as configurações da clínica.\n\nAs fontes oferecidas pelo editor agora são carregadas pela própria loja, com opções substitutas para manter o texto legível mesmo durante o carregamento. Cormorant Garamond e Plus Jakarta Sans também estão disponíveis nas opções de aparência."
     }
   ],
-  "source_digest": "872753f75f127f4ee44d6d5fdf62321a7de3291dbf108e4a7232848bf4df4835"
+  "source_digest": "1f53d7c5f878a2c0371157c3cb2f427d719b6058508dc603ed1bc557e138d87a"
 }
