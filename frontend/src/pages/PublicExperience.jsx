@@ -66,8 +66,9 @@ import { catalogUrl, publicTenant, publicUrl, replaceCatalogState } from "../lib
 import { imageTransformStyle, normalizeImageTransform } from "../components/common/ImageEditor";
 import { catalogFontStack } from "../features/catalog/catalogTypography";
 import { CatalogBoutiqueHome } from "../features/catalog/BoutiqueStorefront";
-import { boutiqueConfig } from "../features/catalog/boutiqueConfig";
+import { boutiqueConfig, boutiqueStyle } from "../features/catalog/boutiqueConfig";
 import "../styles/catalog-boutique.css";
+import "../styles/catalog-product-detail.css";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -534,6 +535,7 @@ function addToOrder(item) {
         data={data}
         theme={theme}
         settings={settings}
+        catalogStyle={catalogStyle}
         favorite={favoriteIds.includes(selectedProduct.id)}
         onToggleFavorite={() => toggleFavorite(selectedProduct)}
         onScheduleWithJewelry={(variant) => {
@@ -1773,11 +1775,12 @@ function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, th
   );
 }
 
-/** @param {{ item?: Record<string, any>, data?: Record<string, any>, theme?: Record<string, any>, settings?: Record<string, any>, favorite?: boolean, onToggleFavorite?: (item: any) => any, onAddToOrder?: (item: any) => any, onScheduleWithJewelry?: (item: any) => any, drawerContent?: React.ReactNode }} props */
-function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite, onToggleFavorite, onAddToOrder, onScheduleWithJewelry, drawerContent }) {
+/** @param {{ item?: Record<string, any>, data?: Record<string, any>, theme?: Record<string, any>, settings?: Record<string, any>, catalogStyle?: Record<string, any>, favorite?: boolean, onToggleFavorite?: (item: any) => any, onAddToOrder?: (item: any) => any, onScheduleWithJewelry?: (item: any) => any, drawerContent?: React.ReactNode }} props */
+function CatalogProductDetail({ item, data, theme = {}, settings = {}, catalogStyle = {}, favorite, onToggleFavorite, onAddToOrder, onScheduleWithJewelry, drawerContent }) {
   const config = theme.theme === "boutique" ? boutiqueConfig(settings.boutique_config) : null;
   const show = (key) => !config || config[key];
   const brand = theme.brand_name || settings.company_display_name || data.brand_name || "o estúdio";
+  const signature = theme.slogan || data.slogan || config?.header_signature;
   const productName = elegantProductName(item.name);
   const availableVariants = asArray(item?.variants).filter((variant) => Boolean(asNumber(variant?.is_active, 1)));
   const [selectedVariantId, setSelectedVariantId] = useState(new URLSearchParams(window.location.search).get("variant") || availableVariants.find((variant) => Number(variant.quantity || 0) > 0)?.id || availableVariants[0]?.id || "");
@@ -1825,16 +1828,16 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
     .slice(0, config?.detail_related_limit || 4);
 
   return (
-    <main className="catalog-page theme-detail" style={/** @type {React.CSSProperties} */ ({ "--catalog-primary": theme.primary_color || "#C8A96A", "--catalog-secondary": theme.secondary_color || "#D8C3A5", "--catalog-bg": theme.background_color || "#F8F5F0", "--catalog-button": theme.button_color || "#C8A96A", "--catalog-title-font": catalogFontStack(theme.title_font, "title"), fontFamily: catalogFontStack(theme.body_font) })}>
+    <main className="catalog-page theme-detail" style={/** @type {React.CSSProperties} */ ({ ...catalogStyle, ...boutiqueStyle(config || boutiqueConfig(), settings, theme) })}>
       <section className="catalog-main catalog-product-detail-page">
-        <header className="catalog-topbar">
-          <a className="catalog-client-brand" href={catalogUrl()}>
-            {theme.logo_url && (
-              <img src={catalogImageUrl(theme.logo_url)} alt={theme.brand_name || settings.company_display_name || "Estúdio"} onError={(event) => { event.currentTarget.hidden = true; }} />
+        <header className={`catalog-topbar catalog-detail-header${config?.header_sticky ? " is-sticky" : ""}`}>
+          {(!config || config.header_show_logo || config.header_show_name || config.header_show_slogan) && <a className="catalog-client-brand" href={catalogUrl()} aria-label={brand}>
+            {(!config || config.header_show_logo) && theme.logo_url && (
+              <img src={catalogImageUrl(theme.logo_url)} alt="" width="52" height="52" onError={(event) => { event.currentTarget.hidden = true; }} />
             )}
-            <strong>{theme.brand_name || settings.company_display_name || data.brand_name || "Estúdio"}</strong>
-            {(theme.slogan || data.slogan) && <span>{theme.slogan || data.slogan}</span>}
-          </a>
+            <div className="catalog-detail-brand-copy">{(!config || config.header_show_name) && <strong>{brand}</strong>}
+            {(!config || config.header_show_slogan) && signature && <span>{signature}</span>}</div>
+          </a>}
           <div className="catalog-top-actions">
             <a className="secondary-button" href={catalogUrl()}>Voltar ao catálogo</a>
             {Boolean(Number(theme.show_favorites ?? 1)) && (
@@ -1845,7 +1848,7 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
 
         <section className="catalog-product-detail">
           <div className="catalog-product-gallery">
-            <img className="catalog-product-hero-image" src={catalogImageUrl(activeImage || item.photo_url)} alt="" onError={useNeutralImageFallback} />
+            <img className="catalog-product-hero-image" src={catalogImageUrl(activeImage || item.photo_url)} alt={productName} onError={useNeutralImageFallback} />
             <div className="catalog-product-mini-gallery">
               {(uniqueGalleryImages.length ? uniqueGalleryImages : [{ image_url: item.photo_url }]).map((photo, index) => (
                 <button key={`${item.id}-${selectedVariantId || "product"}-${photo.id || photo.image_url}`} type="button" className={activeImage === photo.image_url ? "active" : ""} onClick={() => setActiveImage(photo.image_url)} aria-label={`Selecionar imagem ${index + 1}`}>
@@ -1855,7 +1858,7 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
             </div>
           </div>
           <div className="catalog-product-sidebar">
-            <span className={`catalog-product-badge detail ${available ? "" : "unavailable"}`}>{available ? item.badge || "Disponível" : "Indisponível"}</span>
+            <span role="status" className={`catalog-detail-availability${available ? "" : " unavailable"}`}>{available ? item.badge || "Disponível" : "Indisponível"}</span>
             <p className="catalog-breadcrumb">Catálogo / {cleanDisplayText(item.category || "Joias")} / {" "}
               {cleanDisplayText(item.subcategory || productName)}</p>
             <h1>{productName}</h1>

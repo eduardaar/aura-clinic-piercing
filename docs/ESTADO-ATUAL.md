@@ -753,6 +753,16 @@ nesta sessão: o host de automação de navegador estava indisponível.
 
 Referência de operação e contrato: [CATALOGO-BUILDER.md](./CATALOGO-BUILDER.md).
 
+**Correção do topo dos detalhes (03/11):** o selo de disponibilidade herdava
+`position: absolute` de `.catalog-product-badge` sem um contêiner posicionado,
+aparecendo no topo da página. O detalhe agora usa selo próprio em fluxo normal
+e estilos de cabeçalho isolados, com marca flexível e quebra de linha no celular.
+Cores, fontes, largura e opções de marca/cabeçalho fixo acompanham a configuração
+da clínica. Foto principal e miniaturas usam `object-fit: contain`, sem recorte.
+Tipos, lint, build e os 28 testes de vitrine/detalhes passaram. Conferência visual
+não realizada: o navegador de automação estava indisponível e a alternativa
+Windows foi interrompida por não conseguir identificar a URL com segurança.
+
 ## Pendências abertas
 
 ### P-09 — compras e estoque precisam de alinhamento com o cliente

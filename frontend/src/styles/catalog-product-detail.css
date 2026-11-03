@@ -1,0 +1,46 @@
+@layer telas {
+  /* O detalhe tem fluxo próprio: selos do cartão não podem escapar para o
+     cabeçalho, e regras antigas do menu não podem cortar a identidade. */
+  .catalog-page.theme-detail { color: var(--catalog-text); font-size: var(--boutique-body-size, 14px); }
+  .theme-detail .catalog-product-detail-page { max-width: var(--boutique-width, 1280px); }
+  .catalog-page.theme-detail .catalog-detail-header {
+    position: static; inset: auto; display: flex; flex-wrap: wrap; align-items: center;
+    justify-content: space-between; gap: 16px 24px; min-height: 100px; height: auto;
+    padding: 20px 0; border-radius: 0; overflow: visible; backdrop-filter: none;
+  }
+  .catalog-page.theme-detail .catalog-detail-header.is-sticky { position: sticky; top: 0; }
+  .theme-detail .catalog-detail-header .catalog-client-brand {
+    display: flex; align-items: center; flex: 1 1 220px; gap: 12px; padding: 0;
+    min-width: 0; border-radius: 0;
+  }
+  .theme-detail .catalog-detail-header .catalog-client-brand img {
+    flex: 0 0 52px; width: 52px; height: 52px; margin: 0; object-fit: contain;
+  }
+  .theme-detail .catalog-detail-brand-copy { display: grid; gap: 4px; min-width: 0; }
+  .theme-detail .catalog-detail-brand-copy strong,
+  .theme-detail .catalog-detail-brand-copy span { overflow: visible; white-space: normal; overflow-wrap: anywhere; }
+  .theme-detail .catalog-detail-header .catalog-top-actions { flex: 0 1 auto; flex-wrap: wrap; margin-left: auto; }
+  .theme-detail .catalog-detail-availability {
+    position: static; display: inline-flex; justify-self: start; width: fit-content;
+    max-width: 100%; padding: 6px 10px; border-radius: var(--boutique-button-radius, 99px);
+    background: var(--catalog-primary); color: var(--catalog-button-text);
+    font-size: .78em; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere;
+  }
+  .theme-detail .catalog-detail-availability.unavailable { background: var(--catalog-border); color: var(--catalog-text); }
+  .theme-detail .catalog-product-gallery,
+  .theme-detail .catalog-product-sidebar { min-width: 0; border-color: var(--catalog-border); border-radius: var(--boutique-card-radius, 16px); background: var(--catalog-section-bg); }
+  .theme-detail .catalog-product-hero-image,
+  .theme-detail .catalog-product-mini-gallery img { display: block; object-fit: contain; }
+  .theme-detail .catalog-product-sidebar h1 { font-family: var(--catalog-title-font); color: var(--catalog-heading); line-height: 1.15; overflow-wrap: anywhere; }
+  .theme-detail .catalog-product-description,
+  .theme-detail .catalog-breadcrumb { color: var(--catalog-muted); overflow-wrap: anywhere; }
+  @media (max-width: 767px) {
+    .catalog-page.theme-detail { padding-inline: max(16px, env(safe-area-inset-left)) max(16px, env(safe-area-inset-right)); }
+    .catalog-page.theme-detail .catalog-detail-header { min-height: 82px; padding: 16px 0; gap: 12px; }
+    .theme-detail .catalog-detail-header .catalog-client-brand { flex-basis: 160px; }
+    .theme-detail .catalog-detail-header .catalog-client-brand img { flex-basis: 40px; width: 40px; height: 40px; }
+    .theme-detail .catalog-detail-header .catalog-top-actions { max-width: 100%; }
+    .theme-detail .catalog-detail-header .secondary-button { white-space: normal; text-align: center; }
+    .theme-detail .catalog-product-detail { grid-template-columns: minmax(0, 1fr); }
+  }
+}

@@ -1,13 +1,13 @@
 {
-  "id": "2026-11-03-catalogo-configuravel",
+  "id": "2026-11-03-detalhe-produto-topo",
   "announcements": [
     {
-      "slug": "boutique-configuravel",
-      "title": "Sua loja Boutique com mais opções de personalização",
-      "summary": "Edite os componentes, textos, cores e a apresentação no celular diretamente no painel do catálogo.",
+      "slug": "detalhe-produto-topo",
+      "title": "Ajustes no topo dos detalhes do produto",
+      "summary": "Marca, disponibilidade e fotos com apresentação corrigida ao abrir uma joia do catálogo.",
       "category": "Catálogo",
-      "content": "Em Catálogo → Componentes da página, o template Boutique permite editar a faixa superior, menu, destaque, benefícios, categorias, produtos e rodapé. Você pode reordenar ou ocultar componentes e adicionar conteúdos com texto, imagem e botão. Cada clínica mantém suas próprias escolhas.\n\nTambém é possível escolher os filtros, informações dos cartões, detalhes dos produtos, cores e medidas. O celular possui opções próprias de colunas, destaque e filtros recolhíveis. Salve o rascunho, confira a prévia e publique quando estiver pronto."
+      "content": "Ao abrir os detalhes de um produto, o selo de disponibilidade permanece junto às informações da joia, sem aparecer sobre o topo da página. O cabeçalho acomoda a marca e os botões em telas menores e acompanha as opções de identidade e cabeçalho fixo da loja Boutique. As fotos são exibidas inteiras, sem corte para preencher o espaço."
     }
   ],
-  "source_digest": "d40364605eabcd5bdd5be50691c51fa21d733b124365b1b3a569c50ab43766e9"
+  "source_digest": "c2e0c377121316b23a8874801d73982bf14b9e6fe101a1b12cccc072b67d77d9"
 }
