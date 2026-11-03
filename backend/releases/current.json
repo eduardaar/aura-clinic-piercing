@@ -1,20 +1,13 @@
 {
-  "id": "2026-11-03-recuperacao-do-agendamento-online",
+  "id": "2026-11-03-catalogo-vitrine-profissional",
   "announcements": [
     {
-      "slug": "agendamento-sem-perder-a-escolha",
-      "title": "Mais continuidade no agendamento online",
-      "summary": "Links antigos, falhas de conexão e horários recém-ocupados têm orientação para continuar.",
-      "category": "Agendamento",
-      "content": "A profissional escolhida pelo link é preservada enquanto os dados do estúdio carregam. Quando o link aponta para um serviço antigo ou uma profissional que não atende a seleção, o agendamento orienta a revisar a escolha.\n\nSe a conexão falhar no envio, os dados preenchidos permanecem na tela e você pode tentar novamente. Se o horário acabar de ser ocupado, é possível escolher outro sem redigitar nome e WhatsApp. Combinações de serviços sem profissional em comum também recebem uma explicação."
-    },
-    {
-      "slug": "horarios-no-fuso-da-clinica",
-      "title": "Horários e solicitações com mais consistência",
-      "summary": "A disponibilidade respeita o horário de São Paulo e as solicitações simultâneas recebem nova conferência.",
-      "category": "Agenda",
-      "content": "A consulta de horários e a antecedência mínima passam a seguir o horário da clínica em São Paulo, inclusive quando o servidor usa outro fuso.\n\nAntes de registrar uma solicitação online, o horário é conferido novamente. Duas pessoas tentando reservar o mesmo horário recebem uma resposta consistente: a segunda precisa escolher outra opção. O reenvio da mesma solicitação reaproveita o agendamento já registrado."
+      "slug": "nova-apresentacao-do-catalogo",
+      "title": "Uma nova apresentação para o seu catálogo",
+      "summary": "Navegação por categorias, fotos em destaque e filtros mais organizados para encontrar a joia certa.",
+      "category": "Catálogo",
+      "content": "O catálogo ganhou uma apresentação mais leve, com navegação por categorias em uma barra escura, cartões de produtos padronizados e mais destaque para as fotos, os preços e a disponibilidade das joias. A identidade e os conteúdos configurados pelo estúdio continuam sendo utilizados.\n\nNo computador, os filtros ficam ao lado dos produtos. No celular, você pode abrir e recolher os filtros sem perder suas escolhas. A pesquisa aparece no cabeçalho e a ordenação fica junto à contagem de resultados. Categorias, subcategorias e coleções sazonais continuam sendo gerenciadas pelo painel, usando os mesmos produtos e estoques."
     }
   ],
-  "source_digest": "f4a2a87437ccde857e27c13b05b97dcfeec2f7a1c4105e7fbb667bedbec48043"
+  "source_digest": "872753f75f127f4ee44d6d5fdf62321a7de3291dbf108e4a7232848bf4df4835"
 }

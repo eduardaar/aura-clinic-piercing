@@ -47,6 +47,41 @@ afterEach(cleanup);
 const results = () => document.querySelector("#catalog-products");
 
 describe("PublicCatalog · vitrine comercial", () => {
+  it("recolher os filtros preserva a seleção e a ordenação permanece disponível junto aos resultados", async () => {
+    const user = userEvent.setup();
+    render(<PublicCatalog />);
+    const toggle = screen.getByRole("button", { name: "Filtrar joias" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(document.getElementById(toggle.getAttribute("aria-controls"))).toContainElement(screen.getByLabelText("Preço máximo"));
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await user.type(screen.getByLabelText("Preço máximo"), "90");
+    expect(results().querySelectorAll("article")).toHaveLength(1);
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByLabelText("Ordenar catálogo").closest(".catalog-refinement")).toBeNull();
+    await user.click(screen.getByLabelText("Ordenar catálogo"));
+    await user.click(await screen.findByRole("option", { name: "Maior preço" }));
+    expect(results()).toHaveTextContent("Joia 3");
+    await user.click(toggle);
+    expect(screen.getByLabelText("Preço máximo")).toHaveValue(90);
+    await user.click(screen.getByRole("button", { name: "Limpar filtros" }));
+    expect(results().querySelectorAll("article")).toHaveLength(4);
+  });
+
+  it("mantém busca e filtros na grade completa quando o editor publica apenas uma seleção curada", async () => {
+    const user = userEvent.setup();
+    catalog.data.catalogSections = [{ section_type: "featured_products", is_active: 1 }];
+    catalog.data.featuredProducts = [{ product_id: 1, is_active: 1 }];
+    render(<PublicCatalog />);
+    expect(screen.getAllByLabelText("Ordenar catálogo")).toHaveLength(1);
+    expect(screen.getAllByLabelText("Preço máximo")).toHaveLength(1);
+    await user.type(screen.getByLabelText("Buscar no catálogo"), "SKU-4");
+    await waitFor(() => expect(results().querySelectorAll("article")).toHaveLength(1));
+    expect(results()).toHaveTextContent("SKU SKU-4");
+    expect(results()).not.toHaveTextContent("SKU SKU-1");
+  });
+
   it.each([
     ["Lançamentos", [1, 4, 3, 2]],
     ["Mais recentes", [4, 3, 2, 1]],

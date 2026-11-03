@@ -1,5 +1,12 @@
 # Estado atual do projeto
 
+> **Reformulação local de 03/11/2026:** catálogo com navegação escura,
+> filtros laterais no computador e recolhíveis no celular, pesquisa no cabeçalho
+> e ordenação junto aos resultados. Referência: HTML fornecido pelo usuário e
+> complemento sobre vitrine comercial. Reutiliza categorias, campanhas e
+> associações já existentes; não requer migration. Validações e limites na
+> seção 22. Publicação em produção ainda não realizada.
+
 > **03/11/2026:** seção 20 publicada no commit `38240ca1`, com
 > [CI e deploy concluídos](https://github.com/eduardaar/aura-clinic-piercing/actions/runs/41631280750).
 > A investigação posterior da produção está na seção 21: backup restaurado
@@ -645,6 +652,38 @@ Relatório, limites e reprodução em
 [RELATORIO.md](../outputs/investigacao-producao-2026-11-03/RELATORIO.md).
 Sem migration nova. Release `2026-11-03-recuperacao-do-agendamento-online`,
 encaminhada para publicação pelo workflow CI e Deploy no push para `main`.
+
+## 22. Reformulação visual da vitrine — 03/11/2026
+
+Implementação local inspirada no HTML fornecido pelo usuário, com navegação
+escura, superfícies claras, cartões padronizados e acentos dourados. Pesquisa
+no cabeçalho em computador e celular, filtros laterais no computador e
+recolhíveis no celular, ordenação e contagem junto aos resultados. Recolher
+os filtros preserva a seleção. Grades em colunas estreitas do construtor
+adaptam os filtros à largura disponível. A paleta, os conteúdos, a ordem
+publicada e as fontes escolhidas pela clínica continuam sendo respeitados.
+As fontes de referência estão disponíveis localmente como fallback, com suas
+licenças em `frontend/public/assets/fonts/`.
+
+O complemento sobre categorias dinâmicas e campanhas foi confrontado com a
+implementação existente: gestão administrativa, hierarquia com vários níveis,
+associação de produtos sem duplicação, vigência no fuso da loja, proteção de
+exclusão, permissões e isolamento já são fornecidos por `catalogCollections`.
+Esta rodada reutiliza essas estruturas; não cria tabelas, campanhas, produtos
+ou condições comerciais fixas e não altera estoque nem SKUs.
+
+Validação: **77 testes unitários e 426 de componentes** no frontend completo;
+**31 testes de integração** em banco descartável, cobrindo coleções,
+publicação, visibilidade e preservação do estoque. Depois do ajuste final da
+pesquisa móvel e dos rótulos, **36 regressões públicas** foram reexecutadas.
+Tipos do frontend e build aprovados. Novidades preparadas no manifesto de
+release, para publicação pelo fluxo de deploy existente.
+
+**Limite:** a ferramenta de navegação bloqueou o acesso ao Chrome por não
+conseguir determinar a URL atual no Windows. A revisão visual em navegador
+real ainda está pendente; testes de componentes não comprovam a aparência
+final em diferentes telas. A página e a API da cópia local responderam com
+sucesso. Esta rodada não foi publicada em produção.
 
 ## Pendências abertas
 

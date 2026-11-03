@@ -18,6 +18,7 @@
       "!backend/src/data/**",
       "!backend/backups/**",
       "!frontend/public/**",
+      "!aura_piercing_cat_logo_online (1).html",
       "!**/package-lock.json",
       "!**/*.css"
     ]

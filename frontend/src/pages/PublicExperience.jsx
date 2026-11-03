@@ -1,8 +1,9 @@
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useRef, useState } from "react";
 import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   CircleDollarSign,
   Clock,
   Gem,
@@ -367,6 +368,7 @@ export function PublicCatalog() {
     navCampaigns,
     activeFilterCount,
     clearFilters: clearCatalogFilters,
+    refinement: { filters, setFilters, options, sort, setSort },
     openTree: () => setCategoryTreeOpen(true)
   };
   const latestItems = [...publishedItems].sort((a, b) => b.id - a.id);
@@ -378,11 +380,11 @@ export function PublicCatalog() {
   const favoriteItems = publishedItems.filter((item) => safeFavoriteIds.includes(item.id));
   const orderTotal = safeOrderItems.reduce((sum, item) => sum + asNumber(item?.sale_value) * asNumber(item?.qty, 1), 0);
   const catalogStyle = {
-    "--catalog-primary": theme.primary_color || "#C8A96A",
+    "--catalog-primary": theme.primary_color || "#b38b40",
     "--catalog-secondary": theme.secondary_color || "#D8C3A5",
     "--catalog-accent": settings.footer_inherit_main_palette === "1" ? theme.button_color || theme.primary_color
         : settings.footer_accent_color || theme.primary_color,
-    "--catalog-bg": settings.site_background || theme.background_color || "#F8F5F0",
+    "--catalog-bg": settings.site_background || theme.background_color || "#fbf9f5",
     "--catalog-section-bg": settings.section_background || "#ffffff",
     "--catalog-button": theme.button_color || "#C8A96A",
     "--catalog-button-text": settings.button_text_color || "#ffffff",
@@ -393,7 +395,8 @@ export function PublicCatalog() {
     "--catalog-link-hover": settings.link_hover_color || theme.button_color || "#5f421d",
     "--catalog-icon": settings.icon_color || theme.primary_color || "#8b642f",
     "--catalog-border": settings.border_color || theme.secondary_color || "#d8c3a5",
-    fontFamily: theme.body_font || "var(--body-font)"
+    "--catalog-title-font": theme.title_font || '"Cormorant Garamond", Georgia, serif',
+    fontFamily: theme.body_font || '"Plus Jakarta Sans", var(--body-font)'
   };
   const footerLogo = settings.footer_logo_url || theme.logo_url;
   const footerDisplayName = settings.footer_display_name || theme.brand_name || settings.company_display_name || data.brand_name;
@@ -548,10 +551,10 @@ function addToOrder(item) {
             <strong>{theme.brand_name || settings.company_display_name || data.brand_name || "Estúdio"}</strong>
             <span>{theme.slogan || data.slogan || "Piercing e joias selecionadas"}</span>
           </a>
-          <div className="catalog-top-actions">
-            <label className="catalog-search catalog-search-desktop">
+            <label className="catalog-search catalog-header-search">
               <Search size={17} />
               <input
+                aria-label="Buscar no catálogo"
                 value={search}
                 list="catalog-search-history"
                 onChange={(event) => setSearch(event.target.value)}
@@ -564,6 +567,8 @@ function addToOrder(item) {
                   ))}
               </datalist>
             </label>
+          <div className="catalog-top-actions">
+            {data.whatsapp_phone && <a className="catalog-header-contact" href={whatsappCatalogUrl(data.whatsapp_message, data.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle size={17} /><span>Atendimento</span></a>}
             {Boolean(Number(theme.show_favorites ?? 1)) && (
                 <button className="catalog-icon-action" onClick={() => setDrawer("favorites")} aria-label="Favoritos"><Heart size={18} /><span>{favoriteIds.length}</span></button>
               )}
@@ -577,7 +582,7 @@ function addToOrder(item) {
         {!hasLayoutRows && (
           <div className="catalog-title" style={{ order: -20 }}>
           <span className="eyebrow">Catálogo online</span>
-          <h1 style={{ fontFamily: theme.title_font || "Georgia" }}>{settings.page_title || "Catálogo Online"} <Sparkles size={26} /></h1>
+          <h1>{settings.page_title || "Catálogo Online"}</h1>
           <p>{data.title || "Escolha a joia perfeita para você"}</p>
           {data.subtitle && <small>{data.subtitle}</small>}
         </div>
@@ -680,7 +685,7 @@ function addToOrder(item) {
           fullCatalog
           section={{ title: "Todas as joias", subtitle: "Catálogo completo" }} style={undefined} className="catalog-results"
           productsRef={productsRef} items={items} activeCategory={activeCategory}
-          data={data} theme={theme} settings={settings} favoriteIds={favoriteIds}
+          data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} commercialNavigation={commercialNavigation}
           onToggleFavorite={toggleFavorite} onAdd={(item) => { addToOrder(item); setDrawer("order"); }}
         />
         )}
@@ -856,6 +861,7 @@ function CatalogMenuBlock({ section, data, settings, theme, search, setSearch, r
           <label className="catalog-search catalog-builder-menu__search">
           <Search size={17} />
           <input
+            aria-label="Buscar no catálogo"
             value={search}
             list={searchHistoryId}
             onChange={(event) => setSearch?.(event.target.value)}
@@ -1016,7 +1022,7 @@ function CatalogLayoutBlock({
       return (
         <>
           {fullCatalog && campaignBand}
-          <CatalogProductsBlock fullCatalog={fullCatalog} section={section} style={style} className={className("catalog-results")} productsRef={productsRef} items={catalogSectionProducts(section, productSource, { category: categoryOption, keepOrder: productSource === items })} activeCategory={commercialNavigation.trail?.at(-1)?.name || activeCategory} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={onToggleFavorite} onAdd={onAdd} />
+          <CatalogProductsBlock fullCatalog={fullCatalog} section={section} style={style} className={className("catalog-results")} productsRef={productsRef} items={catalogSectionProducts(section, productSource, { category: categoryOption, keepOrder: productSource === items })} activeCategory={commercialNavigation.trail?.at(-1)?.name || activeCategory} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={onToggleFavorite} onAdd={onAdd} commercialNavigation={commercialNavigation} />
         </>
       );
     }
@@ -1088,21 +1094,16 @@ function CatalogLayoutBlock({
 }
 
 /** @param {Record<string, any>} props */
-function CatalogDiscovery({ section, style, className, discoveryRef, productsRef, categories, activeCategory, setActiveCategory, search, setSearch, filters, setFilters, options, sort, setSort, commercialNavigation = {} }) {
+function CatalogDiscovery({ section, style, className, discoveryRef, productsRef, categories, activeCategory, setActiveCategory, commercialNavigation = {} }) {
   const chooseCategory = (value) => {
     setActiveCategory(value);
     requestAnimationFrame(() => productsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   };
   const trail = asArray(commercialNavigation.trail);
   const children = asArray(commercialNavigation.children);
-  const activeCount = Number(commercialNavigation.activeFilterCount || 0);
   return (
     <section ref={discoveryRef} className={className} style={style} aria-label={catalogSectionTitle(section, "Categorias e filtros")}>
-      <label className="catalog-search catalog-search-mobile">
-        <Search size={17} />
-        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar joia, SKU, material ou tamanho" />
-      </label>
-      <div className="catalog-category-strip">
+      <nav className="catalog-category-strip" aria-label="Categorias de joias">
         {asArray(commercialNavigation.navCampaigns).map((campaign) => (
           <a key={`campaign-${campaign.id}`} className="catalog-campaign-chip" href={campaignUrl(campaign.slug)}>
             <Sparkles size={25} />
@@ -1125,7 +1126,7 @@ function CatalogDiscovery({ section, style, className, discoveryRef, productsRef
             <span>Todas as categorias</span>
           </button>
         )}
-      </div>
+      </nav>
       {commercialNavigation.enabled && trail.length > 0 && (
         <div className="catalog-subcategories">
           <nav aria-label="Você está em">
@@ -1144,8 +1145,22 @@ function CatalogDiscovery({ section, style, className, discoveryRef, productsRef
           ))}
         </div>
       )}
+    </section>
+  );
+}
+
+/** @param {Record<string, any>} props */
+function CatalogRefinement({ filters, setFilters, options, activeCount, clearFilters }) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  return (
+    <aside className={`catalog-refinement${open ? " is-open" : ""}`} aria-label="Filtros do catálogo">
+      <div className="catalog-refinement-heading"><SlidersHorizontal size={17} /><h3>Refine sua escolha</h3></div>
+      <button type="button" className="catalog-refinement-toggle" aria-expanded={open} aria-controls={panelId} onClick={() => setOpen(!open)}>
+        <SlidersHorizontal size={17} /><span>Filtrar joias{activeCount > 0 ? ` (${activeCount})` : ""}</span><ChevronDown size={16} />
+      </button>
+      <div id={panelId} className="catalog-refinement-content">
       <div className="catalog-filters">
-        <span className="catalog-filter-label">{catalogSectionSubtitle(section, "Refinar")}</span>
         <CatalogSelect label="Material" value={filters.material} options={options.materials} onChange={(value) => setFilters({ ...filters, material: value })} />
         <CatalogSelect label="Observação de cor" value={filters.color} options={options.colors} onChange={(value) => setFilters({ ...filters, color: value })} />
         <CatalogSelect label="Pedra" value={filters.stone} options={options.stones} onChange={(value) => setFilters({ ...filters, stone: value })} />
@@ -1155,29 +1170,26 @@ function CatalogDiscovery({ section, style, className, discoveryRef, productsRef
         <CatalogSelect label="Tamanho do topo" value={filters.topSize} options={options.topSizes.map((number) => ({ value: String(number), label: `${number.toLocaleString("pt-BR", { minimumFractionDigits: 1 })} mm` }))} onChange={(value) => setFilters({ ...filters, topSize: value })} />
         <CatalogSelect label="Disponibilidade" value={filters.availability} options={[{ value: "true", label: "Em estoque" }, { value: "false", label: "Esgotados" }]} onChange={(value) => setFilters({ ...filters, availability: value })} />
         <span className="catalog-price-filter" role="group" aria-label="Faixa de preço">
+          <small>Faixa de preço</small>
           <input type="number" min="0" step="1" inputMode="numeric" placeholder="Preço mín." aria-label="Preço mínimo" value={filters.priceMin || ""} onChange={(event) => setFilters({ ...filters, priceMin: event.target.value })} />
           <input type="number" min="0" step="1" inputMode="numeric" placeholder="Preço máx." aria-label="Preço máximo" value={filters.priceMax || ""} onChange={(event) => setFilters({ ...filters, priceMax: event.target.value })} />
         </span>
-        <div className="catalog-sort">
-          <SlidersHorizontal size={16} />
-          <Select label={null} ariaLabel="Ordenar catálogo" value={sort} onChange={setSort}>
-            <option value="recentes">Mais recentes</option><option value="relevancia">Relevância</option><option value="lancamentos">Lançamentos</option><option value="menor-preco">Menor preço</option><option value="maior-preco">Maior preço</option><option value="nome-az">Nome de A a Z</option><option value="nome-za">Nome de Z a A</option><option value="estoque">Em estoque primeiro</option>
-          </Select>
-        </div>
       </div>
-      {activeCount > 0 && commercialNavigation.clearFilters && (
+      {activeCount > 0 && clearFilters && (
         <div className="catalog-filters-summary" aria-live="polite">
           <span>{activeCount} {activeCount === 1 ? "filtro ativo" : "filtros ativos"}</span>
-          <button type="button" onClick={commercialNavigation.clearFilters}>Limpar filtros</button>
+          <button type="button" onClick={clearFilters}>Limpar filtros</button>
         </div>
       )}
-    </section>
+      </div>
+    </aside>
   );
 }
 
 const CATALOG_PAGE_SIZE = 24;
 
-function CatalogProductsBlock({ fullCatalog = false, section, style, className, productsRef, items, activeCategory, data, theme, settings, favoriteIds, onToggleFavorite, onAdd }) {
+/** @param {Record<string, any>} props */
+function CatalogProductsBlock({ fullCatalog = false, section, style, className, productsRef, items, activeCategory, data, theme, settings, favoriteIds, onToggleFavorite, onAdd, commercialNavigation = {} }) {
   const title = catalogSectionTitle(section, "Produtos em destaque");
   // Carregamento progressivo: a contagem mostra o total encontrado e a grade
   // cresce aos poucos. Uma nova busca ou filtro recomeça do início.
@@ -1186,12 +1198,21 @@ function CatalogProductsBlock({ fullCatalog = false, section, style, className, 
   // biome-ignore lint/correctness/useExhaustiveDependencies: recomeça a paginação quando o conjunto de resultados muda.
   useEffect(() => setVisible(CATALOG_PAGE_SIZE), [resultKey]);
   const shown = items.slice(0, visible);
+  const refinement = fullCatalog && commercialNavigation.refinement;
   return (
     <section ref={productsRef} className={className} style={style}>
       <div className="catalog-results-heading">
         <div><span className="eyebrow">{catalogSectionSubtitle(section, "Resultados")}</span><h2>{title}</h2></div>
-        <strong>{items.length} {items.length === 1 ? "joia encontrada" : "joias encontradas"}</strong>
+        <div className="catalog-results-meta">
+          <span aria-live="polite">{items.length} {items.length === 1 ? "joia encontrada" : "joias encontradas"}</span>
+          {refinement && <div className="catalog-sort"><Select label={null} ariaLabel="Ordenar catálogo" value={refinement.sort} onChange={refinement.setSort}>
+            <option value="recentes">Mais recentes</option><option value="relevancia">Relevância</option><option value="lancamentos">Lançamentos</option><option value="menor-preco">Menor preço</option><option value="maior-preco">Maior preço</option><option value="nome-az">Nome de A a Z</option><option value="nome-za">Nome de Z a A</option><option value="estoque">Em estoque primeiro</option>
+          </Select></div>}
+        </div>
       </div>
+      <div className={refinement ? "catalog-shopping-layout" : "catalog-shopping-layout catalog-shopping-layout--curated"}>
+      {refinement && <CatalogRefinement {...refinement} activeCount={commercialNavigation.activeFilterCount} clearFilters={commercialNavigation.clearFilters} />}
+      <div className="catalog-shopping-products">
       <div className={`catalog-grid catalog-display-${section.display_mode || "grid"}`} id={fullCatalog ? "catalog-products" : undefined}>
         {shown.map((item) => (
           <CatalogProductCard item={item} favorite={favoriteIds.includes(item.id)} onToggleFavorite={() => onToggleFavorite(item)} theme={theme} settings={settings} promotion={catalogPromotionForItem(item, data.promotions || [])} onAddToOrder={() => onAdd(item)} key={item.id} />))}
@@ -1204,6 +1225,8 @@ function CatalogProductsBlock({ fullCatalog = false, section, style, className, 
       {!items.length && (
         <p className="empty-state catalog-empty">Nenhuma joia encontrada em {cleanDisplayText(activeCategory)} com os filtros selecionados.</p>
       )}
+      </div>
+      </div>
     </section>
   );
 }
@@ -1475,7 +1498,7 @@ function CatalogSelect({ label, value, options, onChange }) {
   // Filtro sem valores no cadastro não aparece (e um valor já escolhido segue visível para poder ser limpo).
   if (!safeOptions.length && !value) return null;
   return (
-    <Select className="catalog-filter-select" label={null} ariaLabel={label} value={value} onChange={onChange}>
+    <Select className="catalog-filter-select" label={label} ariaLabel={label} value={value} onChange={onChange}>
         <option value="">{label}</option>
         {safeOptions.map((option) => {
           const optionValue = typeof option === "object" ? option.value : option;
@@ -1662,6 +1685,7 @@ function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, th
         )}
       </figure>
       <div className="catalog-product-info">
+        {(item.material || item.category) && <span className="catalog-product-type">{cleanDisplayText(item.material || item.category)}</span>}
         <h2><a href={catalogProductUrl(item.id)}>{productName}</a></h2>
         {item.sku && <small className="catalog-product-sku">SKU {item.sku}</small>}
         {technicalSummary && <p className="catalog-technical-summary">{technicalSummary}</p>}
