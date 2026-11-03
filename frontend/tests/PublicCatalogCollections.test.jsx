@@ -73,11 +73,12 @@ describe("PublicCatalog · vitrine comercial", () => {
     const user = userEvent.setup();
     catalog.data.theme.theme = "boutique";
     catalog.data.banners = [
-      { title: "Coleção titânio", image_url: "https://cdn.test/one.webp", button_text: "Ver joias", button_link: "#catalog-products", is_active: 1 },
+      { title: "Coleção titânio", image_url: "https://cdn.test/one.webp", mobile_image_url: "https://cdn.test/one-mobile.webp", button_text: "Ver joias", button_link: "#catalog-products", is_active: 1 },
       { title: "Coleção ouro", image_url: "https://cdn.test/two.webp", is_active: 1 }
     ];
     render(<PublicCatalog />);
     expect(screen.getByRole("heading", { name: "Coleção titânio" })).toBeInTheDocument();
+    expect(screen.getByAltText("Coleção titânio").closest("picture").querySelector("source")).toHaveAttribute("srcset", "https://cdn.test/one-mobile.webp");
     expect(screen.getByRole("link", { name: "Ver joias" })).toHaveAttribute("href", "#catalog-products");
     await user.click(screen.getByRole("button", { name: "Próximo banner" }));
     expect(screen.getByRole("heading", { name: "Coleção ouro" })).toBeInTheDocument();
