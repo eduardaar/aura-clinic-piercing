@@ -2,8 +2,10 @@
 import { JEWELRY_CATEGORIES } from "../config/index.js";
 import { boolNumber, defaultCatalogTheme } from "./utils.js";
 import { catalogPluginRequiredFeature, countEnabledCatalogPlugins, normalizeCatalogPlugins } from "./catalogPlugins.js";
+import { defaultBoutiqueConfig, normalizeBoutiqueConfig } from "../config/catalogBoutique.js";
 
 const CATALOG_SETTINGS_DEFAULTS = {
+    boutique_config: JSON.stringify(defaultBoutiqueConfig()),
     brand_name: "",
     slogan: "",
     logo_url: "",
@@ -104,6 +106,7 @@ const CATALOG_SETTINGS_DEFAULTS = {
   };
 
 const CATALOG_SETTINGS_KEYS = new Set([
+  "boutique_config",
   "title", "subtitle", "hero_title", "hero_subtitle", "hero_image_url", "categories", "whatsapp_phone", "whatsapp_message", "layout_style",
   "company_instagram", "company_legal_name", "company_display_name", "company_short_description", "company_phone", "company_whatsapp",
   "company_email", "company_support_email", "company_address", "company_hours", "company_service_days",
@@ -174,7 +177,12 @@ function normalizeSettings(settings, base = getCatalogSettingsDefaults()) {
   const next = { ...getCatalogSettingsDefaults(), ...jsonObject(base) };
   for (const [key, rawValue] of Object.entries(jsonObject(settings))) {
     if (!CATALOG_SETTINGS_KEYS.has(key)) continue;
-    if (key === "categories" && Array.isArray(rawValue)) next[key] = rawValue.join(",");
+    if (key === "boutique_config") {
+      const result = normalizeBoutiqueConfig(rawValue);
+      if (result.errors.length) throw new CatalogCustomizationError(result.errors.join(" "), 422, "boutique_config_invalid");
+      next[key] = JSON.stringify(result.config);
+    }
+    else if (key === "categories" && Array.isArray(rawValue)) next[key] = rawValue.join(",");
     else if (key === "content_sections" && typeof rawValue !== "string") next[key] = JSON.stringify(rawValue ?? []);
     else next[key] = String(rawValue ?? "");
   }
@@ -848,8 +856,25 @@ export function catalogPublishChecklist(snapshot = {}) {
     }
   }
 
-  const anchors = new Set([...BUILTIN_CATALOG_ANCHORS, ...sectionKeys]);
-  for (const cta of collectCatalogCtas(source)) {
+  const boutique = normalized.theme.theme === "boutique" ? normalizeBoutiqueConfig(normalized.settings.boutique_config).config : null;
+  const visibleBoutiqueSections = boutique?.sections.filter((section) => section.enabled) || [];
+  const anchors = boutique
+    ? new Set([...visibleBoutiqueSections.map((section) => section.id), ...(visibleBoutiqueSections.some((section) => section.type === "products") ? ["catalog-products"] : [])])
+    : new Set([...BUILTIN_CATALOG_ANCHORS, ...sectionKeys]);
+  const ctas = collectCatalogCtas(source).filter((cta) => !boutique || cta.path.startsWith("banners["));
+  if (boutique) {
+    const push = (path, value) => ctas.push({ path: `settings.boutique_config.${path}`, value });
+    if (boutique.announcement_enabled) push("announcement_link_url", boutique.announcement_link_url);
+    if (boutique.navigation_enabled) boutique.navigation_links.forEach((link, index) => push(`navigation_links[${index}].url`, link.url));
+    for (const section of visibleBoutiqueSections) {
+      if (section.type === "hero" && boutique.hero_show_button) push("hero_button_url", boutique.hero_button_url);
+      if (section.type === "categories") push("categories_link_url", boutique.categories_link_url);
+      if (section.type === "benefits") boutique.benefits.filter((item) => item.enabled).forEach((item, index) => push(`benefits[${index}].url`, item.url));
+      if (section.type === "custom") push(`sections.${section.id}.link_url`, section.link_url);
+      if (section.type === "footer") boutique.footer_columns.filter((column) => column.enabled).forEach((column) => column.links.forEach((link) => push(`footer_columns.${column.id}.links.${link.id}.url`, link.url)));
+    }
+  }
+  for (const cta of ctas) {
     const value = catalogString(cta.value);
     if (value.startsWith("#") && !anchors.has(value.slice(1))) {
       warnings.push(catalogChecklistItem("unknown_section_reference", cta.path, `A âncora "${value}" não corresponde a uma seção ou área conhecida do catálogo.`));

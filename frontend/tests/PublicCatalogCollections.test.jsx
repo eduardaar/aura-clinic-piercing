@@ -47,6 +47,52 @@ afterEach(cleanup);
 const results = () => document.querySelector("#catalog-products");
 
 describe("PublicCatalog · vitrine comercial", () => {
+  it("detalhes Boutique respeitam as opções e o contato usa a marca da clínica", () => {
+    window.history.replaceState({}, "", "/catalogo/produto/1?t=clinica-a");
+    Object.assign(catalog.data.theme, { theme: "boutique", brand_name: "Estúdio da Maria" });
+    Object.assign(catalog.data, { whatsapp_phone: "5511999999999", boutique_config: JSON.stringify({ detail_show_sku: false, detail_show_attributes: false, detail_show_related: false, detail_show_share: false, detail_show_notes: false, detail_contact_label: "Conversar com {brand}" }) });
+    catalog.data.items[0].notes = "Nota que deve ficar oculta";
+    render(<PublicCatalog />);
+    expect(screen.getByRole("link", { name: "Conversar com Estúdio da Maria" })).toHaveAttribute("href", expect.stringContaining("wa.me/5511999999999"));
+    expect(screen.queryByText("SKU SKU-1")).not.toBeInTheDocument();
+    expect(screen.queryByText("Nota que deve ficar oculta")).not.toBeInTheDocument();
+    expect(document.querySelector(".catalog-detail-grid")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Mais opções parecidas" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Compartilhar" })).not.toBeInTheDocument();
+  });
+
+  it("rodapé Boutique permite ocultar contatos automáticos e trocar os textos restantes", () => {
+    catalog.data.theme.theme = "boutique";
+    Object.assign(catalog.data, { whatsapp_phone: "5511999999999", company_email: "contato@example.test", company_hours: "Segunda a sexta", boutique_config: JSON.stringify({ footer_show_whatsapp: false, footer_show_email: false, footer_show_hours: false, footer_schedule_label: "Reservar horário", footer_columns: [{ id: "contact", type: "contact", enabled: true, title: "Fale conosco" }] }) });
+    render(<PublicCatalog />);
+    const footer = document.querySelector("footer");
+    expect(within(footer).getByRole("link", { name: "Reservar horário" })).toBeInTheDocument();
+    expect(within(footer).queryByRole("link", { name: "WhatsApp" })).not.toBeInTheDocument();
+    expect(within(footer).queryByText("contato@example.test")).not.toBeInTheDocument();
+    expect(within(footer).queryByText("Segunda a sexta")).not.toBeInTheDocument();
+  });
+
+  it("Boutique aplica conteúdo, visibilidade, ordem, cores, cartões e paginação configurados por clínica", async () => {
+    const user = userEvent.setup(); catalog.data.theme.theme = "boutique";
+    catalog.data.boutique_config = JSON.stringify({ announcement_text: "A loja desta clínica", hero_kicker: "", hero_note: "", products_title: "Peças escolhidas", products_page_size: 2, products_mobile_columns: 1, navigation_background: "#223344", card_show_sku: false, card_show_summary: false, card_details_label: "Conhecer peça", filters: ["price"], benefits: [{ id: "one", icon: "star", title: "Nosso cuidado", text: "Mensagem personalizada", enabled: true }], sections: [{ id: "footer", type: "footer", enabled: true }, { id: "benefits", type: "benefits", enabled: true }, { id: "products", type: "products", enabled: true }, { id: "hero", type: "hero", enabled: false }], footer_columns: [{ id: "one", type: "text", title: "Informações da loja", text: "Atendimento sob consulta", links: [], enabled: true }] });
+    render(<PublicCatalog />);
+    expect(screen.getByText("A loja desta clínica")).toBeInTheDocument();
+    expect(screen.getByText("Nosso cuidado")).toBeInTheDocument();
+    expect(screen.queryByText("Joias selecionadas")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
+    const sections = document.querySelector(".boutique-page-sections");
+    expect(sections.firstElementChild).toHaveAttribute("id", "footer");
+    expect(document.querySelector("main").style.getPropertyValue("--boutique-navigation-background")).toBe("#223344");
+    expect(document.querySelector("main").style.getPropertyValue("--boutique-product-mobile-columns")).toBe("1");
+    expect(screen.getByRole("heading", { name: "Peças escolhidas" })).toBeInTheDocument();
+    expect(results().querySelectorAll("article")).toHaveLength(2);
+    expect(results()).not.toHaveTextContent("SKU-");
+    expect(screen.queryByLabelText("Material")).not.toBeInTheDocument();
+    expect(within(results()).getAllByRole("link", { name: "Conhecer peça" })).toHaveLength(2);
+    await user.click(screen.getByRole("button", { name: "Mostrar mais (2 restantes)" }));
+    expect(results().querySelectorAll("article")).toHaveLength(4);
+  });
+
   it("Boutique usa uma composição única mesmo com vitrines repetidas no layout antigo", async () => {
     const user = userEvent.setup();
     Object.assign(catalog.data.theme, { theme: "boutique", title_font: "Cormorant Garamond", body_font: "Plus Jakarta Sans", show_buy_button: 0 });

@@ -9,6 +9,8 @@ import { asArray, asObject } from "../lib/utils";
 import { JEWELRY_CATEGORY_OPTIONS } from "../lib/defaultForms";
 import { catalogContentSections, defaultContentSection } from "../features/catalog/catalogUtils";
 import { CatalogPluginEditor } from "../features/catalog/CatalogPluginEditor";
+import { CatalogBoutiqueEditor } from "../features/catalog/CatalogBoutiqueEditor";
+import { defaultBoutiqueConfig } from "../features/catalog/boutiqueConfig";
 import { DEFAULT_IMAGE_TRANSFORM, ImageEditor, imageTransformStyle, normalizeImageTransform } from "../components/common/ImageEditor";
 import { SmartCombobox } from "../components/common/SmartCombobox";
 import { publicLinkForTenant } from "../lib/publicRoutes";
@@ -356,7 +358,9 @@ export function CatalogCustomization({ initialSection = "layout", onNavigate }) 
         )}
         <CatalogPublishChecklist checklist={publishChecklist} />
 
-        {activeSection === "layout" && <CatalogLayoutBuilder form={form} setForm={setForm} />}
+        {activeSection === "layout" && (form.theme.theme === "boutique"
+          ? <CatalogBoutiqueEditor value={form.settings.boutique_config} onChange={(value) => setForm({ ...form, settings: { ...form.settings, boutique_config: JSON.stringify(value) } })} categories={form.featuredCategories.map((category) => ({ name: category.public_name || category.category_id, value: category.category_id }))} />
+          : <CatalogLayoutBuilder form={form} setForm={setForm} />)}
         {activeSection === "integracoes" && <CatalogPluginEditor plugins={form.plugins} onChange={(plugins) => setForm({ ...form, plugins })} enabledFeatures={pluginAccess.enabledFeatures} pluginLimit={pluginAccess.pluginLimit} />}
 
         <Modal open={appearanceOpen} title="Aparência do catálogo" subtitle="Ajuste identidade, cores e tipografia sem sair dos componentes." size="lg" onClose={() => setAppearanceOpen(false)} footer={<Button onClick={() => setAppearanceOpen(false)}>Concluir</Button>}>
@@ -1820,6 +1824,7 @@ function defaultAdvancedPromotion() {
 function defaultCatalogCustomization() {
   return {
     settings: {
+      boutique_config: JSON.stringify(defaultBoutiqueConfig()),
       page_title: "Catálogo Online",
       title: "Escolha a joia perfeita para você",
       subtitle: "Curadoria premium de joias selecionadas",

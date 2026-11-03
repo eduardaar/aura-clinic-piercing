@@ -8,7 +8,7 @@ nunca com código executável salvo pela clínica.
 ## Fluxo de edição
 
 1. Em **Aparência** (modal), escolha um template inicial: **Minimal clean**,
-   **Luxe editorial**, **Studio booking** ou **Campaign / lançamento**. Aplicar
+   **Luxe editorial**, **Studio booking**, **Campaign / lançamento** ou **Boutique**. Aplicar
    um template pede confirmação e só altera o rascunho.
 2. Monte a **Página inicial** (seção **Componentes da página**, a que abre por
    padrão). Logo, nome, cores e fontes ficam em **Aparência**; destaques,
@@ -34,6 +34,52 @@ nunca com código executável salvo pela clínica.
 
 O template só altera a paleta, a tipografia e a composição inicial dos blocos;
 marca, imagens, produtos e textos já cadastrados são preservados.
+
+## Boutique: composição e opções por clínica
+
+Com o template **Boutique**, **Catálogo → Componentes da página** apresenta
+um editor próprio, usando o mesmo fluxo de rascunho, prévia, publicação,
+histórico e rollback. O visual inicial permanece como padrão editável. Textos
+vazios e listas removidas não são preenchidos novamente pelo renderer.
+
+- **Cabeçalho e navegação:** faixa superior, assinatura, pesquisa, contato,
+  elementos da marca, menu de categorias/campanhas e links adicionais. Cada
+  elemento tem controle de visibilidade; links podem usar `@whatsapp` para
+  acompanhar o número configurado da clínica.
+- **Componentes:** destaque, benefícios, categorias com fotos, campanhas,
+  produtos, integrações e rodapé podem ser ocultados e reordenados. Conteúdos
+  personalizados permitem texto, imagem e botão, com múltiplas instâncias.
+  O editor informa a âncora de cada componente para os links do menu.
+- **Destaque:** usa os banners cadastrados, inclusive imagem mobile,
+  transformação da foto e botões. É possível escolher composição, textos
+  auxiliares, altura por dispositivo, reprodução automática e intervalo.
+- **Benefícios e categorias:** itens, textos, ícones, links, ordem, quantidade
+  e colunas configuráveis. Fotos vêm do cadastro das categorias; usar uma foto
+  de produto como alternativa é opcional. A seleção aceita subcategorias.
+- **Produtos:** título, contagem, filtros permitidos, ordenação inicial,
+  produtos por carregamento e colunas para computador, tablet e celular.
+  Cartões têm controles de informação, preço, ações e seus textos. A página
+  do produto permite configurar descrição, SKU, ficha técnica, preço,
+  disponibilidade, observações, contato, compartilhamento e relacionados.
+- **Rodapé:** até seis colunas reordenáveis, com marca, categorias, contato,
+  localização, texto ou links. Os contatos automáticos podem ser ocultados
+  individualmente. Cores, imagem/gradiente, logo e dados da empresa continuam
+  nas opções existentes de **Rodapé e identidade** e **Contato e políticas**.
+- **Aparência e celular:** cores dos componentes, largura, espaços, fontes,
+  tamanhos e arredondamentos. No celular, o menu rola horizontalmente, os
+  filtros são recolhíveis e a grade/rodapé/benefícios/categorias respeitam
+  suas colunas próprias. Abaixo de 360 px, produtos usam uma coluna para
+  preservar a leitura. Textos extensos podem quebrar linha.
+
+O contrato fica em `settings.boutique_config` (JSON serializado no snapshot).
+`backend/src/config/catalogBoutique.js` é um módulo puro compartilhado pelo
+editor e pelo servidor: define campos, limites, valores iniciais e validação.
+Configurações ausentes recebem os padrões sem migration; não é necessário
+reescrever as revisões publicadas. `PATCH /api/catalog-customization` aceita
+objeto ou JSON, rejeitando conteúdo inválido com `422 boutique_config_invalid`
+antes de alterar a versão. O checklist também reconhece âncoras dos componentes
+personalizados e avisa sobre links para uma grade desativada. Cada clínica
+mantém sua própria configuração; salvar não publica.
 
 ## Página inicial: blocos, colunas e componentes
 

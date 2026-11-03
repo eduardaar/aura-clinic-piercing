@@ -2,6 +2,20 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { catalogPublishChecklist, normalizeCatalogSections } from "../src/services/catalog.js";
 
+test("checklist Boutique reconhece links para blocos personalizados e avisa sobre grade desativada", () => {
+  const checklist = catalogPublishChecklist({
+    theme: { theme: "boutique" },
+    settings: { boutique_config: {
+      sections: [{ id: "sobre-nos", type: "custom", enabled: true }, { id: "products", type: "products", enabled: false }],
+      navigation_links: [{ id: "about", label: "Sobre", url: "#sobre-nos" }, { id: "shop", label: "Comprar", url: "#catalog-products" }]
+    } }
+  });
+  assert.equal(checklist.ready, true);
+  const links = checklist.warnings.filter((item) => item.code === "unknown_section_reference");
+  assert.equal(links.length, 1);
+  assert.ok(links[0].path.endsWith("navigation_links[1].url"));
+});
+
 test("checklist aceita snapshot legado sem seções do builder", () => {
   const checklist = catalogPublishChecklist({
     settings: {

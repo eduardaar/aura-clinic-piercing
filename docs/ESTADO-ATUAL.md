@@ -1,5 +1,10 @@
 # Estado atual do projeto
 
+> **Catálogo configurável de 03/11/2026 (seção 24):** Boutique com editor por
+> clínica para conteúdo, ordem/visibilidade dos componentes, cores, cartões,
+> detalhes do produto, rodapé e opções específicas de celular. Configuração
+> participa do rascunho, publicação e rollback existentes. Sem migration.
+
 > **Correção visual de 03/11/2026 (seção 23):** fontes do editor entregues
 > localmente com fallbacks e novo template Boutique, com composição de loja
 > própria. A adaptação anterior preservava a família `Inter` sem carregá-la,
@@ -714,6 +719,39 @@ de fonte. Frontend completo: **79 unitários e 428 componentes** aprovados;
 tipos, build e lint também aprovados. A ferramenta de controle do navegador
 continuou bloqueada por não identificar a URL do Chrome no Windows; não foi
 possível realizar conferência visual em navegador nesta sessão.
+
+## 24. Boutique configurável por clínica e celular — 03/11/2026
+
+**Entregue no código:** o template deixa de depender de textos comerciais,
+listas de benefícios e composição fixos. Em **Catálogo → Componentes da
+página**, cada clínica edita os componentes e suas opções usando
+`settings.boutique_config`. O contrato puro compartilhado gera os campos do
+editor e valida os dados no servidor; revisões anteriores recebem os padrões.
+
+- Ordem e visibilidade de destaque, benefícios, categorias, campanhas,
+  produtos, integrações e rodapé; múltiplos conteúdos com texto/imagem/botão.
+- Faixa, pesquisa, menu, contatos, composição do banner, categorias com fotos,
+  filtros, ordenação, paginação e informações/ações dos cartões configuráveis.
+- Detalhes do produto com opções de apresentação e contato vinculado à marca
+  da clínica, substituindo o texto fixo “Falar com a Aura”.
+- Rodapé com colunas e links editáveis, respeitando os dados e a aparência
+  existentes; cores por componente, medidas e tipografia configuráveis.
+- Colunas específicas para computador/tablet/celular, filtros recolhíveis,
+  menu com rolagem horizontal e destaque empilhado ou sobreposto no celular.
+  Cabeçalho mede sua altura para não cobrir os destinos de links internos.
+- Rascunho separado da publicação e isolamento entre clínicas verificados
+  por integração. URLs executáveis, cores inválidas, medidas fora dos limites
+  e componentes centrais duplicados são rejeitados antes da gravação.
+
+**Evidências:** `catalogBoutiqueConfig.test.mjs`,
+`catalogBoutiquePersistence.test.mjs`, `catalogPublishChecklist.test.mjs`,
+`CatalogBoutiqueEditor.test.jsx` e `PublicCatalogCollections.test.jsx`.
+Tipos, lint e build aprovados. Frontend: 79 testes unitários e 433 testes de
+componentes. As verificações específicas do backend passaram em banco local
+descartável. A conferência visual em navegador/mobile continua **não validada**
+nesta sessão: o host de automação de navegador estava indisponível.
+
+Referência de operação e contrato: [CATALOGO-BUILDER.md](./CATALOGO-BUILDER.md).
 
 ## Pendências abertas
 

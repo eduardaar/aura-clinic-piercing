@@ -1,7 +1,6 @@
 import { Fragment, useEffect, useId, useRef, useState } from "react";
 import {
   CheckCircle2,
-  ArrowRight,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -66,6 +65,8 @@ import { CatalogNativePlugins } from "../features/catalog/CatalogNativePlugins";
 import { catalogUrl, publicTenant, publicUrl, replaceCatalogState } from "../lib/publicRoutes";
 import { imageTransformStyle, normalizeImageTransform } from "../components/common/ImageEditor";
 import { catalogFontStack } from "../features/catalog/catalogTypography";
+import { CatalogBoutiqueHome } from "../features/catalog/BoutiqueStorefront";
+import { boutiqueConfig } from "../features/catalog/boutiqueConfig";
 import "../styles/catalog-boutique.css";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
@@ -194,6 +195,8 @@ export function PublicCatalog() {
   const [categoryTreeOpen, setCategoryTreeOpen] = useState(false);
   const [campaignStatus, setCampaignStatus] = useState(null);
   const [sort, setSort] = useState(initialQuery.get("sort") || "recentes");
+  const initialSortParam = useRef(initialQuery.get("sort"));
+  const boutiqueDefaultSort = useRef({ initialized: false, value: "recentes" });
   const [favoriteIds, setFavoriteIds] = useState(() => readCatalogStorage("aura-catalog-favorites", []));
   const [orderItems, setOrderItems] = useState(() => readCatalogStorage("aura-catalog-order", []));
   const [drawer, setDrawer] = useState(null);
@@ -264,10 +267,19 @@ export function PublicCatalog() {
 
   useEffect(() => {
     const activeCount = asArray(data?.banners).filter((banner) => Boolean(asNumber(banner?.is_active))).length;
-    if (activeCount <= 1) return undefined;
-    const timer = window.setInterval(() => setBannerIndex((index) => (index + 1) % activeCount), 4500);
+    const config = boutiqueConfig(data?.boutique_config);
+    if (activeCount <= 1 || (data?.theme?.theme === "boutique" && !config.hero_autoplay)) return undefined;
+    const timer = window.setInterval(() => setBannerIndex((index) => (index + 1) % activeCount), data?.theme?.theme === "boutique" ? config.hero_interval : 4500);
     return () => window.clearInterval(timer);
-  }, [data?.banners]);
+  }, [data?.banners, data?.boutique_config, data?.theme?.theme]);
+
+  useEffect(() => {
+    if (data?.theme?.theme !== "boutique" || initialSortParam.current) return;
+    const next = boutiqueConfig(data.boutique_config).products_default_sort;
+    const previous = boutiqueDefaultSort.current;
+    if (!previous.initialized || sort === previous.value) setSort(next);
+    boutiqueDefaultSort.current = { initialized: true, value: next };
+  }, [data?.theme?.theme, data?.boutique_config, sort]);
 
   useEffect(() => {
     if (!previewMode && data && !data.error) trackCatalogEvent("catalog_view");
@@ -303,6 +315,11 @@ export function PublicCatalog() {
     banner_height: 340,
     banner_fit: "cover"
   };
+  if (theme.theme === "boutique") {
+    fallbackBanner.title = settings.hero_title || data.title || "";
+    fallbackBanner.button_text = "";
+    fallbackBanner.button_link = "";
+  }
     const banners = activeBanners.length ? activeBanners : [fallbackBanner];
   const activeBanner = banners[bannerIndex % banners.length] || fallbackBanner;
   // Categorias comerciais da vitrine (painel › Categorias da vitrine). Sem
@@ -331,7 +348,7 @@ export function PublicCatalog() {
   const filteredItems = publishedItems.filter((item) => {
     const variants = asArray(item.variants);
     const haystack = removeAccents(`${item.name} ${item.description} ${item.category} ${item.subcategory} ${item.material} ${item.color} ${item.stone} ${item.size} ${item.thickness} ${item.sku} ${variants.map((variant) => Object.values(variant).join(" ")).join(" ")}`.toLowerCase());
-    const activeCategoryConfig = categories.find((category) => category.name === activeCategory);
+    const activeCategoryConfig = categories.find((category) => (category.value || category.name) === activeCategory);
     // Categoria comercial: a escolhida e todas as subcategorias. Um nome antigo
     // (de bloco do editor, por exemplo) continua usando a busca por termos.
     const categoryMatch = activeCategory === "Todos"
@@ -554,7 +571,14 @@ function addToOrder(item) {
         commercialNavigation={commercialNavigation} campaigns={activeCampaigns.filter((campaign) => campaign.show_on_home)}
         banners={banners} activeBanner={activeBanner} activeBannerIndex={bannerIndex % banners.length} onBannerChange={setBannerIndex}
         categoryTreeOpen={categoryTreeOpen} onCloseTree={() => setCategoryTreeOpen(false)}
-        footerLogo={footerLogo} footerDisplayName={footerDisplayName} drawerContent={drawerContent} />
+        footerLogo={footerLogo} footerDisplayName={footerDisplayName} drawerContent={drawerContent}
+        links={{ image: catalogImageUrl, whatsapp: whatsappCatalogUrl, props: catalogLinkProps, instagram: instagramCatalogUrl, mail: safeMailto, fallback: useNeutralImageFallback }}
+        renderProducts={(config) => <CatalogProductsBlock fullCatalog
+          section={{ title: activeCategory !== "Todos" ? categories.find((category) => (category.value || category.name) === activeCategory)?.name || activeCategory : search.trim() ? config.products_search_title : config.products_title, subtitle: config.products_kicker }}
+          className="catalog-results boutique-results" productsRef={productsRef} items={items} activeCategory={activeCategory}
+          data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={toggleFavorite}
+          onAdd={(item) => { addToOrder(item); setDrawer("order"); }} commercialNavigation={commercialNavigation} />}
+      />
     );
   }
 
@@ -737,102 +761,6 @@ function addToOrder(item) {
 }
 
 const DEFAULT_CATALOG_LAYOUT_TYPES = ["hero", "categories", "featured_products", "best_sellers", "new_products", "promotions", "booking_cta", "location", "footer"];
-
-/** Composição de loja do template Boutique. Usa os mesmos produtos, filtros,
- * carrinho e categorias do catálogo; o construtor continua disponível nos
- * demais templates. @param {Record<string, any>} props */
-function CatalogBoutiqueHome({ data, theme, settings, catalogStyle, categories, publishedItems, items, activeCategory,
-  setActiveCategory, search, setSearch, productsRef, favoriteIds, onToggleFavorite, onAdd, onOpenFavorites,
-  onOpenOrder, orderCount, commercialNavigation, campaigns, categoryTreeOpen, onCloseTree,
-  footerLogo, footerDisplayName, drawerContent, banners, activeBanner, activeBannerIndex, onBannerChange }) {
-  const brand = theme.brand_name || settings.company_display_name || data.brand_name || "Estúdio";
-  const chooseCategory = (value) => {
-    setActiveCategory(value);
-    requestAnimationFrame(() => productsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
-  };
-  const categoryProduct = (category) => publishedItems.find((item) => {
-    const definition = asArray(data.catalogCategories).find((node) => node.slug === category.value);
-    if (definition) return itemInCategory(item, categoryDescendantIds(data.catalogCategories, definition.id));
-    return catalogCategoryTerms(category.match || category.name).some((term) => removeAccents(`${item.category} ${item.subcategory}`.toLowerCase()).includes(term));
-  });
-  const quickCategories = categories.filter((category) => category.name !== "Todos")
-    .map((category) => ({ ...category, product: categoryProduct(category) }))
-    .filter((category) => category.image_url || category.product).slice(0, 6);
-  const heroImage = activeBanner.image_url || settings.hero_image_url || publishedItems.find(catalogItemIsAvailable)?.photo_url;
-  const heroTitle = activeBanner.title || settings.hero_title || "Seu estilo, em cada detalhe.";
-  const heroSubtitle = activeBanner.subtitle || settings.hero_subtitle || settings.subtitle || "Encontre peças para criar uma composição que é só sua.";
-  const heroTransform = normalizeImageTransform(typeof activeBanner.image_transform === "string" ? safeJson(activeBanner.image_transform) : activeBanner.image_transform);
-  const isFiltered = commercialNavigation.activeFilterCount > 0;
-  const selectedCategoryName = categories.find((category) => (category.value || category.name) === activeCategory)?.name || activeCategory;
-  const productTitle = activeCategory !== "Todos" ? selectedCategoryName : search.trim() ? "Resultado da busca" : "Encontre sua próxima joia";
-  const bookingEnabled = Number(theme.show_schedule_button ?? 1) !== 0;
-  const footerEnabled = settings.footer_enabled !== "0";
-
-  return (
-    <main className="catalog-page theme-boutique" style={catalogStyle}>
-      <div className="boutique-announcement"><span>{settings.company_short_description || "Joias selecionadas. Detalhes que fazem a diferença."}</span>{bookingEnabled && <a href={publicUrl("/agendar")}>Agende sua visita <ArrowRight size={12} /></a>}</div>
-      <header className="boutique-header">
-        <div className="boutique-header-inner">
-          <a className="boutique-brand" href={catalogUrl()}>
-            {theme.logo_url && <img src={catalogImageUrl(theme.logo_url)} alt="" onError={(event) => { event.currentTarget.hidden = true; }} />}
-            <span><strong>{brand}</strong><small>{theme.slogan || "PIERCING & JOIAS"}</small></span>
-          </a>
-          <label className="boutique-search"><Search size={18} /><input aria-label="Buscar no catálogo" placeholder="Buscar por joia, material, pedra ou SKU..." value={search} onChange={(event) => setSearch(event.target.value)} />{search && <button type="button" aria-label="Limpar busca" onClick={() => setSearch("")}>×</button>}</label>
-          <div className="boutique-header-actions">
-            {settings.whatsapp_phone && <a className="boutique-contact" href={whatsappCatalogUrl(settings.whatsapp_message, settings.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle size={19} /><span>Atendimento</span></a>}
-            {Number(theme.show_favorites ?? 1) !== 0 && <button type="button" aria-label="Favoritos" className="boutique-header-action" onClick={onOpenFavorites}><Heart size={20} />{favoriteIds.length > 0 && <span>{favoriteIds.length}</span>}</button>}
-            {Number(theme.show_buy_button ?? 1) !== 0 && <button type="button" aria-label="Carrinho" className="boutique-header-action boutique-bag" onClick={onOpenOrder}><ShoppingCart size={20} /><span>{orderCount}</span></button>}
-          </div>
-        </div>
-        <nav className="boutique-navigation" aria-label="Categorias de joias">
-          <div>{categories.map((category) => { const value = category.value || category.name; return <button key={value} type="button" className={activeCategory === value ? "active" : ""} aria-pressed={activeCategory === value} onClick={() => chooseCategory(value)}>{cleanDisplayText(category.name)}</button>; })}
-          {commercialNavigation.enabled && <button type="button" onClick={commercialNavigation.openTree}>Todas as categorias <ChevronDown size={13} /></button>}
-          {asArray(commercialNavigation.navCampaigns).map((campaign) => <a key={campaign.id} href={campaignUrl(campaign.slug)}>{campaign.title}</a>)}
-          </div>
-        </nav>
-      </header>
-
-      {!isFiltered && <>
-        <section className="boutique-hero" aria-label="Destaques do catálogo" aria-roledescription={banners.length > 1 ? "carrossel" : undefined}>
-          <div className="boutique-hero-inner">
-            <div className="boutique-hero-copy"><span>CURADORIA DE JOIAS</span><h1>{heroTitle}</h1><p>{heroSubtitle}</p><a {...catalogLinkProps(activeBanner.button_link, "#catalog-products")} className="boutique-primary-link">{activeBanner.button_text || "Explorar coleção"} <ArrowRight size={16} /></a><small>{settings.company_short_description || "Uma seleção para expressar quem você é."}</small></div>
-            {heroImage && <div className="boutique-hero-media"><picture>{activeBanner.mobile_image_url && <source media="(max-width: 767px)" srcSet={catalogImageUrl(activeBanner.mobile_image_url)} />}<img src={catalogImageUrl(heroImage)} alt={activeBanner.alt_text || heroTitle} width="900" height="900" fetchPriority="high" style={imageTransformStyle(heroTransform)} onError={useNeutralImageFallback} /></picture></div>}
-            {banners.length > 1 && <div className="boutique-hero-controls"><button type="button" aria-label="Banner anterior" onClick={() => onBannerChange((activeBannerIndex - 1 + banners.length) % banners.length)}><ChevronLeft size={18} /></button><span>{activeBannerIndex + 1} / {banners.length}</span><button type="button" aria-label="Próximo banner" onClick={() => onBannerChange((activeBannerIndex + 1) % banners.length)}><ChevronRight size={18} /></button></div>}
-          </div>
-        </section>
-        <div className="boutique-benefits">
-          <div><Gem /><span><strong>Joias selecionadas</strong><small>Materiais e acabamentos para seu estilo</small></span></div>
-          <div><Heart /><span><strong>Composições únicas</strong><small>Encontre sua combinação de peças</small></span></div>
-          <div><ShieldCheck /><span><strong>Escolha com orientação</strong><small>Conte com a equipe do estúdio</small></span></div>
-          {settings.whatsapp_phone && <a href={whatsappCatalogUrl(settings.whatsapp_message, settings.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle /><span><strong>Atendimento próximo</strong><small>Tire suas dúvidas pelo WhatsApp</small></span></a>}
-        </div>
-      </>}
-
-      <div className="boutique-content">
-        {!isFiltered && quickCategories.length > 0 && <section className="boutique-categories"><div className="boutique-section-heading"><div><span className="eyebrow">ESCOLHA SEU ESTILO</span><h2>Categorias em destaque</h2><p>Explore a nossa seleção por tipo de joia.</p></div><a href="#catalog-products">Ver todas as joias <ArrowRight size={15} /></a></div><div className="boutique-category-grid">
-          {quickCategories.map((category) => <button key={category.value || category.name} type="button" onClick={() => chooseCategory(category.value || category.name)}>
-            <img src={catalogImageUrl(category.image_url || category.product?.photo_url || category.product?.image_url)} alt="" loading="lazy" width="240" height="240" onError={useNeutralImageFallback} /><span>{cleanDisplayText(category.name)}<ArrowRight size={16} /></span>
-          </button>)}
-        </div></section>}
-        {campaigns.length > 0 && !isFiltered && <CatalogCampaignBand campaigns={campaigns} />}
-        <div className="boutique-breadcrumb"><a href={catalogUrl()}>Início</a><ChevronRight size={12} /><span>Catálogo</span>{activeCategory !== "Todos" && <><ChevronRight size={12} /><strong>{cleanDisplayText(selectedCategoryName)}</strong></>}</div>
-        {asArray(commercialNavigation.trail).length > 0 && <div className="boutique-subcategories" aria-label="Subcategorias">{commercialNavigation.children.map((category) => <button type="button" key={category.id} onClick={() => chooseCategory(category.slug)}>{category.name}<ChevronRight size={13} /></button>)}</div>}
-        <CatalogProductsBlock fullCatalog section={{ title: productTitle, subtitle: "NOSSA SELEÇÃO" }} className="catalog-results boutique-results" productsRef={productsRef} items={items} activeCategory={activeCategory} data={data} theme={theme} settings={settings} favoriteIds={favoriteIds} onToggleFavorite={onToggleFavorite} onAdd={onAdd} commercialNavigation={commercialNavigation} />
-        <CatalogNativePlugins plugins={data.plugins} settings={settings} theme={theme} />
-      </div>
-
-      {footerEnabled && <footer className="boutique-footer"><div className="boutique-footer-grid">
-        <div className="boutique-footer-brand"><strong>{footerDisplayName || brand}</strong><p>{settings.institutional_text || "Joias selecionadas para valorizar sua expressão e o seu estilo."}</p>{settings.company_instagram && <a href={instagramCatalogUrl(settings.company_instagram)} target="_blank" rel="noreferrer"><Instagram size={18} /> Instagram</a>}</div>
-        <div><h2>Explore</h2>{categories.filter((category) => category.name !== "Todos").slice(0, 6).map((category) => <button type="button" key={category.value || category.name} onClick={() => chooseCategory(category.value || category.name)}>{cleanDisplayText(category.name)}</button>)}</div>
-        <div><h2>Atendimento</h2>{settings.whatsapp_phone && <a href={whatsappCatalogUrl(settings.whatsapp_message, settings.whatsapp_phone)} target="_blank" rel="noreferrer">WhatsApp <ArrowRight size={13} /></a>}{safeMailto(settings.company_email) && <a href={safeMailto(settings.company_email)}>{settings.company_email}</a>}{bookingEnabled && <a href={publicUrl("/agendar")}>Agendar atendimento</a>}{settings.company_hours && <p>{settings.company_hours}</p>}</div>
-        <div><h2>Visite o estúdio</h2>{settings.company_address ? <p>{settings.company_address}</p> : <p>Fale com a equipe para planejar sua visita.</p>}{settings.company_address && <a {...catalogLinkProps(settings.company_maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(settings.company_address)}`)}>Como chegar <ArrowRight size={13} /></a>}{footerLogo && <img className="boutique-footer-logo" src={catalogImageUrl(footerLogo)} alt="" loading="lazy" />}</div>
-      </div><div className="boutique-footer-bottom"><span>{settings.footer_copyright_text || settings.footer_text || `${brand} · Joias & piercing`}</span><span>Feito para o seu estilo.</span></div></footer>}
-      {commercialNavigation.enabled && <Modal open={categoryTreeOpen} title="Categorias" subtitle="Escolha uma categoria ou subcategoria" dismissible confirmClose={false} onClose={onCloseTree}><CatalogCategoryTree tree={commercialNavigation.tree} activeSlug={activeCategory} onSelect={(slug) => { chooseCategory(slug); onCloseTree(); }} /></Modal>}
-      {Number(theme.show_whatsapp_button ?? 1) !== 0 && settings.whatsapp_phone && <a className="floating-whatsapp" href={whatsappCatalogUrl(settings.whatsapp_message, settings.whatsapp_phone)} target="_blank" rel="noreferrer" aria-label="Fale com a equipe pelo WhatsApp"><MessageCircle size={23} /><span>WhatsApp</span></a>}
-      {drawerContent}
-    </main>
-  );
-}
 
 const CATALOG_SECTION_TITLES = {
   hero: "Banner principal",
@@ -1265,35 +1193,36 @@ function CatalogDiscovery({ section, style, className, discoveryRef, productsRef
 }
 
 /** @param {Record<string, any>} props */
-function CatalogRefinement({ filters, setFilters, options, activeCount, clearFilters }) {
-  const [open, setOpen] = useState(false);
+function CatalogRefinement({ filters, setFilters, options, activeCount, clearFilters, config }) {
+  const [open, setOpen] = useState(Boolean(config?.products_filters_mobile_open));
   const panelId = useId();
+  const enabled = (key) => !config || config.filters.includes(key);
   return (
     <aside className={`catalog-refinement${open ? " is-open" : ""}`} aria-label="Filtros do catálogo">
-      <div className="catalog-refinement-heading"><SlidersHorizontal size={17} /><h3>Refine sua escolha</h3></div>
+      <div className="catalog-refinement-heading"><SlidersHorizontal size={17} /><h3>{config?.filters_title ?? "Refine sua escolha"}</h3></div>
       <button type="button" className="catalog-refinement-toggle" aria-expanded={open} aria-controls={panelId} onClick={() => setOpen(!open)}>
-        <SlidersHorizontal size={17} /><span>Filtrar joias{activeCount > 0 ? ` (${activeCount})` : ""}</span><ChevronDown size={16} />
+        <SlidersHorizontal size={17} /><span>{config?.filters_toggle_label ?? "Filtrar joias"}{activeCount > 0 ? ` (${activeCount})` : ""}</span><ChevronDown size={16} />
       </button>
       <div id={panelId} className="catalog-refinement-content">
       <div className="catalog-filters">
-        <CatalogSelect label="Material" value={filters.material} options={options.materials} onChange={(value) => setFilters({ ...filters, material: value })} />
-        <CatalogSelect label="Observação de cor" value={filters.color} options={options.colors} onChange={(value) => setFilters({ ...filters, color: value })} />
-        <CatalogSelect label="Pedra" value={filters.stone} options={options.stones} onChange={(value) => setFilters({ ...filters, stone: value })} />
-        <CatalogSelect label="Tamanho" value={filters.size} options={options.sizes} onChange={(value) => setFilters({ ...filters, size: value })} />
-        <CatalogSelect label="Espessura" value={filters.thickness} options={options.thicknesses} onChange={(value) => setFilters({ ...filters, thickness: value })} />
-        <CatalogSelect label="Fixação" value={filters.thread} options={options.threads} onChange={(value) => setFilters({ ...filters, thread: value })} />
-        <CatalogSelect label="Tamanho do topo" value={filters.topSize} options={options.topSizes.map((number) => ({ value: String(number), label: `${number.toLocaleString("pt-BR", { minimumFractionDigits: 1 })} mm` }))} onChange={(value) => setFilters({ ...filters, topSize: value })} />
-        <CatalogSelect label="Disponibilidade" value={filters.availability} options={[{ value: "true", label: "Em estoque" }, { value: "false", label: "Esgotados" }]} onChange={(value) => setFilters({ ...filters, availability: value })} />
-        <span className="catalog-price-filter" role="group" aria-label="Faixa de preço">
+        {enabled("material") && <CatalogSelect label="Material" value={filters.material} options={options.materials} onChange={(value) => setFilters({ ...filters, material: value })} />}
+        {enabled("color") && <CatalogSelect label="Observação de cor" value={filters.color} options={options.colors} onChange={(value) => setFilters({ ...filters, color: value })} />}
+        {enabled("stone") && <CatalogSelect label="Pedra" value={filters.stone} options={options.stones} onChange={(value) => setFilters({ ...filters, stone: value })} />}
+        {enabled("size") && <CatalogSelect label="Tamanho" value={filters.size} options={options.sizes} onChange={(value) => setFilters({ ...filters, size: value })} />}
+        {enabled("thickness") && <CatalogSelect label="Espessura" value={filters.thickness} options={options.thicknesses} onChange={(value) => setFilters({ ...filters, thickness: value })} />}
+        {enabled("thread") && <CatalogSelect label="Fixação" value={filters.thread} options={options.threads} onChange={(value) => setFilters({ ...filters, thread: value })} />}
+        {enabled("topSize") && <CatalogSelect label="Tamanho do topo" value={filters.topSize} options={options.topSizes.map((number) => ({ value: String(number), label: `${number.toLocaleString("pt-BR", { minimumFractionDigits: 1 })} mm` }))} onChange={(value) => setFilters({ ...filters, topSize: value })} />}
+        {enabled("availability") && <CatalogSelect label="Disponibilidade" value={filters.availability} options={[{ value: "true", label: "Em estoque" }, { value: "false", label: "Esgotados" }]} onChange={(value) => setFilters({ ...filters, availability: value })} />}
+        {enabled("price") && <span className="catalog-price-filter" role="group" aria-label="Faixa de preço">
           <small>Faixa de preço</small>
           <input type="number" min="0" step="1" inputMode="numeric" placeholder="Preço mín." aria-label="Preço mínimo" value={filters.priceMin || ""} onChange={(event) => setFilters({ ...filters, priceMin: event.target.value })} />
           <input type="number" min="0" step="1" inputMode="numeric" placeholder="Preço máx." aria-label="Preço máximo" value={filters.priceMax || ""} onChange={(event) => setFilters({ ...filters, priceMax: event.target.value })} />
-        </span>
+        </span>}
       </div>
       {activeCount > 0 && clearFilters && (
         <div className="catalog-filters-summary" aria-live="polite">
           <span>{activeCount} {activeCount === 1 ? "filtro ativo" : "filtros ativos"}</span>
-          <button type="button" onClick={clearFilters}>Limpar filtros</button>
+          <button type="button" onClick={clearFilters}>{config?.filters_clear_label ?? "Limpar filtros"}</button>
         </div>
       )}
       </div>
@@ -1306,39 +1235,43 @@ const CATALOG_PAGE_SIZE = 24;
 /** @param {Record<string, any>} props */
 function CatalogProductsBlock({ fullCatalog = false, section, style, className, productsRef, items, activeCategory, data, theme, settings, favoriteIds, onToggleFavorite, onAdd, commercialNavigation = {} }) {
   const title = catalogSectionTitle(section, "Produtos em destaque");
+  const config = theme.theme === "boutique" ? boutiqueConfig(settings.boutique_config) : null;
+  const pageSize = config?.products_page_size || CATALOG_PAGE_SIZE;
   // Carregamento progressivo: a contagem mostra o total encontrado e a grade
   // cresce aos poucos. Uma nova busca ou filtro recomeça do início.
-  const [visible, setVisible] = useState(CATALOG_PAGE_SIZE);
+  const [visible, setVisible] = useState(pageSize);
   const resultKey = items.map((item) => item.id).join(",");
   // biome-ignore lint/correctness/useExhaustiveDependencies: recomeça a paginação quando o conjunto de resultados muda.
-  useEffect(() => setVisible(CATALOG_PAGE_SIZE), [resultKey]);
+  useEffect(() => setVisible(pageSize), [resultKey, pageSize]);
   const shown = items.slice(0, visible);
   const refinement = fullCatalog && commercialNavigation.refinement;
+  const showFilters = refinement && (!config || config.products_show_filters);
   return (
     <section ref={productsRef} className={className} style={style}>
       <div className="catalog-results-heading">
-        <div><span className="eyebrow">{catalogSectionSubtitle(section, "Resultados")}</span><h2>{title}</h2></div>
+        <div>{(!config || section.subtitle) && <span className="eyebrow">{catalogSectionSubtitle(section, "Resultados")}</span>}{(!config || config.products_title) && <h2>{title}</h2>}</div>
         <div className="catalog-results-meta">
-          <span aria-live="polite">{items.length} {items.length === 1 ? "joia encontrada" : "joias encontradas"}</span>
-          {refinement && <div className="catalog-sort"><Select label={null} ariaLabel="Ordenar catálogo" value={refinement.sort} onChange={refinement.setSort}>
+          {(!config || config.products_show_count) && <span aria-live="polite">{items.length} {items.length === 1 ? "joia encontrada" : "joias encontradas"}</span>}
+          {refinement && (!config || config.products_show_sort) && <div className="catalog-sort"><Select label={null} ariaLabel="Ordenar catálogo" value={refinement.sort} onChange={refinement.setSort}>
             <option value="recentes">Mais recentes</option><option value="relevancia">Relevância</option><option value="lancamentos">Lançamentos</option><option value="menor-preco">Menor preço</option><option value="maior-preco">Maior preço</option><option value="nome-az">Nome de A a Z</option><option value="nome-za">Nome de Z a A</option><option value="estoque">Em estoque primeiro</option>
           </Select></div>}
         </div>
       </div>
-      <div className={refinement ? "catalog-shopping-layout" : "catalog-shopping-layout catalog-shopping-layout--curated"}>
-      {refinement && <CatalogRefinement {...refinement} activeCount={commercialNavigation.activeFilterCount} clearFilters={commercialNavigation.clearFilters} />}
+      {!showFilters && commercialNavigation.activeFilterCount > 0 && commercialNavigation.clearFilters && <div className="catalog-filters-summary"><span>{commercialNavigation.activeFilterCount} filtros ativos</span><button type="button" onClick={commercialNavigation.clearFilters}>{config?.filters_clear_label ?? "Limpar filtros"}</button></div>}
+      <div className={showFilters ? "catalog-shopping-layout" : "catalog-shopping-layout catalog-shopping-layout--curated"}>
+      {showFilters && <CatalogRefinement {...refinement} config={config} activeCount={commercialNavigation.activeFilterCount} clearFilters={commercialNavigation.clearFilters} />}
       <div className="catalog-shopping-products">
       <div className={`catalog-grid catalog-display-${section.display_mode || "grid"}`} id={fullCatalog ? "catalog-products" : undefined}>
         {shown.map((item) => (
-          <CatalogProductCard item={item} favorite={favoriteIds.includes(item.id)} onToggleFavorite={() => onToggleFavorite(item)} theme={theme} settings={settings} promotion={catalogPromotionForItem(item, data.promotions || [])} onAddToOrder={() => onAdd(item)} key={item.id} />))}
+          <CatalogProductCard item={item} favorite={favoriteIds.includes(item.id)} onToggleFavorite={() => onToggleFavorite(item)} theme={theme} settings={settings} promotion={catalogPromotionForItem(item, data.promotions || [])} onAddToOrder={() => onAdd(item)} presentation={config} key={item.id} />))}
       </div>
       {visible < items.length && (
         <div className="catalog-load-more">
-          <button type="button" className="secondary-button" onClick={() => setVisible((count) => count + CATALOG_PAGE_SIZE)}>Mostrar mais ({items.length - visible} restantes)</button>
+          <button type="button" className="secondary-button" onClick={() => setVisible((count) => count + pageSize)}>{(config?.products_load_more_label ?? "Mostrar mais ({remaining} restantes)").replaceAll("{remaining}", String(items.length - visible))}</button>
         </div>
       )}
       {!items.length && (
-        <p className="empty-state catalog-empty">Nenhuma joia encontrada em {cleanDisplayText(activeCategory)} com os filtros selecionados.</p>
+        <p className="empty-state catalog-empty">{(config?.products_empty_text ?? "Nenhuma joia encontrada em {category} com os filtros selecionados.").replaceAll("{category}", cleanDisplayText(activeCategory))}</p>
       )}
       </div>
       </div>
@@ -1770,8 +1703,9 @@ function CatalogProductRail({ title, subtitle, items, data, theme, settings, fav
   );
 }
 
-/** @param {{ item?: Record<string, any>, favorite?: boolean, onToggleFavorite?: (item: any) => any, onAddToOrder?: (item: any) => any, theme?: Record<string, any>, settings?: Record<string, any>, promotion?: Record<string, any>, compact?: boolean }} props */
-function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, theme = {}, settings = {}, promotion }) {
+/** @param {Record<string, any>} props */
+function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, theme = {}, settings = {}, promotion, presentation = null }) {
+  presentation ||= theme.theme === "boutique" ? boutiqueConfig(settings.boutique_config) : null;
   const productName = elegantProductName(item.name);
   const { technicalSummary, variantCount } = catalogCardSummary(item);
   const saleValue = Number(item.sale_value || 0);
@@ -1783,6 +1717,7 @@ function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, th
   const stockText = catalogStockText(item, theme, settings);
   const available = catalogItemIsAvailable(item);
   const requiresVariant = asArray(item.variants).some((variant) => Number(variant.is_active ?? 1) === 1);
+  const show = (key) => !presentation || presentation[key];
 
   return (
     <article className="catalog-product-card">
@@ -1800,39 +1735,39 @@ function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, th
         )}
       </figure>
       <div className="catalog-product-info">
-        {(item.material || item.category) && <span className="catalog-product-type">{cleanDisplayText(item.material || item.category)}</span>}
+        {show("card_show_material") && (item.material || item.category) && <span className="catalog-product-type">{cleanDisplayText(item.material || item.category)}</span>}
         <h2><a href={catalogProductUrl(item.id)}>{productName}</a></h2>
-        {item.sku && <small className="catalog-product-sku">SKU {item.sku}</small>}
-        {technicalSummary && <p className="catalog-technical-summary">{technicalSummary}</p>}
-        <strong>{finalValue > 0 ? (
+        {show("card_show_sku") && item.sku && <small className="catalog-product-sku">SKU {item.sku}</small>}
+        {show("card_show_summary") && technicalSummary && <p className="catalog-technical-summary">{technicalSummary}</p>}
+        {show("card_show_price") && <strong>{finalValue > 0 ? (
             <>{promotion && <del>{currency.format(saleValue)}</del>}{currency.format(finalValue)}</>
           ) : (
             "Valor Sob Consulta"
-          )}</strong>
-        {variantCount > 0 && (
+          )}</strong>}
+        {show("card_show_variants") && variantCount > 0 && (
           <small className="catalog-variation-summary">{variantCount} {variantCount === 1 ? "variação" : "variações"}</small>
         )}
-        {stockText && (
+        {show("card_show_stock") && stockText && (
           <small title={stockText} className={Number(item.quantity || 0) <= 2 ? "catalog-stock warning" : "catalog-stock"}>{available ? stockText : "Esgotado"}</small>
         )}
-        <div className="catalog-actions">
+        {show("card_show_actions") && <div className="catalog-actions">
           {available && Boolean(Number(theme.show_schedule_button ?? 1)) && (
-            <a className="primary-button" href={catalogProductUrl(item.id)}>Ver detalhes</a>
+            <a className="primary-button" href={catalogProductUrl(item.id)}>{presentation?.card_details_label || "Ver detalhes"}</a>
           )}
           {available && !Boolean(Number(theme.show_schedule_button ?? 1)) && !Boolean(Number(theme.show_buy_button)) && (
-              <a className="primary-button" href={catalogProductUrl(item.id)}>Ver detalhes</a>
+              <a className="primary-button" href={catalogProductUrl(item.id)}>{presentation?.card_details_label || "Ver detalhes"}</a>
             )}
           {available && !Boolean(Number(theme.show_schedule_button ?? 1)) && Boolean(Number(theme.show_buy_button)) && (requiresVariant
             ? (
-              <a className="secondary-button" href={catalogUrl(`/catalogo/produto/${item.id}`)}>Escolher variação</a>
+              <a className="secondary-button" href={catalogUrl(`/catalogo/produto/${item.id}`)}>{presentation?.card_variant_label || "Escolher variação"}</a>
             ) : (
-              <button className="secondary-button" type="button" onClick={onAddToOrder}>Adicionar ao carrinho</button>
+              <button className="secondary-button" type="button" onClick={onAddToOrder}>{presentation?.card_add_label || "Adicionar ao carrinho"}</button>
             ))}
           {!available && (
-            <a className="primary-button" aria-label="Consultar disponibilidade" href={requiresVariant || !settings.whatsapp_phone ? catalogProductUrl(item.id) : whatsappCatalogUrl(notifyText, settings.whatsapp_phone)} target={requiresVariant || !settings.whatsapp_phone ? undefined : "_blank"} rel="noreferrer">Consultar</a>
+            <a className="primary-button" aria-label="Consultar disponibilidade" href={requiresVariant || !settings.whatsapp_phone ? catalogProductUrl(item.id) : whatsappCatalogUrl(notifyText, settings.whatsapp_phone)} target={requiresVariant || !settings.whatsapp_phone ? undefined : "_blank"} rel="noreferrer">{presentation?.card_unavailable_label || "Consultar"}</a>
           )}
-          <a className="catalog-share-action" href={whatsappShareUrl(shareText)} target="_blank" rel="noreferrer" aria-label="Compartilhar"><MessageCircle size={15} /></a>
-        </div>
+          {show("card_show_share") && <a className="catalog-share-action" href={whatsappShareUrl(shareText)} target="_blank" rel="noreferrer" aria-label="Compartilhar"><MessageCircle size={15} /></a>}
+        </div>}
       </div>
     </article>
   );
@@ -1840,6 +1775,9 @@ function CatalogProductCard({ item, favorite, onToggleFavorite, onAddToOrder, th
 
 /** @param {{ item?: Record<string, any>, data?: Record<string, any>, theme?: Record<string, any>, settings?: Record<string, any>, favorite?: boolean, onToggleFavorite?: (item: any) => any, onAddToOrder?: (item: any) => any, onScheduleWithJewelry?: (item: any) => any, drawerContent?: React.ReactNode }} props */
 function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite, onToggleFavorite, onAddToOrder, onScheduleWithJewelry, drawerContent }) {
+  const config = theme.theme === "boutique" ? boutiqueConfig(settings.boutique_config) : null;
+  const show = (key) => !config || config[key];
+  const brand = theme.brand_name || settings.company_display_name || data.brand_name || "o estúdio";
   const productName = elegantProductName(item.name);
   const availableVariants = asArray(item?.variants).filter((variant) => Boolean(asNumber(variant?.is_active, 1)));
   const [selectedVariantId, setSelectedVariantId] = useState(new URLSearchParams(window.location.search).get("variant") || availableVariants.find((variant) => Number(variant.quantity || 0) > 0)?.id || availableVariants[0]?.id || "");
@@ -1884,7 +1822,7 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
   const available = Number(selectedVariant.quantity ?? item.quantity ?? 0) > 0;
   const related = asArray(data?.items)
     .filter((candidate) => catalogItemIsPublished(candidate) && candidate.id !== item.id && (candidate.category === item.category || candidate.subcategory === item.subcategory))
-    .slice(0, 4);
+    .slice(0, config?.detail_related_limit || 4);
 
   return (
     <main className="catalog-page theme-detail" style={/** @type {React.CSSProperties} */ ({ "--catalog-primary": theme.primary_color || "#C8A96A", "--catalog-secondary": theme.secondary_color || "#D8C3A5", "--catalog-bg": theme.background_color || "#F8F5F0", "--catalog-button": theme.button_color || "#C8A96A", "--catalog-title-font": catalogFontStack(theme.title_font, "title"), fontFamily: catalogFontStack(theme.body_font) })}>
@@ -1895,7 +1833,7 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
               <img src={catalogImageUrl(theme.logo_url)} alt={theme.brand_name || settings.company_display_name || "Estúdio"} onError={(event) => { event.currentTarget.hidden = true; }} />
             )}
             <strong>{theme.brand_name || settings.company_display_name || data.brand_name || "Estúdio"}</strong>
-            <span>{theme.slogan || data.slogan || "Clinic Piercing"}</span>
+            {(theme.slogan || data.slogan) && <span>{theme.slogan || data.slogan}</span>}
           </a>
           <div className="catalog-top-actions">
             <a className="secondary-button" href={catalogUrl()}>Voltar ao catálogo</a>
@@ -1921,8 +1859,8 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
             <p className="catalog-breadcrumb">Catálogo / {cleanDisplayText(item.category || "Joias")} / {" "}
               {cleanDisplayText(item.subcategory || productName)}</p>
             <h1>{productName}</h1>
-            {description && <p className="catalog-product-description">{description}</p>}
-            {item.sku && <small className="catalog-sku">SKU {item.sku}</small>}
+            {show("detail_show_description") && description && <p className="catalog-product-description">{description}</p>}
+            {show("detail_show_sku") && item.sku && <small className="catalog-sku">SKU {item.sku}</small>}
             {availableVariants.length > 0 && (
               <div className="catalog-variant-picker">
                 <Select label="Escolha a Variação" value={selectedVariantId} onChange={(value) => { setSelectedVariantId(value); setQuantity(1); }}>
@@ -1942,49 +1880,49 @@ function CatalogProductDetail({ item, data, theme = {}, settings = {}, favorite,
                 )}
               </div>
             )}
-            <div className="catalog-price-box">
-              <strong>{saleValue > 0 ? currency.format(saleValue) : "Valor Sob Consulta"}</strong>
-              <span>{stockText || "Disponibilidade sob consulta"}</span>
-            </div>
+            {(show("detail_show_price") || show("detail_show_stock")) && <div className="catalog-price-box">
+              {show("detail_show_price") && <strong>{saleValue > 0 ? currency.format(saleValue) : "Valor Sob Consulta"}</strong>}
+              {show("detail_show_stock") && <span>{stockText || "Disponibilidade sob consulta"}</span>}
+            </div>}
             {available && (
               <div className="catalog-quantity-picker" aria-label="Quantidade"><button type="button" onClick={() => setQuantity((current) => Math.max(1, current - 1))} disabled={quantity <= 1}>−</button><strong>{quantity}</strong><button type="button" onClick={() => setQuantity((current) => Math.min(maximumQuantity, current + 1))} disabled={quantity >= maximumQuantity}>+</button><small>{maximumQuantity} disponível(is)</small></div>
             )}
-            <div className="catalog-detail-grid">
+            {show("detail_show_attributes") && <div className="catalog-detail-grid">
               {detailItems.map((entry) => (
                 <div key={entry.label}>
                   <small>{entry.label}</small>
                   <strong>{entry.value}</strong>
                 </div>
               ))}
-            </div>
+            </div>}
             <div className="catalog-detail-actions">
               {available && Boolean(Number(theme.show_schedule_button ?? 1)) && (
-                <button className="primary-button" type="button" onClick={() => onScheduleWithJewelry({ ...selectedVariant, selected_color: selectedColor })}>Quero Agendar Com Essa Joia</button>
+                <button className="primary-button" type="button" onClick={() => onScheduleWithJewelry({ ...selectedVariant, selected_color: selectedColor })}>{config?.detail_schedule_label ?? "Quero Agendar Com Essa Joia"}</button>
               )}
               {available && Boolean(Number(theme.show_buy_button ?? 1)) && (
                 <button className="secondary-button" type="button" onClick={() => onAddToOrder({ ...selectedVariant, selected_color: selectedColor, requested_qty: quantity })}>Adicionar {quantity} ao carrinho</button>
               )}
               {!available && settings.whatsapp_phone && (
-                <a className="primary-button" href={whatsappCatalogUrl(`Ola! Gostaria de consultar a disponibilidade desta joia:\n\nProduto: ${productName}\nVariacao: ${variantCatalogLabel(selectedVariant)}\nMaterial: ${selectedVariant.material || item.material || "nao informado"}\nCor: ${selectedColor || selectedVariant.color || item.color || "nao informada"}\nTamanho: ${variantCatalogLabel(selectedVariant)}\nLink: ${selectedProductLink}\n\nPodem me informar prazo e valor?`, settings.whatsapp_phone)} target="_blank" rel="noreferrer">Pedir pelo WhatsApp</a>
+                <a className="primary-button" href={whatsappCatalogUrl(`Ola! Gostaria de consultar a disponibilidade desta joia:\n\nProduto: ${productName}\nVariacao: ${variantCatalogLabel(selectedVariant)}\nMaterial: ${selectedVariant.material || item.material || "nao informado"}\nCor: ${selectedColor || selectedVariant.color || item.color || "nao informada"}\nTamanho: ${variantCatalogLabel(selectedVariant)}\nLink: ${selectedProductLink}\n\nPodem me informar prazo e valor?`, settings.whatsapp_phone)} target="_blank" rel="noreferrer">{config?.detail_consult_label ?? "Pedir pelo WhatsApp"}</a>
               )}
               {!available && !settings.whatsapp_phone && (
                 <span className="form-error">WhatsApp de vendas nao configurado. Avise a administracao.</span>
               )}
-              {settings.whatsapp_phone && (
-                <a className="secondary-button" href={whatsappCatalogUrl(`Olá! Quero informações sobre ${productName}, ${variantCatalogLabel(selectedVariant)}${selectedColor ? `, na cor ${selectedColor}` : ""}. ${selectedProductLink}`, settings.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Falar com a Aura</a>
+              {show("detail_show_contact") && settings.whatsapp_phone && (
+                <a className="secondary-button" href={whatsappCatalogUrl(`Olá! Quero informações sobre ${productName}, ${variantCatalogLabel(selectedVariant)}${selectedColor ? `, na cor ${selectedColor}` : ""}. ${selectedProductLink}`, settings.whatsapp_phone)} target="_blank" rel="noreferrer"><MessageCircle size={16} />{(config?.detail_contact_label ?? "Falar com {brand}").replaceAll("{brand}", brand)}</a>
               )}
-              <a className="secondary-button" href={whatsappShareUrl(`${settings.product_share_text || "Olha esta joia:"} ${item.name} - ${variantCatalogLabel(selectedVariant)} - ${currency.format(saleValue)}. ${selectedProductLink}`)} target="_blank" rel="noreferrer">Compartilhar</a>
+              {show("detail_show_share") && <a className="secondary-button" href={whatsappShareUrl(`${settings.product_share_text || "Olha esta joia:"} ${item.name} - ${variantCatalogLabel(selectedVariant)} - ${currency.format(saleValue)}. ${selectedProductLink}`)} target="_blank" rel="noreferrer">{config?.detail_share_label ?? "Compartilhar"}</a>}
             </div>
-            {item.notes && (
-              <div className="catalog-notes-box"><strong>Observações</strong><p>{item.notes}</p></div>
+            {show("detail_show_notes") && item.notes && (
+              <div className="catalog-notes-box"><strong>{config?.detail_notes_title ?? "Observações"}</strong><p>{item.notes}</p></div>
             )}
           </div>
         </section>
 
-        {related.length > 0 && (
+        {show("detail_show_related") && related.length > 0 && (
           <section className="catalog-related-section">
             <div className="panel-heading">
-              <h2>Mais opções parecidas</h2>
+              <h2>{config?.detail_related_title ?? "Mais opções parecidas"}</h2>
               <a className="secondary-button" href={catalogUrl()}>Ver catálogo</a>
             </div>
             <div className="catalog-grid catalog-related-grid">
@@ -2989,6 +2927,8 @@ function catalogCategoriesFromCatalog(data) {
     { name: "Todos", icon: LayoutGrid, match: "Todos" },
     ...active.map((category) => ({
       name: category.public_name || category.category_id,
+      value: category.category_id,
+      image_url: category.image_url || "",
       icon: catalogIcon(category.icon),
       match: category.category_id || category.public_name
     }))

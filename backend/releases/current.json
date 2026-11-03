@@ -1,13 +1,13 @@
 {
-  "id": "2026-11-03-catalogo-boutique",
+  "id": "2026-11-03-catalogo-configuravel",
   "announcements": [
     {
-      "slug": "template-boutique",
-      "title": "Template Boutique e fontes mais consistentes",
-      "summary": "Uma composição de loja para o catálogo, com destaque principal, categorias com fotos e uma única grade de joias.",
+      "slug": "boutique-configuravel",
+      "title": "Sua loja Boutique com mais opções de personalização",
+      "summary": "Edite os componentes, textos, cores e a apresentação no celular diretamente no painel do catálogo.",
       "category": "Catálogo",
-      "content": "O template Boutique organiza o catálogo como uma loja: cabeçalho com pesquisa, menu de categorias, destaque principal, atalhos com fotos e uma única grade de produtos com filtros. O rodapé reúne os contatos e as informações do estúdio. Banners, produtos, preços, categorias, favoritos e opções de compra continuam usando as configurações da clínica.\n\nAs fontes oferecidas pelo editor agora são carregadas pela própria loja, com opções substitutas para manter o texto legível mesmo durante o carregamento. Cormorant Garamond e Plus Jakarta Sans também estão disponíveis nas opções de aparência."
+      "content": "Em Catálogo → Componentes da página, o template Boutique permite editar a faixa superior, menu, destaque, benefícios, categorias, produtos e rodapé. Você pode reordenar ou ocultar componentes e adicionar conteúdos com texto, imagem e botão. Cada clínica mantém suas próprias escolhas.\n\nTambém é possível escolher os filtros, informações dos cartões, detalhes dos produtos, cores e medidas. O celular possui opções próprias de colunas, destaque e filtros recolhíveis. Salve o rascunho, confira a prévia e publique quando estiver pronto."
     }
   ],
-  "source_digest": "5b7fa004d58a84b329dcc78b1c1f83005f36d313142e33a90d3fbbb689769686"
+  "source_digest": "d40364605eabcd5bdd5be50691c51fa21d733b124365b1b3a569c50ab43766e9"
 }

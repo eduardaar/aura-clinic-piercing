@@ -1,0 +1,13 @@
+@layer telas {
+  .boutique-editor { min-width: 0; }
+  .boutique-editor-item { display: grid; gap: 14px; padding: 18px; min-width: 0; border: 1px solid var(--line); border-radius: 12px; }
+  .boutique-editor-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .boutique-editor-actions button { min-height: 44px; }
+  .boutique-editor .ui-accordion-content-inner { min-width: 0; }
+  @media (max-width: 700px) {
+    .boutique-editor .form-grid { grid-template-columns: minmax(0, 1fr); }
+    .boutique-editor-item { padding: 14px; }
+    .boutique-editor-actions > button { flex: 1 1 80px; }
+    .boutique-editor .ui-accordion-content-inner { padding: 14px 0; }
+  }
+}
