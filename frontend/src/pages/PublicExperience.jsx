@@ -932,9 +932,9 @@ function catalogSectionProducts(section, source, { category = "", forceSort = ""
     const terms = catalogCategoryTerms(categoryFilter);
     items = items.filter((item) => terms.some((term) => removeAccents(`${item.category || ""} ${item.subcategory || ""} ${item.name || ""}`.toLowerCase()).includes(removeAccents(term.toLowerCase()))));
   }
-  // `keepOrder`: a lista já vem na ordenação escolhida pelo visitante; só uma
-  // ordem configurada no próprio bloco do editor a substitui.
-  const productSort = forceSort || String(section.product_sort || (keepOrder ? "" : "recent"));
+  // A lista filtrada já respeita a ordenação escolhida pelo visitante.
+  // A configuração do bloco continua valendo nas seleções e nos carrosséis.
+  const productSort = forceSort || (keepOrder ? "" : String(section.product_sort || "recent"));
   const compare = productSort === "best_sellers" ? (left, right) => Number(right.units_sold_30d || 0) - Number(left.units_sold_30d || 0) || Number(left.id) - Number(right.id)
     : productSort === "price_asc" ? (left, right) => Number(left.sale_value || 0) - Number(right.sale_value || 0)
       : productSort === "price_desc" ? (left, right) => Number(right.sale_value || 0) - Number(left.sale_value || 0)

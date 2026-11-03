@@ -47,6 +47,63 @@ afterEach(cleanup);
 const results = () => document.querySelector("#catalog-products");
 
 describe("PublicCatalog · vitrine comercial", () => {
+  it.each([
+    ["Lançamentos", [1, 4, 3, 2]],
+    ["Mais recentes", [4, 3, 2, 1]],
+    ["Menor preço", [3, 1, 4, 2]],
+    ["Maior preço", [2, 4, 1, 3]],
+    ["Nome de A a Z", [1, 2, 3, 4]],
+    ["Nome de Z a A", [4, 3, 2, 1]]
+  ])("ordenação do visitante %s prevalece sobre a ordem salva no bloco", async (label, expected) => {
+    const user = userEvent.setup();
+    catalog.data.catalogSections[1].product_sort = "price_desc";
+    render(<PublicCatalog />);
+    await user.click(screen.getByLabelText("Ordenar catálogo"));
+    await user.click(await screen.findByRole("option", { name: label, exact: true }));
+    expect([...results().querySelectorAll("article h2")].map((node) => Number(node.textContent.replace("Joia ", "")))).toEqual(expected);
+  });
+
+  it("lançamento recém-adicionado aparece na ordenação e após recarregar o link compartilhado", async () => {
+    const user = userEvent.setup();
+    catalog.data.catalogSections[1].product_sort = "recent";
+    catalog.data.items.push(product(20, { is_new: 1 }));
+    const view = render(<PublicCatalog />);
+    await user.click(screen.getByLabelText("Ordenar catálogo"));
+    await user.click(await screen.findByRole("option", { name: "Lançamentos", exact: true }));
+    expect(results().querySelector("article h2")).toHaveTextContent("Joia 20");
+    expect(new URLSearchParams(window.location.search).get("sort")).toBe("lancamentos");
+    view.unmount();
+    render(<PublicCatalog />);
+    expect(results().querySelector("article h2")).toHaveTextContent("Joia 20");
+    expect(results().querySelectorAll("article")).toHaveLength(5);
+  });
+
+  it("destaques manuais não retiram o lançamento do catálogo completo nem ignoram filtros", async () => {
+    const user = userEvent.setup();
+    catalog.data.items[2].is_featured = 1;
+    catalog.data.items.push(product(20, { is_new: 1 }));
+    render(<PublicCatalog />);
+    await user.click(screen.getByLabelText("Ordenar catálogo"));
+    await user.click(await screen.findByRole("option", { name: "Lançamentos", exact: true }));
+    expect(results().querySelector("article h2")).toHaveTextContent("Joia 20");
+    expect(results().querySelectorAll("article")).toHaveLength(5);
+    await user.type(screen.getByLabelText("Preço máximo"), "90");
+    expect(results()).toHaveTextContent("Joia 3");
+    expect(results()).not.toHaveTextContent("Joia 20");
+  });
+
+  it("Lançamentos ordena sem excluir itens comuns e preserva categoria e filtros ativos", async () => {
+    const user = userEvent.setup();
+    catalog.data.catalogSections[1].product_sort = "recent";
+    render(<PublicCatalog />);
+    await user.click(screen.getByRole("button", { name: "Argolas" }));
+    await user.type(screen.getByLabelText("Preço máximo"), "130");
+    await user.click(screen.getByLabelText("Ordenar catálogo"));
+    await user.click(await screen.findByRole("option", { name: "Lançamentos", exact: true }));
+    expect([...results().querySelectorAll("article h2")].map((node) => node.textContent)).toEqual(["Joia 1", "Joia 4"]);
+    expect(screen.getByText("2 filtros ativos")).toBeInTheDocument();
+  });
+
   it("mais vendidos usa unidades em 30 dias, sem promover preço alto ou destaque manual", () => {
     catalog.data.catalogSections = [{ section_type: "best_sellers", is_active: 1, title: "Mais vendidos", items_limit: 8 }];
     catalog.data.campaigns = [];

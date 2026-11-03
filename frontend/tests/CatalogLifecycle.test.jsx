@@ -1,8 +1,8 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { ServicesWorkspace } from "../src/features/services/Services";
-import { JewelryCards, JewelryTable } from "../src/features/inventory/Inventory";
+import { JewelryCards, JewelryEditor, JewelryTable } from "../src/features/inventory/Inventory";
 
 const mocks = vi.hoisted(() => ({ apiFetch: vi.fn(), invalidate: vi.fn(), options: {}, settings: {}, services: [{ id: 1, name: "Retorno", category: "Retorno", is_active: true }] }));
 vi.mock("../src/lib/api", async (importOriginal) => ({
@@ -15,6 +15,33 @@ vi.mock("../src/lib/api", async (importOriginal) => ({
 }));
 
 beforeEach(() => { mocks.apiFetch.mockReset(); mocks.services = [{ id: 1, name: "Retorno", category: "Retorno", is_active: true }]; });
+
+it("editar só o selo de lançamento preserva o payload completo do produto e da variação", async () => {
+  const user = userEvent.setup();
+  const saved = vi.fn();
+  mocks.apiFetch.mockResolvedValue({ ok: true, json: async () => ({ id: 8 }) });
+  render(<JewelryEditor editing={{
+    id: 8, name: "Argola", category: "Argolas", sku: "ARG-PROD", quantity: 6, low_stock_threshold: 0,
+    can_publish: true, is_catalog_active: 1, is_published: 1, virtual_store_active: 1,
+    images: [{ image_url: "https://cdn.test/principal.webp", is_primary: 1 }],
+    variants: [{ id: 81, sku: "ARG-VAR", quantity: 6, low_stock_threshold: 0, purchase_cost_cents: 1700,
+      sale_price_cents: 7900, price_multiplier: 3, price_manually_overridden: 1, is_active: 1,
+      images: [{ image_url: "https://cdn.test/medida.webp", is_primary: 1 }] }]
+  }} onSaved={saved} />);
+  await user.click(screen.getByRole("tab", { name: "Comercial" }));
+  await user.click(screen.getByRole("switch", { name: "Lançamento", exact: true }));
+  fireEvent.submit(document.querySelector("#jewelry-editor-form"));
+  await waitFor(() => expect(saved).toHaveBeenCalled());
+  const [path, options] = mocks.apiFetch.mock.calls.at(-1);
+  expect(path).toBe("/jewelry/8");
+  const body = JSON.parse(options.body);
+  expect(body).toMatchObject({ is_new: true, quantity: 6, low_stock_threshold: 0, can_publish: true,
+    is_catalog_active: true, is_published: true, virtual_store_active: true, sku: "ARG-PROD" });
+  expect(body.images[0].image_url).toBe("https://cdn.test/principal.webp");
+  expect(body.variants[0]).toMatchObject({ id: 81, sku: "ARG-VAR", quantity: 6, low_stock_threshold: 0,
+    purchase_cost_cents: 1700, sale_price_cents: 7900, is_active: true });
+  expect(body.variants[0].images[0].image_url).toBe("https://cdn.test/medida.webp");
+});
 
 it("procedimentos separam desativação e exclusão e exibem o bloqueio de histórico", async () => {
   const user = userEvent.setup();

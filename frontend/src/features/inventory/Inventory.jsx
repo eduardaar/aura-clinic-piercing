@@ -177,7 +177,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
   const variantOptions = (field) => [...new Set(allVariants.map((variant) => variant[field]).filter(Boolean))].sort();
   const productFilters = [
     { key: "category", label: "Categoria", type: "select", options: catalogFilterOptions(allJewelry).categories },
-    { key: "status", label: "Status do estoque", type: "select", options: [{ value: "ativos", label: "Ativos" }, { value: "inativos", label: "Inativos" }, { value: "critico", label: "Crítico" }, { value: "esgotados", label: "Esgotados" }] },
+    { key: "status", label: "Status do estoque", type: "select", options: [{ value: "ativos", label: "Ativos" }, { value: "inativos", label: "Inativos" }, { value: "critico", label: "Crítico" }, { value: "baixo", label: "Baixo estoque" }, { value: "esgotados", label: "Esgotados" }] },
     ...[["material", "Material"], ["color", "Observação de cor"], ["thread_type", "Tipo de rosca"], ["thickness", "Espessura"], ["length", "Comprimento"], ["diameter", "Diâmetro"], ["supplier", "Fornecedor"]].map(([key, label]) => ({ key, label, type: "select", options: variantOptions(key) }))
   ];
   const productFilterValues = Object.fromEntries(Object.entries(filters).filter(([key]) => key !== "search"));
@@ -199,9 +199,10 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
     }
     const effectiveStatus = statusTab !== "todos" ? statusTab : filters.status;
     if (!effectiveStatus || effectiveStatus === "todos") return true;
-    if (effectiveStatus === "ativos") return inventoryStockState(item) === "active";
+    if (effectiveStatus === "ativos") return ["active", "low-stock"].includes(inventoryStockState(item));
     if (effectiveStatus === "inativos") return inventoryStockState(item) === "inactive";
     if (effectiveStatus === "critico" || effectiveStatus === "crítico") return inventoryStockState(item) === "critical";
+    if (effectiveStatus === "baixo") return inventoryStockState(item) === "low-stock";
     if (effectiveStatus === "esgotados" || effectiveStatus === "esgotado") return inventoryStockState(item) === "sold-out";
     return true;
   });
@@ -215,7 +216,7 @@ const allVariants = asArray(allJewelry).flatMap((item) =>
   const stockSummary = {
     totalProducts: allJewelry.length,
     totalPieces: allJewelry.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
-    active: allJewelry.filter((item) => inventoryStockState(item) === "active").length,
+    active: allJewelry.filter((item) => ["active", "low-stock"].includes(inventoryStockState(item))).length,
     critical: allJewelry.filter((item) => inventoryStockState(item) === "critical").length,
     soldOut: allJewelry.filter((item) => inventoryStockState(item) === "sold-out").length,
     invested: allJewelry.reduce((sum, item) => sum + Number(item.cost_value || 0) * Number(item.quantity || 0), 0),
@@ -1219,6 +1220,7 @@ export function JewelryEditor({ materialMode = false, suppliers = [], options, c
             <Switch className="toggle-chip" label="Mais desejado" checked={form.is_most_wanted} onChange={(value) => setForm({ ...form, is_most_wanted: value })} />
             <Switch className="toggle-chip" label="Últimas unidades" checked={form.is_last_units} onChange={(value) => setForm({ ...form, is_last_units: value })} />
           </div>
+          <p className="field-hint">Lançamento prioriza a joia na ordenação “Lançamentos”. Para aparecer na vitrine, ative também “Pode aparecer no catálogo” e “Visível no catálogo público”. Os filtros escolhidos pelo visitante continuam valendo.</p>
         </div>
       )}
 
@@ -1411,8 +1413,9 @@ export function VariantEditModal({ category, variant, pricingSettings = {}, onCh
           </section>
           <div className="form-grid">
             <Input type="number" min="0" label="Estoque Atual" value={variant.quantity} onChange={(value) => onChange({ quantity: value })} required />
-            <Input type="number" label="Estoque Mínimo" value={variant.low_stock_threshold} onChange={(value) => onChange({ low_stock_threshold: value })} />
+            <Input type="number" min="0" label="Estoque Mínimo" value={variant.low_stock_threshold} onChange={(value) => onChange({ low_stock_threshold: value })} />
           </div>
+          <p className="field-hint">O mínimo está incluído no alerta crítico. Com mínimo 5: de 1 a 5 unidades é crítico; de 6 a 10 é baixo estoque; acima de 10 é disponível. Zero unidades é esgotado.</p>
           <Switch label="Variação Ativa" checked={variant.is_active} onChange={(value) => onChange({ is_active: value })} />
       </div>
     </Modal>

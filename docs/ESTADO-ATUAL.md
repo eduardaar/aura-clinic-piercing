@@ -1,5 +1,9 @@
 # Estado atual do projeto
 
+> Revisão local de **03/11/2026**: regressões de estoque e catálogo (seção 20),
+> com correções de ordenação pública, preservação de preços em edições parciais,
+> mínimo zero, variações inativas e checkout de produtos ocultos. Sem migration nova.
+
 > Entrega de **30/10/2026**: contas financeiras com saldos e transferências, compras por embalagem, política de taxas de cartão e ranking real de mais vendidos (seção 19). Requer as migrations aditivas `0054` e `0055` antes de ativar o código. As seções 17 e 18 já foram publicadas, incluindo finalização de retornos anteriores, Central de atenção no sininho e disponibilidade com todos os serviços.
 >
 > Publicação anterior: **19/10/2026** (seção 13), com a `0045` aplicada às quatro clínicas e a `0009` à plataforma; relatório em `outputs/deploy-2026-10-19/RELATORIO.md`. Confira no ledger de produção se as migrations `0046`–`0051` e a platform `0010` (entrega de 20/10) já foram aplicadas antes de publicar a `0052`.
@@ -554,6 +558,49 @@ Capturas reais da clínica local `qa-shots` em 1366 e 390 px: vitrine, categoria
   por não conseguir identificar a URL do navegador; não há homologação visual
   manual desta entrega.
 
+## 20. Regressões de estoque e catálogo — 03/11/2026
+
+- **Ordenação pública:** “Lançamentos”, preço, nome e demais opções do visitante
+  prevalecem sobre a ordenação salva no bloco da grade. As seleções e os
+  carrosséis continuam usando a configuração do editor. Ordenar não remove os
+  produtos comuns e mantém os filtros ativos.
+  No celular, a área de filtros e ordenação deixa de ser escondida pelo CSS.
+- **Preservação do cadastro:** editar somente selo, nome, observação ou publicação
+  não recalcula nem zera os preços/custos do produto principal. Variações, saldos,
+  SKU e imagens são conferidos também diretamente no banco pelos testes.
+- **Mínimo e alertas:** o mínimo inclui o próprio limite. Com mínimo 5, estoque
+  de 1 a 5 é crítico, de 6 a 10 é baixo, acima de 10 é disponível; zero é esgotado.
+  A interface passa a distinguir “Baixo estoque” de “Crítico” e oferece filtro
+  próprio. Mínimo zero é preservado ao cadastrar, abrir a edição e movimentar.
+- **Variações inativas:** regravar `is_active: 0` não reativa uma variação nem
+  soma seu saldo ao estoque público.
+- **Publicação:** checkout público exige também `virtual_store_active`, alinhado
+  às quatro marcas já verificadas pelo catálogo. Um produto oculto não pode
+  gerar pedido público mesmo com um identificador conhecido.
+- **Bateria repetível:** `npm run test:inventory-catalog`; executor local seguro
+  `npm --prefix backend run test:isolated`, com banco temporário, credenciais
+  externas desligadas e log individual. Guia em [GUIA-DEV.md](./GUIA-DEV.md).
+- **Validação automática:** 808 testes backend em banco descartável, 77 unitários
+  e 417 componentes frontend aprovados. O recorte novo contém 19 testes backend
+  e 18 de componentes, incluindo persistência, rollback, saídas concorrentes,
+  reposição, variantes zeradas/inativas, imagens, selos, filtros e ordenação.
+- **Navegador real:** Chromium e WebKit em 390 e 1366 px, com API e banco
+  temporários: lançamento editado pela interface, persistência de preço/saldo,
+  ordenação após recarga, preço combinado, esgotamento e reposição. Quatro
+  combinações aprovadas, sem exceções de JavaScript ou rolagem horizontal.
+- **Preparação do deploy:** auditoria de dependências identificou os avisos
+  `GHSA-g3hv-75wg-m249` e `GHSA-3g3m-2fjr-6pw4` na cadeia de exportação de
+  planilhas. Overrides restritos ao ExcelJS usam `minimatch 11.0.4`,
+  `glob 14.0.3` e `unzipper 0.12.3`, mantendo o Archiver 5 compatível com seus
+  streams. ZIP por glob/diretório e XLSX por streaming têm duas regressões
+  adicionais em `spreadsheetArchives.test.mjs`. Os 35 testes de relatórios e
+  arquivos passaram com as dependências finais; auditoria das três árvores limpa.
+
+Relatório e teste de navegador em
+[outputs/estoque-catalogo-2026-11-03](../outputs/estoque-catalogo-2026-11-03/RELATORIO.md).
+Os testes não alteram registros de produção. A publicação desta revisão deve
+ser conferida no workflow “CI e Deploy” da `main`.
+
 ## Pendências abertas
 
 ### P-09 — compras e estoque precisam de alinhamento com o cliente
@@ -601,7 +648,7 @@ Não houve publicação nem alteração de registros de produção nesta execuç
 
 **Severidade: média, e cresce com o volume de dados.**
 
-Três colunas ainda controlam a publicação do mesmo produto: `is_catalog_active`, `is_published` e `virtual_store_active`. A migration `0013` fez as três nascerem em zero, mas **não** as consolidou — continuam sendo três fontes de verdade para uma pergunta só ("este produto aparece na vitrine?"). O estoque unificado (`0025`) somou uma quarta marca, `can_publish`: catálogo e agendamento públicos exigem as quatro, o checkout público confere `can_publish`, `is_catalog_active` e `is_published` (não olha `virtual_store_active`), e o editor mostra dois controles ("Pode aparecer no catálogo" e "Visível no catálogo público").
+Três colunas ainda controlam a publicação do mesmo produto: `is_catalog_active`, `is_published` e `virtual_store_active`. A migration `0013` fez as três nascerem em zero, mas **não** as consolidou — continuam sendo três fontes de verdade para uma pergunta só ("este produto aparece na vitrine?"). O estoque unificado (`0025`) somou uma quarta marca, `can_publish`: catálogo, agendamento e checkout públicos exigem as quatro (checkout alinhado em 03/11/2026), e o editor mostra dois controles ("Pode aparecer no catálogo" e "Visível no catálogo público").
 
 Na mesma linha, `photo_url`, `image_url` e `gallery_urls` convivem com a tabela `product_images`.
 

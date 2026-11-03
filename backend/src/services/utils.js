@@ -249,7 +249,7 @@ export function aggregateVariantStatus(variants = []) {
 
 export function variantStatus(quantity, lowStockThreshold = 5) {
   const stock = Number(quantity || 0);
-  const minimum = Number(lowStockThreshold || 5);
+  const minimum = Number(lowStockThreshold ?? 5);
   if (stock <= 0) return "esgotado";
   if (stock <= minimum) return "crítico";
   if (stock <= minimum * 2) return "baixo estoque";

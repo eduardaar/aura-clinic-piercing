@@ -1,5 +1,10 @@
 # Roadmap seguro — Estoque e catálogo da Aura Clinic
 
+> Atualização de 03/11/2026: o checkout público passou a exigir também
+> `virtual_store_active`, alinhando as quatro marcas de publicação. A revisão
+> e a bateria de regressão estão na seção 20 de [ESTADO-ATUAL.md](./ESTADO-ATUAL.md).
+> As referências abaixo a três marcas no checkout descrevem o diagnóstico antigo.
+
 > **Situação em 30/09/2026:** os ajustes desta etapa continuam no código.
 > Nenhuma das pendências das seções 2 e 3 foi executada, nem os passos 3 a 5 da
 > "Ordem de execução recomendada". É a pendência P-02 de

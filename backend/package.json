@@ -25,7 +25,9 @@
     "audit:product-images": "node scripts/audit-product-images.mjs",
     "audit:catalog-sections": "node scripts/audit-catalog-sections.mjs",
     "audit:financial": "node scripts/audit-financial.mjs",
-    "test": "node tests/run-suite.mjs"
+    "test": "node tests/run-suite.mjs",
+    "test:isolated": "node scripts/test-isolated.mjs",
+    "test:inventory-catalog": "node scripts/test-isolated.mjs tests/inventoryCatalogRegression.test.mjs tests/catalogLifecycle.test.mjs tests/catalogVisibility.test.mjs tests/catalogCollections.test.mjs tests/catalogSalesRanking.test.mjs tests/consumablePurchases.test.mjs tests/purchases.test.mjs tests/operationalReversals.test.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1102.0",
@@ -49,7 +51,10 @@
   },
   "overrides": {
     "exceljs": {
-      "uuid": "11.1.1"
+      "uuid": "11.1.1",
+      "unzipper": "0.12.3",
+      "glob": "14.0.3",
+      "minimatch": "11.0.4"
     },
     "brace-expansion@1": "1.1.21"
   }

@@ -1,0 +1,46 @@
+[
+  {
+    "engine": "chromium",
+    "width": 390,
+    "sortAndReload": true,
+    "editedLaunchPersisted": true,
+    "priceAndStockPreserved": true,
+    "combinedFilters": true,
+    "restock": true,
+    "noOverflow": true,
+    "pageErrors": 0
+  },
+  {
+    "engine": "chromium",
+    "width": 1366,
+    "sortAndReload": true,
+    "editedLaunchPersisted": true,
+    "priceAndStockPreserved": true,
+    "combinedFilters": true,
+    "restock": true,
+    "noOverflow": true,
+    "pageErrors": 0
+  },
+  {
+    "engine": "webkit",
+    "width": 390,
+    "sortAndReload": true,
+    "editedLaunchPersisted": true,
+    "priceAndStockPreserved": true,
+    "combinedFilters": true,
+    "restock": true,
+    "noOverflow": true,
+    "pageErrors": 0
+  },
+  {
+    "engine": "webkit",
+    "width": 1366,
+    "sortAndReload": true,
+    "editedLaunchPersisted": true,
+    "priceAndStockPreserved": true,
+    "combinedFilters": true,
+    "restock": true,
+    "noOverflow": true,
+    "pageErrors": 0
+  }
+]

@@ -535,8 +535,8 @@ export function normalizeJewelryForm(item = {}) {
     package_width_cm: Number(item.package_width_cm || 10),
     package_height_cm: Number(item.package_height_cm || 3),
     preparation_days: Number(item.preparation_days || 1),
-    low_stock_threshold: Number(item.low_stock_threshold || 5),
-    critical_stock_threshold: Number(item.critical_stock_threshold || 3),
+    low_stock_threshold: Number(item.low_stock_threshold ?? 5),
+    critical_stock_threshold: Number(item.critical_stock_threshold ?? 3),
     variants: Array.isArray(item.variants) && item.variants.length
       ? item.variants.map((variant, index) => ({
           ...defaultJewelryVariant(index + 1),

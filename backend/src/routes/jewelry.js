@@ -490,8 +490,8 @@ function jewelryPayload(body, sku, pricing) {
     boolNumber(body.is_last_units ?? 0),
     body.notes,
     body.status || "disponível",
-    Number(body.low_stock_threshold || 5),
-    Number(body.critical_stock_threshold || 3),
+    Number(body.low_stock_threshold ?? 5),
+    Number(body.critical_stock_threshold ?? 3),
     cleanImageUrl(body.image_url) || null,
     boolNumber(body.is_published ?? 0),
     String(body.stock_unit || "unidade"),
@@ -705,9 +705,13 @@ router.patch("/api/jewelry/:id", withFeature("basic_inventory", async (req, res,
     req.body.sku = nextSku;
   }
 
-  const pricingSettings = await getPricingSettings(db);
-  const pricing = calculatePricing(req.body, pricingSettings);
-  Object.assign(req.body, pricing);
+  // PATCH de publicação, selo ou texto não contém uma nova precificação.
+  // Calcular com o payload vazio zerava custo/preço no registro principal.
+  const pricingFields = ["cost_value", "purchase_cost", "purchase_cost_cents", "allocated_freight", "freight_value", "allocated_freight_cents", "additional_cost", "additional_cost_cents", "price_multiplier", "price_rounding_mode", "sale_value", "sale_price_cents", "price_manually_overridden", "estimate_cost_from_sale"];
+  if (pricingFields.some((field) => req.body[field] !== undefined)) {
+    const pricingSettings = await getPricingSettings(db);
+    Object.assign(req.body, calculatePricing(req.body, pricingSettings));
+  }
 
   const fields = ["name", "description", "photo_url", "image_url", "gallery_urls", "category", "category_id", "subcategory", "variant_group", "variation_label", "material", "color", "stone", "size", "top_size_mm", "thickness", "stem_length", "thread_type", "piercing_type", "weight_grams", "package_length_cm", "package_width_cm", "package_height_cm", "package_type", "virtual_store_active", "preparation_days", "shipping_info", "seo_title", "seo_description", "freight_notes", "quantity", "cost_value", "sale_value", "purchase_cost_cents", "allocated_freight_cents", "additional_cost_cents", "total_cost_cents", "price_multiplier", "price_rounding_mode", "suggested_price_cents", "sale_price_cents", "price_manually_overridden", "cost_estimated", "supplier", "supplier_id", "physical_location", "sku", "is_catalog_active", "is_featured", "is_new", "is_most_wanted", "is_promotion", "is_last_units", "is_published", "notes", "status", "low_stock_threshold", "critical_stock_threshold", "stock_unit", "purchase_unit", "consumption_unit", "purchase_to_stock_factor", "can_sell", "can_use_in_service", "track_stock", "track_lots", "can_publish"];
   const updates = fields.filter((field) => req.body[field] !== undefined);
@@ -845,8 +849,8 @@ router.post("/api/jewelry/:id/movements", withFeature("basic_inventory", async (
       const currentQuantity = Number(stockTarget.quantity || 0);
       if (outgoing && quantity > currentQuantity) throw new InsufficientStockError(currentQuantity);
       const nextQuantity = currentQuantity + (outgoing ? -quantity : quantity);
-      const criticalThreshold = Number(jewelry.critical_stock_threshold || 3);
-      const lowThreshold = Number(jewelry.low_stock_threshold || 5);
+      const criticalThreshold = Number(jewelry.critical_stock_threshold ?? 3);
+      const lowThreshold = Number(jewelry.low_stock_threshold ?? 5);
       const status = nextQuantity <= 0 ? "esgotado" : nextQuantity <= criticalThreshold ? "crítico" : nextQuantity <= lowThreshold ? "baixo estoque" : "disponível";
       // Saída num item com lote precisa baixar o lote que vence primeiro. Sem
       // isto a soma dos lotes fica maior que o saldo do item e a conciliação

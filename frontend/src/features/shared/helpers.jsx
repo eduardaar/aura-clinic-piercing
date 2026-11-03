@@ -126,6 +126,7 @@ export function inventoryStatusLabel(item) {
   if (state === "inactive") return "Inativo";
   if (state === "sold-out") return "Esgotado";
   if (state === "critical") return "Crítico";
+  if (state === "low-stock") return "Baixo estoque";
   return "Ativo";
 }
 
@@ -139,9 +140,10 @@ export function inventoryStockState(item) {
   if (stored === "esgotado") return "sold-out";
   // O backend calcula estes estados a partir de cada variação. Preservá-los
   // evita que um total alto esconda uma medida/cor já crítica.
-  if (["critico", "baixo", "baixo estoque"].includes(stored)) return "critical";
+  if (stored === "critico") return "critical";
+  if (["baixo", "baixo estoque"].includes(stored)) return "low-stock";
   const quantity = Number(item.quantity || 0);
-  const minimum = Number(item.low_stock_threshold || 5);
+  const minimum = Number(item.low_stock_threshold ?? 5);
   if (quantity <= 0) return "sold-out";
   if (quantity <= minimum) return "critical";
   return "active";

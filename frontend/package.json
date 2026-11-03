@@ -13,7 +13,8 @@
     "preview": "vite preview --host 127.0.0.1",
     "test:unit": "node --test tests/*.test.mjs",
     "test:components": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:inventory-catalog": "node --test tests/catalogNavigation.test.mjs tests/catalogAvailability.test.mjs && vitest run tests/InventoryStockState.test.jsx tests/CatalogLifecycle.test.jsx tests/PublicCatalogCollections.test.jsx tests/ConsumablePurchases.test.jsx"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.20",

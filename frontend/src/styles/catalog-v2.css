@@ -196,3 +196,15 @@
 @media (max-width: 359px) {
   .catalog-page .catalog-grid, .catalog-page .catalog-product-rail.catalog-display-grid > div { grid-template-columns: minmax(0, 1fr); }
 }
+
+@layer telas {
+  @media (max-width: 767px) {
+    /* Os filtros e a ordenação precisam continuar acessíveis no celular. */
+    .catalog-discovery .catalog-filters { display: flex; min-width: 0; }
+    .catalog-discovery .catalog-filter-select { flex: 1 1 130px; min-width: 0; }
+    .catalog-discovery .catalog-filter-select .ui-select-field { min-width: 0; width: 100%; }
+    .catalog-discovery .catalog-sort { flex-basis: 100%; min-width: 0; margin-left: 0; }
+    .catalog-discovery .catalog-price-filter { display: flex; flex-basis: 100%; min-width: 0; }
+    .catalog-discovery .catalog-price-filter input { min-width: 0; }
+  }
+}

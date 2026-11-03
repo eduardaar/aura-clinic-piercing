@@ -1,34 +1,27 @@
 {
-  "id": "2026-10-30-contas-compras-cartao-e-catalogo",
+  "id": "2026-11-03-revisao-estoque-e-catalogo",
   "announcements": [
     {
-      "slug": "contas-e-caixa-com-saldos-separados",
-      "title": "Contas e caixa com saldos separados",
-      "summary": "Acompanhe o dinheiro de cada banco, do caixa físico e da operadora, com transferências e histórico.",
-      "category": "Financeiro",
-      "content": "Em Financeiro → Caixa, cadastre cada conta utilizada pelo estúdio e informe seu saldo inicial e a data de referência. Os pagamentos e recebimentos realizados atualizam os saldos, enquanto os valores ainda a pagar ou receber continuam separados.\n\nVocê pode transferir dinheiro entre contas e consultar as entradas, saídas e os ajustes, com histórico preservado. Pagamentos antigos sem conta informada aparecem em “A identificar”: basta associar a conta correta, sem criar outro recebimento. Para valores ainda com a maquininha, use uma conta do tipo “Saldo na operadora” e registre a transferência quando o dinheiro cair no banco."
-    },
-    {
-      "slug": "compras-por-embalagem-e-pagamento-separado",
-      "title": "Compras por embalagem, estoque em unidades",
-      "summary": "Informe quantas embalagens comprou e o conteúdo de cada uma para calcular a entrada no estoque.",
-      "category": "Estoque",
-      "content": "Na entrada de compras, informe a quantidade de embalagens e quantas unidades vêm em cada uma. Por exemplo: duas caixas com cem unidades geram uma entrada de duzentas unidades. O custo por embalagem e o custo individual ficam claros antes da confirmação. A edição do item preserva essas informações.\n\nProdutos para revenda e materiais de consumo têm caminhos próprios. Também é possível cadastrar um novo item durante a compra. O valor já pago e o saldo a pagar aparecem separados da entrada física: pagar uma compra não movimenta o estoque novamente, e despesas continuam sem gerar mercadoria.\n\nOs kits ficam no cadastro do procedimento, em “Equipe, estoque e operação” → “Kit de consumo”. Os materiais são baixados na conclusão do atendimento e devolvidos ao estoque quando ele é reaberto."
-    },
-    {
-      "slug": "taxas-de-cartao-com-total-claro",
-      "title": "Taxas de cartão com o total a cobrar",
-      "summary": "Configure débito e crédito de até 12 vezes e escolha se o estúdio absorve a taxa ou a repassa ao cliente.",
-      "category": "Financeiro",
-      "content": "As tabelas das maquininhas permitem configurar débito, crédito à vista e parcelamento de até 12 vezes. Ao registrar o pagamento, confira a taxa, o líquido previsto e o total a cobrar antes de confirmar. Quando houver repasse ao cliente, o acréscimo fica explícito para evitar cobrar a taxa duas vezes.\n\nPagamentos antigos mantêm os valores e a tabela utilizada. Os recebimentos parciais guardam seu próprio histórico de conta e taxa.\n\nHá uma referência opcional da InfinitePay para adiantar o preenchimento. Ela corresponde às condições informadas na própria tela, não é salva automaticamente e deve ser conferida com o contrato do estúdio antes de usar."
-    },
-    {
-      "slug": "mais-vendidos-por-vendas-recentes",
-      "title": "Mais vendidos pelas vendas dos últimos 30 dias",
-      "summary": "O ranking considera unidades vendidas, com devoluções e estornos descontados.",
+      "slug": "ordenacao-do-catalogo-e-filtros-no-celular",
+      "title": "Catálogo respeita a ordenação escolhida",
+      "summary": "Lançamentos, preços e nomes seguem a opção do visitante, com filtros também disponíveis no celular.",
       "category": "Catálogo",
-      "content": "A seção “Mais vendidos” passa a classificar as joias pela quantidade efetivamente vendida nos últimos 30 dias. Devoluções reduzem essa quantidade e vendas canceladas ou estornadas ficam fora da classificação.\n\nOs destaques manuais e as campanhas continuam separados do ranking. Você pode criar uma categoria ou campanha, como Halloween, escolher as joias participantes e organizar a vitrine pelo próprio sistema.\n\nTambém foi removida a transformação visual obrigatória em letras maiúsculas nas telas do site e do painel, preservando os textos cadastrados, as siglas, marcas e os códigos dos produtos."
+      "content": "Ao escolher Lançamentos, os produtos marcados como lançamento aparecem primeiro, dos mais novos para os mais antigos. A escolha do visitante passa a prevalecer sobre a ordem definida na grade do catálogo. Os filtros de categoria, preço e demais características continuam sendo respeitados.\n\nNo celular, os filtros e a ordenação ficam acessíveis na área de descoberta. Para mostrar um novo produto ao público, mantenha ativas as opções Pode aparecer no catálogo e Visível no catálogo público."
+    },
+    {
+      "slug": "cadastro-preservado-nas-edicoes",
+      "title": "Mais proteção para o cadastro dos produtos",
+      "summary": "Alterações de selos e publicação preservam os valores; variações inativas mantêm seu estado.",
+      "category": "Estoque",
+      "content": "Alterar apenas o nome, as observações, os selos ou a publicação preserva os preços e custos cadastrados. Variações inativas também mantêm seu estado ao salvar, sem voltar a somar unidades na vitrine.\n\nO pedido público passa a respeitar todas as opções de publicação do produto, incluindo a ativação da loja virtual."
+    },
+    {
+      "slug": "alertas-de-estoque-mais-claros",
+      "title": "Estoque baixo e crítico com indicação própria",
+      "summary": "O estoque mínimo zero é preservado e a lista diferencia Baixo estoque de Crítico.",
+      "category": "Estoque",
+      "content": "O mínimo informado inclui a própria quantidade limite. Por exemplo: com mínimo 5, de 1 a 5 unidades é crítico; de 6 a 10 é baixo estoque; acima de 10 é disponível. Zero unidades indica esgotado.\n\nA lista passa a mostrar Baixo estoque com seu próprio filtro. O mínimo zero também é mantido ao cadastrar, editar e movimentar os produtos."
     }
   ],
-  "source_digest": "137c37278258c346f07319283600af0de5a652b6c4814e4a0ea5d7f3ed42f35e"
+  "source_digest": "4cde4fbbacbb6b7791d9aeaae8e25fa0272031cfab3d2afc1b3809732b21837b"
 }

@@ -2,7 +2,8 @@
 import {
   aggregateVariantStatus,
   variantStatus,
-  buildVariationName
+  buildVariationName,
+  boolNumber
 } from "./utils.js";
 import { calculatePricing, getPricingSettings, normalizeLengthValue } from "./pricing.js";
 
@@ -390,9 +391,9 @@ export async function replaceJewelryVariants(db, jewelryId, variants = []) {
       pricing.price_manually_overridden,
       pricing.cost_estimated,
       validatedQuantities[index],
-      Number(variant.low_stock_threshold || 5),
+      Number(variant.low_stock_threshold ?? 5),
       variantStatus(variant.quantity, variant.low_stock_threshold),
-      variant.is_active === false ? 0 : 1
+      variant.is_active == null ? 1 : boolNumber(variant.is_active)
     ];
     if (existing) {
       await db.run(

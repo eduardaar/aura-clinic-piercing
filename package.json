@@ -22,6 +22,7 @@
     "check:changed": "biome lint --changed --no-errors-on-unmatched",
     "verify:static": "npm run check:changed && npm run typecheck && npm run build",
     "verify:full": "npm run verify:static && npm --prefix backend test && npm --prefix frontend test",
+    "test:inventory-catalog": "npm --prefix backend run test:inventory-catalog && npm --prefix frontend run test:inventory-catalog",
     "format:check": "biome format .",
     "format": "biome format --write --staged .",
     "format:branch": "biome format --write --changed .",

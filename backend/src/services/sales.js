@@ -35,8 +35,8 @@ async function authoritativePublicItems(db, submitted) {
     let variantId = Number(raw.product_variant_id || 0) || null;
     const quantity = Number(raw.quantity || 0);
     if (!Number.isInteger(quantity) || quantity < 1) throw new SalesOrderValidationError("Quantidade inválida.");
-    const product = await db.get("SELECT id,name,category,sale_value,status,is_catalog_active,is_published,can_sell,can_publish,track_stock FROM jewelry_inventory WHERE id=?", [productId]);
-    if (!product || !product.can_sell || !product.can_publish || Number(product.is_catalog_active) !== 1 || Number(product.is_published) !== 1 || product.status === "arquivado") {
+    const product = await db.get("SELECT id,name,category,sale_value,status,is_catalog_active,is_published,virtual_store_active,can_sell,can_publish,track_stock FROM jewelry_inventory WHERE id=?", [productId]);
+    if (!product || !product.can_sell || !product.can_publish || Number(product.is_catalog_active) !== 1 || Number(product.is_published) !== 1 || Number(product.virtual_store_active) !== 1 || product.status === "arquivado") {
       throw new SalesOrderValidationError("Produto indisponível.", 409);
     }
     if (!variantId) {

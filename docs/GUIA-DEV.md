@@ -140,6 +140,32 @@ npm run verify:full     # verificação estática e todas as suítes backend/fro
 
 O runner aceita vários testes backend com uma única subida da API:
 
+Para preservar a base local, use o executor isolado. Ele aceita somente um
+`DATABASE_URL` local, cria um banco temporário vazio, desliga credenciais de
+integrações externas e remove o banco ao terminar. É necessário que o usuário
+PostgreSQL tenha permissão para criar bancos. Cada execução grava seu próprio
+log em `outputs/test-runs/`. A porta padrão é `4299`; altere com `AURA_TEST_PORT`
+ao executar duas suítes simultaneamente.
+
+```bash
+npm --prefix backend run test:isolated
+npm run test:inventory-catalog
+# No PowerShell deste ambiente, use npm.cmd no lugar de npm.
+```
+
+`test:inventory-catalog` executa as regressões de limites de estoque, publicação,
+variações, fotos, concorrência, compras, devoluções e ordenação pública, incluindo
+os componentes de edição e vitrine. Para repetir a validação em Chromium e WebKit,
+inicie o frontend em `127.0.0.1:5187`, informe o caminho do módulo Playwright já
+instalado em `AURA_PLAYWRIGHT_MODULE` e execute:
+
+```bash
+npm --prefix backend run test:isolated -- ../outputs/estoque-catalogo-2026-11-03/browser.test.mjs
+```
+
+O teste de navegador usa API e banco reais temporários; a sessão administrativa
+é criada pelo teste. Capturas locais não são versionadas.
+
 ```bash
 npm --prefix backend test -- tests/security.test.mjs tests/permissions.test.mjs
 ```
